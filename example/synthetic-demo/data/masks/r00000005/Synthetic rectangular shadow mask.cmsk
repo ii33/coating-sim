@@ -1,0 +1,25 @@
+{
+  "description": "Opaque rectangle at z=50 mm, x=-5 to -2 mm and y=-5 to 5 mm.",
+  "holes": [],
+  "name": "Synthetic rectangular shadow mask",
+  "notes": "Intentional static shadow yields zero thickness in blocked cells; not a manufactured or calibrated correction plate.",
+  "outer": [
+    [
+      -5.0,
+      -5.0
+    ],
+    [
+      -2.0,
+      -5.0
+    ],
+    [
+      -2.0,
+      5.0
+    ],
+    [
+      -5.0,
+      5.0
+    ]
+  ],
+  "z_mm": 50.0
+}

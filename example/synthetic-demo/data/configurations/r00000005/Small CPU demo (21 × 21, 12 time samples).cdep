@@ -1,0 +1,16 @@
+{
+  "description": "Static mask shadow, mean-normalized 70 nm layer; coarse demonstration only.",
+  "kind": "coat_sim.deposition_configuration",
+  "name": "Small CPU demo (21 × 21, 12 time samples)",
+  "notes": "No physical calibration. Refine grid/time sampling before interpreting numerical accuracy.",
+  "parameters": {
+    "backend": "CPU",
+    "settings": {
+      "carrier_rpm": 0.0,
+      "grid_size": 21,
+      "time_steps": 12
+    }
+  },
+  "process_document_id": "c6cd824b004c40f89a1a79e11092e95c",
+  "version": 1
+}

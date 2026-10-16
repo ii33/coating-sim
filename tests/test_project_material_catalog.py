@@ -11,7 +11,8 @@ from coat_sim.core.material_business import (
     MaterialLibrary,
     application_material_library,
 )
-from coat_sim.core.materials import default_material_profile
+from coat_sim.core import data_files
+from coat_sim.core.materials import builtin_material_profiles, default_material_profile
 from coat_sim.core.project_dependencies import ProjectError
 from coat_sim.core.project_film_service import ProjectFilmService
 from coat_sim.core.project_material_library import ProjectMaterialLibrary
@@ -57,14 +58,26 @@ class BrokenCatalog:
         raise ValueError("bad global JSON fixture")
 
 
-def test_default_global_view_is_32_read_only_records_without_copy_or_lock(tmp_path):
+def test_default_global_view_is_builtin_read_only_records_without_copy_or_lock(tmp_path, monkeypatch):
+    # A clean installation has only builtins; private user materials are not fixtures.
     missing_global = tmp_path / "application-data" / "materials"
+    original_data_path = data_files.data_path
+
+    def clean_materials_path(value, **kwargs):
+        if value == "materials":
+            return missing_global
+        return original_data_path(value, **kwargs)
+
+    monkeypatch.setattr(data_files, "data_path", clean_materials_path)
     global_catalog = application_material_library()
     store = ProjectStore.create(tmp_path / "project", "Global catalog view")
     library = ProjectMaterialLibrary(ProjectResourceService(store), global_library=global_catalog)
 
     rows = library.catalog_records()
-    assert len(rows) == 32
+    expected_ids = {profile["id"] for profile in builtin_material_profiles()}
+    assert len(rows) == len(expected_ids) == 29
+    assert {row["record"]["id"] for row in rows} == expected_ids
+    assert all(row["builtin"] and not row["overridden"] for row in rows)
     assert all(row["origin"] == "global" and row["readonly"] for row in rows)
     assert store.manifest["documents"] == []
     selected = next(row["record"]["id"] for row in rows

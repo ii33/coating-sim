@@ -4,7 +4,7 @@
 
 A desktop tool for optical thin-film research and engineering development, bringing thin-film design, planetary evaporation deposition, thickness maps, spectral analysis, and result assets into independent projects.
 
-**This is the `dev.20261016.09` development snapshot, not a formal Release.** The project has not completed comprehensive physical calibration. Simulation and optimization support analysis, comparison, and research; they do not replace equipment calibration, process qualification, or optical measurements. Run from source: there is no release-qualified installer or dependency-manager EXE.
+**This is the `dev.20261016.10` development snapshot, not a formal Release.** The project has not completed comprehensive physical calibration. Simulation and optimization support analysis, comparison, and research; they do not replace equipment calibration, process qualification, or optical measurements. Run from source: there is no release-qualified installer or dependency-manager EXE.
 
 ## What it does
 
@@ -45,6 +45,10 @@ python3.12 -m venv .venv
 ```
 
 For Qt platform-plugin errors, consult the [Qt for Linux requirements](https://doc.qt.io/qt-6/linux-requirements.html). Headless tests do not replace native desktop interaction testing. Native end-to-end macOS validation has not been completed; usability on macOS is not promised here.
+
+### Complete example project
+
+Open `example/synthetic-demo/project.coatproj` for a self-contained synthetic project with materials, a film design, machine, source, substrate, mask, process, and default deposition configuration. Copy the example directory before editing. The [example guide](example/README.md) documents expected results, optimization steps, and the limits of its small sampling grid. It is not a measured or production-calibrated setup.
 
 ### Your first project
 

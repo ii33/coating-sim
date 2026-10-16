@@ -1,0 +1,184 @@
+{
+  "assume_lossless": false,
+  "back_layers": [],
+  "exit_medium": {
+    "kind": "constant",
+    "n": 1.0
+  },
+  "expression": {
+    "in_sync": true,
+    "symbols": {},
+    "text": ""
+  },
+  "first_surface": "front",
+  "front_layers": [
+    {
+      "id": "demo-layer",
+      "material_id": "demo-film",
+      "note": "Synthetic starting thickness; use optimization to explore changes.",
+      "optical_set_id": "visible",
+      "thickness": {
+        "unit": "nm",
+        "value": 70.0
+      }
+    }
+  ],
+  "id": "synthetic-single-layer",
+  "incident_medium": {
+    "kind": "constant",
+    "n": 1.0
+  },
+  "layer_order": "substrate_outward",
+  "name": "Synthetic single-layer coating",
+  "note": "Ideal lossless constants; no measured material or machine calibration.",
+  "reference_wavelength_nm": 550.0,
+  "schema_version": 1,
+  "substrate": {
+    "material_id": "demo-glass",
+    "mode": "auto",
+    "optical_set_id": "visible",
+    "sides": "single",
+    "thickness": {
+      "unit": "mm",
+      "value": 1.0
+    }
+  },
+  "use_k": true,
+  "workflow_settings": {
+    "optimization": {
+      "objectives": [
+        {
+          "actual_angle_step_deg": 0.0,
+          "actual_wavelength_step_nm": 10.0,
+          "angle_max_deg": 0.0,
+          "angle_min_deg": 0.0,
+          "angle_sample_count": 1,
+          "angle_sampling_mode": "range",
+          "angle_step_deg": 1.0,
+          "angles_text": "0",
+          "id": "c20ee2c6ba004ea4b9b9f683ec517072",
+          "lower_bound_percent": 0.0,
+          "metric": "R",
+          "mode": "range",
+          "name": "Explore low visible reflectance",
+          "polarization": "unpolarized",
+          "sampling_basis": "samples",
+          "target_value_percent": 5.0,
+          "upper_bound_percent": 1.3,
+          "wavelength_max_nm": 600.0,
+          "wavelength_min_nm": 500.0,
+          "wavelength_samples": 11,
+          "wavelength_step_nm": 10.0,
+          "weight": 1.0
+        }
+      ],
+      "search_mode": "fixed_topology",
+      "solver": {
+        "acceptable_error_percent": 0.1,
+        "max_evaluations": 40,
+        "max_iterations": 12,
+        "method": "baseline",
+        "multistart_count": 4,
+        "population_size": 12,
+        "seed": 0,
+        "validation_samples_multiplier": 2
+      },
+      "structure_materials": [
+        {
+          "material_id": "demo-film",
+          "optical_set_id": "visible"
+        }
+      ],
+      "structure_mode": "combined",
+      "structure_options": {
+        "candidate_budget": 128,
+        "growth_cycles": 1,
+        "growth_phase_fractions": [
+          0.25,
+          0.5,
+          1.0
+        ],
+        "growth_steps_nm": [
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0
+        ],
+        "max_added_layers": 1,
+        "max_thickness_nm": 200.0,
+        "max_total_layers": 32,
+        "max_total_thickness_nm": 2000.0,
+        "min_thickness_nm": 0.5,
+        "needle_thickness_samples": 9,
+        "position_samples": 17,
+        "seed": 0
+      },
+      "variables": [
+        {
+          "enabled": true,
+          "layer_id": "demo-layer",
+          "lower_nm": 35.0,
+          "side": "front",
+          "upper_nm": 105.0
+        }
+      ],
+      "version": 1
+    },
+    "simulation": {
+      "analysis": {
+        "channel": "T",
+        "polarization": "current",
+        "threshold_fraction": 0.5
+      },
+      "blackbody_temperature_k": 5778.0,
+      "calculation_bands": [
+        {
+          "maximum_nm": 700.0,
+          "minimum_nm": 400.0
+        }
+      ],
+      "parameters": {
+        "angle_deg": 0.0,
+        "extrapolation_policy": "endpoint_hold",
+        "first_surface": "front",
+        "light_source": {
+          "kind": "flat"
+        },
+        "polarization": "unpolarized",
+        "samples": 31,
+        "wavelength_max_nm": 700.0,
+        "wavelength_min_nm": 400.0
+      },
+      "plot": {
+        "curves": [
+          "R"
+        ],
+        "grid": true,
+        "polarizations": [],
+        "x": {
+          "auto": true,
+          "major_tick": 50.0,
+          "major_tick_auto": true,
+          "max": 700.0,
+          "min": 400.0
+        },
+        "y": {
+          "auto": true,
+          "major_tick": 0.1,
+          "major_tick_auto": true,
+          "max": 1.0,
+          "min": 0.0,
+          "unit": "fraction"
+        }
+      },
+      "png_export": {
+        "dpi": 160,
+        "height_in": 5.0,
+        "transparent": false,
+        "width_in": 9.0
+      },
+      "schema_version": 1
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "description": "",
+  "name": "Synthetic flat disk, diameter 20 mm",
+  "notes": "",
+  "outline": {
+    "kind": "circle",
+    "radius_mm": 10.0
+  },
+  "schema_version": 1,
+  "surface": {
+    "kind": "flat"
+  }
+}

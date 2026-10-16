@@ -1,0 +1,33 @@
+{
+  "kind": "coat_sim.project_optical_material",
+  "material": {
+    "id": "demo-film",
+    "name": "Ideal demo-film (synthetic)",
+    "notes": "Original mathematical fixture, MIT licensed; not measured or calibrated.",
+    "optical_sets": [
+      {
+        "id": "visible",
+        "k": [
+          0.0,
+          0.0
+        ],
+        "kind": "tabulated",
+        "n": [
+          1.38,
+          1.38
+        ],
+        "name": "Constant index, 400–700 nm",
+        "notes": "Not a real material database or production specification.",
+        "source": "Original synthetic constant-index example; repository MIT license",
+        "wavelength_max": 700.0,
+        "wavelength_min": 400.0,
+        "wavelength_unit": "nm",
+        "wavelengths": [
+          400.0,
+          700.0
+        ]
+      }
+    ]
+  },
+  "version": 1
+}

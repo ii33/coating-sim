@@ -1,0 +1,86 @@
+{
+  "default_configuration_id": "85b9e5e0d3864310be450f125427ae6e",
+  "documents": [
+    {
+      "dependencies": [],
+      "id": "6fd77b281187456280815ed3709f09e3",
+      "kind": "optical_material",
+      "path": "data/materials/r00000005/Ideal demo-glass (synthetic).json",
+      "sha256": "318be7e016a5b9492ca11cba993390dc853f514756b8cdc14f3e491789dcadd9"
+    },
+    {
+      "dependencies": [],
+      "id": "d090457e81624e109081ba9fee79bde0",
+      "kind": "optical_material",
+      "path": "data/materials/r00000005/Ideal demo-film (synthetic).json",
+      "sha256": "483b8d268bc9b14d8d94eb0576e6f047d1706b8708a126e547ab14074653b3d3"
+    },
+    {
+      "dependencies": [
+        "6fd77b281187456280815ed3709f09e3",
+        "d090457e81624e109081ba9fee79bde0"
+      ],
+      "id": "e448c679fc984f24b08a145d329049ff",
+      "kind": "film",
+      "path": "data/films/r00000005/Synthetic single-layer coating.cfilm",
+      "sha256": "09ab4200a74fc7e35a2e5a7cc06825518080d96bfdcde735f813acdf1ddda3cf"
+    },
+    {
+      "dependencies": [
+        "794d34dc0b0b44a9843d89031e73bb00",
+        "faecdff32f2b4531916e47957029fe77"
+      ],
+      "id": "c6cd824b004c40f89a1a79e11092e95c",
+      "kind": "process",
+      "path": "data/processes/r00000005/Synthetic masked single-layer process.cproc",
+      "sha256": "3c82a24b114494f68719a211b5f7269618d197ec414e1d757a101f8798dc04a6"
+    },
+    {
+      "dependencies": [
+        "340ccf6a3bb24619a197452db5429695",
+        "d6a090ad52c8471a87f2327a64c64ea3"
+      ],
+      "id": "faecdff32f2b4531916e47957029fe77",
+      "kind": "machine",
+      "path": "data/machines/r00000005/Synthetic static coating machine.cmac",
+      "sha256": "120ae70d196995dfd9542a38da4144cace063b6ceb766a33f899f52a8bd90b77"
+    },
+    {
+      "dependencies": [],
+      "id": "340ccf6a3bb24619a197452db5429695",
+      "kind": "source",
+      "path": "data/sources/r00000005/Synthetic point source.csrc",
+      "sha256": "4d8cdd180cd5ec3af36a8da63cff13b3b43acb0689ca895052207afdb943e32d"
+    },
+    {
+      "dependencies": [],
+      "id": "d6a090ad52c8471a87f2327a64c64ea3",
+      "kind": "mask",
+      "path": "data/masks/r00000005/Synthetic rectangular shadow mask.cmsk",
+      "sha256": "7b1415aab5fced2acd2ca888a30ef714f48b7449841d177cfb8a488c1480c697"
+    },
+    {
+      "dependencies": [],
+      "id": "794d34dc0b0b44a9843d89031e73bb00",
+      "kind": "substrate",
+      "path": "data/substrates/r00000005/Synthetic flat disk, diameter 20 mm.csub",
+      "sha256": "af7d22faec6776dd3b95a9058345848354829419cd4e0d788bc5afc877ff3aba"
+    },
+    {
+      "dependencies": [
+        "c6cd824b004c40f89a1a79e11092e95c"
+      ],
+      "id": "85b9e5e0d3864310be450f125427ae6e",
+      "kind": "deposition_configuration",
+      "path": "data/configurations/r00000005/Small CPU demo (21 × 21, 12 time samples).cdep",
+      "sha256": "a7dcdc2745208fa43666c25d8b7191d11f97e2d6de722b795cadcf65093884fe"
+    }
+  ],
+  "id": "9c53c4e2285f4eb5b20704a5bac2e2e3",
+  "kind": "coat_sim.project",
+  "name": "Synthetic CPU coating demo",
+  "notes": "Original synthetic inputs, MIT license. Not measured, calibrated or production-qualified.",
+  "revision": 5,
+  "summary": "Self-contained ideal single-layer film and masked deposition demo",
+  "version": 1
+}

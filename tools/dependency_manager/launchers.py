@@ -7,6 +7,7 @@ from __future__ import annotations
 import ctypes
 import hashlib
 import json
+import locale
 import os
 from pathlib import Path
 import re
@@ -15,6 +16,7 @@ import sys
 import tempfile
 
 from . import manager
+from .mirrors import redact
 
 ICON_RELATIVE = "coat_sim/ui/assets/icons/launcher.ico"
 
@@ -151,6 +153,36 @@ if (-not (Test-Path -LiteralPath $s.path -PathType Leaf)) { throw 'Shortcut was 
 '''
 
 
+def _shortcut_output(value):
+    """Bound displayed output after redaction, never expose the command/env/spec."""
+    if isinstance(value, bytes):
+        try:
+            value = value.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            value = value.decode(locale.getpreferredencoding(False), errors="replace")
+    # Quoted credentials may contain spaces; redact those before the shared
+    # URL/token sanitizer and before truncating (which could hide a token label).
+    value = re.sub(
+        r'''(?i)\b(password|passwd|secret|token|access[_-]?token|refresh[_-]?token|'''
+        r'''id[_-]?token|api[_-]?key|client[_-]?secret)(\s*[:=]\s*)(["'])(.*?)\3''',
+        r"\1\2[REDACTED]", str(value or ""), flags=re.DOTALL,
+    )
+    try:
+        value = redact(value)
+    except ValueError:
+        return "[output omitted: invalid URL in diagnostic]"
+    value = "".join(c if c.isprintable() or c in "\n\t" else " " for c in value).strip()
+    return value[:1500] + (" [truncated]" if len(value) > 1500 else "")
+
+
+def _shortcut_failure(reason, *, returncode=None, stderr=None, stdout=None):
+    details = ["Windows shortcut creation failed: " + reason,
+               "exit code: " + (str(returncode) if returncode is not None else "unavailable")]
+    for label, value in (("stderr", stderr), ("stdout", stdout)):
+        details.append(label + ": " + (_shortcut_output(value) or "[empty]"))
+    return "; ".join(details)
+
+
 def _write_shortcut(path, plan):
     """Create real Shell Link with stock Windows PowerShell 5.1, no bypass."""
     system = Path(os.environ["SystemRoot"])
@@ -164,10 +196,25 @@ def _write_shortcut(path, plan):
         spec.write_text(json.dumps({"path": str(path), "python": plan["python"],
                                    "arguments": subprocess.list2cmdline(["-E", str(Path(plan["root"]) / "launcher.py")]),
                                    "root": plan["root"], "icon": plan["icon"]}), encoding="utf-8")
-        result = subprocess.run([str(powershell), "-NoProfile", "-NonInteractive", "-File", str(script),
-                                 "-Spec", str(spec)], capture_output=True, timeout=30, shell=False)
-        if result.returncode or not path.is_file() or path.stat().st_size < 76:
-            raise OSError("Windows shortcut creation failed; check Windows script policy/COM availability")
+        try:
+            result = subprocess.run([str(powershell), "-NoProfile", "-NonInteractive", "-File", str(script),
+                                     "-Spec", str(spec)], capture_output=True, timeout=30, shell=False)
+        except subprocess.TimeoutExpired as exc:
+            raise OSError(_shortcut_failure("PowerShell timed out after 30 seconds",
+                                           stderr=exc.stderr, stdout=exc.stdout)) from exc
+        except OSError as exc:
+            raise OSError(_shortcut_failure("PowerShell could not start",
+                                           stderr=str(exc))) from exc
+        if result.returncode:
+            reason = "PowerShell returned a nonzero exit status"
+        elif not path.is_file():
+            reason = "PowerShell exited successfully but no shortcut file was created"
+        elif path.stat().st_size < 76:
+            reason = "PowerShell exited successfully but the shortcut file is smaller than 76 bytes"
+        else:
+            return
+        raise OSError(_shortcut_failure(reason, returncode=result.returncode,
+                                       stderr=result.stderr, stdout=result.stdout))
 
 
 def execute_launch_entries(plan, *, confirmed=False):

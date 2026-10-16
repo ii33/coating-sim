@@ -197,7 +197,11 @@ def main(argv=None):
         try:
             import tkinter
 
-            tcl = tkinter.Tcl()
+            try:
+                tcl = tkinter.Tcl()
+                patchlevel = tcl.eval("info patchlevel")
+            except tkinter.TclError as exc:
+                raise RuntimeError("Tcl/Tk initialization failed; GUI unavailable: " + str(exc)) from exc
             result = {
                 "schema_version": 1,
                 "operation": "doctor",
@@ -205,7 +209,9 @@ def main(argv=None):
                 "tool_python": sys.version,
                 "frozen": bool(getattr(sys, "frozen", False)),
                 "tk_version": tkinter.TkVersion,
-                "tcl_patchlevel": tcl.eval("info patchlevel"),
+                "tcl_patchlevel": patchlevel,
+                "tcl_initialized": True,
+                "gui_capability": "unverified",
                 "gui_rendering_verified": False,
                 "warnings": [
                     "Tk import/Tcl initialization passed; a real desktop is still needed to verify GUI rendering"
@@ -217,6 +223,9 @@ def main(argv=None):
                 "schema_version": 1,
                 "operation": "doctor",
                 "status": "failed",
+                "tcl_initialized": False,
+                "gui_capability": "unavailable",
+                "gui_rendering_verified": False,
                 "errors": [redact(str(exc))],
                 "warnings": [],
             }

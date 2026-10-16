@@ -30,6 +30,11 @@ jobs:
         with:
           python-version: "3.13.16"
           architecture: x64
+      - name: Install pinned CI-only test runner
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check "pytest==9.1.1"
+          if ($LASTEXITCODE -ne 0) { throw 'CI test runner installation failed' }
       - name: Parse Windows bootstrap and probe installed Python
         shell: pwsh
         run: |
@@ -58,4 +63,17 @@ jobs:
                                           for p in (temp, *temp.parents)]}))
           '@ | python -
           if ($LASTEXITCODE -ne 0) { throw "Temp path diagnostics failed" }
-          python -m unittest discover -s tests -p "test_dependency*.py" -v
+          # PowerShell does not expand globs for native executables. Pass every
+          # dependency test module explicitly so pytest functions/fixtures and
+          # unittest.TestCase contracts are both collected and executed.
+          $testFiles = @(Get-ChildItem -LiteralPath tests -Filter 'test_dependency*.py' -File | Sort-Object Name | ForEach-Object { $_.FullName })
+          if ($testFiles.Count -eq 0) { throw 'No dependency manager test modules found' }
+          python -m pytest -v -ra --junitxml=artifacts/dependency-manager/windows-source.xml @testFiles
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency manager pytest contracts failed' }
+      - name: Preserve Windows source test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-manager-windows-source-results
+          path: artifacts/dependency-manager/
+          if-no-files-found: warn

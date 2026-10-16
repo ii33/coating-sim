@@ -1,0 +1,28 @@
+{
+  "carrier_x_mm": 0.0,
+  "carrier_y_mm": 0.0,
+  "description": "One point source, one mask, 100 mm source-to-substrate distance and zero planet offset.",
+  "gear_module_mm": 0.0,
+  "masks": [
+    {
+      "file": "d6a090ad52c8471a87f2327a64c64ea3.cmsk"
+    }
+  ],
+  "monitors": [],
+  "name": "Synthetic static coating machine",
+  "notes": "Uncalibrated synthetic geometry. The demo configuration sets carrier speed to zero; no real equipment performance is implied.",
+  "planet_offset_mm": 0.0,
+  "planet_teeth": 36,
+  "planet_tilt_deg": 0.0,
+  "schema_version": 5,
+  "sources": [
+    {
+      "file": "340ccf6a3bb24619a197452db5429695.csrc",
+      "x_mm": 0.0,
+      "y_mm": 0.0,
+      "z_mm": 0.0
+    }
+  ],
+  "substrate_z_mm": 100.0,
+  "sun_teeth": 120
+}

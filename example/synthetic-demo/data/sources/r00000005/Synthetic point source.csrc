@@ -1,0 +1,9 @@
+{
+  "description": "Ideal cosine point emitter at the machine origin; exponent 1.",
+  "device_type": "custom",
+  "kind": "point",
+  "name": "Synthetic point source",
+  "notes": "Original MIT-licensed demonstration geometry; no measured emission or rate calibration.",
+  "schema_version": 2,
+  "source_exponent": 1.0
+}
