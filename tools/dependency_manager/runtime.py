@@ -25,8 +25,8 @@ from urllib.request import (
 import sys
 
 from .runtime_paths import project_root, contained_runtime_path
-from .manager import clean_environment, probe_python, run_command
-from .mirrors import ProxyConfig, redact, _UniformProxyHandler
+from .manager import probe_python, run_command
+from .mirrors import ProxyConfig, redact, _UniformProxyHandler, _effective_proxy_map
 
 MANIFEST_PATH = (
     Path(sys.prefix) / "runtime_manifest.json"
@@ -225,11 +225,7 @@ def download_runtime(
     max_bytes=128 * 1024 * 1024,
 ):
     """Bounded binary download with mandatory hash verification before execution."""
-    env = clean_environment(proxy)
-    proxies = {
-        scheme: env.get(scheme.upper() + "_PROXY", env.get(scheme + "_proxy", ""))
-        for scheme in ("http", "https")
-    }
+    proxies = _effective_proxy_map(proxy)
     opener = build_opener(
         _UniformProxyHandler(proxies), HTTPSHandler(), _OfficialRedirect()
     )

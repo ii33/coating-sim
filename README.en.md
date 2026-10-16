@@ -4,7 +4,7 @@
 
 A desktop tool for optical thin-film research and engineering development, bringing thin-film design, planetary evaporation deposition, thickness maps, spectral analysis, and result assets into independent projects.
 
-**This is the `dev.20261016.16` development snapshot, not a formal Release.** The project has not completed comprehensive physical calibration. Simulation and optimization support analysis, comparison, and research; they do not replace equipment calibration, process qualification, or optical measurements. Run from source: there is no release-qualified installer or dependency-manager EXE.
+**This is the `dev.20261016.17` development snapshot, not a formal Release.** The project has not completed comprehensive physical calibration. Simulation and optimization support analysis, comparison, and research; they do not replace equipment calibration, process qualification, or optical measurements. Run from source: there is no release-qualified installer or dependency-manager EXE.
 
 ## What it does
 

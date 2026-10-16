@@ -18,8 +18,7 @@ from urllib.request import build_opener, HTTPSHandler, HTTPRedirectHandler, Requ
 import zipfile
 
 from .runtime_paths import project_root, contained_runtime_path
-from .manager import clean_environment
-from .mirrors import ProxyConfig, redact, _UniformProxyHandler
+from .mirrors import ProxyConfig, redact, _UniformProxyHandler, _effective_proxy_map
 
 MANIFEST_PATH = (
     Path(sys.prefix) / "git_runtime_manifest.json"
@@ -172,10 +171,7 @@ class _OfficialRedirect(HTTPRedirectHandler):
 
 
 def download_git(artifact, destination, proxy, cancel_event, emit, *, max_bytes=MAX_DOWNLOAD):
-    env = clean_environment(proxy)
-    proxies = {
-        s: env.get(s.upper() + "_PROXY", env.get(s + "_proxy", "")) for s in ("http", "https")
-    }
+    proxies = _effective_proxy_map(proxy)
     opener = build_opener(_UniformProxyHandler(proxies), HTTPSHandler(), _OfficialRedirect())
     digest, total, start = hashlib.sha256(), 0, time.monotonic()
     created = False
