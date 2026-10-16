@@ -1,4 +1,5 @@
 """Offline diagnostics for stock Windows shortcut creation failures."""
+import json
 from pathlib import Path
 import subprocess
 import tempfile
@@ -64,6 +65,29 @@ class ShortcutDiagnosticsTests(unittest.TestCase):
         with patch.object(launchers.subprocess, 'run', return_value=
                           subprocess.CompletedProcess([], 0, b'', b'')):
             self.assertIsNone(launchers._write_shortcut(self.path, self.plan))
+
+    def test_native_writer_uses_unicode_com_and_json_data(self):
+        root = self.root / "中文 space & ! % ' project"
+        plan = {'root': str(root), 'python': str(root / '.venv/Scripts/python.exe'),
+                'icon': str(root / 'launcher.ico')}
+
+        def run(command, **kwargs):
+            script = Path(command[command.index('-File') + 1]).read_text(encoding='utf-8-sig')
+            spec = json.loads(Path(command[command.index('-Spec') + 1]).read_text(encoding='utf-8'))
+            self.assertIn('000214F9-0000-0000-C000-000000000046', script)
+            self.assertIn('UnmanagedType.LPWStr', script)
+            self.assertIn('((IPersistFile)instance).Save(path, true)', script)
+            self.assertNotIn('WScript.Shell', script)
+            self.assertNotIn(str(root), script)
+            self.assertEqual(spec['python'], plan['python'])
+            self.assertEqual(spec['root'], plan['root'])
+            self.assertEqual(spec['icon'], plan['icon'])
+            self.assertEqual(spec['arguments'], subprocess.list2cmdline(['-E', str(root / 'launcher.py')]))
+            self.path.write_bytes(b'x' * 76)
+            return subprocess.CompletedProcess(command, 0, b'', b'')
+
+        with patch.object(launchers.subprocess, 'run', side_effect=run):
+            launchers._write_shortcut(self.path, plan)
 
     def test_timeout_retains_cause_and_partial_output(self):
         original = subprocess.TimeoutExpired(['private command'], 30,

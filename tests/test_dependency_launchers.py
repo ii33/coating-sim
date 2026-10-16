@@ -220,18 +220,12 @@ class LaunchEntryTests(unittest.TestCase):
         powershell = Path(os.environ['SystemRoot']) / 'System32/WindowsPowerShell/v1.0/powershell.exe'
         script = self.root / 'read-link.ps1'
         script.write_text(
-            "param([string]$Link)\n"
-            "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($Link)\n"
-            "@{target=$s.TargetPath; arguments=$s.Arguments; cwd=$s.WorkingDirectory; icon=$s.IconLocation} | ConvertTo-Json -Compress\n",
+            "param([string]$Link)\n$ErrorActionPreference = 'Stop'\n"
+            "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)\n"
+            "Add-Type -TypeDefinition @'\n" + launchers._SHELL_LINK_SOURCE + "\n'@\n"
+            "$s = [CoatingLauncher.NativeShortcut]::Read($Link)\n"
+            "@{target=$s[0]; arguments=$s[1]; cwd=$s[2]; icon=$s[3]} | ConvertTo-Json -Compress\n",
             encoding='utf-8-sig')
-        read = subprocess.run([str(powershell), '-NoProfile', '-NonInteractive', '-File', str(script),
-                               '-Link', result['files'][1]['path']], capture_output=True, timeout=30)
-        self.assertEqual(read.returncode, 0, read.stderr)
-        # Windows PowerShell redirected output follows its console encoding.
-        # Force UTF-8 for a separate run so Chinese-path assertions are reliable.
-        text = script.read_text(encoding='utf-8-sig').replace(
-            "param([string]$Link)\n", "param([string]$Link)\n[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)\n")
-        script.write_text(text, encoding='utf-8-sig')
         read = subprocess.run([str(powershell), '-NoProfile', '-NonInteractive', '-File', str(script),
                                '-Link', result['files'][1]['path']], capture_output=True, timeout=30)
         self.assertEqual(read.returncode, 0, read.stderr)

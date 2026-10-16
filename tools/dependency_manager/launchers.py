@@ -138,20 +138,99 @@ def plan_launch_entries(root, *, shortcut="none", output_dir=None, name="Coating
     return plan
 
 
-_LINK_SCRIPT = '''param([string]$Spec)
-$ErrorActionPreference = 'Stop'
-$s = Get-Content -LiteralPath $Spec -Raw -Encoding UTF8 | ConvertFrom-Json
-$w = New-Object -ComObject WScript.Shell
-$l = $w.CreateShortcut($s.path)
-$l.TargetPath = $s.python
-$l.Arguments = $s.arguments
-$l.WorkingDirectory = $s.root
-$l.IconLocation = $s.icon + ',0'
-$l.Description = 'Coating Simulator'
-$l.Save()
-if (-not (Test-Path -LiteralPath $s.path -PathType Leaf)) { throw 'Shortcut was not created' }
+# Use the explicitly Unicode COM interface, not WScript.Shell's automation
+# wrapper: ACP1252 CI rejected valid Chinese TargetPath values in that wrapper.
+# Native interface and persistence contracts:
+# https://learn.microsoft.com/windows/win32/api/shobjidl_core/nn-shobjidl_core-ishelllinkw
+# https://learn.microsoft.com/windows/win32/shell/links
+_SHELL_LINK_SOURCE = r'''using System;
+using System.Text;
+using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
+
+namespace CoatingLauncher {
+    [ComImport, Guid("00021401-0000-0000-C000-000000000046")]
+    internal class ShellLink { }
+
+    // Declaration order is the native IShellLinkW vtable order, not alphabetical.
+    // HRESULT failures become COMException; every string is explicitly UTF-16.
+    [ComImport, Guid("000214F9-0000-0000-C000-000000000046"),
+     InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    internal interface IShellLinkW {
+        void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder path,
+                     int capacity, IntPtr findData, uint flags);
+        void GetIDList(out IntPtr itemList);
+        void SetIDList(IntPtr itemList);
+        void GetDescription([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder text,
+                            int capacity);
+        void SetDescription([MarshalAs(UnmanagedType.LPWStr)] string text);
+        void GetWorkingDirectory([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder path,
+                                 int capacity);
+        void SetWorkingDirectory([MarshalAs(UnmanagedType.LPWStr)] string path);
+        void GetArguments([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder text,
+                          int capacity);
+        void SetArguments([MarshalAs(UnmanagedType.LPWStr)] string text);
+        void GetHotkey(out short hotkey);
+        void SetHotkey(short hotkey);
+        void GetShowCmd(out int command);
+        void SetShowCmd(int command);
+        void GetIconLocation([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder path,
+                             int capacity, out int index);
+        void SetIconLocation([MarshalAs(UnmanagedType.LPWStr)] string path, int index);
+        void SetRelativePath([MarshalAs(UnmanagedType.LPWStr)] string path, uint reserved);
+        void Resolve(IntPtr window, uint flags);
+        void SetPath([MarshalAs(UnmanagedType.LPWStr)] string path);
+    }
+
+    public static class NativeShortcut {
+        public static void Write(string path, string target, string arguments,
+                                 string directory, string icon) {
+            object instance = new ShellLink();
+            try {
+                IShellLinkW link = (IShellLinkW)instance;
+                link.SetPath(target);
+                link.SetArguments(arguments);
+                link.SetWorkingDirectory(directory);
+                link.SetIconLocation(icon, 0);
+                link.SetDescription("Coating Simulator");
+                ((IPersistFile)instance).Save(path, true);
+            } finally {
+                Marshal.FinalReleaseComObject(instance);
+            }
+        }
+
+        public static string[] Read(string path) {
+            object instance = new ShellLink();
+            try {
+                ((IPersistFile)instance).Load(path, 0); // STGM_READ; never resolve/execute.
+                IShellLinkW link = (IShellLinkW)instance;
+                StringBuilder target = new StringBuilder(32768);
+                StringBuilder arguments = new StringBuilder(32768);
+                StringBuilder directory = new StringBuilder(32768);
+                StringBuilder icon = new StringBuilder(32768);
+                int iconIndex;
+                link.GetPath(target, target.Capacity, IntPtr.Zero, 4); // SLGP_RAWPATH
+                link.GetArguments(arguments, arguments.Capacity);
+                link.GetWorkingDirectory(directory, directory.Capacity);
+                link.GetIconLocation(icon, icon.Capacity, out iconIndex);
+                return new string[] { target.ToString(), arguments.ToString(),
+                                      directory.ToString(), icon.ToString() + "," + iconIndex };
+            } finally {
+                Marshal.FinalReleaseComObject(instance);
+            }
+        }
+    }
+}
 '''
 
+_LINK_SCRIPT = '''param([string]$Spec)
+$ErrorActionPreference = 'Stop'
+Add-Type -TypeDefinition @'
+''' + _SHELL_LINK_SOURCE + "\n'@\n" + '''
+$s = Get-Content -LiteralPath $Spec -Raw -Encoding UTF8 | ConvertFrom-Json
+[CoatingLauncher.NativeShortcut]::Write($s.path, $s.python, $s.arguments, $s.root, $s.icon)
+if (-not (Test-Path -LiteralPath $s.path -PathType Leaf)) { throw 'Shortcut was not created' }
+'''
 
 def _shortcut_output(value):
     """Bound displayed output after redaction, never expose the command/env/spec."""
