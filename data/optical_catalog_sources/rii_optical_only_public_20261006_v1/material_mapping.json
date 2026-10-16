@@ -1,0 +1,14 @@
+{
+  "batch": "rii_optical_only_public_20261006_v1",
+  "materials": {
+    "HfO2": {
+      "id": "66b1995269f548a4995d75a448e5a646",
+      "name": "HfO₂ / 氧化铪"
+    },
+    "Nb2O5": {
+      "id": "c1accbb380c94f98ac7d435446ce0a9b",
+      "name": "Nb₂O₅ / 五氧化二铌"
+    }
+  },
+  "schema_version": 1
+}

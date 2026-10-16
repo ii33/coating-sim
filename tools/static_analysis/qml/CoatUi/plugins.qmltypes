@@ -1,0 +1,30 @@
+import QtQuick.tooling 1.2
+
+// Analysis-only descriptions of Python qmlRegisterType exports.
+// These are never added to QQmlEngine's runtime import path.
+Module {
+    Component {
+        name: "PreviewCursor"
+        prototype: "QObject"
+        exports: ["CoatUi/PreviewCursor 1.0"]
+        exportMetaObjectRevisions: [256]
+        Property { name: "target"; type: "QQuickItem"; isPointer: true }
+        Property { name: "active"; type: "bool" }
+        Property { name: "normalShape"; type: "int" }
+        Signal { name: "targetChanged" }
+        Signal { name: "activeChanged" }
+        Signal { name: "normalShapeChanged" }
+    }
+    Component {
+        name: "AppearanceSceneCanvas"
+        prototype: "QQuickItem"
+        exports: ["CoatUi/AppearanceSceneCanvas 1.0"]
+        exportMetaObjectRevisions: [256]
+        Property { name: "sceneData"; type: "QVariantMap" }
+        Property { name: "surfaceColor"; type: "QColor" }
+        Property { name: "gridColor"; type: "QColor" }
+        Signal { name: "sceneDataChanged" }
+        Signal { name: "surfaceColorChanged" }
+        Signal { name: "gridColorChanged" }
+    }
+}

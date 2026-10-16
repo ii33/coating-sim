@@ -1,0 +1,4 @@
+module CoatUi
+typeinfo plugins.qmltypes
+depends QtQml 6.0
+depends QtQuick 6.0

@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "verified_on": "2026-10-14",
+  "rpm_evidence": [
+    {
+      "rpm": "libffi.rpm",
+      "sha256": "670463ed744b7243cfe32f0c4aa6676657a6078a6e2009a51fdb7b907b98ef71",
+      "tags": {
+        "1000": [
+          "libffi"
+        ],
+        "1001": [
+          "3.0.13"
+        ],
+        "1002": [
+          "19.el7"
+        ],
+        "1014": [
+          "MIT and Public Domain"
+        ],
+        "1044": [
+          "libffi-3.0.13-19.el7.src.rpm"
+        ]
+      },
+      "library_sha256": "af4ed7088fc6c9dd07628ba47534746412c051a4864189fb9308be5b8c1b2308",
+      "readelf_notes": "\nDisplaying notes found in: .note.gnu.build-id\n  Owner                Data size \tDescription\n  GNU                  0x00000014\tNT_GNU_BUILD_ID (unique build ID bitstring)\n    Build ID: 7be2dc09660d2d01f922aa5f2e9bbd01d01e8906\n",
+      "members": [
+        "./usr/lib64/libffi.so.6",
+        "./usr/lib64/libffi.so.6.0.1",
+        "./usr/share/doc/libffi-3.0.13",
+        "./usr/share/doc/libffi-3.0.13/LICENSE",
+        "./usr/share/doc/libffi-3.0.13/README",
+        "TRAILER!!!"
+      ],
+      "source": "https://vault.centos.org/7.9.2009/os/x86_64/Packages/libffi-3.0.13-19.el7.x86_64.rpm"
+    },
+    {
+      "rpm": "libuuid.rpm",
+      "sha256": "45490dce25d50ba66fc07e77f3b0f1dbd8dcf584438792413af0c4b7b5fbf583",
+      "tags": {
+        "1000": [
+          "libuuid"
+        ],
+        "1001": [
+          "2.23.2"
+        ],
+        "1002": [
+          "65.el7"
+        ],
+        "1014": [
+          "BSD"
+        ],
+        "1044": [
+          "util-linux-2.23.2-65.el7.src.rpm"
+        ]
+      },
+      "library_sha256": "3008367f729e1e103b4b84092d95afaeb17cf8a1fadd48fc43ec8f58c399dee5",
+      "readelf_notes": "\nDisplaying notes found in: .note.gnu.build-id\n  Owner                Data size \tDescription\n  GNU                  0x00000014\tNT_GNU_BUILD_ID (unique build ID bitstring)\n    Build ID: fb47c8b42bba8c045d274fff6c275d6e46c2140b\n",
+      "members": [
+        "./usr/lib64/libuuid.so.1",
+        "./usr/lib64/libuuid.so.1.3.0",
+        "./usr/share/doc/libuuid-2.23.2",
+        "./usr/share/doc/libuuid-2.23.2/COPYING",
+        "TRAILER!!!"
+      ],
+      "source": "https://vault.centos.org/7.9.2009/os/x86_64/Packages/libuuid-2.23.2-65.el7.x86_64.rpm"
+    }
+  ],
+  "comparison": "GNU Build ID plus SHA256 of exact .text and .rodata sections match RPM originals; auditwheel/patchelf change other ELF bytes, so full hashes differ.",
+  "libffi_sections": {
+    ".text": "66982b4862d778711327323574102a2dcdc355e9594b2635f5dcf08ebeea07f5",
+    ".rodata": "871a68918ee93c3cfa8217b65d79d66addf3806de4775490b04e469055e16119"
+  },
+  "libuuid_sections": {
+    ".text": "017126eb6405d846985165d371b6dccab2961cdec8a32e4b9013904885977c34",
+    ".rodata": "3c0282653d9e7f3e69a963344dc54d631b718b1c03062ba3bed6dede583598fb"
+  },
+  "source_archives": [
+    {
+      "url": "https://www.kernel.org/pub/linux/utils/util-linux/v2.23/util-linux-2.23.2.tar.xz",
+      "sha256": "7c4042bd91f621250d7b3b2f34e3b11921a32c7f080c149dcc0c7ce62a8a7cac",
+      "notes": "libuuid/src/Makemodule.am compiles lib/randutils.c, whose source has GNU Lesser GPL notice. RPM says BSD; exact downstream patches were not fetched, so no unqualified BSD-only claim. Reviewed release removes this binary and uses OS libuuid.so.1."
+    },
+    {
+      "url": "https://fontconfig.org/release/fontconfig-2.13.0.tar.gz",
+      "sha256": "a6ca290637d8b2c4e1dd40549b179202977593f7481ec83ddfb1765ad90037ba"
+    }
+  ]
+}

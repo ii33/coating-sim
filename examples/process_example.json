@@ -1,0 +1,27 @@
+{
+  "schema_version": 6,
+  "name": "双源示例工艺",
+  "machine_file": "machine_example.json",
+  "substrate_file": "substrate_example.json",
+  "steps": [
+    {
+      "source_slot": 1,
+      "target_nm": 100.0,
+      "rate_nm_s": 1.0,
+      "target_mode": "mean"
+    },
+    {
+      "source_slot": 2,
+      "target_nm": 30.0,
+      "rate_nm_s": 0.5,
+      "target_mode": "monitor",
+      "monitor_slot": 1
+    },
+    {
+      "source_slot": 1,
+      "target_nm": 10.0,
+      "rate_nm_s": 0.2,
+      "target_mode": "center"
+    }
+  ]
+}

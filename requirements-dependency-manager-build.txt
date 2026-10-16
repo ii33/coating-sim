@@ -1,0 +1,3 @@
+# Isolated tool-packaging environment; never install into project runtime.
+# GPL-2.0-or-later WITH Bootloader-exception explicitly approved 2026-10-14.
+PyInstaller==6.22.3

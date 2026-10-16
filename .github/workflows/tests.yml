@@ -1,0 +1,73 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  collection-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-test.txt
+      - run: sudo apt-get update && sudo apt-get install --yes libegl1 libopengl0 libgl1 libpulse0
+      - run: python -m pip install -r requirements.txt -r requirements-test.txt
+      - name: Collect every test and save audit artifacts
+        run: |
+          mkdir -p artifacts/test-ci/collection
+          set +e
+          python tools/run_tests.py all --collect-only \
+            --collection-report artifacts/test-ci/collection/collection.json \
+            -- --junitxml=artifacts/test-ci/collection/junit.xml \
+            > artifacts/test-ci/collection/collection.log 2>&1
+          result=$?
+          cat artifacts/test-ci/collection/collection.log
+          printf '%s\n' "$result" > artifacts/test-ci/collection/exit-code.txt
+          exit "$result"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-collection-audit
+          path: artifacts/test-ci/collection/
+          if-no-files-found: warn
+
+  test-tiers:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tier: [quick, algorithm, contract, qt]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-test.txt
+      - run: sudo apt-get update && sudo apt-get install --yes libegl1 libopengl0 libgl1 libpulse0
+      - run: python -m pip install -r requirements.txt -r requirements-test.txt
+      - name: Run ${{ matrix.tier }} tests and save JUnit output
+        run: |
+          mkdir -p "artifacts/test-ci/${{ matrix.tier }}"
+          set +e
+          python tools/run_tests.py "${{ matrix.tier }}" \
+            -- --junitxml="artifacts/test-ci/${{ matrix.tier }}/junit.xml" \
+            > "artifacts/test-ci/${{ matrix.tier }}/test.log" 2>&1
+          result=$?
+          cat "artifacts/test-ci/${{ matrix.tier }}/test.log"
+          printf '%s\n' "$result" > "artifacts/test-ci/${{ matrix.tier }}/exit-code.txt"
+          exit "$result"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.tier }}
+          path: artifacts/test-ci/${{ matrix.tier }}/
+          if-no-files-found: warn

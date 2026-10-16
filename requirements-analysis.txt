@@ -1,0 +1,6 @@
+# Analysis-only tools and reproducible typing/Qt dependencies.
+-r requirements.txt
+-r requirements-test.txt
+-r requirements-analysis-lock.txt
+ruff==0.17.0
+mypy==2.4.0

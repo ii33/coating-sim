@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "stage": "CAP-02 local assistant integration accepted; actual tiny CPU renderer and verified outputs; no daemon or GUI acceptance",
+  "recorded_utc": "2026-10-12T09:01:08.443928+00:00",
+  "baseline_runtime_sha256": "1b8286cff82389edc504dea653b2af6cebbca357796e1b0fdd1abaa5d87f7e3c",
+  "previous_stage_hash_manifest_sha256": "87f47d08215d0c585b4e247b2674ee569148d58531f6fdf3fe6ddcfd098d332d",
+  "runtime_unchanged_during_test_closure": true,
+  "protected_runtime_definitions_unchanged": {
+    "provider_base_url": true,
+    "_chat_model": true,
+    "_payload": true,
+    "_restore_history": true,
+    "compact_context": true,
+    "JobLedger": true,
+    "BudgetAndTools.wrap_model_request": true,
+    "BudgetAndTools._await_model_response": true,
+    "BudgetAndTools._upsert_artifact": true,
+    "BudgetAndTools._register_background": true
+  },
+  "authorized_runtime_result_branches_changed": {
+    "BudgetAndTools.wrap_tool_execute": true,
+    "_background_completion_context": true
+  },
+  "previous_stage_files_unchanged": {
+    "coat_sim/agent/modelclient.py": true,
+    "coat_sim/agent/provider_protocol.py": true,
+    "coat_sim/agent/tool_dispatch.py": true,
+    "coat_sim/ui/provider_catalog_sources.json": true,
+    "tests/test_ai_provider_protocol_contract.py": true,
+    "tests/test_ai_settings_probe_contract.py": true,
+    "tests/test_settings_model_features.py": true,
+    "tests/test_assistant_typed_operations_contract.py": true,
+    "tests/test_ai_film_operations_contract.py": true,
+    "docs/assistant-provider-protocol-contract.md": true,
+    "docs/assistant-typed-operations-contract.md": true,
+    "docs/assistant-settings-probe-diagnosis-20261012.md": true,
+    "docs/assistant-ai-shared-interface-needs-20261012.md": true,
+    "docs/assistant-ai-runtime-20261012.patch": true
+  },
+  "shared_source_hashes_match_freeze": {
+    "coat_sim/core/appearance_compute.py": true,
+    "coat_sim/core/appearance_freeze_worker.py": true,
+    "coat_sim/core/appearance_execution.py": true,
+    "coat_sim/core/appearance_result.py": true,
+    "coat_sim/mcp/server.py": true,
+    "coat_sim/core/compute_estimation.py": true,
+    "coat_sim/process_entry.py": true,
+    "coat_sim/scheduler/jobs.py": true,
+    "coat_sim/scheduler/worker.py": true,
+    "coat_sim/scheduler/result_capability.py": true,
+    "coat_sim/scheduler/daemon.py": true,
+    "docs/appearance-shared-service-contract.md": true,
+    "tests/test_appearance_compute_entrypoints.py": true,
+    "tests/test_appearance_result_contract.py": true,
+    "tests/test_appearance_asset_descriptor.py": true,
+    "tests/test_appearance_cancel_publication.py": true,
+    "docs/entrypoint-service-contract.md": true,
+    "coat_sim/scheduler/submission.py": true
+  },
+  "shared_verification_sha256": "f46c5e2f447bff24dda4712b179afae6c82b90c795890a1abfb58b7a685664cb",
+  "independent_test_results": {
+    "appearance": {
+      "tests": 10,
+      "skipped": 0,
+      "duration_s": 20.69,
+      "exit_code": 0
+    },
+    "compatibility": {
+      "tests": 82,
+      "subtests": 9,
+      "duration_s": 30.38,
+      "exit_code": 0
+    }
+  },
+  "files": [
+    {
+      "path": "coat_sim/agent/runtime.py",
+      "sha256": "45f74e998d545a52b06dbc7438dae11af9e6dbc8eea727f21ad3da31635851ca"
+    },
+    {
+      "path": "coat_sim/agent/appearance_adapter.py",
+      "sha256": "8602dbcf66db679bd7594fc53c2ec4eb36d7f6ead601414d5041487485447ae0"
+    },
+    {
+      "path": "tests/test_ai_appearance_operations_contract.py",
+      "sha256": "87d60535f897d7c99783c22581857af6d62b66ce53753f60aaaad1d84d5586ef"
+    },
+    {
+      "path": "docs/assistant-appearance-operations-contract-20261012.md",
+      "sha256": "45ba18c529a9050d09be4f16b441fbf0088eb2535dc044f9b3ce4576e4b538de"
+    },
+    {
+      "path": "docs/assistant-appearance-shared-interface-check-20261012.md",
+      "sha256": "32bfe0a652ecc7f12c494a3e72277b1613f79ee0a7cd5c835b324e6792541aa6"
+    },
+    {
+      "path": "docs/assistant-appearance-evidence-20261012.md",
+      "sha256": "63de86c32491ac4fd9e506944d6e33b471106147bd04c9d90a32c8009a8034ba"
+    },
+    {
+      "path": "docs/assistant-appearance-runtime-20261012.patch",
+      "sha256": "f26bbadd44c7438a7644241c5c7f41753062ef540ce3f80a151e9c0e3e6e2067"
+    },
+    {
+      "path": "docs/assistant-appearance-tests-sol-20261012.log",
+      "sha256": "0110e47c07552ad51260cf9d23a677152dbeb59f8ea56f35bc4122794bb149b1"
+    },
+    {
+      "path": "docs/assistant-appearance-tests-sol-pre-closure-20261012.log",
+      "sha256": "d0b2aa9dc1b5803a78031e9879ad97cb08b14c12cca2978b3476cc964c8c4e2b"
+    },
+    {
+      "path": "docs/assistant-appearance-tests-luna-20261012.log",
+      "sha256": "b4e1591fd640d3c38d5ced6049c8405795873f1728876518e5635fd7c03584df"
+    },
+    {
+      "path": "docs/assistant-appearance-compat-sol-20261012.log",
+      "sha256": "e00b9249e15db56a8db10782c1fe53f9db32af87bca882aec4d971fc7a87883b"
+    }
+  ]
+}

@@ -1,0 +1,611 @@
+{
+  "schema_version": 1,
+  "platform": "linux",
+  "machine": "x86_64",
+  "build_python_abi": "cp312",
+  "freeze_core_version": "0.8.0",
+  "bundled_runtime": {
+    "tool_python": "3.12.15",
+    "tcl_patchlevel": "8.6.18",
+    "tk_version": 8.6
+  },
+  "source_wheel": {
+    "url": "https://files.pythonhosted.org/packages/c3/e0/bd72c1cc8a5eb16d8c9ecaccd05c797507717f237dd85db6678ea95cf59c/freeze_core-0.8.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+    "sha256": "57c65d4e19e305be7ad743936f76a3598f31313475d4a501f7ee600127439db9",
+    "pypi_record": "https://pypi.org/pypi/freeze-core/0.8.0/json"
+  },
+  "system_libuuid_transition": {
+    "consumer": "lib/libfontconfig-42c558d2.so.1.11.1",
+    "remove": "lib/libuuid-f64cda11.so.1.3.0",
+    "original_consumer_sha256": "830fe3fd8b83b131e06c255ffd268218451a18aba2e64f137c84a99e5f55e338",
+    "original_removed_sha256": "cc631649c472a6e8d053fe1f6b032eb98dbb17321a61a989816f6789069fa4bd",
+    "reason": "Library source compiles lib/randutils.c with an LGPL notice despite RPM BSD metadata. Do not redistribute this copy without full corresponding-source/notice review; using system libuuid is a bounded OS prerequisite, not an LGPL prohibition."
+  },
+  "components": [
+    {
+      "component": "CPython and statically linked stdlib components",
+      "version": "3.12.15",
+      "license": "PSF-2.0 and bundled stdlib notices",
+      "notices": [
+        "CPython-3.12.15-LICENSE.txt"
+      ]
+    },
+    {
+      "component": "freeze-core startup bases",
+      "version": "0.8.0",
+      "license": "MIT",
+      "notices": [
+        "freeze-core-LICENSE.txt"
+      ]
+    },
+    {
+      "component": "Tcl",
+      "version": "8.6.18",
+      "license": "Tcl/Tk + Spencer-99 + Unlicense + GPL-3.0-or-later WITH scoped Bison-exception-2.2",
+      "notices": [
+        "Tcl-8.6.18-license.terms",
+        "Tcl-8.6.18-Spencer-regex-NOTICE.txt",
+        "Tcl-8.6.18-LibTomMath-LICENSE.txt",
+        "Tcl-8.6.18-Bison-parser-NOTICE.txt",
+        "GNU-GPL-3.0.txt",
+        "Unicode-V3-license.txt",
+        "Unicode-17.0.0-ReadMe.txt"
+      ]
+    },
+    {
+      "component": "Tk",
+      "version": "8.6.18",
+      "license": "Tcl/Tk",
+      "notices": [
+        "Tk-8.6.18-license.terms",
+        "Tk-8.6.18-GIF-NOTICE.txt"
+      ]
+    },
+    {
+      "component": "OpenSSL libssl/libcrypto",
+      "version": "3.5.9",
+      "license": "Apache-2.0",
+      "notices": [
+        "OpenSSL-3.5.9-LICENSE.txt"
+      ]
+    },
+    {
+      "component": "libffi",
+      "version": "3.0.13-19.el7",
+      "license": "MIT and Public Domain",
+      "notices": [
+        "libffi-LICENSE.txt"
+      ]
+    },
+    {
+      "component": "bzip2",
+      "version": "1.0.6",
+      "license": "bzip2",
+      "notices": [
+        "bzip2-1.0.6-LICENSE.txt"
+      ]
+    },
+    {
+      "component": "libXft",
+      "version": "2.3.2",
+      "license": "MIT/X11",
+      "notices": [
+        "libXft-2.3.2-COPYING.txt"
+      ]
+    },
+    {
+      "component": "fontconfig and Unicode CaseFolding data",
+      "version": "2.13.0 / Unicode9.0.0",
+      "license": "MIT + Public Domain + Unicode-DFS-2016",
+      "notices": [
+        "fontconfig-2.13.0-COPYING.txt",
+        "fontconfig-2.13.0-subcomponent-NOTICES.txt",
+        "Unicode-DFS-2016-NOTICE.txt"
+      ]
+    },
+    {
+      "component": "FreeType including BDF/PCF/hash subcomponents",
+      "version": "2.8.0",
+      "license": "FTL + MIT/X11; GPL alternative not selected",
+      "notices": [
+        "FreeType-2.8-FTL.TXT",
+        "FreeType-2.8-subcomponent-NOTICES.txt",
+        "FreeType-credit.txt"
+      ]
+    },
+    {
+      "component": "libpng",
+      "version": "1.5.13",
+      "license": "libpng-1.0",
+      "notices": [
+        "libpng-1.5.13-LICENSE.txt"
+      ]
+    },
+    {
+      "component": "liblzma only (not XZ executables)",
+      "version": "5.2.2",
+      "license": "Public Domain",
+      "notices": [
+        "liblzma-5.2.2-COPYING.txt"
+      ]
+    }
+  ],
+  "direct_system_dependencies": [
+    "libX11.so.6",
+    "libXrender.so.1",
+    "libc.so.6",
+    "libdl.so.2",
+    "libexpat.so.1",
+    "libm.so.6",
+    "libpthread.so.0",
+    "libutil.so.1",
+    "libuuid.so.1",
+    "libz.so.1"
+  ],
+  "native_files": [
+    {
+      "path": "deposition-deps",
+      "sha256": "dec8075a1bf975e6a3fc9e682d228032bcfcf569ba66a2258ddc1bdea3445e08",
+      "build_id": "3dc3a95e07d0fd37b134336407beffa783241c10",
+      "needed": [
+        "libpthread.so.0",
+        "libdl.so.2",
+        "libutil.so.1",
+        "libm.so.6",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "deposition-deps-gui",
+      "sha256": "dec8075a1bf975e6a3fc9e682d228032bcfcf569ba66a2258ddc1bdea3445e08",
+      "build_id": "3dc3a95e07d0fd37b134336407beffa783241c10",
+      "needed": [
+        "libpthread.so.0",
+        "libdl.so.2",
+        "libutil.so.1",
+        "libm.so.6",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/_bisect.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "89fd2d911ab67e79cb4277550f5bf315285943983623289e121cc89cdf6f0f0e",
+      "build_id": "c40da26450aacfbd00033b4a8bf6c9e8859f489c",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/_blake2.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "60a9ccdad9332f0ec22b7afe20b74b8f71e488783281dc1a82c06f2c0813df66",
+      "build_id": "4b7f2a1c2c317d3fcfaf58439187c2811a04cde7",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/_bz2.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "a0954a2b12383f1d6f0d2ae11d24446e721e980425a5356459ef7a25b5f0ac15",
+      "build_id": "c780d3ed747de358408209a3e207ef73d4c9d1a1",
+      "needed": [
+        "libbz2-a273e504.so.1.0.6",
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/_csv.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "996f452fc599821d0f9c6dc21333d47c127a9c3d612c6c7cc5c1bd6a6667e622",
+      "build_id": "7fb1e75cec359022555da9d9e5c5843f0183699d",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/_ctypes.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "7ceda0874dba8c744c0c0f0a0dde853e0271004dcf3f9c3d4bcdca3ce23e7e2f",
+      "build_id": "87d3c6a2adfce8e10bf29589ec444a6e798e3f9c",
+      "needed": [
+        "libffi-af4ed708.so.6.0.1",
+        "libdl.so.2",
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/_datetime.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "ac56cda36a3061dcfb6e8b6899559a61d8ea06d6a017454dccf6091334d07dfb",
+      "build_id": "c0aca23c0379b1af456e048f4c3674d023f931cb",
+      "needed": [
+        "libm.so.6",
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/_decimal.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "1f036d4aede0588494a683050fa5df9759b344b3b247a5a4720621f42319f03e",
+      "build_id": "21df8717d2fb8042234198f47151fec1737b234d",
+      "needed": [
+        "libm.so.6",
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/_hashlib.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "6c335bc25665cc01dce9ccd4ae7720e34c39ac6a79453f970f75231cc12fbda8",
+      "build_id": "8d7149dd17658c0eed812a1602452022edaef589",
+      "needed": [
+        "libcrypto-892db916.so.3",
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/_heapq.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "386a2137dd47c167d695eae882d240ee5be8b57655607b75a507461b597f1834",
+      "build_id": "063963a7f6c8b191e1661a7c8dd117179cfc451c",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/_json.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "f4bcc42230f93581ffaf105ec5b97ba3f7d7417178dd0774ad2a70e3bd9e1fbe",
+      "build_id": "a684327c9c181a5a3abad0b9ffce91a3f18d3a9e",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/_lzma.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "0d2114025cabcc0afbdc38b77ffe987898614c8982e94203d6a42ce44bdf9f8e",
+      "build_id": "101f7a9e66f18cfeef0534c09264fca70482e50d",
+      "needed": [
+        "liblzma-004595ca.so.5.2.2",
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/_md5.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "78d8a7d705f57d62b040885a260f2fba6c649f3dec6235b11993ed14805fc7cc",
+      "build_id": "84d2847a3fbea03ffc2c4016aabf78ed3fba64c6",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/_opcode.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "f13a9f21e99d45d8370baf0483f7065bcaabcaaca7f924599450afcc306ecd26",
+      "build_id": "c492fb96ba0e24d88dad2036fe8a5c7db54a3715",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/_pickle.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "c0345ec39dfbee1a91027f1da2da298a2b5d73ebeb42695b699f9dbb7a387148",
+      "build_id": "5d5a65c72e79e88a5a4ce0a8214241ab289c9a98",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/_posixsubprocess.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "fede6f92d1d424662426e53b418b540b9ad03721ca694dff772f0320e2a6e05b",
+      "build_id": "fa0c6d11f6c42d32e7a4116fecab5d1969199428",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/_queue.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "07ab256d8b507facc80e09fc5ed192aa0cc8df81f0d1641db9750e4cdf1cd731",
+      "build_id": "0722b42bc6043a244c2fd723ef68c463d94a3b30",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/_random.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "1380f628cc28a4da39029405d2389eab796908e24b520a9536f1dc140153dbe9",
+      "build_id": "b1bde5aa72ee6c96c20bf01919fc037c7877e84b",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/_sha1.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "931b28fddc66aa97e6438053820560f92d94d5140a71a3a52a2702867360a3f7",
+      "build_id": "ebcb1a238122da617e48e218867abe71613515b9",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/_sha2.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "7a747e664aaadf10603995c80c781e0045624c9db4d3c713eebb0dc57de851a8",
+      "build_id": "195dbed70295d64c2db9f9e83abb785a9863b879",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/_sha3.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "bc2969efafc692cb1d0c0221f1852242c5cea5f0951039278d475dafa9dfc912",
+      "build_id": "18758b5343781f0e121b4db1d69a926d9c251b45",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/_socket.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "25a48138c1d8911352483192e3ff688a1daae81d0ed77e44ff67acceb14ff8fd",
+      "build_id": "04fdd059270a05a04e0b195abd837f99f5a80161",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/_ssl.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "9b9b4be6e82b7e21cde88ad5a1cb2b92bc23bcf2517f4364f9c0af7571f0022f",
+      "build_id": "e6d19a332e67fa817799e376bf714fbb91166611",
+      "needed": [
+        "libssl-b795e7f9.so.3",
+        "libcrypto-892db916.so.3",
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/_statistics.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "63ed9a5e899b35f81d37d4f9518c9fbad48ce7775ef1ac1b84bc52a4711a340c",
+      "build_id": "fd2db8576526b0e82ce816de12be04f5b12cc134",
+      "needed": [
+        "libm.so.6",
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/_struct.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "ab7b8d8d892928a3ffbdffaaa613f93f3fb71f2e10a9e378406d6cd0e4e7c18a",
+      "build_id": "f95d67aafa8e04da2909c128cc6b2fd20a7b24d5",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/_tkinter.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "aeaf2d0f00d796afd4a7f70b619581c4a2a27fd3095f665f818542445cf9d8dc",
+      "build_id": "90e4df6879e797f57616cf094d0c95eeac9cc6cb",
+      "needed": [
+        "libtk8-2badb1e9.6.so",
+        "libtcl8-0eea2d2f.6.so",
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/array.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "fb5d81baab5066c124c67bc3018a92a3f1308ad96b4b157fd16f727bc778478a",
+      "build_id": "939b29f481e0916889f2fa2be8f4f11f17bdba3d",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/binascii.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "435af7e5f13913602161ebedd45e6cc8500dd3c9a823e3f6fdbf2f7013dd04a3",
+      "build_id": "4b212294476b8eadcc15ff6d1f604ca9c3baaa18",
+      "needed": [
+        "libz.so.1",
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/fcntl.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "8519453a54d0ebfec1da1c80ecedce178b4b57a96daa3768deeddb23f8f10e6f",
+      "build_id": "3821dbfcf7aa349557214c9e7d026d41e4c4c4a9",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/grp.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "6f5e05131bdc2b58697921b1e2710d02ac4475b577e9d7e2a15c7379f1b1a42e",
+      "build_id": "bca89b9d26e9633fb85c1110e42c0673abf5224a",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/libXft-c8adce8d.so.2.3.2",
+      "sha256": "ade6f848b8597f975699732bca32705ea4bb854e17e9b50a8958e76a4238df63",
+      "build_id": "67193153676c0365efe00c85a3aec5469562625c",
+      "needed": [
+        "libfontconfig-42c558d2.so.1.11.1",
+        "libfreetype-c0e61f0c.so.6.14.0",
+        "libXrender.so.1",
+        "libX11.so.6",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/libbz2-a273e504.so.1.0.6",
+      "sha256": "9e4c78e4b9f618e67c52bc2cae1c630d5a3dc36888a59638f8f42dc18190eb5f",
+      "build_id": "0c85c0386f0cf41ea39969cf7f58a558d1ad3235",
+      "needed": [
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/libcrypto-892db916.so.3",
+      "sha256": "a6e357d5962c04fc0c7be2a73c449d25fd80961fdfdda05bcc212ca6c5221722",
+      "build_id": null,
+      "needed": [
+        "libdl.so.2",
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/libffi-af4ed708.so.6.0.1",
+      "sha256": "fffad26f3ffdc519f0d1044390551048dacf62f223b2fe2fa0befe48d667e6e6",
+      "build_id": "7be2dc09660d2d01f922aa5f2e9bbd01d01e8906",
+      "needed": [
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/libfontconfig-42c558d2.so.1.11.1",
+      "sha256": "c92827cce2f8f475db03ab362c58380cc670a6494c6e337ff91a03f46226baf3",
+      "build_id": "f505274b0b8e6dcea856418270388a158f792827",
+      "needed": [
+        "libfreetype-c0e61f0c.so.6.14.0",
+        "libexpat.so.1",
+        "libuuid.so.1",
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/libfreetype-c0e61f0c.so.6.14.0",
+      "sha256": "51b7214262c467a6193f52eb603767968aac260f8c0a9e5cbfa783f36d58fcc6",
+      "build_id": "b0400174b1a3567df315c8e130f28dba8cb4ec0e",
+      "needed": [
+        "libz.so.1",
+        "libbz2-a273e504.so.1.0.6",
+        "libpng15-ce838cd1.so.15.13.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/liblzma-004595ca.so.5.2.2",
+      "sha256": "6347cbbcde984b21d75335b06fb57e596c130950147752501e9bce733911cac2",
+      "build_id": "f744796ea6fa4d8019414f5487ee85de74dc5adc",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/libpng15-ce838cd1.so.15.13.0",
+      "sha256": "d66081cb0e02030e28f04d89cc334ce852bc5a311fc8e3233cc3354b007ce675",
+      "build_id": "9dce7a7cadc13c5d4a9bd1004943f0f391f01af7",
+      "needed": [
+        "libz.so.1",
+        "libm.so.6",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/libssl-b795e7f9.so.3",
+      "sha256": "67d05579a2b2b7569f4764a97885d6e7551c4560c94d2c0f70f249720c4c8873",
+      "build_id": null,
+      "needed": [
+        "libcrypto-892db916.so.3",
+        "libdl.so.2",
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/libtcl8-0eea2d2f.6.so",
+      "sha256": "cfae1ac87d9cd62223bb5ff13cd870801341388b33117869d22549b2b9083c5e",
+      "build_id": null,
+      "needed": [
+        "libdl.so.2",
+        "libz.so.1",
+        "libpthread.so.0",
+        "libm.so.6",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/libtk8-2badb1e9.6.so",
+      "sha256": "0fb28318af51d42faa5551de1dd26846a89709fe9f624e31e12f6a57def54a11",
+      "build_id": null,
+      "needed": [
+        "libpthread.so.0",
+        "libXft-c8adce8d.so.2.3.2",
+        "libfontconfig-42c558d2.so.1.11.1",
+        "libfreetype-c0e61f0c.so.6.14.0",
+        "libX11.so.6",
+        "libdl.so.2",
+        "libz.so.1",
+        "libm.so.6",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/math.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "e17f85717f6fea9f5808a45b6f7dcced8839da0af639eb1c5147a5c32a6024ba",
+      "build_id": "55737abaee488a15eff7183aea08daae5983162b",
+      "needed": [
+        "libm.so.6",
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/select.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "4e36f2fd989c35dc845e0596511b944551261a4e4dfe643396f5a85c04943248",
+      "build_id": "bd785b3242005b5372ffbbd2fed8f5c8bc37a968",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/termios.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "d927d8fdfeb57a4b99720fa0e31e0b3e8f06a0e8632ee0e84f7ecb1b54eb171f",
+      "build_id": "caacad0fa4936f3a18ad5296c264a7f7d9a01371",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/unicodedata.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "dc1f8290e0cf566743e5a96d2bbf940f3899be0481c6dd507d94b7fb3d5f3867",
+      "build_id": "dffb97b29002af77ab2284772217ffc0c07c767c",
+      "needed": [
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    },
+    {
+      "path": "lib/zlib.cpython-312-x86_64-linux-gnu.so",
+      "sha256": "5138bca069b5aec39771f81d97115854e53f84b15f729a99a54d613e65f2ece1",
+      "build_id": "eecf5a7d0d721a975e9a6b501f5f052b19767bc3",
+      "needed": [
+        "libz.so.1",
+        "libpthread.so.0",
+        "libc.so.6"
+      ]
+    }
+  ]
+}

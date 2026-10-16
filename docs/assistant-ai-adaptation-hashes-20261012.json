@@ -1,0 +1,62 @@
+[
+  {
+    "path": "coat_sim/agent/runtime.py",
+    "sha256": "1b8286cff82389edc504dea653b2af6cebbca357796e1b0fdd1abaa5d87f7e3c"
+  },
+  {
+    "path": "coat_sim/agent/modelclient.py",
+    "sha256": "89ca66bb740b214f179fdd24e1cc8a29db8c4a76bd903c2d5687729b26c05ce4"
+  },
+  {
+    "path": "coat_sim/agent/provider_protocol.py",
+    "sha256": "ea736b436b927fb38f542322cdbca29229c3114a66b73674860975e5dc913b91"
+  },
+  {
+    "path": "coat_sim/agent/tool_dispatch.py",
+    "sha256": "36768dfc11eed6476835f8802fff836a1eeb1751302c77e8301e064db0cba31b"
+  },
+  {
+    "path": "coat_sim/ui/provider_catalog_sources.json",
+    "sha256": "6d7f5247abcea223c24444af8bf333fd94a85ee26582b8d3f41b23b20a68ff5d"
+  },
+  {
+    "path": "tests/test_ai_provider_protocol_contract.py",
+    "sha256": "de10eac42240e11643e7e5f8c89b2342c06779b13dda265f73b05473496fff74"
+  },
+  {
+    "path": "tests/test_ai_settings_probe_contract.py",
+    "sha256": "d0f508e8e32dc0657d96a5c4edceb06629041fdf71de41420897e6e9880db968"
+  },
+  {
+    "path": "tests/test_settings_model_features.py",
+    "sha256": "6f3367a1d032138c4a39433522e2179f388560f03e80f665a7fd7f6d43a148af"
+  },
+  {
+    "path": "tests/test_assistant_typed_operations_contract.py",
+    "sha256": "52b369028a62d268fc46bd0c2ca625724300696dd5258e13bcc42207217746be"
+  },
+  {
+    "path": "tests/test_ai_film_operations_contract.py",
+    "sha256": "530f86dec321c428a0f1e680563b8a4ca94d6f8e183035d695432ea9b77dd1d6"
+  },
+  {
+    "path": "docs/assistant-provider-protocol-contract.md",
+    "sha256": "9e615f852a466baf1898935321cdcc821bc98675ef6bcdf04d9e8ec06e650c7d"
+  },
+  {
+    "path": "docs/assistant-typed-operations-contract.md",
+    "sha256": "84c484d590593657fc31dbf6e45ef905f5bd25c343c001ea40110f410a7b82bf"
+  },
+  {
+    "path": "docs/assistant-settings-probe-diagnosis-20261012.md",
+    "sha256": "f2921f26d5ff770a2fa9d9f306243d7d19b2b63a7ebed3d7917fa7442af9d8df"
+  },
+  {
+    "path": "docs/assistant-ai-shared-interface-needs-20261012.md",
+    "sha256": "12212153d3899c85dda34d828aadf71612d54ebac06145260d32a79f229b005a"
+  },
+  {
+    "path": "docs/assistant-ai-runtime-20261012.patch",
+    "sha256": "ae14c4d00b7b24bcf7f15ab7dac94865bc73b5631db3a818784f634dbeed336a"
+  }
+]

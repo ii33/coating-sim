@@ -1,0 +1,31 @@
+{
+  "schema_version": 5,
+  "carrier_x_mm": 0.0,
+  "carrier_y_mm": 0.0,
+  "planet_offset_mm": 312.0,
+  "substrate_z_mm": 1000.0,
+  "sun_teeth": 120,
+  "planet_teeth": 36,
+  "planet_tilt_deg": 0.0,
+  "gear_module_mm": 4.0,
+  "sources": [
+    {
+      "file": "../sources/kanban_demo_point_source.csrc",
+      "x_mm": 200.0,
+      "y_mm": -90.0,
+      "z_mm": 0.0
+    }
+  ],
+  "masks": [],
+  "monitors": [
+    {
+      "name": "固定晶控演示点",
+      "kind": "crystal",
+      "x_mm": 0.0,
+      "y_mm": 0.0,
+      "z_mm": 1000.0
+    }
+  ],
+  "description": "演示配置（合成假设，未按实测设备校准）：外啮合太阳轮/行星轮，120/36 齿，模数 4 mm，行星中心距 312 mm。",
+  "notes": "合成教学示例：单个点源位于 (200,-90,0) mm，基片平面中心 z=1000 mm，无修正板。120/36 齿、模数 4 mm、中心距 312 mm 仅演示外啮合太阳轮-行星轮几何，并非实测设备或制造工艺。"
+}

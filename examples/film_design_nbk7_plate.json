@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "id": "nbk7-transparent-plate-example",
+  "name": "N-BK7 裸双面厚基片（显式无损假设示例）",
+  "layer_order": "substrate_outward",
+  "front_layers": [],
+  "back_layers": [],
+  "reference_wavelength_nm": 550.0,
+  "substrate": {
+    "material_id": "film_substrate_schott_nbk7",
+    "optical_set_id": "schott_nbk7_sellmeier",
+    "thickness": {
+      "value": 1.0,
+      "unit": "mm"
+    },
+    "sides": "double",
+    "mode": "incoherent"
+  },
+  "incident_medium": {
+    "kind": "constant",
+    "n": 1.0
+  },
+  "exit_medium": {
+    "kind": "constant",
+    "n": 1.0
+  },
+  "assume_lossless": true,
+  "first_surface": "front",
+  "expression": {
+    "text": "",
+    "symbols": {},
+    "in_sync": true
+  },
+  "use_k": false
+}

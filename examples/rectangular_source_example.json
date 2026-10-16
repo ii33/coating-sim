@@ -1,0 +1,9 @@
+{
+  "schema_version": 2,
+  "kind": "rectangle",
+  "device_type": "custom",
+  "source_exponent": 1.0,
+  "length_mm": 40.0,
+  "width_mm": 20.0,
+  "angle_deg": 0.0
+}

@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "platforms": {
+    "win32": {
+      "redistribution_approved": false,
+      "status": "blocked",
+      "reason": "Official CPython3.13.16 amd64 archive/DLL hashes and complete Windows LICENSE are archived, and automatic VC-redist download is disabled. Remaining gates: redistribution-rights review for the CPython DLL route; verified pre-launch downstream assent mechanism (including unattended CLI); complete final Tk PE closure and clean-Windows acceptance. Installing/owning VS is not itself proof.",
+      "evidence_files": [
+        "tools/dependency_manager/licenses/windows-cpython-provenance.json",
+        "tools/dependency_manager/licenses/CPython-3.13.16-Windows-LICENSE.txt"
+      ],
+      "requirements": {
+        "official_cpython_dll_provenance": true,
+        "complete_cpython_windows_notice": true,
+        "no_opaque_vc_redist_download": true,
+        "redistribution_rights_reviewed": false,
+        "downstream_assent_mechanism_verified": false,
+        "final_tk_pe_closure_verified": false,
+        "clean_windows_acceptance": false
+      },
+      "evidence_sha256": {
+        "tools/dependency_manager/licenses/windows-cpython-provenance.json": "046bc52e8d8368dd3d3f86f5d901aaa08724a6713cd510dcb7889e969dabe6ac",
+        "tools/dependency_manager/licenses/CPython-3.13.16-Windows-LICENSE.txt": "62bec384df47b0328307db41455ff6ea2559e5546b394ac69148561b21703120"
+      }
+    },
+    "linux": {
+      "redistribution_approved": true,
+      "status": "ready",
+      "reason": "Reviewed Linux x86-64/cp312 freeze-core0.8.0 native payload only: exact ELF hashes, full selected notices and explicitly approved Tcl Bison generated-parser exception. Native rebuild and independent CLI/Tcl smoke verified. OS libuuid/X11/expat/zlib/glibc remain prerequisites; real GUI rendering is unverified. Other ABI/platform profiles are not approved.",
+      "evidence_files": [
+        "tools/dependency_manager/licenses/native-provenance.json",
+        "tools/dependency_manager/licenses/linux-x86_64-cp312-profile.json",
+        "tools/dependency_manager/licenses/research-inventory.json"
+      ],
+      "requirements": {
+        "exact_native_profile": true,
+        "libffi_source_provenance": true,
+        "libuuid_not_redistributed": true,
+        "fontconfig_freetype_unicode_notices": true,
+        "tcl_subcomponent_notices": true,
+        "bison_generated_parser_exception_approved": true,
+        "native_rebuild_smoke_verified": true
+      },
+      "evidence_sha256": {
+        "tools/dependency_manager/licenses/native-provenance.json": "840624181f94c9a96e46df88d354f2f14d0db9e1a08c3fe90091b33228c8135f",
+        "tools/dependency_manager/licenses/linux-x86_64-cp312-profile.json": "cec265ae4c8d071811788b6e2536e1239ab87ff48ef7c67bbde5ebc3f05607ea",
+        "tools/dependency_manager/licenses/research-inventory.json": "0018f5813fee24f2e26c9d2d065facb008d674478fe06bbb3bdd84c27260ddb9"
+      }
+    },
+    "darwin": {
+      "redistribution_approved": false,
+      "status": "blocked",
+      "reason": "No native macOS bundle or runtime licence inventory has been verified.",
+      "evidence_files": []
+    }
+  }
+}

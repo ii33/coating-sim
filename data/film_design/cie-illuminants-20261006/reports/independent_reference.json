@@ -1,0 +1,109 @@
+{
+  "purpose": "Independent raw-CSV Python reference for the explicitly synthetic smooth filter, 360\u2013830 nm, 1 nm trapezoid. Not a measured coating.",
+  "cases": [
+    {
+      "illuminantId": "A",
+      "weighting": "energy",
+      "fractions": {
+        "R": 0.25352261543589666,
+        "T": 0.6721104806383391,
+        "A": 0.0743669039257643
+      },
+      "whitepointXY_1nm_sum": [
+        0.44757351409891055,
+        0.4074394443066607
+      ]
+    },
+    {
+      "illuminantId": "A",
+      "weighting": "photopic",
+      "fractions": {
+        "R": 0.2159121640806809,
+        "T": 0.6851262885619095,
+        "A": 0.09896154735740956
+      },
+      "whitepointXY_1nm_sum": [
+        0.44757351409891055,
+        0.4074394443066607
+      ]
+    },
+    {
+      "illuminantId": "D65",
+      "weighting": "energy",
+      "fractions": {
+        "R": 0.2612951295258061,
+        "T": 0.6638421970842686,
+        "A": 0.0748626733899253
+      },
+      "whitepointXY_1nm_sum": [
+        0.31272687102656477,
+        0.329023206641284
+      ]
+    },
+    {
+      "illuminantId": "D65",
+      "weighting": "photopic",
+      "fractions": {
+        "R": 0.18359837817175984,
+        "T": 0.7211833544409211,
+        "A": 0.09521826738731914
+      },
+      "whitepointXY_1nm_sum": [
+        0.31272687102656477,
+        0.329023206641284
+      ]
+    },
+    {
+      "illuminantId": "D50",
+      "weighting": "energy",
+      "fractions": {
+        "R": 0.25654468328771624,
+        "T": 0.667426716696484,
+        "A": 0.07602860001579971
+      },
+      "whitepointXY_1nm_sum": [
+        0.34568422232262525,
+        0.35850402590425184
+      ]
+    },
+    {
+      "illuminantId": "D50",
+      "weighting": "photopic",
+      "fractions": {
+        "R": 0.1894824727288408,
+        "T": 0.7143117462197114,
+        "A": 0.09620578105144781
+      },
+      "whitepointXY_1nm_sum": [
+        0.34568422232262525,
+        0.35850402590425184
+      ]
+    },
+    {
+      "illuminantId": "E",
+      "weighting": "energy",
+      "fractions": {
+        "R": 0.25856655412330953,
+        "T": 0.6671618030956445,
+        "A": 0.07427164278104596
+      },
+      "whitepointXY_1nm_sum": [
+        0.3333143807773521,
+        0.3332877057993163
+      ]
+    },
+    {
+      "illuminantId": "E",
+      "weighting": "photopic",
+      "fractions": {
+        "R": 0.19165786099213922,
+        "T": 0.712313345185161,
+        "A": 0.09602879382269987
+      },
+      "whitepointXY_1nm_sum": [
+        0.3333143807773521,
+        0.3332877057993163
+      ]
+    }
+  ]
+}

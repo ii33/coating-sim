@@ -1,0 +1,22 @@
+{
+  "schema_version": 5,
+  "carrier_x_mm": 0.0,
+  "carrier_y_mm": 0.0,
+  "planet_offset_mm": 312.0,
+  "planet_tilt_deg": 0.0,
+  "substrate_z_mm": 1000.0,
+  "sun_teeth": 120,
+  "planet_teeth": 36,
+  "gear_module_mm": 4.0,
+  "sources": [
+    {"file": "source_example.json", "x_mm": 100.0, "y_mm": 0.0, "z_mm": 0.0},
+    {"file": "source_example.json", "x_mm": -120.0, "y_mm": 25.0, "z_mm": 0.0}
+  ],
+  "masks": [
+    {"file": "mask_example.json"}
+  ],
+  "monitors": [
+    {"name": "晶控 A", "kind": "crystal", "x_mm": 500.0, "y_mm": 0.0, "z_mm": 900.0},
+    {"name": "光控 B", "kind": "optical", "x_mm": -450.0, "y_mm": 120.0, "z_mm": 700.0}
+  ]
+}

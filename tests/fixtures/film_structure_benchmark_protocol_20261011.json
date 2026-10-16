@@ -1,0 +1,258 @@
+{
+  "protocol_id": "needle-structure-teaching-benchmarks-20261011-v1",
+  "frozen_at_utc": "2026-10-11",
+  "status": "frozen_before_benchmark_runs",
+  "purpose": "Compare fixed-topology refinement, existing finite-thickness insertion, classical zero-thickness needle search, growth-only escape, and joint growth-then-needle on deterministic teaching cases. These synthetic cases do not represent measured coating materials or manufacturing qualification.",
+  "reproducibility": {
+    "seed": 20261011,
+    "execution": "serial; no GPU or concurrent candidate evaluation",
+    "materials": "constant-index, lossless optical data held in memory from this file; do not write to or depend on MaterialLibrary persistence",
+    "units": {
+      "wavelength": "nm",
+      "physical_thickness": "nm",
+      "incidence_angle": "degree",
+      "reflectance_transmittance": "fraction of incident power"
+    }
+  },
+  "materials": {
+    "ambient": {"n": 1.0, "k": 0.0},
+    "L": {"n": 1.38, "k": 0.0},
+    "H": {"n": 2.15, "k": 0.0},
+    "substrate": {"n": 1.52, "k": 0.0},
+    "constant_table_wavelength_range_nm": [400.0, 700.0]
+  },
+  "manufacturing_limits": {
+    "per_film_layer_min_nm": 20.0,
+    "per_film_layer_max_nm": 350.0,
+    "total_physical_thickness_max_nm": 2800.0,
+    "total_film_layer_count_max": 16,
+    "semantics": "The limits are fixed before runs. Methods that cannot enforce a limit during search must report that limitation; every final candidate is audited against all four limits and a violation is never counted as feasible."
+  },
+  "solver_and_budget": {
+    "objective_solver": "bounded trust-region reflective (TRF) for local thickness refinement",
+    "acceptable_normalized_error": 0.001,
+    "budget_per_method_per_case": {
+      "training_grid_objective_evaluations_max": 120,
+      "structural_proposals_max": 8,
+      "restarts": 0,
+      "continue_after_budget": false
+    },
+    "evaluation_definition": "One objective evaluation means scoring one complete wavelength-angle-polarization grid for all active objective bands. A structure-method evaluator's shared max_evaluations counter includes both training-grid evaluations and its coarse internal validation-grid evaluations; this makes its 120-call ceiling stricter, so report validation_evaluations separately and do not imply equal search work at equal caps. Fixed TRF and legacy finite-needle expose training/search evaluations separately from their optimizer validation count. When an evaluator returns score and thickness Jacobian together, count that evaluator once in forward_equivalent_evaluations and report its Jacobian work separately rather than double-counting the same combined pass. Count separate finite-difference forward evaluations as additional objective/forward-equivalent work. The dense 0.25 nm benchmark holdout audit is post-run and outside every optimizer budget. If an API exposes only a per-polish cap rather than a run-wide cap, enforce the run-wide limit in the benchmark adapter or mark the run budget-limited and incomparable.",
+    "normalized_acceptance_note": "Algorithm-reported targets_met uses acceptable_normalized_error=0.001. Hard physical target attainment is independently evaluated at the exact bounds in each case; the small solver acceptance allowance does not change or relax the frozen physical target."
+  },
+  "grid_and_weight_rules": {
+    "training_grids": "Uniform closed grids with the per-case point count; both endpoints included.",
+    "training_angles_and_polarizations": "Evaluate s and p separately at every listed angle; never average amplitudes. Unpolarized responses are not substituted for the separate s/p records.",
+    "objective_weights": "Equal total weight per target band, then equal weight per listed angle and polarization. Wavelength samples within each band are uniform and equally represented.",
+    "holdout_grids": "Independent uniform 0.25 nm grids, endpoints included; do not use holdout values during search, ranking, or stopping.",
+    "additional_angle": "45 degrees is a holdout-only stress angle. It is reported separately and is not part of the frozen target-met decision."
+  },
+  "cases": [
+    {
+      "id": "ar_broadband",
+      "name": "Broadband antireflection",
+      "method_controls": {
+        "phase_reference_wavelength_nm": 550.0,
+        "legacy_max_added_layers": 7,
+        "structure_max_added_layers": 1,
+        "structure_position_samples_per_host_layer": 17,
+        "position_sample_fractions": "k/18, k=1..17 inside every host layer, plus all N+1 true interfaces; sites ordered by cumulative physical thickness",
+        "planned_positions_for_initial_topology": 19,
+        "candidate_materials_in_order": ["L", "H"],
+        "planned_position_material_sites": 38,
+        "needle_thickness_samples": 9,
+        "needle_thickness_grid_nm": [20.0, 61.25, 102.5, 143.75, 185.0, 226.25, 267.5, 308.75, 350.0],
+        "growth_steps_nm": [0.5, 1.0, 2.0, 5.0, 10.0],
+        "growth_phase_fractions": [0.25, 0.5, 1.0],
+        "growth_phase_step_formula": "fraction * phase_reference_wavelength_nm / (2 * candidate_material_n)",
+        "growth_phase_steps_nm_by_candidate_material": {
+          "L": [49.81884057971, 99.63768115942, 199.275362318841],
+          "H": [31.976744186047, 63.953488372093, 127.906976744186]
+        },
+        "growth_cycles": 1,
+        "candidate_budget": 8,
+        "seed": 20261011
+      },
+      "initial_front_stack": [{"material": "L", "thickness_nm": 100.0}],
+      "training": {
+        "bands": [{"metric": "R", "lower_bound": 0.0, "upper_bound": 0.01, "normalization_scale": 0.01, "wavelength_nm": [450.0, 650.0], "samples": 9, "total_band_weight": 1.0}],
+        "angles_deg": [0.0, 30.0],
+        "polarizations": ["s", "p"],
+        "weight_per_band_angle_polarization_objective": 0.25
+      },
+      "hard_physical_acceptance": "R <= 0.010000 at every holdout wavelength, target angle, and polarization; separately report 45-degree holdout results.",
+      "holdout": {
+        "target_angles_deg": [0.0, 30.0],
+        "additional_stress_angles_deg": [45.0],
+        "polarizations": ["s", "p"],
+        "bands": [{"wavelength_nm": [450.0, 650.0], "step_nm": 0.25}]
+      }
+    },
+    {
+      "id": "hr_broadband",
+      "name": "Broadband high reflector",
+      "method_controls": {
+        "phase_reference_wavelength_nm": 615.0,
+        "legacy_max_added_layers": 7,
+        "structure_max_added_layers": 1,
+        "structure_position_samples_per_host_layer": 17,
+        "position_sample_fractions": "k/18, k=1..17 inside every host layer, plus all N+1 true interfaces; sites ordered by cumulative physical thickness",
+        "planned_positions_for_initial_topology": 19,
+        "candidate_materials_in_order": ["L", "H"],
+        "planned_position_material_sites": 38,
+        "needle_thickness_samples": 9,
+        "needle_thickness_grid_nm": [20.0, 61.25, 102.5, 143.75, 185.0, 226.25, 267.5, 308.75, 350.0],
+        "growth_steps_nm": [0.5, 1.0, 2.0, 5.0, 10.0],
+        "growth_phase_fractions": [0.25, 0.5, 1.0],
+        "growth_phase_step_formula": "fraction * phase_reference_wavelength_nm / (2 * candidate_material_n)",
+        "growth_phase_steps_nm_by_candidate_material": {
+          "L": [55.70652173913, 111.413043478261, 222.826086956522],
+          "H": [35.755813953488, 71.511627906977, 143.023255813953]
+        },
+        "growth_cycles": 1,
+        "candidate_budget": 8,
+        "seed": 20261011
+      },
+      "initial_front_stack": [{"material": "H", "thickness_nm": 85.0}],
+      "training": {
+        "bands": [{"metric": "R", "lower_bound": 0.99, "upper_bound": 1.0, "normalization_scale": 0.01, "wavelength_nm": [600.0, 630.0], "samples": 7, "total_band_weight": 1.0}],
+        "angles_deg": [0.0, 30.0],
+        "polarizations": ["s", "p"],
+        "weight_per_band_angle_polarization_objective": 0.25
+      },
+      "hard_physical_acceptance": "R >= 0.990000 at every holdout wavelength, target angle, and polarization; separately report 45-degree holdout results.",
+      "holdout": {
+        "target_angles_deg": [0.0, 30.0],
+        "additional_stress_angles_deg": [45.0],
+        "polarizations": ["s", "p"],
+        "bands": [{"wavelength_nm": [600.0, 630.0], "step_nm": 0.25}]
+      }
+    },
+    {
+      "id": "narrowband_filter",
+      "name": "Narrow passband with two rejection bands",
+      "method_controls": {
+        "phase_reference_wavelength_nm": 515.0,
+        "legacy_max_added_layers": 5,
+        "structure_max_added_layers": 1,
+        "structure_position_samples_per_host_layer": 17,
+        "position_sample_fractions": "k/18, k=1..17 inside every host layer, plus all N+1 true interfaces; sites ordered by cumulative physical thickness",
+        "planned_positions_for_initial_topology": 55,
+        "candidate_materials_in_order": ["L", "H"],
+        "planned_position_material_sites": 110,
+        "needle_thickness_samples": 9,
+        "needle_thickness_grid_nm": [20.0, 61.25, 102.5, 143.75, 185.0, 226.25, 267.5, 308.75, 350.0],
+        "growth_steps_nm": [0.5, 1.0, 2.0, 5.0, 10.0],
+        "growth_phase_fractions": [0.25, 0.5, 1.0],
+        "growth_phase_step_formula": "fraction * phase_reference_wavelength_nm / (2 * candidate_material_n)",
+        "growth_phase_steps_nm_by_candidate_material": {
+          "L": [46.648550724638, 93.297101449275, 186.594202898551],
+          "H": [29.941860465116, 59.883720930233, 119.767441860465]
+        },
+        "growth_cycles": 1,
+        "candidate_budget": 8,
+        "seed": 20261011
+      },
+      "initial_front_stack": [
+        {"material": "H", "thickness_nm": 75.0},
+        {"material": "L", "thickness_nm": 90.0},
+        {"material": "H", "thickness_nm": 75.0}
+      ],
+      "training": {
+        "bands": [
+          {"metric": "T", "lower_bound": 0.9, "upper_bound": 1.0, "normalization_scale": 0.1, "wavelength_nm": [510.0, 520.0], "samples": 5, "total_band_weight": 0.3333333333333333},
+          {"metric": "R", "lower_bound": 0.95, "upper_bound": 1.0, "normalization_scale": 0.05, "wavelength_nm": [470.0, 490.0], "samples": 5, "total_band_weight": 0.3333333333333333},
+          {"metric": "R", "lower_bound": 0.95, "upper_bound": 1.0, "normalization_scale": 0.05, "wavelength_nm": [540.0, 560.0], "samples": 5, "total_band_weight": 0.3333333333333333}
+        ],
+        "angles_deg": [0.0, 25.0],
+        "polarizations": ["s", "p"],
+        "weight_per_band_angle_polarization_objective": 0.08333333333333333
+      },
+      "hard_physical_acceptance": "T >= 0.900000 throughout the passband and R >= 0.950000 throughout both rejection bands at every holdout wavelength, target angle, and polarization; separately report 45-degree holdout results.",
+      "holdout": {
+        "target_angles_deg": [0.0, 25.0],
+        "additional_stress_angles_deg": [45.0],
+        "polarizations": ["s", "p"],
+        "bands": [
+          {"wavelength_nm": [470.0, 490.0], "step_nm": 0.25},
+          {"wavelength_nm": [510.0, 520.0], "step_nm": 0.25},
+          {"wavelength_nm": [540.0, 560.0], "step_nm": 0.25}
+        ],
+        "additional_full_sweep_nm": [430.0, 600.0],
+        "additional_full_sweep_step_nm": 0.25
+      }
+    }
+  ],
+  "methods": [
+    {"id": "fixed_trf", "description": "Refine only thicknesses in the frozen initial topology.", "controls": {"solver": "trf", "max_iterations": 120, "max_evaluations": 120, "restarts": 0}},
+    {"id": "legacy_finite_needle", "description": "Existing finite-thickness insertion implementation as present at run time; do not reinterpret it as an analytic needle method.", "controls": {"insertion_trials_per_interface": 1, "trial_thickness_rule": "the existing implementation uses the request minimum, exactly 20 nm, for its one trial", "candidate_materials_in_order": ["L", "H"], "max_inserted_layers_by_case": {"ar_broadband": 7, "hr_broadband": 7, "narrowband_filter": 5}, "max_total_layers": 16, "max_evaluations": 120, "seed": 20261011}},
+    {"id": "classical_needle_only", "description": "Zero-thickness one-sided structural sensitivity search and thickness refinement.", "controls": "Use that case's method_controls; mode=needle_only."},
+    {"id": "growth_only", "description": "Existing-layer thickness growth escape followed by local refinement, without a subsequent needle stage.", "controls": "Use that case's method_controls; mode=growth_only."},
+    {"id": "growth_then_needle", "description": "Growth escape, local refinement in the reached topology, and a separately evidenced needle stage.", "controls": "Use that case's method_controls; mode=combined."}
+  ],
+  "method_support_matrix": {
+    "legacy_finite_needle": {
+      "minimum_and_maximum_inserted_layer_thickness": "supported by the existing request",
+      "total_layer_limit": "supported by the existing request",
+      "continuous_internal_position_sensitivity": "not supported; probes finite insertions at the request's finite interface/position trials",
+      "total_physical_thickness_cap": "not exposed as a needle-request limit; adapter must reject/audit out-of-cap results and record lack of search-time enforcement",
+      "lossless_constant_material_snapshot": "must be verified from the frozen service/request adapter before counting a run; if unavailable, mark blocked rather than persist materials"
+    },
+    "classical_needle_only": {
+      "max_added_layers": "The current bounded structure request requires exactly one needle-layer allowance; 1 is frozen for these runs.",
+      "continuous_internal_position_sensitivity": "Supported; 17 interior fractions k/18 per host layer plus every real interface. The initial topology plans 38 (AR/HR) or 110 (narrowband) position-material pairs, while candidate_budget=8 permits only partial coverage; report exact probed/unprobed trace and never claim a global no-needle result.",
+      "candidate_thickness": "Nine fixed widths spanning 20..350 nm; total-layer, per-layer, and total-physical-thickness feasibility checked before optical scoring.",
+      "total_physical_thickness_cap": "Supported at search time by max_total_thickness_nm=2800 nm.",
+      "lossless_constant_material_snapshot": "Explicit frozen in-memory snapshot only; no MaterialLibrary persistence."
+    },
+    "growth_only": {
+      "max_added_layers": "No needle layer; growth modifies an existing row while preserving the frozen row's lower/upper physical bounds.",
+      "growth_cycle": "Exactly one bounded cycle. Absolute steps 0.5,1,2,5,10 nm unioned with phase fractions 0.25,0.5,1 times lambda_ref/(2*n_candidate); one pass over each permitted existing row, not recursive growth.",
+      "total_physical_thickness_cap": "Supported at search time by max_total_thickness_nm=2800 nm.",
+      "lossless_constant_material_snapshot": "Explicit frozen in-memory snapshot only; no MaterialLibrary persistence."
+    },
+    "growth_then_needle": {
+      "expected_trace_stage_order": ["baseline_refine", "needle_initial", "growth_escape", "needle_after_growth"],
+      "max_added_layers": "Exactly one needle-layer allowance, frozen as 1; growth escape is one cycle before the separately traced needle stage.",
+      "continuous_internal_position_sensitivity": "Supported with the same position grid as classical_needle_only; candidate_budget=8 makes planned grids partial in all initial topologies, so coverage and budget stop must be reported.",
+      "candidate_thickness": "Nine fixed widths spanning 20..350 nm; total-layer, per-layer, and total-physical-thickness feasibility checked before optical scoring.",
+      "growth_cycle": "One nonrecursive pass over existing rows with absolute and phase-derived steps. The combined path retains a growth branch selected by smooth SSE even when it is worse than the historical best under the exact lexicographic score, then searches needles in that post-growth topology.",
+      "total_physical_thickness_cap": "Supported at search time by max_total_thickness_nm=2800 nm.",
+      "lossless_constant_material_snapshot": "Explicit frozen in-memory snapshot only; no MaterialLibrary persistence."
+    }
+  },
+  "independent_optics_check": {
+    "method": "Airy/characteristic-admittance recursion implemented in the benchmark harness, with no calls to the project's optical forward kernel",
+    "scope": "At least the lossless normal-incidence (0 degree) spectrum for the best candidate of every method and case on the corresponding 0.25 nm holdout grid.",
+    "metrics": ["maximum absolute R difference", "RMS absolute R difference", "maximum absolute T difference", "R+T energy-balance error"],
+    "expected_regime": "For lossless stacks R+T=1 to numerical precision; report measured differences and do not hide disagreement by retuning targets."
+  },
+  "initial_stack_audit": {
+    "purpose": "Capture a descriptive, unoptimized starting point for each case before the five-method matrix.",
+    "optimization_invoked": false,
+    "budget_consumed": 0,
+    "reported_metrics": ["exact training hard-target attainment", "separate 0.25 nm target holdout hard-target attainment", "manufacturing-limit audit", "independent normal-incidence Airy comparison", "45-degree stress-only audit"]
+  },
+  "counterexample_diagnostics": {
+    "status": "frozen_before_benchmark_runs; separate non-ranking analysis",
+    "purpose": "Look for a case where a best interior zero-thickness sensitivity is more downhill than the best interface sensitivity, and for a finite-width sign/rank reversal relative to the zero-thickness smooth-loss derivative.",
+    "budget_per_case": {
+      "objective_grid_evaluations_max": 128,
+      "budget_is_separate_from_method_matrix": true,
+      "continue_after_budget": false
+    },
+    "procedure": [
+      "Evaluate one complete zero-thickness analytic-Jacobian training-grid probe for every initial-topology position and each candidate material (AR/HR: 38 probes; narrowband: 110 probes).",
+      "Among probes with at least one finite width that passes all frozen physical limits, select the most negative smooth-loss derivative in each class (interior and true interface); deterministic tie break is frozen material order L then H, then cumulative position ascending.",
+      "For each selected class probe, exact-score the nine frozen finite widths 20, 61.25, 102.5, 143.75, 185, 226.25, 267.5, 308.75, 350 nm only when the proposed persisted design satisfies per-layer min/max, total physical thickness, and layer-count limits before scoring.",
+      "A finite-width derivative reversal is present only if the zero-thickness gradient predicts a smooth-loss decrease (gradient < 0) but at least one feasible sampled finite width has smooth loss above the unperturbed baseline; report all widths and actual score changes. A rank reversal of exact lexicographic target score is reported separately.",
+      "If the cap or hard feasibility leaves a class/grid incomplete, list scanned/unscanned counts or infeasible widths; do not claim absence of an effect outside observed probes."
+    ],
+    "ranking_or_target_effect": "none; these diagnostics do not rank the five methods or change any physical target/acceptance decision",
+    "zero_thickness_feasibility_note": "Zero-thickness rows exist only in derivative probes and are never persistent designs. A split-host sensitivity probe may be evaluated mathematically with the core API, but it is not called manufacturing-feasible; finite-width candidates are scored only after every physical bound passes."
+  },
+  "required_result_fields": [
+    "case_id", "method_id", "state", "termination_reason", "hard_target_met_training", "hard_target_met_holdout", "algorithm_targets_met", "training_max_violation", "holdout_max_violation", "worst_wavelength_nm", "worst_angle_deg", "worst_polarization", "initial_layer_sequence", "best_layer_sequence", "final_layer_count", "final_physical_total_thickness_nm", "per_layer_min_max_and_total_cap_violations", "objective_evaluations", "forward_equivalent_evaluations", "score_evaluations", "validation_evaluations_reported_by_optimizer", "jacobian_evaluations", "structural_candidate_count", "planned_and_observed_position_coverage", "growth_to_needle_trace_evidence", "wall_clock_seconds", "independent_airy_max_abs_R_delta", "independent_airy_rms_abs_R_delta", "independent_airy_energy_balance_max_error", "method_support_notes"
+  ],
+  "anti_selection_rule": "Do not alter initial stacks, target bounds, grids, weights, manufacturing limits, seed, or budgets after viewing results. Record failures, budget stops, unsupported constraints, and non-improving cases as observed."
+}

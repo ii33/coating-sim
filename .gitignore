@@ -1,0 +1,68 @@
+# 项目内 conda 前缀环境（本地生成，不入库）
+.conda/
+.venv/
+.venv-analysis/
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Test-created queue/UI evidence (kept locally for review)
+/tests/artifacts/
+
+# 编辑器与系统文件
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+
+# MCP 计算生成的完整网格（可由方案重新计算）
+artifacts/results/*.npz
+artifacts/logs/*.log
+
+# 本地运行状态和旧版 ZIP 冻结包
+/artifacts/
+/history/
+/dist/
+/build/
+/build/offline_installer_windows_x64/
+/config/ui_settings.json
+/config/assistant_model_cache.json
+/config/assistant_model_cache.lock
+/config/.assistant_model_cache.json.*.tmp
+/config/.model-probe-*.lock
+/结果/
+/snapshots/
+/.workbuddy-ai/
+*.lnk
+
+# Generated assistant rendering cache
+/data/assistant/rendered/
+
+# Local user data and generated runtime state (keep example designs tracked)
+/data/attachments/
+/data/results/
+/data/tmp/
+/data/assets/
+/data/assistant/
+/data/film_design/library.sqlite3*
+/data/materials/.material-library.lock
+/data/*.sqlite3
+/data/*.sqlite3-*
+
+# Local import-audit workspace; durable evidence is under data/optical_catalog_sources
+/tasks/rii-additional-public/
+
+# Temporary handoff assets and personal records
+/other/*
+# AI assistant is maintained in a separate project
+/other/ai/
+
+# Per-project abnormal recovery is local runtime data, never source publication.
+.project-session.json
+.project-session-recovery.json
+.project-session-reviewed-recovery.json
+
+# Local private designs; exclude from version control and project publication.
+/sheji/

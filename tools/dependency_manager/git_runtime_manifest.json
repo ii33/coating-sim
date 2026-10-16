@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "version": "2.56.0.windows.2",
+  "source": "https://github.com/git-for-windows/git/releases/tag/v2.56.0.windows.2",
+  "checked_on": "2026-10-16",
+  "license": "Git is an independent GPL-2.0 tool; bundled components have their own licenses. Downloaded at runtime from upstream, not included in this application's distribution. Redistributors must retain upstream notices and meet applicable source-code obligations.",
+  "signature_evidence": "Official release page reports a verified tag signed by Johannes Schindelin, GPG key ID EDD44359093056EE, and restored x64 Authenticode signatures. This is provenance evidence, not independent ZIP signature verification. Installation verifies the pinned SHA-256 over HTTPS.",
+  "artifacts": {
+    "x86_64": {
+      "url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.2/MinGit-2.56.0.2-64-bit.zip",
+      "sha256": "da35e72aa21c005a5a0d298cfbae110bc1609a815730ea0dde84b01a1b3cd3be"
+    },
+    "arm64": {
+      "url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.2/MinGit-2.56.0.2-arm64.zip",
+      "sha256": "38b33dc6024026e3315cf88ab2cfea65205bbd7bb3a8e824bd21c8ad4fe609a7"
+    }
+  }
+}

@@ -1,0 +1,888 @@
+Source member: fontconfig-2.13.0/src/fcarch.c
+/*
+ * Copyright © 2002 Keith Packard
+ * Copyright © 2010 Behdad Esfahbod
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fcarch.h
+/*
+ * Copyright © 2006 Keith Packard
+ * Copyright © 2010 Behdad Esfahbod
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fcatomic.c
+/*
+ * fontconfig/src/fcatomic.c
+ *
+ * Copyright © 2002 Keith Packard
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fcatomic.h
+/*
+ * Mutex operations.  Originally copied from HarfBuzz.
+ *
+ * Copyright © 2007  Chris Wilson
+ * Copyright © 2009,2010  Red Hat, Inc.
+ * Copyright © 2011,2012,2013  Google, Inc.
+ *
+ * Permission is hereby granted, without written agreement and without
+ * license or royalty fees, to use, copy, modify, and distribute this
+ * software and its documentation for any purpose, provided that the
+ * above copyright notice and the following two paragraphs appear in
+ * all copies of this software.
+ *
+ * IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE TO ANY PARTY FOR
+ * DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES
+ * ARISING OUT OF THE USE OF THIS SOFTWARE AND ITS DOCUMENTATION, EVEN
+ * IF THE COPYRIGHT HOLDER HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH
+ * DAMAGE.
+ *
+ * THE COPYRIGHT HOLDER SPECIFICALLY DISCLAIMS ANY WARRANTIES, INCLUDING,
+ * BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
+ * FITNESS FOR A PARTICULAR PURPOSE.  THE SOFTWARE PROVIDED HEREUNDER IS
+ * ON AN "AS IS" BASIS, AND THE COPYRIGHT HOLDER HAS NO OBLIGATION TO
+ * PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
+ *
+ * Contributor(s):
+ *	Chris Wilson <chris@chris-wilson.co.uk>
+ * Red Hat Author(s): Behdad Esfahbod
+ * Google Author(s): Behdad Esfahbod
+ */
+
+Source member: fontconfig-2.13.0/src/fccache.c
+/*
+ * Copyright © 2000 Keith Packard
+ * Copyright © 2005 Patrick Lam
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fccfg.c
+/*
+ * fontconfig/src/fccfg.c
+ *
+ * Copyright © 2000 Keith Packard
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fccharset.c
+/*
+ * fontconfig/src/fccharset.c
+ *
+ * Copyright © 2001 Keith Packard
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fccompat.c
+/*
+ * fontconfig/src/fccompat.c
+ *
+ * Copyright © 2012 Red Hat, Inc.
+ *
+ * Author(s):
+ *  Akira TAGOH
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fcdbg.c
+/*
+ * fontconfig/src/fcdbg.c
+ *
+ * Copyright © 2000 Keith Packard
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fcdefault.c
+/*
+ * fontconfig/src/fcdefault.c
+ *
+ * Copyright © 2001 Keith Packard
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fcdeprecate.h
+/*
+ * Copyright © 2007 Keith Packard
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that copyright
+ * notice and this permission notice appear in supporting documentation, and
+ * that the name of the copyright holders not be used in advertising or
+ * publicity pertaining to distribution of the software without specific,
+ * written prior permission.  The copyright holders make no representations
+ * about the suitability of this software for any purpose.  It is provided "as
+ * is" without express or implied warranty.
+ *
+ * THE COPYRIGHT HOLDERS DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE COPYRIGHT HOLDERS BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE
+ * OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fcdir.c
+/*
+ * fontconfig/src/fcdir.c
+ *
+ * Copyright © 2000 Keith Packard
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fcformat.c
+/*
+ * Copyright © 2008,2009 Red Hat, Inc.
+ *
+ * Red Hat Author(s): Behdad Esfahbod
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fcfreetype.c
+/*
+ * fontconfig/src/fcfreetype.c
+ *
+ * Copyright © 2001 Keith Packard
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fcfs.c
+/*
+ * fontconfig/src/fcfs.c
+ *
+ * Copyright © 2000 Keith Packard
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fchash.c
+/*
+ * Copyright © 2000 Keith Packard
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fcinit.c
+/*
+ * fontconfig/src/fcinit.c
+ *
+ * Copyright © 2001 Keith Packard
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fcint.h
+/*
+ * fontconfig/src/fcint.h
+ *
+ * Copyright © 2000 Keith Packard
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fclang.c
+/*
+ * fontconfig/src/fclang.c
+ *
+ * Copyright © 2002 Keith Packard
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fclist.c
+/*
+ * fontconfig/src/fclist.c
+ *
+ * Copyright © 2000 Keith Packard
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fcmatch.c
+/*
+ * fontconfig/src/fcmatch.c
+ *
+ * Copyright © 2000 Keith Packard
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fcmatrix.c
+/*
+ * fontconfig/src/fcmatrix.c
+ *
+ * Copyright © 2000 Tuomas J. Lukka
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of Tuomas Lukka not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  Tuomas Lukka makes no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * TUOMAS LUKKA DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL TUOMAS LUKKA BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fcmutex.h
+/*
+ * Atomic int and pointer operations.  Originally copied from HarfBuzz.
+ *
+ * Copyright © 2007  Chris Wilson
+ * Copyright © 2009,2010  Red Hat, Inc.
+ * Copyright © 2011,2012,2013  Google, Inc.
+ *
+ * Permission is hereby granted, without written agreement and without
+ * license or royalty fees, to use, copy, modify, and distribute this
+ * software and its documentation for any purpose, provided that the
+ * above copyright notice and the following two paragraphs appear in
+ * all copies of this software.
+ *
+ * IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE TO ANY PARTY FOR
+ * DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES
+ * ARISING OUT OF THE USE OF THIS SOFTWARE AND ITS DOCUMENTATION, EVEN
+ * IF THE COPYRIGHT HOLDER HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH
+ * DAMAGE.
+ *
+ * THE COPYRIGHT HOLDER SPECIFICALLY DISCLAIMS ANY WARRANTIES, INCLUDING,
+ * BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
+ * FITNESS FOR A PARTICULAR PURPOSE.  THE SOFTWARE PROVIDED HEREUNDER IS
+ * ON AN "AS IS" BASIS, AND THE COPYRIGHT HOLDER HAS NO OBLIGATION TO
+ * PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
+ *
+ * Contributor(s):
+ *	Chris Wilson <chris@chris-wilson.co.uk>
+ * Red Hat Author(s): Behdad Esfahbod
+ * Google Author(s): Behdad Esfahbod
+ */
+
+Source member: fontconfig-2.13.0/src/fcname.c
+/*
+ * fontconfig/src/fcname.c
+ *
+ * Copyright © 2000 Keith Packard
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fcobjs.h
+/*
+ * fontconfig/src/fcobjs.h
+ *
+ * Copyright © 2000 Keith Packard
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fcobjshash.gperf.h
+/*
+ * fontconfig/src/fcobjshash.gperf.h
+ *
+ * Copyright © 2000 Keith Packard
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fcptrlist.c
+/*
+ * fontconfig/src/fcptrlist.c
+ *
+ * Copyright © 2000 Keith Packard
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fcrange.c
+/*
+ * fontconfig/src/fcrange.c
+ *
+ * Copyright © 2002 Keith Packard
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fcserialize.c
+/*
+ * Copyright © 2006 Keith Packard
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that copyright
+ * notice and this permission notice appear in supporting documentation, and
+ * that the name of the copyright holders not be used in advertising or
+ * publicity pertaining to distribution of the software without specific,
+ * written prior permission.  The copyright holders make no representations
+ * about the suitability of this software for any purpose.  It is provided "as
+ * is" without express or implied warranty.
+ *
+ * THE COPYRIGHT HOLDERS DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE COPYRIGHT HOLDERS BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE
+ * OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fcstr.c
+/*
+ * fontconfig/src/fcstr.c
+ *
+ * Copyright © 2000 Keith Packard
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fcweight.c
+/*
+ * fontconfig/src/fcweight.c
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/fcwindows.h
+/*
+ * fontconfig/src/fcwindows.h
+ *
+ * Copyright © 2013  Google, Inc.
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ *
+ * Google Author(s): Behdad Esfahbod
+ */
+
+Source member: fontconfig-2.13.0/src/fcxml.c
+/*
+ * fontconfig/src/fcxml.c
+ *
+ * Copyright © 2002 Keith Packard
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and its
+ * documentation for any purpose is hereby granted without fee, provided that
+ * the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name of the author(s) not be used in
+ * advertising or publicity pertaining to distribution of the software without
+ * specific, written prior permission.  The authors make no
+ * representations about the suitability of this software for any purpose.  It
+ * is provided "as is" without express or implied warranty.
+ *
+ * THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+ * EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Source member: fontconfig-2.13.0/src/ftglue.c
+/* ftglue.c: Glue code for compiling the OpenType code from
+ *           FreeType 1 using only the public API of FreeType 2
+ *
+ * By David Turner, The FreeType Project (www.freetype.org)
+ *
+ * This code is explicitely put in the public domain
+ *
+ * See ftglue.h for more information.
+ */
+
+Source member: fontconfig-2.13.0/src/ftglue.h
+/* ftglue.c: Glue code for compiling the OpenType code from
+ *           FreeType 1 using only the public API of FreeType 2
+ *
+ * By David Turner, The FreeType Project (www.freetype.org)
+ *
+ * This code is explicitely put in the public domain
+ *
+ * ==========================================================================
+ *
+ * the OpenType parser codes was originally written as an extension to
+ * FreeType 1.x. As such, its source code was embedded within the library,
+ * and used many internal FreeType functions to deal with memory and
+ * stream i/o.
+ *
+ * When it was 'salvaged' for Pango and Qt, the code was "ported" to FreeType 2,
+ * which basically means that some macro tricks were performed in order to
+ * directly access FT2 _internal_ functions.
+ *
+ * these functions were never part of FT2 public API, and _did_ change between
+ * various releases. This created chaos for many users: when they upgraded the
+ * FreeType library on their system, they couldn't run Gnome anymore since
+ * Pango refused to link.
+ *
+ * Very fortunately, it's possible to completely avoid this problem because
+ * the FT_StreamRec and FT_MemoryRec structure types, which describe how
+ * memory and stream implementations interface with the rest of the font
+ * library, have always been part of the public API, and never changed.
+ *
+ * What we do thus is re-implement, within the OpenType parser, the few
+ * functions that depend on them. This only adds one or two kilobytes of
+ * code, and ensures that the parser can work with _any_ version
+ * of FreeType installed on your system. How sweet... !
+ *
+ * Note that we assume that Pango doesn't use any other internal functions
+ * from FreeType. It used to in old versions, but this should no longer
+ * be the case. (crossing my fingers).
+ *
+ *  - David Turner
+ *  - The FreeType Project  (www.freetype.org)
+ *
+ * PS: This "glue" code is explicitely put in the public domain
+ */
+

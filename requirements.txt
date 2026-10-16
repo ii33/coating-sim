@@ -1,0 +1,20 @@
+numpy>=1.24
+scipy>=1.16,<2
+matplotlib>=3.7
+Pillow>=10
+PySide6-Essentials>=6.8,<7
+PySide6-Addons>=6.8,<7
+mcp>=2,<3
+pydantic>=2.12,<3
+
+# Desktop assistant runtime (pinned published API/transport combination)
+pydantic-ai-slim[openai,mcp]==2.51.0
+pydantic-ai-harness[skills]==0.36.0
+fastmcp-slim[client]==4.0.10
+# Preserve system SOCKS proxy support in assistant HTTP transports.
+socksio>=1,<2
+
+# Cross-platform credentials and 2D CAD interchange
+keyring>=25,<26
+ezdxf>=1.4.4,<2
+openpyxl>=3.1.5,<4

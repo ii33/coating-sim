@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>行星盘沉积仿真 · 软件说明书</title><style>
+:root{color-scheme:light dark;--bg:#f4f7fb;--paper:#fff;--ink:#21354b;--muted:#5c6c80;--edge:#d6e0eb;--accent:#237aab;--soft:#edf5fd}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.8 system-ui,sans-serif}
+header{padding:44px max(24px,calc((100vw - 1320px)/2));background:linear-gradient(120deg,#133747,#1b6b70);color:#fff}
+header h1{font-size:34px;line-height:1.35;margin:0 0 14px}header p{max-width:970px;margin:8px 0;color:#e2f2f4}
+.badges{display:flex;gap:8px;flex-wrap:wrap}.badges span{border:1px solid #ffffff40;border-radius:30px;padding:2px 12px;font-size:14px}
+.layout{max-width:1320px;margin:26px auto;display:grid;grid-template-columns:240px minmax(0,1fr);gap:24px;padding:0 20px}
+nav{position:sticky;top:18px;align-self:start;background:var(--paper);border:1px solid var(--edge);border-radius:14px;padding:16px}
+nav h2{font-size:18px;margin:0 0 8px}nav a{display:block;padding:5px 8px;text-decoration:none;border-radius:6px;color:var(--ink)}
+nav a:hover{background:var(--soft)}main{min-width:0}section{background:var(--paper);border:1px solid var(--edge);border-radius:14px;margin:0 0 22px;padding:25px 30px;scroll-margin-top:18px}
+h2{font-size:24px;line-height:1.45;margin:0 0 20px;border-bottom:1px solid var(--edge);padding-bottom:10px}p{margin:12px 0}li{margin:9px 0}
+a{color:var(--accent)}code{font:0.91em/1.5 ui-monospace,monospace;background:var(--soft);border-radius:4px;padding:1px 4px;overflow-wrap:anywhere}
+figure{margin:16px 0 23px;padding:10px;background:#fff;border:1px solid #d6e0eb;border-radius:10px;color:#486377}figure svg{display:block;width:100%;height:auto}
+figcaption{font-size:14px;line-height:1.7;margin:6px 9px}footer{max-width:1320px;padding:12px 25px 35px;margin:auto;color:var(--muted);font-size:14px}
+.notice{padding:14px 18px;border-left:4px solid var(--accent);background:var(--soft);border-radius:5px;margin:0 0 22px}
+@media(prefers-color-scheme:dark){:root{--bg:#151c25;--paper:#1d2836;--ink:#e7eff8;--muted:#b2c0d1;--edge:#3a4a5d;--accent:#8fd3fa;--soft:#263b50}figure{border-color:#56728d}}
+@media(max-width:900px){.layout{display:block}nav{position:static;margin-bottom:20px;display:flex;gap:5px;flex-wrap:wrap}nav h2{width:100%}nav a{padding:4px 8px}section{padding:20px}header h1{font-size:28px}}
+@media print{body{background:#fff;color:#182735;font-size:10.5pt}header{background:none;color:#182735;padding:15px 20px}header p{color:#182735}nav{display:none}.layout{display:block;margin:0;padding:0}section{border:0;padding:12px 20px;break-inside:auto}figure{break-inside:avoid}a{color:#182735;text-decoration:none}code{color:#182735;background:#eef3f8}footer{padding:10px 20px}}
+</style></head>
+<body><header><h1>行星盘沉积仿真 · 软件说明书</h1>
+<p>从设计文件到膜厚计算、修正板迭代与看板娘数据分析。面向当前理想化行星盘模型；真实设备的绝对沉积结果需要测量校准。</p>
+<div class="badges"><span>工程工作流与帮助更新：2026-10-16</span><span>离线单文件</span><span>二维轮廓与膜厚</span><span>用户与助手共用能力边界</span></div></header>
+<div class="layout"><nav aria-label="说明书目录"><h2>目录</h2><a href="#overview">软件能力总览</a>
+<a href="#projects">工程与资源</a><a href="#compute_devices">计算设备与范围</a><a href="#algorithm_selection">算法选型</a><a href="#film_optimization">膜系优化方法</a><a href="#film_optimization_parameters">优化参数含义</a><a href="#workflow">使用流程</a><a href="#portable_runtime">Windows 便携运行时 ZIP</a>
+<a href="#design_visualization">设计图与工艺详情</a>
+<a href="#coordinates">坐标与单位</a>
+<a href="#source">蒸发源</a>
+<a href="#substrate">基片</a>
+<a href="#machine">机器结构</a>
+<a href="#process">工艺与算法</a>
+<a href="#mask">修正板分析与优化</a>
+<a href="#cad">二维修正板CAD与加工图</a>
+<a href="#film_stack">多层膜系工艺</a>
+<a href="#results">计算设备与结果</a>
+<a href="#assistant">看板娘与权限</a>
+<a href="#mcp">MCP 接入</a>
+<a href="#development">源码开发诊断</a>
+<a href="#environment_issues">开发环境问题记录</a>
+<a href="#fixed_workflows">固定工程工作流</a>
+<a href="#limitations">不支持与近似</a><a href="algorithms.html">完整算法与参考来源 ↗</a></nav><main>
+<div class="notice">首次使用可按“使用流程”依次保存源、基片、修正板、机器和工艺。各编辑器独立运行；文件依赖未满足时先修正对应项。</div><section id="overview"><h2>软件能力总览</h2><p>本项目是理想化行星盘蒸发沉积的膜厚分布仿真与方案编辑工具。适用机械结构为固定太阳轮、行星盘随大盘公转并按外啮合齿数关系自转；源与修正板固定在机架坐标中。它使用几何射线、源角分布、距离衰减、基片局部法线和时间积分估计沉积空间分布。</p>
+<p>支持点/线/圆盘/圆环/矩形面源，平面/球面/旋转对称非球面基片，多源、任意数量修正板、固定机架监测点、分层工艺、全时长积分/周期快算、膜厚图与PDF、修正板分析和受限轮廓优化。</p>
+<p>沉积模型输出膜厚；独立膜系设计模块计算平面膜堆R/T/A，不计算镀后面型或光圈数。支持二维轮廓CAD交换与加工图标注；不能据此宣称任意镀膜设备CAD设计或三维装配设计。它不连接、不控制真实镀膜设备。</p>
+<p>工程任务先查询相关章节，再通过 <code>project_tools</code> 获得实际接口与 <code>input_schema</code>，用 <code>project_action</code> 执行；主助手的精简入口并非只读协调层。能力以已开放工具为准。缺少机器、源、工艺或用户指标时，先核对依赖与需求，不自行宣称设备设计已完成。</p></section>
+<section id="projects"><h2>工程与资源</h2>
+<p>从启动器新建工程或选择任意名称的 <code>.coatproj</code> 工程描述文件打开；文件内容仍为 JSON。最近工程记录不是运行中的工程列表。启动器关闭不会关闭工程，各工程的窗口、草稿、默认配置和会话相互隔离。</p>
+<p>工程以膜系设计为入口，通过操作栏左侧的窗口列表进入膜系、沉积和仿真模块。同一工程同类窗口复用；不同工程不联动。工程最后一个窗口关闭时进行未保存修改检查，确认后释放工程；窗口列表也可主动关闭工程。看板娘是全局共享进程，其退出全部操作按各工程逐项确认，取消保留工作。</p>
+<p>新建工程可填写名称、摘要与备注；最近工程显示名称和摘要。默认配置是一套沉积仿真配置及其依赖，正常打开按默认依赖加载；异常恢复记录不等同于工程默认状态。</p>
+<ul><li><b>打开：</b>下拉选择当前工程内对应类别的资源。</li><li><b>信息：</b>查看名称、概述、备注，按编辑入口修改资源元信息。</li><li><b>新建／保存：</b>创建草稿或保存到当前工程；“创建副本”保留原资源并建立新的资源身份。</li><li><b>导入／导出：</b>在工程、全局库和外部文件之间显式交换。外部依赖须复制进工程，不作为工程外的隐式依赖。</li></ul>
+<p>操作栏与窗口列表共用一行，窄窗口放不下的按钮进入“...”菜单。快捷键 F4 折叠或展开当前侧栏，F5 重新计算膜系光谱，F6 开始膜系优化；计算仍受当前输入有效性与设备能力限制。</p>
+<p>新资源保存路径采用 <code>data/类别/r修订号/资源名称.扩展名</code>，同名安全区分。稳定资源 ID 用于引用，文件名用于识别；请通过应用改名与导入导出，不在资源文件间手工更换 ID。旧工程读取不改写，后续保存保留旧文件并提交新修订。摘要与备注不参与物理计算。</p>
+<p>启动器“全局资源”管理入口用于全局材料和设计资源。全局库与工程资源独立；工程只引入实际依赖或显式导入的资源。工程包用于整体交换，不是程序安装包。</p></section>
+<section id="compute_devices"><h2>计算设备与能力边界</h2>
+<p>“仿真设备”先选择计算主机，再选择该主机对当前任务实际支持的设备；重新检查可刷新目录。选择远端主机之前，在设置中的计算服务器连接页面配置并测试连接。</p>
+<ul><li><b>膜系优化：</b>当前已接入 NumPy/SciPy 的 CPU 路径；本地和远端均须按该任务能力选择 CPU。GPU 出现在硬件目录并不代表此算法已支持 GPU。</li><li><b>沉积计算：</b>可用后端由安装依赖、驱动、设备探测和所选模型共同决定。不可用原因应查看设备提示，不以显卡品牌或任务管理器负载推定启用成功。</li><li><b>外观预览：</b>CPU/GPU 后端可用性与数值资格分别核验。外观渲染用于预览，不能作为高精度光学成像验收；CPU/GPU 一致性与采样收敛仍需专项验证。</li></ul>
+<p>开始计算提交当时的参数快照；进度、设备和耗时以任务反馈为准。估计用时不是计算截止时间。新配置不应覆盖正在运行任务的输入或已有结果。</p></section>
+<section id="workflow"><h2>使用流程</h2><figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 850 330" role="img" aria-label="独立模块之间的设计文件依赖">
+<defs><marker id="a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 9 4.5 0 9" fill="#4171a0"/></marker></defs>
+<g fill="#edf5fd" stroke="#6688ab" stroke-width="1.6">
+<rect x="25" y="30" width="165" height="57" rx="12"/><rect x="25" y="130" width="165" height="57" rx="12"/>
+<rect x="274" y="72" width="178" height="137" rx="12"/><rect x="520" y="28" width="169" height="58" rx="12"/>
+<rect x="520" y="145" width="169" height="58" rx="12"/><rect x="520" y="258" width="169" height="52" rx="12"/></g>
+<g font-size="20" fill="#173654" text-anchor="middle">
+<text x="107" y="64">源文件</text><text x="107" y="165">修正板文件</text><text x="363" y="111">机器文件</text>
+<text x="363" y="147" font-size="15">源位置 · 板引用</text><text x="363" y="178" font-size="15">齿轮/盘几何 · 监测点</text>
+<text x="604" y="65">基片文件</text><text x="604" y="181">工艺文件</text><text x="604" y="291">膜厚仿真结果</text></g>
+<g fill="none" stroke="#4171a0" stroke-width="2.5" marker-end="url(#a)">
+<path d="M190 60 H235 V110 H268"/><path d="M190 159 H268"/><path d="M452 154 H514"/>
+<path d="M605 86 V139"/><path d="M605 203 V252"/></g>
+<text x="709" y="156" font-size="15" fill="#486377">逐层选择源、板</text><text x="709" y="181" font-size="15" fill="#486377">目标厚度与速率</text>
+<text x="41" y="272" font-size="16" fill="#486377">所有编辑器独立打开；箭头表示文件引用。</text>
+<text x="41" y="296" font-size="16" fill="#486377">相对路径从引用方 JSON 的目录开始解析。</text>
+</svg><figcaption>设计文件引用关系。编辑器平行运行，计算时解析同一依赖图；保存失败应修正具体文件或位次。</figcaption></figure><ol>
+<li>源：确定几何形状、尺寸、角分布指数，保存到 data/sources。</li>
+<li>基片：确定边界与物理几何，保存到 data/substrates。</li>
+<li>修正板：编辑固定高度的闭合外轮廓/孔洞，保存到 data/masks。</li>
+<li>机器：设置齿数、模数/盘心距、基片高度与倾角；加载源/修正板文件，设置每个源的XYZ，添加固定机架监测点，保存到 data/machines。</li>
+<li>工艺：引用机器和基片；每层选源位次、启用修正板、目标厚度、速率与厚度基准，保存到 data/processes。</li>
+<li>仿真：加载工艺；选转速、初相、时间采样、网格、设备及算法，计算后检查膜厚图、各层摘要、设备与用时；保存PDF或读取完整NPZ。</li>
+<li>迭代：用遮挡曲线/热图或优化候选比较；最后用真实设备测量校准。</li>
+</ol>
+<p>各编辑器使用同一工程的资源依赖图。“保存”提交当前工程资源；“创建副本”创建独立资源；外部文件通过导入进入工程。损坏或缺失依赖应明确报错，不以空数据覆盖当前草稿。</p>
+<p>description（概述）与 notes（备注）是设计元信息，不进入物理计算。工程资源按类别保存在工程 data 目录，外部浏览用于明确的导入或导出。</p>
+</section>
+<section id="portable_runtime"><h2>Windows 便携版运行时 ZIP</h2><p>先将完整 ZIP 解压到可写目录，再双击包根目录的 <code>Launch-CoatSim.cmd</code>。首次启动会展开 <code>runtime-template.zip</code>，约需 2.4 GB。移动整个便携目录后，启动器会从模板在新位置重建并修复运行时，完成后才原子更新 <code>active_runtime.txt</code>。修复失败时旧运行时指针保留，诊断写入 <code>app/artifacts/logs/portable-startup.log</code>；请保留完整目录、模板 ZIP 和 <code>app/data</code>、<code>app/config</code>、<code>app/history</code>、<code>app/artifacts</code>，不要手动移动或删除它们。<a href="portable-bundle.md">完整启动、迁移与失败恢复步骤</a>。本轮只复核入口、调用契约与离线资源；算法正文、GUI 行为及真实 provider 验收仍以专项记录为准。便携运行时与工程包不同；正式便携首启、迁移和失败回滚须以对应构建的验收记录为准，不据此说明认定所有发布形态已可用。</p></section><section id="design_visualization"><h2>设计图与工艺详情</h2><p>看板娘可调用程序生成修正板、机器、蒸发源和基片的离线SVG形状图；也可将多层工艺生成为可搜索、可排序的离线HTML详情表。60层及更大的steps完整数据保留在HTML，不回传为模型上下文中的整份JSON。图按已校验设计绘制，机器参考节圆和运动轨迹仅为示意，不表示齿形或三维装配；产物写入<code>data/tmp/design-visualizations</code>并返回实际文件引用。</p><p>修正板和机器图使用机架XY，源和基片轮廓使用局部XY，长度单位为mm。机器图显示安装位置、参考轨迹和轮廓，不包含三维设备支架、腔体或真实齿形。它不会运行沉积仿真，也不验证加工或工艺性能。</p></section>
+<section id="coordinates"><h2>坐标与单位</h2><figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 850 355" role="img" aria-label="机架与基片局部坐标和固定修正板的示意">
+<defs><marker id="c" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 8 4 0 8" fill="#315b83"/></marker></defs>
+<g font-family="sans-serif"><rect x="10" y="15" width="400" height="318" rx="15" fill="#f1f6fb"/>
+<rect x="438" y="15" width="402" height="318" rx="15" fill="#f1f6fb"/></g>
+<g fill="none" stroke="#315b83" stroke-width="2">
+<path d="M65 278 H362 M65 278 V70" marker-end="url(#c)"/><circle cx="217" cy="175" r="91" stroke-dasharray="6 5"/>
+<circle cx="279" cy="110" r="37" fill="#cceee4" stroke="#249478"/><path d="M279 110 H333 M279 110 V64" marker-end="url(#c)"/>
+<path d="M486 278 H795 M486 278 V55" marker-end="url(#c)"/>
+<path d="M560 259 L715 76 M561 259 L758 76" stroke="#df8940" stroke-dasharray="6 3"/>
+<path d="M665 77 H783" stroke="#249478" stroke-width="7"/><path d="M585 166 H721" stroke="#535f82" stroke-width="11"/>
+</g>
+<g fill="#315b83" font-size="17"><text x="30" y="48">俯视（从 +Z 观察）</text><text x="456" y="48">侧视（示意）</text>
+<text x="361" y="296">X</text><text x="41" y="68">Y</text><text x="491" y="72">Z</text><text x="796" y="299">X</text>
+<text x="294" y="151">局部 x / y</text><text x="131" y="290">机架固定 XYZ</text><text x="707" y="111">基片 / 行星盘</text>
+<text x="591" y="195">固定修正板 z</text><text x="523" y="299">不同高度的源</text></g>
+<g><circle cx="217" cy="175" r="5" fill="#315b83"/><circle cx="126" cy="238" r="9" fill="#df8940"/>
+<circle cx="562" cy="259" r="9" fill="#df8940"/><circle cx="596" cy="238" r="7" fill="#df8940"/></g>
+<text x="20" y="351" font-size="14" fill="#486377">结果坐标跟随基片；源、板和监测点位置以机架坐标表示。示意不代表尺寸比例。</text>
+</svg><figcaption>几何坐标须分别核对：机器俯视/侧视看机架布局，膜厚图看基片局部位置。</figcaption></figure><p>机架XYZ固定：源位置、太阳轮/大盘中心和监测点采用此坐标；俯视图从+Z看向XY，侧视图用于检查高度。修正板轮廓为固定机架XY，z_mm是板所在平面高度。</p>
+<p>基片外轮廓与结果图XY为基片局部坐标，随行星盘运动；球面/非球面高度、局部法线由基片几何生成。机器的 <code>planet_offset_mm</code> 是太阳轮到行星盘中心的距离，不是基片半径。</p>
+<p>几何长度/高度/模数用mm；膜厚用nm；速率内部/JSON用nm/s，工艺界面默认Å/s（1 Å/s = 0.1 nm/s）；时间用s；转速用rpm；角度用deg；遮挡权重用%。非球面偶次项 A4/A6/A8 的单位分别为mm^-3/mm^-5/mm^-7。</p>
+<p>工件盘直径控制修正板分析范围，不是蒸发源尺寸。引用设计文件的相对路径以引用方JSON所在目录为基准。</p></section>
+<section id="source"><h2>蒸发源与材料库</h2><p>新增内置只读ZnS文献记录，在工程中保存编辑时创建工程内副本，保留全局原件；来源、单位、状态、条件和冲突可查。ZnS参考计算的界面入口当前已隐藏，已有配置与接口保留；计算仍区分厂家1223.15–1343.15 K压力内插与RI8301 1180–1210 K的Zn/S₂条件分压/出口流。未知有效系数不填1，封闭气体只报压力；理想出口必须显式选择，总率使用出口面积。文献输入和配置随源快照保存，不自动改变工艺沉积速率、角分布或膜厚归一化。详见<a href="zns-reference-model.md">ZnS参考模型与未实现项</a>。</p><p>源文件第2版保存类型、局部几何、角分布及可选 material 完整材料快照和 emission_model。源编辑器内可打开材料库，添加/编辑自定义材料，保存阻蒸和电子枪模型默认值及校准来源。材料库更新不自动更改已有源，需要在源编辑器重新选择材料、核对并保存。</p><p>几何支持点、线、圆盘、圆环、矩形。阻蒸支持敞口舟与高于料面的盖孔逐射线遮挡；电子枪支持可编辑束斑、有效发射足迹及扫描驻留的时间平均近似。没有热传导、熔池或机台功率→温度→绝对沉积率耦合求解；ZnS仅新增明确条件下的文献源通量参考。未校准参数不是材料固有常数，ZnS和钼舟也没有预置已验证角指数。</p><p>机器安装保存的源文件并定义XYZ；工艺每步骤选择源安装位，材料由源派生。参数化膜系使用 sources 映射，旧 materials 仅保留层表/层序别名兼容。内部 nm/s，界面 Å/s（1 nm/s=10 Å/s）。材料及源模型随资产包、队列输入快照冻结，不依赖后续库修改。</p><p>旧源缺少新字段仍按原几何/等权采样/角指数运行。详情见<a href="material-source-library.md">材料库工作流</a>与<a href="algorithms.html#material-source-models">算法图解</a>。</p></section>
+<section id="substrate"><h2>基片</h2><p>基片文件第1版：name、outline、surface及可选描述/备注。</p>
+<p>outline支持circle(<code>radius_mm</code>)、rectangle(<code>width_mm</code>,<code>height_mm</code>)、polygon(<code>points_mm</code>)和闭合curve(<code>control_points_mm</code>)。平面可用自定义轮廓；球面/非球面目前须用圆形边界。</p>
+<p>surface支持flat、spherical(<code>radius_mm</code>)、asphere(<code>radius_mm</code>,<code>conic_k</code>,a4,a6,a8)。非球面采用圆锥面＋偶次多项式；定义域无效、奇点或不可实现几何会报错。</p>
+<p>鼠标选点、曲线控制点、线删除与闭合工具用于编辑二维边界。曲线为项目既有的闭合Catmull–Rom采样，不是完整NURBS/CAD建模器。</p>
+<p>物理几何会改变点高度、法线及遮挡射线；显示结果仍为沉积膜厚。没有面型光圈/检测波长结果或镀后光学面型计算。</p>
+<p>工具：<code>input_schema</code>(&#x27;substrate&#x27;), <code>sample_substrate_outline</code>, sample_substrate_surface及通用设计读写/预览。</p></section>
+<section id="machine"><h2>机器结构</h2><p>机器文件第5版保存carrier_x_mm/<code>carrier_y_mm</code>、<code>planet_offset_mm</code>、<code>planet_tilt_deg</code>、<code>substrate_z_mm</code>、<code>sun_teeth</code>、<code>planet_teeth</code>、<code>gear_module_mm</code>，及源/修正板/监测点引用。</p>
+<p>外啮合参考节圆关系：<code>planet_offset_mm</code> = <code>gear_module_mm</code> × (<code>sun_teeth</code> + <code>planet_teeth</code>) / 2。界面填其中一个换算另一个；0盘心距仅为数学配置，不能当作真实齿轮啮合设计。</p>
+<p>行星盘倾角默认0，范围-80～80度，方向沿盘心到大盘中心的径向定义。正倾角抬高朝向大盘中心的一侧；以预览和算法坐标定义核对。</p>
+<p>最多64个源，源Z可不同；修正板不设数量上限，最多64个固定机架监测点。源、板与基片高度须满足核心几何校验。</p>
+<p>晶控/光控监测点可设机架任意XYZ，不随盘运动；程序建模几何通量基准，没有晶振电路、光谱响应或反馈控制动态。</p>
+<p>保留俯视/侧视图用于核对结构。机器编辑器只编辑当前模型所需几何，未提供真实腔体、支架、齿轮齿形或三维机械装配设计。</p>
+<p>工具：<code>convert_gear_geometry</code>, resolve_design_dependencies及通用设计读写/预览。</p></section>
+<section id="process"><h2>工艺与算法</h2><figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 850 280" role="img" aria-label="精确和快速算法如何处理完整回归周期及残余时间">
+<g fill="#173654" font-size="19"><text x="30" y="37">例：120 : 36 齿，15 rpm → 回归时间 T = 12 s</text>
+<text x="30" y="83">100 nm ÷ 1 nm/s = 100 s</text><text x="30" y="157">精确</text><text x="30" y="226">快速</text></g>
+<g fill="#4b94d1"><rect x="108" y="128" width="68" height="40"/><rect x="179" y="128" width="68" height="40"/>
+<rect x="250" y="128" width="68" height="40"/><rect x="321" y="128" width="68" height="40"/><rect x="392" y="128" width="68" height="40"/>
+<rect x="463" y="128" width="68" height="40"/><rect x="534" y="128" width="68" height="40"/><rect x="605" y="128" width="68" height="40"/>
+<rect x="108" y="194" width="119" height="44" rx="6"/></g>
+<rect x="678" y="128" width="28" height="40" fill="#e89448"/>
+<g fill="#173654" font-size="16"><text x="107" y="117">8 个完整周期（96 s）</text><text x="713" y="154">+ 4 s</text>
+<text x="237" y="221">一个周期场 → 按目标厚度缩放 → 合格层叠加</text>
+<text x="30" y="267">残余占比 4 / 100 = 4%：默认 5% 阈值下可用快速。10 s 薄层仍按真实时长。</text></g>
+<text x="127" y="221" fill="#ffffff" font-size="16">周期场</text>
+</svg><figcaption>默认5%是项目可调经验阈值，约束残余时间占比，不保证膜厚误差≤5%。同源、同板组合可复用周期场。</figcaption></figure><p>工艺文件第6版：name、<code>machine_file</code>、<code>substrate_file</code>、steps及描述/备注。源位次从1开始；监测点位次从1开始。MCP/JSON的mask_slots为0起始位置（0表示板1，1表示板2），省略启用全部已安装板，[]禁用全部板；UI显示板1/板2。重排源位次后需核对每层选择。</p>
+<p>每层：<code>source_slot</code>、<code>target_nm</code>、<code>rate_nm_s</code>、<code>target_mode</code>(mean/center/monitor)，可选monitor_slot、<code>mask_slots</code>。单步实际时长t=<code>target_nm</code>/<code>rate_nm_s</code>；按所选基准将空间场缩放到目标厚度。</p>
+<p>mean是网格有效点平均，center是基片局部中心，monitor是机器固定监测点。该速率和归一化是项目工艺约定，不是独立预测材料的绝对蒸发速率。</p>
+<p>转速、初相、网格、时间采样与算法在仿真页面设置。时间步长与全局步数按总工艺时长换算，不设固定最大步数；保留分批内存控制、取消检查和采样风险提示。连续层的初相按累计真实时长推进。</p>
+<p>全时长积分：每层按真实时长积分，适合初相影响明显的薄层，仍受时间/空间/源采样误差影响。</p>
+<p>快速算法：只有至少含1个完整材料点回归周期且残余时长占比≤可设阈值的层才用完整周期场。桌面新窗口默认阈值100%（核心兼容API默认5%），是本项目约定，不是膜厚误差保证。不合格层按真实时长并保持连续初相。</p>
+<p>回归大盘圈数Np/gcd(Ns,Np)：120:36为3圈，120:37为37圈。回归时间还依赖rpm；rpm=0时没有有限回归时间，快速算法不会启用。完整周期遮挡平均采用相位积分，rpm绝对大小不改变完整周期的几何平均。</p>
+<p>合格层共用完整回归相位采样；同源位次＋相同启用修正板组合可复用同一周期场，再分别按厚度基准缩放并叠加。换源或换板组合会分别计算。</p>
+<p>工具：<code>submit_process_recipe</code>, <code>calculation_job_status</code>, <code>wait_calculation_job</code>, <code>cancel_calculation_job</code>, <code>calculation_job_result</code>, <code>read_calculation_result</code>, <code>export_pdf</code>, <code>calculation_history</code>, <code>estimate_calculation</code>。</p></section>
+<section id="mask"><h2>修正板分析与优化</h2><figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 850 285" role="img" aria-label="遮挡权重表示通量损失而非遮挡面积">
+<rect x="20" y="20" width="385" height="225" rx="14" fill="#f1f6fb"/><rect x="444" y="20" width="385" height="225" rx="14" fill="#f1f6fb"/>
+<g fill="#315b83" font-size="18"><text x="44" y="55">板上一块区域的投影</text><text x="468" y="55">同一材料点的周期通量</text>
+<text x="463" y="112">未遮挡通量：100</text><text x="463" y="150">透过通量：70</text><text x="463" y="194">遮挡权重 = (100 − 70) / 100</text>
+<text x="585" y="222" font-size="22">= 30%</text></g>
+<circle cx="196" cy="150" r="64" fill="#cceee4" stroke="#249478" stroke-width="2"/>
+<path d="M165 91 L200 151 160 202 L121 171 Z" fill="#df8940" opacity=".7"/>
+<path d="M196 150 L244 104" stroke="#315b83" stroke-width="2"/><text x="238" y="95" font-size="14" fill="#315b83">局部半径</text>
+<text x="24" y="276" font-size="15" fill="#486377">入射角、距离、源形状与运动会改变通量；不能直接用覆盖面积比例替代遮挡权重。</text>
+</svg><figcaption>遮挡权重必须相对于同条件未遮挡通量定义。百分比热图与归一化相对热图代表不同尺度。</figcaption></figure><p>修正板是固定机架XY平面上的遮挡多边形，z_mm固定高度，outer为闭合外轮廓，可含holes；机器引用任意数量的板，各膜层决定启用哪块。</p>
+<p>编辑支持平移、X/Y独立缩放、点/边编辑与保存/另存为。可加载机器观察已启用源及盘心遮挡环；源采用不同颜色。</p>
+<p>遮挡权重是相对于未遮挡沉积通量被板阻挡的比例，不是遮住工件的面积比例。完整材料点回归周期积分；径向、指定半径0～360度角向曲线和全盘热图均为离散估计。工件盘直径决定X范围；角向半径滑块选分析环；热图可显示绝对或归一化相对权重。</p>
+<p>盘心遮挡环是源中心到运动盘心射线与板平面的交点轨迹。它本身不等于权重或普遍最大值；平面盘可显示经实际采样判定的高权重提示，有限源、倾斜/曲面和边界会影响结果。</p>
+<p>优化支持自动设计、基于载入初形优化、固定一板并自动设计或优化另一板。无板或只装一块固定板时可指定XY包络和有效高度新增可变板。固定板文件及孔洞不变，全部启用板均参加物理求解。可变板当前限无孔闭合轮廓，目标为均匀性或目标膜厚场。自动设计仅保证输出可行并经过原网格复核，不保证改善或全局最优。默认粗网格/有限评估与控制点，输出独立完整候选方案，不覆盖原方案。</p>
+<p>它不保证全局最优或加工可行；候选需以更细时间/网格重新计算，并检查最短边、加工尺寸、安装避让和实测结果。详细算法与参数见算法文档。</p>
+<p>工具：<code>correction_board_weights</code>, <code>correction_board_field</code>, <code>selected_point_weights</code>, <code>planet_center_occlusion_ring</code>, <code>estimate_mask_optimization</code>, <code>submit_mask_optimization</code>。</p></section>
+<section id="cad"><h2>二维修正板CAD与加工图</h2><p>CAD能力限定修正板：导入二维DXF外边界/孔洞、导出二维DXF和PDF加工尺寸图。当前不提供基片CAD交换，不支持DWG、三维实体、整机装配、干涉检查或设备CAD自动设计。</p>
+<p>import_mask_dxf读取模型空间中的LINE链、闭合LWPOLYLINE/POLYLINE、CIRCLE/ARC、ELLIPSE/SPLINE。只接受机器XY平面内的单个外轮廓及直接孔洞；非平面、相交、歧义、多外轮廓或嵌套岛屿等不可表达轮廓会报错。尺寸/文字/标记可忽略，但返回明确计数提醒；不支持的几何实体会报错。</p>
+<p>单位可选auto、mm、inch。auto按DXF的$INSUNITS换算为毫米；原文件未声明单位时必须选择mm或inch，不能自动猜测。手动单位覆盖原声明时提示。导入最多64MiB、模型空间最多20000实体；每个轮廓最多500顶点，超限报错，不静默简化。</p>
+<p>默认曲线容差0.05 mm、端点连接容差0.01 mm。圆/圆弧按真弦高判据采样；椭圆/样条由ezdxf自适应近似，返回采样和拼接说明，不构成全曲线加工精度认证。导入结果为修正板草稿，不自动覆盖原JSON；核对单位、方向、孔洞与轮廓后保存。</p>
+<p>export_mask_dxf输出毫米单位、CAD Z=0的闭合LWPOLYLINE轮廓。机器中的板高度仍由z_mm表达，与CAD坐标Z分开；导出不产生三维板材或加工路径。</p>
+<p>export_mask_drawing输出A4/A3横向PDF，含外形总宽高、孔洞包围盒位置、完整顶点坐标表，以及可选材料、厚度、公差、备注、版本等。版面自动适配，不是1:1加工模板；孔洞包围盒不等于拟合圆孔直径或真实圆心。加工图纸须由制造方复核。</p>
+<p>材料/板厚/公差是图纸标注，不加入沉积物理模型。工具options应以input_schema和窗口actions为准；覆盖现有文件需明确overwrite。当前实现位于coat_sim/core/<code>mask_cad</code>.py，使用ezdxf；本轮尚未通过真实CAD文件及加工实例的实机验证。</p></section>
+<section id="film_stack"><h2>多层膜系工艺</h2><p>支持显式 layers、周期重复（period_layers/repeat_count/prefix_layers/suffix_layers）、等厚序列（sequence/layer_count/total_thickness_nm）和四分之一波长候选（sequence/layer_count/reference_wavelength_nm），程序批量展开最多10000层。create_design_workflow中film_stack与steps二选一。材料、source_slot（1基）、rate_nm_s、target_mode、可选mask_slots（0基0/1）、monitor_slot（仅monitor）沿用工艺模型。quarter_wave折射率从materials[].refractive_index读取；reference_wavelength_nm为参考波长。</p><p>层表支持CSV/TSV/TXT/XLSX/JSON，先短预览再导入。XLSX须指定sheet，公式先粘贴为值；明确nm/um/angstrom和基片→空气或反向的输入层序。TFCalc/Macleod需导出文本；不自动OCR。多模态提取应标记不确定项并核对。read_process_layers分页读取；update_design_fields以最多64个JSON Pointer patch局部修改已有方案，适合60层工艺的小改动。</p><p>四分之一波长只按法向、透明材料及实数折射率n（来自materials[].refractive_index）生成候选厚度，不验证反射率/带宽。口述光学指标需先确认波长、材料n、层序和控制假设；当前软件不验证光谱指标。详见对应助手技能及<code>coat_sim/agent/resources/software_manual.md</code>。</p></section>
+<section id="results"><h2>计算设备与结果</h2><p>主仿真界面加载工艺，快捷机器几何仅显示预览信息；没有单源预览操作入口。底层仍保留单源接口用于诊断或专门调用，必须标明相对膜厚，与工艺nm结果区分。</p>
+<p>沉积仿真主窗口在本机且该任务没有已保存设备偏好时，默认选择 <code>cpu:default</code>；有保存偏好时会恢复所选主机/设备，但偏好不代表当前可用性。在“仿真设备”中可选择经对应任务探测可用的本机 CPU、CuPy/CUDA GPU 或 DirectML，也可选择已配置且兼容的远程设备；提交时会复核。部分 API/助手请求使用底层设备值“自动”，只在该模式下按 GPU（CuPy）→DirectML→CPU 顺序尝试；显式选择设备失败会报错，不静默切换。CPU 使用 NumPy。设备探测通过仅说明小型探针可执行，不是完整工艺的精度或性能认证，也不证明所有后端或平台都已实测。</p>
+<p>依赖管理器提供可选 <code>cuda12</code>（<code>cupy-cuda12x&gt;=13,&lt;14</code>，CUDA 12 wheel，Windows/Linux x86-64）和 <code>directml</code>（<code>torch-directml</code>，Windows、Python 3.10–3.12）后端配置；按兼容的驱动、Python 与设备选择，再通过依赖管理器检查/安装。包已安装不等于真实设备/内核可用。本次（2026-10-15）实测仅覆盖一台 RTX 4070 Ti SUPER 上 CuPy 14.2 的实际 GPU 内核执行；该环境未安装 torch 或 torch-directml，因此没有 DirectML 实测结论。这只描述该验证环境，不代表其他用户的安装状态，也不表示当前依赖管理器的 CuPy 版本配置或其他设备已经实测。</p>
+<p>Qt/Qt Quick 界面绘制由显示栈独立处理，不决定沉积计算设备。外观渲染是另一条 Mitsuba 路径；无已保存选择时默认 CPU，CUDA 需独立隔离运行时和真实设备探测，不使用沉积计算的 CuPy/DirectML选择，显式 CUDA 失败不会静默改跑 CPU，结果仍未获图像精度资格认证。快速算法与0.025 s是 GUI 工艺默认参数，不是性能测量或精度保证。</p>
+<p>结果显示基片局部XY膜厚图、带数值刻度的标尺、平均/最小/最大/峰谷差/CV，以及实际设备、用时、各层信息。CV=标准差/均值；数据精度以实际数组和采样为准。</p>
+<p>每次仿真尝试（成功、失败或取消）都会在<code>data/simulation_history.sqlite3</code>记录一条摘要；失败或取消项只记录请求、状态和错误，不生成厚度指标。成功时自动暂存标准热图、NPZ、实际配置和摘要于<code>data/tmp/simulations/&lt;run_id&gt;</code>。PDF默认包括heatmap、thickness、uniformity，可选computation、settings、machine、process、layers。优先复用结果返回的<code>files[].heatmap</code>，不重复生成标准热图；仅在需要contour或radial等额外视图时调用可视化工具。正式保存仿真资产前须确认名称，保存为<code>.coatasset</code>；仿真界面可从<code>data/assets</code>打开资产包，也可用<code>read_simulation_asset</code>读取summary/configuration/layers/images/full视图。预计时间按对应设备历史估计，不保证运行时长；算法、采样和回退会影响预测。</p>
+<p>对话新生成的设计先暂存于<code>data/tmp</code>；正式保存时向用户确认名称，再通过<code>save_generated_design</code>复制完整依赖图到kind正式目录。<code>prepare_temporary_design</code>只准备暂存设计。</p><p>结果requested_settings保留原请求，settings记录实际生效机器/基片；多源总结果源参数取第一层并由settings_scope说明，各层step_results.effective_settings保存逐层参数。不能用原请求默认值替代实际结果追溯。</p><p>工具：read_calculation_result默认摘要；仿真资产用save_simulation_asset/read_simulation_asset。不要凭热图颜色逆推出精确膜厚。</p></section>
+<section id="assistant"><h2>看板娘与权限</h2><figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 850 310" role="img" aria-label="看板娘数据权限与受控脚本执行边界">
+<defs><marker id="s" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 8 4 0 8" fill="#315b83"/></marker></defs>
+<rect x="22" y="47" width="186" height="212" rx="15" fill="#edf5fd" stroke="#6688ab"/>
+<rect x="280" y="20" width="309" height="266" rx="15" fill="#f1faf5" stroke="#249478" stroke-width="2"/>
+<rect x="657" y="91" width="169" height="116" rx="15" fill="#edf5fd" stroke="#6688ab"/>
+<g fill="#173654" font-size="18" text-anchor="middle"><text x="115" y="85">data 用户文件</text><text x="115" y="126">助手读写工具</text>
+<text x="115" y="163">显式选择输入</text><text x="115" y="202">文件副本</text><text x="434" y="59">操作系统沙箱</text>
+<text x="434" y="103">Python + Pygal（只读）</text><text x="434" y="143">输入副本 / outputs</text>
+<text x="434" y="183">无网络 · 无 API 密钥</text><text x="434" y="224" font-size="15">时间 / 内存 / 进程数限制</text>
+<text x="741" y="128">安全输出收集</text><text x="741" y="168">data/results</text></g>
+<g stroke="#315b83" fill="none" stroke-width="2.5" marker-end="url(#s)"><path d="M208 177 H274"/><path d="M589 153 H651"/></g>
+<text x="21" y="306" font-size="14" fill="#486377">当前脚本后端是 Windows LPAC；其他平台或隔离失败会报错，绝不使用普通 Python 回退。</text>
+</svg><figcaption>助手文件工具与脚本沙箱的授权范围不同：脚本只得到本次指定的输入副本，不能直接访问完整data。</figcaption></figure><p>设置分类紧凑排布；集中配置字体/DPI、用户昵称、交流语气、看板娘开关、API地址/密钥/模型、思考档位与Token配额；最大输入、最大输出和容量按服务地址＋模型隔离保存，设置使用K=1000 Token，0为自动/未知。短数字项以标签与控件为组，根据类别可用宽度并排3、2或1组，大字号窄窗才在组内叠放。非摘要角色的最大输出是请求生成预算，仍受容量/额度限制；摘要只降低自动预算。界面配色跟随操作系统。API地址可保存与加载；模型探测结果按地址、模型与凭据指纹缓存7天，不维护历史知名模型库。选定模型后自动探测并显示服务支持的全部原生思考档位；媒体输入输出能力由服务实际能力决定。</p>
+<p>API密钥通过keyring保存到系统安全凭据服务（Windows凭据管理器、macOS钥匙串、Linux Secret Service/KWallet）；按规范化API地址分别存放。没有可用的安全后端时读取为空、保存明确报错，不回退到明文文件；密钥不进入data、对话或脚本。跨平台凭据分支尚未实机验证。</p>
+<p>讨论（Plan）仅用于读取、解释与制定计划，不修改工程、保存、运行脚本、提交或取消任务。操作用于执行工程工具；攻关用于分析迭代。操作/攻关可在用户授权下执行并委派领域助手。主助手固定提供read_software_manual、project_tools、project_action，按需查询参数后实际执行。同一任务按模型回合交错展示思考与正文，输入、思考、输出、本轮和完整会话均可复制。仅在返回可见思考时显示三行折叠卡；轮末显示用时、本轮Token与缓存实报，空思考不生成卡片。主助手、子代理及上下文整理默认要求使用系统界面语言，可见思考也采用此要求；用户明确指定语言优先。单段复制按钮在对应区域悬停或键盘聚焦时显示。设置可选严肃、标准、轻快或亲密语气，默认标准：严肃稳重克制，标准自然有温度，轻快明显轻松俏皮且保持边界，亲密更亲近并有更多情绪回应、闲聊和温和吐槽，也更能配合无害小要求。用户当轮表达偏好优先。语气只调整表达，不改变事实、参数、权限、工具选择或执行策略。</p>
+<p>上下文整理根据当前模型输入/上下文容量与输出预算安排，接近阈值时压缩较早历史，不逐轮固定清空。显示的对话、已接收输出及工具结果保留，整理不把工具返回内容固定裁为空。底部环只显示最近主助手请求，不被子代理或整理的小请求覆盖；无请求显示“—”，正占用不足1%显示一位小数或“＜1%”，悬停仍显示真实K值。分项是估算，容量未知不显示虚构百分比；轮末消耗汇总所有代理。</p>
+<p>输出时仍可编辑输入、增删附件。Enter或“排队”保存消息与附件，在当前轮正常结束后依次发送。“插话”在下一主助手模型决策点纳入当前任务；现有模型输出或工具可先完成，不取消任务，不另起并发任务。插话以内嵌用户块显示，未吸收的消息转为待发送项。队列是当前运行进程内状态，不保证跨重启保留。</p>
+<p>“停止”单独取消当前任务；停止或出错暂停已有待发队列，需显式点击“继续队列”。新发送的消息正常开始新一轮，不自动重启已停止的任务；强制结束后台后不复活旧任务或重放未知副作用。待发送列表可逐条撤回并恢复文本/附件到输入框；插话须后台确认未应用才能撤回，已应用则拒绝。已有工程作业仍应按原编号核对。</p>
+<p>data是助手完整用户文件读写范围，支持目录/文件读写、移动与删除。覆盖/删除应符合用户请求，不能删除data根目录。桌面显式选择的外部附件复制到data/attachments；助手不获得原外部目录访问权。设计MCP还有项目路径约束，独立桌面文件选择器保存范围更宽。</p>
+<p>对话支持本地引用、附件预览、表格、安全彩色文字、离线Mathtext公式与被动SVG；不是完整LaTeX，未支持语法保留文字。支持兼容图片/音频/PDF输入及兼容媒体输出；视频需转换为图片/音轨。输入框Ctrl+V/Cmd+V或右键“粘贴（含图片）”把剪贴板像素转PNG复制到data/attachments，随后可预览、排队或插话；无图时保持普通文本粘贴，不执行剪贴板HTML、脚本或地址。剪贴板图片最多16 M像素（16×1024²），每条消息最多8个附件、合计32MiB。内置预览为图片/SVG、普通文字、净化的Markdown/HTML富文本、CSV/TSV表格；文字512KiB、表格500行×50列，超出提示。PDF、音视频和其他格式系统打开。富文本不执行脚本，远程图片不会自动下载。媒体会发送到所选API服务，不应输入未经授权的敏感数据。</p>
+<p>常用命令：/help /new /clear /stop /chat /operate /research /settings /attach /audio /text；@文件/机器/工艺/源/基片/修正板及@{data/...}文件引用。命令本地处理，不调用模型。</p>
+<p>流式正文按段落保留稳定视图，未结束尾段先显示可选择的原文。Markdown、公式和 SVG 转换在后台完成，只更新对应段落；复制取得完整原文。查看历史时保留手动滚动，回到底端才跟随新增内容。可预览本地图片链接和有效图片卡片悬停显示放大镜，不拦截选择、滚轮或点击。</p>
+<p>思考区省去标题行，采用较低亮度文字，保留三行折叠/展开与复制。JSON、日志和代码直接以普通文本预览，不经富文本转换。Markdown报告的相对图片/文件以该报告所在目录解析，仍须是data内现存授权文件；data/...引用保持项目内含义，SVG被动渲染，远程图片不下载。同路径文件更新后刷新预览；脚本产物可能带数字前缀，引用应采用工具实际返回的files[].reference。</p>
+<p>自动产出卡片按规范路径去重，同一文件修改后更新卡片，只在会话最后引用它的任务显示当前卡片；历史正文与用户附件保留。不同目录同名文件不合并，缺失/未授权文件、错误文本、省略路径及代码示例不识别成产出。当前卡片不是每次修改的版本历史。</p>
+<p>脚本工具run_python_script使用独立Python＋Pygal，仅复制显式授权的data输入，输出到data/results。当前OS沙箱为Windows LPAC＋Job Object：每次创建并清理独立配置，固定registryRead仅用于受用户DACL限制的HKLM只读；无网络、无宿主密钥、运行时只读、任务目录可写。本机Pygal绘图与定向越界拒绝通过；_ctypes等扩展仍可能初始化失败，不放宽隔离。不能给脚本授予整个data、项目代码或未授权目录；不可普通Python回退。</p>
+<p>脚本默认60秒，可设1～300秒，512MiB内存、1个进程；输入最多30个/32MiB，输出最多40个/32MiB，日志1MiB，工作区64MiB轮询检测。数据图表为离线SVG，不执行脚本/外链。</p>
+<p>Pygal支持XY、折线、条形等既有图表，没有pygal.Heatmap。coat_plot提供heatmap、contour、radial_profile与profile_chart，可用原始网格生成带坐标/色阶的热图、等高线和径向均值＋极值带；能力由python_sandbox_status查询；不存在的类属于脚本/API用法问题，不能由此断言运行环境未安装。实际启动、依赖、权限与API错误应分别记录和解释。</p>
+<p>project_tools支持tool_names/design_kinds批量查询，本轮复用契约。简单演示任务可调用create_default_workflow依次创建点源、平面圆形基片、机器和单层工艺并提交。默认100nm、1nm/s、120/36齿、312mm盘心距、1000mm高度、CPU/81网格/360步为未标定的本项目演示约定；入队不等于完成，须查询结果。validate_design支持仅kind/path校验已有文件；mean/center允许monitor_slot省略或null，monitor须有效位次。</p><p>任务支持停止与后台作业查询。不要因回复缺失重提计算；使用原job_id/client_request_id恢复核对。删除会话不删除已消耗用量或生成文件。</p></section>
+<section id="mcp"><h2>MCP 接入</h2><p>设置页包含外部服务与本软件对外服务两类入口。外部服务可配置 stdio、Streamable HTTP 或旧版 SSE，命令和 JSON 参数数组分开填写，凭据保存在系统安全库。新增默认停用，连接、工具调用和项目内容许可分别设置；保存后下一轮任务生效，不自动连接。显式连接检查在后台读取工具目录，可取消，不执行业务工具。</p><p>看板娘按需使用 <code>external_tools</code> 查看真实参数模式，使用 <code>external_action</code> 调用；它们与项目执行入口分开。不自动转发历史、附件、项目根目录或模型密钥；未许可项目内容时不能复制项目文字和数据。外部本地程序以当前账户运行，这些许可不是脚本沙箱。</p><p>本软件默认 stdio，可复制当前环境的客户端配置，无需另开界面服务。也可显式启动仅绑定 <code>127.0.0.1</code> 的 HTTP 服务，默认端口 8766，范围 1024–65535；每次启动生成临时 Bearer 凭据，显式复制客户端配置后交给需要的助手。普通状态和项目配置不显示令牌。停止服务后旧配置失效；保存配置不自动监听端口。</p><p>详细协议、生命周期、路径与功能范围见 <a href="mcp.md">MCP 文档</a>。本轮未连接实际外部服务或做 HTTP 运行验收。</p></section>
+<section id="development"><h2>源码开发诊断</h2><p>源码可直接在设置启用“开发模式”，默认关闭，保存后下一轮生效；<code>launcher.pyw --development</code>和<code>COAT_DEVELOPMENT=1</code>保留为源码兼容入口。<code>COAT_RELEASE_BUILD=1</code>、冻结打包或Nuitka发行强制关闭；助手和设置界面不能绕过门禁。</p>
+<ul><li>固定检查：环境依赖版本、项目Python语法，以及既有tests的unittest（最长60秒）；没有通用终端、任意检查参数或任意脚本执行入口。</li><li>人设：只读写固定agent.md，先读取最新SHA256，更新冲突拒绝，先备份后原子保存，下一轮任务生效；修改表达不会增加后端权限。</li><li>只读授权：developer_access提供会话内grant/revoke/status，developer_files仅对已授权且操作系统可读的路径提供分页read/list/stat。不写入或执行外部文件，不获得管理员权限，也不扩展Python沙箱输入范围。</li><li>统计：Token用K/M，缓存读取/创建无字段为未知，明确0计已报告；命中率仅使用已报告缓存读取请求的输入量，缓存不从输入＋输出额度扣除。</li></ul>
+<p>源码启动器另提供外部本地看板娘调试接口AssistantDebugClient，支持真实submit/steer/withdraw/cancel、状态与对话/事件分页。只绑定回环并认证，发行不启动，每次验证开发开关；无密钥或通用执行接口。默认单次4096输出Token、12请求、累计60K，主/子/整理共用。详见<a href="assistant.md">看板娘调试说明</a>和<a href="mcp.md">接口参数</a>。</p><p>实际运行测试仍须符合用户当前授权；设计、保存、覆盖、删除和脚本沙箱继续遵循原有边界。对话浮窗按屏幕可用区域限制尺寸和位置，避免越过桌面任务栏。</p></section>
+<section id="environment_issues"><h2>开发环境问题记录</h2><p>仅在源码开发门禁与已保存的开发开关或开发启动标志有效时，助手自动记录实际启动、依赖、DLL、文件、权限及连接错误，不增加模型请求。权威记录为data/tmp/ENVIRONMENT_ISSUES.sqlite3，最近200项投影为ENVIRONMENT_ISSUES.json与.md。重复问题累计次数，保留首末时间、会话/请求、工具阶段、脱敏错误与恢复信息；脚本/API用法问题单列，普通设计校验和撞名不视为环境故障。</p><p>记录的是实际反馈而非模型推测的根因，不保存密钥、prompt、脚本、正常输出或调用参数；日志写入失败不覆盖原错误。发行/关闭开发模式不记录，不扩大授权或绕过沙箱。原SESSION_ISSUES.md保留，不由自动日志覆盖。板娘可用developer_report_issue补报实际观察，用developer_issue_reports(refresh=true)生成并返回可读文件；developer_status.issue_reports显示记录状态与写入错误。未归类的真实工具能力错误标明非环境问题；不记录虚构根因。</p></section>
+<section id="limitations"><h2>不支持与近似</h2><ul>
+<li>机械模型限定外啮合太阳轮/行星盘关系；任意偏心机构、内齿轮、自由轨迹、任意三维设备需扩展模型。</li>
+<li>未建立真空腔体碰撞/散射、气相输运、材料蒸汽压/熔池热场、动态源耗损、再蒸发、膜应力/形变、温度反馈或真实设备控制模型。</li>
+<li>不计算镀后光学面型、波前、光圈、折射率/光谱、薄膜干涉或晶控/光控电路响应。</li>
+<li>源角指数、速率与工艺归一化需实测校准；厚度nm是按用户工艺基准缩放得到，不能把未校准结果当作绝对设备预测。</li>
+<li>物理曲面为旋转对称参数面；非球面圆锥根号定义域和法线可用性受校验限制。板为水平、静态、零厚度射线遮挡；板材厚度/材料仅图纸说明。</li>
+<li>时间、网格、有限源、轮廓曲线和遮挡采样均有离散误差；快速阈值不是膜厚误差上限，优化不保证全局最优/制造可行。</li>
+<li>GUI/核心、二维DXF与系统凭据接口基于跨平台Python/Qt/ezdxf/keyring；其他附件格式通过Qt交给系统默认应用。桌面入口为launcher.pyw，Windows使用pythonw，Linux桌面项可设Terminal=false。当前脚本沙箱与私有环境安装仅Windows LPAC，其他平台拒绝脚本执行；本轮不增加容器沙箱。DirectML与部分窗口激活路径仍有Windows分支。其他平台未宣称完整功能验证。</li>
+<li>需求超出以上范围时明确说明边界，提出所缺模型、数据或接口；可编辑参数或二维轮廓，不虚称完成整机设计。</li>
+</ul></section><section id="fixed_workflows"><h2>固定工程工作流</h2><p>多源、多层、修正板和结果导出可由create_design_workflow一次提交结构化方案；film_stack可替代steps，export_charts=true可导出固定图表。程序固定保存依赖、校验、提交仿真、等待及导出PDF/原始网格，减少Agent逐步拼装的失败。主助手自动程序等待与推进；独立MCP客户端可用design_workflow_status查事件、advance_design_workflow继续、cancel_design_workflow取消。暂停或失败不构成自动重跑授权；同请求ID复用原文件/作业并核对内容。</p><p>轻快档以轻松俏皮的方式回应情绪和日常话题，吐槽针对事情并保持边界；亲密档有更多感情表达、闲聊、温和吐槽和小抱怨，也可配合无害小要求。真实能力、授权与安全边界始终如实说明。语气不改变权限、事实或工程结论。详见<a href="workflows.md">工作流说明与验证范围</a>。</p></section><section id="decisions"><h2>待决选项与计算放行</h2><p>讨论模式不提交计算或请求放行；操作模式10秒倒计时后放行，可取消；攻关模式默认放行。队列只展示任务与时间。重要问题给出最多三个短选项和补充输入，收起窗口仍保留待决；次要问题可倒计时默认选择，填写或点选会暂停倒计时。会话不在前台时通过气泡提醒待决与任务结束，点击可查看。</p><p>开发报告保留原始去重证据，默认按读取者查询10条未读摘要并标记已读版本，不清空历史；新发生/恢复观察会再次成为未读。图片产物为小预览，其余产物单独列紧凑文件名。</p></section><section id="file_reload"><h2>文件刷新与仿真参数编辑（2026-10-05）</h2><p>蒸发源、基片、机器、修正板和工艺设计器的“刷新”从当前已打开或保存的原路径重新读取；没有已加载文件且未保存的新建设计不启用；修正板只加载了机器时，可刷新机器并保留板草稿。存在未保存修改时先确认放弃，取消保留草稿，不会自动保存。文件缺失、损坏或依赖无效时保留当前设计并显示错误。</p><p>沉积仿真的“刷新工艺及依赖”重读工艺、机器、源、基片和修正板，保留计算参数，并按新工艺时长更新关联的时间步长/步数。工程包导入后使用工程内资源，刷新必须保留依赖与当前资源身份。刷新不会重算结果、提交或取消任务，当前图像仍是上次计算结果。</p><p>计算进行中可继续编辑下一任务参数。进度、状态和结果通知不覆盖正在输入的数字；点击计算使用当时的完整输入快照，已提交任务保持自己的参数与文件内容。</p><p>时间采样说明：输入的时间步长作为未舍入的请求值单独保留，界面显示按整数步数计算的实际平均步长。刷新或重复提交不会把显示舍入值再次当作输入，因此不会逐次增加时间步数；明确编辑步长或步数才切换相应采样依据。</p></section><section id="film_design"><h2>膜系设计、优化与光谱仿真</h2><p>膜系计算暂不入队；计算按钮在后台线程工作，参数改变后旧结果标记过期，旧请求不能覆盖新参数的结果。</p>
+<p>从工程窗口列表进入膜系设计、膜系优化和光谱仿真。设计窗口支持两面层表、材料与光学数据集、光学/物理厚度、膜堆表达式、参数化初始设计和设计库。同一工程的光谱计算直接读取当前设计，优化应用结果回写该设计，不需要发送按钮或临时文件。膜系文件同时保存仿真与优化配置。</p>
+<p>仿真窗口设置波段、采样、角度、偏振与相对光源，计算并绘制本征R/T/A及光源加权曲线，可导出CSV/PNG。未知k必须显式选择无损假设，禁止超有效域外推。非相干基片仅支持透明基片，包含背面多次反射；有限相干模式可包含基片吸收，但须核对光源相干性与波长采样。半无限模式T为进入基片的通量。来源、单位、假设与接口详见<a href="algorithms.html#film-design-optics">离线算法说明</a>及<a href="film-design-validation.md">验收记录</a>。</p></section>
+<section id="algorithm_selection"><h2>按当前设计选择算法</h2><p>这是当前实现的按需导航，不是执行授权；讨论模式只读分析/计划，不执行任何操作或登记/放行计算。先读取当前设计或工程目标、材料光学数据、目标波段/角度/偏振、误差指标、可变参数、边界与计算预算；不要把窗口默认值当成用户需求。已知信息复用，缺少影响结论的条件时合并询问。当前设计优先由 project_list 取得精确六字段 project_target，再按目录调用只读 project_editor_snapshot(window_type=film_design/film_simulation/film_optimization, detail=summary)；available=false、待提交字段或不支持状态必须如实说明，不创建窗口/保存/计算。需要分层、目标或变量分页时沿用 snapshot_id 作为 expected_snapshot_id，拒绝混合修订。工程绑定 read_window 仅返回身份/状态，不替代此快照。已保存输入可经 project_inspect/project_resolve（root 使用确切 .coatproj 描述文件）和 load_film_design/read_design 读取；已存 workflow_settings.optimization 可复用，但不是当前未保存目标或现成 v1 请求。不能把保存版冒称当前草稿；快照不可用时请用户提供相关输入，或先在原工程保存后明确按保存版分析。先区分三类目标：沉积空间膜厚、平面膜系光谱、修正板轮廓。当前工具目录及校验结果决定实际可调用能力；读手册/研究资料不会开放新工具或增加保存、覆盖、应用候选及外部付费权限。</p><p>- 沉积趋势或既定参数比较：submit_process_recipe 的 fast 保留所选设备与原积分/周期快算；网格、时间步、有限源积分分别影响不同误差。fast_cycle 的阈值是快算适用筛选，不能解释为膜厚误差上界。<br>- 沉积时间采样复核：reference 在 CPU 上按指定或自动时间采样加密，报告实际评估/收敛与未验证维度。它没有额外散射/热模型；比 fast 慢不代表真实设备预测更准确。<br>- 沉积载架转速局部改善：optimize 仅在既定倍率区间搜索 carrier_rpm，CPU 全时间积分并作细采样排名复核。它不改变齿数、材料、膜层结构或板形；不保证全局最优。reference/optimize 不接受显式 GPU/DirectML，不能套 fast 的自动设备策略。<br>- 板形与空间均匀性：先 mask_optimization_groups 读取真实启用源-板组，再使用 estimate_mask_optimization/submit_mask_optimization；预算、包络、可变板和目标图必须与当前工艺一致，不能把遮挡权重当作厚度导数。<br>- 平面膜系本征 R/T/A：film_design_schema、film_materials、load_film_design、validate_film_design、simulate_film_design。核对材料数据集有效域、未知 k、基片相干模式、入射面与偏振；独立膜系总层数上限 4096，沉积 film_stack 批量展开上限 10000，不能混用。<br>- 固定材料/层序，改变选定层厚度：见 film_optimization 与 film_optimization_parameters。estimate_film_optimization/submit_film_optimization 只接收已有 v1 厚度请求；不以猜测 JSON 试错拼装冻结快照。结构变化是不同请求合同，不能混入厚度工具。<br>- 插层/生长结构搜索：当前 GUI 的膜系优化支持 needle_only、growth_only、combined。先核对实际窗口目录和动作能力；当前厚度 MCP estimate/submit 不接收结构请求，没有可用动作时明确说明入口缺口，不绕用脚本或伪造工具。结构候选需受候选材料、总层数、总厚度与新增层预算限制。</p><p>计算设备须按本次任务和入口核对。当前通用膜系优化队列走 NumPy/SciPy CPU 路径，GPU 渲染或沉积 GPU 资格不等于优化 GPU 资格；专用相干批量前向后端另有条件和校准合同，不由厚度请求的任意 backend 字段开启。算法建议须简述适用原因、代价、关键参数、停止条件和验证办法；没有预算授权时不自行扩大到全局群体搜索、大扫描或反复优化。沿用估算→真实会话放行→稳定作业身份→进度/取消→结果核对，queued/running、预算停止、训练达标、留出验证达标分别报告，候选不自动应用。</p><p>实现依据：core/algorithm_paths.py、core/film_optics.py、core/film_optimization.py、core/film_optimization_solvers.py、core/film_optimization_structure.py、core/film_compute.py、ui/film_optimization_quick_controller.py；离线 docs/algorithms.html 的工艺算法与 film-solver-* 章节。以下选型是本项目实现对应的工程建议，不是算法优劣或物理精度证明。</p><p><a href="algorithms.html">对应公式、实现与验证边界见离线算法文档</a>。</p></section><section id="film_optimization"><h2>膜系优化方法目录</h2><p>目录按需读取，不把全部算法参数常驻到每次对话。只有当前实现、依赖、设计形状和工具入口均满足时才能执行；列在这里不表示本机 SciPy 或 GPU 已验证。</p><p>- baseline（基线坐标搜索）：从当前膜厚逐变量试探并缩小步幅。无 SciPy 依赖，适合小幅改善及基线核对；变量多时评估成本增加，局部搜索。<br>- powell（Powell 方向集）：无导数的有界局部组合方向搜索，适合已有合理初值、希望联动多层；需要可导入 SciPy。<br>- nelder_mead（Nelder–Mead 单纯形）：无导数局部搜索，适合较少变量；单纯形成本随维数增加，需要 SciPy。<br>- multistart（多起点 Powell）：当前初值加种子确定的随机起点，减少单起点依赖；共用整次迭代/评估预算，起点越多每个可用预算越少，需要 SciPy。<br>- differential_evolution（差分进化）：群体随机探索，适合初值不确定并有足够评估预算；population_size 至少 5，需要 SciPy，不保证全局最优。deferred_batch 仅对这一方法开放，改变更新时机，不能保证与串行轨迹一致。<br>- simulated_annealing（模拟退火）：降温随机扰动，暂时接受较差候选以作有限预算探索；内置路径不要求 SciPy，用 seed 复现，同样没有全局最优保证。<br>- trf（信赖域反射最小二乘）与 lbfgsb（有界拟牛顿）：使用当前解析光学导数进行固定层序局部精修，最小化加权残差平方和；最差误差仍单独验收。只支持单面基片、正面首表面、正面厚度变量和受支持的光学端口，运行前校验材料域；依赖可用 SciPy，TRF 还需支持回调的版本。不能因算法名含梯度就承诺 GPU。</p><p>结构搜索独立于上述 solver 字段：needle_only 依据插层灵敏度探针筛选位置并作正厚度验证；growth_only 按有限生长步长/相位候选搜索；combined 组合这些阶段。新增层、宿主拆分后总层数、总厚度及原有可变层边界共同约束候选，冻结原设计不自动回写。它们不是 baseline 的别名，也不是 differential_evolution 的选项。当前 typed MCP 厚度工具不支持该结构请求，GUI 使用独立请求合同。</p><p>参数含义与结果解释见 film_optimization_parameters。公式、图解和方法来源在离线 docs/algorithms.html：film-thickness-optimization、film-solver-powell、film-solver-simplex、film-solver-multistart、film-solver-de、film-solver-sa、film-solver-gradient、film-solver-needle。</p><p><a href="algorithms.html">对应公式、实现与验证边界见离线算法文档</a>。</p></section><section id="film_optimization_parameters"><h2>优化参数与验收</h2><p>design_snapshot 保存当前设计输入；objectives 保存各条件目标列表。目标按 wavelength_min_nm/wavelength_max_nm、wavelength_samples、angles_deg、polarization、metric=R/T、mode=value/range 定义。R/T、target_value、lower_bound、upper_bound 为比例而非百分数；GUI 百分数显示由界面转换。weight 调整条件贡献，normalization_scale 定义误差尺度，不是另一个目标值。波段和角度采样过稀可能漏掉窄峰；先根据目标设置采样，再检查更密留出网格，不用提高迭代数替代光谱采样。</p><p>variables 用 side 与稳定 layer_id 指定可变层，lower_nm/upper_nm 为物理厚度边界，固定层不参与。design_revision 与 frozen_material_snapshot 是输入身份和可复现依据，不得伪造或随意改写。未知材料 k、越界波长、背面/相干限制先解决，不通过静默置零或外推绕过校验。</p><p>- max_iterations：算法外迭代上限；不同方法的一轮开销不同，不能当作统一仿真次数。<br>- max_evaluations：厚度优化的训练目标前向评分预算，各起点共用，验证评估另报。结构请求的 base_request 同名预算则合计训练/Jacobian/留出网格每次完整评估，不能把结构验证当预算外计算。预算到期只说明停止，不代表达标。<br>- initial_step_fraction / min_step_fraction：相对每个厚度允许区间的初始与最小搜索步幅；不是 nm，不是制造公差。主要服务基线及相应扰动路径，不声称所有 solver 都同样使用。<br>- acceptable_normalized_error：归一化误差可接受阈值；不是直接反射率百分数或设备精度保证。<br>- seed：随机种子，便于同环境同合同复现；不保证跨实现/后端逐点相同。<br>- multistart_count：多起点数；population_size：差分进化群体实际候选数，至少 5。<br>- validation_samples_multiplier：留出波长采样加密倍率；训练 targets_met 与 validation_complete/validation_targets_met 分开解读，不能用未完成验证宣称全波段达标。<br>- execution_mode=serial/deferred_batch、batch_size：差分进化的更新/批量控制，不是 GPU 开关，不修改冻结身份或预算，也不能给其他 solver 强行加批量模式。<br>- 结构专用：candidate_materials 冻结可插层材料/光学组；max_total_layers 包括宿主拆分层，max_added_layers 数新增候选材料层；当前有界结构实现要求 max_added_layers=1 且 growth_cycles=1，不能建议增加这两个值；min_thickness_nm/max_thickness_nm 为单层界限，max_total_thickness_nm 为整堆界限；position_samples、candidate_budget、needle_thickness_samples、growth_steps_nm/growth_phase_fractions/growth_cycles 控制有限候选规模和生长范围，不代表搜索完连续设计空间。</p><p>结果保留原作业身份、实际方法/seed、停止原因、成功/失败评估数、训练评分、留出验证、候选与不可用原因。取消请求须等待实际终态；部分候选是否可查看/应用依服务明确合同，不把 cancelled 当 completed，也不把 succeeded 当 targets_met。应用候选、覆盖保存和改变原设计分别遵循用户授权与最新设计修订检查。</p><p><a href="algorithms.html">对应公式、实现与验证边界见离线算法文档</a>。</p></section>
+</main></div>
+<footer>内容依据当前实现：<a href="../coat_sim/core/schemas.py">设计契约</a>、
+<a href="../coat_sim/core/api.py">核心接口</a>、<a href="../coat_sim/core/process_simulator.py">工艺计算</a>、
+<a href="../coat_sim/mcp/server.py">MCP工具</a>、<a href="../coat_sim/agent/resources/software_manual.md">助手同版简明说明</a>。
+公式、采样、优化方法和出处见<a href="algorithms.html">算法文档</a>。本说明不替代实际设备与制造校核。 · <a href="../coat_sim/core/mask_cad.py">CAD实现</a></footer>
+</body></html>
+
+
+
+
+

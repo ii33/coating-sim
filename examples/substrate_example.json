@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "name": "圆形平面基片 Ø300 mm",
+  "outline": {
+    "kind": "circle",
+    "radius_mm": 150.0
+  },
+  "surface": {
+    "kind": "flat"
+  }
+}

@@ -1,0 +1,551 @@
+{
+  "schema_version": 1,
+  "binary_redistribution_status": "blocked",
+  "notes": [
+    "Complete notices are being archived for review, not licence acceptance or a redistribution authorization.",
+    "FreeType functional version obtained via FT_Library_Version=2.8.0; choose FTL, retain required FreeType Team credit before publishing.",
+    "Other measured APIs: OpenSSL3.5.9, FcGetVersion21300=fontconfig2.13.0, png_get_libpng_ver1.5.13, lzma_version_string5.2.2.",
+    "Windows VC redistribution authority is unverified.",
+    "libffi and libuuid provenance matched official CentOS7.9 RPM Build IDs plus .text/.rodata hashes; SONAME was not used as a source version. See native-provenance.json.",
+    "The mixed BSD/LGPL libuuid copy is excluded from the reviewed Linux release profile; system libuuid.so.1 is required. Research notices are not assertions that every component is bundled.",
+    "Subcomponent notices retain exact upstream blocks, with extraction selectors and source hashes. Final payload approval additionally requires exact native profile and all its selected notices."
+  ],
+  "components": [
+    {
+      "notice": "Tcl-8.6.18-license.terms",
+      "source": "https://raw.githubusercontent.com/tcltk/tcl/core-8-6-18/license.terms",
+      "license": "Tcl/Tk",
+      "version": "8.6.18",
+      "verified_on": "2026-10-14",
+      "status": "notice_collected_not_a_distribution_approval",
+      "sha256": "c0a69a2bfd757361ec7e6143973b103c90409316b49e9c88db26ad6388e79f16",
+      "bytes": 2255
+    },
+    {
+      "notice": "Tk-8.6.18-license.terms",
+      "source": "https://raw.githubusercontent.com/tcltk/tk/core-8-6-18/license.terms",
+      "license": "Tcl/Tk",
+      "version": "8.6.18",
+      "verified_on": "2026-10-14",
+      "status": "notice_collected_not_a_distribution_approval",
+      "sha256": "2cde822b93ca16ae535c954b7dfe658b4ad10df2a193628d1b358f1765e8b198",
+      "bytes": 2267
+    },
+    {
+      "notice": "OpenSSL-3.5.9-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/openssl/openssl/openssl-3.5.9/LICENSE.txt",
+      "license": "Apache-2.0",
+      "version": "3.5.9",
+      "verified_on": "2026-10-14",
+      "status": "notice_collected_not_a_distribution_approval",
+      "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a",
+      "bytes": 10175
+    },
+    {
+      "notice": "FreeType-2.8-FTL.TXT",
+      "source": "https://raw.githubusercontent.com/freetype/freetype/VER-2-8/docs/FTL.TXT",
+      "license": "FTL",
+      "version": "2.8.0",
+      "verified_on": "2026-10-14",
+      "status": "notice_collected_not_a_distribution_approval",
+      "sha256": "4a9a548027a2c1d37788519dea833294c9c81f1ebc280e817f41f50d0c642d78",
+      "bytes": 6742
+    },
+    {
+      "notice": "libffi-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/libffi/libffi/v3.0.13/LICENSE",
+      "license": "MIT",
+      "version": "3.0.13-19.el7 (official RPM Build ID and .text/.rodata matched)",
+      "verified_on": "2026-10-14",
+      "status": "notice_collected_not_a_distribution_approval",
+      "sha256": "414f460aed519486beb78e92ea712c9ccf87c1acfb735a82d301f4cdf06f48e3",
+      "bytes": 1132
+    },
+    {
+      "notice": "liblzma-5.2.2-COPYING.txt",
+      "source": "https://raw.githubusercontent.com/tukaani-project/xz/v5.2.2/COPYING",
+      "license": "liblzma public domain; other XZ components not bundled",
+      "version": "5.2.2",
+      "verified_on": "2026-10-14",
+      "status": "notice_collected_not_a_distribution_approval",
+      "sha256": "c4f8e14fafe458d84808a4cd8b69f94673ebe2bf8fc992291629a69ac12218f8",
+      "bytes": 2774
+    },
+    {
+      "notice": "bzip2-1.0.6-LICENSE.txt",
+      "source": "https://sourceware.org/pub/bzip2/bzip2-1.0.6.tar.gz",
+      "license": "bzip2/BSD-like",
+      "version": "1.0.6",
+      "verified_on": "2026-10-14",
+      "status": "notice_collected_not_a_distribution_approval",
+      "sha256": "4919cfb14a73cd64fcef67b107613970cf1659a09aa675dba31314f373bc7204",
+      "bytes": 1901,
+      "archive_member": "bzip2-1.0.6/LICENSE"
+    },
+    {
+      "notice": "libXft-2.3.2-COPYING.txt",
+      "source": "https://xorg.freedesktop.org/archive/individual/lib/libXft-2.3.2.tar.gz",
+      "license": "MIT/X11",
+      "version": "2.3.2",
+      "verified_on": "2026-10-14",
+      "status": "notice_collected_not_a_distribution_approval",
+      "sha256": "7cda22286b1379b9b73df695f72cbad36595e65b039a5fbc5c89b69ecc44438c",
+      "bytes": 1105,
+      "archive_member": "libXft-2.3.2/COPYING"
+    },
+    {
+      "notice": "fontconfig-2.13.0-COPYING.txt",
+      "source": "https://fontconfig.org/release/fontconfig-2.13.0.tar.gz",
+      "license": "MIT",
+      "version": "2.13.0",
+      "verified_on": "2026-10-14",
+      "status": "notice_collected_not_a_distribution_approval",
+      "sha256": "fa4cd9ab005185e10cd8f7504518856c7dd36c01e766c2bac87f4fc638e9f886",
+      "bytes": 1313,
+      "archive_member": "fontconfig-2.13.0/COPYING"
+    },
+    {
+      "notice": "libpng-1.5.13-LICENSE.txt",
+      "source": "https://downloads.sourceforge.net/project/libpng/libpng15/older-releases/1.5.13/libpng-1.5.13-LICENSE.txt",
+      "license": "libpng-1.0",
+      "version": "1.5.13",
+      "verified_on": "2026-10-14",
+      "status": "notice_collected_not_a_distribution_approval",
+      "sha256": "765fadfb74d68bc20c6793ade8e8d8942a02af17f823e4eec04ab02de4c9f1f4",
+      "bytes": 4205
+    },
+    {
+      "notice": "libuuid-BSD-license.txt",
+      "source": "https://raw.githubusercontent.com/util-linux/util-linux/v2.23.2/Documentation/licenses/COPYING.BSD-3",
+      "license": "BSD-3-Clause",
+      "version": "2.23.2-65.el7 (official RPM Build ID and .text/.rodata matched; removed from published Linux payload)",
+      "verified_on": "2026-10-14",
+      "status": "notice_collected_not_a_distribution_approval",
+      "sha256": "9b718a9460fed5952466421235bc79eb49d4e9eacc920d7a9dd6285ab8fd6c6d",
+      "bytes": 1391
+    },
+    {
+      "notice": "CPython-Windows-crtlicense.txt",
+      "source": "https://raw.githubusercontent.com/python/cpython/v3.13.16/PC/crtlicense.txt",
+      "license": "Microsoft distributable-code conditions; not authority proof",
+      "version": "Windows CPython3.13.16",
+      "verified_on": "2026-10-14",
+      "status": "notice_collected_not_a_distribution_approval",
+      "sha256": "3c71b3ae243121f6f227374cd1ef7c59ed07b1969b330d0e947f91a3a1b3fd73",
+      "bytes": 1738
+    },
+    {
+      "notice": "Tcl-license.terms",
+      "source": "https://raw.githubusercontent.com/tcltk/tcl/core-9-0-4/license.terms",
+      "license": "Tcl/Tk",
+      "version": "9.0.4 core terms, applicable to all core versions",
+      "verified_on": "2026-10-14",
+      "status": "notice_collected_not_a_distribution_approval",
+      "sha256": "c0a69a2bfd757361ec7e6143973b103c90409316b49e9c88db26ad6388e79f16",
+      "bytes": 2255
+    },
+    {
+      "notice": "Tk-license.terms",
+      "source": "https://raw.githubusercontent.com/tcltk/tk/core-9-0-4/license.terms",
+      "license": "Tcl/Tk",
+      "version": "9.0.4 core terms, applicable to all core versions",
+      "verified_on": "2026-10-14",
+      "status": "notice_collected_not_a_distribution_approval",
+      "sha256": "2cde822b93ca16ae535c954b7dfe658b4ad10df2a193628d1b358f1765e8b198",
+      "bytes": 2267
+    },
+    {
+      "notice": "CPython-3.12.15-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/python/cpython/v3.12.15/LICENSE",
+      "license": "PSF-2.0 and bundled stdlib notices",
+      "version": "3.12.15",
+      "verified_on": "2026-10-14",
+      "status": "notice_collected_not_a_distribution_approval",
+      "sha256": "3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf",
+      "bytes": 13936
+    },
+    {
+      "notice": "CPython-3.13.16-Windows-LICENSE.txt",
+      "source": "https://www.python.org/ftp/python/3.13.16/python-3.13.16-embed-amd64.zip",
+      "license": "PSF-2.0, bundled stdlib and Microsoft distributable-code conditions",
+      "version": "3.13.16 Windows",
+      "verified_on": "2026-10-14",
+      "status": "notice_collected_not_a_distribution_approval",
+      "sha256": "62bec384df47b0328307db41455ff6ea2559e5546b394ac69148561b21703120",
+      "bytes": 33861,
+      "archive_member": "LICENSE.txt"
+    },
+    {
+      "notice": "Unicode-DFS-2016-NOTICE.txt",
+      "source": "https://raw.githubusercontent.com/unicode-org/icu/release-58-2/icu4c/LICENSE",
+      "license": "Unicode-DFS-2016",
+      "version": "Unicode9.0.0",
+      "verified_on": "2026-10-14",
+      "status": "notice_collected_not_a_distribution_approval",
+      "sha256": "eeba269c94183d337cbbbf16b75ef2869feaf4b722b04586055c13171e68cfb9",
+      "bytes": 1762,
+      "notice_parts": [
+        {
+          "selector": "before first --------------------- separator",
+          "source_sha256": "2023a2d68dfcdb1f7b7c5dccb96f88aabba112f63f250cb9e533cc64625eff07",
+          "notice_sha256": "eeba269c94183d337cbbbf16b75ef2869feaf4b722b04586055c13171e68cfb9"
+        }
+      ]
+    },
+    {
+      "notice": "fontconfig-2.13.0-subcomponent-NOTICES.txt",
+      "source": "https://fontconfig.org/release/fontconfig-2.13.0.tar.gz",
+      "license": "MIT/X11 and Public Domain",
+      "version": "2.13.0",
+      "verified_on": "2026-10-14",
+      "status": "notice_collected_not_a_distribution_approval",
+      "sha256": "3b49dc9f4f3c36fb31547794e91686c5a03c6a55aa632202001243b2e976ac95",
+      "bytes": 43372,
+      "notice_parts": [
+        {
+          "archive_member": "fontconfig-2.13.0/src/fcarch.c",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "f3dfb931d36ef157ca325dd1f3104a6a237d5b4ed20d2c111b98b98d1c2d56ea",
+          "notice_sha256": "9a9eb0f3efddd36a900f477e7ab714d7ce4175fb7cbbc2728bfe81f7ee2aa8d0"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fcarch.h",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "230298f798efe4723d6df51fda8fce74f07851de6df0ec7452f5550484f34490",
+          "notice_sha256": "c15d043005a070f01546324eb0a03daef2e180929beaf210b6b3b5d043233eb7"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fcatomic.c",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "ae5195a9df299e60131069ecdda7b7a3534c6e06d6671e36c9aa6d1420c785bc",
+          "notice_sha256": "d2eb249bd1af20e32d06f2528f75ffeb305e677e05166a0749fef9d0d1a911f5"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fcatomic.h",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "5c7138c6fe89aea777b8d7b5c2e7504196d9632143872b4f0ff9c9aa05caee6d",
+          "notice_sha256": "39ab59e5c900c14787d9f78360bf3941ffd9a4697e7e623194016b75e4172b81"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fccache.c",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "0b200c6de37491daceba66c202ae5d88da4e2ca6ef0affa0c6442bed8d4cfdf8",
+          "notice_sha256": "ed071264c374a0b47fe082cb25f2900e4e8fa78bc2de8b660980c54b452dc2d1"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fccfg.c",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "b79f44adb21a332ffae6f792af8cdba1563ed3467ec0673a5f68ba86c1617d62",
+          "notice_sha256": "05b299fc28423b51d713462e73a3dcd3d7053f4b98bc1cddcaa73a9079eb90b4"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fccharset.c",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "ae6123b1aac0991a4b15339da8c651e40eaf009c3e773abd7b4c89bfa2dd06cf",
+          "notice_sha256": "42bd6dcc3c883f2740830b97939b6aea709bd3932fbb52e13d2b41fdb9e2f9b0"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fccompat.c",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "ccc950d74d2f12b7f1b5b67bc105f1ec00579abafdf13c52f51cb4800f719f51",
+          "notice_sha256": "5862347c818040c4b655a0da4c3e6ed5da0356eb9a16c5aa2f63e8d38c26c8fa"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fcdbg.c",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "01e613a098cae5f59350a58b5c7718beb284fa787c21bc0d76a44d829f586006",
+          "notice_sha256": "24de305eae4a41d3affb61b6c494f934096b575438e747db6721254b6ac3e19f"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fcdefault.c",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "d0c920233f07eb47bb02d5f8462a0118b7127869836fde0936d870be6f4080f1",
+          "notice_sha256": "05c7619aca887d5b2d31059365d3943e0432c601f91f90594e64ff1017cbb9e8"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fcdeprecate.h",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "05d80ad3c3e0b7496c6c1b9657f0bfcfc9c8a03005044b0511f4a12672a29b0a",
+          "notice_sha256": "7c914db914b5228009039f462008a6bfa0338544f09ba12843a2e25d05054fd8"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fcdir.c",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "9ef82276102164fd1e0b729a88a5b591cf97d6cdf9d2c057aa9d2399fc57d34c",
+          "notice_sha256": "e8efaa3e893b47682088e28af04e5c5c48ed5ad843ba056526a3e70b5a49fd47"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fcformat.c",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "59c4195edd5fae837b912e062eab0ae06eb4efd3b57ac65822a1e383ecdb97ed",
+          "notice_sha256": "675450a8c0678a5788972065ef53de338cca91773a312b9fdb1b631c29cdd708"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fcfreetype.c",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "661c6da6d4cdad00a47478ba0d2dca6c3541a3c94323cd55d024454fdb652f59",
+          "notice_sha256": "5793df86e237e7b85653cbb296368c63b9a4c62af939a543208dd0b80b34c003"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fcfs.c",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "73f351b1be666005bfd4271ef98878e2d4c3a5d4e608d3eeb9512f96146be86f",
+          "notice_sha256": "456759cb1570b6e342b8b35b4d191350e56847aecfeacd605730fb28e5303091"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fchash.c",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "8150c171725e73858b6d6778e6e914328e70114847a069837e77945a38ba9440",
+          "notice_sha256": "4e952d25ce599c3d0e7b11d27d7defb049d50b0950e6c99dae66804c3b36ea25"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fcinit.c",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "8155a5490131be45d403af5fb94ae2e7acf2be97730d1fa03d6e70cd31c18e08",
+          "notice_sha256": "9ebdaba49bdb2e925801a8c21ceefe30aebf0d064876b4ff7ba6985c15c561b0"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fcint.h",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "5eff519085fc77e1a5c667dc76f203a546adb07771093ed1b96bb9949e68b6b6",
+          "notice_sha256": "8a4fe41e16a31d7536c73c4af0871d4b27276e500839ca2401ce27583b584dea"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fclang.c",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "04184af19749e49ea63ea9368753358dbc347ea9f349cfa9ee06e474be4b22e0",
+          "notice_sha256": "1c1f7a305a62dc3b2ca6aedfd424b236fec588f9a34e5841025af48367ece46b"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fclist.c",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "69d8a0b74614b98feb36eab837ccdfb22b082fb42449abcd484a81242aff281c",
+          "notice_sha256": "7fe5d20738c30763c8c6f17f73b3a240ed5b52f8359e246239ae8975eb0c6d65"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fcmatch.c",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "622bf18d20cad3c08b6e9127df5f0e23de2c5b8a097de503d9dead2172e01b4b",
+          "notice_sha256": "45030620e49d165ea59a30f9679dd60f06c0b80f71c5e83c44778140701352c3"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fcmatrix.c",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "6137a47e2c06ae888a625b801d7deb023c23d28e7c0a7beb21740bfaeac407be",
+          "notice_sha256": "93e012fc7e070169dc54aff04d8b4fd3351991e555823d438ea1e1f42512a8ef"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fcmutex.h",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "5348ab6d932a1dce3bc78bb7383b1eb7a79ac906c93f5d1e6841b6b557870724",
+          "notice_sha256": "e5a8b078a43588283b236c053ba1e96795837ddbbde6ab0b38ec51db0217a5cd"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fcname.c",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "14f96bec7ea38785b2944dd299a1136ae40014eacf87cb62f381e3ba8c913294",
+          "notice_sha256": "22481fd97a335d3fa2d71ce9ebffe2a3081052b67f1ac084220104c384a0ffa4"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fcobjs.h",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "df766c668a726126a2cdd7a7adc4141f2a2c600743a5e76b03dcac919a8268bb",
+          "notice_sha256": "360e30f6450d3a534b743a3c1db973b83fe6a7d214ea14f20d6dac2e82595690"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fcobjshash.gperf.h",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "19ce02b7555e9d7046f142fe2593bf59b3fa0dc884481c416cfb19d18dc16e75",
+          "notice_sha256": "d21f6b0d71ad572d1b70914b1d17d5ba65cf6592da5495480c923b9aecb93cb5"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fcptrlist.c",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "ed15b485d115fe8ea2a5cc58d6873be24d1875d558ce5d9cb66af7f306e883e8",
+          "notice_sha256": "acbbbd978c03d561b52a565ca28567edc2ea5cd3b3f1ad122f0c40f434978f57"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fcrange.c",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "3ef6f4dd5c7419e081cde14e85b9914af32bea45b3c2771f17c2de0193a970e8",
+          "notice_sha256": "f86ad380314d643e6d9a7d2ba919b33a6d9f4db937554920c6eb62d6785e8108"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fcserialize.c",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "ac65059407028fd2857c2fd89d2c906b56b7cda3865a3edaf7e0586704b33a31",
+          "notice_sha256": "a8cc2206c3ee7a62efc36d99c70ce24734e0d063cc71f4a1bff56e027b0a50f0"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fcstr.c",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "d4a2176eccf5f8a2ba2a52e6c5a6ee6aa4964a5f5e9f1434ecdc05134a4d4c3c",
+          "notice_sha256": "f6d5c50655d80e742965389f7534bb2eb9900198640d421d96562c556da629bc"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fcweight.c",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "2434334a79b38707fb556c63e0d81c0c2d2cd9f9a509579cea18dc5d1186cdd1",
+          "notice_sha256": "f6e0545f5c523a10ebc3796dc7f55441ab8ae47f14dea68d460ceba34088a27a"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fcwindows.h",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "8a790a93933c6d2ebdcf421fbbb8a3d1fb8a45abc3e2f9502362efdc692382b0",
+          "notice_sha256": "7b371b1e71e115f1f366fefe966742801b19dde721e6043db981a2c22ab5b580"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/fcxml.c",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "4cc66a26c2774587b720854f0c2e46e7d405ce178ad6749c38daad8b2b3df78c",
+          "notice_sha256": "2ce619046cfc6ea759beabb32d6cc604756c081184e779ee1035c15872955534"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/ftglue.c",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "9968f6297cfcce68dbc2bb649ff0d03735a4660a8e4d4f9c163139e6b428dbc9",
+          "notice_sha256": "664bb77f86f9d93cdae88896c5676230075179f7a5f58c97539b81fdadef9c83"
+        },
+        {
+          "archive_member": "fontconfig-2.13.0/src/ftglue.h",
+          "selector": "first C comment, surrounding whitespace excluded",
+          "source_sha256": "4ac464b99673974ff964902bb2f3a4f3c467d298823c08aa611793b1846c2cc2",
+          "notice_sha256": "fc44e69aee08ac6c97a5b56e5b9ffb4bc30518e30982c2796a4bb5b4d4a02535"
+        }
+      ]
+    },
+    {
+      "notice": "FreeType-2.8-subcomponent-NOTICES.txt",
+      "source": "https://github.com/freetype/freetype/tree/VER-2-8",
+      "license": "MIT/X11 subcomponents",
+      "version": "2.8.0",
+      "verified_on": "2026-10-14",
+      "status": "notice_collected_not_a_distribution_approval",
+      "sha256": "7b4e3e474939cdb0e49a70903e12eb0332975060fa8ba4ea5e413d42f6a79f57",
+      "bytes": 7857,
+      "notice_parts": [
+        {
+          "source": "https://raw.githubusercontent.com/freetype/freetype/VER-2-8/src/bdf/README",
+          "selector": "License section through end (includes Credits)",
+          "source_sha256": "6b24814122a7c8e0efe554f116a1cd28ee27582068474e81fa119f9d990cb226",
+          "notice_sha256": "c280503578456a8b68cbc340855335c8cfc64d9c60cd175ae486af21f2745555"
+        },
+        {
+          "source": "https://raw.githubusercontent.com/freetype/freetype/VER-2-8/src/pcf/README",
+          "selector": "License section through end (includes Credits)",
+          "source_sha256": "3ca5dd86afa5094018dd278a234a59dbb91243bdfa7a7962dbf7512e86ca26b7",
+          "notice_sha256": "4edbe2807d46f6679bc214fbd6c96547b2ea4d2454e2d94152b1cc114545d20c"
+        },
+        {
+          "source": "https://raw.githubusercontent.com/freetype/freetype/VER-2-8/src/pcf/pcfutil.c",
+          "selector": "unique C comment containing Copyright and Permission",
+          "source_sha256": "275713def60b48ca9be4b98a454937370d5405bbfb4d51813bd970bc1eaddac7",
+          "notice_sha256": "84ee4d3aa322bfdd4a4d791c4510b663da0f9afb18ebe5dcd0de0dc6582858ca"
+        },
+        {
+          "source": "https://raw.githubusercontent.com/freetype/freetype/VER-2-8/src/base/fthash.c",
+          "selector": "unique C comment containing Copyright and Permission",
+          "source_sha256": "070c44530f36c1b85ec6b58619ae4c3f09a49e5f0998d2cc401720dabf792ec0",
+          "notice_sha256": "fa04727dc6e4a77fd2e7cf3980ac6a3690103a1712679b28664c15ec491bcbc3"
+        },
+        {
+          "source": "https://raw.githubusercontent.com/freetype/freetype/VER-2-8/include/freetype/internal/fthash.h",
+          "selector": "unique C comment containing Copyright and Permission",
+          "source_sha256": "92dc5e04bf846ef4a762ca99f17d1e9090ef38424677db8790782022d7f92181",
+          "notice_sha256": "fa04727dc6e4a77fd2e7cf3980ac6a3690103a1712679b28664c15ec491bcbc3"
+        }
+      ]
+    },
+    {
+      "notice": "Tcl-8.6.18-Spencer-regex-NOTICE.txt",
+      "source": "https://raw.githubusercontent.com/tcltk/tcl/core-8-6-18/generic/regcomp.c",
+      "license": "Spencer-99",
+      "version": "1998/1999 Tcl8.6.18",
+      "verified_on": "2026-10-14",
+      "status": "notice_collected_not_a_distribution_approval",
+      "sha256": "c06f805f44c6dde317bf3ce297df34c32612e2dd57bc2bf95ba7ff046197743c",
+      "bytes": 1555,
+      "notice_parts": [
+        {
+          "selector": "first C comment",
+          "source_sha256": "a2f758a383c4155131a44606d9abdb85951d4587d4e13c4fb4a81848cf3db5c5",
+          "notice_sha256": "c06f805f44c6dde317bf3ce297df34c32612e2dd57bc2bf95ba7ff046197743c"
+        }
+      ]
+    },
+    {
+      "notice": "Tcl-8.6.18-LibTomMath-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/tcltk/tcl/core-8-6-18/libtommath/LICENSE",
+      "license": "Unlicense",
+      "version": "Tcl8.6.18 bundled LibTomMath",
+      "verified_on": "2026-10-14",
+      "status": "notice_collected_not_a_distribution_approval",
+      "sha256": "2fa64b163659f41965c9815882a8296d3d03ff546b76153e11445f9bdecf955a",
+      "bytes": 1257
+    },
+    {
+      "notice": "Tcl-8.6.18-Bison-parser-NOTICE.txt",
+      "source": "https://raw.githubusercontent.com/tcltk/tcl/core-8-6-18/generic/tclDate.c",
+      "license": "GPL-3.0-or-later WITH Bison-exception-2.2 (generated output only, expressly approved)",
+      "version": "GNU Bison3.8.2 Tcl generated parser",
+      "verified_on": "2026-10-14",
+      "status": "notice_collected_not_a_distribution_approval",
+      "sha256": "fbd48d948a615027c03b9dba5d28c8ec1616734129ade40a22e7713f8f5a22f5",
+      "bytes": 1929,
+      "notice_parts": [
+        {
+          "selector": "leading Bison notice/exception plus grammar copyright comment",
+          "source_sha256": "a63fb325efc081af95e23fbc1b7fc1b363c8d397438b7a07b477315f254e95b9",
+          "notice_sha256": "fbd48d948a615027c03b9dba5d28c8ec1616734129ade40a22e7713f8f5a22f5"
+        }
+      ]
+    },
+    {
+      "notice": "Tk-8.6.18-GIF-NOTICE.txt",
+      "source": "https://raw.githubusercontent.com/tcltk/tk/core-8-6-18/generic/tkImgGIF.c",
+      "license": "Tcl/Tk + David Koblas permissive giftoppm",
+      "version": "Tk8.6.18",
+      "verified_on": "2026-10-14",
+      "status": "notice_collected_not_a_distribution_approval",
+      "sha256": "11e0b203a4b6139282b44d60281a7aaa64b0229564283b871f102ed7076c0827",
+      "bytes": 1512,
+      "notice_parts": [
+        {
+          "selector": "first C comment",
+          "source_sha256": "54c3319ad5b915ced06507f4b27ed3072fc815a9839a2c1276f8fab5223f15be",
+          "notice_sha256": "11e0b203a4b6139282b44d60281a7aaa64b0229564283b871f102ed7076c0827"
+        }
+      ]
+    },
+    {
+      "notice": "Unicode-V3-license.txt",
+      "source": "https://www.unicode.org/license.txt",
+      "license": "Unicode-3.0",
+      "version": "current2026 grant for Unicode data/software",
+      "verified_on": "2026-10-14",
+      "status": "notice_collected_not_a_distribution_approval",
+      "sha256": "e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96",
+      "bytes": 1995
+    },
+    {
+      "notice": "Unicode-17.0.0-ReadMe.txt",
+      "source": "https://www.unicode.org/Public/17.0.0/ucd/ReadMe.txt",
+      "license": "Unicode17 data copyright/source notice",
+      "version": "17.0.0 (2025 source copyright)",
+      "verified_on": "2026-10-14",
+      "status": "notice_collected_not_a_distribution_approval",
+      "sha256": "9fe1a90bd32659d7953616283dc2bffaa165518aae9ace026040c42c559ba606",
+      "bytes": 740
+    },
+    {
+      "notice": "GNU-GPL-3.0.txt",
+      "source": "https://raw.githubusercontent.com/NixOS/patchelf/0.19.1/COPYING",
+      "license": "GPL-3.0 text (Tcl Bison generated-parser notice reference only)",
+      "version": "GNU GPL3, 2007",
+      "verified_on": "2026-10-14",
+      "status": "notice_collected_not_a_distribution_approval",
+      "sha256": "e79e9c8a0c85d735ff98185918ec94ed7d175efc377012787aebcf3b80f0d90b",
+      "bytes": 35151
+    }
+  ]
+}

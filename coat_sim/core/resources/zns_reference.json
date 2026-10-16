@@ -1,0 +1,812 @@
+{
+  "schema_version": 1,
+  "dataset_id": "zns_reference_2026_10_04",
+  "material_id": "ZnS",
+  "name": "ZnS 文献参考",
+  "status": "literature_reference",
+  "machine_calibrated": false,
+  "updated_at": "2026-10-04",
+  "scope": "Source-specific material facts and bounded reference calculations; not a machine calibration or universal ZnS constants.",
+  "sources": [
+    {
+      "id": "IR01",
+      "title": "Merck/EMD Zinc Sulfide Patinal Product Information",
+      "url": "https://www.emdgroup.com/Products/PM/us/ZnS_tcm2080-us.pdf",
+      "access_date": "2026-10-02",
+      "source_class": "manufacturer_technical",
+      "version_or_date": "2019-08",
+      "locator": "p1–3",
+      "access_status": "原厂PDF相关页/表已核读；未保存原文",
+      "license_and_archival_status": "版权归发布者/作者；未见明确再分发许可；仅摘要与必要事实，不存原文",
+      "supported_claims": [
+        "ZnS膜光学色散、应力、源材货号及阻蒸/电子束工艺建议"
+      ],
+      "limitations": "源温2000–2200°C与其他来源温度定义不一致；不作设备设定。n/k完整测试工况、误差未列。",
+      "summary_path": "sources/summaries/ir_01_manufacturer_technical.md",
+      "research_path": "04_coating_and_substrate_materials/data/ir_sources.json"
+    },
+    {
+      "id": "IR02",
+      "title": "Umicore ZnS 99.99% 4.0–8.0 mm, 0481699",
+      "url": "https://mds.umicore.com/en/thin-film-products/products/evaporation-materials/zns-99-99-4-0-8-0mm-500g-0481699",
+      "access_date": "2026-10-02",
+      "source_class": "manufacturer_technical",
+      "version_or_date": "网页未标版本",
+      "locator": "Specifications; evaporation source; film optical constants",
+      "access_status": "原厂网页已核读；未保存原文",
+      "license_and_archival_status": "版权归发布者/作者；未见明确再分发许可；仅摘要与必要事实，不存原文",
+      "supported_claims": [
+        "ZnS源料物性、Mo衬套/Mo-Ta舟、基片温度类别和部分薄膜数据"
+      ],
+      "limitations": "550 nm k=3.85与透明用途矛盾，隔离不采纳；10 µm n与Merck不同。",
+      "summary_path": "sources/summaries/ir_02_manufacturer_technical.md",
+      "research_path": "04_coating_and_substrate_materials/data/ir_sources.json",
+      "recheck_url": "https://products.umicore.com/en/zns-99-99-4-0-8-0mm-500g-0481699/?pdf=",
+      "recheck_evidence_id": "ZNS03"
+    },
+    {
+      "id": "ZNS01",
+      "title": "Schaefer, Electrochemical Determination of the Gibbs Energy of Formation of Sphalerite (ZnS), RI 8301 (1978)",
+      "url": "https://stacks.cdc.gov/view/cdc/233953/cdc_233953_DS1.pdf",
+      "kind": "original_research_government",
+      "access": "fulltext_visual_verified",
+      "locator": "printed p.12 (PDF p.16), Table 6 p.14",
+      "support": "Measured galvanic cells plus literature reference thermochemistry; two standard-state-specific Gibbs relations.",
+      "checked_date": "2026-10-04",
+      "sha256": "80696955f7a35abc7d726357b61f9b4fe30be3888692695212205085a1c1f679",
+      "research_path": "99_sources/supplements/2026-10-04_zns_reuse_audit/sources/source_registry.json"
+    }
+  ],
+  "property_records": [
+    {
+      "material_id": "ZnS_film",
+      "property": "refractive_index_n",
+      "value": 2.44,
+      "unit": "1",
+      "source_id": "IR01",
+      "conditions": {
+        "wavelength_um": 0.45,
+        "state": "evaporated Patinal film",
+        "measurement_temperature_C": null,
+        "thickness_nm": null
+      },
+      "uncertainty": {
+        "value": null,
+        "reason": "来源未给测量不确定度或批次分布；目录位数不是误差界限"
+      },
+      "status": "literature_reference",
+      "record_id": "IRP-001",
+      "state": "evaporated Patinal film",
+      "original_status": "catalog_typical",
+      "design_ready": false,
+      "registry_origin": "ir_property_records.json",
+      "research_path": "04_coating_and_substrate_materials/data/property_records.json",
+      "evidence_status": "literature_reference",
+      "machine_calibrated": false
+    },
+    {
+      "material_id": "ZnS_film",
+      "property": "refractive_index_n",
+      "value": 2.26,
+      "unit": "1",
+      "source_id": "IR01",
+      "conditions": {
+        "wavelength_um": 1,
+        "state": "evaporated Patinal film",
+        "measurement_temperature_C": null,
+        "thickness_nm": null
+      },
+      "uncertainty": {
+        "value": null,
+        "reason": "来源未给测量不确定度或批次分布；目录位数不是误差界限"
+      },
+      "status": "literature_reference",
+      "record_id": "IRP-002",
+      "state": "evaporated Patinal film",
+      "original_status": "catalog_typical",
+      "design_ready": false,
+      "registry_origin": "ir_property_records.json",
+      "research_path": "04_coating_and_substrate_materials/data/property_records.json",
+      "evidence_status": "literature_reference",
+      "machine_calibrated": false
+    },
+    {
+      "material_id": "ZnS_film",
+      "property": "refractive_index_n",
+      "value": 2.22,
+      "unit": "1",
+      "source_id": "IR01",
+      "conditions": {
+        "wavelength_um": 4,
+        "state": "evaporated Patinal film",
+        "measurement_temperature_C": null,
+        "thickness_nm": null
+      },
+      "uncertainty": {
+        "value": null,
+        "reason": "来源未给测量不确定度或批次分布；目录位数不是误差界限"
+      },
+      "status": "literature_reference",
+      "record_id": "IRP-003",
+      "state": "evaporated Patinal film",
+      "original_status": "catalog_typical",
+      "design_ready": false,
+      "registry_origin": "ir_property_records.json",
+      "research_path": "04_coating_and_substrate_materials/data/property_records.json",
+      "evidence_status": "literature_reference",
+      "machine_calibrated": false
+    },
+    {
+      "material_id": "ZnS_film",
+      "property": "refractive_index_n",
+      "value": 2.17,
+      "unit": "1",
+      "source_id": "IR01",
+      "conditions": {
+        "wavelength_um": 10,
+        "state": "evaporated Patinal film",
+        "measurement_temperature_C": null,
+        "thickness_nm": null
+      },
+      "uncertainty": {
+        "value": null,
+        "reason": "来源未给测量不确定度或批次分布；目录位数不是误差界限"
+      },
+      "status": "literature_reference",
+      "record_id": "IRP-004",
+      "state": "evaporated Patinal film",
+      "original_status": "catalog_typical",
+      "design_ready": false,
+      "registry_origin": "ir_property_records.json",
+      "research_path": "04_coating_and_substrate_materials/data/property_records.json",
+      "evidence_status": "literature_reference",
+      "machine_calibrated": false
+    },
+    {
+      "material_id": "ZnS_film",
+      "property": "refractive_index_n",
+      "value": 2.12,
+      "unit": "1",
+      "source_id": "IR01",
+      "conditions": {
+        "wavelength_um": 13,
+        "state": "evaporated Patinal film",
+        "measurement_temperature_C": null,
+        "thickness_nm": null
+      },
+      "uncertainty": {
+        "value": null,
+        "reason": "来源未给测量不确定度或批次分布；目录位数不是误差界限"
+      },
+      "status": "literature_reference",
+      "record_id": "IRP-005",
+      "state": "evaporated Patinal film",
+      "original_status": "catalog_typical",
+      "design_ready": false,
+      "registry_origin": "ir_property_records.json",
+      "research_path": "04_coating_and_substrate_materials/data/property_records.json",
+      "evidence_status": "literature_reference",
+      "machine_calibrated": false
+    },
+    {
+      "material_id": "ZnS_film",
+      "property": "refractive_index_n",
+      "value": 2.22,
+      "unit": "1",
+      "source_id": "IR02",
+      "conditions": {
+        "wavelength_um": 10,
+        "supplier": "Umicore",
+        "product": "0481699"
+      },
+      "uncertainty": {
+        "value": null,
+        "reason": "来源未给测量不确定度或批次分布；目录位数不是误差界限"
+      },
+      "status": "literature_reference",
+      "record_id": "IRP-006",
+      "state": "see_conditions_and_source_card",
+      "original_status": "separate_supplier_record",
+      "design_ready": false,
+      "registry_origin": "ir_property_records.json",
+      "research_path": "04_coating_and_substrate_materials/data/property_records.json",
+      "evidence_status": "literature_reference",
+      "machine_calibrated": false
+    },
+    {
+      "material_id": "ZnS_film",
+      "property": "extinction_coefficient_k",
+      "value": 3.85,
+      "unit": "1",
+      "source_id": "IR02",
+      "conditions": {
+        "wavelength_um": 0.55,
+        "raw_web_value": true
+      },
+      "uncertainty": {
+        "value": null,
+        "reason": "来源未给测量不确定度或批次分布；目录位数不是误差界限"
+      },
+      "status": "quarantined",
+      "notes": "与透明用途矛盾，疑似网页字段/指数错误，未擅自修正",
+      "record_id": "IRP-007",
+      "state": "see_conditions_and_source_card",
+      "original_status": "quarantined_do_not_use",
+      "design_ready": false,
+      "registry_origin": "ir_property_records.json",
+      "research_path": "04_coating_and_substrate_materials/data/property_records.json",
+      "evidence_status": "literature_reference",
+      "machine_calibrated": false
+    },
+    {
+      "material_id": "ZnS_film",
+      "property": "QCM_reference_density",
+      "value": 4.09,
+      "unit": "g/cm3",
+      "source_id": "IR01",
+      "conditions": {
+        "state": "instrument_setting_not_film_density"
+      },
+      "uncertainty": {
+        "value": null,
+        "reason": "来源未给测量不确定度或批次分布；目录位数不是误差界限"
+      },
+      "status": "literature_reference",
+      "record_id": "IRP-008",
+      "state": "instrument_setting_not_film_density",
+      "original_status": "catalog_typical",
+      "design_ready": false,
+      "registry_origin": "ir_property_records.json",
+      "research_path": "04_coating_and_substrate_materials/data/property_records.json",
+      "evidence_status": "literature_reference",
+      "machine_calibrated": false
+    },
+    {
+      "material_id": "ZnS_film",
+      "property": "deposition_rate_range",
+      "value": [
+        0.8,
+        2.5
+      ],
+      "unit": "nm/s",
+      "source_id": "IR01",
+      "conditions": {
+        "source": "resistive/electron_beam supplier guidance",
+        "substrate_temperature_C": [
+          150,
+          160
+        ]
+      },
+      "uncertainty": {
+        "value": null,
+        "reason": "来源未给测量不确定度或批次分布；目录位数不是误差界限"
+      },
+      "status": "literature_reference",
+      "record_id": "IRP-009",
+      "state": "see_conditions_and_source_card",
+      "original_status": "supplier_process_range",
+      "design_ready": false,
+      "registry_origin": "ir_property_records.json",
+      "research_path": "04_coating_and_substrate_materials/data/property_records.json",
+      "evidence_status": "literature_reference",
+      "machine_calibrated": false
+    },
+    {
+      "material_id": "ZnS_film",
+      "property": "thermal_conductivity",
+      "value": null,
+      "unit": "W/(m K)",
+      "source_id": null,
+      "conditions": {
+        "material_state": "ZnS_film"
+      },
+      "uncertainty": {
+        "value": null,
+        "reason": "未得到与本蒸发状态相符的数据，不以CVD块材代替"
+      },
+      "status": "unknown",
+      "notes": "未得到与本蒸发状态相符的数据，不以CVD块材代替",
+      "record_id": "IRP-010",
+      "state": "ZnS_film",
+      "original_status": "not_available",
+      "unknown_reason": "未得到与本蒸发状态相符的数据，不以CVD块材代替",
+      "design_ready": false,
+      "registry_origin": "ir_property_records.json",
+      "research_path": "04_coating_and_substrate_materials/data/property_records.json",
+      "evidence_status": "literature_reference",
+      "machine_calibrated": false
+    },
+    {
+      "record_id": "ZNS-CARD-ZRATIO",
+      "material_id": "ZnS",
+      "property": "QCM_z_ratio",
+      "value": 0.775,
+      "unit": "1",
+      "source_id": "IR01",
+      "status": "literature_reference",
+      "evidence_status": "literature_reference",
+      "machine_calibrated": false,
+      "conditions": {
+        "state": "QCM_instrument_setting"
+      },
+      "notes": "Supplier QCM setting; not an independently measured film acoustic parameter.",
+      "research_path": "04_coating_and_substrate_materials/cards/02_ZnS_film.md",
+      "uncertainty": {
+        "value": null,
+        "reason": "Not reported by the source; unknown is not zero."
+      }
+    },
+    {
+      "record_id": "ZNS-CARD-BULK-DENSITY",
+      "material_id": "ZnS",
+      "property": "theoretical_density",
+      "value": 4100,
+      "unit": "kg/m3",
+      "source_id": "IR02",
+      "status": "literature_reference",
+      "evidence_status": "literature_reference",
+      "machine_calibrated": false,
+      "conditions": {
+        "temperature_K": 293.15,
+        "state": "supplier_theoretical_bulk_material"
+      },
+      "notes": "Not powder-bed bulk density or deposited-film density. IR01 QCM 4090 kg/m3 remains a separate record.",
+      "research_path": "04_coating_and_substrate_materials/cards/02_ZnS_film.md",
+      "uncertainty": {
+        "value": null,
+        "reason": "Not reported by the source; unknown is not zero."
+      }
+    },
+    {
+      "record_id": "ZNS-CARD-N055",
+      "material_id": "ZnS",
+      "property": "refractive_index_n",
+      "value": 2.39,
+      "unit": "1",
+      "source_id": "IR02",
+      "status": "literature_reference",
+      "evidence_status": "literature_reference",
+      "machine_calibrated": false,
+      "conditions": {
+        "wavelength_um": 0.55,
+        "supplier": "Umicore",
+        "product": "0481699"
+      },
+      "notes": "Supplier-specific optical reference; extinction coefficient k remains quarantined.",
+      "research_path": "04_coating_and_substrate_materials/cards/02_ZnS_film.md",
+      "uncertainty": {
+        "value": null,
+        "reason": "Not reported by the source; unknown is not zero."
+      }
+    },
+    {
+      "record_id": "ZNS-CARD-P1",
+      "material_id": "ZnS",
+      "property": "vendor_vapor_pressure",
+      "value": 1,
+      "unit": "Pa",
+      "source_id": "IR02",
+      "status": "literature_reference",
+      "evidence_status": "literature_reference",
+      "machine_calibrated": false,
+      "conditions": {
+        "temperature_K": 1223.15,
+        "original_pressure_mbar": 0.01,
+        "original_temperature_C": 950,
+        "pressure_definition": "unspecified_total_or_species"
+      },
+      "notes": "Anchor only; not a source temperature setpoint and not a species partial pressure.",
+      "research_path": "04_coating_and_substrate_materials/cards/02_ZnS_film.md",
+      "uncertainty": {
+        "value": null,
+        "reason": "Not reported by the source; unknown is not zero."
+      }
+    },
+    {
+      "record_id": "ZNS-CARD-P10",
+      "material_id": "ZnS",
+      "property": "vendor_vapor_pressure",
+      "value": 10,
+      "unit": "Pa",
+      "source_id": "IR02",
+      "status": "literature_reference",
+      "evidence_status": "literature_reference",
+      "machine_calibrated": false,
+      "conditions": {
+        "temperature_K": 1343.15,
+        "original_pressure_mbar": 0.1,
+        "original_temperature_C": 1070,
+        "pressure_definition": "unspecified_total_or_species"
+      },
+      "notes": "Anchor only; not a source temperature setpoint and not a species partial pressure.",
+      "research_path": "04_coating_and_substrate_materials/cards/02_ZnS_film.md",
+      "uncertainty": {
+        "value": null,
+        "reason": "Not reported by the source; unknown is not zero."
+      }
+    },
+    {
+      "record_id": "ZNS-CARD-IR-RATE",
+      "material_id": "ZnS",
+      "property": "deposition_rate_range",
+      "value": [
+        0.8,
+        1.0
+      ],
+      "unit": "nm/s",
+      "source_id": "IR01",
+      "status": "literature_reference",
+      "evidence_status": "literature_reference",
+      "machine_calibrated": false,
+      "conditions": {
+        "application_wavelength_um": 10.6,
+        "pressure_mbar": [
+          1e-07,
+          1e-06
+        ]
+      },
+      "notes": "Supplier IR-use example, separate from general 0.8–2.5 nm/s advice; not used as an absolute mass-rate conversion.",
+      "research_path": "04_coating_and_substrate_materials/cards/02_ZnS_film.md",
+      "uncertainty": {
+        "value": null,
+        "reason": "Not reported by the source; unknown is not zero."
+      }
+    },
+    {
+      "record_id": "ZNS-CARD-IR01-SUBSTRATE",
+      "material_id": "ZnS",
+      "property": "substrate_temperature_guidance",
+      "value": [
+        423.15,
+        433.15
+      ],
+      "unit": "K",
+      "source_id": "IR01",
+      "status": "literature_reference",
+      "evidence_status": "literature_reference",
+      "machine_calibrated": false,
+      "conditions": {
+        "method": [
+          "resistive",
+          "electron_beam"
+        ],
+        "original_temperature_C": [
+          150,
+          160
+        ]
+      },
+      "notes": "Source-specific process advice; not a heat-solver boundary condition.",
+      "research_path": "04_coating_and_substrate_materials/cards/02_ZnS_film.md",
+      "uncertainty": {
+        "value": null,
+        "reason": "Not reported by the source; unknown is not zero."
+      }
+    },
+    {
+      "record_id": "ZNS-CARD-IR02-SUBSTRATE",
+      "material_id": "ZnS",
+      "property": "substrate_temperature_categories",
+      "value": {
+        "good_below_K": 373.15,
+        "possible_K": [
+          373.15,
+          473.15
+        ]
+      },
+      "unit": "K",
+      "source_id": "IR02",
+      "status": "literature_reference",
+      "evidence_status": "literature_reference",
+      "machine_calibrated": false,
+      "conditions": {
+        "product": "0481699"
+      },
+      "notes": "Separate supplier categories; do not combine with IR01 into one recipe.",
+      "research_path": "04_coating_and_substrate_materials/cards/02_ZnS_film.md",
+      "uncertainty": {
+        "value": null,
+        "reason": "Not reported by the source; unknown is not zero."
+      }
+    },
+    {
+      "record_id": "ZNS-CARD-IR01-CONTAINERS",
+      "material_id": "ZnS",
+      "property": "source_container_guidance",
+      "value": {
+        "boats": [
+          "Mo",
+          "Ta",
+          "Pt"
+        ],
+        "liners": [
+          "Mo",
+          "Ta",
+          "glassy_carbon"
+        ],
+        "indirect_heating_liners": [
+          "Al"
+        ]
+      },
+      "unit": "category",
+      "source_id": "IR01",
+      "status": "literature_reference",
+      "evidence_status": "literature_reference",
+      "machine_calibrated": false,
+      "conditions": {
+        "supplier": "Merck/EMD Patinal",
+        "methods": [
+          "resistive",
+          "electron_beam"
+        ]
+      },
+      "notes": "Indirect-heating Al liner category must not be interpreted as a direct-heating Al boat recommendation.",
+      "research_path": "04_coating_and_substrate_materials/cards/02_ZnS_film.md",
+      "uncertainty": {
+        "value": null,
+        "reason": "Supplier category; no transferable numeric uncertainty given."
+      }
+    },
+    {
+      "record_id": "ZNS-CARD-IR02-CONTAINERS",
+      "material_id": "ZnS",
+      "property": "source_container_guidance",
+      "value": {
+        "boats": [
+          "Mo",
+          "Ta"
+        ],
+        "liners": [
+          "Mo"
+        ]
+      },
+      "unit": "category",
+      "source_id": "IR02",
+      "status": "literature_reference",
+      "evidence_status": "literature_reference",
+      "machine_calibrated": false,
+      "conditions": {
+        "supplier": "Umicore",
+        "product": "0481699"
+      },
+      "notes": "Supplier/product-specific compatibility; does not provide heat-transfer or wall-transmission coefficients.",
+      "research_path": "04_coating_and_substrate_materials/cards/02_ZnS_film.md",
+      "uncertainty": {
+        "value": null,
+        "reason": "Supplier category; no transferable numeric uncertainty given."
+      }
+    },
+    {
+      "record_id": "ZNS-CARD-STRESS",
+      "material_id": "ZnS",
+      "property": "film_stress_sign",
+      "value": "compressive",
+      "unit": "1",
+      "source_id": "IR01",
+      "status": "literature_reference",
+      "evidence_status": "literature_reference",
+      "machine_calibrated": false,
+      "conditions": {
+        "state": "supplier typical evaporated film",
+        "magnitude_MPa": null
+      },
+      "notes": "No quantitative stress or universal stress cancellation claim.",
+      "research_path": "04_coating_and_substrate_materials/cards/02_ZnS_film.md",
+      "uncertainty": {
+        "value": null,
+        "reason": "Supplier category; no transferable numeric uncertainty given."
+      }
+    }
+  ],
+  "models": {
+    "zns_vendor_pressure_v1": {
+      "model_id": "zns_vendor_pressure_v1",
+      "label": "ZnS vendor two-anchor pressure interpolation",
+      "status": "literature_reference",
+      "relation_status": "engineering_interpolation_of_two_vendor_anchors",
+      "source_ids": [
+        "IR02"
+      ],
+      "research_paths": [
+        "04_coating_and_substrate_materials/cards/02_ZnS_film.md",
+        "99_sources/supplements/2026-10-04_zns_reuse_audit/data/parameters.json",
+        "99_sources/supplements/2026-10-04_zns_reuse_audit/README.md"
+      ],
+      "temperature_range_K": [
+        1223.15,
+        1343.15
+      ],
+      "formula": "log10(P/Pa)=A-B/T_K",
+      "coefficients": {
+        "A": 11.192916666666672,
+        "B_K": 13690.616020833342
+      },
+      "anchors": [
+        {
+          "T_K": 1223.15,
+          "P_Pa": 1
+        },
+        {
+          "T_K": 1343.15,
+          "P_Pa": 10
+        }
+      ],
+      "pressure_definition": "unspecified_total_or_species",
+      "allowed_for_species_HK": false,
+      "uncertainty": null,
+      "limitations": [
+        "Interpolation only, inclusive endpoints; no extrapolation.",
+        "Pressure definition is unspecified by vendor. No total-to-species or HK conversion.",
+        "Separate temperature domain and pressure definition from RI8301; never splice or average.",
+        "Interpolation slope is not an established dissociation enthalpy."
+      ]
+    },
+    "zns_ri8301_gas_v1": {
+      "model_id": "zns_ri8301_gas_v1",
+      "label": "ZnS RI8301 conditional gas-equilibrium source-flux reference",
+      "status": "literature_reference",
+      "source_ids": [
+        "ZNS01"
+      ],
+      "research_paths": [
+        "99_sources/supplements/2026-10-04_zns_reuse_audit/data/parameters.json",
+        "99_sources/supplements/2026-10-04_zns_reuse_audit/README.md"
+      ],
+      "formation_reaction": "Zn(g)+0.5 S2(g) -> ZnS(sphalerite)",
+      "dissociation_reaction": "ZnS(sphalerite) -> Zn(g)+0.5 S2(g)",
+      "temperature_range_K": [
+        1180,
+        1210
+      ],
+      "gibbs_formation_kcal_mol": {
+        "a": -92.72,
+        "b_per_K": 0.04817,
+        "reported_uncertainty": 0.65
+      },
+      "pressure_standard_Pa": 101325,
+      "pressure_definition": "species_partial_pressures",
+      "allowed_for_species_HK": true,
+      "phase": "sphalerite",
+      "assumptions": [
+        "Ideal gas, only Zn and S2 gas species, pure sphalerite activity 1.",
+        "Uniform specified gas/boundary temperature; no power-to-temperature calculation.",
+        "Closure and effective outgoing coefficients are explicit conditional scenarios; they are not measured RI8301 kinetics.",
+        "One-way outgoing flux only; no background condensation, pool/wall balance, substrate capture, reaction, film density or nm/s prediction."
+      ],
+      "limitations": [
+        "Use only within inclusive 1180–1210 K; no continuation using liquid-Zn reaction.",
+        "Coefficient uncertainty is conditional and omits model, phase, composition, alpha and transmission uncertainty.",
+        "Open solid-surface sublimation kinetics are not established by an equilibrium Knudsen-effusion scenario."
+      ]
+    }
+  },
+  "quarantined": [
+    {
+      "record_id": "ZNS-QUARANTINE-SOURCE-T",
+      "property": "evaporation_temperature",
+      "value_C": [
+        2000,
+        2200
+      ],
+      "source_id": "IR01",
+      "status": "quarantined",
+      "research_path": "04_coating_and_substrate_materials/cards/02_ZnS_film.md",
+      "reason": "Temperature definition conflicts with other evidence; not reconciled. Do not correct, use as setpoint, or infer enthalpy."
+    },
+    {
+      "material_id": "ZnS_film",
+      "property": "extinction_coefficient_k",
+      "value": 3.85,
+      "unit": "1",
+      "source_id": "IR02",
+      "conditions": {
+        "wavelength_um": 0.55,
+        "raw_web_value": true
+      },
+      "uncertainty": {
+        "value": null,
+        "reason": "来源未给测量不确定度或批次分布；目录位数不是误差界限"
+      },
+      "status": "quarantined",
+      "notes": "与透明用途矛盾，疑似网页字段/指数错误，未擅自修正",
+      "record_id": "IRP-007",
+      "state": "see_conditions_and_source_card",
+      "original_status": "quarantined_do_not_use",
+      "design_ready": false,
+      "registry_origin": "ir_property_records.json",
+      "research_path": "04_coating_and_substrate_materials/data/property_records.json",
+      "evidence_status": "literature_reference",
+      "machine_calibrated": false
+    },
+    {
+      "record_id": "ZNS-EXCLUDED-LIQUID-ZN",
+      "property": "gibbs_formation_liquid_zinc",
+      "value": {
+        "source": "ZNS01",
+        "reaction": "Zn(l)+0.5S2(g)->ZnS(sphalerite)",
+        "T_K": [
+          948,
+          1180
+        ],
+        "a_kcal_mol": -64.223,
+        "b_kcal_mol_K": 0.02402,
+        "uncertainty_kcal_mol": 0.65,
+        "status": "measured_emf_plus_reference_thermochemistry",
+        "usable_as_gas_dissociation": false
+      },
+      "source_id": "ZNS01",
+      "status": "excluded_from_gas_model",
+      "reason": "Contains Zn(l), not Zn(g); cannot reverse into a gas-dissociation relation."
+    }
+  ],
+  "unfilled_not_zero": [
+    "alpha_Zn(T,surface)",
+    "alpha_S2(T,surface)",
+    "ZnS_powder_k_eff(T,packing)",
+    "ZnS_powder_bulk_density",
+    "ZnS_Mo_contact_conductance",
+    "species_wall_sticking_and_residence_time",
+    "electron_energy_absorption_eta(V,T,composition)",
+    "gas_collision_cross_sections",
+    "deposit_sticking_and_reaction_rates"
+  ],
+  "defaults_prohibited": [
+    "material_specific_cosine_exponent_n",
+    "single_mass_ZnS_for_all_vapor",
+    "bulk_window_k_as_powder_k",
+    "vendor_temperature_as_machine_setpoint"
+  ],
+  "algorithm_provenance": [
+    {
+      "research_path": "05_evaporation_sources/models/source_reference.py",
+      "functions": [
+        "vapor_pressure_pa",
+        "hertz_knudsen_kg_m2_s"
+      ],
+      "reuse": "Inverse-temperature log-pressure interpolation and one-species SI HK mathematical kernels, adapted with explicit material domains and coefficients. No synthetic thermal solver imported."
+    },
+    {
+      "research_path": "05_evaporation_sources/round2_qcm_flux_transfer/models/qcm_flux.py",
+      "functions": [
+        "gas_impingement",
+        "species_elements"
+      ],
+      "reuse": "Species-particle to elemental-count and mass accounting, explicitly parameterized with Zn and S masses instead of the research Al/O defaults."
+    }
+  ],
+  "source_files": [
+    {
+      "research_path": "04_coating_and_substrate_materials/cards/02_ZnS_film.md",
+      "sha256": "ce4b6f0b8e6ae49fbab5d9ea4de180076b5a006246716662796f566563c70e26"
+    },
+    {
+      "research_path": "04_coating_and_substrate_materials/data/property_records.json",
+      "sha256": "f6ae994bd9a63f91cc937be61dd2deb4d80c5c9f1948a0dd093166fc0f0bb87f"
+    },
+    {
+      "research_path": "99_sources/supplements/2026-10-04_zns_reuse_audit/data/parameters.json",
+      "sha256": "2e4b9bc8465b8d91a42d237911564be1a6323e96079ccf899643c7bf7e81673b"
+    },
+    {
+      "research_path": "99_sources/supplements/2026-10-04_zns_reuse_audit/README.md",
+      "sha256": "6f4fbc17c1236f0bc5dacc8e5652125be65e0f7d77f301259bd4be0fb89d9724"
+    },
+    {
+      "research_path": "05_evaporation_sources/models/source_reference.py",
+      "sha256": "180fb1e9359c31855c0b9151d48071ec500627714c0ddd7095e91a903a65e842"
+    },
+    {
+      "research_path": "05_evaporation_sources/round2_qcm_flux_transfer/models/qcm_flux.py",
+      "sha256": "b5ab2e502613654059dfd8589f4664263fd70a46d48809d7ffb15a1aa29aeaed"
+    }
+  ],
+  "constants": {
+    "R_J_mol_K": 8.31446261815324,
+    "N_A_per_mol": 6.02214076e+23,
+    "k_B_J_K": 1.380649e-23,
+    "kcal_to_J": 4184,
+    "M_Zn_kg_mol": 0.06538,
+    "M_S_kg_mol": 0.03206,
+    "M_S2_kg_mol": 0.06412,
+    "mass_note": "Rounded elemental masses for reference arithmetic, not a ZnS vapor molecule."
+  }
+}

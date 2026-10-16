@@ -1,0 +1,26 @@
+{
+  "reviewed_utc": "2026-10-06",
+  "numeric_source_policy": "Official database YAML fixed by repository commit, plus NIST primary numerical Table 1. No numeric spectra inferred from overview pages.",
+  "access_limits": [
+    {"url":"https://gold.io.csic.es/wp-content/uploads/2020/05/2016-Self-consistent-optical-constants-of-SiO2-and-Ta2O5-films.pdf","result":"Timed out through web; numerical data and explicitly stated deposition conditions verified from official database YAML. Unseen experimental details left unknown."},
+    {"url":"https://gold.io.csic.es/wp-content/uploads/2020/05/2017-Self-consistent-optical-constants-of-MgF2LaF3-and-CeF3-films.pdf","result":"Timed out through web; author-supplied database numerical file used."},
+    {"url":"https://opg.optica.org/ao/abstract.cfm?uri=ao-59-5-A40","result":"Publisher citation/abstract readable; full article subscription-gated. Author-hosted numerical description readable and official author-supplied YAML used."},
+    {"url":"https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=921884","result":"Full NIST-hosted PDF text readable. Table 1 and Section 3.2 checked; screenshot tool unavailable. No screenshot claimed."}
+  ],
+  "excluded_material_roles": [
+    {"material_id":"K9_substrate","reason":"No unambiguous manufacturer-grade source newly verified in this bounded batch; do not alias to N-BK7 or H-K9L."},
+    {"material_id":"H4_film","reason":"Proprietary commercial composition/grade; no universal optical model manufactured."},
+    {"material_id":"ITO_film","reason":"Doping, oxygen/anneal and film-condition-specific constants not verified in this batch."}
+  ],
+  "not_imported_candidates": [
+    {"file":"quarantine/not_imported/Al2O3_Rodriguez_de_Marcos.yml","reason":"Source metadata says 2016/wrong journal-volume, while DOI/publisher issue identify Opt. Mater. Express 15(7),1750–1764 (2025). Raw model extends far beyond reported experimental coverage. Deferred, not silently corrected/imported.","primary_verification":"https://opg.optica.org/ome/issue.cfm?issue=7&tocid=1219051&volume=15"},
+    {"file":"quarantine/not_imported/Ge_Burnett.yml","reason":"Original Eq2/Table3 uses relative-to-air n with air wavelength, valid2.25–14µm; YAML declares2–14µm. Replaced with Table1 vacuum-wavelength/absolute-index numerical facts.","primary_verification":"https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=921884"},
+    {"file":"quarantine/not_imported/Al2O3_Boidin.yml","reason":"Valid alternate PLD n-only source not needed for bounded batch; not classified invalid."},
+    {"file":"quarantine/not_imported/TiO2_Siefke.yml","reason":"Broad ALD universal-dispersion model not needed after selection of explicit200°C amorphous and room-temperature sputtered groups; not classified invalid."}
+  ],
+  "bookkeeping_corrections": [
+    {"source":"SiO2/Malitson","raw_citation_pages":"1205–1208","publisher_pages":"1205–1209","handling":"Original archive unchanged; provenance records publisher correction.","primary_verification":"https://opg.optica.org/josa/abstract.cfm?uri=josa-55-10-1205"},
+    {"source":"Ge/Amotchkina-film","raw_comment":"Ge3/substratee typographical text","handling":"Film identity verified as Ge film using paper title and author numerical description. Original archive preserved."},
+    {"source":"ZnS/Amotchkina","comment_thickness_um":1.008,"structured_thickness_um":1.00,"handling":"Both source precision levels retained; no silent averaging."}
+  ]
+}

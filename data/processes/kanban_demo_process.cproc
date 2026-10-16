@@ -1,0 +1,17 @@
+{
+  "schema_version": 6,
+  "name": "看板娘演示单层工艺",
+  "machine_file": "../machines/kanban_demo_machine.cmac",
+  "substrate_file": "../substrates/kanban_demo_flat_disk.csub",
+  "steps": [
+    {
+      "source_slot": 1,
+      "target_nm": 100.0,
+      "rate_nm_s": 1.0,
+      "target_mode": "mean",
+      "mask_slots": []
+    }
+  ],
+  "notes": "以基片平均膜厚归一化到100 nm；无修正板。",
+  "description": "合成教学示例：单源单层100 nm工艺，未按实测设备校准。"
+}

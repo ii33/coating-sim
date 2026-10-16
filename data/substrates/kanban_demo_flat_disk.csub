@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "name": "看板娘演示平面圆片",
+  "outline": {
+    "kind": "circle",
+    "radius_mm": 150.0
+  },
+  "surface": {
+    "kind": "flat"
+  },
+  "notes": "默认演示方案。",
+  "description": "半径150 mm平面圆形基片"
+}

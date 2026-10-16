@@ -1,0 +1,50 @@
+[
+  {
+    "id": "ri_zns_amotchkina_n",
+    "n_samples": 3541,
+    "max_abs_n_error_at_31_points_per_interval": 4.999200520217073e-08,
+    "wavelength_um": 0.40305328369140625,
+    "tolerance": 1e-07,
+    "note": "numerical interpolation error only; not physical uncertainty or rigorous continuous supremum"
+  },
+  {
+    "id": "ri_zns_amotchkina_nk",
+    "n_samples": 2215,
+    "max_abs_n_error_at_31_points_per_interval": 4.999122893423191e-08,
+    "wavelength_um": 0.45039062500000004,
+    "tolerance": 1e-07,
+    "note": "numerical interpolation error only; not physical uncertainty or rigorous continuous supremum"
+  },
+  {
+    "id": "ri_ybf3_amotchkina_nk",
+    "n_samples": 151,
+    "max_abs_n_error_at_31_points_per_interval": 7.332578988439309e-12,
+    "wavelength_um": 9.026795,
+    "tolerance": 1e-07,
+    "note": "numerical interpolation error only; not physical uncertainty or rigorous continuous supremum"
+  },
+  {
+    "id": "ri_znse_amotchkina_n",
+    "n_samples": 4170,
+    "max_abs_n_error_at_31_points_per_interval": 4.999287206430836e-08,
+    "wavelength_um": 1.2092529296875,
+    "tolerance": 1e-07,
+    "note": "numerical interpolation error only; not physical uncertainty or rigorous continuous supremum"
+  },
+  {
+    "id": "ri_znse_amotchkina_nk",
+    "n_samples": 2623,
+    "max_abs_n_error_at_31_points_per_interval": 4.993875490910682e-08,
+    "wavelength_um": 0.5618750000000001,
+    "tolerance": 1e-07,
+    "note": "numerical interpolation error only; not physical uncertainty or rigorous continuous supremum"
+  },
+  {
+    "id": "ri_zns_debenham_n",
+    "n_samples": 3461,
+    "max_abs_n_error_at_31_points_per_interval": 4.9902429744008714e-08,
+    "wavelength_um": 0.4598686599731445,
+    "tolerance": 1e-07,
+    "note": "numerical interpolation error only; not physical uncertainty or rigorous continuous supremum"
+  }
+]

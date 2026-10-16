@@ -1,0 +1,361 @@
+{
+  "verified_at": "2026-10-07",
+  "context_capacity_catalog": {
+  "version": 1,
+  "verified_at": "2026-10-11",
+  "match_rule": "Normalize scheme/host and complete endpoint path; match model IDs exactly and case-sensitively. No prefix matching, plan transfer, or upstream aggregation transfer.",
+  "rounding_note": "Where a source states K/M without defining the unit, decimal Token values are used conservatively. A zero hard-limit field means unknown or no separately documented hard limit.",
+  "unknown_reasons": {
+    "volcengine_ark": "Official pay-as-you-go and Agent Plan capacity pages were not machine-readable; capacity remains unknown and plans are not conflated.",
+    "openrouter": "Rounded capacity and provider fallback make an exact endpoint hard limit ambiguous.",
+    "siliconflow": "No exact independent capacity evidence for this aggregator endpoint/model pair.",
+    "anthropic_compatible": "Native Messages capacity evidence does not establish OpenAI-compatible endpoint hard limits.",
+    "other_models": "No exact official endpoint/model capacity evidence is recorded."
+  },
+  "profiles": {
+    "https://api.deepseek.com/v1": {
+      "deepseek-flash": {"context_window_tokens": 1000000, "max_input_tokens": 0, "max_output_tokens": 384000, "sources": ["https://api-docs.deepseek.com/quick_start/pricing/"]},
+      "deepseek-v4-pro": {"context_window_tokens": 1000000, "max_input_tokens": 0, "max_output_tokens": 384000, "sources": ["https://api-docs.deepseek.com/quick_start/pricing/"]}
+    },
+    "https://api.openai.com/v1": {
+      "gpt-6-astra": {"context_window_tokens": 1050000, "max_input_tokens": 0, "max_output_tokens": 128000, "sources": ["https://developers.openai.com/api/docs/models/gpt-6-astra"]},
+      "gpt-6.1-sol": {"context_window_tokens": 1050000, "max_input_tokens": 0, "max_output_tokens": 128000, "sources": ["https://developers.openai.com/api/docs/models/gpt-6.1-sol"], "notes": "官方协议边界：工具调用需使用 Responses API；Chat Completions 仅支持无工具调用。此静态容量记录不表示当前客户端已验证支持 Responses API 工具调用。"},
+      "gpt-6-luna": {"context_window_tokens": 1050000, "max_input_tokens": 0, "max_output_tokens": 128000, "sources": ["https://developers.openai.com/api/docs/models/gpt-6-luna"]}
+    },
+    "https://open.bigmodel.cn/api/paas/v4": {
+      "glm-5.3": {"context_window_tokens": 1000000, "max_input_tokens": 0, "max_output_tokens": 128000, "sources": ["https://docs.bigmodel.cn/cn/guide/start/model-overview"]},
+      "glm-5.3-flash": {"context_window_tokens": 1000000, "max_input_tokens": 0, "max_output_tokens": 128000, "sources": ["https://docs.bigmodel.cn/cn/guide/start/model-overview"]},
+      "glm-5.2": {"context_window_tokens": 1000000, "max_input_tokens": 0, "max_output_tokens": 128000, "sources": ["https://docs.bigmodel.cn/cn/guide/start/model-overview"]}
+    },
+    "https://dashscope.aliyuncs.com/compatible-mode/v1": {
+      "qwen3.8-max": {"context_window_tokens": 1000000, "max_input_tokens": 983616, "max_output_tokens": 131072, "sources": ["https://help.aliyun.com/zh/model-studio/qwen3-8-max"], "notes": "Input cap is the conservative thinking-mode 983,616 Token value; non-thinking mode documents 991,808. Context value is conservatively decimal 1,000,000 Token."},
+      "qwen3.7-plus": {"context_window_tokens": 1000000, "max_input_tokens": 983616, "max_output_tokens": 131072, "sources": ["https://help.aliyun.com/zh/model-studio/qwen3-7-plus"], "notes": "Input cap is the conservative thinking-mode 983,616 Token value; non-thinking mode documents 991,808. Context value is conservatively decimal 1,000,000 Token."},
+      "qwen3.8-flash": {"context_window_tokens": 1000000, "max_input_tokens": 983616, "max_output_tokens": 131072, "sources": ["https://help.aliyun.com/zh/model-studio/qwen3-8-flash"], "notes": "Input cap is the conservative thinking-mode 983,616 Token value; non-thinking mode documents 991,808. Context value is conservatively decimal 1,000,000 Token."}
+    },
+    "https://dashscope-intl.aliyuncs.com/compatible-mode/v1": {
+      "qwen3.8-max": {"context_window_tokens": 1000000, "max_input_tokens": 983616, "max_output_tokens": 131072, "sources": ["https://help.aliyun.com/zh/model-studio/qwen3-8-max"], "notes": "Input cap is the conservative thinking-mode 983,616 Token value; non-thinking mode documents 991,808. Context value is conservatively decimal 1,000,000 Token."},
+      "qwen3.7-plus": {"context_window_tokens": 1000000, "max_input_tokens": 983616, "max_output_tokens": 131072, "sources": ["https://help.aliyun.com/zh/model-studio/qwen3-7-plus"], "notes": "Input cap is the conservative thinking-mode 983,616 Token value; non-thinking mode documents 991,808. Context value is conservatively decimal 1,000,000 Token."},
+      "qwen3.8-flash": {"context_window_tokens": 1000000, "max_input_tokens": 983616, "max_output_tokens": 131072, "sources": ["https://help.aliyun.com/zh/model-studio/qwen3-8-flash"], "notes": "Input cap is the conservative thinking-mode 983,616 Token value; non-thinking mode documents 991,808. Context value is conservatively decimal 1,000,000 Token."}
+    },
+    "https://generativelanguage.googleapis.com/v1beta/openai": {
+      "gemini-3.8-flash": {"context_window_tokens": 0, "max_input_tokens": 1048576, "max_output_tokens": 65536, "sources": ["https://ai.google.dev/gemini-api/docs/openai", "https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash"]},
+      "gemini-3.5-flash-lite": {"context_window_tokens": 0, "max_input_tokens": 1048576, "max_output_tokens": 65536, "sources": ["https://ai.google.dev/gemini-api/docs/openai", "https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite"]},
+      "gemini-3.1-pro-preview": {"context_window_tokens": 0, "max_input_tokens": 1048576, "max_output_tokens": 65536, "sources": ["https://ai.google.dev/gemini-api/docs/openai", "https://ai.google.dev/gemini-api/docs/models/gemini-3.1-pro-preview"]},
+      "gemini-3-flash-preview": {"context_window_tokens": 0, "max_input_tokens": 1048576, "max_output_tokens": 65536, "sources": ["https://ai.google.dev/gemini-api/docs/openai", "https://ai.google.dev/gemini-api/docs/models/gemini-3-flash-preview"]}
+    },
+    "https://api.minimax.cn/v1": {
+      "MiniMax-M3": {"context_window_tokens": 1000000, "max_input_tokens": 0, "max_output_tokens": 0, "sources": ["https://platform.minimax.cn/docs/api-reference/text-openai-api"], "notes": "Independent output hard limit is not documented in the reviewed endpoint page."},
+      "MiniMax-M2.7": {"context_window_tokens": 204800, "max_input_tokens": 0, "max_output_tokens": 0, "sources": ["https://platform.minimax.cn/docs/api-reference/text-openai-api"], "notes": "Independent output hard limit is not documented in the reviewed endpoint page."},
+      "MiniMax-M2.7-highspeed": {"context_window_tokens": 204800, "max_input_tokens": 0, "max_output_tokens": 0, "sources": ["https://platform.minimax.cn/docs/api-reference/text-openai-api"], "notes": "Independent output hard limit is not documented in the reviewed endpoint page."},
+      "MiniMax-M2.5": {"context_window_tokens": 204800, "max_input_tokens": 0, "max_output_tokens": 0, "sources": ["https://platform.minimax.cn/docs/api-reference/text-openai-api"], "notes": "Independent output hard limit is not documented in the reviewed endpoint page."}
+    },
+    "https://api.minimax.io/v1": {
+      "MiniMax-M3": {"context_window_tokens": 1000000, "max_input_tokens": 0, "max_output_tokens": 0, "sources": ["https://platform.minimax.io/docs/api-reference/text-openai-api"], "notes": "Independent output hard limit is not documented in the reviewed endpoint page."},
+      "MiniMax-M2.7": {"context_window_tokens": 204800, "max_input_tokens": 0, "max_output_tokens": 0, "sources": ["https://platform.minimax.io/docs/api-reference/text-openai-api"], "notes": "Independent output hard limit is not documented in the reviewed endpoint page."},
+      "MiniMax-M2.7-highspeed": {"context_window_tokens": 204800, "max_input_tokens": 0, "max_output_tokens": 0, "sources": ["https://platform.minimax.io/docs/api-reference/text-openai-api"], "notes": "Independent output hard limit is not documented in the reviewed endpoint page."},
+      "MiniMax-M2.5": {"context_window_tokens": 204800, "max_input_tokens": 0, "max_output_tokens": 0, "sources": ["https://platform.minimax.io/docs/api-reference/text-openai-api"], "notes": "Independent output hard limit is not documented in the reviewed endpoint page."}
+    },
+    "https://api.moonshot.cn/v1": {
+      "kimi-k3": {"context_window_tokens": 1000000, "max_input_tokens": 0, "max_output_tokens": 0, "sources": ["https://platform.kimi.com/docs/api/models-overview"], "notes": "Independent output hard limit is not documented in the reviewed endpoint page."},
+      "kimi-k2.7-code": {"context_window_tokens": 256000, "max_input_tokens": 0, "max_output_tokens": 0, "sources": ["https://platform.kimi.com/docs/api/models-overview"], "notes": "Independent output hard limit is not documented in the reviewed endpoint page."},
+      "kimi-k2.6": {"context_window_tokens": 256000, "max_input_tokens": 0, "max_output_tokens": 0, "sources": ["https://platform.kimi.com/docs/api/models-overview"], "notes": "Independent output hard limit is not documented in the reviewed endpoint page."}
+    },
+    "https://api.moonshot.ai/v1": {
+      "kimi-k3": {"context_window_tokens": 1000000, "max_input_tokens": 0, "max_output_tokens": 0, "sources": ["https://platform.kimi.ai/docs/api/models-overview"], "notes": "Independent output hard limit is not documented in the reviewed endpoint page."},
+      "kimi-k2.7-code": {"context_window_tokens": 256000, "max_input_tokens": 0, "max_output_tokens": 0, "sources": ["https://platform.kimi.ai/docs/api/models-overview"], "notes": "Independent output hard limit is not documented in the reviewed endpoint page."},
+      "kimi-k2.6": {"context_window_tokens": 256000, "max_input_tokens": 0, "max_output_tokens": 0, "sources": ["https://platform.kimi.ai/docs/api/models-overview"], "notes": "Independent output hard limit is not documented in the reviewed endpoint page."}
+    },
+    "https://api.groq.com/openai/v1": {
+      "openai/gpt-oss-120b": {"context_window_tokens": 131072, "max_input_tokens": 0, "max_output_tokens": 65536, "sources": ["https://console.groq.com/docs/models"], "notes": "Capacity does not establish entitlement; model availability is unchanged."},
+      "openai/gpt-oss-20b": {"context_window_tokens": 131072, "max_input_tokens": 0, "max_output_tokens": 65536, "sources": ["https://console.groq.com/docs/models"], "notes": "Capacity does not establish entitlement; model availability is unchanged."},
+      "qwen/qwen3.8-27b": {"context_window_tokens": 131072, "max_input_tokens": 0, "max_output_tokens": 16384, "sources": ["https://console.groq.com/docs/models"], "notes": "Capacity does not establish entitlement; model availability is unchanged."},
+      "llama-3.1-8b-instant": {"context_window_tokens": 131072, "max_input_tokens": 0, "max_output_tokens": 131072, "sources": ["https://console.groq.com/docs/models"], "notes": "Capacity does not establish entitlement; model availability is unchanged."},
+      "llama-3.3-70b-versatile": {"context_window_tokens": 131072, "max_input_tokens": 0, "max_output_tokens": 32768, "sources": ["https://console.groq.com/docs/models"], "notes": "Capacity does not establish entitlement; model availability is unchanged."}
+    },
+    "https://api.mistral.ai/v1": {
+      "mistral-medium-3-5": {"context_window_tokens": 256000, "max_input_tokens": 0, "max_output_tokens": 0, "sources": ["https://docs.mistral.ai/models/mistral-medium-3-5-26-04"], "notes": "Independent output hard limit is not documented in the reviewed model page."},
+      "mistral-small-2603": {"context_window_tokens": 256000, "max_input_tokens": 0, "max_output_tokens": 0, "sources": ["https://docs.mistral.ai/models/mistral-small-4-0-26-03"], "notes": "Independent output hard limit is not documented in the reviewed model page."},
+      "mistral-large-4": {"context_window_tokens": 1000000, "max_input_tokens": 0, "max_output_tokens": 0, "sources": ["https://docs.mistral.ai/models/mistral-large-4-0"], "notes": "Independent output hard limit is not documented in the reviewed model page."}
+    },
+    "https://api.x.ai/v1": {
+      "grok-4.7": {"context_window_tokens": 500000, "max_input_tokens": 0, "max_output_tokens": 0, "sources": ["https://docs.x.ai/developers/release-notes"], "notes": "Official page states no separate text output limit; request remains bounded by context window."},
+      "grok-4.6": {"context_window_tokens": 500000, "max_input_tokens": 0, "max_output_tokens": 0, "sources": ["https://docs.x.ai/developers/release-notes"], "notes": "Official page states no separate text output limit; request remains bounded by context window."},
+      "grok-4.3": {"context_window_tokens": 1000000, "max_input_tokens": 0, "max_output_tokens": 0, "sources": ["https://docs.x.ai/developers/models/grok-4.3"], "notes": "Independent output hard limit is unknown."}
+    }
+  }
+},
+  "presets": [
+    {
+      "id": "volcengine_ark_cn_beijing",
+      "name": "火山方舟 Ark（按量 API，北京）",
+      "display_hint": "北京按量 API。需普通 Ark 密钥并开通模型；调用可能单独计费。",
+      "url": "https://ark.cn-beijing.volces.com/api/v3",
+      "protocol": "openai_chat_completions",
+      "models": ["doubao-seed-2-1-pro-260915", "doubao-seed-2-1-lite-260915", "doubao-seed-evolving", "deepseek-v4-1-flash-260910", "glm-5-3-flash-260828"],
+      "additional": [],
+      "preview": [],
+      "selectable": true,
+      "notes": "Beijing pay-as-you-go endpoint. Requires normal Ark API key and model activation/permissions. Model IDs with date versions differ from Agent/Coding Plan model names. ep-* custom deployment IDs may be entered manually when owned/authorized; do not invent them.",
+      "sources": ["https://docs.volcengine.com/docs/ark/continuation-mode", "https://docs.volcengine.com/docs/ark/integrate-third-party-tools?lang=zh", "https://api.volcengine.com/api-docs/view?action=GetUsageDetails&amp;serviceCode=ark&amp;version=2024-01-01"]
+    },
+    {
+      "id": "volcengine_ark_agent_plan",
+      "name": "火山方舟 Ark Agent Plan（套餐）",
+      "display_hint": "Agent Plan 套餐端点，需专用密钥；模型权限随套餐等级变化。自建应用资格未确认，候选验证可能计费。",
+      "url": "https://ark.cn-beijing.volces.com/api/plan/v3",
+      "protocol": "openai_chat_completions",
+      "models": ["ark-code-latest", "doubao-seed-evolving", "doubao-seed-2.1-pro", "doubao-seed-2.1-lite", "deepseek-v4.1-flash", "deepseek-v4-pro", "glm-5.3", "glm-5.3-flash", "minimax-m3", "kimi-k2.7-code", "kimi-k3"],
+      "additional": ["doubao-seed-2.0-mini", "deepseek-v4-flash", "glm-latest"],
+      "preview": ["kimi-k2.8-preview"],
+      "selectable": true,
+      "notes": "Current official /api/plan/v3 is Agent Plan, not a deprecated alias for /api/coding/v3. Dedicated Agent Plan API key required. Small/Medium/Large/Max have different entitlements; Kimi K3 is documented for Medium and above. Preserve an existing /api/plan/v3 configuration. Official guides support OpenClaw, Hermes and research Agent tools.; Whether an arbitrary custom optical assistant or automated candidate probe is an allowed Agent Plan application was not conclusively verified. Do not transfer the Coding Plan-only restriction onto Agent Plan as fact, but do not claim blanket eligibility or automatically probe subscription candidates.",
+      "sources": ["https://docs.volcengine.com/docs/ark/agent-plan-personal-zcode?lang=zh", "https://docs.volcengine.com/docs/ark/agent-plan-personal-get-started?lang=zh", "https://docs.volcengine.com/docs/ark/list-ark-agent-plan-model-api?lang=en", "https://docs.volcengine.com/docs/ark/integrate-third-party-tools?lang=zh", "https://www.volcengine.com/activity/agentplan"]
+    },
+    {
+      "id": "volcengine_ark_coding_plan",
+      "name": "火山方舟 Ark Coding Plan（限指定用途）",
+      "display_hint": "Coding Plan 专供指定 AI 编程工具；额度不可用于普通自建应用，此项不可选。",
+      "url": "https://ark.cn-beijing.volces.com/api/coding/v3",
+      "protocol": "openai_chat_completions",
+      "models": ["ark-code-latest", "doubao-seed-evolving", "doubao-seed-2.1-pro", "doubao-seed-2.1-lite", "deepseek-v4.1-flash", "deepseek-v4-pro", "glm-5.3", "glm-5.3-flash", "minimax-m3", "kimi-k2.7-code"],
+      "additional": ["doubao-seed-2.0-mini", "deepseek-v4-flash", "glm-latest", "kimi-k3"],
+      "preview": ["kimi-k2.8-preview"],
+      "selectable": false,
+      "notes": "Coding Plan subscription and corresponding key required. /api/v3 is pay-as-you-go and can incur extra charges instead of consuming the Coding Plan allowance. Personal and enterprise documentation can differ in available model set.; Official documentation limits quota to AI coding tools and warns other use may suspend the subscription or account. This should not be offered as a ready-to-use general application backend preset.",
+      "sources": ["https://docs.volcengine.com/docs/ark/coding-plan-personal-ai-codex?lang=en", "https://docs.volcengine.com/docs/ark/coding-plan-personal-plan-overview?lang=zh", "https://api.volcengine.com/api-docs/view?action=GetUsageDetails&amp;serviceCode=ark&amp;version=2024-01-01"]
+    },
+    {
+      "id": "deepseek_official",
+      "name": "DeepSeek（官方 API）",
+      "display_hint": "OpenAI 兼容 Chat Completions；模型权限按账户开通情况决定，按服务商规则计费。",
+      "url": "https://api.deepseek.com",
+      "protocol": "openai_chat_completions",
+      "models": ["deepseek-flash", "deepseek-v4-pro"],
+      "additional": [],
+      "preview": [],
+      "selectable": true,
+      "notes": "Both models support thinking/non-thinking modes. deepseek-flash is the current API ID for DeepSeek V4.1 Flash; do not construct deepseek-v4.1 or deepseek4.1 as API IDs.",
+      "sources": ["https://api-docs.deepseek.com/en/", "https://api-docs.deepseek.com/api/list-models/", "https://api-docs.deepseek.com/quick_start/pricing/", "https://api-docs.deepseek.com/updates/"]
+    },
+    {
+      "id": "dashscope_cn",
+      "name": "阿里云百炼 DashScope（北京，按量）",
+      "display_hint": "中国区按量 API，密钥按地域区分；生产工作空间 URL 需填入实际工作空间 ID。",
+      "url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "protocol": "openai_chat_completions",
+      "models": ["qwen3.8-max", "qwen3.7-plus", "qwen3.8-flash", "qwen3-coder-plus"],
+      "additional": [],
+      "preview": [],
+      "selectable": true,
+      "notes": "API keys are region-specific. Shared DashScope domain remains available; official docs recommend the workspace domain https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1 for production. Never write a literal placeholder as a runnable URL without the workspace ID. Pay-as-you-go key is distinct from plan key.",
+      "sources": ["https://help.aliyun.com/en/model-studio/base-url", "https://help.aliyun.com/zh/model-studio/model-list-text-generation/", "https://help.aliyun.com/zh/model-studio/list-models", "https://help.aliyun.com/zh/model-studio/text-generation-model"]
+    },
+    {
+      "id": "dashscope_intl_singapore",
+      "name": "阿里云 Model Studio（新加坡，按量）",
+      "display_hint": "新加坡区按量 API，需国际区密钥与工作空间地址；权限不跨区域通用。",
+      "url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+      "protocol": "openai_chat_completions",
+      "models": ["qwen3.8-max", "qwen3.7-plus", "qwen3.8-flash", "qwen3-coder-plus"],
+      "additional": [],
+      "preview": [],
+      "selectable": true,
+      "notes": "Singapore-region API key required. Workspace production URL is https://{WorkspaceId}.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1. Region and service-deployment scope affect availability; do not assume China keys or model entitlements transfer.",
+      "sources": ["https://help.aliyun.com/en/model-studio/base-url", "https://help.aliyun.com/zh/model-studio/list-models", "https://help.aliyun.com/zh/model-studio/web-search", "https://help.aliyun.com/zh/model-studio/context-cache", "https://help.aliyun.com/zh/model-studio/qwen3-8-flash"]
+    },
+    {
+      "id": "dashscope_coding_plan_cn",
+      "name": "阿里云百炼 Coding Plan（中国，限指定用途）",
+      "display_hint": "中国区 Coding Plan 限指定交互式编程工具；自建后端与脚本不可用，此项不可选。",
+      "url": "https://coding.dashscope.aliyuncs.com/v1",
+      "protocol": "openai_chat_completions",
+      "models": ["qwen3.7-plus", "qwen3.6-plus", "kimi-k2.5", "glm-5", "MiniMax-M2.5"],
+      "additional": ["qwen3.5-plus", "qwen3-max-2026-01-23", "qwen3-coder-next", "qwen3-coder-plus", "glm-4.7"],
+      "preview": [],
+      "selectable": false,
+      "notes": "Dedicated sk-sp- plan key and plan URL must be paired. Current docs list exact supported versions; do not import newer pay-as-you-go or upstream provider IDs. Lite no longer available for new purchase/renewal; remaining subscriptions valid until expiration.; Official docs restrict use to interactive coding tools/OpenClaw-type Agents and disallow automated scripts, custom application backends and non-interactive batch use.",
+      "sources": ["https://help.aliyun.com/zh/model-studio/coding-plan", "https://help.aliyun.com/zh/model-studio/coding-plan-faq", "https://help.aliyun.com/zh/model-studio/more-tools"]
+    },
+    {
+      "id": "dashscope_coding_plan_intl",
+      "name": "Alibaba Cloud Coding Plan（国际，限指定用途）",
+      "display_hint": "国际 Coding Plan 仅限支持的交互式编程工具；需专用密钥，不可用于自建后端。",
+      "url": "https://coding-intl.dashscope.aliyuncs.com/v1",
+      "protocol": "openai_chat_completions",
+      "models": ["qwen3.7-plus", "qwen3.6-plus", "kimi-k2.5", "glm-5", "MiniMax-M2.5"],
+      "additional": ["qwen3.5-plus", "qwen3-max-2026-01-23", "qwen3-coder-next", "qwen3-coder-plus", "glm-4.7"],
+      "preview": [],
+      "selectable": false,
+      "notes": "International subscription and dedicated sk-sp- key. Official international Coding Plan overview was updated 2026-09-28. It independently confirms these model IDs and endpoints; this is not inferred from the China plan.; Interactive use in supported programming tools; automated scripts, application backends and non-interactive batch use prohibited by provider docs.",
+      "sources": ["https://www.alibabacloud.com/help/en/model-studio/coding-plan", "https://www.alibabacloud.com/help/en/model-studio/coding-plan-faq"]
+    },
+    {
+      "id": "zhipu_bigmodel_cn",
+      "name": "智谱 BigModel（标准 API）",
+      "display_hint": "中国区标准 API；与 GLM Coding Plan 使用不同端点和额度。",
+      "url": "https://open.bigmodel.cn/api/paas/v4",
+      "protocol": "openai_chat_completions",
+      "models": ["glm-5.3", "glm-5.3-flash", "glm-5.2"],
+      "additional": [],
+      "preview": [],
+      "selectable": true,
+      "notes": "Mainland BigModel standard API. Do not confuse with international Z.ai, Coding Plan endpoint or Coding Plan allowance. Shared Anthropic endpoint is documented; billing/eligibility depends on key and context, so default OpenAI path keeps standard-vs-Coding distinction explicit.",
+      "sources": ["https://docs.bigmodel.cn/cn/guide/develop/openai/introduction", "https://docs.bigmodel.cn/cn/guide/start/model-overview", "https://docs.bigmodel.cn/cn/guide/develop/claude/introduction.md", "https://docs.bigmodel.cn/llms.txt"]
+    },
+    {
+      "id": "zhipu_coding_plan_cn",
+      "name": "智谱 GLM Coding Plan（限指定工具）",
+      "display_hint": "Coding Plan 仅限官方支持工具；自建应用按标准 API 计费，此项不可选。",
+      "url": "https://open.bigmodel.cn/api/coding/paas/v4",
+      "protocol": "openai_chat_completions",
+      "models": ["glm-5.3", "glm-5.3-flash"],
+      "additional": [],
+      "preview": [],
+      "selectable": false,
+      "notes": "All current plan tiers support GLM-5.3 and GLM-5.3-Flash. GLM-5.2/5.1 automatically switch to 5.3; GLM-5-Turbo/4.7 switch to 5.3-Flash in the Coding Plan. Team plan key is distinct from other platform keys.; Only officially supported tools and product environments qualify for Coding Plan quota. Official FAQ directs self-built applications, websites, bots and SaaS to standard API billing.",
+      "sources": ["https://docs.bigmodel.cn/cn/coding-plan/overview", "https://docs.bigmodel.cn/cn/coding-plan/faq", "https://docs.bigmodel.cn/cn/coding-plan/tool/others.md"]
+    },
+    {
+      "id": "moonshot_kimi_cn",
+      "name": "Moonshot / Kimi（中国 API）",
+      "display_hint": "中国区 API，需中国区平台密钥；K3、K2.7-Code 的采样参数受限。",
+      "url": "https://api.moonshot.cn/v1",
+      "protocol": "openai_chat_completions",
+      "models": ["kimi-k3", "kimi-k2.7-code", "kimi-k2.6"],
+      "additional": [],
+      "preview": [],
+      "selectable": true,
+      "notes": "platform.kimi.com China API key; not interchangeable with platform.kimi.ai international key. Account tier controls access. Kimi Code subscription is not assumed equivalent to the open API account.; K3 always reasons and uses reasoning_effort low/high/max. Do not pass generic adjustable temperature defaults: K3 and K2.7-Code fix temperature=1 and top_p=0.95. A 400 caused by invalid sampling options must not mark model ID unavailable.",
+      "sources": ["https://platform.kimi.com/docs/api/overview", "https://platform.kimi.com/docs/api/models-overview", "https://platform.kimi.com/docs/api/list-models"]
+    },
+    {
+      "id": "moonshot_kimi_intl",
+      "name": "Moonshot / Kimi（国际 API）",
+      "display_hint": "国际 API，需国际区平台密钥；与中国区账户和密钥不通用。",
+      "url": "https://api.moonshot.ai/v1",
+      "protocol": "openai_chat_completions",
+      "models": ["kimi-k3", "kimi-k2.7-code", "kimi-k2.6"],
+      "additional": [],
+      "preview": [],
+      "selectable": true,
+      "notes": "platform.kimi.ai international API account. China and international keys cannot be mixed; candidate set remains subject to account tier and model-list result.",
+      "sources": ["https://platform.kimi.ai/docs/api/overview", "https://platform.kimi.ai/docs/api/models-overview", "https://platform.kimi.com/docs/api/list-models"]
+    },
+    {
+      "id": "minimax_cn",
+      "name": "MiniMax（中国 API）",
+      "display_hint": "中国区 API，需中国区平台账户；M Plan 与 Token Plan 权益不同，不自动迁移旧地址。",
+      "url": "https://api.minimax.cn/v1",
+      "protocol": "openai_chat_completions",
+      "models": ["MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.7-highspeed", "MiniMax-M2.5"],
+      "additional": [],
+      "preview": [],
+      "selectable": true,
+      "notes": "Current official Chinese docs use api.minimax.cn. Legacy platform.minimaxi.com docs redirect to platform.minimax.cn. M Plan/Token Plan are different billing entitlements; no automatic migration of an existing minimaxi URL is justified merely by this catalog.",
+      "sources": ["https://platform.minimax.cn/docs/api-reference/text-openai-api", "https://platform.minimax.cn/docs/api-reference/text-anthropic-api", "https://platform.minimax.cn/docs/api-reference/models/openai/list-models.md"]
+    },
+    {
+      "id": "minimax_intl",
+      "name": "MiniMax（国际 API）",
+      "display_hint": "国际 API，需国际区平台账户；地区和密钥不与中国区互通。",
+      "url": "https://api.minimax.io/v1",
+      "protocol": "openai_chat_completions",
+      "models": ["MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.7-highspeed", "MiniMax-M2.5"],
+      "additional": [],
+      "preview": [],
+      "selectable": true,
+      "notes": "International platform.minimax.io account; Chinese and international preset hosts are separate. Both OpenAI and Anthropic-compatible API formats are officially documented.",
+      "sources": ["https://platform.minimax.io/docs/api-reference/text-openai-api", "https://platform.minimax.io/docs/api-reference/models/openai/list-models", "https://platform.minimax.io/docs/api-reference/text-anthropic-api"]
+    },
+    {
+      "id": "siliconflow_cn",
+      "name": "硅基流动 SiliconFlow（中国）",
+      "display_hint": "中国区聚合推理服务；模型 ID 区分大小写，部分模型需实名或权限。",
+      "url": "https://api.siliconflow.cn/v1",
+      "protocol": "openai_chat_completions",
+      "models": ["deepseek-ai/DeepSeek-V4-Pro", "deepseek-ai/DeepSeek-V4-Flash", "Pro/zai-org/GLM-5.2", "moonshotai/Kimi-K2.7-Code"],
+      "additional": ["Pro/zai-org/GLM-5.1", "deepseek-ai/DeepSeek-V3.2", "Pro/deepseek-ai/DeepSeek-V3.2"],
+      "preview": [],
+      "selectable": true,
+      "notes": "Official infrastructure/model service provider. Full organization prefix and case are part of each ID. Provider catalog is not upstream provider catalog; DeepSeek upstream retirement does not establish SiliconFlow retirement. Real-name authentication or account permission may be required for some models.",
+      "sources": ["https://docs.siliconflow.cn/docs/api/models-get", "https://docs.siliconflow.cn/docs/api/chat-completions-post", "https://docs.siliconflow.cn/docs/api/messages-post", "https://docs.siliconflow.cn/docs/usercases/use-siliconcloud-in-OpenDesign", "https://docs.siliconflow.cn/docs/userguide/guides/json-mode"]
+    },
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "display_hint": "GPT-6 Astra / 6.1 Sol 工具调用需 Responses；GPT-6 Luna 仅关闭推理时可用 Chat 函数工具。",
+      "url": "https://api.openai.com/v1",
+      "protocol": "openai_chat_completions",
+      "models": ["gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna"],
+      "statuses": {"gpt-6-astra": "current_official_catalog", "gpt-6.1-sol": "current_official_catalog", "gpt-6-luna": "current_official_catalog"},
+      "notes": "协议说明核验日期：2026-10-12。仅针对此官方端点与精确模型 ID：GPT-6 Astra 和 GPT-6.1 Sol 可用 Chat Completions 做无工具请求，函数工具调用需 Responses；GPT-6 Luna 的 Chat 函数工具仅 reasoning_effort=none，推理加工具需 Responses。供应商内建工具另有 Responses 要求，不能据此推断其他模型、聚合器或兼容服务的普通函数工具也需 Responses。推理非 none 时不能照搬 temperature/top_p/logprobs 参数。目录能力不代表账号权限或真实端点验收；本应用实际支持范围以助手协议契约和请求前检查为准。",
+      "sources": ["https://developers.openai.com/api/docs/models", "https://developers.openai.com/api/docs/models/gpt-6-astra", "https://developers.openai.com/api/docs/models/gpt-6.1-sol", "https://developers.openai.com/api/docs/models/gpt-6-luna", "https://developers.openai.com/api/docs/guides/latest-model", "https://developers.openai.com/api/reference/resources/models/methods/list"]
+    },
+    {
+      "id": "anthropic",
+      "name": "Anthropic / Claude",
+      "display_hint": "Anthropic OpenAI 兼容入口（非原生 Messages）；工具、缓存、音频等功能受限，本应用不适配原生 Messages。",
+      "url": "https://api.anthropic.com/v1/",
+      "protocol": "openai_chat_completions",
+      "models": ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-1"],
+      "statuses": {"claude-opus-5-5": "current_official_catalog", "claude-sonnet-5-5": "current_official_catalog", "claude-haiku-5-5": "current_official_catalog", "claude-fable-5-1": "current_official_catalog"},
+      "notes": "原生 Messages 的请求体、系统提示、工具与流式事件不同于 OpenAI；不可只改 URL 假装完成适配。; 官方兼容层另行存在，定位测试比较；strict、prompt caching、audio 等存在限制或忽略字段。生产功能优先原生 Messages。; Models API 可返回 capabilities、token limits、line；不应仅靠 ID 字符串猜能力或分组。",
+      "sources": ["https://platform.claude.com/docs/en/models/overview", "https://platform.claude.com/docs/en/api/overview", "https://platform.claude.com/docs/en/api/models/list", "https://platform.claude.com/docs/en/cli-sdks-libraries/libraries/openai-sdk"]
+    },
+    {
+      "id": "google_gemini",
+      "name": "Google Gemini (Developer API)",
+      "display_hint": "Gemini Developer API 兼容入口（非 Vertex AI）；预览模型与原生接口能力有差异。",
+      "url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+      "protocol": "openai_chat_completions",
+      "models": ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview", "gemini-3-flash-preview"],
+      "statuses": {"gemini-3.8-flash": "stable", "gemini-3.7-flash": "stable_previous_generation", "gemini-3.5-flash-lite": "stable", "gemini-3.1-pro-preview": "preview", "gemini-3-flash-preview": "preview"},
+      "notes": "本项是 Gemini Developer API，不是 Vertex AI。; 官方兼容入口支持 models.list，但并非原生 generateContent 的请求体。; 2.5 系列官方当前限制为此前活跃使用者；不应作为新用户通用默认。Preview 需标注。",
+      "sources": ["https://ai.google.dev/gemini-api/docs/models", "https://ai.google.dev/gemini-api/docs/openai", "https://ai.google.dev/api/models", "https://ai.google.dev/api/generate-content"]
+    },
+    {
+      "id": "xai",
+      "name": "xAI / Grok",
+      "display_hint": "全球默认区域 Chat Completions；区域模型不同，新功能优先 Responses。",
+      "url": "https://api.x.ai/v1",
+      "protocol": "openai_chat_completions",
+      "models": ["grok-4.7", "grok-4.6", "grok-4.3"],
+      "statuses": {"grok-4.7": "current_flagship", "grok-4.6": "documented_previous_generation", "grok-4.3": "documented_previous_generation"},
+      "notes": "OpenAI SDK 的 Chat Completions / Responses 均有官方入口；新集成优先 Responses。; 全球默认地址与 US 区域地址分开；区域模型集合不同，本项不切换到 US 区域。; grok-3、grok-4-0709、grok-4-1-fast-* 等旧 slug 已发生退休重定向，不作为当前独立模型种子。",
+      "sources": ["https://docs.x.ai/developers/models", "https://docs.x.ai/developers/models/grok-4.3", "https://docs.x.ai/developers/advanced-api-usage/regions", "https://docs.x.ai/developers/model-capabilities/legacy/chat-completions", "https://docs.x.ai/developers/rest-api-reference/inference/models", "https://docs.x.ai/developers/migration/may-15-retirement"]
+    },
+    {
+      "id": "mistral",
+      "name": "Mistral AI",
+      "display_hint": "OpenAI 兼容 Chat Completions；Large 4 为公开预览，Small 4 的 API ID 为 mistral-small-2603。",
+      "url": "https://api.mistral.ai/v1",
+      "protocol": "openai_chat_completions",
+      "models": ["mistral-medium-3-5", "mistral-small-2603", "mistral-large-4"],
+      "statuses": {"mistral-medium-3-5": "ga", "mistral-small-2603": "ga", "mistral-large-4": "public_preview"},
+      "notes": "官方迁移指南明确支持 OpenAI-compatible client。; Small 4 的 ID 是 mistral-small-2603，不是照展示名推断出的 mistral-small-4。; Large 4 于官方页标 Public Preview；不将它标成 GA。",
+      "sources": ["https://docs.mistral.ai/resources/migration-guides", "https://docs.mistral.ai/api/endpoint/models", "https://docs.mistral.ai/models/mistral-medium-3-5-26-04", "https://docs.mistral.ai/models/mistral-small-4-0-26-03", "https://docs.mistral.ai/models/mistral-large-4-0"]
+    },
+    {
+      "id": "groq",
+      "name": "Groq",
+      "display_hint": "托管推理 API；Preview/Enterprise 模型可能有权限限制，部分 OpenAI 参数不支持。",
+      "url": "https://api.groq.com/openai/v1",
+      "protocol": "openai_chat_completions",
+      "models": ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b", "llama-3.3-70b-versatile", "llama-3.1-8b-instant"],
+      "statuses": {"openai/gpt-oss-120b": "production", "openai/gpt-oss-20b": "production", "qwen/qwen3.8-27b": "preview", "llama-3.3-70b-versatile": "enterprise", "llama-3.1-8b-instant": "enterprise"},
+      "notes": "Groq 是推理服务商，GPT-OSS/Qwen/Llama 的模型作者不是 Groq。; Enterprise 条目不应宣称普通 key 可用；Preview 不保证生产稳定性。; 兼容层有不支持的字段；勿发送未验证的 logprobs、logit_bias、top_logprobs、messages[].name 或 n&gt;1。",
+      "sources": ["https://console.groq.com/docs/models", "https://console.groq.com/docs/openai", "https://console.groq.com/docs/deprecations"]
+    },
+    {
+      "id": "openrouter",
+      "name": "OpenRouter (聚合服务)",
+      "display_hint": "模型聚合与路由服务，使用 OpenRouter 账户和计费；上游可用性、区域与参数支持各异。",
+      "url": "https://openrouter.ai/api/v1",
+      "protocol": "openai_chat_completions",
+      "models": ["openai/gpt-6.1-sol", "anthropic/claude-opus-5.5", "google/gemini-3.8-flash"],
+      "statuses": {"openai/gpt-6.1-sol": "documented_openrouter_catalog", "anthropic/claude-opus-5.5": "documented_openrouter_catalog", "google/gemini-3.8-flash": "documented_openrouter_catalog"},
+      "notes": "聚合服务，不是这些模型的原厂直连；使用 OpenRouter key、计费与路由。; 保留完整 provider/model ID；不能把 Anthropic 原厂 claude-opus-5-5 拼成 OpenRouter ID，OpenRouter 此项使用 claude-opus-5.5。; 目录只证明平台文档列出模型；具体可路由上游、地区、权限与 supported_parameters 需按发现结果判断。",
+      "sources": ["https://openrouter.ai/docs/quickstart", "https://openrouter.ai/docs/api/api-reference/models/list-all-models-and-their-properties", "https://openrouter.ai/openai/gpt-6.1-sol/providers", "https://openrouter.ai/anthropic/claude-opus-5.5", "https://openrouter.ai/google/gemini-3.8-flash"]
+    }
+  ]
+}

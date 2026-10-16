@@ -1,0 +1,614 @@
+{
+  "status": "passed",
+  "material_count": 15,
+  "set_count": 23,
+  "unknown_k_set_count": 7,
+  "csv_roundtrip_count": 23,
+  "source_identity_check": "all source-table values equal original YAML",
+  "sets": [
+    {
+      "id": "ri_ta2o5_rodriguez_de_marcos",
+      "material_id": "Ta2O5_film",
+      "role": "film",
+      "name_length": 22,
+      "kind": "tabulated",
+      "samples": 212,
+      "valid_domain_um": [
+        0.0294938,
+        1.51429
+      ],
+      "unknown_k_preserved": false,
+      "checks": [
+        "strict_schema",
+        "material_profile_schema",
+        "immutable_research_snapshot",
+        "target_role_identity",
+        "raw_sha256",
+        "endpoint_nm_um_equivalence",
+        "reject_extrapolation",
+        "csv_roundtrip",
+        "condition_notes"
+      ],
+      "max_csv_vs_json_n_error_251_checks": 0.0,
+      "status": "passed"
+    },
+    {
+      "id": "ri_sio2_rodriguez_de_marcos",
+      "material_id": "SiO2_film",
+      "role": "film",
+      "name_length": 22,
+      "kind": "tabulated",
+      "samples": 395,
+      "valid_domain_um": [
+        0.0299714,
+        1.51066
+      ],
+      "unknown_k_preserved": false,
+      "checks": [
+        "strict_schema",
+        "material_profile_schema",
+        "immutable_research_snapshot",
+        "target_role_identity",
+        "raw_sha256",
+        "endpoint_nm_um_equivalence",
+        "reject_extrapolation",
+        "csv_roundtrip",
+        "condition_notes"
+      ],
+      "max_csv_vs_json_n_error_251_checks": 0.0,
+      "status": "passed"
+    },
+    {
+      "id": "ri_sio2_kischkat",
+      "material_id": "SiO2_film",
+      "role": "film",
+      "name_length": 18,
+      "kind": "tabulated",
+      "samples": 1451,
+      "valid_domain_um": [
+        1.53846,
+        14.28571
+      ],
+      "unknown_k_preserved": false,
+      "checks": [
+        "strict_schema",
+        "material_profile_schema",
+        "immutable_research_snapshot",
+        "target_role_identity",
+        "raw_sha256",
+        "endpoint_nm_um_equivalence",
+        "reject_extrapolation",
+        "csv_roundtrip",
+        "condition_notes"
+      ],
+      "max_csv_vs_json_n_error_251_checks": 0.0,
+      "status": "passed"
+    },
+    {
+      "id": "ri_mgf2_rodriguez_de_marcos",
+      "material_id": "MgF2_film",
+      "role": "film",
+      "name_length": 22,
+      "kind": "tabulated",
+      "samples": 960,
+      "valid_domain_um": [
+        0.0299919,
+        2.00146
+      ],
+      "unknown_k_preserved": false,
+      "checks": [
+        "strict_schema",
+        "material_profile_schema",
+        "immutable_research_snapshot",
+        "target_role_identity",
+        "raw_sha256",
+        "endpoint_nm_um_equivalence",
+        "reject_extrapolation",
+        "csv_roundtrip",
+        "condition_notes"
+      ],
+      "max_csv_vs_json_n_error_251_checks": 0.0,
+      "status": "passed"
+    },
+    {
+      "id": "ri_tio2_jolivet_amorphous",
+      "material_id": "TiO2_film",
+      "role": "film",
+      "name_length": 23,
+      "kind": "tabulated",
+      "samples": 451,
+      "valid_domain_um": [
+        0.20664,
+        0.82656
+      ],
+      "unknown_k_preserved": false,
+      "checks": [
+        "strict_schema",
+        "material_profile_schema",
+        "immutable_research_snapshot",
+        "target_role_identity",
+        "raw_sha256",
+        "endpoint_nm_um_equivalence",
+        "reject_extrapolation",
+        "csv_roundtrip",
+        "condition_notes"
+      ],
+      "max_csv_vs_json_n_error_251_checks": 0.0,
+      "status": "passed"
+    },
+    {
+      "id": "ri_tio2_kischkat",
+      "material_id": "TiO2_film",
+      "role": "film",
+      "name_length": 18,
+      "kind": "tabulated",
+      "samples": 1451,
+      "valid_domain_um": [
+        1.53846,
+        14.28571
+      ],
+      "unknown_k_preserved": false,
+      "checks": [
+        "strict_schema",
+        "material_profile_schema",
+        "immutable_research_snapshot",
+        "target_role_identity",
+        "raw_sha256",
+        "endpoint_nm_um_equivalence",
+        "reject_extrapolation",
+        "csv_roundtrip",
+        "condition_notes"
+      ],
+      "max_csv_vs_json_n_error_251_checks": 0.0,
+      "status": "passed"
+    },
+    {
+      "id": "ri_al2o3_kischkat",
+      "material_id": "Al2O3_film",
+      "role": "film",
+      "name_length": 18,
+      "kind": "tabulated",
+      "samples": 1450,
+      "valid_domain_um": [
+        1.53941,
+        14.28571
+      ],
+      "unknown_k_preserved": false,
+      "checks": [
+        "strict_schema",
+        "material_profile_schema",
+        "immutable_research_snapshot",
+        "target_role_identity",
+        "raw_sha256",
+        "endpoint_nm_um_equivalence",
+        "reject_extrapolation",
+        "csv_roundtrip",
+        "condition_notes"
+      ],
+      "max_csv_vs_json_n_error_251_checks": 0.0,
+      "status": "passed"
+    },
+    {
+      "id": "ri_al2o3_zhukovsky",
+      "material_id": "Al2O3_film",
+      "role": "film",
+      "name_length": 23,
+      "kind": "tabulated",
+      "samples": 700,
+      "valid_domain_um": [
+        0.211002,
+        1.689842
+      ],
+      "unknown_k_preserved": false,
+      "checks": [
+        "strict_schema",
+        "material_profile_schema",
+        "immutable_research_snapshot",
+        "target_role_identity",
+        "raw_sha256",
+        "endpoint_nm_um_equivalence",
+        "reject_extrapolation",
+        "csv_roundtrip",
+        "condition_notes"
+      ],
+      "max_csv_vs_json_n_error_251_checks": 0.0,
+      "status": "passed"
+    },
+    {
+      "id": "ri_zns_amotchkina_n",
+      "material_id": "ZnS_film",
+      "role": "film",
+      "name_length": 26,
+      "kind": "tabulated",
+      "samples": 3541,
+      "valid_domain_um": [
+        0.4,
+        12
+      ],
+      "unknown_k_preserved": true,
+      "checks": [
+        "strict_schema",
+        "material_profile_schema",
+        "immutable_research_snapshot",
+        "target_role_identity",
+        "raw_sha256",
+        "endpoint_nm_um_equivalence",
+        "reject_extrapolation",
+        "csv_roundtrip",
+        "condition_notes"
+      ],
+      "max_csv_vs_json_n_error_251_checks": 0.0,
+      "status": "passed"
+    },
+    {
+      "id": "ri_zns_amotchkina_nk",
+      "material_id": "ZnS_film",
+      "role": "film",
+      "name_length": 27,
+      "kind": "tabulated",
+      "samples": 2215,
+      "valid_domain_um": [
+        0.4,
+        1.0
+      ],
+      "unknown_k_preserved": false,
+      "checks": [
+        "strict_schema",
+        "material_profile_schema",
+        "immutable_research_snapshot",
+        "target_role_identity",
+        "raw_sha256",
+        "endpoint_nm_um_equivalence",
+        "reject_extrapolation",
+        "csv_roundtrip",
+        "condition_notes"
+      ],
+      "max_csv_vs_json_n_error_251_checks": 0.0,
+      "status": "passed"
+    },
+    {
+      "id": "ri_ybf3_amotchkina_n",
+      "material_id": "YbF3_film",
+      "role": "film",
+      "name_length": 26,
+      "kind": "cauchy",
+      "samples": 0,
+      "valid_domain_um": [
+        0.4,
+        12
+      ],
+      "unknown_k_preserved": true,
+      "checks": [
+        "strict_schema",
+        "material_profile_schema",
+        "immutable_research_snapshot",
+        "target_role_identity",
+        "raw_sha256",
+        "endpoint_nm_um_equivalence",
+        "reject_extrapolation",
+        "csv_roundtrip",
+        "condition_notes"
+      ],
+      "max_csv_vs_json_n_error_251_checks": 4.982567980427177e-08,
+      "status": "passed"
+    },
+    {
+      "id": "ri_ybf3_amotchkina_nk",
+      "material_id": "YbF3_film",
+      "role": "film",
+      "name_length": 27,
+      "kind": "tabulated",
+      "samples": 151,
+      "valid_domain_um": [
+        9.0168,
+        12
+      ],
+      "unknown_k_preserved": false,
+      "checks": [
+        "strict_schema",
+        "material_profile_schema",
+        "immutable_research_snapshot",
+        "target_role_identity",
+        "raw_sha256",
+        "endpoint_nm_um_equivalence",
+        "reject_extrapolation",
+        "csv_roundtrip",
+        "condition_notes"
+      ],
+      "max_csv_vs_json_n_error_251_checks": 0.0,
+      "status": "passed"
+    },
+    {
+      "id": "ri_ge_amotchkina_film",
+      "material_id": "Ge_film",
+      "role": "film",
+      "name_length": 23,
+      "kind": "tabulated",
+      "samples": 1721,
+      "valid_domain_um": [
+        0.4,
+        12
+      ],
+      "unknown_k_preserved": false,
+      "checks": [
+        "strict_schema",
+        "material_profile_schema",
+        "immutable_research_snapshot",
+        "target_role_identity",
+        "raw_sha256",
+        "endpoint_nm_um_equivalence",
+        "reject_extrapolation",
+        "csv_roundtrip",
+        "condition_notes"
+      ],
+      "max_csv_vs_json_n_error_251_checks": 0.0,
+      "status": "passed"
+    },
+    {
+      "id": "ri_al_mcpeak",
+      "material_id": "Al_film",
+      "role": "film",
+      "name_length": 22,
+      "kind": "tabulated",
+      "samples": 297,
+      "valid_domain_um": [
+        0.15,
+        1.7
+      ],
+      "unknown_k_preserved": false,
+      "checks": [
+        "strict_schema",
+        "material_profile_schema",
+        "immutable_research_snapshot",
+        "target_role_identity",
+        "raw_sha256",
+        "endpoint_nm_um_equivalence",
+        "reject_extrapolation",
+        "csv_roundtrip",
+        "condition_notes"
+      ],
+      "max_csv_vs_json_n_error_251_checks": 0.0,
+      "status": "passed"
+    },
+    {
+      "id": "ri_cu_mcpeak",
+      "material_id": "Cu_film",
+      "role": "film",
+      "name_length": 23,
+      "kind": "tabulated",
+      "samples": 141,
+      "valid_domain_um": [
+        0.3,
+        1.7
+      ],
+      "unknown_k_preserved": false,
+      "checks": [
+        "strict_schema",
+        "material_profile_schema",
+        "immutable_research_snapshot",
+        "target_role_identity",
+        "raw_sha256",
+        "endpoint_nm_um_equivalence",
+        "reject_extrapolation",
+        "csv_roundtrip",
+        "condition_notes"
+      ],
+      "max_csv_vs_json_n_error_251_checks": 0.0,
+      "status": "passed"
+    },
+    {
+      "id": "ri_cr_johnson",
+      "material_id": "Cr_film",
+      "role": "film",
+      "name_length": 17,
+      "kind": "tabulated",
+      "samples": 49,
+      "valid_domain_um": [
+        0.188,
+        1.937
+      ],
+      "unknown_k_preserved": false,
+      "checks": [
+        "strict_schema",
+        "material_profile_schema",
+        "immutable_research_snapshot",
+        "target_role_identity",
+        "raw_sha256",
+        "endpoint_nm_um_equivalence",
+        "reject_extrapolation",
+        "csv_roundtrip",
+        "condition_notes"
+      ],
+      "max_csv_vs_json_n_error_251_checks": 0.0,
+      "status": "passed"
+    },
+    {
+      "id": "ri_sio2_malitson",
+      "material_id": "fused_silica_method_demonstrator",
+      "role": "substrate",
+      "name_length": 20,
+      "kind": "sellmeier",
+      "samples": 0,
+      "valid_domain_um": [
+        0.21,
+        3.71
+      ],
+      "unknown_k_preserved": true,
+      "checks": [
+        "strict_schema",
+        "material_profile_schema",
+        "immutable_research_snapshot",
+        "target_role_identity",
+        "raw_sha256",
+        "endpoint_nm_um_equivalence",
+        "reject_extrapolation",
+        "csv_roundtrip",
+        "condition_notes"
+      ],
+      "max_csv_vs_json_n_error_251_checks": 4.7467963115721545e-08,
+      "status": "passed"
+    },
+    {
+      "id": "ri_ge_amotchkina",
+      "material_id": "Ge_substrate",
+      "role": "substrate",
+      "name_length": 21,
+      "kind": "tabulated",
+      "samples": 628,
+      "valid_domain_um": [
+        0.4,
+        11.0
+      ],
+      "unknown_k_preserved": false,
+      "checks": [
+        "strict_schema",
+        "material_profile_schema",
+        "immutable_research_snapshot",
+        "target_role_identity",
+        "raw_sha256",
+        "endpoint_nm_um_equivalence",
+        "reject_extrapolation",
+        "csv_roundtrip",
+        "condition_notes"
+      ],
+      "max_csv_vs_json_n_error_251_checks": 0.0,
+      "status": "passed"
+    },
+    {
+      "id": "ri_ge_burnett2016_table1_vacuum",
+      "material_id": "Ge_substrate",
+      "role": "substrate",
+      "name_length": 22,
+      "kind": "tabulated",
+      "samples": 17,
+      "valid_domain_um": [
+        2.25,
+        14.0
+      ],
+      "unknown_k_preserved": true,
+      "checks": [
+        "strict_schema",
+        "material_profile_schema",
+        "immutable_research_snapshot",
+        "target_role_identity",
+        "raw_sha256",
+        "endpoint_nm_um_equivalence",
+        "reject_extrapolation",
+        "csv_roundtrip",
+        "condition_notes"
+      ],
+      "max_csv_vs_json_n_error_251_checks": 0.0,
+      "status": "passed"
+    },
+    {
+      "id": "ri_znse_connolly",
+      "material_id": "ZnSe_substrate",
+      "role": "substrate",
+      "name_length": 27,
+      "kind": "sellmeier",
+      "samples": 0,
+      "valid_domain_um": [
+        0.54,
+        18.2
+      ],
+      "unknown_k_preserved": true,
+      "checks": [
+        "strict_schema",
+        "material_profile_schema",
+        "immutable_research_snapshot",
+        "target_role_identity",
+        "raw_sha256",
+        "endpoint_nm_um_equivalence",
+        "reject_extrapolation",
+        "csv_roundtrip",
+        "condition_notes"
+      ],
+      "max_csv_vs_json_n_error_251_checks": 4.857752289311179e-08,
+      "status": "passed"
+    },
+    {
+      "id": "ri_znse_amotchkina_n",
+      "material_id": "ZnSe_substrate",
+      "role": "substrate",
+      "name_length": 21,
+      "kind": "tabulated",
+      "samples": 4170,
+      "valid_domain_um": [
+        0.4,
+        12
+      ],
+      "unknown_k_preserved": true,
+      "checks": [
+        "strict_schema",
+        "material_profile_schema",
+        "immutable_research_snapshot",
+        "target_role_identity",
+        "raw_sha256",
+        "endpoint_nm_um_equivalence",
+        "reject_extrapolation",
+        "csv_roundtrip",
+        "condition_notes"
+      ],
+      "max_csv_vs_json_n_error_251_checks": 0.0,
+      "status": "passed"
+    },
+    {
+      "id": "ri_znse_amotchkina_nk",
+      "material_id": "ZnSe_substrate",
+      "role": "substrate",
+      "name_length": 22,
+      "kind": "tabulated",
+      "samples": 2623,
+      "valid_domain_um": [
+        0.4,
+        0.888
+      ],
+      "unknown_k_preserved": false,
+      "checks": [
+        "strict_schema",
+        "material_profile_schema",
+        "immutable_research_snapshot",
+        "target_role_identity",
+        "raw_sha256",
+        "endpoint_nm_um_equivalence",
+        "reject_extrapolation",
+        "csv_roundtrip",
+        "condition_notes"
+      ],
+      "max_csv_vs_json_n_error_251_checks": 0.0,
+      "status": "passed"
+    },
+    {
+      "id": "ri_zns_debenham_n",
+      "material_id": "ZnS_substrate",
+      "role": "substrate",
+      "name_length": 26,
+      "kind": "tabulated",
+      "samples": 3461,
+      "valid_domain_um": [
+        0.405,
+        13.0
+      ],
+      "unknown_k_preserved": true,
+      "checks": [
+        "strict_schema",
+        "material_profile_schema",
+        "immutable_research_snapshot",
+        "target_role_identity",
+        "raw_sha256",
+        "endpoint_nm_um_equivalence",
+        "reject_extrapolation",
+        "csv_roundtrip",
+        "condition_notes"
+      ],
+      "max_csv_vs_json_n_error_251_checks": 0.0,
+      "status": "passed"
+    }
+  ],
+  "limits": [
+    "No physical remeasurement or machine calibration",
+    "No GUI or persistence integration tested by this research package",
+    "Unknown source air/vacuum conventions remain annotated, not guessed",
+    "Numerical interpolation error checks are not measurement uncertainty"
+  ]
+}

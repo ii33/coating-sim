@@ -1,0 +1,13 @@
+{
+  "archive_sha256": "aed9b444e53870dd1f89fe81308bd269f0e28c19aade22da1b4a187f21a93b6c",
+  "dataset_id": "rii_additional_public_20261006_v1",
+  "material_count": 2,
+  "group_count": 4,
+  "groups_by_category": {
+    "film": 4
+  },
+  "added_material_count": 0,
+  "added_group_count": 4,
+  "package_manifest_file_count": 8,
+  "quarantine_imported": false
+}

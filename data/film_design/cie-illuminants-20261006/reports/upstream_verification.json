@@ -1,0 +1,175 @@
+{
+  "snapshotDate": "2026-10-06",
+  "allMetadataChecksumsPass": true,
+  "datasets": [
+    {
+      "id": "A",
+      "rows": 531,
+      "domainNm": [
+        300.0,
+        830.0
+      ],
+      "hashesVerified": {
+        "md5": "ed0e4effb55d82b950c0912b6278a9d1",
+        "sha256": "61ef23fe146b8b665c74706717ab28cec7db6c9022993490bdc71991f43cb59b"
+      },
+      "landingPageMd5": "6c33a1c3caff2d774f0f2025f3001a56",
+      "landingPageMd5Matches": false,
+      "validations": [
+        {
+          "type": "sumOfColumns",
+          "passed": true,
+          "actual": [
+            300015.0,
+            60250.921916
+          ]
+        },
+        {
+          "type": "sampleRow",
+          "row_1based": 120,
+          "passed": true
+        }
+      ],
+      "warnings": [
+        "Landing-page MD5 differs from fetched CSV; both current metadata hashes match the fetched CSV.",
+        "Metadata requests useRelatedFormula for off-grid wavelengths. Package linear resampling is explicitly an engineering approximation; integer-nanometre values are unchanged."
+      ]
+    },
+    {
+      "id": "D65",
+      "rows": 531,
+      "domainNm": [
+        300.0,
+        830.0
+      ],
+      "hashesVerified": {
+        "md5": "03d4eb9b837c60671627c946fb534deb",
+        "sha256": "e76f210bffff3d552ef7113025da5f325d5dfec200dd4b878b1a2f3a507032cb"
+      },
+      "landingPageMd5": "03d4eb9b837c60671627c946fb534deb",
+      "landingPageMd5Matches": true,
+      "validations": [
+        {
+          "type": "sumOfColumns",
+          "passed": true,
+          "actual": [
+            300015.0,
+            40852.204
+          ]
+        },
+        {
+          "type": "sampleRow",
+          "row_1based": 120,
+          "passed": true
+        }
+      ],
+      "warnings": [
+        "Metadata ordinate wavelength_first is 360 but coordinate column, actual 531 rows, metadata checksum/column sum and ISO/CIE 11664-2:2022 publication description support 300\u2013830 nm. Preserve original metadata; package uses actual tabulated domain."
+      ]
+    },
+    {
+      "id": "D50",
+      "rows": 531,
+      "domainNm": [
+        300.0,
+        830.0
+      ],
+      "hashesVerified": {
+        "md5": "e72757c3078b58e78ba63051be4b27b0",
+        "sha256": "b23049c6f7b266c1c1fbe147aa271e8930ca02d6e569c5ae1804c036faea4193"
+      },
+      "landingPageMd5": "e72757c3078b58e78ba63051be4b27b0",
+      "landingPageMd5Matches": true,
+      "validations": [
+        {
+          "type": "sumOfColumns",
+          "passed": true,
+          "actual": [
+            300015.0,
+            39484.93457
+          ]
+        },
+        {
+          "type": "sampleRow",
+          "row_1based": 120,
+          "passed": true
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "id": "V",
+      "rows": 471,
+      "domainNm": [
+        360.0,
+        830.0
+      ],
+      "hashesVerified": {
+        "md5": "f389958555461a7d9a7562145e8ca9c0",
+        "sha256": "ee5d5d17922ae645d4af52cacf6a50bdb9385749f9d2181ca312eb2b08febac2"
+      },
+      "landingPageMd5": "272297df28120479b5a1ffb9a0388b02",
+      "landingPageMd5Matches": false,
+      "validations": [
+        {
+          "type": "sumOfColumns",
+          "passed": true,
+          "actual": [
+            280245.0,
+            106.8569171011719
+          ]
+        },
+        {
+          "type": "sampleRow",
+          "row_1based": 120,
+          "passed": true
+        },
+        {
+          "type": "sampleRow",
+          "row_1based": 470,
+          "passed": true
+        },
+        {
+          "type": "sampleRow",
+          "row_1based": 4,
+          "passed": true
+        }
+      ],
+      "warnings": [
+        "Landing-page MD5 differs from fetched CSV; both current metadata hashes match the fetched CSV."
+      ]
+    },
+    {
+      "id": "XYZ1931_2",
+      "rows": 471,
+      "domainNm": [
+        360.0,
+        830.0
+      ],
+      "hashesVerified": {
+        "md5": "17cca777db64b17170f06f67ce9d3ab7",
+        "sha256": "fa663e3535a7e0763a745993a1f0a192eb0275ac46ad2d1befd7626841e713c1"
+      },
+      "landingPageMd5": "17cca777db64b17170f06f67ce9d3ab7",
+      "landingPageMd5Matches": true,
+      "validations": [
+        {
+          "type": "sumOfColumns",
+          "passed": true,
+          "actual": [
+            280245.0,
+            106.865469489595,
+            106.8569171011719,
+            106.892251278636
+          ]
+        },
+        {
+          "type": "sampleRow",
+          "row_1based": 120,
+          "passed": true
+        }
+      ],
+      "warnings": []
+    }
+  ]
+}

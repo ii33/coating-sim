@@ -1,0 +1,6 @@
+# CPU computation and portable result assets. No Qt or assistant runtime.
+# Bounds match the existing project runtime requirements; GPU backends are optional.
+numpy>=1.24
+matplotlib>=3.7
+Pillow>=10
+pydantic>=2.12,<3

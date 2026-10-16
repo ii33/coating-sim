@@ -1,0 +1,89 @@
+# Independent project runtime and recent launcher
+
+Date: 2026-10-15. This is the dev.09 ownership boundary; no project format,
+physics algorithm or automatic migration of already-running dev.08 owners changes.
+
+## State owners and exact interfaces
+
+- `ProjectSessionHost` remains Qt-free and reusable by CLI, MCP and services.
+  Existing film/resource/compute workspaces, close coordinator and owner leases
+  remain authoritative. No launcher active-project singleton is introduced.
+- `ProjectRuntimeOwner` (the former in-process launcher adapter) owns the host,
+  lifetime lease, staged admission and existing desktop adapters, in a separate
+  process for each project. `ProjectRuntime` composes that owner with the reused
+  desktop window router, authenticated application client and exit coordinator.
+- The ordinary `ProjectLauncherAdapter` owns only picker/error/busy state and
+  global recent history. It never acquires a project lease or retains a runtime
+  process handle for close/kill. It submits create/open through
+  `open_project_runtime(descriptor)`. New submits a create root/name and optional summary/notes spec to
+  `create_project_runtime`; the independent runtime owns the actual atomic
+  creation before following the same store/lease/default admission path.
+- `RecentProjects.entries/record/remove/refresh` stores only canonical exact
+  `.coatproj` descriptor, name and successful-open timestamp in per-user settings.
+  Availability and bounded descriptor-only name/summary/notes projections are computed on workers. QML reads cached snapshots only; all
+  refresh/remove I/O runs on a bounded, coalesced daemon queue, with fresh
+  QSettings objects and stale-result guards. Removal changes current history
+  only; a later successful open, including an in-flight one, may re-add it. Failed opens
+  do not promote history. Arbitrary descriptor basenames remain valid; opening
+  directories or legacy names remains unsupported.
+
+## Process, startup and failure contract
+
+Creation is never performed on a launcher daemon thread. A successful atomic
+creation is retained if subsequent window startup fails. Runtime processes are detached, with DEVNULL stdin and a file log, never a
+parent stdout pipe. Launcher close may exit its own presentation process without
+changing any runtime. Startup uses the existing authenticated one-shot ready
+channel and then authenticated exact owner discovery/activation; spawning alone
+is not success. The runtime reports readiness only after its real project
+admission/activation and updated shared registration settle. Initial views are
+hidden and noninteractive before this point, and IPC mutation is fenced. A failed startup reports an error and exits itself.
+Successful opens/activations persist recent history on the runtime, independent
+of launcher polling. Older owners use best-effort client compatibility recording.
+History errors are warnings and cannot turn actual open success into failure.
+No history result participates in authenticated activation/readiness. Auxiliary
+history drain after successful project close is bounded to six seconds, separate
+from mandatory project transaction/lease settlement. A startup timer bounds a newly spawned runtime that cannot register/admit.
+
+Concurrent openers reuse the existing OS owner lease and six-field activation
+identity. The unsuccessful contender never steals, deletes or replaces a live
+lease: it rediscovers and activates the confirmed existing owner. If that owner
+has not become discoverable yet it reports a retryable error. PID creation
+identity, nonce, client/session generations, canonical root and exact descriptor
+remain required; activation routes only to `film_design`. An older assistant
+without activation support is explicitly rejected, never replaced automatically.
+
+## Close, cancellation and bounded lifetime
+
+Native Close of the last project module uses `ProjectCloseCoordinator`, including
+fresh provider preflight, local-job blockers and Return to save / Discard / Cancel.
+Hide/minimize retain ownership. Runtime-owned Quick confirmation windows work
+without a launcher. Multiple projects have isolated runtime presenters; the
+existing coordinator's queued reviews are retained. Shared assistant menu Close
+Project follows the same owner route. Cancel and Return to save retain drafts
+and lease. The normal authorized close flow releases the lease. If writing the
+clean journal fails, `ProjectOwnerLease.close()` still marks itself closed and
+cleans up this owner's OS locks in `finally`; the runtime does not report a
+successful close. There is no automatic retry after I/O repair in this candidate;
+see the known close-I/O recovery limitation（历史引用目标，当前公开源码不包含此文件）.
+The runtime exits after pending admission/package/recovery transactions and
+lease releases settle successfully. It neither cancels service-owned computation
+nor terminates any other process.
+
+The runtime's narrow review host is a transient `ApplicationWindow` using
+shared `ThemeButton` / `ThemeLabel` controls, Theme font/palette/spacing tokens
+and accessible button names. It is a confirmation/management dialog host, not
+a project module; the existing dialog geometry exception applies, so it does
+not create a persistent module geometry key or count as a project window.
+
+Global AI assistant lifetime and shared window navigation remain independent.
+CLI/MCP/AI headless project management does not require a launcher instance.
+No promise is made to transfer dev.08 in-process drafts into dev.09 runtimes;
+existing owners are activated through their supported authenticated endpoint.
+
+## Verification
+
+Focused tests cover separation, exact-path success-only recent history, detached
+spawn/handshake failure, existing-owner activation, close review preservation and
+exit after settled work. Isolated real-process tests use temporary assistant,
+settings and project roots. Native Windows acceptance remains a separate gate.
+The pre-existing `context_tokens` KeyError is outside this ownership change.

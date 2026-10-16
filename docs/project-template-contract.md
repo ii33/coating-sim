@@ -1,0 +1,23 @@
+# Managed film and expression-template documents
+
+Date: 2026-10-14. Extends the headless project contract. This boundary owns project-local persistence only; desktop integration belongs to its service adapter. Existing projects and standalone film/expression validators retain their physical semantics. No additional SQLite database or global catalog is created.
+
+## API and ownership
+
+`ProjectStore.create_document(kind, document, *, materials=None) -> document_id` creates an in-memory `film` or `expression_template` input as a managed document. Unsupported kinds fail without writing. `ProjectStore.save_document(document_id, document, *, materials=None)` preserves the managed UUID and atomically saves an edited document together with any new required explicit optical material records. External files remain handled by `import_document`; neither of these in-memory calls follows external file paths or requires a temporary `.cfilm`.
+
+`materials` is the existing explicit ID-to-frozen-optical-record mapping (`id`, `name`, `optical_sets`, `notes`, optional `design_ready`). Referenced records already present in the project can be reused. A supplied record with an existing material ID but different normalized content is a conflict; import/save never silently replaces it. Unsupported, missing or malformed references abort the complete transaction, retaining every prior document/resource. Unreferenced supplied materials are not added. Inline source/process value snapshots remain separate existing contracts.
+
+## Template shape and dependencies
+
+Manifest records use kind `expression_template`, their own UUID internal document ID and a `.json` path in the managed generation. The payload is exactly the existing `film_expression_store._normalize_template` result: `{schema_version:1, template_id, name, note, expression:{text,symbols}}`. It performs the existing expression syntax/expansion validation; no new expression algorithm or numerical rule is introduced. Project persistence does not instantiate `FilmExpressionTemplateStore` or open its SQLite path.
+
+`template_id` is a business identity distinct from the managed UUID. IDs are unique by exact string comparison within one project, matching the existing SQLite BINARY identity semantics; different projects remain independent. Creating a duplicate template ID fails. Updating uses the existing managed UUID and retains its template ID; changing a template ID during save fails. Film design business IDs can still repeat across imported documents; consumers use managed UUIDs or explicitly reject ambiguous legacy lookup.
+
+Every template symbol is the existing normalized layer-shaped record. Each nonempty material/optical-set binding must resolve to a project-local optical record and selected set, using the same closure/conflict rules as film layers, symbols, media and structure candidates. Unbound symbol drafts follow the existing validator, while partial or missing referenced bindings fail at the project resource boundary. Template expressions must expand to at least one layer under that validator; an empty film remains a valid draft, but an empty template expression is rejected. Resolve/export return the template plus all required copied resources. Package-level export-envelope import remains outside this extension; a caller can create the returned template payload with an explicit exported material mapping.
+
+In-memory inputs use the same 32-MiB per-document reader limit as external imports, measured after normalization and UTF-8 serialization. Publication rejects oversized documents or optical material envelopes before creating a generation, so a successful create/save remains resolvable. The existing 1000-document/256-MiB project limits still apply to the complete transaction. Equal-content saves are no-ops: matching required materials are reused, unused supplied records are not added, and the manifest revision and unrelated members remain unchanged.
+
+## Acceptance
+
+Cover in-memory empty/filled film creation, template normalization and symbol closure, unbound symbol drafts and rejected empty expressions, unsupported versions and partial/missing bindings, no temporary designs or SQLite files, exact template-ID conflict/update behavior, two-project isolation, new-material atomic save, missing/conflicting material and failed-publication rollback, per-document capacity rejection, no-op/unused-resource preservation, detached inputs/results and template export/create roundtrip. Existing project publication/locking/path tests remain required. CLI checks include structured atomic failures and headless subcommand help. UI activation, undo state and execution are not owned here.

@@ -1,0 +1,848 @@
+"""Serializable executor contract for durable film-optimization jobs.
+
+The scheduler owns registration and process dispatch. This module owns the
+film-specific frozen request, incumbent checkpoint, progress, and result shapes.
+"""
+from __future__ import annotations
+
+from copy import copy, deepcopy
+from dataclasses import asdict, replace
+import hashlib
+import json
+import math
+from typing import Any, Callable, Mapping
+
+from .film_optimization import (
+    FilmOptimizationObjective,
+    FilmOptimizationRequest,
+    FilmOptimizationResult,
+    FilmThicknessVariable,
+    freeze_film_optimization_request,
+    optimize_film_design,
+)
+from .film_optimization_scoring import score_condition, weighted_rms_error
+
+
+JOB_KIND = "coat_sim.film_optimization_job"
+REQUEST_KIND = "coat_sim.film_optimization_request"
+RESULT_KIND = "coat_sim.film_optimization_result"
+STRUCTURE_REQUEST_KIND = "coat_sim.film_structure_optimization_request"
+STRUCTURE_RESULT_KIND = "coat_sim.film_structure_optimization_result"
+CANDIDATE_KIND = "coat_sim.film_optimization_candidate"
+CHECKPOINT_KIND = "coat_sim.film_optimization_checkpoint"
+CONTRACT_VERSION = 1
+
+_REQUEST_REQUIRED_FIELDS = {
+    "schema_version", "kind", "design_snapshot", "design_revision",
+    "variables", "objectives", "max_iterations", "max_evaluations",
+    "initial_step_fraction", "min_step_fraction",
+    "acceptable_normalized_error", "frozen_material_snapshot",
+}
+_SOLVER_REQUEST_FIELDS = {
+    "solver", "seed", "multistart_count", "population_size",
+    "validation_samples_multiplier", "execution_mode", "batch_size",
+}
+_SUPPORTED_SOLVERS = {
+    "baseline", "powell", "nelder_mead", "multistart",
+    "differential_evolution", "simulated_annealing", "trf", "lbfgsb",
+}
+_SOLVER_VALIDATION_FIELDS = {
+    "solver", "seed", "termination_reason", "failed_evaluations",
+    "validation_samples_multiplier", "validation_evaluations",
+    "validation_complete", "validation_max_normalized_error",
+    "validation_weighted_rms_error", "validation_targets_met",
+    "validation_per_condition_errors", "validation_message",
+}
+
+
+def _validate_solver_request_fields(*, solver: Any, seed: Any,
+                                    multistart_count: Any,
+                                    population_size: Any,
+                                    validation_samples_multiplier: Any) -> None:
+    """Reject invalid solver settings at the queue boundary, never default them."""
+    if not isinstance(solver, str) or solver not in _SUPPORTED_SOLVERS:
+        raise ValueError(f"solver must be one of {', '.join(sorted(_SUPPORTED_SOLVERS))}")
+    if type(seed) is not int or not 0 <= seed <= 0xFFFFFFFF:
+        raise ValueError("seed must be an integer from 0 to 4294967295")
+    for value, name in ((multistart_count, "multistart_count"),
+                        (population_size, "population_size"),
+                        (validation_samples_multiplier, "validation_samples_multiplier")):
+        if type(value) is not int or value < 1:
+            raise ValueError(f"{name} must be a positive integer")
+    if solver == "differential_evolution" and population_size < 5:
+        raise ValueError("population_size must be at least 5 for differential_evolution")
+
+
+def serialize_request(request: FilmOptimizationRequest) -> dict[str, Any]:
+    if not isinstance(request, FilmOptimizationRequest):
+        raise ValueError("request must be a FilmOptimizationRequest")
+    _validate_solver_request_fields(
+        solver=request.solver, seed=request.seed,
+        multistart_count=request.multistart_count,
+        population_size=request.population_size,
+        validation_samples_multiplier=request.validation_samples_multiplier,
+    )
+    value = {
+        "schema_version": CONTRACT_VERSION,
+        "kind": REQUEST_KIND,
+        "design_snapshot": deepcopy(dict(request.design_snapshot)),
+        "design_revision": request.design_revision,
+        "variables": [asdict(item) for item in request.variables],
+        "objectives": [asdict(item) for item in request.objectives],
+        "max_iterations": request.max_iterations,
+        "max_evaluations": request.max_evaluations,
+        "initial_step_fraction": request.initial_step_fraction,
+        "min_step_fraction": request.min_step_fraction,
+        "acceptable_normalized_error": request.acceptable_normalized_error,
+        "frozen_material_snapshot": deepcopy(
+            dict(request.frozen_material_snapshot)
+            if request.frozen_material_snapshot is not None else None),
+        "solver": request.solver,
+        "seed": request.seed,
+        "multistart_count": request.multistart_count,
+        "population_size": request.population_size,
+        "validation_samples_multiplier": request.validation_samples_multiplier,
+    }
+    from .film_optimization import _validate_execution_controls
+    _validate_execution_controls(request)
+    if request.execution_mode != "serial" or request.batch_size != 16:
+        value.update(execution_mode=request.execution_mode, batch_size=request.batch_size)
+    json.dumps(value, sort_keys=True, ensure_ascii=False, allow_nan=False)
+    return value
+
+
+def deserialize_request(value: Mapping[str, Any]) -> FilmOptimizationRequest:
+    if (isinstance(value, Mapping)
+            and value.get("kind") == STRUCTURE_REQUEST_KIND):
+        from .film_optimization_structure import film_structure_request_from_payload
+
+        return film_structure_request_from_payload(value)  # type: ignore[return-value]
+    if (not isinstance(value, Mapping)
+            or value.get("schema_version") != CONTRACT_VERSION
+            or value.get("kind") != REQUEST_KIND):
+        raise ValueError("film optimization request kind/version is invalid")
+    fields = set(value)
+    if (not _REQUEST_REQUIRED_FIELDS.issubset(fields)
+            or fields - (_REQUEST_REQUIRED_FIELDS | _SOLVER_REQUEST_FIELDS)):
+        raise ValueError("film optimization request fields are invalid")
+    try:
+        variables = tuple(FilmThicknessVariable(**item) for item in value["variables"])
+        objectives = tuple(
+            FilmOptimizationObjective(
+                **{**item, "angles_deg": tuple(item.get("angles_deg", ()))})
+            for item in value["objectives"]
+        )
+        request = FilmOptimizationRequest(
+            design_snapshot=deepcopy(value["design_snapshot"]),
+            design_revision=value["design_revision"], variables=variables,
+            objectives=objectives, max_iterations=value["max_iterations"],
+            max_evaluations=value["max_evaluations"],
+            initial_step_fraction=value["initial_step_fraction"],
+            min_step_fraction=value["min_step_fraction"],
+            acceptable_normalized_error=value["acceptable_normalized_error"],
+            frozen_material_snapshot=deepcopy(value["frozen_material_snapshot"]),
+            solver=value.get("solver", "baseline"),
+            seed=value.get("seed", 0),
+            multistart_count=value.get("multistart_count", 4),
+            population_size=value.get("population_size", 12),
+            validation_samples_multiplier=value.get("validation_samples_multiplier", 2),
+            execution_mode=value.get("execution_mode", "serial"),
+            batch_size=value.get("batch_size", 16),
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError("film optimization request fields are invalid") from exc
+    _validate_solver_request_fields(
+        solver=request.solver, seed=request.seed,
+        multistart_count=request.multistart_count,
+        population_size=request.population_size,
+        validation_samples_multiplier=request.validation_samples_multiplier,
+    )
+    from .film_optimization import _validate_execution_controls
+    _validate_execution_controls(request)
+    return request
+
+
+def build_job_payload(request: FilmOptimizationRequest) -> dict[str, Any]:
+    frozen = serialize_request(request)
+    if frozen["frozen_material_snapshot"] is None:
+        raise ValueError("freeze the film optimization request before queue submission")
+    return {"schema_version": CONTRACT_VERSION, "kind": JOB_KIND,
+            "request": frozen}
+
+
+def freeze_job_payload(service: Any, request: FilmOptimizationRequest) -> dict[str, Any]:
+    """Freeze and serialize either typed film request supported by this executor.
+
+    Structure search shares only the outer ``film_optimization`` executor. Its
+    embedded request remains independently typed and has no solver ID.
+    """
+    from .film_optimization_structure import (
+        FilmStructureOptimizationRequest,
+        film_structure_request_to_payload,
+        freeze_film_structure_optimization_request,
+    )
+
+    if isinstance(request, FilmStructureOptimizationRequest):
+        frozen = freeze_film_structure_optimization_request(service, request)
+        payload = {
+            "schema_version": CONTRACT_VERSION,
+            "kind": JOB_KIND,
+            "request": film_structure_request_to_payload(frozen),
+        }
+        json.dumps(payload, sort_keys=True, ensure_ascii=False, allow_nan=False)
+        return payload
+    return build_job_payload(freeze_film_optimization_request(service, request))
+
+
+class _FrozenMaterials:
+    def __init__(self, rows: list[dict[str, Any]]) -> None:
+        self._rows = {str(row["id"]): deepcopy(row) for row in rows}
+
+    def _records(self, material_ids=None) -> list[dict[str, Any]]:
+        if material_ids is None:
+            source = self._rows.values()
+        else:
+            source = (self._rows[identifier] for identifier in material_ids
+                      if identifier in self._rows)
+        return [deepcopy(row) for row in source]
+
+    def get(self, material_id: str) -> dict[str, Any]:
+        try:
+            return deepcopy(self._rows[material_id])
+        except KeyError as exc:
+            raise ValueError(f"frozen film optimization material missing: {material_id}") from exc
+
+
+def _service_with_frozen_materials(service: Any,
+                                   snapshot: Mapping[str, Any]) -> Any:
+    rows = deepcopy(snapshot["materials"])
+    worker_service = copy(service)
+    worker_service.materials = _FrozenMaterials(rows)
+    worker_service.freeze_design = (
+        lambda _design, _settings=None, value=deepcopy(dict(snapshot)): deepcopy(value))
+    return worker_service
+
+
+def _candidate_payload(request: FilmOptimizationRequest, *, design: Mapping[str, Any],
+                       thickness_nm: Mapping[str, Any], max_error: float,
+                       weighted_max_error: float, weighted_rms_error: float,
+                       targets_met: bool, per_condition_errors: list[dict[str, Any]],
+                       iterations: int, evaluations: int) -> dict[str, Any]:
+    return {
+        "schema_version": CONTRACT_VERSION,
+        "kind": CANDIDATE_KIND,
+        "design_revision": request.design_revision,
+        "design": deepcopy(dict(design)),
+        "thickness_nm": deepcopy(dict(thickness_nm)),
+        "quality": {
+            "metric": "max_normalized_error",
+            "value": float(max_error),
+            "direction": "minimize",
+            "weighted_max_normalized_error": float(weighted_max_error),
+            "weighted_rms_error": float(weighted_rms_error),
+            "targets_met": bool(targets_met),
+        },
+        "per_condition_errors": deepcopy(per_condition_errors),
+        "iterations": int(iterations),
+        "evaluations": int(evaluations),
+    }
+
+
+def _partial_result(candidate: Mapping[str, Any]) -> dict[str, Any]:
+    quality = candidate["quality"]
+    return {
+        "schema_version": CONTRACT_VERSION,
+        "kind": "best_candidate",
+        "best_so_far": True,
+        "candidate_verified": True,
+        "quality": {"metric": quality["metric"], "value": quality["value"]},
+        "artifact_kind": CANDIDATE_KIND,
+        "artifact_schema_version": CONTRACT_VERSION,
+    }
+
+
+def _result_payload(request: FilmOptimizationRequest, candidate: dict[str, Any], *,
+                    state: str | None = None,
+                    message: str | None = None,
+                    solver_validation: dict[str, Any] | None = None) -> dict[str, Any]:
+    value = {
+        "schema_version": CONTRACT_VERSION,
+        "kind": RESULT_KIND,
+        "request": serialize_request(request),
+        "candidate": candidate,
+        "partial_result": _partial_result(candidate),
+    }
+    if state is not None:
+        value["state"] = state
+    if message is not None:
+        value["message"] = message
+    if solver_validation is not None:
+        value["solver_validation"] = solver_validation
+    json.dumps(value, sort_keys=True, ensure_ascii=False, allow_nan=False)
+    return value
+
+
+def _solver_validation_payload(result: FilmOptimizationResult) -> dict[str, Any]:
+    """Serialize terminal solver/holdout metadata outside the training candidate."""
+    return {
+        "solver": result.solver,
+        "seed": result.seed,
+        "termination_reason": result.termination_reason,
+        "failed_evaluations": result.failed_evaluations,
+        "validation_samples_multiplier": result.validation_samples_multiplier,
+        "validation_evaluations": result.validation_evaluations,
+        "validation_complete": result.validation_complete,
+        "validation_max_normalized_error": result.validation_max_normalized_error,
+        "validation_weighted_rms_error": result.validation_weighted_rms_error,
+        "validation_targets_met": result.validation_targets_met,
+        "validation_per_condition_errors": [
+            asdict(item) for item in result.validation_per_condition_errors
+        ],
+        "validation_message": result.validation_message,
+    }
+
+
+def serialize_result(request: FilmOptimizationRequest,
+                     result: FilmOptimizationResult) -> dict[str, Any]:
+    if not isinstance(result, FilmOptimizationResult):
+        raise ValueError("result must be a FilmOptimizationResult")
+    candidate = _candidate_payload(
+        request, design=result.best_design,
+        thickness_nm=result.best_thickness_nm,
+        max_error=result.max_normalized_error,
+        weighted_max_error=result.weighted_max_normalized_error,
+        weighted_rms_error=result.weighted_rms_error,
+        targets_met=result.targets_met,
+        per_condition_errors=[asdict(item) for item in result.per_condition_errors],
+        iterations=result.iterations, evaluations=result.evaluations,
+    )
+    return _result_payload(
+        request, candidate, state=result.state, message=result.message,
+        solver_validation=_solver_validation_payload(result),
+    )
+
+
+def serialize_checkpoint(request: FilmOptimizationRequest,
+                         checkpoint: Mapping[str, Any]) -> dict[str, Any]:
+    """Create a typed queue result from one fully evaluated optimizer incumbent."""
+    if not isinstance(checkpoint, Mapping):
+        raise ValueError("film optimization checkpoint must be a mapping")
+    if (checkpoint.get("schema_version") != CONTRACT_VERSION
+            or checkpoint.get("kind") != CHECKPOINT_KIND):
+        raise ValueError("film optimization checkpoint kind/version is invalid")
+    if request.frozen_material_snapshot is None:
+        raise ValueError("a checkpoint requires the frozen optimization request")
+    if checkpoint.get("design_revision") != request.design_revision:
+        raise ValueError("checkpoint design revision does not match its request")
+    if type(checkpoint.get("evaluations")) is not int or checkpoint["evaluations"] < 1:
+        raise ValueError("checkpoint must contain a fully evaluated candidate")
+    candidate = _candidate_payload(
+        request, design=checkpoint["best_design"],
+        thickness_nm=checkpoint["best_thickness_nm"],
+        max_error=checkpoint["max_normalized_error"],
+        weighted_max_error=checkpoint["weighted_max_normalized_error"],
+        weighted_rms_error=checkpoint["weighted_rms_error"],
+        targets_met=checkpoint["targets_met"],
+        per_condition_errors=checkpoint["per_condition_errors"],
+        iterations=checkpoint["iterations"], evaluations=checkpoint["evaluations"],
+    )
+    return _result_payload(request, candidate)
+
+
+def _snapshot_for_candidate(request: FilmOptimizationRequest,
+                            candidate: Mapping[str, Any]) -> dict[str, Any]:
+    snapshot = deepcopy(dict(request.frozen_material_snapshot or {}))
+    snapshot.pop("sha256", None)
+    snapshot["design"] = deepcopy(dict(candidate))
+    identity = json.dumps(snapshot, sort_keys=True, ensure_ascii=False,
+                          allow_nan=False).encode("utf-8")
+    snapshot["sha256"] = hashlib.sha256(identity).hexdigest()
+    return snapshot
+
+
+def _replay_candidate_scores(
+    worker_service: Any,
+    candidate: Mapping[str, Any],
+    objectives: tuple[FilmOptimizationObjective, ...] | list[FilmOptimizationObjective],
+) -> dict[str, Any]:
+    """Evaluate one fixed candidate on an explicitly supplied grid.
+
+    This deliberately bypasses the optimizer and its holdout phase. It is used
+    to verify persisted training scores, and separately to verify terminal
+    holdout metadata when that metadata is present.
+    """
+    import numpy as np
+
+    errors: list[dict[str, Any]] = []
+    normalized_errors: list[float] = []
+    condition_weights: list[float] = []
+    max_error = 0.0
+    weighted_max_error = 0.0
+    for objective_index, objective in enumerate(objectives):
+        waves = np.linspace(
+            objective.wavelength_min_nm, objective.wavelength_max_nm,
+            objective.wavelength_samples,
+        )
+        for angle in objective.angles_deg:
+            chunk_start = 0
+            while chunk_start < len(waves):
+                chunk_end = min(chunk_start + 10001, len(waves))
+                chunk_waves = waves[chunk_start:chunk_end]
+                settings = {
+                    "wavelength_min_nm": float(chunk_waves[0]),
+                    "wavelength_max_nm": float(chunk_waves[-1]),
+                    "samples": int(len(chunk_waves)),
+                    "angle_deg": angle,
+                    "polarization": objective.polarization,
+                    "first_surface": candidate.get("first_surface", "front"),
+                }
+                response = worker_service.simulate(candidate, settings)
+                actual_values = np.asarray(response[objective.metric], dtype=float)
+                actual_waves = np.asarray(response["wavelength_nm"], dtype=float)
+                if (actual_values.shape != chunk_waves.shape
+                        or actual_waves.shape != chunk_waves.shape
+                        or not np.all(np.isfinite(actual_values))
+                        or not np.allclose(actual_waves, chunk_waves, rtol=0, atol=1e-9)):
+                    raise ValueError("film simulation returned invalid replay samples")
+                for wavelength, actual in zip(chunk_waves, actual_values):
+                    if objective.mode == "value":
+                        violation = abs(float(actual) - float(objective.target_value))
+                    else:
+                        violation = max(
+                            0.0,
+                            (float(objective.lower_bound) - float(actual)
+                             if objective.lower_bound is not None else 0.0),
+                            (float(actual) - float(objective.upper_bound)
+                             if objective.upper_bound is not None else 0.0),
+                        )
+                    normalized_error, weighted_error = score_condition(
+                        violation, objective.normalization_scale, objective.weight)
+                    max_error = max(max_error, normalized_error)
+                    weighted_max_error = max(weighted_max_error, weighted_error)
+                    normalized_errors.append(normalized_error)
+                    condition_weights.append(objective.weight)
+                    errors.append({
+                        "objective_index": objective_index,
+                        "wavelength_nm": float(wavelength),
+                        "angle_deg": float(angle),
+                        "polarization": objective.polarization,
+                        "metric": objective.metric,
+                        "actual": float(actual),
+                        "target_value": objective.target_value,
+                        "lower_bound": objective.lower_bound,
+                        "upper_bound": objective.upper_bound,
+                        "normalized_violation": normalized_error,
+                        "weighted_normalized_violation": weighted_error,
+                    })
+                # ``chunk_waves`` is a slice of the objective's one global
+                # linspace. Continue at the first not-yet-scored index: an
+                # overlapping endpoint would count the same condition twice.
+                chunk_start = chunk_end
+    if not errors:
+        raise ValueError("candidate replay has no objective conditions")
+    return {
+        "max_normalized_error": max_error,
+        "weighted_max_normalized_error": weighted_max_error,
+        "weighted_rms_error": weighted_rms_error(
+            normalized_errors, condition_weights),
+        "per_condition_errors": errors,
+    }
+
+
+def _same_number(value: Any, expected: float) -> bool:
+    if (not isinstance(value, (int, float)) or isinstance(value, bool)
+            or not isinstance(expected, (int, float)) or isinstance(expected, bool)):
+        return False
+    return (math.isfinite(float(value)) and math.isfinite(float(expected))
+            and math.isclose(float(value), float(expected),
+                             rel_tol=1e-10, abs_tol=1e-12))
+
+
+def _validate_replay_request(request: FilmOptimizationRequest) -> None:
+    """Keep candidate replay bounded without invoking full optimizer validation."""
+    def finite(value: Any, label: str) -> float:
+        if isinstance(value, bool):
+            raise ValueError(f"{label} must be finite")
+        try:
+            number = float(value)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError(f"{label} must be finite") from exc
+        if not math.isfinite(number):
+            raise ValueError(f"{label} must be finite")
+        return number
+
+    def positive_int(value: Any, label: str) -> int:
+        if type(value) is not int or value < 1:
+            raise ValueError(f"{label} must be a positive integer")
+        return value
+
+    if type(request.design_revision) is not int or request.design_revision < 0:
+        raise ValueError("design_revision must be a nonnegative integer")
+    if not isinstance(request.variables, (tuple, list)) or not request.variables:
+        raise ValueError("at least one selected film thickness variable is required")
+    if not isinstance(request.objectives, (tuple, list)) or not request.objectives:
+        raise ValueError("at least one optical objective is required")
+    positive_int(request.max_iterations, "max_iterations")
+    positive_int(request.max_evaluations, "max_evaluations")
+    if finite(request.acceptable_normalized_error,
+              "acceptable_normalized_error") < 0:
+        raise ValueError("acceptable_normalized_error must be nonnegative")
+
+    seen_ids: set[str] = set()
+    for variable in request.variables:
+        if not isinstance(variable, FilmThicknessVariable):
+            raise ValueError("variables must contain FilmThicknessVariable values")
+        if variable.side not in ("front", "back"):
+            raise ValueError("variable side must be front or back")
+        if not isinstance(variable.layer_id, str) or not variable.layer_id:
+            raise ValueError("variable layer_id must be a nonempty stable layer id")
+        if variable.layer_id in seen_ids:
+            raise ValueError("each layer id may be optimized only once")
+        seen_ids.add(variable.layer_id)
+        low = finite(variable.lower_nm, "lower_nm")
+        high = finite(variable.upper_nm, "upper_nm")
+        if low <= 0 or high <= low:
+            raise ValueError("thickness bounds must be positive and strictly increasing")
+
+    for objective in request.objectives:
+        if not isinstance(objective, FilmOptimizationObjective):
+            raise ValueError("objectives must contain FilmOptimizationObjective values")
+        low = finite(objective.wavelength_min_nm, "wavelength_min_nm")
+        high = finite(objective.wavelength_max_nm, "wavelength_max_nm")
+        if low <= 0 or high < low:
+            raise ValueError("objective wavelengths must be positive and ordered")
+        samples = positive_int(objective.wavelength_samples, "wavelength_samples")
+        if high == low:
+            if samples != 1:
+                raise ValueError("single-wavelength objectives must have one sample")
+        elif samples < 2:
+            raise ValueError("wavelength_samples must be at least 2")
+        if not isinstance(objective.angles_deg, (tuple, list)) or not objective.angles_deg:
+            raise ValueError("each objective needs at least one angle sample")
+        angles = tuple(finite(angle, "angle_deg") for angle in objective.angles_deg)
+        if any(angle < 0 or angle >= 90 for angle in angles):
+            raise ValueError("angles_deg samples must be in [0, 90)")
+        if len(set(angles)) != len(angles):
+            raise ValueError("angles_deg must not contain duplicate samples")
+        if objective.polarization not in ("s", "p", "unpolarized"):
+            raise ValueError("polarization must be s, p or unpolarized")
+        if objective.metric not in ("R", "T"):
+            raise ValueError("metric must be R or T")
+        if objective.mode not in ("value", "range"):
+            raise ValueError("objective mode must be value or range")
+        weight = finite(objective.weight, "weight")
+        scale = finite(objective.normalization_scale, "normalization_scale")
+        if weight <= 0 or scale <= 0:
+            raise ValueError("objective weight and normalization_scale must be positive")
+        if objective.mode == "value":
+            if objective.target_value is None or objective.lower_bound is not None or objective.upper_bound is not None:
+                raise ValueError("value objectives require target_value and no bounds")
+            target = finite(objective.target_value, "target_value")
+            if not 0 <= target <= 1:
+                raise ValueError("R/T target_value must be in [0, 1]")
+        else:
+            if objective.target_value is not None or (
+                    objective.lower_bound is None and objective.upper_bound is None):
+                raise ValueError("range objectives require one or both bounds and no target_value")
+            lower = (None if objective.lower_bound is None else
+                     finite(objective.lower_bound, "lower_bound"))
+            upper = (None if objective.upper_bound is None else
+                     finite(objective.upper_bound, "upper_bound"))
+            if ((lower is not None and not 0 <= lower <= 1)
+                    or (upper is not None and not 0 <= upper <= 1)
+                    or (lower is not None and upper is not None and lower > upper)):
+                raise ValueError("R/T range bounds must lie in [0, 1] and be ordered")
+    _validation_objectives(request)
+
+
+def _validate_replayed_errors(recorded_errors: Any,
+                              replay_errors: list[dict[str, Any]],
+                              label: str) -> None:
+    if not isinstance(recorded_errors, list) or len(recorded_errors) != len(replay_errors):
+        raise ValueError(f"{label} condition data is incomplete")
+    for recorded, actual in zip(recorded_errors, replay_errors):
+        if not isinstance(recorded, dict) or set(recorded) != set(actual):
+            raise ValueError(f"{label} condition data is invalid")
+        for key, actual_value in actual.items():
+            recorded_value = recorded[key]
+            if isinstance(actual_value, (int, float)) and not isinstance(actual_value, bool):
+                if not _same_number(recorded_value, float(actual_value)):
+                    raise ValueError(f"{label} condition values do not match replay")
+            elif recorded_value != actual_value:
+                raise ValueError(f"{label} condition labels do not match replay")
+
+
+def _validation_objectives(request: FilmOptimizationRequest) -> tuple[FilmOptimizationObjective, ...]:
+    multiplier = request.validation_samples_multiplier
+    objectives = tuple(
+        replace(
+            objective,
+            wavelength_samples=(
+                1 if objective.wavelength_samples == 1 else
+                (objective.wavelength_samples - 1) * multiplier + 1
+            ),
+        )
+        for objective in request.objectives
+    )
+    return objectives
+
+
+def _validate_solver_validation(
+    request: FilmOptimizationRequest,
+    candidate: Mapping[str, Any],
+    metadata: Any,
+    state: str,
+    worker_service: Any,
+) -> None:
+    if not isinstance(metadata, dict) or set(metadata) != _SOLVER_VALIDATION_FIELDS:
+        raise ValueError("film optimization solver-validation metadata is invalid")
+    if (metadata.get("solver") != request.solver
+            or type(metadata.get("seed")) is not int
+            or metadata.get("seed") != request.seed
+            or type(metadata.get("validation_samples_multiplier")) is not int
+            or metadata.get("validation_samples_multiplier") != request.validation_samples_multiplier):
+        raise ValueError("solver-validation metadata does not match its request")
+    if (not isinstance(metadata.get("termination_reason"), str)
+            or type(metadata.get("failed_evaluations")) is not int
+            or metadata["failed_evaluations"] < 0
+            or type(metadata.get("validation_evaluations")) is not int
+            or metadata["validation_evaluations"] not in (0, 1)
+            or type(metadata.get("validation_complete")) is not bool
+            or not isinstance(metadata.get("validation_message"), str)):
+        raise ValueError("solver-validation metadata values are invalid")
+    if metadata["validation_complete"]:
+        if (metadata["validation_evaluations"] != 1
+                or not _same_number(metadata["validation_max_normalized_error"],
+                                    metadata["validation_max_normalized_error"])
+                or not _same_number(metadata["validation_weighted_rms_error"],
+                                    metadata["validation_weighted_rms_error"])
+                or type(metadata["validation_targets_met"]) is not bool):
+            raise ValueError("completed holdout-validation metadata is incomplete")
+        replay = _replay_candidate_scores(
+            worker_service, candidate, _validation_objectives(request))
+        if not (_same_number(metadata["validation_max_normalized_error"],
+                             replay["max_normalized_error"])
+                and _same_number(metadata["validation_weighted_rms_error"],
+                                 replay["weighted_rms_error"])
+                and metadata["validation_targets_met"] is
+                (replay["max_normalized_error"] <= request.acceptable_normalized_error)):
+            raise ValueError("holdout-validation scores do not match replay")
+        _validate_replayed_errors(
+            metadata["validation_per_condition_errors"],
+            replay["per_condition_errors"], "holdout-validation")
+    else:
+        if (metadata["validation_max_normalized_error"] is not None
+                or metadata["validation_weighted_rms_error"] is not None
+                or metadata["validation_targets_met"] is not None
+                or metadata["validation_per_condition_errors"] != []):
+            raise ValueError("incomplete holdout validation must not claim scores")
+        if state == "completed" and metadata["validation_message"] == "":
+            raise ValueError("completed result must explain incomplete holdout validation")
+
+
+def validate_checkpoint(service: Any, checkpoint: Mapping[str, Any]) -> dict[str, Any]:
+    """Replay a persisted candidate against frozen materials, never re-solve it."""
+    if not isinstance(checkpoint, Mapping):
+        raise ValueError("film optimization checkpoint must be a mapping")
+    if checkpoint.get("kind") == STRUCTURE_RESULT_KIND:
+        from .film_optimization_structure import validate_film_structure_payload
+
+        return validate_film_structure_payload(service, checkpoint)
+    required = {"schema_version", "kind", "request", "candidate", "partial_result"}
+    allowed = required | {"state", "message", "solver_validation"}
+    if not required.issubset(checkpoint) or set(checkpoint) - allowed:
+        raise ValueError("film optimization checkpoint fields are invalid")
+    state = checkpoint.get("state")
+    if state is not None and state not in ("completed", "cancelled"):
+        raise ValueError("film optimization result state is invalid")
+    if "message" in checkpoint and not isinstance(checkpoint["message"], str):
+        raise ValueError("film optimization result message is invalid")
+    if "solver_validation" in checkpoint and state is None:
+        raise ValueError("training-only checkpoints cannot contain holdout metadata")
+    if (checkpoint.get("schema_version") != CONTRACT_VERSION
+            or checkpoint.get("kind") != RESULT_KIND):
+        raise ValueError("film optimization result kind/version is invalid")
+    json.dumps(dict(checkpoint), sort_keys=True, ensure_ascii=False, allow_nan=False)
+    request = deserialize_request(checkpoint["request"])
+    if request.frozen_material_snapshot is None:
+        raise ValueError("checkpoint request is missing its frozen material snapshot")
+    request = freeze_film_optimization_request(service, request)
+    _validate_replay_request(request)
+    candidate_payload = checkpoint["candidate"]
+    candidate_fields = {
+        "schema_version", "kind", "design_revision", "design", "thickness_nm",
+        "quality", "per_condition_errors", "iterations", "evaluations",
+    }
+    if (not isinstance(candidate_payload, dict)
+            or set(candidate_payload) != candidate_fields
+            or candidate_payload.get("schema_version") != CONTRACT_VERSION
+            or candidate_payload.get("kind") != CANDIDATE_KIND):
+        raise ValueError("film optimization candidate kind/version is invalid")
+    if candidate_payload.get("design_revision") != request.design_revision:
+        raise ValueError("candidate design revision does not match its request")
+    if type(candidate_payload.get("evaluations")) is not int or candidate_payload["evaluations"] < 1:
+        raise ValueError("checkpoint does not contain a completed evaluation")
+    if type(candidate_payload.get("iterations")) is not int or candidate_payload["iterations"] < 0:
+        raise ValueError("checkpoint iteration count is invalid")
+    quality = candidate_payload["quality"]
+    if (not isinstance(quality, dict)
+            or set(quality) != {"metric", "value", "direction",
+                                "weighted_max_normalized_error",
+                                "weighted_rms_error", "targets_met"}
+            or quality.get("metric") != "max_normalized_error"
+            or quality.get("direction") != "minimize"
+            or type(quality.get("targets_met")) is not bool):
+        raise ValueError("film optimization candidate quality is invalid")
+    partial = checkpoint["partial_result"]
+    if (not isinstance(partial, dict)
+            or set(partial) != {
+                "schema_version", "kind", "best_so_far", "candidate_verified",
+                "quality", "artifact_kind", "artifact_schema_version",
+            }
+            or partial.get("schema_version") != CONTRACT_VERSION
+            or partial.get("kind") != "best_candidate"
+            or partial.get("best_so_far") is not True
+            or partial.get("candidate_verified") is not True
+            or partial.get("artifact_kind") != CANDIDATE_KIND
+            or partial.get("artifact_schema_version") != CONTRACT_VERSION
+            or partial.get("quality") != {"metric": quality["metric"],
+                                           "value": quality["value"]}):
+        raise ValueError("film optimization partial-result descriptor is invalid")
+
+    from .film_design import validate_design
+
+    candidate = validate_design(deepcopy(candidate_payload["design"]))
+    thickness = candidate_payload["thickness_nm"]
+    if not isinstance(thickness, dict):
+        raise ValueError("checkpoint thickness data is invalid")
+    expected_ids = {variable.layer_id for variable in request.variables}
+    if set(thickness) != expected_ids:
+        raise ValueError("checkpoint thickness IDs do not match the request")
+    for variable in request.variables:
+        rows = candidate[variable.side + "_layers"]
+        layer = next((row for row in rows if row["id"] == variable.layer_id), None)
+        if layer is None or layer["thickness"].get("unit") != "nm":
+            raise ValueError("checkpoint candidate is missing a physical thickness")
+        value = thickness[variable.layer_id]
+        if (isinstance(value, bool) or not isinstance(value, (int, float))
+                or not math.isfinite(float(value))
+                or not math.isclose(float(layer["thickness"]["value"]), float(value),
+                                    rel_tol=1e-12, abs_tol=1e-12)
+                or not variable.lower_nm <= float(value) <= variable.upper_nm):
+            raise ValueError("checkpoint candidate thickness is invalid")
+
+    # Candidate results produced by optimization have expression text detached
+    # from parsed layer state, matching candidate_design() in the optimizer.
+    replay_design = deepcopy(candidate)
+    expression = replay_design.get("expression", {})
+    if expression.get("text") and expression.get("in_sync"):
+        expression["in_sync"] = False
+    if replay_design != candidate:
+        raise ValueError("checkpoint candidate did not replay to the same design")
+    frozen_snapshot = _snapshot_for_candidate(request, candidate)
+    worker_service = _service_with_frozen_materials(
+        service, frozen_snapshot)
+    training_replay = _replay_candidate_scores(
+        worker_service, candidate, request.objectives)
+    if not (_same_number(quality["value"], training_replay["max_normalized_error"])
+            and _same_number(quality["weighted_max_normalized_error"],
+                             training_replay["weighted_max_normalized_error"])
+            and _same_number(quality["weighted_rms_error"],
+                             training_replay["weighted_rms_error"])
+            and quality.get("targets_met") is
+            (training_replay["max_normalized_error"] <= request.acceptable_normalized_error)):
+        raise ValueError("checkpoint quality does not match the evaluated candidate")
+    _validate_replayed_errors(
+        candidate_payload["per_condition_errors"],
+        training_replay["per_condition_errors"], "checkpoint")
+    if "solver_validation" in checkpoint:
+        _validate_solver_validation(
+            request, candidate, checkpoint["solver_validation"], state,
+            worker_service)
+    return deepcopy(dict(checkpoint))
+
+
+def execute_film_optimization_job(
+    service: Any,
+    payload: Mapping[str, Any],
+    *,
+    cancel_event: Any,
+    progress_callback: Callable[[Any], None] | None = None,
+    checkpoint_callback: Callable[[dict[str, Any]], None] | None = None,
+    enable_forward_cache: bool = False,
+    performance_callback: Callable[[dict[str, Any]], None] | None = None,
+    performance_options: Any = None,
+) -> dict[str, Any]:
+    """Run the queue-side task against its frozen materials only.
+
+    The scheduler adapter should map its cancel/progress/checkpoint hooks to
+    these arguments. Checkpoints contain a complete best candidate and request
+    snapshot; terminal output contains the same request and full condition data.
+    """
+    if type(enable_forward_cache) is not bool:
+        raise TypeError("enable_forward_cache must be a bool")
+    if performance_callback is not None and not callable(performance_callback):
+        raise TypeError("performance_callback must be callable")
+    if (not isinstance(payload, Mapping)
+            or payload.get("schema_version") != CONTRACT_VERSION
+            or payload.get("kind") != JOB_KIND):
+        raise ValueError("film optimization job kind/version is invalid")
+    request_payload = payload.get("request", {})
+    if (isinstance(request_payload, Mapping)
+            and request_payload.get("kind") == STRUCTURE_REQUEST_KIND):
+        from .film_optimization_structure import (
+            film_structure_checkpoint_to_payload,
+            film_structure_request_from_payload,
+            film_structure_result_to_payload,
+            freeze_film_structure_optimization_request,
+            optimize_film_design_with_structure,
+            validate_film_structure_payload,
+        )
+
+        request = film_structure_request_from_payload(request_payload)
+        if request.base_request.frozen_material_snapshot is None:
+            raise ValueError("queued structure optimization requires a frozen material snapshot")
+        request = freeze_film_structure_optimization_request(service, request)
+        frozen_snapshot = deepcopy(dict(request.base_request.frozen_material_snapshot))
+        frozen_service = _service_with_frozen_materials(service, frozen_snapshot)
+
+        def save_structure_incumbent(checkpoint: Any) -> None:
+            if checkpoint_callback is None:
+                return
+            checkpoint_callback(film_structure_checkpoint_to_payload(request, checkpoint))
+
+        result = optimize_film_design_with_structure(
+            frozen_service, request, cancel_event=cancel_event,
+            progress_callback=progress_callback,
+            checkpoint_callback=(save_structure_incumbent
+                                if checkpoint_callback is not None else None),
+        )
+        result_payload = film_structure_result_to_payload(request, result)
+        return validate_film_structure_payload(frozen_service, result_payload)
+
+    request = deserialize_request(request_payload)
+    if request.frozen_material_snapshot is None:
+        raise ValueError("queued film optimization requires a frozen material snapshot")
+    request = freeze_film_optimization_request(service, request)
+    frozen_snapshot = deepcopy(dict(request.frozen_material_snapshot))
+    frozen_service = _service_with_frozen_materials(service, frozen_snapshot)
+    if enable_forward_cache and request.execution_mode == "serial":
+        from .film_optimization_forward_cache import create_worker_forward_service
+
+        frozen_service = create_worker_forward_service(
+            frozen_service, frozen_snapshot,
+            performance_callback=performance_callback,
+        )
+
+    def save_incumbent(checkpoint: dict[str, Any]) -> None:
+        if checkpoint_callback is None:
+            return
+        checkpoint_callback(serialize_checkpoint(request, checkpoint))
+
+    result = optimize_film_design(
+        frozen_service, request, cancel_event=cancel_event,
+        progress_callback=progress_callback,
+        checkpoint_callback=save_incumbent if checkpoint_callback is not None else None,
+        performance_options=performance_options, performance_callback=performance_callback,
+    )
+    return serialize_result(request, result)

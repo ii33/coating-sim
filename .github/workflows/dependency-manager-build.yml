@@ -1,0 +1,61 @@
+name: Dependency manager source checks
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, "validation/python-bootstrap-*"]
+    paths:
+      - dependency_manager.py
+      - dependency_manager.cmd
+      - tools/dependency_manager/**
+      - tools/build_dependency_manager.py
+      - tools/build_dependency_manager_pyinstaller.py
+      - tests/test_dependency*.py
+      - tests/dependency_bootstrap_windows_offline.ps1
+      - requirements-dependency-manager-build.txt
+      - .github/workflows/dependency-manager-build.yml
+
+permissions:
+  contents: read
+
+jobs:
+  windows-source:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13.16"
+          architecture: x64
+      - name: Parse Windows bootstrap and probe installed Python
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          $script = Join-Path $PWD 'tools/dependency_manager/bootstrap_windows.ps1'
+          [void][System.Management.Automation.Language.Parser]::ParseFile($script, [ref]$tokens, [ref]$parseErrors)
+          if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
+          $python = (Get-Command python.exe -CommandType Application | Select-Object -First 1).Source
+          & powershell.exe -NoLogo -NoProfile -File $script -Cli -CheckOnly -BootstrapPython $python
+          if ($LASTEXITCODE -ne 0) { throw 'Read-only Python bootstrap probe failed' }
+          & cmd.exe /d /c dependency_manager.cmd -Cli -BootstrapPython $python doctor --json
+          if ($LASTEXITCODE -ne 0) { throw 'Source CLI bootstrap/argument forwarding failed' }
+      - name: Run offline manager contracts
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: |
+          @'
+          import json
+          from pathlib import Path
+          import tempfile
+          temp = Path(tempfile.gettempdir())
+          print(json.dumps({"temp": str(temp), "canonical_temp": str(temp.resolve()),
+                            "ancestors": [{"path": str(p), "symlink": p.is_symlink(),
+                                           "junction": p.is_junction()}
+                                          for p in (temp, *temp.parents)]}))
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw "Temp path diagnostics failed" }
+          python -m unittest discover -s tests -p "test_dependency*.py" -v

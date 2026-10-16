@@ -1,0 +1,20 @@
+# 项目内 conda 前缀环境（.conda）的声明式定义。
+# 创建：conda env create -p ./.conda -f environment.yml
+# 更新：conda env update -p ./.conda -f environment.yml --prune
+#
+# 说明：
+# - 使用 conda-forge 频道；Anaconda 的 defaults 频道需先接受其服务条款。
+# - torch-directml 未发布 conda 包，只能经 PyPI 安装，故列在 pip 段。
+#   它仅提供 Python 3.10–3.12 的 wheel，因此 python 固定为 3.12。
+# - pip 段的 `-r requirements.txt` 按运行 conda 时的当前目录解析，
+#   请在项目根目录执行上述命令。
+
+channels:
+  - conda-forge
+
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      - -r requirements.txt
+      - torch-directml

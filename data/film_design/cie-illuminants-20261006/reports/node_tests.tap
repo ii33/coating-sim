@@ -1,0 +1,154 @@
+TAP version 13
+# Subtest: official A/D50/D65 contain exactly 531 rows with original 560 nm value 100
+ok 1 - official A/D50/D65 contain exactly 531 rows with original 560 nm value 100
+  ---
+  duration_ms: 1.394851
+  type: 'test'
+  ...
+# Subtest: E is generated and limited to a declared 471-point observer domain
+ok 2 - E is generated and limited to a declared 471-point observer domain
+  ---
+  duration_ms: 0.244498
+  type: 'test'
+  ...
+# Subtest: official V equals CIE 1931 y_bar on all 471 samples
+ok 3 - official V equals CIE 1931 y_bar on all 471 samples
+  ---
+  duration_ms: 4.363201
+  type: 'test'
+  ...
+# Subtest: inclusive 1 nm sample counts are not interval counts
+ok 4 - inclusive 1 nm sample counts are not interval counts
+  ---
+  duration_ms: 0.374294
+  type: 'test'
+  ...
+# Subtest: invalid/noncommensurate grids are rejected instead of silently changing step
+ok 5 - invalid/noncommensurate grids are rejected instead of silently changing step
+  ---
+  duration_ms: 0.392591
+  type: 'test'
+  ...
+# Subtest: linear interpolation reproduces D65 midpoint; no blackbody substitution
+ok 6 - linear interpolation reproduces D65 midpoint; no blackbody substitution
+  ---
+  duration_ms: 0.838212
+  type: 'test'
+  ...
+# Subtest: A off-grid linear approximation is explicitly flagged; integers unmodified
+ok 7 - A off-grid linear approximation is explicitly flagged; integers unmodified
+  ---
+  duration_ms: 0.273943
+  type: 'test'
+  ...
+# Subtest: normalizations: raw, 560 nm, peak and unit area
+ok 8 - normalizations: raw, 560 nm, peak and unit area
+  ---
+  duration_ms: 0.471189
+  type: 'test'
+  ...
+# Subtest: out-of-domain SPD, NaN and zero-area normalizations fail
+ok 9 - out-of-domain SPD, NaN and zero-area normalizations fail
+  ---
+  duration_ms: 0.501745
+  type: 'test'
+  ...
+# Subtest: constant neutral RTA is invariant across illuminants and weightings
+ok 10 - constant neutral RTA is invariant across illuminants and weightings
+  ---
+  duration_ms: 10.481796
+  type: 'test'
+  ...
+# Subtest: illuminant changes weighted metrics, never input monochromatic spectra
+ok 11 - illuminant changes weighted metrics, never input monochromatic spectra
+  ---
+  duration_ms: 3.555955
+  type: 'test'
+  ...
+# Subtest: photopic and radiant-power averages differ for a coloured filter
+ok 12 - photopic and radiant-power averages differ for a coloured filter
+  ---
+  duration_ms: 3.421493
+  type: 'test'
+  ...
+# Subtest: positive SPD scale cancels in weighted fractions
+ok 13 - positive SPD scale cancels in weighted fractions
+  ---
+  duration_ms: 3.349064
+  type: 'test'
+  ...
+# Subtest: relative outgoing spectra are SPD times R/T/A, and conserve pointwise
+ok 14 - relative outgoing spectra are SPD times R/T/A, and conserve pointwise
+  ---
+  duration_ms: 1.479017
+  type: 'test'
+  ...
+# Subtest: explicit band coverage required: no silent truncation or zero-filled RTA
+ok 15 - explicit band coverage required: no silent truncation or zero-filled RTA
+  ---
+  duration_ms: 1.552108
+  type: 'test'
+  ...
+# Subtest: 300–830 energy band does not falsely support E in the ultraviolet
+ok 16 - 300–830 energy band does not falsely support E in the ultraviolet
+  ---
+  duration_ms: 0.735157
+  type: 'test'
+  ...
+# Subtest: coarse RTA requires explicit opt-in and produces a warning
+ok 17 - coarse RTA requires explicit opt-in and produces a warning
+  ---
+  duration_ms: 0.945054
+  type: 'test'
+  ...
+# Subtest: arbitrary noninteger endpoints included exactly, A approximation disclosed
+ok 18 - arbitrary noninteger endpoints included exactly, A approximation disclosed
+  ---
+  duration_ms: 1.110322
+  type: 'test'
+  ...
+# Subtest: nonuniform integration includes wavelength interval weights
+ok 19 - nonuniform integration includes wavelength interval weights
+  ---
+  duration_ms: 0.108914
+  type: 'test'
+  ...
+# Subtest: invalid optical fractions, NaN, missing A or unbalanced RTA are rejected
+ok 20 - invalid optical fractions, NaN, missing A or unbalanced RTA are rejected
+  ---
+  duration_ms: 0.999225
+  type: 'test'
+  ...
+# Subtest: wavelength basis must be explicitly aligned before CIE weighting
+ok 21 - wavelength basis must be explicitly aligned before CIE weighting
+  ---
+  duration_ms: 0.249346
+  type: 'test'
+  ...
+# Subtest: zero source weight does not turn into NaN or an invented metric
+ok 22 - zero source weight does not turn into NaN or an invented metric
+  ---
+  duration_ms: 1.909426
+  type: 'test'
+  ...
+# Subtest: perfect diffuser/transmitter white points from independently summed 1 nm XYZ data
+ok 23 - perfect diffuser/transmitter white points from independently summed 1 nm XYZ data
+  ---
+  duration_ms: 0.916901
+  type: 'test'
+  ...
+# Subtest: JS agrees with independent Python raw-CSV integration for all four sources
+ok 24 - JS agrees with independent Python raw-CSV integration for all four sources
+  ---
+  duration_ms: 10.18618
+  type: 'test'
+  ...
+1..24
+# tests 24
+# suites 0
+# pass 24
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 134.443693

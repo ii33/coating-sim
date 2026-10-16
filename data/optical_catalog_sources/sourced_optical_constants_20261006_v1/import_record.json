@@ -1,0 +1,14 @@
+{
+  "archive_sha256": "fed0c6e7b13cf31ba55491cb7a351f92017608c3e51c3ae6950ad6fc64e476b0",
+  "dataset_id": "sourced_optical_constants_20261006_v1",
+  "material_count": 15,
+  "group_count": 23,
+  "groups_by_category": {
+    "film": 16,
+    "substrate": 7
+  },
+  "added_material_count": 15,
+  "added_group_count": 23,
+  "package_manifest_file_count": 83,
+  "quarantine_imported": false
+}

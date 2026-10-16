@@ -1,0 +1,1443 @@
+{
+  "schema_version": 1,
+  "dataset_id": "sourced_optical_constants_20261006_v1",
+  "sets": [
+    {
+      "optical_set_id": "ri_ta2o5_rodriguez_de_marcos",
+      "material_id": "Ta2O5_film",
+      "sample_role": "film",
+      "sample_form": "film",
+      "short_name": "Rodríguez/EB300°C/2016",
+      "conditions": {
+        "deposition_method": "反应电子束蒸发",
+        "substrate_temperature": "300 °C（原始条件字段573 K）",
+        "substrate": "多类基片；这组表未逐点区分基片",
+        "film_thickness": "未提供（本轮可核验来源）",
+        "deposition_rate": "未提供（本轮可核验来源）",
+        "oxygen_partial_pressure": "未提供（本轮可核验来源）",
+        "reactive_gas_flow": "未提供（本轮可核验来源）",
+        "base_pressure": "未提供（本轮可核验来源）",
+        "working_pressure": "未提供（本轮可核验来源）",
+        "ion_assistance": "未提供（本轮可核验来源）",
+        "annealing": "未提供（本轮可核验来源）",
+        "measurement_temperature": "未提供（本轮可核验来源）",
+        "crystal_axis": "未提供（本轮可核验来源）"
+      },
+      "source": {
+        "raw_path": "raw/Ta2O5_Rodriguez-de_Marcos.yml",
+        "sha256": "4b397b398f51eaec1111413e77c4ef03c1c35bdb0c403c9481ea20d974e5f570",
+        "source_kind": "author_supplied_database_numerical_data",
+        "repository_commit": "c5c2f188e848453def5970e347399d653df2ffc2",
+        "repository_path": "database/data/main/Ta2O5/nk/Rodriguez-de Marcos.yml",
+        "source_urls": [
+          "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/Ta2O5/nk/Rodriguez-de%20Marcos.yml",
+          "https://refractiveindex.info/?shelf=main&book=Ta2O5&page=Rodriguez-de_Marcos"
+        ],
+        "license": "CC0-1.0 (refractiveindex.info database); original paper rights remain separate",
+        "citation": "L. V. Rodríguez-de Marcos, J. I. Larruquert, J. A. Méndez, J. A. Aznárez.\nSelf-consistent optical constants of SiO2 and Ta2O5 films.\nOpt. Mater. Express 6, 3622-3637 (2016)\n(Numerical data kindly provided by Juan Larruquert)",
+        "doi_urls": [
+          "https://doi.org/10.1364/OME.6.003622"
+        ],
+        "raw_comments": "Oxide films were deposited by reactive electron-beam evaporation onto various sorts of substrates at 300 °C",
+        "raw_conditions": {
+          "deposition_temperature": 573
+        },
+        "citation_correction": null
+      },
+      "derivation": {
+        "type": "source_table_identity",
+        "description": "原数值表保留全部节点；计算有效域单独受限，不把表的模型延伸视为新测量。",
+        "source_type": "tabulated nk",
+        "source_domain_um": [
+          0.0294938,
+          1.51429
+        ],
+        "source_row_count": 212,
+        "raw_values_unchanged": true
+      },
+      "valid_domain_um": [
+        0.0294938,
+        1.51429
+      ],
+      "k_status": "source_values_or_bounded_interpolation",
+      "measurement_uncertainty": "未提供通用n/k不确定度；不把数值小数位当准确度",
+      "wavelength_basis": "按来源光谱波长约定；本轮来源未明确空气/真空差异时不作推测或转换",
+      "refractive_index_basis": "按来源原始n约定；不作未授权空气/真空转换"
+    },
+    {
+      "optical_set_id": "ri_sio2_rodriguez_de_marcos",
+      "material_id": "SiO2_film",
+      "sample_role": "film",
+      "sample_form": "film",
+      "short_name": "Rodríguez/EB300°C/2016",
+      "conditions": {
+        "deposition_method": "反应电子束蒸发",
+        "substrate_temperature": "300 °C（原始条件字段573 K）",
+        "substrate": "多类基片；这组表未逐点区分基片",
+        "film_thickness": "未提供（本轮可核验来源）",
+        "deposition_rate": "未提供（本轮可核验来源）",
+        "oxygen_partial_pressure": "未提供（本轮可核验来源）",
+        "reactive_gas_flow": "未提供（本轮可核验来源）",
+        "base_pressure": "未提供（本轮可核验来源）",
+        "working_pressure": "未提供（本轮可核验来源）",
+        "ion_assistance": "未提供（本轮可核验来源）",
+        "annealing": "未提供（本轮可核验来源）",
+        "measurement_temperature": "未提供（本轮可核验来源）",
+        "crystal_axis": "未提供（本轮可核验来源）"
+      },
+      "source": {
+        "raw_path": "raw/SiO2_Rodriguez-de_Marcos.yml",
+        "sha256": "3e5678fce64edcb36fef1e8d5ca822328b7fd389c87b489d606638ed96753d72",
+        "source_kind": "author_supplied_database_numerical_data",
+        "repository_commit": "c5c2f188e848453def5970e347399d653df2ffc2",
+        "repository_path": "database/data/main/SiO2/nk/Rodriguez-de Marcos.yml",
+        "source_urls": [
+          "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/SiO2/nk/Rodriguez-de%20Marcos.yml",
+          "https://refractiveindex.info/?shelf=main&book=SiO2&page=Rodriguez-de_Marcos"
+        ],
+        "license": "CC0-1.0 (refractiveindex.info database); original paper rights remain separate",
+        "citation": "L. V. Rodríguez-de Marcos, J. I. Larruquert, J. A. Méndez, J. A. Aznárez.\nSelf-consistent optical constants of SiO2 and Ta2O5 films.\nOpt. Mater. Express 6, 3622-3637 (2016)\n(Numerical data kindly provided by Juan Larruquert)",
+        "doi_urls": [
+          "https://doi.org/10.1364/OME.6.003622"
+        ],
+        "raw_comments": "Oxide films were deposited by reactive electron-beam evaporation onto various sorts of substrates at 300 °C",
+        "raw_conditions": {
+          "deposition_temperature": 573
+        },
+        "citation_correction": null
+      },
+      "derivation": {
+        "type": "source_table_identity",
+        "description": "原数值表保留全部节点；计算有效域单独受限，不把表的模型延伸视为新测量。",
+        "source_type": "tabulated nk",
+        "source_domain_um": [
+          0.0299714,
+          1.51066
+        ],
+        "source_row_count": 395,
+        "raw_values_unchanged": true
+      },
+      "valid_domain_um": [
+        0.0299714,
+        1.51066
+      ],
+      "k_status": "source_values_or_bounded_interpolation",
+      "measurement_uncertainty": "未提供通用n/k不确定度；不把数值小数位当准确度",
+      "wavelength_basis": "按来源光谱波长约定；本轮来源未明确空气/真空差异时不作推测或转换",
+      "refractive_index_basis": "按来源原始n约定；不作未授权空气/真空转换"
+    },
+    {
+      "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+      "material_id": "MgF2_film",
+      "sample_role": "film",
+      "sample_form": "film",
+      "short_name": "Rodríguez/W舟250°C/2017",
+      "conditions": {
+        "deposition_method": "钨舟热蒸发",
+        "substrate_temperature": "250 °C（原始条件字段523 K）",
+        "substrate": "未提供（本轮可核验来源）",
+        "film_thickness": "44 nm",
+        "deposition_rate": "未提供（本轮可核验来源）",
+        "oxygen_partial_pressure": "未提供（本轮可核验来源）",
+        "reactive_gas_flow": "未提供（本轮可核验来源）",
+        "base_pressure": "未提供（本轮可核验来源）",
+        "working_pressure": "未提供（本轮可核验来源）",
+        "ion_assistance": "未提供（本轮可核验来源）",
+        "annealing": "未提供（本轮可核验来源）",
+        "measurement_temperature": "未提供（本轮可核验来源）",
+        "crystal_axis": "未提供（本轮可核验来源）"
+      },
+      "source": {
+        "raw_path": "raw/MgF2_Rodriguez-de_Marcos.yml",
+        "sha256": "de4aa1fb47aeacc35010db68a8b291ebaefc573f131cf37dff62b582c2a294cd",
+        "source_kind": "author_supplied_database_numerical_data",
+        "repository_commit": "c5c2f188e848453def5970e347399d653df2ffc2",
+        "repository_path": "database/data/main/MgF2/nk/Rodriguez-de Marcos.yml",
+        "source_urls": [
+          "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/MgF2/nk/Rodriguez-de%20Marcos.yml",
+          "https://refractiveindex.info/?shelf=main&book=MgF2&page=Rodriguez-de_Marcos"
+        ],
+        "license": "CC0-1.0 (refractiveindex.info database); original paper rights remain separate",
+        "citation": "L. V. Rodríguez-de Marcos, J. I. Larruquert, J. A. Méndez, J. A. Aznárez.\nSelf-consistent optical constants of MgF2, LaF3, and CeF3 films.\nOpt. Mater. Express 7, 989-1006 (2017)\n(Numerical data kindly provided by Juan Larruquert)",
+        "doi_urls": [
+          "https://doi.org/10.1364/OME.7.000989"
+        ],
+        "raw_comments": "44 nm film prepared by evaporation from tungsten boat at 250 °C",
+        "raw_conditions": {
+          "deposition_temperature": 523
+        },
+        "citation_correction": null
+      },
+      "derivation": {
+        "type": "source_table_identity",
+        "description": "原数值表保留全部节点；计算有效域单独受限，不把表的模型延伸视为新测量。",
+        "source_type": "tabulated nk",
+        "source_domain_um": [
+          0.0299919,
+          2.00146
+        ],
+        "source_row_count": 960,
+        "raw_values_unchanged": true
+      },
+      "valid_domain_um": [
+        0.0299919,
+        2.00146
+      ],
+      "k_status": "source_values_or_bounded_interpolation",
+      "measurement_uncertainty": "未提供通用n/k不确定度；不把数值小数位当准确度",
+      "wavelength_basis": "按来源光谱波长约定；本轮来源未明确空气/真空差异时不作推测或转换",
+      "refractive_index_basis": "按来源原始n约定；不作未授权空气/真空转换"
+    },
+    {
+      "optical_set_id": "ri_tio2_jolivet_amorphous",
+      "material_id": "TiO2_film",
+      "sample_role": "film",
+      "sample_form": "film",
+      "short_name": "Jolivet/非晶ALD200°C/2023",
+      "conditions": {
+        "deposition_method": "ALD",
+        "substrate_temperature": "200 °C",
+        "substrate": "未提供（本轮可核验来源）",
+        "film_thickness": "未提供（本轮可核验来源）",
+        "deposition_rate": "未提供（本轮可核验来源）",
+        "oxygen_partial_pressure": "未提供（本轮可核验来源）",
+        "reactive_gas_flow": "未提供（本轮可核验来源）",
+        "base_pressure": "未提供（本轮可核验来源）",
+        "working_pressure": "未提供（本轮可核验来源）",
+        "ion_assistance": "未提供（本轮可核验来源）",
+        "annealing": "未提供（本轮可核验来源）",
+        "measurement_temperature": "未提供（本轮可核验来源）",
+        "crystal_axis": "未提供（本轮可核验来源）",
+        "phase": "非晶"
+      },
+      "source": {
+        "raw_path": "raw/TiO2_Jolivet-amorphous.yml",
+        "sha256": "a00fb2d2ba7c4009b1fbd4163d4dbabe9537545337e476f6970cbd5cfd814d56",
+        "source_kind": "author_supplied_database_numerical_data",
+        "repository_commit": "c5c2f188e848453def5970e347399d653df2ffc2",
+        "repository_path": "database/data/main/TiO2/nk/Jolivet-amorphous.yml",
+        "source_urls": [
+          "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/TiO2/nk/Jolivet-amorphous.yml",
+          "https://refractiveindex.info/?shelf=main&book=TiO2&page=Jolivet-amorphous"
+        ],
+        "license": "CC0-1.0 (refractiveindex.info database); original paper rights remain separate",
+        "citation": "A. Jolivet, C. Labbé, C. Frilay, O. Debieu, P. Marie, B. Horcholle, F. Lemarié, X. Portier, C. Grygiel, S. Duprey, W. Jadwisienczak, D. Ingram, M. Upadhyay, A. David, A. Fouchet, U. Lüders, J. Cardin. Structural, optical, and electrical properties of TiO2 thin films deposited by ALD: Impact of the substrate, the deposited thickness and the deposition temperature. Appl. Surf. Sci. 608, 155214 (2023) (Numerical data kindly provided by Julien Cardin)",
+        "doi_urls": [
+          "http://dx.doi.org/10.1016/j.apsusc.2022.155214"
+        ],
+        "raw_comments": "TiO2 amorphous thin film deposited by ALD at 200 °C",
+        "raw_conditions": {},
+        "citation_correction": null
+      },
+      "derivation": {
+        "type": "source_table_identity",
+        "description": "原数值表保留全部节点；计算有效域单独受限，不把表的模型延伸视为新测量。",
+        "source_type": "tabulated nk",
+        "source_domain_um": [
+          0.20664,
+          0.82656
+        ],
+        "source_row_count": 451,
+        "raw_values_unchanged": true
+      },
+      "valid_domain_um": [
+        0.20664,
+        0.82656
+      ],
+      "k_status": "source_values_or_bounded_interpolation",
+      "measurement_uncertainty": "未提供通用n/k不确定度；不把数值小数位当准确度",
+      "wavelength_basis": "按来源光谱波长约定；本轮来源未明确空气/真空差异时不作推测或转换",
+      "refractive_index_basis": "按来源原始n约定；不作未授权空气/真空转换"
+    },
+    {
+      "optical_set_id": "ri_sio2_kischkat",
+      "material_id": "SiO2_film",
+      "sample_role": "film",
+      "sample_form": "film",
+      "short_name": "Kischkat/室温溅射/2012",
+      "conditions": {
+        "deposition_method": "反应溅射；靶材Si",
+        "substrate_temperature": "室温（未提供数值）",
+        "substrate": "Si",
+        "film_thickness": "510 nm",
+        "deposition_rate": "未提供（本轮可核验来源）",
+        "oxygen_partial_pressure": "未提供（本轮可核验来源）",
+        "reactive_gas_flow": "2.0 sccm O₂",
+        "base_pressure": "未提供（本轮可核验来源）",
+        "working_pressure": "未提供（本轮可核验来源）",
+        "ion_assistance": "未提供（本轮可核验来源）",
+        "annealing": "未提供（本轮可核验来源）",
+        "measurement_temperature": "未提供（本轮可核验来源）",
+        "crystal_axis": "未提供（本轮可核验来源）"
+      },
+      "source": {
+        "raw_path": "raw/SiO2_Kischkat.yml",
+        "sha256": "0902a3ae5514ac7c70c12a5a494e36d09a2857642aa7c487e5ad38b51aea632c",
+        "source_kind": "author_supplied_database_numerical_data",
+        "repository_commit": "c5c2f188e848453def5970e347399d653df2ffc2",
+        "repository_path": "database/data/main/SiO2/nk/Kischkat.yml",
+        "source_urls": [
+          "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/SiO2/nk/Kischkat.yml",
+          "https://refractiveindex.info/?shelf=main&book=SiO2&page=Kischkat"
+        ],
+        "license": "CC0-1.0 (refractiveindex.info database); original paper rights remain separate",
+        "citation": "J. Kischkat, S. Peters, B. Gruska, M. Semtsiv, M. Chashnikova, M. Klinkmüller, O. Fedosenko, S. Machulik, A. Aleksandrova, G. Monastyrskyi, Y. Flores, W. T. Masselink.\nMid-infrared optical properties of thin films of aluminum oxide, titanium dioxide, silicon dioxide, aluminum nitride, and silicon nitride.\nAppl. Opt. 51, 6789-6798 (2012)\n(Numerical data kindly provided by Jan Kischkat)",
+        "doi_urls": [
+          "https://doi.org/10.1364/AO.51.006789"
+        ],
+        "raw_comments": "510-nm single layer on Si substrate. Prepared by room temperature reactive sputter deposition using Si target and 2.0 SCCM O2 flux.; Data on the influence of deposition conditions on the optical properties of the film can be found in the original publication.; Data on the refractive index (n) in the visible can be found in the original publication.",
+        "raw_conditions": {},
+        "citation_correction": null
+      },
+      "derivation": {
+        "type": "source_table_identity",
+        "description": "原数值表保留全部节点；计算有效域单独受限，不把表的模型延伸视为新测量。",
+        "source_type": "tabulated nk",
+        "source_domain_um": [
+          1.53846,
+          14.28571
+        ],
+        "source_row_count": 1451,
+        "raw_values_unchanged": true
+      },
+      "valid_domain_um": [
+        1.53846,
+        14.28571
+      ],
+      "k_status": "source_values_or_bounded_interpolation",
+      "measurement_uncertainty": "未提供通用n/k不确定度；不把数值小数位当准确度",
+      "wavelength_basis": "按来源光谱波长约定；本轮来源未明确空气/真空差异时不作推测或转换",
+      "refractive_index_basis": "按来源原始n约定；不作未授权空气/真空转换"
+    },
+    {
+      "optical_set_id": "ri_tio2_kischkat",
+      "material_id": "TiO2_film",
+      "sample_role": "film",
+      "sample_form": "film",
+      "short_name": "Kischkat/室温溅射/2012",
+      "conditions": {
+        "deposition_method": "反应溅射；靶材TiO₂",
+        "substrate_temperature": "室温（未提供数值）",
+        "substrate": "Si",
+        "film_thickness": "352 nm",
+        "deposition_rate": "未提供（本轮可核验来源）",
+        "oxygen_partial_pressure": "未提供（本轮可核验来源）",
+        "reactive_gas_flow": "未提供（本轮可核验来源）",
+        "base_pressure": "未提供（本轮可核验来源）",
+        "working_pressure": "未提供（本轮可核验来源）",
+        "ion_assistance": "未提供（本轮可核验来源）",
+        "annealing": "未提供（本轮可核验来源）",
+        "measurement_temperature": "未提供（本轮可核验来源）",
+        "crystal_axis": "未提供（本轮可核验来源）"
+      },
+      "source": {
+        "raw_path": "raw/TiO2_Kischkat.yml",
+        "sha256": "fbdc062ac3f9faf2317c5c850cb06c4f3eee10b77699a9521f85731eb098a842",
+        "source_kind": "author_supplied_database_numerical_data",
+        "repository_commit": "c5c2f188e848453def5970e347399d653df2ffc2",
+        "repository_path": "database/data/main/TiO2/nk/Kischkat.yml",
+        "source_urls": [
+          "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/TiO2/nk/Kischkat.yml",
+          "https://refractiveindex.info/?shelf=main&book=TiO2&page=Kischkat"
+        ],
+        "license": "CC0-1.0 (refractiveindex.info database); original paper rights remain separate",
+        "citation": "J. Kischkat, S. Peters, B. Gruska, M. Semtsiv, M. Chashnikova, M. Klinkmüller, O. Fedosenko, S. Machulik, A. Aleksandrova, G. Monastyrskyi, Y. Flores, W. T. Masselink.\nMid-infrared optical properties of thin films of aluminum oxide, titanium dioxide, silicon dioxide, aluminum nitride, and silicon nitride.\nAppl. Opt. 51, 6789-6798 (2012)\n(Numerical data kindly provided by Jan Kischkat)",
+        "doi_urls": [
+          "https://doi.org/10.1364/AO.51.006789"
+        ],
+        "raw_comments": "352-nm single layer on Si substrate. Prepared by room temperature reactive sputter deposition using TiO2 target.; Data on the influence of deposition conditions on the optical properties of the film can be found in the original publication.; Data on the refractive index (n) in the visible can be found in the original publication.",
+        "raw_conditions": {},
+        "citation_correction": null
+      },
+      "derivation": {
+        "type": "source_table_identity",
+        "description": "原数值表保留全部节点；计算有效域单独受限，不把表的模型延伸视为新测量。",
+        "source_type": "tabulated nk",
+        "source_domain_um": [
+          1.53846,
+          14.28571
+        ],
+        "source_row_count": 1451,
+        "raw_values_unchanged": true
+      },
+      "valid_domain_um": [
+        1.53846,
+        14.28571
+      ],
+      "k_status": "source_values_or_bounded_interpolation",
+      "measurement_uncertainty": "未提供通用n/k不确定度；不把数值小数位当准确度",
+      "wavelength_basis": "按来源光谱波长约定；本轮来源未明确空气/真空差异时不作推测或转换",
+      "refractive_index_basis": "按来源原始n约定；不作未授权空气/真空转换"
+    },
+    {
+      "optical_set_id": "ri_al2o3_kischkat",
+      "material_id": "Al2O3_film",
+      "sample_role": "film",
+      "sample_form": "film",
+      "short_name": "Kischkat/室温溅射/2012",
+      "conditions": {
+        "deposition_method": "反应溅射；靶材Al",
+        "substrate_temperature": "室温（未提供数值）",
+        "substrate": "Si",
+        "film_thickness": "497 nm",
+        "deposition_rate": "未提供（本轮可核验来源）",
+        "oxygen_partial_pressure": "未提供（本轮可核验来源）",
+        "reactive_gas_flow": "2.0 sccm O₂",
+        "base_pressure": "未提供（本轮可核验来源）",
+        "working_pressure": "未提供（本轮可核验来源）",
+        "ion_assistance": "未提供（本轮可核验来源）",
+        "annealing": "未提供（本轮可核验来源）",
+        "measurement_temperature": "未提供（本轮可核验来源）",
+        "crystal_axis": "未提供（本轮可核验来源）"
+      },
+      "source": {
+        "raw_path": "raw/Al2O3_Kischkat.yml",
+        "sha256": "295818789fd0c84c578b6ae57d17f1570ffc16a85f2446238dd7028d60ccab8a",
+        "source_kind": "author_supplied_database_numerical_data",
+        "repository_commit": "c5c2f188e848453def5970e347399d653df2ffc2",
+        "repository_path": "database/data/main/Al2O3/nk/Kischkat.yml",
+        "source_urls": [
+          "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/Al2O3/nk/Kischkat.yml",
+          "https://refractiveindex.info/?shelf=main&book=Al2O3&page=Kischkat"
+        ],
+        "license": "CC0-1.0 (refractiveindex.info database); original paper rights remain separate",
+        "citation": "J. Kischkat, S. Peters, B. Gruska, M. Semtsiv, M. Chashnikova, M. Klinkmüller, O. Fedosenko, S. Machulik, A. Aleksandrova, G. Monastyrskyi, Y. Flores, W. T. Masselink.\nMid-infrared optical properties of thin films of aluminum oxide, titanium dioxide, silicon dioxide, aluminum nitride, and silicon nitride.\nAppl. Opt. 51, 6789-6798 (2012)\n(Numerical data kindly provided by Jan Kischkat)",
+        "doi_urls": [
+          "https://doi.org/10.1364/AO.51.006789"
+        ],
+        "raw_comments": "497-nm single layer on Si substrate. Prepared by room temperature reactive sputter deposition using Al target and 2.0 SCCM O2 flux.; Data on the influence of deposition conditions on the optical properties of the film can be found in the original publication.; Data on the refractive index (n) in the visible can be found in the original publication.",
+        "raw_conditions": {},
+        "citation_correction": null
+      },
+      "derivation": {
+        "type": "source_table_identity",
+        "description": "原数值表保留全部节点；计算有效域单独受限，不把表的模型延伸视为新测量。",
+        "source_type": "tabulated nk",
+        "source_domain_um": [
+          1.53941,
+          14.28571
+        ],
+        "source_row_count": 1450,
+        "raw_values_unchanged": true
+      },
+      "valid_domain_um": [
+        1.53941,
+        14.28571
+      ],
+      "k_status": "source_values_or_bounded_interpolation",
+      "measurement_uncertainty": "未提供通用n/k不确定度；不把数值小数位当准确度",
+      "wavelength_basis": "按来源光谱波长约定；本轮来源未明确空气/真空差异时不作推测或转换",
+      "refractive_index_basis": "按来源原始n约定；不作未授权空气/真空转换"
+    },
+    {
+      "optical_set_id": "ri_al2o3_zhukovsky",
+      "material_id": "Al2O3_film",
+      "sample_role": "film",
+      "sample_form": "film",
+      "short_name": "Zhukovsky/ALD120°C/2015",
+      "conditions": {
+        "deposition_method": "ALD",
+        "substrate_temperature": "120 °C",
+        "substrate": "Si",
+        "film_thickness": "20 nm",
+        "deposition_rate": "未提供（本轮可核验来源）",
+        "oxygen_partial_pressure": "未提供（本轮可核验来源）",
+        "reactive_gas_flow": "未提供（本轮可核验来源）",
+        "base_pressure": "未提供（本轮可核验来源）",
+        "working_pressure": "未提供（本轮可核验来源）",
+        "ion_assistance": "未提供（本轮可核验来源）",
+        "annealing": "未提供（本轮可核验来源）",
+        "measurement_temperature": "未提供（本轮可核验来源）",
+        "crystal_axis": "未提供（本轮可核验来源）"
+      },
+      "source": {
+        "raw_path": "raw/Al2O3_Zhukovsky.yml",
+        "sha256": "ae5bff2bba0574b0fa21a3b36779cb01f9cfccc867f0b85c17d47058176b3f21",
+        "source_kind": "author_supplied_database_numerical_data",
+        "repository_commit": "c5c2f188e848453def5970e347399d653df2ffc2",
+        "repository_path": "database/data/main/Al2O3/nk/Zhukovsky.yml",
+        "source_urls": [
+          "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/Al2O3/nk/Zhukovsky.yml",
+          "https://refractiveindex.info/?shelf=main&book=Al2O3&page=Zhukovsky"
+        ],
+        "license": "CC0-1.0 (refractiveindex.info database); original paper rights remain separate",
+        "citation": "S. V. Zhukovsky, A. Andryieuski, O. Takayama, E. Shkondin, R. Malureanu, F. Jensen, A. V. Lavrinenko.\nExperimental demonstration of effective medium approximation breakdown in deeply subwavelength all-dielectric multilayers.\nPhys. Rev. Lett. 115, 177402 (2015)\n(Numerical data kindly provided by Osamu Takayama)",
+        "doi_urls": [
+          "https://doi.org/10.1103/PhysRevLett.115.177402"
+        ],
+        "raw_comments": "20 nm thick films on Si substrate deposited by atomic layer deposition (ALD) at 120 °C deposition temperature.",
+        "raw_conditions": {
+          "film_thickness": "20e-9",
+          "substrate": "Si"
+        },
+        "citation_correction": null
+      },
+      "derivation": {
+        "type": "source_table_identity",
+        "description": "原数值表保留全部节点；计算有效域单独受限，不把表的模型延伸视为新测量。",
+        "source_type": "tabulated nk",
+        "source_domain_um": [
+          0.211002,
+          1.689842
+        ],
+        "source_row_count": 700,
+        "raw_values_unchanged": true
+      },
+      "valid_domain_um": [
+        0.211002,
+        1.689842
+      ],
+      "k_status": "source_values_or_bounded_interpolation",
+      "measurement_uncertainty": "未提供通用n/k不确定度；不把数值小数位当准确度",
+      "wavelength_basis": "按来源光谱波长约定；本轮来源未明确空气/真空差异时不作推测或转换",
+      "refractive_index_basis": "按来源原始n约定；不作未授权空气/真空转换"
+    },
+    {
+      "optical_set_id": "ri_zns_amotchkina_n",
+      "material_id": "ZnS_film",
+      "sample_role": "film",
+      "sample_form": "film",
+      "short_name": "Amotchkina/EB120°C/2020/仅n",
+      "conditions": {
+        "deposition_method": "电子束蒸发",
+        "substrate_temperature": "120 °C",
+        "substrate": "Ge，厚3 mm",
+        "film_thickness": "1.008 µm（COMMENTS；结构化CONDITIONS约1.00µm）",
+        "deposition_rate": "未提供（本轮可核验来源）",
+        "oxygen_partial_pressure": "未提供（本轮可核验来源）",
+        "reactive_gas_flow": "未提供（本轮可核验来源）",
+        "base_pressure": "未提供（本轮可核验来源）",
+        "working_pressure": "未提供（本轮可核验来源）",
+        "ion_assistance": "未提供（本轮可核验来源）",
+        "annealing": "未提供（本轮可核验来源）",
+        "measurement_temperature": "未提供（本轮可核验来源）",
+        "crystal_axis": "未提供（本轮可核验来源）"
+      },
+      "source": {
+        "raw_path": "raw/ZnS_Amotchkina.yml",
+        "sha256": "9533878df7b2b03b702089832074dc9e23c4e22ff0c1107c66a63b219bc43670",
+        "source_kind": "author_supplied_database_numerical_data",
+        "repository_commit": "c5c2f188e848453def5970e347399d653df2ffc2",
+        "repository_path": "database/data/main/ZnS/nk/Amotchkina.yml",
+        "source_urls": [
+          "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/ZnS/nk/Amotchkina.yml",
+          "https://refractiveindex.info/?shelf=main&book=ZnS&page=Amotchkina",
+          "https://refractiveindex.info/download/data/2020/Amotchkina/Summary_for_RefractiveIndexINFO.pdf",
+          "https://opg.optica.org/ao/abstract.cfm?uri=ao-59-5-A40"
+        ],
+        "license": "CC0-1.0 (refractiveindex.info database); original paper rights remain separate",
+        "citation": "T. Amotchkina, M. Trubetskov, D. Hahner, V. Pervak.\nCharacterization of e-beam evaporated Ge, YbF3, ZnS, and LaF3 thin films for laser-oriented coatings.\nAppl. Opt. 59, A40-A47 (2020)\n(Data kindly provided by Tatiana Amotchkina\n[data]\n[description])",
+        "doi_urls": [
+          "https://doi.org/10.1364/AO.59.000A40"
+        ],
+        "raw_comments": "1.008 µm ZnS film deposited on 3 mm thick Ge substrate by e-beam evaporation at 120 °C substrate temperature.",
+        "raw_conditions": {
+          "substrate": "Ge",
+          "film_thickness": 1e-06
+        },
+        "citation_correction": null
+      },
+      "derivation": {
+        "type": "bounded_formula_sampling",
+        "description": "带非单位常数项/改进Sellmeier不能硬套产品三项式，按原式有界自适应采样；这些是计算值，非新增测量。",
+        "source_formula": {
+          "type": "formula 2",
+          "wavelength_range": "0.4 14",
+          "coefficients": "0.010356 3.619092 0.02345364 0.508130 0.099946 2.219955 1148.729"
+        },
+        "build_linear_n_tolerance": 5e-08,
+        "original_node_count": 0
+      },
+      "valid_domain_um": [
+        0.4,
+        12
+      ],
+      "k_status": "unknown",
+      "measurement_uncertainty": "未提供通用n/k不确定度；不把数值小数位当准确度",
+      "wavelength_basis": "按来源光谱波长约定；本轮来源未明确空气/真空差异时不作推测或转换",
+      "refractive_index_basis": "按来源原始n约定；不作未授权空气/真空转换"
+    },
+    {
+      "optical_set_id": "ri_zns_amotchkina_nk",
+      "material_id": "ZnS_film",
+      "sample_role": "film",
+      "sample_form": "film",
+      "short_name": "Amotchkina/EB120°C/2020/n-k",
+      "conditions": {
+        "deposition_method": "电子束蒸发",
+        "substrate_temperature": "120 °C",
+        "substrate": "Ge，厚3 mm",
+        "film_thickness": "1.008 µm（COMMENTS；结构化CONDITIONS约1.00µm）",
+        "deposition_rate": "未提供（本轮可核验来源）",
+        "oxygen_partial_pressure": "未提供（本轮可核验来源）",
+        "reactive_gas_flow": "未提供（本轮可核验来源）",
+        "base_pressure": "未提供（本轮可核验来源）",
+        "working_pressure": "未提供（本轮可核验来源）",
+        "ion_assistance": "未提供（本轮可核验来源）",
+        "annealing": "未提供（本轮可核验来源）",
+        "measurement_temperature": "未提供（本轮可核验来源）",
+        "crystal_axis": "未提供（本轮可核验来源）"
+      },
+      "source": {
+        "raw_path": "raw/ZnS_Amotchkina.yml",
+        "sha256": "9533878df7b2b03b702089832074dc9e23c4e22ff0c1107c66a63b219bc43670",
+        "source_kind": "author_supplied_database_numerical_data",
+        "repository_commit": "c5c2f188e848453def5970e347399d653df2ffc2",
+        "repository_path": "database/data/main/ZnS/nk/Amotchkina.yml",
+        "source_urls": [
+          "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/ZnS/nk/Amotchkina.yml",
+          "https://refractiveindex.info/?shelf=main&book=ZnS&page=Amotchkina",
+          "https://refractiveindex.info/download/data/2020/Amotchkina/Summary_for_RefractiveIndexINFO.pdf",
+          "https://opg.optica.org/ao/abstract.cfm?uri=ao-59-5-A40"
+        ],
+        "license": "CC0-1.0 (refractiveindex.info database); original paper rights remain separate",
+        "citation": "T. Amotchkina, M. Trubetskov, D. Hahner, V. Pervak.\nCharacterization of e-beam evaporated Ge, YbF3, ZnS, and LaF3 thin films for laser-oriented coatings.\nAppl. Opt. 59, A40-A47 (2020)\n(Data kindly provided by Tatiana Amotchkina\n[data]\n[description])",
+        "doi_urls": [
+          "https://doi.org/10.1364/AO.59.000A40"
+        ],
+        "raw_comments": "1.008 µm ZnS film deposited on 3 mm thick Ge substrate by e-beam evaporation at 120 °C substrate temperature.",
+        "raw_conditions": {
+          "substrate": "Ge",
+          "film_thickness": 1e-06
+        },
+        "citation_correction": null
+      },
+      "derivation": {
+        "type": "formula_n_plus_tabulated_k_intersection",
+        "description": "n由同源公式计算；k只在同源k表内线性内插；有效域取n、k、本轮测量窗的交集。保留所有交集内原k节点。",
+        "source_formula": {
+          "type": "formula 2",
+          "wavelength_range": "0.4 14",
+          "coefficients": "0.010356 3.619092 0.02345364 0.508130 0.099946 2.219955 1148.729"
+        },
+        "source_k_domain_um": [
+          0.4,
+          1.0
+        ],
+        "source_k_row_count": 61,
+        "build_linear_n_tolerance": 5e-08
+      },
+      "valid_domain_um": [
+        0.4,
+        1.0
+      ],
+      "k_status": "source_values_or_bounded_interpolation",
+      "measurement_uncertainty": "未提供通用n/k不确定度；不把数值小数位当准确度",
+      "wavelength_basis": "按来源光谱波长约定；本轮来源未明确空气/真空差异时不作推测或转换",
+      "refractive_index_basis": "按来源原始n约定；不作未授权空气/真空转换"
+    },
+    {
+      "optical_set_id": "ri_ybf3_amotchkina_n",
+      "material_id": "YbF3_film",
+      "sample_role": "film",
+      "sample_form": "film",
+      "short_name": "Amotchkina/EB120°C/2020/仅n",
+      "conditions": {
+        "deposition_method": "电子束蒸发",
+        "substrate_temperature": "120 °C",
+        "substrate": "ZnSe，厚1 mm",
+        "film_thickness": "1.95 µm",
+        "deposition_rate": "未提供（本轮可核验来源）",
+        "oxygen_partial_pressure": "未提供（本轮可核验来源）",
+        "reactive_gas_flow": "未提供（本轮可核验来源）",
+        "base_pressure": "未提供（本轮可核验来源）",
+        "working_pressure": "未提供（本轮可核验来源）",
+        "ion_assistance": "未提供（本轮可核验来源）",
+        "annealing": "未提供（本轮可核验来源）",
+        "measurement_temperature": "未提供（本轮可核验来源）",
+        "crystal_axis": "未提供（本轮可核验来源）"
+      },
+      "source": {
+        "raw_path": "raw/YbF3_Amotchkina.yml",
+        "sha256": "bb7a7a83b4ab2b11bcd1c7bd899bef22bad25c9c6f6c73a4d19869d3ffc57161",
+        "source_kind": "author_supplied_database_numerical_data",
+        "repository_commit": "c5c2f188e848453def5970e347399d653df2ffc2",
+        "repository_path": "database/data/main/YbF3/nk/Amotchkina.yml",
+        "source_urls": [
+          "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/YbF3/nk/Amotchkina.yml",
+          "https://refractiveindex.info/?shelf=main&book=YbF3&page=Amotchkina",
+          "https://refractiveindex.info/download/data/2020/Amotchkina/Summary_for_RefractiveIndexINFO.pdf",
+          "https://opg.optica.org/ao/abstract.cfm?uri=ao-59-5-A40"
+        ],
+        "license": "CC0-1.0 (refractiveindex.info database); original paper rights remain separate",
+        "citation": "T. Amotchkina, M. Trubetskov, D. Hahner, V. Pervak.\nCharacterization of e-beam evaporated Ge, YbF3, ZnS, and LaF3 thin films for laser-oriented coatings.\nAppl. Opt. 59, A40-A47 (2020)\n(Data kindly provided by Tatiana Amotchkina\n[data]\n[description])",
+        "doi_urls": [
+          "https://doi.org/10.1364/AO.59.000A40"
+        ],
+        "raw_comments": "1.95 µm YbF3 film deposited on 1 mm thick ZnSe substratee by e-beam evaporation at 120 °C substrate temperature.",
+        "raw_conditions": {
+          "substrate": "ZnSe",
+          "film_thickness": 1.95e-06
+        },
+        "citation_correction": null
+      },
+      "derivation": {
+        "type": "exact_formula_mapping",
+        "description": "来源Cauchy式等价映射；仅n的独立模型不自动携带或扩展k。",
+        "source_formula": {
+          "type": "formula 5",
+          "wavelength_range": "0.4 14",
+          "coefficients": "1.484489 5.4996e-5 -2 2.6266e-3 -4"
+        },
+        "coefficient_units": "A dimensionless; B um^2; C um^4"
+      },
+      "valid_domain_um": [
+        0.4,
+        12
+      ],
+      "k_status": "unknown",
+      "measurement_uncertainty": "未提供通用n/k不确定度；不把数值小数位当准确度",
+      "wavelength_basis": "按来源光谱波长约定；本轮来源未明确空气/真空差异时不作推测或转换",
+      "refractive_index_basis": "按来源原始n约定；不作未授权空气/真空转换"
+    },
+    {
+      "optical_set_id": "ri_ybf3_amotchkina_nk",
+      "material_id": "YbF3_film",
+      "sample_role": "film",
+      "sample_form": "film",
+      "short_name": "Amotchkina/EB120°C/2020/n-k",
+      "conditions": {
+        "deposition_method": "电子束蒸发",
+        "substrate_temperature": "120 °C",
+        "substrate": "ZnSe，厚1 mm",
+        "film_thickness": "1.95 µm",
+        "deposition_rate": "未提供（本轮可核验来源）",
+        "oxygen_partial_pressure": "未提供（本轮可核验来源）",
+        "reactive_gas_flow": "未提供（本轮可核验来源）",
+        "base_pressure": "未提供（本轮可核验来源）",
+        "working_pressure": "未提供（本轮可核验来源）",
+        "ion_assistance": "未提供（本轮可核验来源）",
+        "annealing": "未提供（本轮可核验来源）",
+        "measurement_temperature": "未提供（本轮可核验来源）",
+        "crystal_axis": "未提供（本轮可核验来源）"
+      },
+      "source": {
+        "raw_path": "raw/YbF3_Amotchkina.yml",
+        "sha256": "bb7a7a83b4ab2b11bcd1c7bd899bef22bad25c9c6f6c73a4d19869d3ffc57161",
+        "source_kind": "author_supplied_database_numerical_data",
+        "repository_commit": "c5c2f188e848453def5970e347399d653df2ffc2",
+        "repository_path": "database/data/main/YbF3/nk/Amotchkina.yml",
+        "source_urls": [
+          "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/YbF3/nk/Amotchkina.yml",
+          "https://refractiveindex.info/?shelf=main&book=YbF3&page=Amotchkina",
+          "https://refractiveindex.info/download/data/2020/Amotchkina/Summary_for_RefractiveIndexINFO.pdf",
+          "https://opg.optica.org/ao/abstract.cfm?uri=ao-59-5-A40"
+        ],
+        "license": "CC0-1.0 (refractiveindex.info database); original paper rights remain separate",
+        "citation": "T. Amotchkina, M. Trubetskov, D. Hahner, V. Pervak.\nCharacterization of e-beam evaporated Ge, YbF3, ZnS, and LaF3 thin films for laser-oriented coatings.\nAppl. Opt. 59, A40-A47 (2020)\n(Data kindly provided by Tatiana Amotchkina\n[data]\n[description])",
+        "doi_urls": [
+          "https://doi.org/10.1364/AO.59.000A40"
+        ],
+        "raw_comments": "1.95 µm YbF3 film deposited on 1 mm thick ZnSe substratee by e-beam evaporation at 120 °C substrate temperature.",
+        "raw_conditions": {
+          "substrate": "ZnSe",
+          "film_thickness": 1.95e-06
+        },
+        "citation_correction": null
+      },
+      "derivation": {
+        "type": "formula_n_plus_tabulated_k_intersection",
+        "description": "n由同源公式计算；k只在同源k表内线性内插；有效域取n、k、本轮测量窗的交集。保留所有交集内原k节点。",
+        "source_formula": {
+          "type": "formula 5",
+          "wavelength_range": "0.4 14",
+          "coefficients": "1.484489 5.4996e-5 -2 2.6266e-3 -4"
+        },
+        "source_k_domain_um": [
+          9.0168,
+          13.975
+        ],
+        "source_k_row_count": 249,
+        "build_linear_n_tolerance": 5e-08
+      },
+      "valid_domain_um": [
+        9.0168,
+        12
+      ],
+      "k_status": "source_values_or_bounded_interpolation",
+      "measurement_uncertainty": "未提供通用n/k不确定度；不把数值小数位当准确度",
+      "wavelength_basis": "按来源光谱波长约定；本轮来源未明确空气/真空差异时不作推测或转换",
+      "refractive_index_basis": "按来源原始n约定；不作未授权空气/真空转换"
+    },
+    {
+      "optical_set_id": "ri_ge_amotchkina_film",
+      "material_id": "Ge_film",
+      "sample_role": "film",
+      "sample_form": "film",
+      "short_name": "Amotchkina/EB120°C/2020",
+      "conditions": {
+        "deposition_method": "电子束蒸发",
+        "substrate_temperature": "120 °C",
+        "substrate": "ZnSe，厚1 mm",
+        "film_thickness": "0.42 µm",
+        "deposition_rate": "未提供（本轮可核验来源）",
+        "oxygen_partial_pressure": "未提供（本轮可核验来源）",
+        "reactive_gas_flow": "未提供（本轮可核验来源）",
+        "base_pressure": "未提供（本轮可核验来源）",
+        "working_pressure": "未提供（本轮可核验来源）",
+        "ion_assistance": "未提供（本轮可核验来源）",
+        "annealing": "未提供（本轮可核验来源）",
+        "measurement_temperature": "未提供（本轮可核验来源）",
+        "crystal_axis": "未提供（本轮可核验来源）"
+      },
+      "source": {
+        "raw_path": "raw/Ge_Amotchkina-film.yml",
+        "sha256": "3918c60801b225c565b51e0929d298b4a31892fb3af112b50e6af59dd4d97c51",
+        "source_kind": "author_supplied_database_numerical_data",
+        "repository_commit": "c5c2f188e848453def5970e347399d653df2ffc2",
+        "repository_path": "database/data/main/Ge/nk/Amotchkina-film.yml",
+        "source_urls": [
+          "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/Ge/nk/Amotchkina-film.yml",
+          "https://refractiveindex.info/?shelf=main&book=Ge&page=Amotchkina-film",
+          "https://refractiveindex.info/download/data/2020/Amotchkina/Summary_for_RefractiveIndexINFO.pdf",
+          "https://opg.optica.org/ao/abstract.cfm?uri=ao-59-5-A40"
+        ],
+        "license": "CC0-1.0 (refractiveindex.info database); original paper rights remain separate",
+        "citation": "T. Amotchkina, M. Trubetskov, D. Hahner, V. Pervak.\nCharacterization of e-beam evaporated Ge, YbF3, ZnS, and LaF3 thin films for laser-oriented coatings.\nAppl. Opt. 59, A40-A47 (2020)\n(Data kindly provided by Tatiana Amotchkina\n[data]\n[description])",
+        "doi_urls": [
+          "https://doi.org/10.1364/AO.59.000A40"
+        ],
+        "raw_comments": "0.42 µm Ge3 film deposited on 1 mm thick ZnSe substratee by e-beam evaporation at 120 °C substrate temperature.",
+        "raw_conditions": {
+          "substrate": "ZnSe",
+          "film_thickness": 4.2e-07
+        },
+        "citation_correction": null
+      },
+      "derivation": {
+        "type": "source_table_identity",
+        "description": "原数值表保留全部节点；计算有效域单独受限，不把表的模型延伸视为新测量。",
+        "source_type": "tabulated nk",
+        "source_domain_um": [
+          0.4,
+          15.0
+        ],
+        "source_row_count": 1721,
+        "raw_values_unchanged": true
+      },
+      "valid_domain_um": [
+        0.4,
+        12
+      ],
+      "k_status": "source_values_or_bounded_interpolation",
+      "measurement_uncertainty": "未提供通用n/k不确定度；不把数值小数位当准确度",
+      "wavelength_basis": "按来源光谱波长约定；本轮来源未明确空气/真空差异时不作推测或转换",
+      "refractive_index_basis": "按来源原始n约定；不作未授权空气/真空转换"
+    },
+    {
+      "optical_set_id": "ri_al_mcpeak",
+      "material_id": "Al_film",
+      "sample_role": "film",
+      "sample_form": "film",
+      "short_name": "McPeak/热蒸15nm·s⁻¹/2015",
+      "conditions": {
+        "deposition_method": "热蒸发，Si模板剥离（template stripping）",
+        "substrate_temperature": "室温（原文实验共用条件；未给具体温度）",
+        "substrate": "Si模板",
+        "film_thickness": "未提供（本轮可核验来源）",
+        "deposition_rate": "150 Å/s = 15 nm/s",
+        "oxygen_partial_pressure": "未提供（本轮可核验来源）",
+        "reactive_gas_flow": "未提供（本轮可核验来源）",
+        "base_pressure": "3×10⁻⁸ Torr（原文图2及实验共用条件）",
+        "working_pressure": "未提供（本轮可核验来源）",
+        "ion_assistance": "未提供（本轮可核验来源）",
+        "annealing": "未提供（本轮可核验来源）",
+        "measurement_temperature": "未提供（本轮可核验来源）",
+        "crystal_axis": "未提供（本轮可核验来源）"
+      },
+      "source": {
+        "raw_path": "raw/Al_McPeak.yml",
+        "sha256": "1d7e7fde2858d2705eed030890f9b60ddfbda6ca9d7acbe4e6a36cfe63caad3a",
+        "source_kind": "author_supplied_database_numerical_data",
+        "repository_commit": "c5c2f188e848453def5970e347399d653df2ffc2",
+        "repository_path": "database/data/main/Al/nk/McPeak.yml",
+        "source_urls": [
+          "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/Al/nk/McPeak.yml",
+          "https://refractiveindex.info/?shelf=main&book=Al&page=McPeak",
+          "https://pmc.ncbi.nlm.nih.gov/articles/PMC4416469/"
+        ],
+        "license": "CC0-1.0 (refractiveindex.info database); original paper rights remain separate",
+        "citation": "K. M. McPeak, S. V. Jayanti, S. J. P. Kress, S. Meyer, S. Iotti, A. Rossinelli, D. J. Norris.\nPlasmonic films can easily be better: Rules and recipes.\nACS Photonics 2, 326-333 (2015)",
+        "doi_urls": [
+          "https://doi.org/10.1021/ph5004237"
+        ],
+        "raw_comments": "Thermally evaporated Al at 150 Å/s, template stripped from Si wafer",
+        "raw_conditions": {},
+        "citation_correction": null
+      },
+      "derivation": {
+        "type": "source_table_identity",
+        "description": "原数值表保留全部节点；计算有效域单独受限，不把表的模型延伸视为新测量。",
+        "source_type": "tabulated nk",
+        "source_domain_um": [
+          0.15,
+          1.7
+        ],
+        "source_row_count": 297,
+        "raw_values_unchanged": true
+      },
+      "valid_domain_um": [
+        0.15,
+        1.7
+      ],
+      "k_status": "source_values_or_bounded_interpolation",
+      "measurement_uncertainty": "未提供通用n/k不确定度；不把数值小数位当准确度",
+      "wavelength_basis": "按来源光谱波长约定；本轮来源未明确空气/真空差异时不作推测或转换",
+      "refractive_index_basis": "按来源原始n约定；不作未授权空气/真空转换"
+    },
+    {
+      "optical_set_id": "ri_cu_mcpeak",
+      "material_id": "Cu_film",
+      "sample_role": "film",
+      "sample_form": "film",
+      "short_name": "McPeak/热蒸3.5nm·s⁻¹/2015",
+      "conditions": {
+        "deposition_method": "热蒸发，Si模板剥离（template stripping）",
+        "substrate_temperature": "室温（原文实验共用条件；未给具体温度）",
+        "substrate": "Si模板",
+        "film_thickness": "未提供（本轮可核验来源）",
+        "deposition_rate": "35 Å/s = 3.5 nm/s",
+        "oxygen_partial_pressure": "未提供（本轮可核验来源）",
+        "reactive_gas_flow": "未提供（本轮可核验来源）",
+        "base_pressure": "3×10⁻⁸ Torr（原文图2及实验共用条件）",
+        "working_pressure": "未提供（本轮可核验来源）",
+        "ion_assistance": "未提供（本轮可核验来源）",
+        "annealing": "未提供（本轮可核验来源）",
+        "measurement_temperature": "未提供（本轮可核验来源）",
+        "crystal_axis": "未提供（本轮可核验来源）"
+      },
+      "source": {
+        "raw_path": "raw/Cu_McPeak.yml",
+        "sha256": "7d3c8b2ddc58d53c9f85589befaf361e07a56c420b45e18ce8b3e6fba561b06f",
+        "source_kind": "author_supplied_database_numerical_data",
+        "repository_commit": "c5c2f188e848453def5970e347399d653df2ffc2",
+        "repository_path": "database/data/main/Cu/nk/McPeak.yml",
+        "source_urls": [
+          "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/Cu/nk/McPeak.yml",
+          "https://refractiveindex.info/?shelf=main&book=Cu&page=McPeak",
+          "https://pmc.ncbi.nlm.nih.gov/articles/PMC4416469/"
+        ],
+        "license": "CC0-1.0 (refractiveindex.info database); original paper rights remain separate",
+        "citation": "K. M. McPeak, S. V. Jayanti, S. J. P. Kress, S. Meyer, S. Iotti, A. Rossinelli, D. J. Norris.\nPlasmonic films can easily be better: Rules and recipes.\nACS Photonics 2, 326-333 (2015)",
+        "doi_urls": [
+          "https://doi.org/10.1021/ph5004237"
+        ],
+        "raw_comments": "Thermally evaporated Cu at 35 Å/s with base pressure of 3e-8 Torr, template stripped from Si wafer",
+        "raw_conditions": {},
+        "citation_correction": null
+      },
+      "derivation": {
+        "type": "source_table_identity",
+        "description": "原数值表保留全部节点；计算有效域单独受限，不把表的模型延伸视为新测量。",
+        "source_type": "tabulated nk",
+        "source_domain_um": [
+          0.3,
+          1.7
+        ],
+        "source_row_count": 141,
+        "raw_values_unchanged": true
+      },
+      "valid_domain_um": [
+        0.3,
+        1.7
+      ],
+      "k_status": "source_values_or_bounded_interpolation",
+      "measurement_uncertainty": "未提供通用n/k不确定度；不把数值小数位当准确度",
+      "wavelength_basis": "按来源光谱波长约定；本轮来源未明确空气/真空差异时不作推测或转换",
+      "refractive_index_basis": "按来源原始n约定；不作未授权空气/真空转换"
+    },
+    {
+      "optical_set_id": "ri_cr_johnson",
+      "material_id": "Cr_film",
+      "sample_role": "film",
+      "sample_form": "film",
+      "short_name": "Johnson/蒸发多晶/1974",
+      "conditions": {
+        "deposition_method": "真空蒸发",
+        "substrate_temperature": "未提供（本轮可核验来源）",
+        "substrate": "未提供（本轮可核验来源）",
+        "film_thickness": "原文样品范围20–50 nm；该表非单片独立厚度",
+        "deposition_rate": "未提供（本轮可核验来源）",
+        "oxygen_partial_pressure": "未提供（本轮可核验来源）",
+        "reactive_gas_flow": "未提供（本轮可核验来源）",
+        "base_pressure": "未提供（本轮可核验来源）",
+        "working_pressure": "未提供（本轮可核验来源）",
+        "ion_assistance": "未提供（本轮可核验来源）",
+        "annealing": "未提供（本轮可核验来源）",
+        "measurement_temperature": "室温（未给具体温度）",
+        "crystal_axis": "未提供（本轮可核验来源）",
+        "phase": "多晶"
+      },
+      "source": {
+        "raw_path": "raw/Cr_Johnson.yml",
+        "sha256": "0c496685e4822c9c9e1ffedfed94ed888786f7d5fbe62a122679375f9ae80843",
+        "source_kind": "author_supplied_database_numerical_data",
+        "repository_commit": "c5c2f188e848453def5970e347399d653df2ffc2",
+        "repository_path": "database/data/main/Cr/nk/Johnson.yml",
+        "source_urls": [
+          "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/Cr/nk/Johnson.yml",
+          "https://refractiveindex.info/?shelf=main&book=Cr&page=Johnson",
+          "https://journals.aps.org/prb/abstract/10.1103/PhysRevB.9.5056"
+        ],
+        "license": "CC0-1.0 (refractiveindex.info database); original paper rights remain separate",
+        "citation": "P. B. Johnson and R. W. Christy.\nOptical constants of transition metals: Ti, V, Cr, Mn, Fe, Co, Ni, and Pd.\nPhys. Rev. B 9, 5056-5070 (1974)",
+        "doi_urls": [
+          "https://doi.org/10.1103/PhysRevB.9.5056"
+        ],
+        "raw_comments": "Room temperature",
+        "raw_conditions": {},
+        "citation_correction": null
+      },
+      "derivation": {
+        "type": "source_table_identity",
+        "description": "原数值表保留全部节点；计算有效域单独受限，不把表的模型延伸视为新测量。",
+        "source_type": "tabulated nk",
+        "source_domain_um": [
+          0.188,
+          1.937
+        ],
+        "source_row_count": 49,
+        "raw_values_unchanged": true
+      },
+      "valid_domain_um": [
+        0.188,
+        1.937
+      ],
+      "k_status": "source_values_or_bounded_interpolation",
+      "measurement_uncertainty": "未提供通用n/k不确定度；不把数值小数位当准确度",
+      "wavelength_basis": "按来源光谱波长约定；本轮来源未明确空气/真空差异时不作推测或转换",
+      "refractive_index_basis": "按来源原始n约定；不作未授权空气/真空转换"
+    },
+    {
+      "optical_set_id": "ri_sio2_malitson",
+      "material_id": "fused_silica_method_demonstrator",
+      "sample_role": "substrate",
+      "sample_form": "bulk",
+      "short_name": "Malitson/块材20°C/1965",
+      "conditions": {
+        "deposition_method": "不适用（块材，并非沉积薄膜参考）",
+        "substrate_temperature": "不适用（块材，并非沉积薄膜参考）",
+        "substrate": "不适用（块材，并非沉积薄膜参考）",
+        "film_thickness": "不适用（块材，并非沉积薄膜参考）",
+        "deposition_rate": "不适用（块材，并非沉积薄膜参考）",
+        "oxygen_partial_pressure": "不适用（块材，并非沉积薄膜参考）",
+        "reactive_gas_flow": "不适用（块材，并非沉积薄膜参考）",
+        "base_pressure": "不适用（块材，并非沉积薄膜参考）",
+        "working_pressure": "不适用（块材，并非沉积薄膜参考）",
+        "ion_assistance": "不适用（块材，并非沉积薄膜参考）",
+        "annealing": "不适用（块材，并非沉积薄膜参考）",
+        "measurement_temperature": "20 °C（原始条件字段293 K）",
+        "crystal_axis": "不适用（熔融硅石，非晶块材）"
+      },
+      "source": {
+        "raw_path": "raw/SiO2_Malitson.yml",
+        "sha256": "6f5dc13b9a76e26437e0b3e4719b4895964ebd85e09643c85a1a3c596394bcf3",
+        "source_kind": "author_supplied_database_numerical_data",
+        "repository_commit": "c5c2f188e848453def5970e347399d653df2ffc2",
+        "repository_path": "database/data/main/SiO2/nk/Malitson.yml",
+        "source_urls": [
+          "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/SiO2/nk/Malitson.yml",
+          "https://refractiveindex.info/?shelf=main&book=SiO2&page=Malitson",
+          "https://opg.optica.org/josa/abstract.cfm?uri=josa-55-10-1205"
+        ],
+        "license": "CC0-1.0 (refractiveindex.info database); original paper rights remain separate",
+        "citation": "1) I. H. Malitson.\nInterspecimen comparison of the refractive index of fused silica.\nJ. Opt. Soc. Am. 55, 1205-1208 (1965); \n2) C. Z. Tan.\nDetermination of refractive index of silica glass for infrared wavelengths by IR spectroscopy.\nJ. Non-Cryst. Solids 223, 158-163 (1998); \n* Sellmeier formula is reported in Ref. 1 for the 0.21–3.71 μm wavelength range. Ref. 2 verifies the validity of the formula up to 6.7 μm.",
+        "doi_urls": [
+          "https://doi.org/10.1364/JOSA.55.001205",
+          "https://doi.org/10.1016/S0022-3093(97)00438-9"
+        ],
+        "raw_comments": "Fused silica, 20 °C",
+        "raw_conditions": {
+          "temperature": 293
+        },
+        "citation_correction": "出版者原文页码1205–1209；YAML记1205–1208，保留原件并在此更正书目信息。"
+      },
+      "derivation": {
+        "type": "exact_formula_mapping",
+        "description": "来源三项Sellmeier等价映射；formula1的共振波长先平方成Cᵢ，formula2的Cᵢ直接使用。",
+        "source_formula": {
+          "type": "formula 1",
+          "wavelength_range": "0.21 6.7",
+          "coefficients": "0 0.6961663 0.0684043 0.4079426 0.1162414 0.8974794 9.896161"
+        },
+        "coefficient_units": "B dimensionless; C um^2"
+      },
+      "valid_domain_um": [
+        0.21,
+        3.71
+      ],
+      "k_status": "unknown",
+      "measurement_uncertainty": "未提供通用n/k不确定度；不把数值小数位当准确度",
+      "wavelength_basis": "按来源光谱波长约定；本轮来源未明确空气/真空差异时不作推测或转换",
+      "refractive_index_basis": "按来源原始n约定；不作未授权空气/真空转换"
+    },
+    {
+      "optical_set_id": "ri_ge_amotchkina",
+      "material_id": "Ge_substrate",
+      "sample_role": "substrate",
+      "sample_form": "bulk",
+      "short_name": "Amotchkina/块材n-k/2020",
+      "conditions": {
+        "deposition_method": "不适用（块材，并非沉积薄膜参考）",
+        "substrate_temperature": "不适用（块材，并非沉积薄膜参考）",
+        "substrate": "不适用（块材，并非沉积薄膜参考）",
+        "film_thickness": "不适用（块材，并非沉积薄膜参考）",
+        "deposition_rate": "不适用（块材，并非沉积薄膜参考）",
+        "oxygen_partial_pressure": "不适用（块材，并非沉积薄膜参考）",
+        "reactive_gas_flow": "不适用（块材，并非沉积薄膜参考）",
+        "base_pressure": "不适用（块材，并非沉积薄膜参考）",
+        "working_pressure": "不适用（块材，并非沉积薄膜参考）",
+        "ion_assistance": "不适用（块材，并非沉积薄膜参考）",
+        "annealing": "不适用（块材，并非沉积薄膜参考）",
+        "measurement_temperature": "未提供（本轮可核验来源）",
+        "crystal_axis": "未提供（本轮可核验来源）"
+      },
+      "source": {
+        "raw_path": "raw/Ge_Amotchkina.yml",
+        "sha256": "858ebf479a0b295751c0dcdaa0cf8fea23d020446999427813dc145f58c47f39",
+        "source_kind": "author_supplied_database_numerical_data",
+        "repository_commit": "c5c2f188e848453def5970e347399d653df2ffc2",
+        "repository_path": "database/data/main/Ge/nk/Amotchkina.yml",
+        "source_urls": [
+          "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/Ge/nk/Amotchkina.yml",
+          "https://refractiveindex.info/?shelf=main&book=Ge&page=Amotchkina",
+          "https://refractiveindex.info/download/data/2020/Amotchkina/Summary_for_RefractiveIndexINFO.pdf",
+          "https://opg.optica.org/ao/abstract.cfm?uri=ao-59-5-A40"
+        ],
+        "license": "CC0-1.0 (refractiveindex.info database); original paper rights remain separate",
+        "citation": "T. Amotchkina, M. Trubetskov, D. Hahner, V. Pervak.\nCharacterization of e-beam evaporated Ge, YbF3, ZnS, and LaF3 thin films for laser-oriented coatings.\nAppl. Opt. 59, A40-A47 (2020)\n(Data kindly provided by Tatiana Amotchkina\n[data]\n[description])",
+        "doi_urls": [
+          "https://doi.org/10.1364/AO.59.000A40"
+        ],
+        "raw_comments": "",
+        "raw_conditions": {},
+        "citation_correction": null
+      },
+      "derivation": {
+        "type": "source_table_identity",
+        "description": "原数值表保留全部节点；计算有效域单独受限，不把表的模型延伸视为新测量。",
+        "source_type": "tabulated nk",
+        "source_domain_um": [
+          0.4,
+          11.0
+        ],
+        "source_row_count": 628,
+        "raw_values_unchanged": true
+      },
+      "valid_domain_um": [
+        0.4,
+        11.0
+      ],
+      "k_status": "source_values_or_bounded_interpolation",
+      "measurement_uncertainty": "未提供通用n/k不确定度；不把数值小数位当准确度",
+      "wavelength_basis": "按来源光谱波长约定；本轮来源未明确空气/真空差异时不作推测或转换",
+      "refractive_index_basis": "按来源原始n约定；不作未授权空气/真空转换"
+    },
+    {
+      "optical_set_id": "ri_znse_connolly",
+      "material_id": "ZnSe_substrate",
+      "sample_role": "substrate",
+      "sample_form": "bulk",
+      "short_name": "Connolly-Tatian/块材23°C/1984",
+      "conditions": {
+        "deposition_method": "不适用（块材，并非沉积薄膜参考）",
+        "substrate_temperature": "不适用（块材，并非沉积薄膜参考）",
+        "substrate": "不适用（块材，并非沉积薄膜参考）",
+        "film_thickness": "不适用（块材，并非沉积薄膜参考）",
+        "deposition_rate": "不适用（块材，并非沉积薄膜参考）",
+        "oxygen_partial_pressure": "不适用（块材，并非沉积薄膜参考）",
+        "reactive_gas_flow": "不适用（块材，并非沉积薄膜参考）",
+        "base_pressure": "不适用（块材，并非沉积薄膜参考）",
+        "working_pressure": "不适用（块材，并非沉积薄膜参考）",
+        "ion_assistance": "不适用（块材，并非沉积薄膜参考）",
+        "annealing": "不适用（块材，并非沉积薄膜参考）",
+        "measurement_temperature": "23 °C",
+        "crystal_axis": "未提供（本轮可核验来源）",
+        "bulk_manufacturing": "CVD ZnSe（块材制备，不是镀膜工艺）"
+      },
+      "source": {
+        "raw_path": "raw/ZnSe_Connolly.yml",
+        "sha256": "54c45a7fab9d71978f03d7f1fe02376c454bdbfc5ac162e25bf447e2864e6307",
+        "source_kind": "author_supplied_database_numerical_data",
+        "repository_commit": "c5c2f188e848453def5970e347399d653df2ffc2",
+        "repository_path": "database/data/main/ZnSe/nk/Connolly.yml",
+        "source_urls": [
+          "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/ZnSe/nk/Connolly.yml",
+          "https://refractiveindex.info/?shelf=main&book=ZnSe&page=Connolly",
+          "https://opg.optica.org/ao/abstract.cfm?uri=ao-23-24-4477"
+        ],
+        "license": "CC0-1.0 (refractiveindex.info database); original paper rights remain separate",
+        "citation": "1) J. Connolly, B. diBenedetto, R. Donadio.\nSpecifications of Raytran material.\nProc. SPIE, 181, 141-144 (1979); \n2) B. Tatian.\nFitting refractive-index data with the Sellmeier dispersion formula.\nAppl. Opt. 23, 4477-4485 (1984); \n*Ref. 2 provides a dispersion formula based on data from Ref. 1",
+        "doi_urls": [
+          "https://doi.org/10.1117/12.957359",
+          "https://doi.org/10.1364/AO.23.004477"
+        ],
+        "raw_comments": "CVD ZnSe, 23 °C",
+        "raw_conditions": {},
+        "citation_correction": null
+      },
+      "derivation": {
+        "type": "exact_formula_mapping",
+        "description": "来源三项Sellmeier等价映射；formula1的共振波长先平方成Cᵢ，formula2的Cᵢ直接使用。",
+        "source_formula": {
+          "type": "formula 1",
+          "wavelength_range": "0.54 18.2",
+          "coefficients": "0 4.45813734 0.200859853 0.467216334 0.391371166 2.89566290 47.1362108"
+        },
+        "coefficient_units": "B dimensionless; C um^2"
+      },
+      "valid_domain_um": [
+        0.54,
+        18.2
+      ],
+      "k_status": "unknown",
+      "measurement_uncertainty": "未提供通用n/k不确定度；不把数值小数位当准确度",
+      "wavelength_basis": "按来源光谱波长约定；本轮来源未明确空气/真空差异时不作推测或转换",
+      "refractive_index_basis": "按来源原始n约定；不作未授权空气/真空转换"
+    },
+    {
+      "optical_set_id": "ri_znse_amotchkina_n",
+      "material_id": "ZnSe_substrate",
+      "sample_role": "substrate",
+      "sample_form": "bulk",
+      "short_name": "Amotchkina/块材/2020/仅n",
+      "conditions": {
+        "deposition_method": "不适用（块材，并非沉积薄膜参考）",
+        "substrate_temperature": "不适用（块材，并非沉积薄膜参考）",
+        "substrate": "不适用（块材，并非沉积薄膜参考）",
+        "film_thickness": "不适用（块材，并非沉积薄膜参考）",
+        "deposition_rate": "不适用（块材，并非沉积薄膜参考）",
+        "oxygen_partial_pressure": "不适用（块材，并非沉积薄膜参考）",
+        "reactive_gas_flow": "不适用（块材，并非沉积薄膜参考）",
+        "base_pressure": "不适用（块材，并非沉积薄膜参考）",
+        "working_pressure": "不适用（块材，并非沉积薄膜参考）",
+        "ion_assistance": "不适用（块材，并非沉积薄膜参考）",
+        "annealing": "不适用（块材，并非沉积薄膜参考）",
+        "measurement_temperature": "未提供（本轮可核验来源）",
+        "crystal_axis": "未提供（本轮可核验来源）"
+      },
+      "source": {
+        "raw_path": "raw/ZnSe_Amotchkina.yml",
+        "sha256": "3afa56e33abcf985d0542fc61ac965723807f6be7aee6d591341733efe95d2f2",
+        "source_kind": "author_supplied_database_numerical_data",
+        "repository_commit": "c5c2f188e848453def5970e347399d653df2ffc2",
+        "repository_path": "database/data/main/ZnSe/nk/Amotchkina.yml",
+        "source_urls": [
+          "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/ZnSe/nk/Amotchkina.yml",
+          "https://refractiveindex.info/?shelf=main&book=ZnSe&page=Amotchkina",
+          "https://refractiveindex.info/download/data/2020/Amotchkina/Summary_for_RefractiveIndexINFO.pdf",
+          "https://opg.optica.org/ao/abstract.cfm?uri=ao-59-5-A40"
+        ],
+        "license": "CC0-1.0 (refractiveindex.info database); original paper rights remain separate",
+        "citation": "T. Amotchkina, M. Trubetskov, D. Hahner, V. Pervak.\nCharacterization of e-beam evaporated Ge, YbF3, ZnS, and LaF3 thin films for laser-oriented coatings.\nAppl. Opt. 59, A40-A47 (2020)\n(Data kindly provided by Tatiana Amotchkina\n[data]\n[description])",
+        "doi_urls": [
+          "https://doi.org/10.1364/AO.59.000A40"
+        ],
+        "raw_comments": "",
+        "raw_conditions": {},
+        "citation_correction": null
+      },
+      "derivation": {
+        "type": "bounded_formula_sampling",
+        "description": "带非单位常数项/改进Sellmeier不能硬套产品三项式，按原式有界自适应采样；这些是计算值，非新增测量。",
+        "source_formula": {
+          "type": "formula 2",
+          "wavelength_range": "0.4 13.9",
+          "coefficients": "-0.689818 4.855169 0.056359 0.673922 0.056336 2.481890 2222.114"
+        },
+        "build_linear_n_tolerance": 5e-08,
+        "original_node_count": 0
+      },
+      "valid_domain_um": [
+        0.4,
+        12
+      ],
+      "k_status": "unknown",
+      "measurement_uncertainty": "未提供通用n/k不确定度；不把数值小数位当准确度",
+      "wavelength_basis": "按来源光谱波长约定；本轮来源未明确空气/真空差异时不作推测或转换",
+      "refractive_index_basis": "按来源原始n约定；不作未授权空气/真空转换"
+    },
+    {
+      "optical_set_id": "ri_znse_amotchkina_nk",
+      "material_id": "ZnSe_substrate",
+      "sample_role": "substrate",
+      "sample_form": "bulk",
+      "short_name": "Amotchkina/块材/2020/n-k",
+      "conditions": {
+        "deposition_method": "不适用（块材，并非沉积薄膜参考）",
+        "substrate_temperature": "不适用（块材，并非沉积薄膜参考）",
+        "substrate": "不适用（块材，并非沉积薄膜参考）",
+        "film_thickness": "不适用（块材，并非沉积薄膜参考）",
+        "deposition_rate": "不适用（块材，并非沉积薄膜参考）",
+        "oxygen_partial_pressure": "不适用（块材，并非沉积薄膜参考）",
+        "reactive_gas_flow": "不适用（块材，并非沉积薄膜参考）",
+        "base_pressure": "不适用（块材，并非沉积薄膜参考）",
+        "working_pressure": "不适用（块材，并非沉积薄膜参考）",
+        "ion_assistance": "不适用（块材，并非沉积薄膜参考）",
+        "annealing": "不适用（块材，并非沉积薄膜参考）",
+        "measurement_temperature": "未提供（本轮可核验来源）",
+        "crystal_axis": "未提供（本轮可核验来源）"
+      },
+      "source": {
+        "raw_path": "raw/ZnSe_Amotchkina.yml",
+        "sha256": "3afa56e33abcf985d0542fc61ac965723807f6be7aee6d591341733efe95d2f2",
+        "source_kind": "author_supplied_database_numerical_data",
+        "repository_commit": "c5c2f188e848453def5970e347399d653df2ffc2",
+        "repository_path": "database/data/main/ZnSe/nk/Amotchkina.yml",
+        "source_urls": [
+          "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/ZnSe/nk/Amotchkina.yml",
+          "https://refractiveindex.info/?shelf=main&book=ZnSe&page=Amotchkina",
+          "https://refractiveindex.info/download/data/2020/Amotchkina/Summary_for_RefractiveIndexINFO.pdf",
+          "https://opg.optica.org/ao/abstract.cfm?uri=ao-59-5-A40"
+        ],
+        "license": "CC0-1.0 (refractiveindex.info database); original paper rights remain separate",
+        "citation": "T. Amotchkina, M. Trubetskov, D. Hahner, V. Pervak.\nCharacterization of e-beam evaporated Ge, YbF3, ZnS, and LaF3 thin films for laser-oriented coatings.\nAppl. Opt. 59, A40-A47 (2020)\n(Data kindly provided by Tatiana Amotchkina\n[data]\n[description])",
+        "doi_urls": [
+          "https://doi.org/10.1364/AO.59.000A40"
+        ],
+        "raw_comments": "",
+        "raw_conditions": {},
+        "citation_correction": null
+      },
+      "derivation": {
+        "type": "formula_n_plus_tabulated_k_intersection",
+        "description": "n由同源公式计算；k只在同源k表内线性内插；有效域取n、k、本轮测量窗的交集。保留所有交集内原k节点。",
+        "source_formula": {
+          "type": "formula 2",
+          "wavelength_range": "0.4 13.9",
+          "coefficients": "-0.689818 4.855169 0.056359 0.673922 0.056336 2.481890 2222.114"
+        },
+        "source_k_domain_um": [
+          0.4,
+          0.888
+        ],
+        "source_k_row_count": 123,
+        "build_linear_n_tolerance": 5e-08
+      },
+      "valid_domain_um": [
+        0.4,
+        0.888
+      ],
+      "k_status": "source_values_or_bounded_interpolation",
+      "measurement_uncertainty": "未提供通用n/k不确定度；不把数值小数位当准确度",
+      "wavelength_basis": "按来源光谱波长约定；本轮来源未明确空气/真空差异时不作推测或转换",
+      "refractive_index_basis": "按来源原始n约定；不作未授权空气/真空转换"
+    },
+    {
+      "optical_set_id": "ri_zns_debenham_n",
+      "material_id": "ZnS_substrate",
+      "sample_role": "substrate",
+      "sample_form": "bulk",
+      "short_name": "Debenham-Klein/块材20°C/1986",
+      "conditions": {
+        "deposition_method": "不适用（块材，并非沉积薄膜参考）",
+        "substrate_temperature": "不适用（块材，并非沉积薄膜参考）",
+        "substrate": "不适用（块材，并非沉积薄膜参考）",
+        "film_thickness": "不适用（块材，并非沉积薄膜参考）",
+        "deposition_rate": "不适用（块材，并非沉积薄膜参考）",
+        "oxygen_partial_pressure": "不适用（块材，并非沉积薄膜参考）",
+        "reactive_gas_flow": "不适用（块材，并非沉积薄膜参考）",
+        "base_pressure": "不适用（块材，并非沉积薄膜参考）",
+        "working_pressure": "不适用（块材，并非沉积薄膜参考）",
+        "ion_assistance": "不适用（块材，并非沉积薄膜参考）",
+        "annealing": "不适用（块材，并非沉积薄膜参考）",
+        "measurement_temperature": "20 °C",
+        "crystal_axis": "立方材料标量色散；不提供取向依赖",
+        "phase": "立方ZnS"
+      },
+      "source": {
+        "raw_path": "raw/ZnS_Debenham.yml",
+        "sha256": "c71964364fe7c7b9200aae961430709dd04cbd08c227faf332c999dd6249d557",
+        "source_kind": "author_supplied_database_numerical_data",
+        "repository_commit": "c5c2f188e848453def5970e347399d653df2ffc2",
+        "repository_path": "database/data/main/ZnS/nk/Debenham.yml",
+        "source_urls": [
+          "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/ZnS/nk/Debenham.yml",
+          "https://refractiveindex.info/?shelf=main&book=ZnS&page=Debenham",
+          "https://opg.optica.org/ao/abstract.cfm?uri=ao-25-12-1873"
+        ],
+        "license": "CC0-1.0 (refractiveindex.info database); original paper rights remain separate",
+        "citation": "1) M. Debenham.\nRefractive indices of zinc sulfide in the 0.405-13-µm wavelength range.\nAppl. Opt., 23, 2238-2239 (1984); \n2) C. A. Klein.\nRoom-temperature dispersion equations for cubic zinc sulfide.\nAppl. Opt. 25, 1873-1875 (1986); \n*Ref. 2 provides a modified Sellmeier equation based on data from Ref. 1",
+        "doi_urls": [
+          "https://doi.org/10.1364/AO.23.002238",
+          "https://doi.org/10.1364/AO.25.001873"
+        ],
+        "raw_comments": "Cubic ZnS, 20 °C",
+        "raw_conditions": {},
+        "citation_correction": null
+      },
+      "derivation": {
+        "type": "bounded_formula_sampling",
+        "description": "带非单位常数项/改进Sellmeier不能硬套产品三项式，按原式有界自适应采样；这些是计算值，非新增测量。",
+        "source_formula": {
+          "type": "formula 4",
+          "wavelength_range": "0.405 13",
+          "coefficients": "8.393 0.14383 0 0.2421 2 4430.99 0 36.71 2"
+        },
+        "build_linear_n_tolerance": 5e-08,
+        "original_node_count": 0
+      },
+      "valid_domain_um": [
+        0.405,
+        13.0
+      ],
+      "k_status": "unknown",
+      "measurement_uncertainty": "未提供通用n/k不确定度；不把数值小数位当准确度",
+      "wavelength_basis": "按来源光谱波长约定；本轮来源未明确空气/真空差异时不作推测或转换",
+      "refractive_index_basis": "按来源原始n约定；不作未授权空气/真空转换"
+    },
+    {
+      "optical_set_id": "ri_ge_burnett2016_table1_vacuum",
+      "material_id": "Ge_substrate",
+      "sample_role": "substrate",
+      "sample_form": "bulk",
+      "short_name": "Burnett/块材22°C真空n/2016",
+      "conditions": {
+        "deposition_method": "不适用（块材，并非沉积薄膜参考）",
+        "substrate_temperature": "不适用（块材，并非沉积薄膜参考）",
+        "substrate": "不适用（块材，并非沉积薄膜参考）",
+        "film_thickness": "不适用（块材，并非沉积薄膜参考）",
+        "deposition_rate": "不适用（块材，并非沉积薄膜参考）",
+        "oxygen_partial_pressure": "不适用（块材，并非沉积薄膜参考）",
+        "reactive_gas_flow": "不适用（块材，并非沉积薄膜参考）",
+        "base_pressure": "不适用（块材，并非沉积薄膜参考）",
+        "working_pressure": "不适用（块材，并非沉积薄膜参考）",
+        "ion_assistance": "不适用（块材，并非沉积薄膜参考）",
+        "annealing": "不适用（块材，并非沉积薄膜参考）",
+        "measurement_temperature": "22.000 °C",
+        "crystal_axis": "未提供；原文测Ge棱镜标量折射率",
+        "sample_resistivity": "17 Ω·cm"
+      },
+      "source": {
+        "raw_path": "raw/Ge_Burnett2016_Table1_vacuum.csv",
+        "sha256": "f895ec601c939b025b745fc32ade8337e1a3a9dcda3b8896140b20717287daba",
+        "source_kind": "primary_paper_table",
+        "source_urls": [
+          "https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=921884",
+          "https://doi.org/10.1117/12.2237978",
+          "https://www.nist.gov/publications/refractive-index-measurements-ge"
+        ],
+        "license": "Numeric facts transcribed from NIST primary paper; paper text and figures not redistributed.",
+        "citation": "J. H. Burnett, S. G. Kaplan, E. Stover, A. Phenis. Refractive index measurements of Ge. Proc. SPIE 9974, 99740X (2016), Table 1.",
+        "doi_urls": [
+          "https://doi.org/10.1117/12.2237978"
+        ]
+      },
+      "derivation": {
+        "type": "primary_table_transcription",
+        "description": "NIST原文Table1的λvac与nvac逐行转录；无公式回填、无空气模型混用。",
+        "table": "Table 1",
+        "pdf_page_1based": 6,
+        "source_row_count": 17
+      },
+      "valid_domain_um": [
+        2.25,
+        14.0
+      ],
+      "k_status": "unknown",
+      "measurement_uncertainty": "原始17个节点的1σ见raw CSV；点间线性插值不继承该不确定度。",
+      "wavelength_basis": "vacuum",
+      "refractive_index_basis": "absolute (vacuum)"
+    }
+  ]
+}

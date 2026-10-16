@@ -1,0 +1,3 @@
+bubble_pop.wav source note
+
+This notification sound was synthesized for this project with a short Python standard-library script. It uses generated sine tones, deterministic generated noise, and an amplitude envelope. No external recording, sample, or third-party asset was used.
