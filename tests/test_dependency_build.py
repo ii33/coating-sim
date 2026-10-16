@@ -1,4 +1,4 @@
-"""Offline build publication guards; no bundler, network or desktop required."""
+"""Retired build guards and historical audit evidence; no bundler or network."""
 
 import json
 from pathlib import Path
@@ -17,6 +17,7 @@ class BuildContractTests(unittest.TestCase):
         with patch.object(build.subprocess, "run") as run:
             self.assertEqual(build.main(["--dry-run"]), 2)
             self.assertEqual(build.main(["--test-build"]), 2)
+            self.assertEqual(build.legacy_cxfreeze_validation(["--test-build"]), 2)
             run.assert_not_called()
 
     def test_notice_must_exist_and_be_nonempty(self):
@@ -55,12 +56,12 @@ class BuildContractTests(unittest.TestCase):
             self.assertEqual(run.call_args.kwargs["timeout"], 30)
 
     def test_windows_missing_notice_blocks_before_bundler(self):
-        with patch.object(build.sys, "platform", "win32"), patch.object(build.importlib.util, "find_spec", return_value=True), patch.object(build.release_policy.__globals__["json"], "loads", return_value={"schema_version": 1, "platforms": {"win32": {"redistribution_approved": True, "evidence_files": ["README.md"]}}}), patch.object(build.subprocess, "run") as run:
+        with patch.object(build.sys, "platform", "win32"), patch.object(build.release_policy.__globals__["json"], "loads", return_value={"schema_version": 1, "platforms": {"win32": {"redistribution_approved": True, "evidence_files": ["README.md"]}}}), patch.object(build.subprocess, "run") as run:
             self.assertEqual(build.main([]), 2)
             run.assert_not_called()
 
     def test_unreviewed_platform_policy_blocks_binary_publication(self):
-        with patch.object(build.sys, "platform", "darwin"), patch.object(build.importlib.util, "find_spec", return_value=True), patch.object(build.subprocess, "run") as run:
+        with patch.object(build.sys, "platform", "darwin"), patch.object(build.subprocess, "run") as run:
             self.assertEqual(build.main([]), 2)
             run.assert_not_called()
 

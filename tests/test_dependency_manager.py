@@ -20,10 +20,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ManagerTests(unittest.TestCase):
-    def test_tool_build_catalog_is_a_separate_scope(self):
-        rows = manager.build_catalog(ROOT)
-        self.assertEqual({row["name"] for row in rows}, {"pyinstaller"})
-        self.assertTrue(all(row["group"] == "build" and row["scope"] == "separate-build-venv" for row in rows))
+    def test_tool_build_catalog_is_retired(self):
+        with self.assertRaisesRegex(ValueError, "build catalog retired"):
+            manager.build_catalog(ROOT)
         self.assertNotIn("build", manager.PROFILES)
         _, runtime_rows = manager.catalog(ROOT)
         self.assertFalse({"pyinstaller", "cx-freeze", "freeze-core", "patchelf"}.intersection(row["name"] for row in runtime_rows))
@@ -263,8 +262,9 @@ class ManagerTests(unittest.TestCase):
             with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
                 manager.plan_environment(self.root, **kwargs)
 
-    def test_missing_environment_plan_requires_explicit_normal_python(self):
-        plan = manager.plan_environment(self.root, proxy=self.proxy)
+    def test_missing_environment_plan_requires_discovered_or_explicit_normal_python(self):
+        with patch("tools.dependency_manager.python_discovery.discover_python", return_value={"selected_python": None}):
+            plan = manager.plan_environment(self.root, proxy=self.proxy)
         self.assertEqual(plan["status"], "blocked")
         with patch.object(
             manager,
@@ -314,6 +314,56 @@ class ManagerTests(unittest.TestCase):
             )
         self.assertEqual(repair["actions"][0]["kind"], "ensurepip")
         self.assertEqual(install["status"], "blocked")
+
+    def test_directml_existing_313_reports_target_and_preserves_creation_selector(self):
+        data = self.fake_venv()
+        data.update(python="3.13.16", platform="win32")
+        with patch.object(manager, "probe_python", return_value=data) as probe:
+            plan = manager.plan_environment(self.root, backend="directml", python="other-python", proxy=self.proxy)
+        self.assertEqual(plan["status"], "blocked")
+        self.assertEqual(probe.call_count, 1)
+        diagnostic = plan["backend_diagnostic"]
+        self.assertEqual(diagnostic["python"], "3.13.16")
+        self.assertEqual(diagnostic["platform"], "win32")
+        self.assertEqual(diagnostic["identity_source"], "target_venv")
+        self.assertIn(".venv-directml", " ".join(diagnostic["remediation"]))
+        self.assertFalse(any(a["kind"] == "create_venv" for a in plan["actions"]))
+
+    def test_directml_new_target_reports_selected_creation_python(self):
+        for version, platform_name, status in (("3.13.16", "win32", "blocked"), ("3.12.10", "linux", "blocked"), ("3.12.10", "win32", "ready")):
+            with self.subTest(version=version, platform=platform_name):
+                data = {"python": version, "platform": platform_name, "machine": "AMD64", "executable": "chosen-python", "prefix": "base", "base_prefix": "base", "has_venv": True, "has_ensurepip": True, "bundled_pip": "25.0"}
+                with patch.object(manager, "probe_python", return_value=data):
+                    plan = manager.plan_environment(self.root, backend="directml", python="chosen-python", proxy=self.proxy)
+                self.assertEqual(plan["status"], status)
+                if status == "ready":
+                    self.assertIsNone(plan["backend_diagnostic"])
+                else:
+                    diagnostic = plan["backend_diagnostic"]
+                    self.assertEqual(diagnostic["identity_source"], "creation_python")
+                    self.assertEqual(diagnostic["python"], version)
+                    self.assertEqual(diagnostic["platform"], platform_name)
+                    self.assertIn(version, " ".join(plan["errors"]))
+
+    def test_unsupported_existing_version_is_reported_but_stays_blocked(self):
+        data = self.fake_venv()
+        data.update(python="3.14.0", platform="win32")
+        with patch.object(manager, "probe_python", return_value=data):
+            inspected = manager.inspect_environment(self.root, backend="directml")
+        self.assertEqual(inspected["target"]["python"], "3.14.0")
+        self.assertEqual(inspected["target"]["implementation"], "CPython")
+        self.assertEqual(inspected["backend_diagnostic"]["python"], "3.14.0")
+        self.assertEqual(inspected["status"], "failed")
+
+    def test_directml_probe_failure_is_unknown_not_inferred_313(self):
+        self.fake_venv()
+        with patch.object(manager, "probe_python", side_effect=ValueError("probe unavailable")):
+            inspected = manager.inspect_environment(self.root, backend="directml")
+        diagnostic = inspected["backend_diagnostic"]
+        self.assertEqual(diagnostic["reason"], "identity_unavailable")
+        self.assertEqual(diagnostic["python"], "unknown")
+        self.assertEqual(diagnostic["platform"], "unknown")
+        self.assertEqual(diagnostic["probe_error"], "probe unavailable")
 
     def test_optional_backend_compatibility_blocks_manual_vendor_profiles(self):
         for backend in ("directml", "rocm", "xpu"):

@@ -5,6 +5,8 @@ on:
   push:
     branches: [main, "validation/python-bootstrap-*"]
     paths:
+      - install.bat
+      - install.sh
       - dependency_manager.py
       - dependency_manager.cmd
       - tools/dependency_manager/**
@@ -46,7 +48,7 @@ jobs:
           $python = (Get-Command python.exe -CommandType Application | Select-Object -First 1).Source
           & powershell.exe -NoLogo -NoProfile -File $script -Cli -CheckOnly -BootstrapPython $python
           if ($LASTEXITCODE -ne 0) { throw 'Read-only Python bootstrap probe failed' }
-          & cmd.exe /d /c dependency_manager.cmd -Cli -BootstrapPython $python doctor --json
+          & cmd.exe /d /c install.bat -Cli -BootstrapPython $python doctor --json
           if ($LASTEXITCODE -ne 0) { throw 'Source CLI bootstrap/argument forwarding failed' }
       - name: Run offline manager contracts
         if: ${{ !cancelled() }}

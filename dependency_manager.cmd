@@ -1,5 +1,6 @@
 @echo off
 setlocal
+rem Managed Python defaults to this source project; -BootstrapProjectRoot selects another installation root.
 rem Use native Windows PowerShell; do not override the machine's execution policy.
 set "COAT_POWERSHELL=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
 if exist "%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe" set "COAT_POWERSHELL=%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe"

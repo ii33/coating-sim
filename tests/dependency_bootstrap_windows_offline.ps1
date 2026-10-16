@@ -80,9 +80,9 @@ try {
     $directChild = Join-Path $fixture "direct-child-runtime"
     Assert-CoatTest ((Assert-CoatUserPath $directChild $fixture) -eq [IO.Path]::GetFullPath($directChild)) "direct home child target accepted"
     Assert-CoatTest ((Assert-CoatUserPath $fixture $fixture -AllowHomeDirectory) -eq [IO.Path]::GetFullPath($fixture)) "home accepted only for parent verification"
-    Assert-CoatThrows { Assert-CoatUserPath $fixture $fixture } "inside the current user's home"
-    Assert-CoatThrows { Assert-CoatUserPath ($fixture + [IO.Path]::DirectorySeparatorChar) $fixture } "inside the current user's home"
-    Assert-CoatThrows { Assert-CoatInstallTarget $fixture $fixture $manifest.version } "inside the current user's home"
+    Assert-CoatThrows { Assert-CoatUserPath $fixture $fixture } "inside the selected project installation root"
+    Assert-CoatThrows { Assert-CoatUserPath ($fixture + [IO.Path]::DirectorySeparatorChar) $fixture } "inside the selected project installation root"
+    Assert-CoatThrows { Assert-CoatInstallTarget $fixture $fixture $manifest.version } "inside the selected project installation root"
     $script:OfflineStage = "hash_and_proxy"
     $hashPath = Join-Path $fixture "hash.bin"
     [IO.File]::WriteAllBytes($hashPath, [Text.Encoding]::ASCII.GetBytes("abc"))
@@ -91,7 +91,7 @@ try {
     $installerArguments = @(Get-CoatInstallerArguments "C:\User Space\runtime")
     foreach ($required in @("InstallAllUsers=0", "TargetDir=C:\User Space\runtime", "PrependPath=0",
             "AppendPath=0", "Include_launcher=0", "InstallLauncherAllUsers=0", "AssociateFiles=0",
-            "Shortcuts=0", "Include_pip=1", "Include_dev=1", "Include_tcltk=1")) {
+            "Shortcuts=0", "Include_pip=1", "Include_dev=1", "Include_tcltk=0")) {
         Assert-CoatTest ($required -in $installerArguments) "safe installer option $required"
     }
     Assert-CoatTest ($null -eq (Get-CoatDownloadProxy "none" "")) "direct proxy mode"
@@ -139,7 +139,7 @@ try {
         $script:ProbeIdentity.venv_config = $true
         Assert-CoatTest ($null -eq (Test-CoatPython $fakePython "x86_64" $true)) "reject probed venv config"
         $script:ProbeIdentity.venv_config = $false
-        foreach ($field in @("venv", "ensurepip", "tk", "gui_verified")) {
+        foreach ($field in @("venv", "ensurepip")) {
             $script:ProbeIdentity[$field] = $false
             Assert-CoatTest ($null -eq (Test-CoatPython $fakePython "x86_64" $true)) "reject missing $field"
             $script:ProbeIdentity[$field] = $true
@@ -154,7 +154,8 @@ try {
         Assert-CoatTest ($null -eq (Test-CoatPython $fakePython "x86_64" $true)) "reject venv as tool Python"
         $script:ProbeIdentity.base_prefix = $fixture
         $script:ProbeIdentity.gui_verified = $false
-        Assert-CoatTest ($null -ne (Test-CoatPython $fakePython "x86_64" $false)) "CLI validates Tcl without desktop"
+        $script:ProbeIdentity.tk = $false
+        Assert-CoatTest ($null -ne (Test-CoatPython $fakePython "x86_64" $false)) "terminal installer accepts Python without Tcl/Tk or a desktop"
     } finally { Set-Item Function:Invoke-CoatProcess -Value $originalProcess }
 
     # All installation effects below are mocked. Only this disposable fixture changes.
@@ -185,6 +186,10 @@ try {
             Stop-CoatBootstrap "Synthetic installer timeout"
         }
         Assert-CoatTest $Installer "installer-specific credential-free environment"
+        Assert-CoatTest ($TimeoutSeconds -eq 1800) "slow signed package verification receives 30-minute bound"
+        Assert-CoatTest ("/log" -in $Arguments) "vendor installer log is explicit"
+        $logIndex = [Array]::IndexOf($Arguments, "/log")
+        Assert-CoatTest ($Arguments[$logIndex + 1].StartsWith($fixture)) "vendor installer log stays in selected root"
         $targetArgument = @($Arguments | Where-Object { $_.StartsWith("TargetDir=") })[0]
         $targetDirectory = $targetArgument.Substring(10)
         [void][IO.Directory]::CreateDirectory($targetDirectory)
@@ -236,7 +241,7 @@ try {
         Assert-CoatThrows { Install-CoatRuntime $manifest "x86_64" (Join-Path $fixture "locked") $fixture $null $false } "lock exists"
         Assert-CoatTest (Test-Path -LiteralPath $lockPath) "foreign lock preserved"
         Assert-CoatTest (-not @(Get-ChildItem -LiteralPath $fixture -Filter "download-*").Count) "owned downloads cleaned"
-        Assert-CoatThrows { Assert-CoatUserPath (Join-Path ([IO.Path]::GetTempPath()) "outside") $fixture } "inside the current user's home"
+        Assert-CoatThrows { Assert-CoatUserPath (Join-Path ([IO.Path]::GetTempPath()) "outside") $fixture } "inside the selected project installation root"
     } finally {
         Set-Item Function:Get-CoatRegisteredPython -Value $originalRegistry
         Set-Item Function:Assert-CoatWindowsPrerequisites -Value $originalPrerequisites

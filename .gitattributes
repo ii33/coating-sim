@@ -63,3 +63,8 @@
 /tools/dependency_manager/licenses/Unicode-V3-license.txt -text
 /tools/dependency_manager/licenses/Unicode-17.0.0-ReadMe.txt -text
 /tools/dependency_manager/licenses/GNU-GPL-3.0.txt -text
+
+# Portable example descriptors and managed inputs are byte-hashed by ProjectStore.
+# Keep their exact published bytes on every platform, including Windows clones
+# with core.autocrlf=true. Do not normalize existing or future project assets.
+/example/synthetic-demo/** -text

@@ -1,6 +1,7 @@
 """Offline source launcher contracts; PowerShell harness never installs/downloads."""
 
 import json
+import locale
 import os
 from pathlib import Path
 import re
@@ -18,9 +19,27 @@ CMD = ROOT / "dependency_manager.cmd"
 BASE_PYTHON = getattr(sys, "_base_executable", sys.executable)
 
 
+def _native_text(value):
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    try:
+        return value.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return value.decode(locale.getencoding(), errors="replace")
+
+
 class BootstrapSourceTests(unittest.TestCase):
     def setUp(self):
         self.source = SCRIPT.read_text(encoding="utf-8")
+
+    def test_install_bat_preserves_percent_paths_without_call_expansion(self):
+        source = (ROOT / "install.bat").read_text(encoding="utf-8")
+        self.assertIn("setlocal DisableDelayedExpansion", source)
+        self.assertIn('"%~dp0dependency_manager.cmd" %*', source)
+        self.assertNotRegex(source, r"(?im)^\s*call\s")
+        self.assertNotIn("-ExecutionPolicy", source)
 
     def test_cmd_uses_native_powershell_without_policy_override(self):
         text = CMD.read_text(encoding="utf-8")
@@ -66,8 +85,9 @@ class BootstrapSourceTests(unittest.TestCase):
                                     capture_output=True, text=True, timeout=25)
             self.assertEqual(result.returncode, 0, result.stderr)
             identity = json.loads(result.stdout)
-            self.assertTrue(identity["tk"] and identity["venv"] and identity["ensurepip"])
-            self.assertFalse(identity["gui_verified"])
+            self.assertTrue(identity["venv"] and identity["ensurepip"])
+            self.assertNotIn("tkinter", probe)
+            self.assertNotIn("gui_verified", identity)
             # Execute the actual source entry from a path with spaces/non-ASCII text.
             shutil.copy(ROOT / "dependency_manager.py", directory)
             (directory / "tools").mkdir()
@@ -97,7 +117,7 @@ class BootstrapSourceTests(unittest.TestCase):
         self.assertIn('if (-not $identity) {', self.source)
         self.assertIn('$identity = Install-CoatRuntime $manifest', self.source)
         self.assertIn('$arguments = @($ManagerArguments)', self.source)
-        self.assertIn('if ($Cli) { "inspect" } else { "gui" }', self.source)
+        self.assertIn('if ($Cli) { "inspect" } else { "interactive" }', self.source)
         self.assertIn('return $result.ExitCode', self.source)
         self.assertNotIn("project-deploy --yes", self.source)
         self.assertNotIn("-m pip install", self.source)
@@ -186,7 +206,9 @@ class BootstrapSourceTests(unittest.TestCase):
         self.assertNotIn('Write-CoatBootstrap $Endpoint', self.source)
         self.assertNotIn('Write-CoatBootstrap $result.Stdout', self.source)
         self.assertIn('if ($message.StartsWith("COAT_BOOTSTRAP: "))', self.source)
-        self.assertIn('Include_tcltk=1', self.source)
+        self.assertIn('Include_tcltk=0', self.source)
+        self.assertNotIn('Windows.Forms', self.source)
+        self.assertNotIn('UserInteractive', self.source)
 
     def test_linux_pwsh_does_not_run_windows_native_contracts(self):
         case = BootstrapSourceTests("test_native_powershell_offline_harness_when_available")
@@ -197,6 +219,13 @@ class BootstrapSourceTests(unittest.TestCase):
         self.assertIn("requires Windows", result.skipped[0][1])
         run.assert_not_called()
 
+    def test_native_diagnostics_decode_utf8_and_local_encoding(self):
+        self.assertEqual(_native_text(None), "")
+        self.assertEqual(_native_text("error"), "error")
+        self.assertEqual(_native_text("错误".encode("utf-8")), "错误")
+        with patch.object(locale, "getencoding", return_value="cp936"):
+            self.assertEqual(_native_text("错误".encode("cp936")), "错误")
+
     def test_native_powershell_offline_harness_when_available(self):
         if sys.platform != "win32":
             self.skipTest("Full native harness requires Windows registry/path contracts; Windows source CI runs it")
@@ -206,14 +235,14 @@ class BootstrapSourceTests(unittest.TestCase):
         result = subprocess.run([executable, "-NoLogo", "-NoProfile", "-File",
                                  str(ROOT / "tests/dependency_bootstrap_windows_offline.ps1"),
                                  "-BootstrapScript", str(SCRIPT), "-SourcePython", sys.executable],
-                                capture_output=True, text=True, timeout=120)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                                capture_output=True, timeout=120)
+        self.assertEqual(result.returncode, 0, _native_text(result.stdout) + _native_text(result.stderr))
         help_result = subprocess.run([executable, "-NoLogo", "-NoProfile", "-File", str(SCRIPT),
                                       "-Help", "doctor", "--json"],
-                                     capture_output=True, text=True, timeout=30)
-        self.assertEqual(help_result.returncode, 0, help_result.stdout + help_result.stderr)
-        self.assertIn("dependency_manager.cmd", help_result.stdout)
-        report = json.loads(result.stdout.strip().splitlines()[-1])
+                                     capture_output=True, timeout=30)
+        self.assertEqual(help_result.returncode, 0, _native_text(help_result.stdout) + _native_text(help_result.stderr))
+        self.assertIn("dependency_manager.cmd", _native_text(help_result.stdout))
+        report = json.loads(_native_text(result.stdout).strip().splitlines()[-1])
         self.assertEqual(report["status"], "success")
         self.assertGreater(report["assertions"], 70)
         self.assertFalse(report["network_used"])

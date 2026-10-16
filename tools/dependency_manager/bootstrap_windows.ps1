@@ -3,6 +3,7 @@
 param(
     [switch]$Cli,
     [string]$BootstrapPython = "",
+    [string]$BootstrapProjectRoot = "",
     [ValidateSet("env", "none", "http")][string]$BootstrapProxyMode = "env",
     [string]$BootstrapProxy = "",
     [switch]$CheckOnly,
@@ -62,6 +63,9 @@ function Invoke-CoatProcess {
         $start.EnvironmentVariables.Remove($name)
     }
     if ($Installer) {
+        $installerTemporary = Split-Path -Parent $Executable
+        $start.EnvironmentVariables["TEMP"] = $installerTemporary
+        $start.EnvironmentVariables["TMP"] = $installerTemporary
         # Offline full installer gets neither proxy passwords nor manager secrets.
         foreach ($name in @("COAT_DEPENDENCY_PROXY", "HTTP_PROXY", "HTTPS_PROXY",
                 "ALL_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "all_proxy", "no_proxy")) {
@@ -93,8 +97,13 @@ function Invoke-CoatProcess {
             if ($env:OS -eq "Windows_NT") {
                 $taskkill = Join-Path $env:SystemRoot "System32\taskkill.exe"
                 & $taskkill /PID $process.Id /T /F 2>&1 | Out-Null
+                $terminationCode = $LASTEXITCODE
+                Write-CoatBootstrap ("Timed-out process tree termination command exit code: " + $terminationCode)
             } else { $process.Kill() }
-            [void]$process.WaitForExit(5000)
+            $exitObserved = $process.WaitForExit(5000)
+            Write-CoatBootstrap ("Timed-out parent process exit observed: " + $exitObserved)
+            if ($exitObserved) { Write-CoatBootstrap ("Timed-out parent process exit code: " + $process.ExitCode) }
+            Write-CoatBootstrap "Installer descendants may still require manual inspection; no automatic retry."
             Stop-CoatBootstrap "Child process timed out; no elevated retry. A partial installation must be inspected before retry."
         }
         $process.WaitForExit()  # Flush redirected streams.
@@ -161,7 +170,7 @@ function Read-CoatManifest([string]$Path) {
 }
 
 function Test-CoatPython {
-    param([string]$Executable, [string]$Architecture, [bool]$RequireGui = $true)
+    param([string]$Executable, [string]$Architecture, [bool]$RequireGui = $false)
     if (-not (Test-Path -LiteralPath $Executable -PathType Leaf)) { return $null }
     # On CPython <=3.13, -S hides the venv prefix change. Inspect its config
     # before probing so project/other venv executables cannot masquerade as base Python.
@@ -177,29 +186,23 @@ venv_config = any(os.path.isfile(os.path.join(directory,"pyvenv.cfg")) for direc
 if venv_config:
  print(json.dumps({"venv_config":True})); sys.exit(2)
 try:
- import venv, ensurepip, tkinter
- tcl = tkinter.Tcl()
- tcl.eval("info patchlevel")
- gui = sys.argv[1] == "gui"
- if gui:
-  root = tkinter.Tk(); root.withdraw(); root.update_idletasks(); root.destroy()
+ import venv, ensurepip
  machine = platform.machine().lower()
  architecture = "x86" if struct.calcsize("P") == 4 else {"amd64":"x86_64","x86_64":"x86_64","arm64":"arm64","aarch64":"arm64"}.get(machine,"unsupported")
- print(json.dumps({"venv_config":venv_config,"version":platform.python_version(),"implementation":platform.python_implementation(),"platform":sys.platform,"architecture":architecture,"prefix":sys.prefix,"base_prefix":sys.base_prefix,"executable":sys.executable,"venv":True,"ensurepip":bool(ensurepip.version()),"tk":True,"gui_verified":gui}))
+ print(json.dumps({"venv_config":venv_config,"version":platform.python_version(),"implementation":platform.python_implementation(),"platform":sys.platform,"architecture":architecture,"prefix":sys.prefix,"base_prefix":sys.base_prefix,"executable":sys.executable,"venv":True,"ensurepip":bool(ensurepip.version())}))
 except Exception:
  sys.exit(2)
 '@
     try {
-        $mode = if ($RequireGui) { "gui" } else { "cli" }
+        $mode = "cli"  # Legacy positional flag retained; bootstrap never needs a GUI.
         $result = Invoke-CoatProcess $Executable @("-I", "-S", "-B", "-c", $code, $mode) -Capture
         if ($result.ExitCode -ne 0) { return $null }
         $identity = $result.Stdout | ConvertFrom-Json
         if ($identity.implementation -ne "CPython" -or $identity.platform -ne "win32" -or
             $identity.version -notmatch '^3\.1[0-3]\.\d+$' -or
             $identity.architecture -ne $Architecture -or -not $identity.venv -or
-            -not $identity.ensurepip -or -not $identity.tk -or
-            $identity.venv_config -or $identity.prefix -ne $identity.base_prefix -or
-            ($RequireGui -and -not $identity.gui_verified)) { return $null }
+            -not $identity.ensurepip -or
+            $identity.venv_config -or $identity.prefix -ne $identity.base_prefix) { return $null }
         return $identity
     } catch { return $null }
 }
@@ -247,11 +250,11 @@ function Get-CoatRegisteredPython([string]$Minor = "") {
 
 function Find-CoatPython {
     param([string]$Explicit, [string]$ManagedDirectory, [string]$Architecture,
-        [bool]$RequireGui = $true)
+        [bool]$RequireGui = $false)
     if ($Explicit) {
         $identity = Test-CoatPython $Explicit $Architecture $RequireGui
         if (-not $identity) {
-            Stop-CoatBootstrap "Explicit Python is incompatible or unusable. Select a normal matching-architecture CPython 3.10-3.13 with venv, ensurepip and Tcl/Tk."
+            Stop-CoatBootstrap "Explicit Python is incompatible or unusable. Select a normal matching-architecture CPython 3.10-3.13 with venv and ensurepip."
         }
         return $identity
     }
@@ -279,7 +282,7 @@ function Assert-CoatUserPath([string]$Path, [string]$HomeDirectory, [switch]$All
     $isDescendant = -not $isHomeDirectory -and $absolute.StartsWith(
         $homeDirectory + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)
     if (-not ($isDescendant -or ($AllowHomeDirectory -and $isHomeDirectory)) -or $absolute.StartsWith('\\')) {
-        Stop-CoatBootstrap "Managed files must be on a local path inside the current user's home directory."
+        Stop-CoatBootstrap "Managed files must be on an unlinked local path inside the selected project installation root."
     }
     $ancestor = $absolute
     while ($ancestor) {
@@ -471,16 +474,17 @@ function Assert-CoatInstallerHash([string]$Path, [string]$Expected) {
     }
 }
 
-function Get-CoatInstallerArguments([string]$Directory) {
-    return @("/quiet", "InstallAllUsers=0", ("TargetDir=" + $Directory),
+function Get-CoatInstallerArguments([string]$Directory, [string]$LogPath = "") {
+    $logging = if ($LogPath) { @("/log", $LogPath) } else { @() }
+    return $logging + @("/quiet", "InstallAllUsers=0", ("TargetDir=" + $Directory),
         "PrependPath=0", "AppendPath=0", "Include_launcher=0", "InstallLauncherAllUsers=0",
         "AssociateFiles=0", "Shortcuts=0", "Include_pip=1", "Include_exe=1", "Include_lib=1",
-        "Include_dev=1", "Include_tcltk=1", "Include_doc=0", "Include_test=0", "Include_tools=0")
+        "Include_dev=1", "Include_tcltk=0", "Include_doc=0", "Include_test=0", "Include_tools=0")
 }
 
 function Install-CoatRuntime {
     param($Manifest, [string]$Architecture, [string]$Directory, [string]$HomeDirectory,
-        $Proxy, [bool]$RequireGui = $true)
+        $Proxy, [bool]$RequireGui = $false)
     Assert-CoatInstallTarget $Directory $HomeDirectory $Manifest.version
     Assert-CoatWindowsPrerequisites
     $artifactProperty = $Manifest.artifacts.PSObject.Properties[$Architecture]
@@ -504,21 +508,27 @@ function Install-CoatRuntime {
         Write-CoatBootstrap ("No usable manager Python. Automatically installing official CPython " + $Manifest.version + " to " + $Directory)
         Write-CoatBootstrap ("Source: " + $Manifest.source)
         Write-CoatBootstrap ("License: " + $Manifest.license + "; continuing accepts the standard installer license.")
-        Write-CoatBootstrap "Per-user maintenance/uninstall records are created. No PATH, launcher, file associations, shortcuts or elevation; Tcl/Tk is included."
+        Write-CoatBootstrap "Per-user maintenance/uninstall records are created. No PATH, launcher, file associations, shortcuts or elevation. The installer runs in the terminal and does not require Tcl/Tk."
         $script:BootstrapPhase = "runtime_download"
         Save-CoatInstaller $artifactProperty.Value $installer $Proxy
         # Recheck after network wait: never maintain another registered CPython.
         Assert-CoatInstallTarget $Directory $HomeDirectory $Manifest.version
         Assert-CoatWindowsPrerequisites
         $script:BootstrapPhase = "runtime_install"
-        $result = Invoke-CoatProcess $installer (Get-CoatInstallerArguments $Directory) -TimeoutSeconds 600 -Capture -Installer
+        # Keep vendor logs outside the disposable download directory, including
+        # successful package logs and diagnostics from interrupted installers.
+        $installerLog = Join-Path $parent ("python-install-" + [Guid]::NewGuid().ToString("N") + ".log")
+        Write-CoatBootstrap ("Phase: runtime_install. Installer log: " + $installerLog)
+        Write-CoatBootstrap "Waiting up to 30 minutes for the signed installer; Windows package verification can take several minutes per component."
+        $result = Invoke-CoatProcess $installer (Get-CoatInstallerArguments $Directory $installerLog) -TimeoutSeconds 1800 -Capture -Installer
+        Write-CoatBootstrap ("CPython installer process exit code: " + $result.ExitCode)
         if ($result.ExitCode -ne 0) {
             Stop-CoatBootstrap ("CPython installer returned " + $result.ExitCode + ". No elevated/reboot retry; inspect any partial installation before retry.")
         }
         $identity = Test-CoatPython (Join-Path $Directory "python.exe") $Architecture $RequireGui
         if (-not $identity -or $identity.version -ne $Manifest.version -or
             [IO.Path]::GetFullPath($identity.prefix).TrimEnd('\') -ne [IO.Path]::GetFullPath($Directory).TrimEnd('\')) {
-            Stop-CoatBootstrap "Installed CPython identity, venv/ensurepip or Tcl/Tk check failed; partial files are preserved for inspection."
+            Stop-CoatBootstrap "Installed CPython identity or venv/ensurepip check failed; partial files are preserved for inspection."
         }
         Write-CoatBootstrap ("CPython license accepted: " + $Manifest.license)
         return $identity
@@ -538,16 +548,13 @@ function Install-CoatRuntime {
 
 function Invoke-CoatBootstrap {
     if ($Help) {
-        [Console]::WriteLine("dependency_manager.cmd [-Cli] [-BootstrapPython <python.exe>] [-BootstrapProxyMode env|none|http] [-BootstrapProxy <credential-free http://host:port>] [-CheckOnly] [manager operation and flags]")
-        [Console]::WriteLine("Default: GUI. -Cli: manager CLI (inspect by default). -CheckOnly: read-only Python/Tcl check, never download/install. Source-only; existing PowerShell policy is preserved.")
+        [Console]::WriteLine("dependency_manager.cmd [-Cli] [-BootstrapPython <python.exe>] [-BootstrapProjectRoot <project-directory>] [-BootstrapProxyMode env|none|http] [-BootstrapProxy <credential-free http://host:port>] [-CheckOnly] [manager operation and flags]")
+        [Console]::WriteLine("Default: interactive terminal installer. -Cli: manager CLI (inspect by default). -CheckOnly: read-only Python check, never download/install. Source-only; existing PowerShell policy is preserved.")
         return 0
     }
     try {
         if ($env:OS -ne "Windows_NT" -or $PSVersionTable.PSVersion -lt [version]"5.1") {
             Stop-CoatBootstrap "This source launcher requires Windows PowerShell 5.1 or newer."
-        }
-        if (-not $Cli -and -not [Environment]::UserInteractive) {
-            Stop-CoatBootstrap "GUI startup requires an interactive Windows desktop. Use -Cli for a console session; no runtime is installed to fix a missing desktop."
         }
         $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
         $manifest = Read-CoatManifest (Join-Path $PSScriptRoot "runtime_manifest.json")
@@ -556,19 +563,20 @@ function Invoke-CoatBootstrap {
         if ($architecture -eq "unsupported" -or -not $manifest.artifacts.PSObject.Properties[$architecture]) {
             Stop-CoatBootstrap "Unsupported Windows architecture; no alternate runtime will be installed."
         }
-        $homeDirectory = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
-        $local = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
-        $base = Assert-CoatUserPath (Join-Path $local "DepositionDependencyManager") $homeDirectory
-        $directory = Join-Path $base ("cpython-" + $manifest.version)
+        # Before Python starts, the source root is known. An explicit selected
+        # installation root takes precedence; never silently use AppData.
+        $homeDirectory = if ($BootstrapProjectRoot) { [IO.Path]::GetFullPath($BootstrapProjectRoot) } else { $root }
+        $base = Assert-CoatUserPath (Join-Path $homeDirectory ".runtime") $homeDirectory
+        $directory = Join-Path $base "python"
         if (-not $CheckOnly) {
-            $logs = Assert-CoatUserPath (Join-Path $base "logs") $homeDirectory
+            $logs = Assert-CoatUserPath (Join-Path $homeDirectory ".dependency-manager\logs") $homeDirectory
             [void][IO.Directory]::CreateDirectory($logs)
             $script:BootstrapLog = Join-Path $logs ("bootstrap-" + [Guid]::NewGuid().ToString("N") + ".log")
             Write-CoatBootstrap ("Bootstrap log: " + $script:BootstrapLog)
         }
         $script:BootstrapPhase = "python_probe"
         $explicit = if ($BootstrapPython) { $BootstrapPython } else { $env:COAT_DEPENDENCY_PYTHON }
-        $identity = Find-CoatPython $explicit $directory $architecture (-not $Cli)
+        $identity = Find-CoatPython $explicit $directory $architecture $false
         if ($CheckOnly) {
             $status = if ($identity) { "ready" } else { "missing" }
             [Console]::WriteLine((@{ schema_version = 1; operation = "bootstrap_check"; status = $status;
@@ -578,12 +586,14 @@ function Invoke-CoatBootstrap {
         }
         if (-not $identity) {
             $proxy = Get-CoatDownloadProxy $BootstrapProxyMode $BootstrapProxy
-            $identity = Install-CoatRuntime $manifest $architecture $directory $homeDirectory $proxy (-not $Cli)
+            $identity = Install-CoatRuntime $manifest $architecture $directory $homeDirectory $proxy $false
         }
         Write-CoatBootstrap ("Manager Python: " + $identity.executable + " (" + $identity.version + ")")
         $script:BootstrapPhase = "manager_launch"
         $arguments = @($ManagerArguments)
-        if (-not $arguments.Count) { $arguments = @($(if ($Cli) { "inspect" } else { "gui" })) }
+        $hasManagerProject = @($arguments | Where-Object { $_ -eq "--project" -or $_.StartsWith("--project=") }).Count -gt 0
+        if (-not $arguments.Count) { $arguments = @($(if ($Cli) { "inspect" } else { "interactive" })) }
+        if ($BootstrapProjectRoot -and -not $hasManagerProject) { $arguments += @("--project", $homeDirectory) }
         # -I -S prevents sitecustomize/user site/PYTHONPATH imports. Add only the known
         # source root explicitly, then execute the existing stdlib-only entry point.
         $entry = "import os,runpy,sys; root=sys.argv.pop(1); sys.path.insert(0,root); entry=os.path.join(root,'dependency_manager.py'); sys.argv[0]=entry; runpy.run_path(entry,run_name='__main__')"
@@ -594,14 +604,6 @@ function Invoke-CoatBootstrap {
         if ($message.StartsWith("COAT_BOOTSTRAP: ")) { $message = $message.Substring(16) }
         else { $message = "Bootstrap failed during " + $script:BootstrapPhase + ". No elevated retry or security-setting change; check the documented prerequisites." }
         try { Write-CoatBootstrap $message } catch { [Console]::Error.WriteLine($message) }
-        if (-not $Cli -and -not $CheckOnly) {
-            try {
-                Add-Type -AssemblyName System.Windows.Forms
-                [void][Windows.Forms.MessageBox]::Show(($message + "`nLog: " + $script:BootstrapLog),
-                    "Deposition dependency manager", [Windows.Forms.MessageBoxButtons]::OK,
-                    [Windows.Forms.MessageBoxIcon]::Error)
-            } catch { }  # Console diagnosis still works without a desktop/Forms.
-        }
         return 2
     }
 }

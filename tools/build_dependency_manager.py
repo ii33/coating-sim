@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
-"""Build the selected PyInstaller bundle; retain prior native audit evidence."""
+"""Retired installer build entry; retain historical native/license audit helpers."""
 
 from __future__ import annotations
 
-import argparse
 import hashlib
 import importlib.metadata
-import importlib.util
 import json
 from pathlib import Path
-import platform
 import shutil
 import subprocess
 import sys
@@ -138,60 +135,12 @@ def collect_licenses(output: Path, doctor: dict, msvc_license: Path | None, nati
 
 
 def legacy_cxfreeze_validation(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--test-build", action="store_true", help="Internal functional evaluation only; never a redistribution approval")
-    parser.add_argument("--msvc-license", type=Path, help="Windows: full Microsoft VC redistributable licence notice")
-    args = parser.parse_args(argv)
-    staging = ROOT / "build/dependency_manager/cxfreeze-bundle"
-    command = [sys.executable, str(ROOT / "tools/dependency_manager/freeze_setup.py"), "build_exe", "--build-exe", str(staging)]
-    if args.dry_run:
-        print(json.dumps({"argv": command, "requires": "cx-Freeze 8.7.1 / freeze-core 0.8.0 + native CPython Tk", "self_contained": True, "excluded": ["project venv", "Qt", "GPU", "other", "data", "credentials", "build-only packages", "GNU readline/GDBM", "vendored Linux libuuid"], "licenses": {"cx_Freeze": "PSF-2.0", "freeze_core": "MIT", "linux_patchelf": "GPL-3.0 build-only, not distributed", "windows_msvc": "only pinned CPython DLLs; authority/downstream acceptance/final Tk closure gate remains"}}, ensure_ascii=False))
-        return 0
-    if importlib.util.find_spec("cx_Freeze") is None:
-        print("Build environment lacks cx_Freeze. Follow docs/dependency-manager.md; no automatic installation.", file=sys.stderr)
-        return 2
-    policy = release_policy()
-    if not args.test_build and not policy.get("redistribution_approved"):
-        print("Binary redistribution blocked: " + policy.get("reason", "unreviewed runtime licences"), file=sys.stderr)
-        return 2
-    if sys.platform == "win32" and (args.msvc_license is None or not args.msvc_license.is_file()):
-        print("Missing --msvc-license; Windows runtime distribution is blocked until its full notice is supplied.", file=sys.stderr)
-        return 2
-    if staging.exists():
-        shutil.rmtree(staging)
-    code = subprocess.run(command, cwd=ROOT).returncode
-    if code:
-        return code
-    try:
-        auditor = package_auditor()
-        native_audit = None
-        if sys.platform == "linux":
-            profile = auditor.load_profile()
-            auditor.prepare_linux_payload(staging, profile)
-            native_audit = auditor.audit_linux_payload(staging, profile=profile)
-        verify_payload(staging)
-        doctor = bundled_doctor(staging)
-        if sys.platform == "linux":
-            native_audit = auditor.audit_linux_payload(staging, doctor)
-        license_inventory = collect_licenses(staging, doctor, args.msvc_license, native_audit)
-    except (OSError, RuntimeError, ValueError, KeyError, subprocess.SubprocessError) as exc:
-        print(str(exc), file=sys.stderr)
-        return 2
-    shutil.copy2(ROOT / "docs/dependency-manager.md", staging / "README.md")
-    files = [{"path": str(path.relative_to(staging)), "size": path.stat().st_size, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()} for path in sorted(staging.rglob("*")) if path.is_file()]
-    (staging / "build-manifest.json").write_text(json.dumps({"schema_version": 1, "platform": sys.platform, "machine": platform.machine(), "build_python": sys.version, "cx_freeze_version": importlib.metadata.version("cx-Freeze"), "freeze_core_version": importlib.metadata.version("freeze-core"), "bundled_runtime": doctor, "native_payload_audit": native_audit, "license_inventory": license_inventory, "redistribution_policy": policy, "internal_test_build": args.test_build, "build_only_tools": {"patchelf": "GPL-3.0; ELF editing only, not bundled"} if sys.platform == "linux" else {}, "gui_rendering_verified": False, "files": files}, indent=2, ensure_ascii=False), encoding="utf-8")
-    output = ROOT / "dist/deposition-dependency-manager"
-    if output.exists():
-        shutil.rmtree(output)
-    output.parent.mkdir(exist_ok=True)
-    shutil.copytree(staging, output)
-    print(output)
-    return 0
+    """Compatibility entry: historical validation cannot bypass retirement."""
+    return main(argv)
 
 
 def main(argv=None):
-    print("EXE packaging retired: use the source dependency manager and Python bootstrap launcher.", file=sys.stderr)
+    print("EXE packaging retired: use the online installer via install.bat or install.sh.", file=sys.stderr)
     return 2
 
 

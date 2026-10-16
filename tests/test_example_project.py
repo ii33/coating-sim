@@ -1,12 +1,15 @@
 """The shipped example must open offline, relocate and calculate real results."""
 from pathlib import Path
+import os
 import shutil
+import subprocess
 from unittest.mock import patch
 
 import numpy as np
 import pytest
 
 from coat_sim.core.project_default_loading import load_project_default
+from coat_sim.core.project_dependencies import ProjectError
 from coat_sim.core.project_film_service import ProjectFilmService
 from coat_sim.core.project_store import ProjectStore
 from coat_sim.core.process_simulator import simulate_process
@@ -118,3 +121,59 @@ def test_example_page_configurations_restore_without_guessing(example):
         simulation.close()
         source.markSourceClosed()
         app.processEvents()
+
+
+@pytest.mark.parametrize("preserve_project_bytes", [False, True], ids=["negative-control", "protected-checkout"])
+def test_example_git_autocrlf_clone_preserves_hashed_inputs(tmp_path, preserve_project_bytes):
+    """Exercise a real Git checkout; core.autocrlf=true models Windows conversion.
+
+    The negative control proves that conversion would break the same fixture
+    without the repository attributes. Git history is created only in tmp_path.
+    """
+    git = shutil.which("git")
+    if git is None:
+        pytest.skip("Git is required for the checkout regression")
+    environment = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    environment.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_SYSTEM=os.devnull,
+                       GIT_CONFIG_NOSYSTEM="1")
+
+    def run(*args, cwd):
+        return subprocess.run([git, *args], cwd=cwd, env=environment, check=True,
+                              capture_output=True, text=True).stdout
+
+    origin = tmp_path / "fixture-origin"
+    origin.mkdir()
+    relative_project = Path("example") / "synthetic-demo"
+    shutil.copytree(EXAMPLE, origin / relative_project)
+    if preserve_project_bytes:
+        shutil.copyfile(EXAMPLE.parents[1] / ".gitattributes", origin / ".gitattributes")
+    expected = {path.relative_to(EXAMPLE): path.read_bytes()
+                for path in EXAMPLE.rglob("*") if path.is_file()}
+    assert all(b"\r\n" not in content for content in expected.values())
+    run("init", cwd=origin)
+    run("config", "core.autocrlf", "false", cwd=origin)
+    run("config", "core.attributesfile", os.devnull, cwd=origin)
+    run("add", "--all", cwd=origin)
+    run("-c", "user.name=Example checkout test", "-c", "user.email=example@invalid.test",
+        "-c", "commit.gpgsign=false", "commit", "-m", "Isolated checkout fixture", cwd=origin)
+    clone = tmp_path / "Windows-style checkout 工程"
+    run("clone", "--no-local", "--config", "core.autocrlf=true",
+        "--config", "core.attributesfile=" + os.devnull, str(origin), str(clone), cwd=tmp_path)
+    assert run("config", "--get", "core.autocrlf", cwd=clone).strip() == "true"
+    checked_project = clone / relative_project
+    actual = {relative: (checked_project / relative).read_bytes() for relative in expected}
+    descriptor = checked_project / "project.coatproj"
+    if not preserve_project_bytes:
+        assert all(actual[name] != content and b"\r\n" in actual[name]
+                   for name, content in expected.items())
+        with pytest.raises(ProjectError) as error:
+            store = ProjectStore.open(descriptor)
+            load_project_default(store)
+        assert error.value.code == "integrity_error"
+        return
+    assert actual == expected  # Includes the descriptor and every managed asset.
+    store = ProjectStore.open(descriptor)
+    for row in store.manifest["documents"]:
+        store.resolve_document(row["id"])
+    plan = load_project_default(store)
+    assert plan.configured and plan.film_design_snapshot is not None

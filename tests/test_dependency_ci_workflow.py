@@ -28,7 +28,7 @@ def test_windows_source_retains_native_bootstrap_probes_and_failure_evidence():
     source = WORKFLOW.read_text(encoding="utf-8")
     assert "Parser]::ParseFile" in source
     assert "-Cli -CheckOnly -BootstrapPython $python" in source
-    assert "dependency_manager.cmd -Cli -BootstrapPython $python doctor --json" in source
+    assert "install.bat -Cli -BootstrapPython $python doctor --json" in source
     assert "if: always()" in source
     assert "actions/upload-artifact@v4" in source
     assert "artifacts/dependency-manager/" in source

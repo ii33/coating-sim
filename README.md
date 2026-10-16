@@ -4,7 +4,7 @@
 
 面向光学薄膜研究与工程开发的桌面工具：将膜系设计、行星式蒸发沉积、膜厚分布、光谱分析和结果资产组织到独立工程中。
 
-**当前为开发快照 `dev.20261016.12`，不是正式 Release。** 项目尚未完成全面物理标定；仿真和优化结果用于分析、比较与研究，不能替代设备标定、工艺验证或光学测量。目前从源码运行，不提供已完成发行验收的安装包或依赖管理器 EXE。
+**当前为开发快照 `dev.20261016.13`，不是正式 Release。** 项目尚未完成全面物理标定；仿真和优化结果用于分析、比较与研究，不能替代设备标定、工艺验证或光学测量。目前从源码运行，不提供已完成发行验收的安装包或依赖管理器 EXE。
 
 ## 能做什么
 
@@ -12,13 +12,23 @@
 - **薄膜光学**：编辑膜系与材料 n/k 数据，计算光谱、分析波段与极值，进行厚度优化及实验性结构搜索。
 - **工程与资产**：按工程隔离输入、未保存修改和结果；在统一资产库中浏览资源、编辑材料，并按所属范围回收或恢复符合条件的资产。
 - **结果与自动化**：管理计算队列和结果资产，使用几何光追与外观渲染工具；部分功能提供 CLI、MCP 和可选 AI 助手入口。不同入口的能力与权限并不相同，见[入口能力矩阵](docs/entrypoint-capabilities.md)。
-- **依赖管理**：独立的标准库 CLI / Tk GUI，检查依赖、审阅安装计划、选择镜像及临时代理，将项目运行依赖放入隔离虚拟环境。
+- **依赖管理**：纯终端交互式在线安装器与标准库高级 CLI，检查 Python 和计算环境、审阅安装计划、选择源码和镜像，将完整用户依赖放入隔离虚拟环境。
 
 模型、单位、采样、近似与参考来源集中在[算法图解](docs/algorithms.html)。该单文件 HTML 可下载后离线打开；GitHub 文件预览不等同于渲染页面。[软件说明书](docs/software_manual.html)提供更完整的操作说明。
 
 ## 快速开始
 
 先下载并解压本仓库源码，或使用 Git 克隆本仓库，然后在源码根目录执行以下命令。推荐 **Python 3.12**，首次安装依赖需要网络。建议先使用 CPU；可选计算后端须单独安装和验证。
+
+### 推荐：交互式在线安装
+
+Windows 双击 `install.bat`；Linux/macOS 在终端运行 `sh install.sh`。按提示选择安装根目录、源码（默认 [CNB](https://cnb.cool/nonereason/coating-sim)，也可选 [GitHub](https://github.com/ii33/coating-sim)）、镜像加速及是否安装开发环境（默认否）。安装器自动检查 Python/计算环境，安装完整用户依赖 `desktop + appearance`；开发模式额外加入测试与静态检查工具。镜像加速只影响 PyPI 包源，不改 Git 仓库地址。
+
+新安装布局为 `<安装根目录>/.runtime/python`、`.runtime/git`、`app/` 源码和 `app/.venv` 依赖。选择已有合法工程时只处理该工程依赖，不覆盖源码或更换现有 venv 解释器。未知内容、损坏环境或不兼容后端会明确报错。
+
+Windows 不要求预装 Python、Git 或 PowerShell 7；引导使用系统 Windows PowerShell 5.1，安全策略阻止脚本时不会绕过。官方 Python 安装器可能在安装目录外写入维护缓存和每用户注册/卸载记录，因此这不是完全便携、零系统痕迹的安装。当前新交互流程仍待原生端到端验收，不是已验收 Release。详细边界见[安装器指南](docs/dependency-manager.md)。
+
+安装结束后对实际项目 `.venv` 做有界 GPU 数值探测；依赖安装成功与 GPU 可用分别报告，探测失败不会自动修改驱动或重装。
 
 ### Windows：已有 Python
 
@@ -28,15 +38,15 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe launcher.py
 ```
 
-也可双击 `dependency_manager.cmd` 打开依赖管理器，选择桌面运行配置，审阅并确认安装计划。管理器独立于项目 `.venv`；已有合用 Python 时可用 `python dependency_manager.py gui` 启动。
+推荐双击 `install.bat` 使用终端交互式在线安装器；已有合用 Python 时可运行 `python dependency_manager.py`。安装器自身不需要第三方 Python 包，不启动管理器 GUI。
 
-**没有 Python？** Windows 引导脚本会尝试从官方来源部署包含 pip、venv 和 Tcl/Tk 的完整 CPython。此路径需要网络并受系统前提约束；无 Python 的干净 Windows 首次安装仍未完成端到端实机验收。受管理 Python 候选与推荐的 Python 3.12 不完全相同，DirectML 等后端还有限制。请先阅读[引导说明](docs/dependency-manager-bootstrap.md)，不要把源码检查通过当作安装成功保证。
+**没有 Python？** Windows 引导脚本会尝试从官方来源向所选安装目录部署包含 pip 和 venv 的完整 CPython。此路径需要网络并受系统前提约束；无 Python 的干净 Windows 首次安装仍未完成端到端实机验收。受管理 Python 候选与推荐的 Python 3.12 不完全相同，DirectML 等后端还有限制。请先阅读[引导说明](docs/dependency-manager-bootstrap.md)，不要把源码检查通过当作安装成功保证。
 
 PowerShell 7+ 开发环境可使用 `start-dev.bat` / `start-dev.ps1`：优先项目 `.venv`，其次 `.conda`，不回退系统 Python、不安装依赖。`start-dev.bat -Check` 只检查依赖。详见[启动入口](docs/project-launcher-entry.md)。
 
 ### Linux：已有 Python
 
-安装 Python 3.12 和 venv 支持，以及发行版需要的 Qt 图形库；依赖管理器 GUI 另需 Tk。
+交互安装入口为 `sh install.sh`，安装器自身不需要第三方 Python 包或 Tk。当前 Linux/macOS 未实现无 Python 的安全自动引导；需先按官方渠道安装兼容完整 Python（含 venv/pip），Linux 另需发行版要求的 Qt 图形库。不能据此承诺所有平台从零自动安装。
 
 ```bash
 python3.12 -m venv .venv
@@ -65,7 +75,7 @@ Qt 平台插件问题可对照 [Qt for Linux 系统要求](https://doc.qt.io/qt-
 完整说明见[依赖管理器指南](docs/dependency-manager.md)。已有 Python 时：
 
 ```sh
-python dependency_manager.py gui
+python dependency_manager.py
 python dependency_manager.py inspect --groups desktop --json
 python dependency_manager.py benchmark --mirrors pypi,tuna,ustc --proxy-mode none --json
 python dependency_manager.py plan --groups desktop --profile runtime --action install --python /path/to/python3.12 --proxy-mode env --json
@@ -89,22 +99,22 @@ python dependency_manager.py project-plan --deployment-dir ../coating-sim-checko
 python dependency_manager.py project-deploy --deployment-dir ../coating-sim-checkout --plan-id PLAN_ID --yes --json
 ```
 
-公开仓库为 [ii33/coating-sim](https://github.com/ii33/coating-sim)，Git 来源为 `https://github.com/ii33/coating-sim.git`。CNB 使用 `--source cnb --repository-url <实际的HTTPS仓库地址>`，须由使用者提供真实镜像地址；项目未声明已建立 CNB 镜像。
+公开仓库为 [ii33/coating-sim](https://github.com/ii33/coating-sim)，Git 来源为 `https://github.com/ii33/coating-sim.git`。交互安装默认使用 CNB：`https://cnb.cool/nonereason/coating-sim`，也可选择 GitHub。高级 CLI 使用 CNB 时指定 `--source cnb --repository-url https://cnb.cool/nonereason/coating-sim`；上面的 CLI 示例的 GitHub 选择不改变交互默认值。
 
 部署只接受新目录，将依赖装入该 checkout 的 `.venv`，不覆盖现用安装、不自动启动应用，也不迁移用户工程。源码获取需要 Git；Windows 可通过下述独立确认步骤安装私有 MinGit，不能据此承诺任意干净电脑一键成功。完整流程与验收限制见[源码部署指南](docs/dependency-manager-deployment.md)。
 
 ### Windows 没有 Git
 
-使用“私有 Git”页，或先审阅再执行：
+交互安装会在缺少 Git 时展示私有 Git 计划并请求确认；高级 CLI 可先审阅再执行：
 
 ```sh
 python dependency_manager.py git-plan --json
 python dependency_manager.py git-install --plan-id PLAN_ID --yes --json
 ```
 
-工具从官方 Git for Windows 来源下载固定版本 MinGit，校验 SHA-256 后放入用户私有目录，不修改系统 PATH。默认目录安装成功后会被源码部署自动发现；自选私有目录在两条命令中使用相同的 `--git-dir`，随后用 `--git <目录>/cmd/git.exe` 明确选择。下载的 Git 及所带组件保留各自许可证，不由项目 MIT 重新许可。
+工具从官方 Git for Windows 来源下载固定版本 MinGit，校验 SHA-256 后放入所选安装根目录下的 `.runtime/git`，不修改系统 PATH。默认目录安装成功后会被源码部署自动发现；自选私有目录在两条命令中使用相同的 `--git-dir`，随后用 `--git <目录>/cmd/git.exe` 明确选择。下载的 Git 及所带组件保留各自许可证，不由项目 MIT 重新许可。
 
-Windows 从零流程为：启动 `dependency_manager.cmd` → 审阅 Python 引导 → 审阅私有 Git 安装 → 获取源码并审阅依赖部署 → 创建启动入口。每步检查结果，不自动跨过确认；Linux 仍需预先提供 Python、Git 和系统图形库。离线自动化测试不能替代无 Python / 无 Git Windows 实机的下载、安装、快捷方式及启动验收。
+Windows 从零流程为：启动 `install.bat` → 选择安装根目录并审阅 Python 引导 → 选择源码、镜像和是否开发环境 → 审阅需要的私有 Git 安装 → 获取源码并审阅完整依赖部署。最终确认计划同时创建 `app/launch-coating.cmd`（或 `.sh`），不覆盖同名文件，不默认创建桌面快捷方式。每步检查结果，不自动跨过确认；Linux 仍需预先提供 Python、Git 和系统图形库。离线自动化测试不能替代无 Python / 无 Git Windows 实机的下载、安装、快捷方式及启动验收。
 
 ### 创建启动脚本与快捷方式
 

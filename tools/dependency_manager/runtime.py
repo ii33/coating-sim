@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import hashlib
 import json
 import os
 from pathlib import Path
 import platform
 import re
+import shutil
+import uuid
 import tempfile
 import threading
 import time
@@ -20,6 +24,7 @@ from urllib.request import (
 )
 import sys
 
+from .runtime_paths import project_root, contained_runtime_path
 from .manager import clean_environment, probe_python, run_command
 from .mirrors import ProxyConfig, redact, _UniformProxyHandler
 
@@ -64,17 +69,8 @@ def _architecture(machine):
     }.get(machine, "unsupported")
 
 
-def default_runtime_directory():
-    base = (
-        Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local"))
-        if os.name == "nt"
-        else Path.home() / ".local/share"
-    )
-    return (
-        base
-        / "DepositionDependencyManager"
-        / ("cpython-" + runtime_manifest()["version"])
-    )
+def default_runtime_directory(project=None):
+    return project_root(project) / ".runtime" / "python"
 
 
 def _registered_python_paths(version):
@@ -83,31 +79,44 @@ def _registered_python_paths(version):
     import winreg
 
     found = []
-    key_name = (
-        "Software\\Python\\PythonCore\\"
-        + ".".join(version.split(".")[:2])
-        + "\\InstallPath"
-    )
+    core_name = "Software\\Python\\PythonCore"
+    minor = ".".join(version.split(".")[:2])
     for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
         for view in (winreg.KEY_WOW64_32KEY, winreg.KEY_WOW64_64KEY):
             try:
-                with winreg.OpenKey(hive, key_name, 0, winreg.KEY_READ | view) as key:
-                    found.append(str(winreg.QueryValueEx(key, "")[0]))
+                core = winreg.OpenKey(hive, core_name, 0, winreg.KEY_READ | view)
             except FileNotFoundError:
-                pass
+                continue
+            with core:
+                for index in range(winreg.QueryInfoKey(core)[0]):
+                    tag = winreg.EnumKey(core, index)
+                    if not re.match(r"^" + re.escape(minor) + r"(?:t)?(?:$|-)", tag):
+                        continue
+                    directory = ""
+                    try:
+                        with winreg.OpenKey(core, tag + "\\InstallPath") as key:
+                            try:
+                                directory = str(winreg.QueryValueEx(key, "")[0])
+                            except FileNotFoundError:
+                                pass
+                    except FileNotFoundError:
+                        pass
+                    # Empty/stale registrations still make installer maintenance unsafe.
+                    found.append(directory)
     return sorted(set(found))
 
 
 def plan_runtime(
-    directory=None, backend="cpu", proxy=None, *, platform_name=None, machine=None
+    directory=None, backend="cpu", proxy=None, *, platform_name=None, machine=None, project=None
 ):
     manifest = runtime_manifest()
     platform_name = platform_name or sys.platform
     machine = _architecture(machine or platform.machine())
-    directory = Path(directory or default_runtime_directory()).absolute()
+    selected_project = project_root(project) if project is not None or directory is None else None
+    boundary = selected_project if selected_project is not None else Path.home().resolve()
+    directory = Path(directory or default_runtime_directory(selected_project)).absolute()
     proxy = proxy or ProxyConfig()
     proxy.validate()
-    canonical = directory.resolve()
     ancestor = directory.parent
     while not ancestor.exists() and ancestor != ancestor.parent:
         ancestor = ancestor.parent
@@ -159,13 +168,9 @@ def plan_runtime(
         errors.append(
             "Managed runtime destination already exists; select its python.exe or a new empty path; no overwrite"
         )
-    if (
-        directory != canonical
-        or directory.is_symlink()
-        or not canonical.is_relative_to(Path.home().resolve())
-    ):
+    if not contained_runtime_path(directory, boundary):
         errors.append(
-            "Managed runtime destination must be a new path inside the current user's home directory"
+            "Managed runtime destination must be a new unlinked local path inside the selected project (or user home for an explicit legacy path)"
         )
     artifact = manifest["artifacts"].get(machine)
     plan = {
@@ -173,6 +178,7 @@ def plan_runtime(
         "operation": "runtime_plan",
         "status": "blocked" if errors else "ready",
         "directory": str(directory),
+        "project": str(selected_project) if selected_project is not None else None,
         "parent_identity": parent_identity,
         "platform": platform_name,
         "architecture": machine,
@@ -271,10 +277,11 @@ def download_runtime(
         raise
 
 
-def installer_arguments(installer, directory):
+def installer_arguments(installer, directory, log_path=None):
     # All are documented CPython full-installer options, not shell strings.
     return [
         str(installer),
+        *(["/log", str(log_path)] if log_path is not None else []),
         "/quiet",
         "InstallAllUsers=0",
         f"TargetDir={directory}",
@@ -298,8 +305,7 @@ def installer_arguments(installer, directory):
 def _verify_runtime_destination(plan):
     directory = Path(plan["directory"])
     if (
-        directory != directory.resolve()
-        or not directory.resolve().is_relative_to(Path.home().resolve())
+        not contained_runtime_path(directory, plan.get("project") or Path.home().resolve())
         or directory.exists()
     ):
         raise ValueError(
@@ -385,7 +391,7 @@ def execute_runtime(plan, confirmed=False, emit=None, cancel_event=None, proxy=N
             "Runtime download/installer and license require explicit confirmation"
         )
         return result
-    current = plan_runtime(plan["directory"], plan["backend"], proxy)
+    current = plan_runtime(plan["directory"], plan["backend"], proxy, project=plan.get("project"))
     if current != plan or current["status"] != "ready":
         result["errors"].append(
             "Runtime plan is stale, altered or unsupported; confirm a fresh plan"
@@ -405,71 +411,88 @@ def execute_runtime(plan, confirmed=False, emit=None, cancel_event=None, proxy=N
         )
         return result
     directory = Path(plan["directory"])
-    lock = Path(plan["parent_identity"]["path"]) / (
-        ".coat-runtime-"
-        + hashlib.sha256(str(directory).encode()).hexdigest()[:16]
-        + ".lock"
-    )
+    lock = directory.parent / "runtime-install.lock"
     descriptor = None
+    temporary = None
+    installer_invoked = False
+    outcome: dict[str, Any] = {}
     try:
+        _verify_runtime_destination(plan)
+        if plan_runtime(plan["directory"], plan["backend"], proxy, project=plan.get("project")) != plan:
+            raise ValueError("Runtime destination changed before acquiring the lock")
+        directory.parent.mkdir(parents=True, exist_ok=True)
         _verify_runtime_destination(plan)
         descriptor = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         os.close(descriptor)
         descriptor = -1
-        if plan_runtime(plan["directory"], plan["backend"], proxy) != plan:
-            raise ValueError("Runtime destination changed while acquiring the lock")
-        directory.parent.mkdir(parents=True, exist_ok=True)
         _verify_runtime_destination(plan)
-        with tempfile.TemporaryDirectory(prefix="coat-runtime-") as temporary:
-            installer = Path(temporary) / "python-installer.exe"
-            emit({"event": "phase", "phase": "runtime_download"})
-            download_runtime(plan["artifact"], installer, proxy, cancel_event, emit)
-            if cancel_event.is_set():
-                raise InterruptedError("Runtime download cancelled")
-            _verify_runtime_destination(plan)
-            emit({"event": "phase", "phase": "runtime_install"})
-            code = run_command(
-                installer_arguments(installer, directory),
-                emit,
-                cancel_event,
-                proxy,
-                timeout=600,
+        temporary = Path(tempfile.mkdtemp(prefix="coat-runtime-", dir=directory.parent))
+        installer = Path(temporary) / "python-installer.exe"
+        emit({"event": "phase", "phase": "runtime_download"})
+        download_runtime(plan["artifact"], installer, proxy, cancel_event, emit)
+        if cancel_event.is_set():
+            raise InterruptedError("Runtime download cancelled")
+        _verify_runtime_destination(plan)
+        if _registered_python_paths(plan["version"]):
+            raise ValueError("CPython registration appeared during download; refusing installer maintenance")
+        installer_log = directory.parent / ("python-install-" + uuid.uuid4().hex + ".log")
+        result["installer_log"] = str(installer_log)
+        emit({"event": "phase", "phase": "runtime_install", "installer_log": str(installer_log)})
+        installer_invoked = True
+        code = run_command(
+            installer_arguments(installer, directory, installer_log),
+            emit,
+            cancel_event,
+            proxy,
+            timeout=1800,
+            outcome=outcome,
+            temporary_directory=temporary,
+        )
+        if code:
+            result["status"] = "cancelled" if code == 130 else "failed"
+            result["errors"].append(
+                f"CPython installer returned {code}; no elevated retry"
             )
-            if code:
-                result["status"] = "cancelled" if code == 130 else "failed"
-                result["errors"].append(
-                    f"CPython installer returned {code}; no elevated retry"
-                )
-                result["warnings"].append(
-                    "Runtime may be partially installed; inspect the directory before retry"
-                )
-                return result
-            python = directory / "python.exe"
-            identity = probe_python(python)
-            if (
-                identity["python"] != plan["version"]
-                or not identity["has_venv"]
-                or not identity["has_ensurepip"]
-                or Path(identity["prefix"]).resolve() != directory.resolve()
-            ):
-                raise ValueError(
-                    "Installed runtime does not match pinned identity/venv/ensurepip requirements"
-                )
-            result.update(
-                status="success",
-                python=str(python),
-                identity={
-                    key: identity[key] for key in ("python", "prefix", "executable")
-                },
+            result["warnings"].append(
+                "Runtime may be partially installed; inspect the directory before retry"
             )
-            result["warnings"].append("CPython license accepted: " + plan["license"])
             return result
+        python = directory / "python.exe"
+        identity = probe_python(python)
+        if (
+            identity["python"] != plan["version"]
+            or not identity["has_venv"]
+            or not identity["has_ensurepip"]
+            or Path(identity["prefix"]).resolve() != directory.resolve()
+        ):
+            raise ValueError(
+                "Installed runtime does not match pinned identity/venv/ensurepip requirements"
+            )
+        result.update(
+            status="success",
+            python=str(python),
+            identity={
+                key: identity[key] for key in ("python", "prefix", "executable")
+            },
+        )
+        result["warnings"].append("CPython license accepted: " + plan["license"])
+        return result
     except (OSError, ValueError, TimeoutError) as exc:
         result["status"] = "cancelled" if cancel_event.is_set() else "failed"
         result["errors"].append(redact(str(exc), proxy))
         return result
     finally:
+        uncertain = installer_invoked and not (
+            outcome.get("started") is False
+            or (outcome.get("completed") is True and outcome.get("stopped") is False)
+        )
+        if uncertain:
+            result["warnings"].append("Installer termination is uncertain; lock and download are retained for manual inspection; no automatic retry")
+            result["retained_download"] = str(temporary)
+        elif temporary is not None:
+            shutil.rmtree(temporary)
         if descriptor is not None:
             if descriptor != -1:
                 os.close(descriptor)
-            lock.unlink(missing_ok=True)
+            if not uncertain:
+                lock.unlink(missing_ok=True)

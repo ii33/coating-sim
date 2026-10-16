@@ -121,11 +121,8 @@ def _read_analysis_tooling(path):
 
 
 def build_catalog(root):
-    """Tool-build tops only; this scope is never a project-install profile."""
-    rows = _read_requirements(Path(root).resolve() / "requirements-dependency-manager-build.txt")
-    for row in rows:
-        row.update(group="build", scope="separate-build-venv")
-    return rows
+    """Reject the retired frozen-installer profile, rather than an empty plan."""
+    raise ValueError("Installer build catalog retired; use install.bat or install.sh")
 
 
 def catalog(root, groups=("desktop",), backend="cpu", profile="runtime"):
@@ -258,21 +255,21 @@ def clean_environment(proxy=None):
     return env
 
 
-def probe_python(path, rows=()):
+def probe_python(path, rows=(), *, timeout=20, allow_unsupported=False):
     result = subprocess.run(
         [str(path), "-I", "-c", _PROBE],
         input=json.dumps(list(rows)),
         text=True,
         capture_output=True,
-        timeout=20,
+        timeout=timeout,
         env=clean_environment(),
     )
     if result.returncode:
         raise ValueError("Interpreter probe failed: " + redact(result.stderr[-1500:]))
     data = json.loads(result.stdout)
-    if data.get("implementation") != "CPython" or not re.match(
+    if data.get("implementation") != "CPython" or (not allow_unsupported and not re.match(
         r"3\.(1[0-3])\.", data.get("python", "")
-    ):
+    )):
         raise ValueError("A normal CPython 3.10–3.13 interpreter is required")
     return data
 
@@ -303,6 +300,41 @@ def _satisfies(version, specifier):
     return True
 
 
+def _directml_diagnostic(target, identity=None):
+    """Explain a rejected identity without selecting or changing an environment."""
+    observed = identity or target
+    version = observed.get("python") or "unknown"
+    platform_name = (observed.get("platform") or "unknown") if version != "unknown" else "unknown"
+    source = "creation_python" if identity is not None else "target_venv"
+    reason = (
+        "identity_unavailable" if version == "unknown" else
+        "unsupported_platform" if platform_name != "win32" else
+        "unsupported_python"
+    )
+    remediation = [
+        "DirectML requires a verified Windows CPython 3.10–3.12 interpreter; changing the package mirror cannot fix this compatibility gate.",
+        "Creation Python only creates a new venv; it never changes the Python version of an existing venv.",
+        "Preserve the existing environment. For dependency plan/install/repair, explicitly select a compatible creation Python and a new unused target such as .venv-directml.",
+        "For project deployment, choose a new deployment directory and a compatible creation Python; deployment always uses that checkout's .venv.",
+        "The managed Python 3.13 runtime cannot supply this DirectML profile; no automatic downgrade is performed.",
+    ]
+    return {
+        "backend": "directml", "reason": reason, "identity_source": source,
+        "python": version, "platform": platform_name,
+        "interpreter": observed.get("executable") or observed.get("interpreter", ""),
+        "probe_error": target.get("probe_error", "") if identity is None else "",
+        "remediation": remediation,
+    }
+
+
+def _directml_error(diagnostic):
+    return (
+        "DirectML requires Windows and an explicitly selected CPython 3.10–3.12; no automatic downgrade. "
+        f"Observed {diagnostic['identity_source']}: Python {diagnostic['python']}, platform {diagnostic['platform']}. "
+        + " ".join(diagnostic["remediation"][1:])
+    )
+
+
 def inspect_environment(
     root, venv=None, groups=("desktop",), backend="cpu", profile="runtime"
 ):
@@ -320,10 +352,13 @@ def inspect_environment(
         "prefix": "",
         "base_prefix": "",
         "python": "",
+        "implementation": "",
+        "executable": "",
         "platform": sys.platform,
         "machine": platform.machine(),
         "pip": None,
         "bundled_pip": None,
+        "probe_error": "",
     }
     errors, warnings, data = [], [], {}
     parent = venv.parent
@@ -355,8 +390,10 @@ def inspect_environment(
             )
         else:
             try:
-                data = probe_python(interpreter, rows)
+                data = probe_python(interpreter, rows, allow_unsupported=True)
                 target.update({key: data[key] for key in target if key in data})
+                if not re.match(r"3\.1[0-3]\.", data.get("python", "")):
+                    errors.append("A normal CPython 3.10–3.13 interpreter is required; observed Python " + data.get("python", "unknown"))
                 target["valid"] = (
                     Path(data["prefix"]).resolve() == venv.resolve()
                     and Path(data["base_prefix"]).resolve() != venv.resolve()
@@ -370,7 +407,8 @@ def inspect_environment(
                         "Target pip is missing; repair uses bundled ensurepip"
                     )
             except (ValueError, OSError, subprocess.SubprocessError) as exc:
-                errors.append(redact(str(exc)))
+                target["probe_error"] = redact(str(exc))
+                errors.append(target["probe_error"])
     else:
         warnings.append(
             "Target venv does not exist; creation requires a compatible normal CPython"
@@ -380,7 +418,7 @@ def inspect_environment(
     if backend == "directml" and (
         target["platform"] != "win32" or not re.match(r"3\.1[0-2]\.", target_python)
     ):
-        unsupported = "DirectML requires Windows and an explicitly selected CPython 3.10–3.12; no automatic downgrade"
+        unsupported = _directml_error(_directml_diagnostic(target))
     elif backend == "cuda12" and (
         target["platform"] not in ("linux", "win32")
         or target["machine"].lower() not in ("amd64", "x86_64")
@@ -415,6 +453,7 @@ def inspect_environment(
     return {
         "schema_version": 1,
         "operation": "inspect",
+        "backend_diagnostic": _directml_diagnostic(target) if backend == "directml" and unsupported else None,
         "status": "failed" if errors else "success",
         "root": str(root),
         "target": target,
@@ -453,11 +492,15 @@ def plan_environment(
         bootstrap_python=str(python or ""),
     )
     target = result["target"]
+    if not target["exists"] and not python:
+        from .python_discovery import discover_python
+        python = discover_python(backend, project=root)["selected_python"]
+        result["bootstrap_python"] = str(python or "")
     if not target["exists"] and python:
         # The selected bootstrap establishes the prospective target identity.
         # Never infer a GPU-compatible Python version from this tool's runtime.
         try:
-            prospective = probe_python(python)
+            prospective = probe_python(python, allow_unsupported=True)
             if (
                 backend == "directml"
                 and prospective["platform"] == "win32"
@@ -468,11 +511,22 @@ def plan_environment(
                     for error in result["errors"]
                     if not error.startswith("DirectML requires")
                 ]
+                result["backend_diagnostic"] = None
                 for row in result["packages"]:
                     if row["group"] == "gpu":
                         row["status"] = "missing"
-        except (ValueError, OSError, subprocess.SubprocessError):
-            pass
+            elif backend == "directml":
+                result["backend_diagnostic"] = _directml_diagnostic(target, prospective)
+                result["errors"] = [
+                    _directml_error(result["backend_diagnostic"])
+                    if error.startswith("DirectML requires") else error
+                    for error in result["errors"]
+                ]
+        except (ValueError, OSError, subprocess.SubprocessError) as exc:
+            if backend == "directml":
+                result["backend_diagnostic"]["identity_source"] = "creation_python"
+                result["backend_diagnostic"]["interpreter"] = str(python)
+                result["backend_diagnostic"]["probe_error"] = redact(str(exc))
     if not target["exists"]:
         if not python:
             result["errors"].append(
@@ -598,12 +652,24 @@ def plan_environment(
     return result
 
 
-def run_command(argv, emit, cancel_event, proxy=None, timeout=900):
-    """Process-group cancellation with streamed redacted output; shell is never used."""
+def run_command(argv, emit, cancel_event, proxy=None, timeout=900, *, outcome=None, temporary_directory=None):
+    """Run argv; optionally report lifecycle without inferring installer completion.
+
+    A stopped process is not a completed installer: callers must retain recovery
+    resources when descendants may survive. Temporary paths affect only the child.
+    """
+    if outcome is not None:
+        outcome.update(started=False, completed=False, stopped=False, returncode=None,
+                       parent_exited=False, tree_termination_confirmed=False)
     if not isinstance(argv, list) or not all(isinstance(arg, str) for arg in argv):
         raise ValueError("Only argv lists are accepted")
     if cancel_event.is_set():
+        if outcome is not None:
+            outcome["stopped"] = True
         return 130
+    environment = clean_environment(proxy)
+    if temporary_directory is not None:
+        environment["TEMP"] = environment["TMP"] = environment["TMPDIR"] = str(temporary_directory)
     process = subprocess.Popen(
         argv,
         stdout=subprocess.PIPE,
@@ -611,12 +677,14 @@ def run_command(argv, emit, cancel_event, proxy=None, timeout=900):
         text=True,
         encoding="utf-8",
         errors="replace",
-        env=clean_environment(proxy),
+        env=environment,
         start_new_session=os.name != "nt",
         creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         if os.name == "nt"
         else 0,
     )
+    if outcome is not None:
+        outcome["started"] = True
     logs: queue.Queue[str] = queue.Queue()
 
     def reader():
@@ -639,6 +707,8 @@ def run_command(argv, emit, cancel_event, proxy=None, timeout=900):
             cancel_event.is_set() or time.monotonic() - start > timeout
         ) and not stopped:
             stopped = True
+            if outcome is not None:
+                outcome["stopped"] = True
             if os.name == "nt":
                 # Absolute system tool avoids PATH shadowing; failure still stops
                 # the main process. Descendants may need manual inspection.
@@ -701,7 +771,14 @@ def run_command(argv, emit, cancel_event, proxy=None, timeout=900):
     thread.join(timeout=1)
     while not logs.empty():
         emit({"event": "log", "text": redact(logs.get_nowait().rstrip(), proxy)})
-    return 130 if stopped else process.wait()
+    if stopped:
+        if outcome is not None:
+            outcome["parent_exited"] = process.poll() is not None
+        return 130
+    returncode = process.wait()
+    if outcome is not None:
+        outcome.update(completed=True, returncode=returncode, parent_exited=True)
+    return returncode
 
 
 def _verify_mutation_target(plan, *, allow_missing=False):

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from pathlib import Path, PurePosixPath
 import platform
 import re
@@ -18,6 +17,7 @@ from urllib.parse import urlsplit
 from urllib.request import build_opener, HTTPSHandler, HTTPRedirectHandler, Request
 import zipfile
 
+from .runtime_paths import project_root, contained_runtime_path
 from .manager import clean_environment
 from .mirrors import ProxyConfig, redact, _UniformProxyHandler
 
@@ -50,13 +50,8 @@ def git_runtime_manifest():
     return data
 
 
-def default_git_directory():
-    base = (
-        Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local"))
-        if os.name == "nt"
-        else Path.home() / ".local/share"
-    )
-    return base / "DepositionDependencyManager" / ("mingit-" + git_runtime_manifest()["version"])
+def default_git_directory(project=None):
+    return project_root(project) / ".runtime" / "git"
 
 
 def _unlinked(path):
@@ -69,8 +64,8 @@ def _unlinked(path):
     return path.absolute() == path.resolve()
 
 
-def find_managed_git(directory=None):
-    directory = Path(directory or default_git_directory()).absolute()
+def find_managed_git(directory=None, *, project=None):
+    directory = Path(directory or default_git_directory(project)).absolute()
     executable = directory / "cmd/git.exe"
     if not _unlinked(executable) or not executable.is_file():
         return None
@@ -85,13 +80,13 @@ def find_managed_git(directory=None):
     return str(executable)
 
 
-def discover_git(explicit=None, directory=None):
+def discover_git(explicit=None, directory=None, *, project=None):
     if explicit:
         path = Path(explicit).absolute()
         if not path.is_file():
             raise ValueError("Explicit Git executable does not exist")
         return str(path)
-    return find_managed_git(directory) or shutil.which("git")
+    return find_managed_git(directory, project=project) or shutil.which("git")
 
 
 def _identity(path):
@@ -105,11 +100,13 @@ def _plan_id(plan):
     ).hexdigest()
 
 
-def plan_git_runtime(directory=None, proxy=None, *, platform_name=None, machine=None):
+def plan_git_runtime(directory=None, proxy=None, *, platform_name=None, machine=None, project=None):
     manifest = git_runtime_manifest()
     proxy = proxy or ProxyConfig()
     proxy.validate()
-    directory = Path(directory or default_git_directory()).absolute()
+    selected_project = project_root(project) if project is not None or directory is None else None
+    boundary = selected_project if selected_project is not None else Path.home().resolve()
+    directory = Path(directory or default_git_directory(selected_project)).absolute()
     machine = (machine or platform.machine()).lower()
     architecture = {
         "amd64": "x86_64",
@@ -127,13 +124,14 @@ def plan_git_runtime(directory=None, proxy=None, *, platform_name=None, machine=
         errors.append("Unsupported Windows architecture")
     if directory.exists() or directory.is_symlink():
         errors.append("Git destination already exists; no overwrite")
-    if not _unlinked(directory) or not directory.is_relative_to(Path.home().resolve()):
-        errors.append("Git destination must be an unlinked path inside the current user's home")
+    if not contained_runtime_path(directory, boundary):
+        errors.append("Git destination must be an unlinked local path inside the selected project (or user home for an explicit legacy path)")
     plan = {
         "schema_version": 1,
         "operation": "git_runtime_plan",
         "status": "blocked" if errors else "ready",
         "directory": str(directory),
+        "project": str(selected_project) if selected_project is not None else None,
         "parent_identity": _identity(ancestor) if ancestor.is_dir() else None,
         "platform": platform_name or sys.platform,
         "architecture": architecture,
@@ -273,7 +271,7 @@ def _extract_zip(archive, destination, cancel_event, *, max_bytes=MAX_EXPANDED):
 
 def _verify_target(plan):
     target = Path(plan["directory"])
-    if target.exists() or not _unlinked(target) or not target.is_relative_to(Path.home().resolve()):
+    if target.exists() or not contained_runtime_path(target, plan.get("project") or Path.home().resolve()):
         raise ValueError("Git target changed or already exists; refusing overwrite")
     identity = plan["parent_identity"]
     if not identity or _identity(Path(identity["path"])) != identity:
