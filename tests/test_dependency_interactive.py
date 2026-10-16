@@ -241,3 +241,74 @@ def test_post_install_verifies_actual_target_and_does_not_reinstall_on_gpu_failu
     assert calls["recommend_environment"].call_args.args == (actual,)
     assert calls["recommend_environment"].call_args.kwargs["manual_backend"] == "cuda12"
     calls["execute_project_deployment"].assert_called_once()
+
+
+@pytest.mark.parametrize("approve_git", [False, True])
+def test_real_windows_git_plan_source_string_is_displayed_without_crashing(flow, approve_git):
+    # This is the real read-only plan, including its vendor source string,
+    # official artifact/hash/license and parent identity. Never download Git.
+    from tools.dependency_manager.git_runtime import plan_git_runtime
+
+    root, calls, run = flow
+    plan = plan_git_runtime(project=root, platform_name="win32", machine="AMD64")
+    assert plan["status"] == "ready"
+    assert isinstance(plan["source"], str)
+    calls["discover_git"].return_value = None
+    calls["plan_git_runtime"].return_value = plan
+    answers = iter(["", "", "", "", "", "y" if approve_git else "", "y"])
+    lines: list[str] = []
+    code = subject.run_interactive(root, input_fn=lambda prompt: next(answers), output=lines.append)
+    assert code == (0 if approve_git else 130)
+    assert "工具来源：" + plan["source"] in lines
+    assert any(plan["artifact"]["sha256"] in line for line in lines)
+    assert any(plan["license"] in line for line in lines)
+    assert calls["execute_git_runtime"].call_count == int(approve_git)
+    if approve_git:
+        assert calls["execute_git_runtime"].call_args.args[0] == plan
+        calls["execute_project_deployment"].assert_called_once()
+    else:
+        calls["execute_project_deployment"].assert_not_called()
+
+
+def test_project_source_mapping_still_displays_commit(flow):
+    root, calls, run = flow
+    source = {"url": subject.CNB_URL, "commit": "a" * 40}
+    calls["plan_project_deployment"].return_value = {"status": "ready", "source": source}
+    answers = iter(["", "", "", "", "", "y"])
+    lines: list[str] = []
+    assert (
+        subject.run_interactive(root, input_fn=lambda prompt: next(answers), output=lines.append)
+        == 0
+    )
+    assert f"源码：{source['url']} @ {source['commit']}" in lines
+
+
+def test_optional_display_fields_do_not_assume_mapping_or_list(flow):
+    root, calls, run = flow
+    calls["recommend_environment"].return_value = {
+        "status": "success",
+        "selected_backend": "cpu",
+        "python": "/python",
+        "visible_gpus": ["unclassified device", {"name": "example GPU"}],
+        "errors": None,
+        "warnings": "single warning",
+    }
+    calls["plan_project_deployment"].return_value = {
+        "status": "blocked",
+        "dependency_plan": "not a nested plan",
+        "target": "/target",
+        "artifact": "not an artifact mapping",
+        "actions": None,
+        "packages": None,
+        "errors": "blocked reason",
+        "warnings": None,
+    }
+    answers = iter(["", "", "", "", ""])
+    lines: list[str] = []
+    assert (
+        subject.run_interactive(root, input_fn=lambda prompt: next(answers), output=lines.append)
+        == 2
+    )
+    assert "single warning" in lines and "blocked reason" in lines
+    assert any("unclassified device" in line and "example GPU" in line for line in lines)
+    calls["execute_project_deployment"].assert_not_called()

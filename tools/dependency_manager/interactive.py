@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import json
 import signal
 import sys
@@ -72,25 +73,36 @@ def run_interactive(project=None, *, input_fn=input, output=print, cancel_event=
                 signal.signal(signal.SIGINT, previous)
 
     def show(result):
-        say("状态：" + result.get("status", "unknown"))
-        details = result.get("dependency_plan") or result
-        target = details.get("target") or {}
+        def mapping(value):
+            return value if isinstance(value, Mapping) else {}
+
+        def entries(value):
+            if isinstance(value, (list, tuple)):
+                return list(value)
+            return [value] if value is not None else []
+
+        say("状态：" + str(result.get("status", "unknown")))
+        details = mapping(result.get("dependency_plan")) or result
+        target = mapping(details.get("target"))
         if target:
             say(
                 f"环境：{target.get('venv', '')}；Python {target.get('python', '')} {target.get('platform', '')}"
             )
-        source = result.get("source") or {}
-        if source:
+        source = result.get("source")
+        if isinstance(source, Mapping):
             say(
                 f"源码：{source.get('url', result.get('repository_url', ''))} @ {source.get('commit', 'unknown')}"
             )
-        artifact = result.get("artifact") or {}
+        elif isinstance(source, str) and source:
+            # MinGit uses a vendor URL string; project deployment uses a mapping.
+            say("工具来源：" + source)
+        artifact = mapping(result.get("artifact"))
         if artifact:
             say(
                 f"官方来源：{artifact.get('url', '')}\nSHA256：{artifact.get('sha256', '')}\n安装位置：{result.get('directory', '')}\n许可：{result.get('license', '见官方许可')}"
             )
         if "selected_backend" in result:
-            identity = result.get("python") or {}
+            identity = mapping(result.get("python"))
             say(
                 f"Python：{identity.get('python', '?')} / {identity.get('platform', '?')}；计算后端：{result['selected_backend']}"
             )
@@ -98,7 +110,9 @@ def run_interactive(project=None, *, input_fn=input, output=print, cancel_event=
                 "设备："
                 + ", ".join(
                     str(row.get("name", row.get("model", row.get("vendor", "?"))))
-                    for row in result.get("visible_gpus", [])
+                    if isinstance(row, Mapping)
+                    else str(row)
+                    for row in entries(result.get("visible_gpus"))
                 )
             )
             say(
@@ -109,9 +123,9 @@ def run_interactive(project=None, *, input_fn=input, output=print, cancel_event=
             )
         if "actions" in details:
             say(
-                f"依赖：{profile} / {', '.join(END_USER_GROUPS)}；{len(details.get('packages', []))} 个包，{len(details['actions'])} 个执行步骤；镜像 {mirror}"
+                f"依赖：{profile} / {', '.join(END_USER_GROUPS)}；{len(entries(details.get('packages')))} 个包，{len(entries(details['actions']))} 个执行步骤；镜像 {mirror}"
             )
-        for message in result.get("errors", []) + result.get("warnings", []):
+        for message in entries(result.get("errors")) + entries(result.get("warnings")):
             say(message)
         logs = root / ".dependency-manager" / "logs"
         if unlinked_local_path(logs):
