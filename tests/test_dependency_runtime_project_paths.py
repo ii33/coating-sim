@@ -54,7 +54,7 @@ def test_source_defaults_are_project_local_and_frozen_requires_selection(tmp_pat
 
 
 def test_bootstrap_storage_and_installer_diagnostics_are_project_local():
-    source = (Path(__file__).resolve().parents[1] / "tools/dependency_manager/bootstrap_windows.ps1").read_text()
+    source = (Path(__file__).resolve().parents[1] / "tools/dependency_manager/bootstrap_windows.ps1").read_text(encoding="utf-8")
     assert '$BootstrapProjectRoot' in source
     assert 'Join-Path $homeDirectory ".runtime"' in source
     assert 'Join-Path $base "python"' in source
@@ -105,8 +105,8 @@ def test_shared_bootstrap_lock_blocks_python_installer(tmp_path, monkeypatch):
     lock.write_text("bootstrap owns this")
     monkeypatch.setattr(runtime, "run_command", lambda *a, **k: pytest.fail("must not start"))
     assert runtime.execute_runtime(plan, confirmed=True)["status"] == "failed"
-    assert lock.read_text() == "bootstrap owns this"
-    source = (Path(__file__).resolve().parents[1] / "tools/dependency_manager/bootstrap_windows.ps1").read_text()
+    assert lock.read_text(encoding="utf-8") == "bootstrap owns this"
+    source = (Path(__file__).resolve().parents[1] / "tools/dependency_manager/bootstrap_windows.ps1").read_text(encoding="utf-8")
     assert '$lockPath = Join-Path $parent "runtime-install.lock"' in source
 
 

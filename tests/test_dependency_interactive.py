@@ -56,7 +56,7 @@ def make_project(path):
 
 def test_default_entry_is_terminal_without_tk():
     assert parser().parse_args([]).operation == "interactive"
-    assert "tkinter" not in Path(subject.__file__).read_text()
+    assert "tkinter" not in Path(subject.__file__).read_text(encoding="utf-8")
 
 
 def test_default_cnb_full_runtime_one_install_confirmation(flow):
@@ -91,7 +91,7 @@ def test_python_first_preserves_runtime_and_clones_only_new_app(flow):
     sentinel = runtime / "preserve"
     sentinel.write_text("owned runtime")
     assert run(["", "", "", "", "", "y"]) == 0
-    assert sentinel.read_text() == "owned runtime"
+    assert sentinel.read_text(encoding="utf-8") == "owned runtime"
     assert calls["plan_project_deployment"].call_args.args[0] == str(root / "app")
 
 

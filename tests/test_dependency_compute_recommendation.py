@@ -119,7 +119,7 @@ def test_cancelled_skips_probes(probes, monkeypatch):
 
 def test_standalone_probe_scripts_match_application():
     import ast
-    module = ast.parse((ROOT / "coat_sim/core/compute_device_probe.py").read_text())
+    module = ast.parse((ROOT / "coat_sim/core/compute_device_probe.py").read_text(encoding="utf-8"))
     scripts = {node.targets[0].id: ast.literal_eval(node.value)
                for node in module.body if isinstance(node, ast.Assign)
                and isinstance(node.targets[0], ast.Name)
