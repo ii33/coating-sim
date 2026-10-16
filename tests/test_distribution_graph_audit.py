@@ -483,7 +483,12 @@ class DistributionGraphAuditTest(unittest.TestCase):
         license_rules = [rule for rule in rules if rule[0].startswith(prefix)]
         other_rules = [rule for rule in rules
                        if not rule[0].startswith((prefix, "/data/film_design/cie-illuminants-20261006/"))]
-        self.assertEqual(other_rules, [["/sheji", "export-ignore"]])
+        # The portable example uses byte-hashed project assets; Windows clones
+        # must preserve them too. Keep the allowlist exact, not a broad exemption.
+        self.assertEqual(other_rules, [
+            ["/sheji", "export-ignore"],
+            ["/example/synthetic-demo/**", "-text"],
+        ])
         self.assertEqual(len(license_rules), len(LICENSE_REFERENCES))
         self.assertEqual({rule[0] for rule in license_rules},
                          {prefix + name for name in LICENSE_REFERENCES})
