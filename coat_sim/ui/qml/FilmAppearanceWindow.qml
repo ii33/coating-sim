@@ -17,8 +17,9 @@ AppWindow {
     property bool compactActions: width < 1000
     property int themeRevision: Theme.revision
 
-    title: "薄膜外观"
-    caption: "本地光谱渲染 · 仅几何预览"
+    titleBase: "薄膜外观"
+    captionBase: "本地光谱渲染 · 仅几何预览"
+    projectNameForTitle: projectNavigation ? projectNavigation.projectName : ""
     statusText: controller.errorText.length > 0 ? "渲染失败" : controller.status
     statusSeverity: controller.errorText.length > 0 || controller.phase === "failed" ? "error"
         : controller.phase === "cancelling" ? "warning"

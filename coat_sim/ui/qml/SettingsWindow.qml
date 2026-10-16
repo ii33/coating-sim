@@ -8,7 +8,7 @@ import "theme_controls" as ThemeControls
 AppWindow {
     id: window
     property var settingsBridge: null
-    title: "设置"
+    titleBase: "设置"
     statusText: bridge.statusMessage
     statusSeverity: "info"
     statusDetail: bridge.statusMessage

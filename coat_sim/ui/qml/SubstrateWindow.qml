@@ -24,9 +24,9 @@ LocalComponents.AppWindow {
         target: typeof Theme !== "undefined" ? Theme : null
         function onSnapshotChanged() { preview.requestPaint() }
     }
-    title: "基片"
-    caption: title + " — " + window.editorBridge.displayName
-             + (bridge.dirty ? " *" : "")
+    titleBase: "基片" + (window.editorBridge.dirty ? " *" : "")
+    captionBase: titleBase + " — " + window.editorBridge.displayName
+    projectNameForTitle: projectNavigation ? projectNavigation.projectName : ""
     statusText: bridge.valid ? (bridge.status || "参数有效，可保存。") : bridge.error
     statusSeverity: bridge.valid ? "info" : "error"
     statusDetail: bridge.valid ? "" : bridge.error

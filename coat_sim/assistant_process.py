@@ -30,6 +30,18 @@ LIFECYCLE_OPERATIONS = frozenset({"lifecycle_status", "lifecycle_prepare", "life
                                   "project_editor_snapshot", "update_window", "window_action"})
 
 
+def _project_validation_detail(error: BaseException) -> str:
+    """Retain file/schema diagnostics across IPC, which drops exception causes."""
+    details, seen = [], set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        code = getattr(current, "code", type(current).__name__)
+        details.append(f"{code}: {current}")
+        current = current.__cause__
+    return "；".join(details)
+
+
 def assistant_runtime_root() -> Path:
     """One per-user scope shared across projects/installations; tests override."""
     explicit = os.environ.get("COAT_ASSISTANT_RUNTIME_ROOT")
@@ -297,7 +309,8 @@ class ApplicationClientRegistry:
         try:
             store = ProjectStore.open(arguments["project_file"])
         except (ProjectError, OSError) as exc:
-            raise UiControlError("project_identity_mismatch", "无法核验所选工程文件，未激活其他工程。") from exc
+            raise UiControlError("project_identity_mismatch",
+                "无法核验所选工程文件，未激活其他工程。原因：" + _project_validation_detail(exc)) from exc
         if (store.manifest["id"] != arguments["project_id"]
                 or canonical_path(store.root) != canonical_path(project["root"])):
             raise UiControlError("project_identity_mismatch", "所选工程身份已改变，未激活其他工程。")
@@ -360,7 +373,8 @@ class ApplicationClientRegistry:
         try:
             store = ProjectStore.open(selected["project_file"])
         except (ProjectError, OSError) as exc:
-            raise UiControlError("project_identity_mismatch", "无法核验所选工程文件，未操作其他工程。") from exc
+            raise UiControlError("project_identity_mismatch",
+                "无法核验所选工程文件，未操作其他工程。原因：" + _project_validation_detail(exc)) from exc
         if (store.manifest["id"] != selected["project_id"]
                 or canonical_path(store.root) != canonical_path(project["root"])):
             raise UiControlError("project_identity_mismatch", "所选工程身份已改变，未操作其他工程。")

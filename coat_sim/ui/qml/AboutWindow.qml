@@ -5,7 +5,7 @@ import "."
 
 AppWindow {
     id: window
-    title: "关于与帮助"
+    titleBase: "关于与帮助"
     minimumWidth: 900
     minimumHeight: 620
     property string internalVersion: "unknown"

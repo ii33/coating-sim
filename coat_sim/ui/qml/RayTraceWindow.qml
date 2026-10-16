@@ -22,13 +22,14 @@ AppWindow {
     property bool appearanceSidebarExpanded: true
     property string selectedCategory: "asset"
     property bool restoreAssetFocusPending: false
-    title: window.controller.workspaceMode === "appearance"
+    titleBase: window.controller.workspaceMode === "appearance"
            ? "薄膜外观"
            : controller && window.controller.documentName.length > 0
              ? window.controller.documentName + (window.controller.documentDirty ? " •" : "")
              : "几何光线追迹"
-    caption: window.controller.workspaceMode === "appearance"
+    captionBase: window.controller.workspaceMode === "appearance"
              ? "本地光谱渲染" : "膜系 · 沉积厚度 · 成像光线"
+    projectNameForTitle: projectNavigation ? projectNavigation.projectName : ""
     statusText: window.projectResources && (window.projectResources.resourceBusy
                     || window.projectResources.resourceOperationError.length > 0)
                 ? window.projectResources.status

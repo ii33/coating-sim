@@ -20,8 +20,9 @@ LocalComponents.AppWindow {
     property bool projectPendingTextEdited: false
     property bool projectCloseAuthorized: false
     LocalComponents.ProjectPendingEdits { editorWindow: window }
-    title: "工艺 · " + (window.editorBridge.documentMetadata.name || "未命名")
+    titleBase: "工艺 · " + (window.editorBridge.documentMetadata.name || "未命名")
            + (window.editorBridge.dirty ? " *" : "")
+    projectNameForTitle: projectNavigation ? projectNavigation.projectName : ""
     statusText: bridge.errors.length ? bridge.errors[0] : bridge.status
     statusDetail: bridge.errors.length
                   ? bridge.errors.join("\n") + (bridge.status.length ? "\n" + bridge.status : "")

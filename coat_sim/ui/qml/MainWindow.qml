@@ -10,7 +10,8 @@ AppWindow {
     property bool projectCloseAuthorized: false
     property var projectNavigation: null
     property var projectResources: null
-    title: "沉积仿真"
+    titleBase: "沉积仿真"
+    projectNameForTitle: projectNavigation ? projectNavigation.projectName : ""
     statusText: bridge.status
     statusSeverity: bridge.busy ? "busy" : "info"
     minimumWidth: 1080

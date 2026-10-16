@@ -378,7 +378,8 @@ class TestLauncherRecentProjectsQml:
         QTest.mouseMove(self.window, QPoint(round(position.x()), round(position.y())))
         QTest.qWait(900)
         expression = QQmlExpression(QQmlEngine.contextForObject(row), row,
-            "rowDetailsTip.visible && rowDetailsTip.width <= 600 && rowDetailsTip.height <= 360"
+            "rowDetailsTip.visible && rowDetailsTip.width >= 220 && rowDetailsTip.width <= 360"
+            " && rowDetailsTip.height <= 360"
             " && rowDetailsTip.x >= rowDetailsTip.boundsLeft && rowDetailsTip.y >= rowDetailsTip.boundsTop"
             " && rowDetailsTip.x + rowDetailsTip.width <= rowDetailsTip.boundsRight + 1"
             " && rowDetailsTip.y + rowDetailsTip.height <= rowDetailsTip.boundsBottom + 1"
@@ -390,6 +391,148 @@ class TestLauncherRecentProjectsQml:
         expression.evaluate()
         QTest.qWait(50)
         expression = QQmlExpression(QQmlEngine.contextForObject(row), row, "detailsScroll.contentItem.contentY > 0")
+        assert expression.evaluate()[0] is True and not expression.hasError()
+
+        self.theme._replace_snapshot(build_theme_snapshot("light", font_scale=.75),
+                                     2, "light", "light", "qa", "QA", {})
+        for window_width in (640, 480):
+            QTest.mouseMove(self.window, QPoint(10, 10))
+            QTest.qWait(50)
+            self.window.resize(window_width, 480)
+            QTest.qWait(80)
+            project_list = self._item("launcherProjectList")
+            expression = QQmlExpression(QQmlEngine.contextForObject(project_list), project_list,
+                                        "projectList.contentY = 0")
+            expression.evaluate()
+            row = self._item("launcherProjectEntry_0")
+            position = row.mapToScene(QPointF(24, min(row.height() / 2, project_list.height() / 2)))
+            QTest.mouseMove(self.window, QPoint(round(position.x()), round(position.y())))
+            QTest.qWait(850)
+            extra_bound = " && rowDetailsTip.sidePlacement" if window_width == 640 else \
+                " && !rowDetailsTip.sidePlacement"
+            expression = QQmlExpression(QQmlEngine.contextForObject(row), row,
+                "rowDetailsTip.visible && rowDetailsTip.opened && rowDetailsTip.width >= 220"
+                " && rowDetailsTip.width <= 360 && rowDetailsTip.height <= 360"
+                " && rowDetailsTip.x >= rowDetailsTip.boundsLeft && rowDetailsTip.y >= rowDetailsTip.boundsTop"
+                " && rowDetailsTip.x + rowDetailsTip.width <= rowDetailsTip.boundsRight + 1"
+                " && rowDetailsTip.y + rowDetailsTip.height <= rowDetailsTip.boundsBottom + 1"
+                + extra_bound)
+            bounds_ok = expression.evaluate()[0]
+            details = QQmlExpression(QQmlEngine.contextForObject(row), row,
+                                     "JSON.stringify({width: rowDetailsTip.width, side: rowDetailsTip.sideSpace,"
+                                     " x: rowDetailsTip.x, y: rowDetailsTip.y, right: rowDetailsTip.boundsRight,"
+                                     " bottom: rowDetailsTip.boundsBottom})")
+            assert bounds_ok is True and not expression.hasError(), details.evaluate()[0]
+
+    def test_details_overlay_does_not_block_underlying_clicks_and_closes_on_interaction(self):
+        self.window.resize(1000, 520)
+        descriptor = "/tmp/Research study/tooltip-click-through.coatproj"
+        self.project_bridge.set_entries([{
+            "descriptorFile": descriptor, "name": "Tooltip click-through",
+            "summary": "Details should remain readable without covering launcher controls.",
+            "notes": "Long metadata keeps the passive overlay over lower controls. " * 50,
+            "available": True, "informationAvailable": True,
+            "lastOpened": "2026-10-16T01:00:00+00:00",
+        }])
+        path_field = self._item("launcherOpenProjectPathField")
+        path_field.setProperty("text", "clicked-through.coatproj")
+        QTest.qWait(80)
+        row = self._item("launcherProjectEntry_0")
+        position = row.mapToScene(QPointF(24, row.height() / 2))
+        QTest.mouseMove(self.window, QPoint(round(position.x()), round(position.y())))
+        QTest.qWait(850)
+        expression = QQmlExpression(QQmlEngine.contextForObject(row), row,
+                                    "rowDetailsTip.visible && rowDetailsTip.opened")
+        assert expression.evaluate()[0] is True and not expression.hasError()
+
+        # Keep the details beside the recent row, outside the lower form
+        # controls, and prove the real button remains clickable while it shows.
+        target = self._item("launcherOpenProjectButton")
+        expression = QQmlExpression(QQmlEngine.contextForObject(row), row, "rowDetailsTip")
+        tip = expression.evaluate()[0]
+        assert tip is not None
+        target_origin = target.mapToScene(QPointF())
+        tip_rect = QRectF(float(tip.property("x")), float(tip.property("y")),
+                          float(tip.property("width")), float(tip.property("height")))
+        target_rect = QRectF(target_origin.x(), target_origin.y(), target.width(), target.height())
+        assert not tip_rect.intersects(target_rect), "hover details should stay outside launcher controls"
+        expression = QQmlExpression(QQmlEngine.contextForObject(row), row, "!rowDetailsTip.enabled")
+        assert expression.evaluate()[0] is True and not expression.hasError()
+        click_center = target_rect.center()
+        # Exercise the hard case too: even if a future narrow layout puts the
+        # visible overlay over a control, its non-interactive surface must let
+        # the actual click reach that control.
+        tip.setProperty("x", click_center.x() - float(tip.property("width")) / 2)
+        tip.setProperty("y", click_center.y() - float(tip.property("height")) / 2)
+        QTest.qWait(30)
+        overlapping_rect = QRectF(float(tip.property("x")), float(tip.property("y")),
+                                  float(tip.property("width")), float(tip.property("height")))
+        assert tip.property("visible") and overlapping_rect.contains(click_center)
+        QTest.mouseClick(self.window, Qt.MouseButton.LeftButton,
+                         Qt.KeyboardModifier.NoModifier,
+                         QPoint(round(click_center.x()), round(click_center.y())))
+        self.app.processEvents()
+        assert self.project_bridge.calls[-1] == ("open", "clicked-through.coatproj")
+        expression = QQmlExpression(QQmlEngine.contextForObject(row), row, "!rowDetailsTip.visible")
+        assert expression.evaluate()[0] is True and not expression.hasError()
+
+        # Re-entering a row shows its own current details, but leave dismisses
+        # them immediately so a later click or scroll is never delayed.
+        self.project_bridge.set_entries([{
+            "descriptorFile": "/tmp/Research study/new-row.coatproj",
+            "name": "Current row", "summary": "fresh details", "notes": "", "available": True,
+        }])
+        row = self._item("launcherProjectEntry_0")
+        position = row.mapToScene(QPointF(24, row.height() / 2))
+        QTest.mouseMove(self.window, QPoint(round(position.x()), round(position.y())))
+        QTest.qWait(850)
+        expression = QQmlExpression(QQmlEngine.contextForObject(row), row,
+                                    "rowDetailsTip.text.indexOf('Current row') >= 0"
+                                    " && rowDetailsTip.text.indexOf('Tooltip click-through') < 0")
+        assert expression.evaluate()[0] is True and not expression.hasError()
+        self.project_bridge.set_entries([{
+            "descriptorFile": "/tmp/Research study/replaced-row.coatproj",
+            "name": "Replacement row", "summary": "replacement details", "notes": "", "available": True,
+        }])
+        QTest.qWait(40)
+        row = self._item("launcherProjectEntry_0")
+        expression = QQmlExpression(QQmlEngine.contextForObject(row), row,
+                                    "!rowDetailsTip.visible || (rowDetailsTip.text.indexOf('Replacement row') >= 0"
+                                    " && rowDetailsTip.text.indexOf('Current row') < 0)")
+        assert expression.evaluate()[0] is True and not expression.hasError()
+        QTest.mouseMove(self.window, QPoint(980, 500))
+        QTest.qWait(50)
+        expression = QQmlExpression(QQmlEngine.contextForObject(row), row, "!rowDetailsTip.visible")
+        assert expression.evaluate()[0] is True and not expression.hasError()
+
+        QTest.mouseMove(self.window, QPoint(round(position.x()), round(position.y())))
+        QTest.qWait(850)
+        self._click("launcherRemoveRecentProject_0")
+        remove_dialog = self.window.findChild(QObject, "launcherRemoveProjectDialog")
+        assert remove_dialog is not None and remove_dialog.property("visible")
+        expression = QQmlExpression(QQmlEngine.contextForObject(row), row, "!rowDetailsTip.visible")
+        assert expression.evaluate()[0] is True and not expression.hasError()
+        self._click("launcherCancelRemoveProject")
+
+        self.project_bridge.set_entries([{
+            "descriptorFile": f"/tmp/Research study/scroll-{index}.coatproj",
+            "name": f"Scrollable row {index}", "summary": "", "notes": "", "available": True,
+        } for index in range(12)])
+        QTest.qWait(80)
+        row = self._item("launcherProjectEntry_0")
+        position = row.mapToScene(QPointF(24, row.height() / 2))
+        QTest.mouseMove(self.window, QPoint(round(position.x()), round(position.y())))
+        QTest.qWait(850)
+        expression = QQmlExpression(QQmlEngine.contextForObject(row), row,
+                                    "rowDetailsTip.visible && rowDetailsTip.opened")
+        assert expression.evaluate()[0] is True and not expression.hasError()
+        project_list = self._item("launcherProjectList")
+        expression = QQmlExpression(QQmlEngine.contextForObject(project_list), project_list,
+                                    "projectList.contentY = projectList.contentY + 60")
+        expression.evaluate()
+        assert not expression.hasError(), expression.error().toString()
+        QTest.qWait(50)
+        expression = QQmlExpression(QQmlEngine.contextForObject(row), row, "!rowDetailsTip.visible")
         assert expression.evaluate()[0] is True and not expression.hasError()
 
     def test_recent_actions_are_idle_transparent_and_animate_with_keyboard_focus(self):

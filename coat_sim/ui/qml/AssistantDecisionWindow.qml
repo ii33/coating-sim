@@ -7,7 +7,7 @@ import "theme_controls" as ThemeControls
 
 AppWindow {
     id: window
-    title: "看板娘 · 待决事项"
+    titleBase: "看板娘 · 待决事项"
     initialMaximized: false
     width: 640
     height: Math.max(400, Math.min(700, body.implicitHeight + 86))

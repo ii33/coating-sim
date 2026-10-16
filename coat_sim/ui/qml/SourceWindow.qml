@@ -20,8 +20,9 @@ LocalComponents.AppWindow {
         target: typeof Theme !== "undefined" ? Theme : null
         function onSnapshotChanged() { preview.requestPaint(); pagePane.scheduleFocusedSourceFieldReveal() }
     }
-    title: "蒸发源 — " + window.editorBridge.displayName
-    caption: title + (window.editorBridge.dirty ? " *" : "")
+    titleBase: "蒸发源 — " + window.editorBridge.displayName
+    captionBase: titleBase + (window.editorBridge.dirty ? " *" : "")
+    projectNameForTitle: projectNavigation ? projectNavigation.projectName : ""
     statusText: bridge.valid ? (bridge.status || "当前模型有效，可保存。") : bridge.error
     statusSeverity: bridge.valid ? "info" : "error"
     statusDetail: bridge.valid ? "" : bridge.error

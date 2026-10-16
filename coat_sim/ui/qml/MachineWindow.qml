@@ -19,11 +19,12 @@ LocalComponents.AppWindow {
     property bool projectPendingTextEdited: false
     property bool projectCloseAuthorized: false
     LocalComponents.ProjectPendingEdits { editorWindow: win }
-    title: "机器结构"
-    caption: title + " — " + (win.projectResources !== null
+    titleBase: "机器结构"
+    captionBase: titleBase + " — " + (win.projectResources !== null
              ? win.projectResources.displayName
              : (win.editorBridge.informationController.resourceInformation.name || "未命名机器"))
              + (editorBridge.dirty ? " *" : "")
+    projectNameForTitle: projectNavigation ? projectNavigation.projectName : ""
     statusText: !editorBridge.canSave && editorBridge.validationMessage.length > 0
                 ? editorBridge.validationMessage : editorBridge.status
     statusSeverity: !editorBridge.canSave && editorBridge.validationMessage.length > 0

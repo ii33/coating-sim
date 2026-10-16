@@ -142,9 +142,9 @@ def test_collapsed_selector_displays_its_current_window(runtime: SelectorRuntime
     root, owner = runtime.create(module["key"])
     button = runtime.item(root, "projectModuleSelector")
     assert button.property("text") == module["name"]
-    label = root.findChild(QObject, "projectNavigationName")
-    assert label is not None
-    assert label.property("text") == "工程甲"
+    assert root.findChild(QObject, "projectNavigationName") is None
+    assert button.x() == 0
+    assert root.property("implicitWidth") == 140
     assert owner.calls == []
     root.setProperty("currentModuleKey", "missing_module")
     assert button.property("text")

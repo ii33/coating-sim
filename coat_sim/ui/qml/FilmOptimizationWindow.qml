@@ -15,8 +15,9 @@ AppWindow {
     property var projectResources: null
     readonly property var themeTokens: window.themeColors
     required property var controller
-    title: "膜系厚度优化"
-    caption: title
+    titleBase: "膜系厚度优化"
+    captionBase: titleBase
+    projectNameForTitle: projectNavigation ? projectNavigation.projectName : ""
     statusText: controller.statusText
     statusSeverity: controller.busy ? "busy"
                      : controller.error.length > 0 ? "error"

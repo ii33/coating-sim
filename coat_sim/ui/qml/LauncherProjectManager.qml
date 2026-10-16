@@ -27,9 +27,17 @@ Item {
     property var focusReturnItem: null
     property var actionEntry: null
     property string fileAction: ""
+    property bool recentDetailsDismissed: false
 
     readonly property real contentSpacing: Math.min(
         themeTokens.spaceMd, Math.max(7, root.height * 0.024))
+
+    // Recent-project details are visual guidance only. Keep the overlay from
+    // participating in pointer hit testing so controls below it remain usable.
+    TapHandler {
+        acceptedButtons: Qt.AllButtons
+        onTapped: root.recentDetailsDismissed = true
+    }
 
     // Scoped to the three recent-card actions; shared ThemeButton is unchanged.
     component RecentActionButton: ThemeControls.ThemeButton {
@@ -111,6 +119,7 @@ Item {
     function requestRemove(entry, button) {
         if (!projectBridge || !entry || projectBridge.projectBusy)
             return
+        recentDetailsDismissed = true
         actionEntry = entry
         focusReturnItem = button
         deleteFilesChoice.checked = false
@@ -136,6 +145,7 @@ Item {
     function requestFileAction(entry, action, button) {
         if (!projectBridge || !entry || projectBridge.projectBusy)
             return
+        recentDetailsDismissed = true
         if (!actionEntry || String(actionEntry.descriptorFile || "") !== String(entry.descriptorFile || "")
                 || fileAction !== action)
             fileDestinationField.text = ""
@@ -645,6 +655,8 @@ Item {
                         Layout.fillHeight: true
                         clip: true
                         spacing: root.themeTokens.spaceSm
+                        onMovementStarted: root.recentDetailsDismissed = true
+                        onContentYChanged: root.recentDetailsDismissed = true
                         ScrollBar.vertical: ScrollBar {
                             id: recentScroll
                             policy: projectList.contentHeight > projectList.height
@@ -682,14 +694,17 @@ Item {
 
                             HoverHandler {
                                 id: rowHover
-                                onHoveredChanged: if (!hovered) detailsCloseDelay.restart()
+                                onHoveredChanged: {
+                                    if (hovered) root.recentDetailsDismissed = false
+                                    else root.recentDetailsDismissed = true
+                                }
                             }
-                            Timer { id: detailsCloseDelay; interval: 180 }
                             ToolTip {
                                 id: rowDetailsTip
                                 objectName: "launcherRecentProjectDetails_" + projectRow.index
                                 parent: Overlay.overlay
-                                visible: rowHover.hovered || detailsHover.hovered || detailsCloseDelay.running
+                                enabled: false
+                                visible: rowHover.hovered && !root.recentDetailsDismissed
                                 delay: 500
                                 text: root.rowDetails(projectRow.modelData)
                                 font.family: root.themeTokens.fontFamily
@@ -702,25 +717,38 @@ Item {
                                     root.Screen.virtualX + root.Screen.desktopAvailableWidth - windowLeft - 12)
                                 readonly property real boundsBottom: Math.min(parent.height - 12,
                                     root.Screen.virtualY + root.Screen.desktopAvailableHeight - windowTop - 12)
-                                width: Math.max(1, Math.min(600, boundsRight - boundsLeft))
+                                readonly property real rowLeft: projectRow.mapToItem(parent, 0, 0).x
+                                readonly property real rowRight: projectRow.mapToItem(parent, projectRow.width, 0).x
+                                readonly property real sideGap: 24
+                                readonly property real leftSpace: Math.max(0, rowLeft - boundsLeft - sideGap)
+                                readonly property real rightSpace: Math.max(0, boundsRight - rowRight - sideGap)
+                                readonly property bool showOnRight: rightSpace >= leftSpace
+                                readonly property real sideSpace: showOnRight ? rightSpace : leftSpace
+                                readonly property real tooltipBoundsWidth: Math.max(1, boundsRight - boundsLeft)
+                                readonly property bool sidePlacement: sideSpace >= 220
+                                readonly property real rowTop: projectRow.mapToItem(parent, 0, 0).y
+                                readonly property real rowBottom: rowTop + projectRow.height
+                                readonly property real aboveSpace: Math.max(0, rowTop - boundsTop - sideGap)
+                                readonly property real belowSpace: Math.max(0, boundsBottom - rowBottom - sideGap)
+                                readonly property bool placeBelow: belowSpace >= height
+                                    || (aboveSpace < height && belowSpace >= aboveSpace)
+                                width: Math.max(1, Math.min(360, sidePlacement ? sideSpace : tooltipBoundsWidth))
                                 height: Math.max(1, Math.min(360, boundsBottom - boundsTop,
                                     detailsText.implicitHeight + topPadding + bottomPadding))
-                                x: Math.max(boundsLeft, Math.min(boundsRight - width,
-                                    projectRow.mapToItem(parent, 0, 0).x))
-                                y: Math.max(boundsTop, Math.min(boundsBottom - height,
-                                    projectRow.mapToItem(parent, 0, projectRow.height).y + 4))
+                                x: sidePlacement
+                                    ? (showOnRight ? rowRight + sideGap : rowLeft - width - sideGap)
+                                    : Math.max(boundsLeft, Math.min(boundsRight - width,
+                                        rowHover.point.position.x <= projectRow.width / 2
+                                            ? boundsRight - width : boundsLeft))
+                                y: sidePlacement
+                                    ? Math.max(boundsTop, Math.min(boundsBottom - height, rowTop))
+                                    : Math.max(boundsTop, Math.min(boundsBottom - height,
+                                        placeBelow ? rowBottom + sideGap : rowTop - height - sideGap))
                                 contentItem: ScrollView {
                                     id: detailsScroll
                                     objectName: "launcherRecentProjectDetailsScroll_" + projectRow.index
                                     contentWidth: availableWidth
                                     clip: true
-                                    HoverHandler {
-                                        id: detailsHover
-                                        onHoveredChanged: {
-                                            if (hovered) detailsCloseDelay.stop()
-                                            else detailsCloseDelay.restart()
-                                        }
-                                    }
                                     Text {
                                         id: detailsText
                                         objectName: "launcherRecentProjectDetailsText_" + projectRow.index

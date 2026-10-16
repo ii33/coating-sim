@@ -49,6 +49,23 @@ class _RecordingLauncher(QObject):
         return "test-window"
 
 
+class _ProjectNavigation(QObject):
+    projectNameChanged = Signal()
+
+    def __init__(self, name):
+        super().__init__()
+        self._project_name = name
+
+    @Property(str, notify=projectNameChanged)
+    def projectName(self):
+        return self._project_name
+
+    def rename(self, name):
+        if name != self._project_name:
+            self._project_name = name
+            self.projectNameChanged.emit()
+
+
 class _ThemeStub(QObject):
     snapshotChanged = Signal()
     modeChanged = Signal()
@@ -395,6 +412,51 @@ class ProcessEditorNavigationQtTests(unittest.TestCase):
         self.assertEqual(self.launcher.calls[-1], ("machine", ""))
         self._click(window, "substrateDesignActionButton")
         self.assertEqual(self.launcher.calls[-1], ("substrate", ""))
+
+    def test_process_and_substrate_dirty_titles_keep_project_suffix_separate(self):
+        process_bridge = ProcessBridge(self.service, str(self.paths["process"]))
+        process_window = self._load_window(process_bridge, "ProcessWindow.qml")
+        process_nav = _ProjectNavigation("工程甲")
+        process_window.setProperty("projectNavigation", process_nav)
+        process_bridge.setMetadata("notes", "未保存更改")
+        self._settle()
+        process_base = "工艺 · Navigation process *"
+        self.assertEqual(process_window.property("title"), process_base + " — 工程甲")
+        self.assertEqual(process_window.property("caption"), process_base + " — 工程甲")
+
+        process_nav.rename("改名工程")
+        self._settle()
+        self.assertEqual(process_window.property("title"), process_base + " — 改名工程")
+        self.assertEqual(process_window.property("caption"), process_base + " — 改名工程")
+
+        global_process_bridge = ProcessBridge(self.service, str(self.paths["process"]))
+        global_process_window = self._load_window(global_process_bridge, "ProcessWindow.qml")
+        global_process_bridge.setMetadata("notes", "全局未保存更改")
+        self._settle()
+        self.assertEqual(global_process_window.property("title"),
+                         "工艺 · Navigation process *")
+        self.assertEqual(global_process_window.property("caption"),
+                         "工艺 · Navigation process *")
+
+        substrate_bridge = SubstrateBridge(self.service, str(self.paths["substrate"]))
+        substrate_window = self._load_window(substrate_bridge, "SubstrateWindow.qml")
+        substrate_nav = _ProjectNavigation("工程乙")
+        substrate_window.setProperty("projectNavigation", substrate_nav)
+        substrate_bridge.setField("name", "未保存基片")
+        self._settle()
+        substrate_base = "基片 *"
+        self.assertEqual(substrate_window.property("title"), substrate_base + " — 工程乙")
+        self.assertEqual(substrate_window.property("caption"),
+                         substrate_base + " — 未保存基片 — 工程乙")
+
+        # A global/non-project editor still displays its dirty marker without
+        # manufacturing a project suffix or appending the marker to the name.
+        global_bridge = SubstrateBridge(self.service, str(self.paths["substrate"]))
+        global_window = self._load_window(global_bridge, "SubstrateWindow.qml")
+        global_bridge.setField("name", "全局未保存基片")
+        self._settle()
+        self.assertEqual(global_window.property("title"), "基片 *")
+        self.assertEqual(global_window.property("caption"), "基片 * — 全局未保存基片")
 
     def test_process_hides_batch_entry_and_keeps_compact_dependency_labels(self):
         bridge = ProcessBridge(self.service, str(self.paths["process"]))

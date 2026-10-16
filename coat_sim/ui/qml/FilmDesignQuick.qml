@@ -13,8 +13,9 @@ AppWindow {
     required property var controller
     property var projectResources: null
     readonly property var geometrySettings: controller.geometrySettings
-    title: "膜系设计" + (controller && controller.uiState.dirty ? " *" : "")
-    caption: title
+    titleBase: "膜系设计" + (controller && controller.uiState.dirty ? " *" : "")
+    captionBase: titleBase
+    projectNameForTitle: controller && controller.projectMode ? controller.projectName : ""
     readonly property string thicknessSummaryDetail: {
         const summary = String(controller.thicknessSummaryText || "")
         const description = String(controller.thicknessSummaryDescription || "")
@@ -709,7 +710,6 @@ AppWindow {
                     currentModuleKey: "film_design"
                     showSelector: window.controller.projectMode
                     selectorObjectName: "filmDesignProjectModuleSelector"
-                    projectNameObjectName: "filmDesignProjectName"
                     selectorAccessibleName: "当前项目模块"
                 }
                 ProjectResourceControls {

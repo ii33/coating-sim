@@ -6,8 +6,8 @@ import "."
 
 AppWindow {
     id: window
-    title: "行星盘沉积仿真"
-    caption: ""
+    titleBase: "行星盘沉积仿真"
+    captionBase: ""
     statusText: errorToast.visible ? errorText.text : ""
     statusSeverity: errorToast.visible ? "error" : "info"
     onClosing: function(close) {

@@ -615,7 +615,13 @@ class QueueResultViewer(QObject):
         if not self.engine.rootObjects():
             raise RuntimeError('无法创建结果查看窗口')
         self.window = self.engine.rootObjects()[0]
-        self.window.setTitle('计算队列 · 已完成结果')
+        self.window.setProperty('titleBase', '计算队列 · 已完成结果')
+        if project_context is not None and owner.window is not None:
+            # Reuse the queue's live project-name signal without exposing the
+            # result viewer to the project's module-navigation behavior.
+            navigation = owner.window.property('projectNavigation')
+            if navigation is not None:
+                self.window.setProperty('titleProjectNameSource', navigation)
         self.window.setIcon(window_icon('main'))
         self.window.hide()
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='queue-result-reader')

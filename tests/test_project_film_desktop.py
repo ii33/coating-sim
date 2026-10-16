@@ -56,10 +56,11 @@ def test_real_qml_project_toolbar_and_repeated_navigation_preserve_draft(desktop
                   if route.binding == workspace.binding)
     selector = window.findChild(QQuickItem, "filmDesignProjectModuleSelector")
     header = window.findChild(QQuickItem, "filmDesignHeaderFlow")
-    label = window.findChild(QQuickItem, "filmDesignProjectName")
     assert selector is not None and selector.parentItem().parentItem() is header
     assert selector.property("text") == "膜系设计"
-    assert label.property("text") == "First"
+    assert window.property("title") == "膜系设计 — First"
+    assert window.property("caption") == "膜系设计 — First"
+    assert window.findChild(QQuickItem, "filmDesignProjectName") is None
     assert controller.setDesignValue("name", "Retain working draft")
     # Selecting this window through the real two-level menu activates its
     # existing project registration and retains the working owner/draft.

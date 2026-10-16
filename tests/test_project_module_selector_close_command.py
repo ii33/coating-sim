@@ -112,8 +112,9 @@ def test_close_project_is_a_separate_bottom_command_and_dispatches_to_current_ow
     if replace_owner:
         root.setProperty("navigation", navigation)
         _process_events()
-    assert _item(root, "projectNavigationName").property("text") == navigation.property("projectName")
+    assert root.findChild(QObject, "projectNavigationName") is None
     button = _item(root, "projectModuleSelector")
+    assert button.x() == 0
     assert root.property("canCloseProject") is True
     initial_label = button.property("text")
     assert initial_label == "光线追迹"

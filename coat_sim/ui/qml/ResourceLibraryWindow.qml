@@ -8,7 +8,7 @@ import "theme_controls" as ThemeControls
 
 LocalComponents.AppWindow {
     id: window
-    title: window.projectScoped ? "工程资产库" : "全局资产库"
+    titleBase: window.projectScoped ? "工程资产库" : "全局资产库"
     minimumWidth: 680
     minimumHeight: 500
     readonly property var tokens: window.themeColors
@@ -17,6 +17,7 @@ LocalComponents.AppWindow {
     readonly property var launcherBridge: typeof launcher === "undefined" ? null : launcher
     // qmllint enable unqualified
     property var projectNavigation: null
+    projectNameForTitle: projectNavigation ? projectNavigation.projectName : ""
     readonly property var projectResources: resourceBridge ? resourceBridge.materialResources : null
     readonly property var editorInstance: materialEditorLoader.item
     property bool projectPendingTextEdited: false

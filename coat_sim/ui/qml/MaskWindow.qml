@@ -130,10 +130,11 @@ LocalComponents.AppWindow {
         }
     }
     readonly property var editorBridge: bridge
-    title: "\u4fee\u6b63\u677f"
-    caption: "修正板 · " + (win.projectResources !== null ? win.projectResources.displayName
+    titleBase: "\u4fee\u6b63\u677f"
+    captionBase: "修正板 · " + (win.projectResources !== null ? win.projectResources.displayName
              : (win.editorBridge.informationController.resourceInformation.name || "未命名"))
              + (win.editorBridge.dirty ? " *" : "")
+    projectNameForTitle: projectNavigation ? projectNavigation.projectName : ""
     statusText: editorBridge.status
     statusSeverity: !editorBridge.canSave && editorBridge.validationMessage.length > 0 ? "error"
                     : editorBridge.cadBusy || editorBridge.radialBusy || editorBridge.fieldBusy || editorBridge.pointBusy

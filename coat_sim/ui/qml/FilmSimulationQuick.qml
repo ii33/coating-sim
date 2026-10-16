@@ -12,9 +12,11 @@ AppWindow {
     property bool projectCloseAuthorized: false
     property var projectNavigation: null
     property var projectResources: null
-    title: "光谱仿真"
-    caption: title + (FilmSimulation.hasDesign && FilmSimulation.designName.length > 0
-                      ? " — " + FilmSimulation.designName : "")
+    titleBase: "光谱仿真"
+    captionBase: titleBase + (window.fileDialogController.hasDesign
+                      && window.fileDialogController.designName.length > 0
+                      ? " — " + window.fileDialogController.designName : "")
+    projectNameForTitle: window.projectNavigation ? window.projectNavigation.projectName : ""
     statusText: FilmSimulation.status
     statusSeverity: FilmSimulation.busy ? "busy"
                     : FilmSimulation.validationError.length > 0 ? "error"
@@ -178,7 +180,6 @@ AppWindow {
                     navigation: window.projectNavigation
                     currentModuleKey: "film_simulation"
                     selectorObjectName: "filmSimulationProjectModuleSelector"
-                    projectNameObjectName: "filmSimulationProjectName"
                     selectorAccessibleName: "当前项目模块"
                 }
                 ProjectResourceControls {

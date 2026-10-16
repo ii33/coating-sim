@@ -34,12 +34,13 @@ termination, shown for review, and never silently overwrite saved documents.
 
 A top-row module selector shares the existing operation-button row. It opens/activates the
 selected module within the same project and does not implicitly replace a document. The
-project name is visible. Editors create their expensive views lazily. Global settings and
-the globally shared assistant remain application-scoped.
+project name appears in the native and custom window titles, after the module/resource title.
+Editors create their expensive views lazily. Global settings and the globally shared assistant
+remain application-scoped.
 
 The shared selector receives the owning navigation facade (`projectName`, detached
 `projectModules: [{key, name}]`, `openProjectModule(key)`, and `closeProject()`) and the presenting
-window's `currentModuleKey`. Its collapsed label resolves that key, with an explicit
+window's `currentModuleKey`. Its button resolves that key, with an explicit
 unknown-window placeholder rather than a first-module fallback. The three nested
 groups are film design/optimization, deposition editors, and simulations. Material
 and compute-queue tools remain separated leaf actions. Grouping owns presentation

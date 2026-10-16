@@ -47,8 +47,9 @@ or making a new draft releases the frozen provider.
 attaches only successful windows and releases accepted closes/failed opens. It
 supports film designer and film simulation only. Project-mode simulation saves
 through the same working designer owner and does not expose standalone load or
-optimizer actions. The designer and simulation's existing toolbar
-rows display the project name and module navigation. Repeated navigation only
+optimizer actions. The project name appears in both windows' native and custom
+title bars; their toolbar rows retain module navigation without reserving title space.
+Repeated navigation only
 activates a window, preserving its design and scroll/focus state. Simulation is
 bound to the same project's designer; foreign sources are rejected. Other
 application modules remain unavailable through this adapter.

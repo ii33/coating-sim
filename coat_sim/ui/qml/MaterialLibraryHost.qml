@@ -12,7 +12,7 @@ LocalComponents.AppWindow {
     minimumWidth: 900
     minimumHeight: 620
     initialMaximized: false
-    title: "材料库"
+    titleBase: "材料库"
     statusText: editorInstance === null
         ? ""
         : bridge.valid
@@ -25,6 +25,7 @@ LocalComponents.AppWindow {
 
     signal closed()
     property var projectNavigation: null
+    projectNameForTitle: projectNavigation ? projectNavigation.projectName : ""
     property var projectResources: null
     property bool projectPendingTextEdited: false
     property bool projectCloseAuthorized: false

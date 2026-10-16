@@ -38878,16 +38878,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SubstrateWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "+ (bridge.dirty ? \" *\" : \"\")",
-      "fingerprint": "94b2c510561378ca81e844681f2e7816221ceb3bca750cefc630d72a201bc321",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_film_design_gui.py",
       "code": "attr-defined",
@@ -39996,16 +39986,6 @@
       "anchor": "onActivated: controller.setPrecision(index === 1 ? \"mixed\" : \"float32\")",
       "fingerprint": "99713ed5cb5eea5ed59a4c6c39d2c65ec1bd605fe3400badff4184b1e71c612a",
       "count": 2
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/compute_queue.py",
-      "code": "attr-defined",
-      "message": "\"QObject\" has no attribute \"setTitle\"",
-      "scope": "QueueResultViewer.__init__",
-      "anchor": "self.window.setTitle('计算队列 · 已完成结果')",
-      "fingerprint": "99788174a1c7de7a79fa5735990734b528abbec4e57efb3a7af305cbf0142e7d",
-      "count": 1
     },
     {
       "tool": "mypy",
@@ -49366,16 +49346,6 @@
       "anchor": "cls.app = QApplication.instance() or QApplication([])",
       "fingerprint": "bc9982c2d3b3185671a44662da6ca9049eb994e569152769aa9576bd04500af5",
       "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmSimulationQuick.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "caption: title + (FilmSimulation.hasDesign && FilmSimulation.designName.length > 0",
-      "fingerprint": "bcaf9d194a9357a03d279656ff6e4926f584cb24d398d6d72629f7be8fe71f06",
-      "count": 2
     },
     {
       "tool": "mypy",
@@ -66998,6 +66968,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "Remove only two resolved platform ctypes.windll test diagnostics after platform-guarded ctypes typing in unified material host routing tests; no new diagnostics or baseline expansion.",
+  "last_prune_reason": "Reviewed UI title migration: removed obsolete QueueResultViewer.setTitle and replaced qualified Substrate/FilmSimulation caption bindings; remove only 4 resolved findings from full candidate scan, no new debt accepted.",
   "configuration_review_reason": "2026-10-14: reviewed source-snapshot drift guard and cache reset only; diagnostic rules, identities and all debt entries unchanged."
 }

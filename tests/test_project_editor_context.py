@@ -73,6 +73,9 @@ def client_for(desktop, module):
     controller = presentation.controller_for(workspace, module)
     window = (controller.window if module == "materials" else
               next(view[0] for route, view in presentation._views.items() if route.module_key == module))
+    title_suffix = " — " + workspace.name
+    assert window.property("title").endswith(title_suffix)
+    assert window.property("caption").endswith(title_suffix)
     if module == "materials":
         _wait_material_editor_ready(window, controller.bridge)
     bridge = Bridge()

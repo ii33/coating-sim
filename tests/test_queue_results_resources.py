@@ -276,6 +276,12 @@ class QueueResultResourceTests(unittest.TestCase):
                 view.openQueueResult(row['job_id']); view.openQueueResult(row['job_id'])
                 self.spin(lambda: view._result_viewer.bridge.hasResult or '无法' in view.status, timeout=20)
                 self.assertTrue(view._result_viewer.bridge.hasResult, view.status)
+                title_viewer = view._result_viewer
+                assert title_viewer is not None
+                title_window = title_viewer.window
+                assert title_window is not None
+                self.assertEqual(title_window.property('title'), '计算队列 · 已完成结果')
+                self.assertEqual(title_window.property('caption'), '计算队列 · 已完成结果')
                 self.assertEqual(view._result_viewer.bridge._asset_run_id, row['result']['run_id'])
                 np.testing.assert_array_equal(view._result_viewer.bridge._result['field_nm'], bridge._result['field_nm'])
                 view._result_viewer.window.close(); support.APP.processEvents()

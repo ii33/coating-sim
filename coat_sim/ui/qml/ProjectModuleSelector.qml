@@ -10,13 +10,10 @@ Item {
     property string currentModuleKey: ""
     property string selectorRootObjectName: "projectModuleSelectorRoot"
     property string selectorObjectName: "projectModuleSelector"
-    property string projectNameObjectName: "projectNavigationName"
     property string selectorAccessibleName: "打开工程窗口"
     property bool showSelector: true
-    property real maximumProjectNameWidth: 130
     readonly property real operationBarMinimumWidth: 90
     readonly property real operationBarPreferredWidth: 140
-        + Math.min(maximumProjectNameWidth, projectNameLabel.implicitWidth) + spacing
     // Theme is the application singleton injected into each project engine.
     // qmllint disable unqualified
     property var themeTokens: Theme.snapshot
@@ -41,7 +38,6 @@ Item {
     readonly property var categorizedKeys: filmKeys.concat(depositionKeys).concat(simulationKeys)
 
     visible: !!navigation && showSelector
-    property real spacing: themeTokens.spaceXs
     height: themeTokens.controlHeightLg
     implicitWidth: operationBarPreferredWidth
     width: implicitWidth
@@ -180,22 +176,9 @@ Item {
         }
     }
 
-    ThemeControls.ThemeLabel {
-        id: projectNameLabel
-        objectName: root.projectNameObjectName
-        text: root.navigation ? root.navigation.projectName : ""
-        width: Math.min(root.maximumProjectNameWidth,
-                        Math.max(0, root.width - selectorButton.width - root.spacing))
-        visible: width > 0
-        height: root.height
-        elide: Text.ElideRight
-        verticalAlignment: Text.AlignVCenter
-    }
-
     ThemeControls.ThemeButton {
         id: selectorButton
         objectName: root.selectorObjectName
-        x: projectNameLabel.visible ? projectNameLabel.width + root.spacing : 0
         width: Math.min(140, root.width)
         height: root.height
         text: root.currentModuleName

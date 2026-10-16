@@ -179,18 +179,27 @@ def test_open_designer_and_resource_name_views_refresh_together(information_owne
     session = sessions[0]
     workspace = owner.desktop.open_project(stores[0].root)
     owner.desktop.open_project_module(workspace, "source")
+    owner.desktop.open_project_module(workspace, "project_resources")
     _events()
     views = [view for route, view in owner.desktop._views.items() if route.binding == session.binding]
-    assert len(views) == 2
+    assert len(views) == 3
     info = owner.projectInformation(session.binding.project_id)
     assert _save(owner, info, "当前工程显示新名称")
     _events()
-    assert all(view[1].projectName == "当前工程显示新名称" for view in views)
+    assert all(view[0].property("title").endswith(" — 当前工程显示新名称") for view in views)
+    assert all(view[0].property("caption").endswith(" — 当前工程显示新名称") for view in views)
     for view in views:
-        labels = (view[0].findChildren(QQuickItem, "projectNavigationName")
-                  + view[0].findChildren(QQuickItem, "filmDesignProjectName"))
-        assert labels
-        assert all(label.property("text") == "当前工程显示新名称" for label in labels)
+        assert view[0].findChild(QQuickItem, "projectNavigationName") is None
+        assert view[0].findChild(QQuickItem, "filmDesignProjectName") is None
+    designer = next(view[0] for route, view in owner.desktop._views.items()
+                    if route.binding == session.binding and route.module_key == "film_design")
+    source = next(view[0] for route, view in owner.desktop._views.items()
+                  if route.binding == session.binding and route.module_key == "source")
+    assert designer.property("title") == "膜系设计 — 当前工程显示新名称"
+    assert source.property("title").startswith("蒸发源 — ")
+    assert source.property("caption").startswith("蒸发源 — ")
+    assert source.property("caption").endswith(" — 当前工程显示新名称")
+    assert source.property("caption").count("当前工程显示新名称") == 1
 
 
 def test_pending_information_uses_unified_close_cancel_return_and_discard(management_qml, information_owner):

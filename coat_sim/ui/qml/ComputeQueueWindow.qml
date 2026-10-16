@@ -10,7 +10,8 @@ AppWindow {
     id: window
     property bool projectCloseAuthorized: false
     property var projectNavigation: null
-    title: "计算队列"
+    titleBase: "计算队列"
+    projectNameForTitle: projectNavigation ? projectNavigation.projectName : ""
     initialMaximized: false
     width: 900
     height: 620

@@ -60,6 +60,11 @@ has not become discoverable yet it reports a retryable error. PID creation
 identity, nonce, client/session generations, canonical root and exact descriptor
 remain required; activation routes only to `film_design`. An older assistant
 without activation support is explicitly rejected, never replaced automatically.
+Descriptor/selected-dependency validation failures keep their underlying error
+code, message and explicit cause chain in the IPC-visible diagnostic. The outer
+`project_identity_mismatch` rejection and every identity/ownership check remain
+unchanged. A failed integrity, schema or filesystem check never falls back to a
+different project or silently becomes successful activation.
 
 ## Close, cancellation and bounded lifetime
 

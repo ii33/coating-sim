@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from pathlib import Path
+import shutil
 
 import pytest
 
@@ -393,6 +395,103 @@ def test_registry_requires_open_visible_window_confirmation(project_owner, windo
     assert "尚未确认可见" in str(error.value)
     assert [operation for operation, _arguments in calls][-2:] == ["open_window", "read_window"]
     assert store.project_file.read_bytes() == before
+
+
+@pytest.mark.parametrize("failure", [
+    ProjectError("integrity_error", "Project document digest does not match: source-id"),
+    ProjectError("invalid_manifest", "Document path must be a typed named project revision"),
+    ProjectError("unsafe_path", "Project paths cannot use links or reparse points: project-root"),
+    OSError(13, "Permission denied", "project.coatproj"),
+])
+@pytest.mark.parametrize("route", ["activation", "window"])
+def test_activation_validation_diagnostic_survives_ipc_without_weakening_rejection(
+        project_owner, monkeypatch, failure, route):
+    registry, client, store, project, target, calls, state, _identities = project_owner
+    state["draft"] = {"dirty": True, "name": "Keep unsaved work"}
+    before = store.project_file.read_bytes()
+
+    def fail_open(*_args, **_kwargs):
+        raise failure
+
+    class SerializedAssistant:
+        def request(self, operation, **arguments):
+            try:
+                if operation == "activate_project":
+                    return registry.activate_project(arguments)
+                assert operation == "project_window"
+                return registry.project_window(arguments["target"], "list_windows", {})
+            except UiControlError as error:
+                # The wire transports code/message, not the local exception chain.
+                raise UiControlError(error.code, str(error)) from None
+
+    monkeypatch.setattr(ProjectStore, "open", fail_open)
+    with pytest.raises(UiControlError) as caught:
+        if route == "activation":
+            activate_shared_project(SerializedAssistant(), target)
+        else:
+            SerializedAssistant().request("project_window", target=target)
+
+    assert caught.value.code == "project_identity_mismatch"
+    assert str(failure) in str(caught.value)
+    assert getattr(failure, "code", type(failure).__name__) in str(caught.value)
+    assert ("未激活其他工程" if route == "activation" else "未操作其他工程") in str(caught.value)
+    _assert_no_owner_open(calls)
+    assert registry._clients[client.client_id] is client
+    assert client.projects == [project]
+    assert state["draft"] == {"dirty": True, "name": "Keep unsaved work"}
+    assert store.project_file.read_bytes() == before
+
+
+def test_changed_default_dependency_reports_real_failure_and_retains_exact_owner(
+        project_owner, tmp_path):
+    registry, client, _empty_store, project, _target, calls, state, _identities = project_owner
+    example = Path(__file__).resolve().parents[1] / "example" / "synthetic-demo"
+    root = tmp_path / "copied synthetic demo 工程"
+    shutil.copytree(example, root)
+    store = ProjectStore.open(root / "project.coatproj")
+    project.update(project_id=store.manifest["id"], root=str(store.root),
+                   project_file=str(store.project_file), name=store.manifest["name"])
+    client.projects = [dict(project)]
+    state["projects"] = [dict(project)]
+    state["draft"] = {"dirty": True, "name": "Retained in owner"}
+    target = activation_target(client.public(), project)
+    lease = ProjectOwnerLease.acquire(store.project_file, store.manifest["id"])
+    try:
+        assert registry.activate_project(target)["activated"] is True
+        source = next(row for row in store.manifest["documents"] if row["kind"] == "source")
+        source_path = store.root / source["path"]
+        original_source = source_path.read_bytes()
+        source_path.write_bytes(b"{}\n")
+        before = {path: path.read_bytes() for path in root.rglob("*") if path.is_file()}
+        calls.clear()
+
+        with pytest.raises(UiControlError) as caught:
+            registry.activate_project(target)
+
+        assert caught.value.code == "project_identity_mismatch"
+        assert "integrity_error" in str(caught.value)
+        assert source["id"] in str(caught.value)
+        _assert_no_owner_open(calls)
+        assert registry._clients[client.client_id] is client
+        assert state["draft"] == {"dirty": True, "name": "Retained in owner"}
+        assert {path: path.read_bytes() for path in root.rglob("*") if path.is_file()} == before
+        # Repair only the test's deliberate corruption before testing the lease;
+        # admission otherwise stops earlier at the unchanged integrity boundary.
+        source_path.write_bytes(original_source)
+        _assert_original_lease_still_excludes_a_second_owner(store)
+    finally:
+        lease.close()
+
+
+def test_project_validation_diagnostic_preserves_nested_os_error_and_bounds_cycles():
+    failure = ProjectError("io_error", "Cannot read project document: project.coatproj")
+    denied = PermissionError(13, "Permission denied", "project.coatproj")
+    failure.__cause__ = denied
+    detail = assistant_process_module._project_validation_detail(failure)
+    assert "io_error" in detail and str(failure) in detail
+    assert "PermissionError" in detail and str(denied) in detail
+    denied.__cause__ = failure
+    assert assistant_process_module._project_validation_detail(failure) == detail
 
 
 def test_shared_owner_helpers_use_authenticated_listing_and_exact_activation_target(project_owner):

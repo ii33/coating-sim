@@ -11,7 +11,28 @@ Window {
     // Pages with their own Settings-based geometry restore can ask the launcher
     // to clamp that rectangle without replacing it with a module default.
     property bool pageManagesWindowGeometry: false
-    property string caption: title
+    // AppWindow pages provide their unsuffixed title/caption here. Keeping
+    // project-title composition in the shared window ensures the native
+    // window title and custom chrome stay in sync when a project is renamed.
+    property string titleBase: ""
+    property var captionBase: null
+    property string projectNameForTitle: ""
+    // Some child result windows need a live project-name signal without
+    // acquiring the project's navigation behavior.
+    property var titleProjectNameSource: null
+    function withProjectName(base) {
+        const text = String(base || "")
+        let project = String(projectNameForTitle || "").trim()
+        if (titleProjectNameSource !== null
+                && typeof titleProjectNameSource.projectName !== "undefined")
+            project = String(titleProjectNameSource.projectName || "").trim()
+        if (!text || !project)
+            return text
+        const suffix = " — " + project
+        return text.endsWith(suffix) ? text : text + suffix
+    }
+    title: withProjectName(titleBase)
+    property string caption: captionBase === null ? title : withProjectName(captionBase)
     // The page/controller owns status. Chrome only presents the current value.
     property string statusText: ""
     property string statusSeverity: "info"

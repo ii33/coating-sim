@@ -181,6 +181,11 @@ def test_project_compute_factory_loads_actual_qml_and_navigation(owners, module_
         assert window.property("projectNavigation") is navigation
         assert window.findChild(QQuickItem, "projectModuleSelector") is not None
         assert controller.project_context is workspace
+        expected_suffix = " — " + navigation.projectName
+        assert window.property("title").endswith(expected_suffix)
+        assert window.property("caption").endswith(expected_suffix)
+        caption = window.findChild(QQuickItem, "windowChromeCaption")
+        assert caption is not None and caption.property("text") == window.property("caption")
         if module_key == "main":
             assert window.findChild(QQuickItem, "projectDepositionSaveConfiguration") is not None
             assert controller.projectMode
@@ -213,6 +218,43 @@ def test_project_compute_factory_loads_actual_qml_and_navigation(owners, module_
         if controller is not None:
             controller.deleteLater()
         engine.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def test_project_queue_result_title_tracks_rename_without_navigation_behavior(owners):
+    from coat_sim.ui.compute_queue import ComputeQueueView, QueueResultViewer
+
+    host, rows = owners
+    workspace, _source, _saved = rows[0]
+    desktop = ProjectFilmDesktop(host)
+    navigation = ProjectFilmNavigation(desktop, workspace)
+    engine = QQmlApplicationEngine()
+    ThemeService.instance().attach_engine(engine)
+    queue = ComputeQueueView(engine, workspace.service.root, project_context=workspace,
+                             navigation=navigation)
+    viewer = None
+    try:
+        viewer = QueueResultViewer(queue, workspace.service.root, project_context=workspace)
+        queue._result_viewer = viewer
+        events()
+        window = viewer.window
+        assert window.property("projectNavigation") is None
+        assert window.property("title") == "计算队列 · 已完成结果 — First"
+        assert window.property("caption") == "计算队列 · 已完成结果 — First"
+        selector = window.findChild(QQuickItem, "projectModuleSelector")
+        assert selector is not None and not selector.property("visible")
+
+        store = host.store_for(workspace.binding)
+        store.update_information({"name": "Renamed First"},
+                                 expected_revision=store.manifest["revision"])
+        desktop.projectInformationChanged.emit(workspace.binding.project_id)
+        events()
+        assert window.property("title") == "计算队列 · 已完成结果 — Renamed First"
+        assert window.property("caption") == "计算队列 · 已完成结果 — Renamed First"
+    finally:
+        queue.shutdown()
+        engine.deleteLater()
+        desktop.deleteLater()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 

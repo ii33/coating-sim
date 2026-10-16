@@ -13,7 +13,8 @@
 可提供逻辑宽度，`operationBarFlexible: true` 允许状态文字缩至剩余空间。
 复合控件可通过 `operationBarAction` 暴露真实按钮，以及可选的
 `operationBarOverflowAnchor` 接收菜单锚点（正常显示时为 null）。
-`ProjectModuleSelector` 可收起项目名称并保留当前窗口下拉；
+`ProjectModuleSelector` 只显示当前窗口下拉；项目名称统一显示在窗口标题栏，
+不占用工具栏宽度；
 `ProjectResourceControls` 根据实际分配宽度和主题控件的隐式宽度，依次呈现
 新建、保存、创建副本、导入/导出，仅把放不下的动作移至自己的次级菜单；
 宽度恢复后自动回到行内，不设固定宽度上限。创建副本共用一个原生按钮及
