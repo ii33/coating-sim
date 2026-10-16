@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+from contextlib import nullcontext
 import errno
 import json
 import os
@@ -165,15 +166,29 @@ class UiReadyChannel:
 
     def wait(self, process: Any, timeout: float = READY_TIMEOUT_SECONDS) -> dict[str, Any]:
         messages: queue.Queue[dict[str, Any]] = queue.Queue()
+        identity = None
+        if self.family == "AF_PIPE":
+            from .startup_identity import WindowsStartupIdentity
+            try:
+                identity = WindowsStartupIdentity(process)
+            except Exception as exc:
+                self.close()
+                return {"status": "channel_error", "error": str(exc)[:1000]}
 
         def receive_event() -> None:
             while True:
                 try:
                     with self._listener.accept() as connection:
-                        raw = connection.recv_bytes(MAX_EVENT_BYTES)
-                    value = json.loads(raw.decode("utf-8"), object_pairs_hook=_unique_json_object)
-                    if not _valid_event(value):
-                        raise ValueError("invalid startup event schema")
+                        with identity.peer(connection) if identity is not None else nullcontext(0) as peer:
+                            raw = connection.recv_bytes(MAX_EVENT_BYTES)
+                            value = json.loads(raw.decode("utf-8"), object_pairs_hook=_unique_json_object)
+                            if not _valid_event(value):
+                                raise ValueError("invalid startup event schema")
+                            if identity is not None:
+                                value["_verified_process_pid"] = identity.authorize(value, peer)
+                                # Keep a short-lived bootstrap alive until its
+                                # OS identity and any host handoff are pinned.
+                                connection.send_bytes(b"accepted")
                     messages.put(value)
                     if value["status"] == "handoff":
                         continue
@@ -200,9 +215,13 @@ class UiReadyChannel:
         def final_event(event: dict[str, Any]) -> dict[str, Any]:
             if event.get("status") == "ready":
                 endpoint_pid = event["endpoint"]["pid"]
-                expected_pid = handoff_host_pid if handoff_seen else process_pid
+                expected_pid = event.pop("_verified_process_pid", None) if identity is not None else (
+                    handoff_host_pid if handoff_seen else process_pid)
                 if type(expected_pid) is not int or endpoint_pid != expected_pid:
                     return {"status": "channel_error", "error": "startup process identity mismatch"}
+                if endpoint_pid != process_pid:
+                    return {**event, "handoff_host_pid": endpoint_pid}
+            event.pop("_verified_process_pid", None)
             if handoff_seen:
                 return {**event, "handoff_host_pid": handoff_host_pid}
             return event
@@ -220,7 +239,8 @@ class UiReadyChannel:
                 if status == "handoff":
                     if handoff_seen:
                         return {"status": "channel_error", "error": "duplicate host handoff"}
-                    if event["process_pid"] != process_pid:
+                    if event["process_pid"] != (event.get("_verified_process_pid")
+                            if identity is not None else process_pid):
                         return {"status": "channel_error", "error": "bootstrap process identity mismatch"}
                     handoff_seen = True
                     handoff_host_pid = event["host_pid"]
@@ -244,7 +264,8 @@ class UiReadyChannel:
                         if follow_up.get("status") == "handoff":
                             if handoff_seen:
                                 return {"status": "channel_error", "error": "duplicate host handoff"}
-                            if follow_up["process_pid"] != process_pid:
+                            if follow_up["process_pid"] != (follow_up.get("_verified_process_pid")
+                                    if identity is not None else process_pid):
                                 return {"status": "channel_error", "error": "bootstrap process identity mismatch"}
                             handoff_seen = True
                             handoff_host_pid = follow_up["host_pid"]
@@ -256,6 +277,8 @@ class UiReadyChannel:
                     return event
                 return event
         finally:
+            if identity is not None:
+                identity.close()
             self.close()
 
     def close(self) -> None:
@@ -303,6 +326,8 @@ def report_startup_event(status: str, *, endpoint: dict[str, Any] | None = None,
             raise ValueError("startup event is too large")
         with Client(address, family=family, authkey=authkey) as connection:
             connection.send_bytes(raw)
+            if family == "AF_PIPE":
+                return connection.poll(5.0) and connection.recv_bytes(16) == b"accepted"
         return True
     except (OSError, EOFError, ValueError, TypeError):
         return False

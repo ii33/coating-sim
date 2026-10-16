@@ -65,7 +65,8 @@ def _start_runtime(arguments: list[str], shared: Any, application_root: str | Pa
 
 
 def _confirm_owner(shared: Any, store: ProjectStore) -> ProjectStore:
-    # Ready checks the spawned PID; discovery challenges the actual lifetime
+    # Ready checks the spawned process tree (including Windows venv redirectors);
+    # discovery challenges the actual lifetime
     # owner, which may be a different process after simultaneous open attempts.
     target = find_shared_project_owner(shared, store, "")
     if target is None:

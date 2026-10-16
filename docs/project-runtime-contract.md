@@ -1,6 +1,6 @@
 # Independent project runtime and recent launcher
 
-Date: 2026-10-15. This is the dev.09 ownership boundary; no project format,
+Date: 2026-10-16. This is the dev.09 ownership boundary; no project format,
 physics algorithm or automatic migration of already-running dev.08 owners changes.
 
 ## State owners and exact interfaces
@@ -34,7 +34,16 @@ creation is retained if subsequent window startup fails. Runtime processes are d
 parent stdout pipe. Launcher close may exit its own presentation process without
 changing any runtime. Startup uses the existing authenticated one-shot ready
 channel and then authenticated exact owner discovery/activation; spawning alone
-is not success. The runtime reports readiness only after its real project
+is not success. On Windows, the Popen handle can belong to the venv redirector,
+while the real Python runtime has a different PID. The ready channel verifies the
+OS named-pipe sender against the endpoint PID and a bounded parent chain rooted
+in that retained process handle. Every ancestry edge checks process creation/exit
+times; a declared desktop-host handoff also pins the verified host handle. Stale,
+reused, unrelated or uninspectable identities fail closed. Windows senders wait
+up to five seconds for the verification acknowledgement before exiting, so a
+bootstrap cannot exit before its handoff identity is pinned. The channel never
+signals a process or changes project ownership. POSIX keeps the exact-PID rule.
+The runtime reports readiness only after its real project
 admission/activation and updated shared registration settle. Initial views are
 hidden and noninteractive before this point, and IPC mutation is fenced. A failed startup reports an error and exits itself.
 Successful opens/activations persist recent history on the runtime, independent
@@ -87,3 +96,9 @@ spawn/handshake failure, existing-owner activation, close review preservation an
 exit after settled work. Isolated real-process tests use temporary assistant,
 settings and project roots. Native Windows acceptance remains a separate gate.
 The pre-existing `context_tokens` KeyError is outside this ownership change.
+
+The Windows startup identity regression is in `tests/test_windows_startup_identity.py`:
+portable adversarial identity/ancestry checks plus a native no-GUI venv redirector
+probe. Win32 evidence comes from [GetNamedPipeClientProcessId](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getnamedpipeclientprocessid),
+[PROCESSENTRY32W](https://learn.microsoft.com/en-us/windows/win32/api/tlhelp32/ns-tlhelp32-processentry32w)
+and [GetProcessTimes](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getprocesstimes).
