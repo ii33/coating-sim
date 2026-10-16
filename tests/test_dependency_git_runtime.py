@@ -30,6 +30,21 @@ def archive_bytes(entries=None):
     return stream.getvalue()
 
 
+def raw_name_archive_bytes(name):
+    """Write exact malicious filename bytes into both ZIP filename headers.
+
+    writestr(name, ...) sanitizes names before writing on Windows and truncates
+    NUL on every platform. Equal-length ASCII replacement retains header sizes,
+    offsets, and payload CRCs, without relying on host filename normalization.
+    """
+    raw_name = name.encode("ascii")
+    placeholder = b"Z" * len(raw_name)
+    data = archive_bytes([("safe-first.txt", b"not extracted"),
+                          (placeholder.decode("ascii"), b"x")])
+    assert data.count(placeholder) == 2  # Local header and central directory.
+    return data.replace(placeholder, raw_name)
+
+
 @pytest.fixture
 def fixture_manifest(monkeypatch):
     manifest = git.git_runtime_manifest()
@@ -150,6 +165,7 @@ def test_failure_cleans_staging_allows_retry(home, fixture_manifest, monkeypatch
         "/absolute",
         "C:/escape",
         "cmd\\escape",
+        "cmd/safe\x00ignored",
         "cmd/file:stream",
         "cmd/NUL.txt",
         "cmd/trailing.",
@@ -157,7 +173,29 @@ def test_failure_cleans_staging_allows_retry(home, fixture_manifest, monkeypatch
 )
 def test_archive_paths_rejected(home, name):
     archive = home / "test.zip"
-    archive.write_bytes(archive_bytes([(name, b"x")]))
+    archive.write_bytes(raw_name_archive_bytes(name))
+    with zipfile.ZipFile(archive) as source:
+        assert source.infolist()[-1].orig_filename == name
+    with pytest.raises(ValueError, match="Unsafe"):
+        git._extract_zip(archive, home / "extract", threading.Event())
+    assert not (home / "extract").exists()
+
+
+def test_original_backslash_rejected_even_after_windows_normalization(home, monkeypatch):
+    archive = home / "windows-name.zip"
+    archive.write_bytes(raw_name_archive_bytes("cmd\\escape"))
+    original_init = zipfile.ZipInfo.__init__
+
+    def windows_normalized_init(info, *args, **kwargs):
+        original_init(info, *args, **kwargs)
+        info.filename = info.filename.replace("\\", "/")
+
+    # Exercise the Windows ZipInfo behavior even on a POSIX test runner.
+    monkeypatch.setattr(zipfile.ZipInfo, "__init__", windows_normalized_init)
+    with zipfile.ZipFile(archive) as source:
+        member = source.infolist()[-1]
+        assert member.orig_filename == "cmd\\escape"
+        assert member.filename == "cmd/escape"
     with pytest.raises(ValueError, match="Unsafe"):
         git._extract_zip(archive, home / "extract", threading.Event())
     assert not (home / "extract").exists()

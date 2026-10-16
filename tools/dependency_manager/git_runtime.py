@@ -218,11 +218,15 @@ def _extract_zip(archive, destination, cancel_event, *, max_bytes=MAX_EXPANDED):
         if len(source.infolist()) > 20000:
             raise ValueError("Git archive has too many members")
         for info in source.infolist():
-            name = info.filename
+            # ZipInfo.filename is already sanitized (NUL truncation and, on
+            # Windows, backslash conversion). Validate the original archive name
+            # before accepting any normalized alias or constructing a target.
+            name = info.orig_filename
             parts = PurePosixPath(name).parts
             mode = info.external_attr >> 16
             if (
                 not parts
+                or name != info.filename
                 or name.startswith("/")
                 or "\\" in name
                 or "\x00" in name
