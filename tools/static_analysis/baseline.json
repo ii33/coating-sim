@@ -41558,16 +41558,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmSimulationQuick.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "? \" — \" + FilmSimulation.designName : \"\")",
-      "fingerprint": "9f6d4ba8f80da50c9b8cd7e46f09e36c3a2f0f5467b159abee8ede10b0d2abc0",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_assistant_window_list.py",
       "code": "attr-defined",
@@ -66968,6 +66958,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "Reviewed UI title migration: removed obsolete QueueResultViewer.setTitle and replaced qualified Substrate/FilmSimulation caption bindings; remove only 4 resolved findings from full candidate scan, no new debt accepted.",
+  "last_prune_reason": "Reviewed completed Linux CI for .19: remove the remaining resolved FilmSimulation caption continuation unqualified-access entry (9f6d4ba8); no new findings accepted.",
   "configuration_review_reason": "2026-10-14: reviewed source-snapshot drift guard and cache reset only; diagnostic rules, identities and all debt entries unchanged."
 }

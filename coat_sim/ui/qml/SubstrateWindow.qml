@@ -25,7 +25,7 @@ LocalComponents.AppWindow {
         function onSnapshotChanged() { preview.requestPaint() }
     }
     titleBase: "基片" + (window.editorBridge.dirty ? " *" : "")
-    captionBase: titleBase + " — " + window.editorBridge.displayName
+    captionBase: "基片 — " + window.editorBridge.displayName + (window.editorBridge.dirty ? " *" : "")
     projectNameForTitle: projectNavigation ? projectNavigation.projectName : ""
     statusText: bridge.valid ? (bridge.status || "参数有效，可保存。") : bridge.error
     statusSeverity: bridge.valid ? "info" : "error"

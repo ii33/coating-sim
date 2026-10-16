@@ -447,7 +447,7 @@ class ProcessEditorNavigationQtTests(unittest.TestCase):
         substrate_base = "基片 *"
         self.assertEqual(substrate_window.property("title"), substrate_base + " — 工程乙")
         self.assertEqual(substrate_window.property("caption"),
-                         substrate_base + " — 未保存基片 — 工程乙")
+                         "基片 — 未保存基片 * — 工程乙")
 
         # A global/non-project editor still displays its dirty marker without
         # manufacturing a project suffix or appending the marker to the name.
@@ -456,7 +456,7 @@ class ProcessEditorNavigationQtTests(unittest.TestCase):
         global_bridge.setField("name", "全局未保存基片")
         self._settle()
         self.assertEqual(global_window.property("title"), "基片 *")
-        self.assertEqual(global_window.property("caption"), "基片 * — 全局未保存基片")
+        self.assertEqual(global_window.property("caption"), "基片 — 全局未保存基片 *")
 
     def test_process_hides_batch_entry_and_keeps_compact_dependency_labels(self):
         bridge = ProcessBridge(self.service, str(self.paths["process"]))

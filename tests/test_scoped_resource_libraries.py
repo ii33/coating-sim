@@ -103,12 +103,13 @@ def test_project_window_lazy_single_instance_and_cross_project_isolation(desktop
     assert bridge.libraryScope == "project" and bridge.owner_binding == first.session.binding
     assert bridge.service.store is first_store
     assert [row["name"] for row in bridge.transferCatalog["rows"]] == ["Only First"]
-    assert window.property("title") == "工程资产库" and window.property("librarySource")
+    assert window.property("title") == "工程资产库 — First" and window.property("librarySource")
     assert window.findChild(QQuickItem, "projectModuleSelector").property("text") == "工程资产库"
     assert desktop.adapter.desktop.open_project_module(first.workspace, "project_resources") == route_id
     assert desktop.adapter.host.window_for(route) is window
     _other_id, _other_route, other_view = open_library(desktop, second)
     assert other_view[1] is not bridge
+    assert other_view[0].property("title") == "工程资产库 — Second"
     assert [row["name"] for row in other_view[1].transferCatalog["rows"]] == ["Only Second"]
     qml(engine, window, f"choose('{first_id}', true)")
     state, reason = capture_project_resources_snapshot(bridge, window, "project_resources")
