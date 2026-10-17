@@ -117,15 +117,21 @@ multi-process smoke verifies launcher exit, owner reuse and runtime close.
 Windows native/desktop behavior still requires its separate acceptance matrix.
 The existing `context_tokens` KeyError is unrelated and unchanged.
 
-## Optional Windows development entry (PowerShell 7+)
+## Source and installed launch entry
 
-`start-dev.bat` invokes `start-dev.ps1` with PowerShell 7 or later. Use `COAT_PWSH` to specify an existing PowerShell 7 executable when `pwsh.exe` is absent from PATH. Neither wrapper installs software or changes execution policy.
+The supported entry is `launcher.py`, run with the selected project's own
+interpreter: `.venv/Scripts/python.exe launcher.py` on Windows or
+`.venv/bin/python launcher.py` on Linux/macOS. The independent installer creates
+scripts and shortcuts against that interpreter and entry. Application arguments
+are passed directly; source development tools require the explicit
+`--development` opt-in. Linux desktop launches inherit the user's actual display
+session; `--software` is available for the Qt Quick software renderer.
 
-The script resolves the project from its own directory; `-ProjectRoot` selects another checkout. Relative project paths resolve against the script directory; relative Python, entry and log paths resolve against the selected project. It selects `.venv/Scripts/python.exe`, then `.conda/python.exe`, or an explicit `-PythonPath` / `COAT_PYTHON`. An invalid explicit interpreter fails without fallback. `-Check` imports required GUI/numerical dependencies without creating a GUI; `-DryRun` prints the resolved invocation without spawning a child or creating logs.
-
-The default console entry is `launcher.py`, matching the README's venv workflow. It does not require the `.conda` branded desktop host used by `launcher.pyw`. An explicit `-EntryScript` supports an isolated acceptance entry; following arguments are passed individually without shell evaluation. Development mode remains the application's explicit `--development` opt-in.
-
-Only the child process receives UTF-8/no-user-site settings and, on Windows, `QT_QPA_PLATFORM=windows`. Its working directory is the selected project. stdout and stderr are drained concurrently, displayed and saved to a unique UTF-8 `artifacts/logs/start-*.log`. Python's exit code is preserved; preflight failures print and log an error and return 2. The wrapper does not stop the child or any other task when disposed. Settings, lifecycle and shutdown remain owned by the existing application.
+`launcher.pyw` remains the application-owned no-console adapter used by taskbar
+relaunch and the existing desktop host. It delegates to
+`tools/launch_desktop.pyw`; neither is an installer. Duplicate shell/PowerShell
+wrappers and the retired legacy UI launchers are removed. There is no automatic
+environment selection, package installation or system-Python fallback entry.
 
 ## Information and global-library window
 

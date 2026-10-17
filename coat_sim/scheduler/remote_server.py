@@ -19,6 +19,7 @@ import signal
 import socket
 import ssl
 import subprocess
+from typing import Any
 import tempfile
 import threading
 from urllib.parse import urlsplit
@@ -287,7 +288,7 @@ class RemoteScheduler(Scheduler):
         if frozen.fingerprint != value['input_digest']:
             raise ValueError('frozen_input_digest_mismatch')
         write_text(directory / 'spec.json', frozen.canonical_json)
-        options = {'cwd': str(Path(__file__).resolve().parents[2]), 'stdin': subprocess.DEVNULL}
+        options: dict[str, Any] = {'cwd': str(Path(__file__).resolve().parents[2]), 'stdin': subprocess.DEVNULL}
         if os.name == 'nt':
             options['creationflags'] = subprocess.CREATE_NO_WINDOW
         else:
@@ -309,8 +310,7 @@ class RemoteScheduler(Scheduler):
             options.get('env', os.environ), getattr(self, '_remote_bearer_token', None))
         command = module_command('coat_sim.scheduler.remote_worker', str(self.root), job_id,
                                  str(os.getpid()), self.owner, interpreter=interpreter)
-        with (directory / 'worker.log').open('ab') as log:
-            process = subprocess.Popen(command, stdout=log, stderr=log, **options)
+        process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **options)
         try:
             self.guard.attach(process)
             self.store.set_worker(job_id, process.pid, _process_identity(process.pid)[1])
@@ -773,6 +773,10 @@ def main(argv=None):
         configuration['token'] = os.environ.pop(token_env, None)
         if configuration['token'] is None:
             parser.error('configured token environment variable is absent')
+    from coat_sim.project_logging import install_process_log
+    from coat_sim.assistant_diagnostics import trace
+    install_process_log('scheduler', configuration['data_root'])
+    trace('remote_service_start', role='remote-service')
     service = RemoteComputeService(**configuration, insecure_loopback=args.insecure_loopback, allow_probe=args.allow_probe)
     def stop(*_): service.scheduler.stopping.set()
     signal.signal(signal.SIGINT, stop)

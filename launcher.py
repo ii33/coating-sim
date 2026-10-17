@@ -30,6 +30,12 @@ def main():
         release_build=os.environ.get("COAT_RELEASE_BUILD") == "1",
         frozen=bool(getattr(sys, "frozen", False)),
         compiled="__compiled__" in globals())
+    from coat_sim.project_logging import PROJECT_ROOT, install_process_log
+    from coat_sim.assistant_diagnostics import source_id, trace
+    from coat_sim.version import BUILD_IDENTITY
+    install_process_log("desktop")
+    trace("desktop_process_start", role="launcher", version=BUILD_IDENTITY.version,
+          git_sha=BUILD_IDENTITY.git_sha, source_id=source_id(PROJECT_ROOT))
     try:
         from coat_sim.ui.launcher import main as run_launcher
     except (ImportError, OSError) as exc:
@@ -41,6 +47,7 @@ def main():
         return run_launcher()
     except Exception as exc:
         _report_startup_error(f"启动器初始化失败：{exc}")
+        trace("desktop_process_failed", error=exc, role="launcher")
         raise
 
 

@@ -202,8 +202,10 @@ class AssistantWindowListTests(unittest.TestCase):
             controller = assistant_desktop.AssistantController(engine)
 
         try:
+            from typing import cast
+            bridge = cast(FakeControllerBridge, controller.bridge)
             self.assertIs(controller.parent(), engine)
-            self.assertIs(controller.bridge.parent(), controller)
+            self.assertIs(bridge.parent(), controller)
             self.assertIs(controller._context.parentContext(), engine.rootContext())
             self.assertEqual(len(created), 2)
             window_group = (controller._bubble, controller._chat)
@@ -215,9 +217,9 @@ class AssistantWindowListTests(unittest.TestCase):
 
             self.assertEqual((controller._bubble, controller._chat), window_group)
             self.assertEqual(len(created), 2)
-            self.assertEqual(controller.bridge.provider_calls, 0)
+            self.assertEqual(bridge.provider_calls, 0)
         finally:
-            bridge = controller.bridge
+            bridge = cast(FakeControllerBridge, controller.bridge)
             controller.shutdown()
             self.app.processEvents()
             self.assertEqual(bridge.shutdown_calls, 1)

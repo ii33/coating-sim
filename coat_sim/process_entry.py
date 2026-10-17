@@ -11,6 +11,7 @@ from typing import Mapping, Sequence
 
 
 _ROLE_MODULES = {
+    "logged-process": "coat_sim.logged_process",
     "agent-worker": "coat_sim.agent.worker",
     "assistant": "coat_sim.assistant_process",
     "mcp-server": "coat_sim.mcp.server",

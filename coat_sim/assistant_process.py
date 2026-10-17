@@ -13,11 +13,13 @@ import json
 from pathlib import Path
 import secrets
 import subprocess
-from threading import Event, RLock
+from threading import Event, RLock, Thread
 import time
 from typing import Any
 from uuid import uuid4
 
+from coat_sim.assistant_diagnostics import client_trace, lifecycle_log, source_id, trace
+from coat_sim.version import BUILD_IDENTITY
 from coat_sim.core.process_identity import _process_identity
 from coat_sim.project_recovery import HeldFileLock
 from coat_sim.ui.control import PROJECT_ROOT, UiControlClient, UiControlError
@@ -25,6 +27,8 @@ from coat_sim.ui.control import PROJECT_ROOT, UiControlClient, UiControlError
 ASSISTANT_OPERATIONS = frozenset({"status", "show_assistant", "show_queue", "reload_configuration",
     "register_client", "unregister_client", "list_clients", "request_exit_all", "exit_status", "project_manage",
     "activate_project", "project_window"})
+ASSISTANT_PROTOCOL = 1
+
 LIFECYCLE_OPERATIONS = frozenset({"lifecycle_status", "lifecycle_prepare", "lifecycle_commit", "lifecycle_cancel",
                                   "list_windows", "open_window", "close_window", "read_window", "project_manage",
                                   "project_editor_snapshot", "update_window", "window_action"})
@@ -62,6 +66,11 @@ class AssistantProcessClient:
         self.root = Path(runtime_root).resolve() if runtime_root is not None else assistant_runtime_root().resolve()
         self.application_root = Path(application_root).resolve()
         self.timeout = timeout
+        self._compatibility_notice: tuple[Any, Any, Any] | None = None
+        self._last_probe_error: UiControlError | None = None
+
+    def trace(self, event: str, *, error: BaseException | None = None, **values: Any) -> None:
+        client_trace(self.application_root, event, error=error, **values)
 
     def _transport(self) -> UiControlClient:
         client = UiControlClient(self.root, timeout=self.timeout, operations=ASSISTANT_OPERATIONS,
@@ -85,12 +94,22 @@ class AssistantProcessClient:
                 value = pinned.request("status", nonce=nonce)
             except UiControlError as exc:
                 if exc.code == "ui_unavailable":
+                    self._last_probe_error = exc
                     continue
                 raise
             if (value.get("application") != "coat_sim" or value.get("nonce") != nonce
                     or value.get("pid") != endpoint["pid"] or value.get("process_start") != start
                     or not isinstance(value.get("generation"), str) or not value["generation"]):
                 raise UiControlError("process_identity_mismatch", "Assistant endpoint failed its identity challenge")
+            protocol = value.get("assistant_protocol")
+            if protocol is not None and (type(protocol) is not int or protocol != ASSISTANT_PROTOCOL):
+                raise UiControlError("assistant_protocol_mismatch", "Shared assistant protocol is incompatible; close the original application normally before switching versions.")
+            notice = (value.get("version"), value.get("source_id"), protocol)
+            if notice != self._compatibility_notice:
+                self._compatibility_notice = notice
+                self.trace("assistant_service_identified", assistant_pid=value["pid"], protocol=protocol,
+                      remote_version=value.get("version"), remote_source_id=value.get("source_id"),
+                      reason="legacy_unversioned" if protocol is None else "compatible")
             return value
         raise UiControlError("assistant_unavailable", "Shared assistant is not running")
 
@@ -109,36 +128,55 @@ class AssistantProcessClient:
         except UiControlError as exc:
             if exc.code != "assistant_unavailable":
                 raise
-        from coat_sim.process_entry import module_command
-        command = module_command("coat_sim.assistant_process", "--runtime-root", str(self.root))
+        from coat_sim.project_logging import logged_module_command, log_path
+        attempt = uuid4().hex
+        started = time.monotonic()
+        self.trace("assistant_start_requested", attempt=attempt, source_id=source_id(self.application_root), version=BUILD_IDENTITY.version)
+        command = logged_module_command("coat_sim.assistant_process", "--runtime-root", str(self.root),
+            channel="assistant", project_root=self.application_root)
         environment = os.environ.copy()
         for name in ("COAT_UI_PID", "COAT_UI_PARENT_PID", "COAT_UI_READY_ADDRESS", "COAT_UI_READY_FAMILY", "COAT_UI_READY_KEY"):
             environment.pop(name, None)
         environment["COAT_ASSISTANT_RUNTIME_ROOT"] = str(self.root)
         environment["PYTHONUNBUFFERED"] = "1"
-        logs = self.root / "artifacts" / "logs"
-        logs.mkdir(parents=True, exist_ok=True)
-        with (logs / "assistant.log").open("ab") as stream:
-            kwargs: dict[str, Any] = {"cwd": str(self.application_root), "env": environment,
-                "stdin": subprocess.DEVNULL, "stdout": stream, "stderr": subprocess.STDOUT,
-                "close_fds": True}
-            if os.name == "nt":
-                kwargs["creationflags"] = (getattr(subprocess, "CREATE_NO_WINDOW", 0)
-                                            | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
-            else:
-                kwargs["start_new_session"] = True
-            process = subprocess.Popen(command, **kwargs)
+        logs = log_path("assistant", self.application_root).parent
+        kwargs: dict[str, Any] = {"cwd": str(self.application_root), "env": environment,
+            "stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL,
+            "close_fds": True}
+        if os.name == "nt":
+            kwargs["creationflags"] = (getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                                        | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+        else:
+            kwargs["start_new_session"] = True
+        process = subprocess.Popen(command, **kwargs)
+        self.trace("assistant_child_started", attempt=attempt, child_pid=process.pid)
+        def observe_exit() -> None:
+            try:
+                code = process.wait()
+                self.trace("assistant_child_exited", attempt=attempt, child_pid=process.pid, exit_code=code)
+            except Exception as exc:
+                self.trace("assistant_child_observer_failed", error=exc, attempt=attempt, child_pid=process.pid)
+        Thread(target=observe_exit, name="assistant-owned-child-exit", daemon=True).start()
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             try:
-                return self.status()
+                value = self.status()
+                self.trace("assistant_start_ready", attempt=attempt, child_pid=process.pid, assistant_pid=value["pid"], elapsed_s=round(time.monotonic()-started,3))
+                return value
             except UiControlError as exc:
                 if exc.code != "assistant_unavailable":
                     raise
-            if process.poll() not in (None, 0):
-                raise UiControlError("assistant_start_failed", "Assistant startup failed; inspect assistant.log")
+            code = process.poll()
+            if code not in (None, 0):
+                self.trace("assistant_child_exit_before_ready", attempt=attempt, child_pid=process.pid, exit_code=code)
+                raise UiControlError("assistant_start_failed", f"Assistant startup failed (exit {code}); inspect {logs / 'assistant.log'}")
             time.sleep(0.05)
-        raise UiControlError("assistant_start_timeout", "Assistant startup is still unresolved; inspect assistant.log")
+        error = UiControlError("assistant_start_timeout", f"Assistant startup is still unresolved; inspect {logs / 'assistant.log'}")
+        if self._last_probe_error is not None:
+            self.trace("assistant_last_probe_failed", error=self._last_probe_error, attempt=attempt)
+        self.trace("assistant_start_timeout", error=error, attempt=attempt, child_pid=process.pid,
+              exit_code=process.poll(), elapsed_s=round(time.monotonic()-started,3))
+        raise error
 
     def register_client(self, endpoint: dict[str, Any], *, generation: str,
                         process_start: str) -> dict[str, Any]:
@@ -652,14 +690,41 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--runtime-root")
     args = parser.parse_args(argv)
     root = Path(args.runtime_root).resolve() if args.runtime_root else assistant_runtime_root().resolve()
-    lock = HeldFileLock(root / "assistant.lock")
-    if not lock.acquire():
-        return 0  # Another process is starting/running; never create a second UI.
     try:
-        from coat_sim.ui.assistant_process_host import run_assistant
-        return run_assistant(root)
-    finally:
-        lock.close()
+        with lifecycle_log(PROJECT_ROOT) as log:
+            import faulthandler
+            import traceback
+            native_trace = os.name != "nt" or os.environ.get("COAT_NATIVE_TRACE") == "1"
+            faulthandler.disable()
+            if native_trace:
+                try:
+                    faulthandler.enable(file=log, all_threads=os.name != "nt")
+                except (OSError, RuntimeError):
+                    # Bounded streams deliberately expose no bypass file descriptor.
+                    native_trace = False
+            trace("assistant_process_start", role="assistant", version=BUILD_IDENTITY.version,
+                  git_sha=BUILD_IDENTITY.git_sha, source_id=source_id(PROJECT_ROOT), protocol=ASSISTANT_PROTOCOL,
+                  native_trace=native_trace)
+            lock = HeldFileLock(root / "assistant.lock")
+            if not lock.acquire():
+                trace("assistant_lock_contended", reason="another_owner", exit_code=0)
+                return 0
+            code = 1
+            try:
+                from coat_sim.ui.assistant_process_host import run_assistant
+                code = int(run_assistant(root) or 0)
+                return code
+            except BaseException as exc:
+                code = exc.code if isinstance(exc, SystemExit) and isinstance(exc.code, int) else 1
+                trace("assistant_process_failed", error=exc, exit_code=code,
+                      stack=[f"{Path(frame.filename).name}:{frame.lineno}:{frame.name}" for frame in traceback.extract_tb(exc.__traceback__)][-12:])
+                return code
+            finally:
+                lock.close()
+                trace("assistant_process_exit", exit_code=code)
+    except OSError as exc:
+        trace("assistant_process_bootstrap_failed", error=exc, exit_code=73)
+        return 73
 
 
 if __name__ == "__main__":

@@ -320,16 +320,6 @@
     },
     {
       "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "width, Math.ceil(launcher.backgroundWidth * coverScale))",
-      "fingerprint": "00e2d3615696eba0ca0cb35a427943e0bf95cf097fb8652b31b22e8fcf97f49d",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
       "path": "coat_sim/ui/qml/FilmDesignMediumEditor.qml",
       "code": "unqualified",
       "message": "Unqualified access",
@@ -447,16 +437,6 @@
       "anchor": "onAccepted: if (launcher) launcher.confirmShutdown()",
       "fingerprint": "01b07edd0f89e2ac62e1ce6bdf237c9f6fdc520c35258f2042db62d8518ada51",
       "count": 2
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "call-overload",
-      "message": "No overload variant of \"Popen\" matches argument types \"list[str]\", \"Any\", \"Any\", \"dict[str, object]\"",
-      "scope": "Scheduler.start_job",
-      "anchor": "process = subprocess.Popen(command, stdout=log, stderr=log, **options)",
-      "fingerprint": "01b1f1b2f55cd1a71018cffde054f28f389bab81c034345b480e3bc7c18e2e1b",
-      "count": 1
     },
     {
       "tool": "ruff",
@@ -856,16 +836,6 @@
       "scope": "",
       "anchor": "from tools.validation.gpu_appearance_preview import (",
       "fingerprint": "038fd9f61586654d70d3b5f826a44f5a32f5b0632d00fcca7b36f0517d557911",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_run_coordinator.py",
-      "code": "arg-type",
-      "message": "Argument 7 to \"Popen\" has incompatible type \"**dict[str, Any | int]\"; expected \"bool\"",
-      "scope": "AssistantRunCoordinator.ensure_worker",
-      "anchor": "stdout=subprocess.PIPE, stderr=log, **kwargs)",
-      "fingerprint": "03918679f300794f3f13d642b64cc894c64d2fd77572703af5b4d4b0b7933b3f",
       "count": 1
     },
     {
@@ -1980,16 +1950,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "arg-type",
-      "message": "Argument 3 to \"Popen\" has incompatible type \"**dict[str, Any | int]\"; expected \"Iterable[str | int] | None\"",
-      "scope": "AssistantController.show_settings",
-      "anchor": "subprocess.Popen(module_command(\"coat_sim.ui.settings\"), cwd=str(root), **kwargs)",
-      "fingerprint": "08599bf0ba0e42a65914e2f6823e83529725637a3410ab2a359b8d5688058f1b",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_film_simulation_quick.py",
       "code": "index",
       "message": "Value of type \"Property\" is not indexable",
@@ -2516,16 +2476,6 @@
       "scope": "",
       "anchor": "import launcher_test_isolation as launcher_test_isolation_module",
       "fingerprint": "0a29cc279702128e27830e33236514a2489210b57ccb67af8df2ef61fe90a725",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "radius: 10 * window.unit",
-      "fingerprint": "0a2fa39399c8ac7c52657d6c9aa3a9bcaf56cbfa1868f9bb701d5fb3ee7d8738",
       "count": 1
     },
     {
@@ -3346,16 +3296,6 @@
       "scope": "BubbleTests.test_window_list_menu_item_opens_submenu",
       "anchor": "self.menu.setProperty(\"currentIndex\", 0)",
       "fingerprint": "0d9b992cb17811315a7f31847858200d2bff128d13a9f9e774e0c0e8b42fc098",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"object\" has no attribute \"setIcon\"",
-      "scope": "AssistantController._ensure_windows",
-      "anchor": "chat.setIcon(icon)",
-      "fingerprint": "0d9eeba0ad26a5885e90f5a67535cda3e0fdf3aa66379487cfc9bef447f6dc2d",
       "count": 1
     },
     {
@@ -4330,16 +4270,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/scheduler/client.py",
-      "code": "call-overload",
-      "message": "No overload variant of \"Popen\" matches argument types \"list[str]\", \"BufferedWriter[_BufferedWriterStream]\", \"BufferedWriter[_BufferedWriterStream]\", \"dict[str, object]\"",
-      "scope": "SchedulerClient._ensure_started",
-      "anchor": "process = subprocess.Popen(command,",
-      "fingerprint": "11f7f7c63bb5ab621dd435ff26fbc3ffff59dd78a3bf665e08acdc13e3248efb",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tools/audit_distribution_graph.py",
       "code": "attr-defined",
       "message": "\"dict[AST, AST]\" has no attribute \"append\"",
@@ -4686,16 +4616,6 @@
       "scope": "_render_probe",
       "anchor": "focused_name = window.activeFocusItem().objectName() if window.activeFocusItem() else \"\"",
       "fingerprint": "132729dada07f0010a6e6a66271a1c6408fc5c3671b882921da49e53226577b4",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "font.pixelSize: Math.max(19, 24 * window.unit)",
-      "fingerprint": "13295bbf853180049cdbc8fb8e5f5033e3fbc4d672543389742e3ed72aed7361",
       "count": 1
     },
     {
@@ -5576,16 +5496,6 @@
       "scope": "",
       "anchor": "from PySide6.QtCore import QObject, QPoint, QPointF, QEvent, QSettings, Qt, Signal, QUrl",
       "fingerprint": "165625b62f210c800a72cedf50ccd49b89b3302db7f40651f20a26666ccb1562",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "height, Math.ceil(launcher.backgroundHeight * coverScale))",
-      "fingerprint": "1659792af570d975ef9650c62dba0bc8e54657494babbaee797e4ca2879d8652",
       "count": 1
     },
     {
@@ -6666,16 +6576,6 @@
       "scope": "TaskbarIconTests.test_independent_qt_windows_inherit_icon_before_show_and_reopen",
       "anchor": "QCoreApplication.sendPostedEvents(None,QEvent.DeferredDelete)",
       "fingerprint": "1a4b8a9160b9a701b2d53d387620d43e0b58e59613577ad12b52b3310c572b26",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_run_coordinator.py",
-      "code": "assignment",
-      "message": "Incompatible types in assignment (expression has type \"Popen[str]\", variable has type \"None\")",
-      "scope": "AssistantRunCoordinator.ensure_worker",
-      "anchor": "self._worker = process",
-      "fingerprint": "1a7aacc7b619fe302c5d4f9383d0de2a603b484bc9bc815d8ee723a88492e409",
       "count": 1
     },
     {
@@ -7949,16 +7849,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"QObject\" has no attribute \"reload_configuration\"",
-      "scope": "AssistantController.reload_configuration",
-      "anchor": "self.bridge.reload_configuration()",
-      "fingerprint": "1f64f661593180923318e51687a3a46844385c83a88270100875311dcd0625ba",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "tests/test_raytrace_appearance_workspace.py",
       "code": "B023",
@@ -8346,16 +8236,6 @@
       "scope": "collect_graph",
       "anchor": "name = target.relative_to(root).as_posix()",
       "fingerprint": "20d3fb80e88b80ca9182c29ee668d5c8a76cead81fe1dead2737b6de11aed9e3",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"None\" has no attribute \"y\"",
-      "scope": "AssistantController.reload_configuration",
-      "anchor": "max(area.top(), min(self._bubble.y(), area.bottom() - self._bubble.height() + 1))))",
-      "fingerprint": "20d6b807e4141d3c17a5254b1e98084c1f363503aabded27f78b24fc33df0a50",
       "count": 1
     },
     {
@@ -8929,16 +8809,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "anchors.margins: -3 * window.unit",
-      "fingerprint": "22dca5f53928f259038153040d7d25fc4f1fd4a4dda477fb3e64e0672526cdf7",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/ui/film_design.py",
       "code": "E702",
@@ -9266,16 +9136,6 @@
       "scope": "runtime_auto_advance_states.Client.call_tool_mcp",
       "anchor": "\"settings\": {\"sun_teeth\": 48}, \"metadata\": {\"mean_nm\": 265}, \"elapsed_s\": 0.1}",
       "fingerprint": "241a938aec896abf3f59917c413ce535cf65c96322c4bcf912e84609c45aa678",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tools/launch_desktop.pyw",
-      "code": "misc",
-      "message": "Cannot assign to final name \"__stderr__\"",
-      "scope": "main",
-      "anchor": "sys.__stdout__ = sys.__stderr__ = log",
-      "fingerprint": "242085731bb8af730306351ae85bdb3502fbe0b81a66f0f3fb4cf57f88fd2c9b",
       "count": 1
     },
     {
@@ -12930,16 +12790,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"None\" has no attribute \"height\"",
-      "scope": "AssistantController.reload_configuration",
-      "anchor": "max(area.top(), min(self._bubble.y(), area.bottom() - self._bubble.height() + 1))))",
-      "fingerprint": "307b9a56f0c70a0dddcd9008039d2fcddc0a193f4095bfea488252ea7e4639a3",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/ui/film_design.py",
       "code": "attr-defined",
       "message": "\"QWidget\" has no attribute \"currentData\"",
@@ -14000,16 +13850,6 @@
     },
     {
       "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "x: Math.round(159 * window.unit)",
-      "fingerprint": "34f1aef5c9504dac7e0e3ebcb379fefa1b80ee31105f43969c73d87e90b5829e",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
       "path": "coat_sim/ui/qml/AppearanceWorkspace.qml",
       "code": "unqualified",
       "message": "Unqualified access",
@@ -14307,16 +14147,6 @@
       "anchor": "model: panel.roleSetModel(role)",
       "fingerprint": "3637f4eb01424a172a29c78efb345da7b22a97c9b4f6eac4ff201969ef59ff19",
       "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "width / launcher.backgroundWidth, height / launcher.backgroundHeight)",
-      "fingerprint": "3638f400695ed6ba497531211369dc135fe5d68086588544ea983fb4de9f58b2",
-      "count": 2
     },
     {
       "tool": "mypy",
@@ -15026,16 +14856,6 @@
       "scope": "ReferenceCalculatorBridge.apply",
       "anchor": "self.source._thermochemistry = deepcopy(config)",
       "fingerprint": "38c51f8b51449cd77cfede69ac2437ea0d4c94ec3942646b344940057c4dc0e9",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "window.unit * (hit.containsMouse ? 2 : 1)))",
-      "fingerprint": "38cb7a9ccca0add656142ecf4a69943a6e5fd34c3bd0a4d4969950115854b1c1",
       "count": 1
     },
     {
@@ -16970,16 +16790,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/control.py",
-      "code": "attr-defined",
-      "message": "\"None\" has no attribute \"pid\"",
-      "scope": "UiControlClient._start_ui",
-      "anchor": "self.target_pid = self._spawned.pid",
-      "fingerprint": "4154b83329f295bd79dd14af2e8978c809385675e39e0b7bfd73a53e732f3885",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_mask_viewport.py",
       "code": "arg-type",
       "message": "Argument 1 to \"loads\" has incompatible type \"Property\"; expected \"str | bytes | bytearray\"",
@@ -17566,16 +17376,6 @@
       "scope": "",
       "anchor": "from coat_sim.core.film_materials import FilmMaterialLibrary",
       "fingerprint": "432ad5e9ac4a0e088a0319eb66043232dc87ad1593cef8e9f661af73476b45ba",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "border.width: Math.max(1, Math.round(window.unit))",
-      "fingerprint": "432d2cb1f2bd5601abcb4646ad90eae3e8dea2bcca91695eab2745a5d2cc107e",
       "count": 1
     },
     {
@@ -18850,16 +18650,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"None\" has no attribute \"screen\"",
-      "scope": "AssistantController.reload_configuration",
-      "anchor": "screen = self._bubble.screen() or QGuiApplication.primaryScreen()",
-      "fingerprint": "485e6ff2e52fc10c1f79c6ce86cccb530a1e5bd9f2afbeb5aeff3c6ed6eb6be2",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_mask_viewport.py",
       "code": "call-overload",
       "message": "No overload variant of \"mouseClick\" of \"QTest\" matches argument types \"QObject\", \"Any\", \"Any\", \"QPoint | Any\"",
@@ -19539,16 +19329,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "window.close()",
-      "fingerprint": "4abdf64157849eb9a982fb823dba5ef2fd1749ce034d69a136242ac47079f37c",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "tests/test_compute_queue_tabs.py",
       "code": "E702",
@@ -19889,16 +19669,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_assistant_window_list.py",
-      "code": "attr-defined",
-      "message": "\"QObject\" has no attribute \"shutdown_calls\"",
-      "scope": "AssistantWindowListTests.test_controller_owns_one_window_group_and_closes_without_provider_work",
-      "anchor": "self.assertEqual(bridge.shutdown_calls, 1)",
-      "fingerprint": "4bd81427664e06689c3218c6091334afd578dc409fac4eb2b3670308444f245a",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/agent/storage.py",
       "code": "B007",
@@ -20196,16 +19966,6 @@
       "scope": "FrozenCoherentStackTests.test_scalar_matches_single_wave_batch_for_sixty_layer_exact_angle_cases",
       "anchor": "batch_kwargs[\"beta\"] = np.array([beta])",
       "fingerprint": "4d33e26da66270cfeae108820244ce53a87dfd6bb4bdc99ee3b1b012a10e0fb9",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"QObject\" has no attribute \"enabled\"",
-      "scope": "AssistantController.__init__",
-      "anchor": "if self.bridge.enabled:",
-      "fingerprint": "4d4d01890d8f854e2ca51af36ccf9c7805a66a2e5eb7f1eeb47c3e507f1ca6c6",
       "count": 1
     },
     {
@@ -20536,16 +20296,6 @@
       "scope": "UniformityBridgeStateTests.test_initial_loading_failure_and_cancel_states_are_distinct",
       "anchor": "self.assertIn(\"计算已取消\", bridge.uniformityStateText)",
       "fingerprint": "4ed05dc1ecf7f9b720119ef21df9f3f238cabc328d1e1b4c8386eaf90795a7c1",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"type[Qt]\" has no attribute \"WindowStaysOnTopHint\"",
-      "scope": "AssistantController.show_chat",
-      "anchor": "self._chat.setFlag(Qt.WindowStaysOnTopHint, False)",
-      "fingerprint": "4ede936f2b4e2f9596e003d35bc8e6c1b16c6c33b74189286902d8ba9828f79d",
       "count": 1
     },
     {
@@ -21270,16 +21020,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"object\" has no attribute \"screenChanged\"",
-      "scope": "AssistantController._ensure_windows",
-      "anchor": "chat.screenChanged.connect(self._chat_screen_changed)",
-      "fingerprint": "518be65a64961e57ba4e237a98d3229d0cb25ae17b0c1250dd09a5b66a606290",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "legacy/mask_designer.py",
       "code": "arg-type",
       "message": "Argument 1 to \"askopenfilename\" has incompatible type \"**dict[str, object]\"; expected \"Misc | None\"",
@@ -21296,16 +21036,6 @@
       "scope": "",
       "anchor": "fallbackMove = !hostWindow.startSystemMove()",
       "fingerprint": "519d0e39bc2ac96cccd99512f693601816f5be1ec96f31ecd3234b401a0b0edc",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "legacy/launcher_tk.py",
-      "code": "attr-defined",
-      "message": "Module has no attribute \"windll\"",
-      "scope": "_set_window_pos",
-      "anchor": "set_pos = ctypes.windll.user32.SetWindowPos",
-      "fingerprint": "519e0cd4c017d063a67219f38ef45fdd1d9ed777ee06c5fcba1dc90cd515e5f3",
       "count": 1
     },
     {
@@ -21327,16 +21057,6 @@
       "anchor": "height: dialog.themeTokens.controlHeightMd * 2 + dialog.themeTokens.spaceXs",
       "fingerprint": "51a99aec1e8b8bbaa69c3d6e4795bafab592444f4733232c8d4e08410a4b35b4",
       "count": 2
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"None\" has no attribute \"show\"",
-      "scope": "AssistantController.__init__",
-      "anchor": "self._bubble.show()",
-      "fingerprint": "51aa8d69aaf73f00d596a5eb86273001d061c2b7a270e29854e77fb1af15e1e5",
-      "count": 1
     },
     {
       "tool": "ruff",
@@ -21826,16 +21546,6 @@
       "scope": "FilmDesignQuickControllerTests.test_invalid_reference_index_rejects_thickness_edit_without_changing_source",
       "anchor": "self.assertNotEqual(self.controller.front_layers.record_for_id(layer_id)[\"qwText\"], \"0\")",
       "fingerprint": "532c9e8ee0e90f27a558f619631ff5a8f829c797c17a98a804ec41f9c969f8cd",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/control.py",
-      "code": "attr-defined",
-      "message": "\"None\" has no attribute \"poll\"",
-      "scope": "UiControlClient._start_ui.initialize",
-      "anchor": "if self._spawned.poll() is None:",
-      "fingerprint": "533469a25065f4d2dc681cb9a5e234ca2bbd21114076377cc7dcb730bbf6c327",
       "count": 1
     },
     {
@@ -23560,16 +23270,6 @@
     },
     {
       "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "height: content.rowHeight",
-      "fingerprint": "5ac14b3b88b7ebae0227d0e19dd034cebba20a5736eba8c7f7049931e399f5f2",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
       "path": "coat_sim/ui/qml/MaterialEditor.qml",
       "code": "unqualified",
       "message": "Unqualified access",
@@ -23746,16 +23446,6 @@
       "scope": "runtime_auto_advance_states.Client.call_tool_mcp",
       "anchor": "calls.append({\"name\": name, \"arguments\": arguments})",
       "fingerprint": "5b8ddb1384919c03b987e4d9a270df52e14fbaa8693d2a401bbec4ac86cc4897",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "target: launcher",
-      "fingerprint": "5b9564fa64db047a319ed6febf9a4ba5e41e038dc11ba2e7e0500864edea8fbe",
       "count": 1
     },
     {
@@ -24006,16 +23696,6 @@
       "scope": "FilmQuickPageUiRefinementTests.setUp",
       "anchor": "self.root.setHeight(760)",
       "fingerprint": "5c786c41672f93de3c09d2193734e9b8e888745af765120158b9af83b920a366",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "window.showNormal()",
-      "fingerprint": "5c8036637b603ece066843e43befadb01cd8392a5737e75cab36bb60833da2f9",
       "count": 1
     },
     {
@@ -24669,16 +24349,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "onClicked: launcher.launch(moduleRow.index)",
-      "fingerprint": "5edacc6034d7c295a88812fe3a1c10357bdc750181c7f8d4fbd8bdce2db3d96a",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/scheduler/daemon.py",
       "code": "E701",
@@ -24896,16 +24566,6 @@
       "scope": "AutomaticSubstrateTests.test_strict_whole_band_threshold_and_transparent_thick_invariance",
       "anchor": "boundary=self.service.simulate(self.design,self.settings)",
       "fingerprint": "5f8bd36cd9f5aa09fb6fec44dcaeb327ba399dce931029e436611c3278d01479",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"QObject\" has no attribute \"toggleRequested\"",
-      "scope": "AssistantController.__init__",
-      "anchor": "self.bridge.toggleRequested.connect(self.toggle_chat)",
-      "fingerprint": "5f8d1d5cb70738609a0426c51fdcc6b36febca7c1db0fd8746c46f097dbd9bfc",
       "count": 1
     },
     {
@@ -25289,16 +24949,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "window.showMinimized()",
-      "fingerprint": "60e0238a35e92f9b07b6f7afde5e701f54e53d9b81ac1b20a9ffd9773b7e0087",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "coat_sim/ui/appearance.py",
       "code": "arg-type",
@@ -25486,16 +25136,6 @@
       "scope": "LauncherSingleInstanceTests.test_real_quick_controllers_list_read_and_allowlisted_updates",
       "anchor": "if source.session.snapshot().pending_confirmation:",
       "fingerprint": "61fde593a90185e8050240154e83f5d2afa6aa8efc7403e31e6589bc2e01f084",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"QObject\" has no attribute \"enabled\"",
-      "scope": "AssistantController.toggle_chat",
-      "anchor": "if not self.bridge.enabled:",
-      "fingerprint": "6210ddb7322c7394e6220da05c5c885782388852b2d7c53dc20ae833b5477e18",
       "count": 1
     },
     {
@@ -25806,16 +25446,6 @@
       "scope": "_run_method",
       "anchor": "request = FilmStructureOptimizationRequest(",
       "fingerprint": "6362340bf057e38fb9811cca5cce6abeae0ca96b2361babbbc439b851ddd42d1",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/control.py",
-      "code": "assignment",
-      "message": "Incompatible types in assignment (expression has type \"str\", variable has type \"None\")",
-      "scope": "UiControlClient._start_ui.initialize",
-      "anchor": "self._startup_error = \"窗口已启动，但控制端点信息无效；请检查启动日志\"",
-      "fingerprint": "636710d4db6394b9388f940b8afe94a8a6baed29cd436ed5a9e1152bdfc21e74",
       "count": 1
     },
     {
@@ -26226,16 +25856,6 @@
       "scope": "",
       "anchor": "import benchmark_film_structure as benchmark",
       "fingerprint": "64cb15866dbb327a89002e43a8c768b376802bbaf6e8fbf90ec0516a4e414999",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"QObject\" has no attribute \"shutdown\"",
-      "scope": "AssistantController.shutdown",
-      "anchor": "self.bridge.shutdown()",
-      "fingerprint": "64d357ab7000d256dd40ee19b9238611fc5abc8fb1475cdf6f90b2355bb40543",
       "count": 1
     },
     {
@@ -29189,16 +28809,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/scheduler/remote_server.py",
-      "code": "call-overload",
-      "message": "No overload variant of \"Popen\" matches argument types \"list[str]\", \"Any\", \"Any\", \"dict[str, object]\"",
-      "scope": "RemoteScheduler.start_job",
-      "anchor": "process = subprocess.Popen(command, stdout=log, stderr=log, **options)",
-      "fingerprint": "6fbd0997d0ee61c6926a063c70cc5b8ead2fb63feca39340c8fc0d898956b40d",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "tools/benchmark_film_batch_worker.py",
       "code": "E701",
@@ -29379,16 +28989,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "coat_sim/scheduler/client.py",
-      "code": "B904",
-      "message": "Within an `except` clause, raise exceptions with `raise ... from err` or `raise ... from None` to distinguish them from errors in exception handling",
-      "scope": "SchedulerClient._ensure_started",
-      "anchor": "raise RuntimeError(f'scheduler_start_failed: exit={process.returncode}; {runtime / \"daemon.log\"}')",
-      "fingerprint": "7092b6680c37375f738b223c77d7a43e384507ab3be972466e673ef6eab2cbad",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/FilmSimulationCalculationItems.qml",
       "code": "unqualified",
@@ -29536,16 +29136,6 @@
       "scope": "LauncherTestIsolation._set",
       "anchor": "self._stack.enter_context(patch.object(module, name, value))",
       "fingerprint": "71199bb469fff2600b04320bf564f62b5ed5f2a8d9c4c74c07e5cc587b311b2d",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "width: moduleColumn.width",
-      "fingerprint": "7120663c8f759d376e0480b1458cbf4b28f1ade54421978bfa019ed1c08fa8bc",
       "count": 1
     },
     {
@@ -31347,16 +30937,6 @@
       "anchor": "highlighted: index === setBox.highlightedIndex",
       "fingerprint": "7816550b73343565acb535d8f329a74f160146b8158eca5c91b70de5d7d86db0",
       "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "visible: content.width >= 420 * window.unit",
-      "fingerprint": "782cc13144a88040b3a32116fe869be93a2c14780daa62256470bd53c74f3efb",
-      "count": 2
     },
     {
       "tool": "mypy",
@@ -33250,16 +32830,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "arg-type",
-      "message": "Argument 3 to \"Popen\" has incompatible type \"**dict[str, Any | int]\"; expected \"str | bytes | PathLike[str] | PathLike[bytes] | None\"",
-      "scope": "AssistantController.show_settings",
-      "anchor": "subprocess.Popen(module_command(\"coat_sim.ui.settings\"), cwd=str(root), **kwargs)",
-      "fingerprint": "7fd2aad84e110b24202439bff70ba990137ae42f4cb1ede97f21a31217ec268b",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_film_design_generator_qt.py",
       "code": "attr-defined",
       "message": "\"QObject\" has no attribute \"height\"",
@@ -33556,16 +33126,6 @@
       "scope": "main.gradient_full",
       "anchor": "chunks.append(simulate_with_thickness_jacobian(design, frozen, variables,",
       "fingerprint": "80e896830fb5bb6a7680a2d0208b2522014d2ff1971f01a4fa8ee925fd116561",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_run_coordinator.py",
-      "code": "arg-type",
-      "message": "Argument 7 to \"Popen\" has incompatible type \"**dict[str, Any | int]\"; expected \"Callable[[], object] | None\"",
-      "scope": "AssistantRunCoordinator.ensure_worker",
-      "anchor": "stdout=subprocess.PIPE, stderr=log, **kwargs)",
-      "fingerprint": "80ec062377614a3c0eb91b2bb51c723a4bc663eb26358370b8649980ed1f820d",
       "count": 1
     },
     {
@@ -33980,16 +33540,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/assistant_run_coordinator.py",
-      "code": "arg-type",
-      "message": "Argument 7 to \"Popen\" has incompatible type \"**dict[str, Any | int]\"; expected \"str\"",
-      "scope": "AssistantRunCoordinator.ensure_worker",
-      "anchor": "stdout=subprocess.PIPE, stderr=log, **kwargs)",
-      "fingerprint": "828afb3cf8b817112cffe61b28fa689d4cc56e05250c0360251a2776c2ffad5f",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_appearance_parallel.py",
       "code": "attr-defined",
       "message": "\"memmap[tuple[Any, ...], dtype[Any]]\" has no attribute \"_mmap\"",
@@ -34286,16 +33836,6 @@
       "scope": "AssistantWindowListTests.setUpClass",
       "anchor": "cls.app = QApplication.instance() or QApplication([])",
       "fingerprint": "835fbffbc30e603a8a7dc185a3c8b93cd29bb9081dcc790fc40113cdc9cc9473",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_run_coordinator.py",
-      "code": "arg-type",
-      "message": "Argument 7 to \"Popen\" has incompatible type \"**dict[str, Any | int]\"; expected \"Collection[int]\"",
-      "scope": "AssistantRunCoordinator.ensure_worker",
-      "anchor": "stdout=subprocess.PIPE, stderr=log, **kwargs)",
-      "fingerprint": "83704300886646dba8ac75f3c80099fdfcb169ef018e622b6783f0231966baae",
       "count": 1
     },
     {
@@ -35030,32 +34570,12 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/control.py",
-      "code": "assignment",
-      "message": "Incompatible types in assignment (expression has type \"str\", variable has type \"None\")",
-      "scope": "UiControlClient._start_ui.initialize",
-      "anchor": "\"窗口启动通知通道失败：\"",
-      "fingerprint": "85e206d0004766132913ee7ffdf923cdaede2d1ad60619fc7675b10e0509a4fe",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_assistant_window_list.py",
       "code": "attr-defined",
       "message": "\"type[Qt]\" has no attribute \"WindowStaysOnTopHint\"",
       "scope": "AssistantWindowListTests.test_repeated_activation_raises_without_permanent_always_on_top",
       "anchor": "self.assertFalse(window.flags() & Qt.WindowStaysOnTopHint)",
       "fingerprint": "85ebe2b93b465f9844f68c99163f6d36ea53ed485ddd40e9c7cdc25a58360f05",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/control.py",
-      "code": "assignment",
-      "message": "Incompatible types in assignment (expression has type \"str\", variable has type \"None\")",
-      "scope": "UiControlClient._start_ui.initialize",
-      "anchor": "self._startup_error = f\"窗口启动握手失败：{exc}；诊断日志：{log_path}\"",
-      "fingerprint": "85ed2e9446835c3b786cdb010cbde15ca0145029f6008a61106a6f52798de9de",
       "count": 1
     },
     {
@@ -35176,16 +34696,6 @@
       "scope": "OpticalCoreTests.test_models_domains_singularities_and_unknown_k",
       "anchor": "with self.assertRaises(ValueError):optics.evaluate_optical_set(model(),.9,\"um\")",
       "fingerprint": "867a658a2c5c2ea58d185e81d6a8629d156a873196fbb0c12d5761f39800cf5b",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "arg-type",
-      "message": "Argument 3 to \"Popen\" has incompatible type \"**dict[str, Any | int]\"; expected \"str | None\"",
-      "scope": "AssistantController.show_settings",
-      "anchor": "subprocess.Popen(module_command(\"coat_sim.ui.settings\"), cwd=str(root), **kwargs)",
-      "fingerprint": "867c6fc0e67cf31855d2b5b79e30b6575c80306775507366a122ac49291fc3d5",
       "count": 1
     },
     {
@@ -35380,16 +34890,6 @@
     },
     {
       "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "blurEnabled: !launcher.softwareMode",
-      "fingerprint": "8777c7da748c6c1358d6e601bd38c68ae9713f251dcd2c7a37f3b5089f47deab",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
       "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
       "code": "unqualified",
       "message": "Unqualified access",
@@ -35466,16 +34966,6 @@
       "scope": "run",
       "anchor": "target = staged / file.name; shutil.copyfile(file, target)",
       "fingerprint": "87dad8f7bcedfcbcbc0bed4bc6199e85abeac33e300afbb0596c15e01d7d2d79",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"None\" has no attribute \"setScreen\"",
-      "scope": "AssistantController.show_chat",
-      "anchor": "self._chat.setScreen(screen)",
-      "fingerprint": "87f180c0e8f22d553bc4debefe5f71ff3b22f53778ea5a96d0b97dbfb3c55481",
       "count": 1
     },
     {
@@ -36469,16 +35959,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "arg-type",
-      "message": "Argument 3 to \"Popen\" has incompatible type \"**dict[str, Any | int]\"; expected \"bool | None\"",
-      "scope": "AssistantController.show_settings",
-      "anchor": "subprocess.Popen(module_command(\"coat_sim.ui.settings\"), cwd=str(root), **kwargs)",
-      "fingerprint": "8bf51334377c23d82c7fdd1e887ab18bc66b83ac75b70d98310664ea6ed83f0b",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/ThemePageDialog.qml",
       "code": "unqualified",
@@ -37080,16 +36560,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "arg-type",
-      "message": "Argument 3 to \"Popen\" has incompatible type \"**dict[str, Any | int]\"; expected \"bool\"",
-      "scope": "AssistantController.show_settings",
-      "anchor": "subprocess.Popen(module_command(\"coat_sim.ui.settings\"), cwd=str(root), **kwargs)",
-      "fingerprint": "8e2afadc26582df149e5cbab1ada24ff8e3f780b8f05f3e0c942336254525912",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tools/validation/gpu_tmm_probe.py",
       "code": "attr-defined",
       "message": "\"object\" has no attribute \"append\"",
@@ -37520,16 +36990,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"QObject\" has no attribute \"enabled\"",
-      "scope": "AssistantController.reload_configuration",
-      "anchor": "if self.bridge.enabled:",
-      "fingerprint": "8fc72afbc78e50a710790adfffced5437a26d45a491d6bfbab856eef2ee24328",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/core/mask_optimization.py",
       "code": "var-annotated",
       "message": "Need type annotation for \"durations\" (hint: \"durations: list[<type>] = ...\")",
@@ -37786,16 +37246,6 @@
       "scope": "_render_probe",
       "anchor": "evidence.setdefault(\"limits\", []).append(",
       "fingerprint": "90c28ee247ae63d1fe5234c38b005e88c330a52567d5def9360ad0f4685ac7bc",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"object\" has no attribute \"width\"",
-      "scope": "AssistantController._ensure_windows",
-      "anchor": "bubble.setPosition(QPoint(area.right() - bubble.width() - 24,",
-      "fingerprint": "90cf138fce2b9c5be3b5f7065d81f6f3aa17980a7eaed32a3572fa98e78c4002",
       "count": 1
     },
     {
@@ -38096,16 +37546,6 @@
       "scope": "",
       "anchor": "from coat_sim.core.compute_estimation import input_file_fingerprints",
       "fingerprint": "920407c71d128dea46cdd46b3f76e6649245ab5a9cce6707227be349d9365b88",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "visible: !launcher.softwareMode",
-      "fingerprint": "921ac52846acd4c3e716d307b5e3a64689d6425d4db09c695c45fc5bd6683606",
       "count": 1
     },
     {
@@ -39149,16 +38589,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"object\" has no attribute \"setPosition\"",
-      "scope": "AssistantController._ensure_windows",
-      "anchor": "bubble.setPosition(QPoint(area.right() - bubble.width() - 24,",
-      "fingerprint": "960511a53a3c331a7ad23f22dc4bd99078867d1a7a8e8ebe6eb8bd652cceba3c",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/scheduler/daemon.py",
       "code": "E701",
@@ -39176,16 +38606,6 @@
       "scope": "AssistantBridge._on_accepted_worker_event",
       "anchor": "if not self._stream_timer.isActive(): self._stream_timer.start()",
       "fingerprint": "962cc8d8f304ab6bdba878336ccee4448d85d89d6dcb5b3633dad23c4c2c65d5",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_run_coordinator.py",
-      "code": "arg-type",
-      "message": "Argument 7 to \"Popen\" has incompatible type \"**dict[str, Any | int]\"; expected \"str | None\"",
-      "scope": "AssistantRunCoordinator.ensure_worker",
-      "anchor": "stdout=subprocess.PIPE, stderr=log, **kwargs)",
-      "fingerprint": "9639ae7e1d7e4cf1bb0188349ad2d5b28b79662d1226407eeabdb871faa1d5d9",
       "count": 1
     },
     {
@@ -39367,16 +38787,6 @@
       "anchor": ": Theme.snapshot.colorTextMuted",
       "fingerprint": "971e64d22a344179590dd662430ab28753cb96b347f36cbf80260264a1ed14c3",
       "count": 2
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/control.py",
-      "code": "attr-defined",
-      "message": "\"None\" has no attribute \"terminate\"",
-      "scope": "UiControlClient._start_ui.initialize",
-      "anchor": "self._spawned.terminate()",
-      "fingerprint": "974088ad28c4bb60e3e444ec34d4803842457c5b14bfda2dec45cdad4fa14522",
-      "count": 1
     },
     {
       "tool": "ruff",
@@ -39929,16 +39339,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"None\" has no attribute \"show\"",
-      "scope": "AssistantController.reload_configuration",
-      "anchor": "self._bubble.show()",
-      "fingerprint": "9980cc6f93e9f1c3323af6f2397e8d9324f725cbb7087bf152b1eb1972ade752",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/MaterialLibraryDialog.qml",
       "code": "unqualified",
@@ -40309,16 +39709,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"None\" has no attribute \"hide\"",
-      "scope": "AssistantController.toggle_chat",
-      "anchor": "self._chat.hide()",
-      "fingerprint": "9adcad502e62700068cde5d8a69c2a508cd1a4c9247a549861867678bd0c3fe4",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/ui/film_design.py",
       "code": "E701",
@@ -40620,16 +40010,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/control.py",
-      "code": "assignment",
-      "message": "Incompatible types in assignment (expression has type \"str\", variable has type \"None\")",
-      "scope": "UiControlClient._start_ui.initialize",
-      "anchor": "self._startup_error = str(event.get(\"error\") or \"窗口启动失败；请检查启动日志\")",
-      "fingerprint": "9bd37decf5186266d68e0f72eda26c4baefceb57d727e2a026c3ac9c1b549016",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/ui/raytrace.py",
       "code": "return-value",
       "message": "Incompatible return value type (got \"Property\", expected \"str\")",
@@ -40876,16 +40256,6 @@
       "scope": "",
       "anchor": "NumberField { host: controller; label: \"强度尺度\"; fieldKey: \"environment_scale\" }",
       "fingerprint": "9cd103d84e0da3a55471b8806d0af50c5bc7c6afe8eba32ee476ade8475c2e80",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"None\" has no attribute \"setPosition\"",
-      "scope": "AssistantController.reload_configuration",
-      "anchor": "self._bubble.setPosition(QPoint(",
-      "fingerprint": "9cee4d13e3c207e39f795244aa732a076a21a891344f18e59c0faeddfec195ee",
       "count": 1
     },
     {
@@ -41340,16 +40710,6 @@
     },
     {
       "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "if (window.visibility === Window.FullScreen)",
-      "fingerprint": "9ec3f589bce8be3cdb0e7b71de94e0e0aa081bb38a3ff1880c4e7e645212d045",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
       "path": "coat_sim/ui/qml/FilmDesignReferencePanel.qml",
       "code": "unqualified",
       "message": "Unqualified access",
@@ -41416,16 +40776,6 @@
       "scope": "test_launcher_error_toast_expires_after_15_seconds",
       "anchor": "\"pixelWindowSize\": [round(float(window.width()) * float(window.devicePixelRatio())),",
       "fingerprint": "9f03f8b7bec6f397c27cd52d927f8926dec2e17500a771b855fd8649c5ee87b8",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "legacy/launcher_tk.py",
-      "code": "attr-defined",
-      "message": "Module has no attribute \"windll\"",
-      "scope": "_remove_windows_caption",
-      "anchor": "user32 = ctypes.windll.user32",
-      "fingerprint": "9f24926b3fbde15690b8a5c70126b84284ed4cddcbc2abb2922a8467118194dd",
       "count": 1
     },
     {
@@ -41897,16 +41247,6 @@
       "anchor": "text: opticalCard.curveData.loading ? \"\\u6b63\\u5728\\u751f\\u6210 n/k \\u66f2\\u7ebf\" : \"\\u66f2\\u7ebf\\u8bfb\\u53d6\\u5931\\u8d25\\uff1a\" + opticalCard.curveData.error",
       "fingerprint": "a0dc1e0dbb61996b868e52423f17e53f21796e30e8e525e82155667bbb832cdf",
       "count": 2
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "arg-type",
-      "message": "Argument 3 to \"Popen\" has incompatible type \"**dict[str, Any | int]\"; expected \"str\"",
-      "scope": "AssistantController.show_settings",
-      "anchor": "subprocess.Popen(module_command(\"coat_sim.ui.settings\"), cwd=str(root), **kwargs)",
-      "fingerprint": "a0dc9785528257312effc882cd67e6abac45466fe96e0526a80cfd93c350dfd2",
-      "count": 1
     },
     {
       "tool": "ruff",
@@ -42629,16 +41969,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"QObject\" has no attribute \"closeRequested\"",
-      "scope": "AssistantController.__init__",
-      "anchor": "self.bridge.closeRequested.connect(self.hide_windows)",
-      "fingerprint": "a37bfc016e60c2417578bd89c5ed92413f62a52963a159947164bde27008e92e",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/core/film_optimization_job.py",
       "code": "B905",
@@ -43150,16 +42480,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "arg-type",
-      "message": "Argument 3 to \"Popen\" has incompatible type \"**dict[str, Any | int]\"; expected \"Callable[[], object] | None\"",
-      "scope": "AssistantController.show_settings",
-      "anchor": "subprocess.Popen(module_command(\"coat_sim.ui.settings\"), cwd=str(root), **kwargs)",
-      "fingerprint": "a50ff57f9afb4fe2f205a517c9c3792dc545745310eddbc72de3a7349a24be95",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_compact_window_chrome_ui.py",
       "code": "union-attr",
       "message": "Item \"None\" of \"QQuickItem | None\" has no attribute \"property\"",
@@ -43326,16 +42646,6 @@
       "scope": "AutomaticSubstrateTests.test_double_empty_back_still_has_rear_interface_and_thin_fringes",
       "anchor": "single=self.service.simulate(self.design,self.settings)",
       "fingerprint": "a5ea501e5129611446533e363fde7033eb72df1d6389b67bccfe09326c2288d5",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"None\" has no attribute \"visibility\"",
-      "scope": "AssistantController.toggle_chat",
-      "anchor": "and self._chat.visibility() != QWindow.Visibility.Minimized",
-      "fingerprint": "a5f23f8caf20dc01e569971792373e247a4e9f257b1a5fe41e63558edeecae0a",
       "count": 1
     },
     {
@@ -43769,16 +43079,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"None\" has no attribute \"screen\"",
-      "scope": "AssistantController.show_chat",
-      "anchor": "screen = self._bubble.screen() or QGuiApplication.primaryScreen()",
-      "fingerprint": "a75ddb1d07e82dac37c3027b21f3bc9f1bb37c9763ff3215a4aaaa6a8014a52f",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/FilmDesignExpressionPanel.qml",
       "code": "unqualified",
@@ -44086,16 +43386,6 @@
       "scope": "ComputeTarget.refresh",
       "anchor": "self._future = self._executor.submit(self._probe_local, generation)",
       "fingerprint": "a84ce1e7b6f4f83f8936003c4d6c8982a4467474e60d1ea43bbf75e93f8cc764",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "arg-type",
-      "message": "Argument 3 to \"Popen\" has incompatible type \"**dict[str, Any | int]\"; expected \"Mapping[bytes, str | bytes | PathLike[str] | PathLike[bytes]] | Mapping[str, str | bytes | PathLike[str] | PathLike[bytes]] | None\"",
-      "scope": "AssistantController.show_settings",
-      "anchor": "subprocess.Popen(module_command(\"coat_sim.ui.settings\"), cwd=str(root), **kwargs)",
-      "fingerprint": "a84e491fd947c2e90c8c0985145721694c13d0d1c3044539e6141e7fa379dab7",
       "count": 1
     },
     {
@@ -45180,16 +44470,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"object\" has no attribute \"screen\"",
-      "scope": "AssistantController._ensure_windows",
-      "anchor": "self._chat_screen_changed(chat.screen() or screen)",
-      "fingerprint": "aca2deca3bc02713922b3da1de296e82b744fbccab4d65bdf3988bf3f6945847",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_remote_client.py",
       "code": "func-returns-value",
       "message": "\"append\" of \"list\" does not return a value (it only ever returns None)",
@@ -45597,16 +44877,6 @@
       "anchor": "Button { objectName: \"removeEnvironmentGas\" + index; text: \"移除\"; onClicked: gasRows.remove(index) }",
       "fingerprint": "ae907807a23c93cabbd04016c93049a890c8a03016425b57f1830321f9312db8",
       "count": 3
-    },
-    {
-      "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "font.pixelSize: Math.max(13, 14 * window.unit)",
-      "fingerprint": "ae930c73c8b15a45d7a8c4c1dcf67ee136824fd3141691ba45a6bbd0575f3929",
-      "count": 1
     },
     {
       "tool": "mypy",
@@ -46739,16 +46009,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"QObject\" has no attribute \"settingsRequested\"",
-      "scope": "AssistantController.__init__",
-      "anchor": "self.bridge.settingsRequested.connect(self.show_settings)",
-      "fingerprint": "b3bbe7649795e7eabe8cfcf6597f51116913106f88b94452a7be0990327f7aab",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/SettingsWindow.qml",
       "code": "unqualified",
@@ -46766,16 +46026,6 @@
       "scope": "_ForwardCache._fallback",
       "anchor": "self.stats[\"fallback_calls\"] += 1",
       "fingerprint": "b3df97ad62de14cefcdae2428a360a2a70b7091795de6af665c2a78f03eef07e",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "source: launcher.backgroundUrl",
-      "fingerprint": "b3e58fb24b5b048d5a22750a684248ddee0edf94a47c435a87049135ccc25dcf",
       "count": 1
     },
     {
@@ -47739,16 +46989,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"QObject\" has no attribute \"openRequested\"",
-      "scope": "AssistantController.__init__",
-      "anchor": "self.bridge.openRequested.connect(self.show_chat)",
-      "fingerprint": "b74cd3a82187bd4440229266d8c6c7b437826ad8ddc30d0dcee4b4b76887c399",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "tests/test_appearance_parallel.py",
       "code": "B023",
@@ -48096,16 +47336,6 @@
       "scope": "OpticalLibraryUiTests.test_source_picker_emits_only_film_and_substrate_purpose",
       "anchor": "self.assertTrue(substrate.substrateBindable);self.assertTrue(substrate.canUseMaterial)",
       "fingerprint": "b845862ac2815e03f7412988fa82701d0fbf190b188335f94c927b96919908e1",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "width: Math.max(30, 42 * window.unit)",
-      "fingerprint": "b84ac992f7aeb43a8aeeb834520c807a372fc330288f17a6bc7176474437df5f",
       "count": 1
     },
     {
@@ -48746,16 +47976,6 @@
       "scope": "",
       "anchor": "return \"当前自动值：C \" + window.knownKTokenText(defaults.context_window_tokens)",
       "fingerprint": "baa4cb10770cfd33b520c2a75f1b379611267c27fa0b68d2fb527fec5542c686",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"None\" has no attribute \"isActive\"",
-      "scope": "AssistantController.toggle_chat",
-      "anchor": "and self._chat.isActive()):",
-      "fingerprint": "bac1a3c0b9e1df652a1c3fe0ae16f8c1474db7d7afe597d5fe354bedc7a8f709",
       "count": 1
     },
     {
@@ -50050,16 +49270,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"None\" has no attribute \"isVisible\"",
-      "scope": "AssistantController.toggle_chat",
-      "anchor": "if (self._chat.isVisible()",
-      "fingerprint": "c061f70f38756dd988a43639e90fbfc8e5fc2b83ee6ea90ad23ec1962f288ef1",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_editor_reload_and_live_inputs.py",
       "code": "attr-defined",
       "message": "\"type[Qt]\" has no attribute \"Key_8\"",
@@ -50226,16 +49436,6 @@
       "scope": "",
       "anchor": "radius: control.themeTokens.radiusSm",
       "fingerprint": "c10fdf2f80e8ec6c39428f87eb121d09717e2e1ca5d472c7cbe0939234090ee6",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "legacy/launcher_gpu.py",
-      "code": "arg-type",
-      "message": "Argument 1 to \"Property\" has incompatible type \"str\"; expected \"type\"",
-      "scope": "main.LauncherBridge",
-      "anchor": "@Property(\"QVariantList\", constant=True)",
-      "fingerprint": "c1140bbd790f01d9062b6bb41c567b69fe70cdd0e59ed8a6aeac4898cc2d026e",
       "count": 1
     },
     {
@@ -50980,16 +50180,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"None\" has no attribute \"setIcon\"",
-      "scope": "AssistantController.show_chat",
-      "anchor": "self._chat.setIcon(window_icon(\"launcher\"))",
-      "fingerprint": "c3c3eba270807a6ffd940861119607ca3a3f913d44fd65ca8a77013033c4fc32",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_mask_viewport.py",
       "code": "attr-defined",
       "message": "\"type[Qt]\" has no attribute \"NoScrollPhase\"",
@@ -51086,16 +50276,6 @@
       "scope": "",
       "anchor": "width: Math.max(1, control.themeTokens.borderWidth)",
       "fingerprint": "c4207c49063d5b0a6392db56987cd402cfe417a8a854c0166e2fa02d2c566658",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"object\" has no attribute \"setIcon\"",
-      "scope": "AssistantController._ensure_windows",
-      "anchor": "bubble.setIcon(icon)",
-      "fingerprint": "c42422c9c10d693e74b2d7fea9c78b2cb0b46581760b7fc52add101a0dbcf39f",
       "count": 1
     },
     {
@@ -51450,16 +50630,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "arg-type",
-      "message": "Argument 3 to \"Popen\" has incompatible type \"**dict[str, Any | int]\"; expected \"Collection[int]\"",
-      "scope": "AssistantController.show_settings",
-      "anchor": "subprocess.Popen(module_command(\"coat_sim.ui.settings\"), cwd=str(root), **kwargs)",
-      "fingerprint": "c58455a420e166cc3a5e04f988b5359b84e399a99180c85d788c49bcc681b774",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/ui/main.py",
       "code": "attr-defined",
       "message": "\"type[QImage]\" has no attribute \"Format_RGBA8888\"",
@@ -51629,16 +50799,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/ui/control.py",
-      "code": "assignment",
-      "message": "Incompatible types in assignment (expression has type \"str\", variable has type \"None\")",
-      "scope": "UiControlClient._start_ui.initialize",
-      "anchor": "f\"窗口进程在控制服务就绪前退出（代码 {event.get('returncode')}）；\"",
-      "fingerprint": "c624234043deaf3fa1b0daba336fb5742ca705faaa9fe308b062d777031505a4",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/SettingsWindow.qml",
       "code": "missing-property",
@@ -51746,16 +50906,6 @@
       "scope": "FilmServiceTests.test_persistence_and_csv",
       "anchor": "with self.assertRaises(ValueError): self.service.save(path,self.design,overwrite='false')",
       "fingerprint": "c6c9e5660e613df8915e36763b45211ae0308ca0c7182782f57a721321564d19",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_run_coordinator.py",
-      "code": "arg-type",
-      "message": "Argument 7 to \"Popen\" has incompatible type \"**dict[str, Any | int]\"; expected \"bool | None\"",
-      "scope": "AssistantRunCoordinator.ensure_worker",
-      "anchor": "stdout=subprocess.PIPE, stderr=log, **kwargs)",
-      "fingerprint": "c6d3c9d494e4c227d0dec6c298d65e60dbc4320ca165a936559c0c6b8897d406",
       "count": 1
     },
     {
@@ -52356,16 +51506,6 @@
       "scope": "FilmSimulationWindow.__init__",
       "anchor": "self.simulation_settings_button = QPushButton(\"仿真参数\"); self.simulation_settings_button.setObjectName(\"simulation_settings_button\")",
       "fingerprint": "c8d0268454fecd21f4f39ecde1ab414df323ef615d73356dfbd3d9f47c2f00f8",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "maskEnabled: !launcher.softwareMode",
-      "fingerprint": "c8d7cf77286db8561b42fb364d15466379b166e7378a3a7c198f9086f790f023",
       "count": 1
     },
     {
@@ -53639,16 +52779,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "x: Math.round(19 * window.unit)",
-      "fingerprint": "ce2d159ba72857f3c0cbf2f55b5190358e69d24ec2e589951b73479743498f0a",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "coat_sim/ui/compute_queue.py",
       "code": "attr-defined",
@@ -53756,16 +52886,6 @@
       "scope": "_meter",
       "anchor": "meter.store = store",
       "fingerprint": "ce92eecc8466493e39584407d9b2ca15c4a5dca21f7d817b028a842942589f9b",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/control.py",
-      "code": "assignment",
-      "message": "Incompatible types in assignment (expression has type \"Popen[bytes]\", variable has type \"None\")",
-      "scope": "UiControlClient._start_ui",
-      "anchor": "self._spawned = subprocess.Popen(command, cwd=str(self.root), stdout=stream,",
-      "fingerprint": "ce94c7f191bbc18cb88c35ebfaf082dfc2b3173292e8b28852adf0f68ae84d11",
       "count": 1
     },
     {
@@ -55037,16 +54157,6 @@
       "anchor": "border.color: Theme.snapshot.colorBorder",
       "fingerprint": "d2a7db2d3c546c3ff43d825d45259918a83b837dce9da44693bc851e219b57db",
       "count": 3
-    },
-    {
-      "tool": "mypy",
-      "path": "tools/launch_desktop.pyw",
-      "code": "misc",
-      "message": "Cannot assign to final name \"__stdout__\"",
-      "scope": "main",
-      "anchor": "sys.__stdout__ = sys.__stderr__ = log",
-      "fingerprint": "d2b43f587a7166f69c27cdd31917e117622b783e1b0507be9ce335db1d5b9d88",
-      "count": 1
     },
     {
       "tool": "mypy",
@@ -56919,16 +56029,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"QObject\" has no attribute \"enabled\"",
-      "scope": "AssistantController.show_chat",
-      "anchor": "if not self.bridge.enabled:",
-      "fingerprint": "da5cf83a9251ffdeec3d0a3cf1c3a66fdb853f0831e5207c64b2b7e0d8558231",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "tools/verify_film_plot_layout.py",
       "code": "E702",
@@ -57609,16 +56709,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_run_coordinator.py",
-      "code": "arg-type",
-      "message": "Argument 7 to \"Popen\" has incompatible type \"**dict[str, Any | int]\"; expected \"Iterable[str | int] | None\"",
-      "scope": "AssistantRunCoordinator.ensure_worker",
-      "anchor": "stdout=subprocess.PIPE, stderr=log, **kwargs)",
-      "fingerprint": "dd7e76c82b37861993b74bc0ae21192dfa81c79739c09d48101733e186c2bb76",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/AboutWindow.qml",
       "code": "unqualified",
@@ -57996,16 +57086,6 @@
       "scope": "compare",
       "anchor": "accuracy_pass = (all(value is not None and value <= GATES[\"max_absolute_error\"][precision] for value in max_errors)",
       "fingerprint": "df2c20f2b1548623f858edd3437b1b70539dd8356b8c60c01a52ccff1a599338",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "font.pixelSize: Math.max(18, 22 * window.unit)",
-      "fingerprint": "df3701d9db1a481238c6ace41378dbbe12c29f68bb6d67e9f6e6d9b7bc50488f",
       "count": 1
     },
     {
@@ -58639,16 +57719,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/ui/control.py",
-      "code": "assignment",
-      "message": "Incompatible types in assignment (expression has type \"str\", variable has type \"None\")",
-      "scope": "UiControlClient._start_ui.initialize",
-      "anchor": "self._startup_error = f\"窗口启动超时；诊断日志：{log_path}\"",
-      "fingerprint": "e15c20d7acfcc67aa295e44b7735608dabababdf16456530a3072dea80a62018",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/ProcessWindow.qml",
       "code": "unqualified",
@@ -59009,16 +58079,6 @@
       "count": 2
     },
     {
-      "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "radius: 9 * window.unit",
-      "fingerprint": "e2a90cecbb1c6c9b30a81eba7c237a4cae2696a6b542d5eee32eb4682ccc283f",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "tests/test_finite_periodic_integration.py",
       "code": "E701",
@@ -59300,16 +58360,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/assistant_run_coordinator.py",
-      "code": "attr-defined",
-      "message": "\"str\" has no attribute \"decode\"; maybe \"encode\"?",
-      "scope": "AssistantRunCoordinator.ensure_worker.read_events",
-      "anchor": "value = json.loads(line.decode(\"utf-8\"))",
-      "fingerprint": "e39be1df9fb5f4c7e19997b00acecc30580d886d64da1b69351926992ae54b23",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_utility_windows_compact_chrome_ui.py",
       "code": "union-attr",
       "message": "Item \"None\" of \"_DecisionFixture | _QueueFixture | None\" has no attribute \"submitted\"",
@@ -59506,16 +58556,6 @@
       "scope": "",
       "anchor": "from tools.benchmark_film_design import real_zns_design",
       "fingerprint": "e49f5dc424001881e8808696d0890440eae403bda47813bede3bee4b01248da1",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"None\" has no attribute \"width\"",
-      "scope": "AssistantController.reload_configuration",
-      "anchor": "max(area.left(), min(self._bubble.x(), area.right() - self._bubble.width() + 1)),",
-      "fingerprint": "e49f864328bb58f67a4b6256bb9ad33d40746ce9f69aace4b78be85be8911b17",
       "count": 1
     },
     {
@@ -59776,16 +58816,6 @@
       "scope": "",
       "anchor": "from pathlib import Path",
       "fingerprint": "e563ccb2ae25273faa83a1ecb6052d724aaed648cd9a6e5ed4a270008e3a9c28",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"object\" has no attribute \"height\"",
-      "scope": "AssistantController._ensure_windows",
-      "anchor": "area.bottom() - bubble.height() - 24))",
-      "fingerprint": "e56dfc6bedec80d43cb8ad3a2c3cbb3f42a81357083b815aa58a1f43567e0f72",
       "count": 1
     },
     {
@@ -61330,16 +60360,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/control.py",
-      "code": "assignment",
-      "message": "Incompatible types in assignment (expression has type \"str\", variable has type \"None\")",
-      "scope": "UiControlClient._start_ui.initialize",
-      "anchor": "self._startup_error = str(exc)",
-      "fingerprint": "eb6fd8fac95e626405879edc3154135b7d11ac0b1b81477d44a76bc99ca2e32c",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/ui/source_materials.py",
       "code": "var-annotated",
       "message": "Need type annotation for \"_null_models\" (hint: \"_null_models: set[<type>] = ...\")",
@@ -62059,16 +61079,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "radius: 13 * window.unit",
-      "fingerprint": "eded48d91888ee69025a0162b0294b4743330737fcf49a5a960289a7d7f1e988",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "tools/verify_film_plot_layout.py",
       "code": "E402",
@@ -62479,16 +61489,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "window.toggleMaximized()",
-      "fingerprint": "ef6bf791976f2d994ba43055e84569c65af6826d4d8dd36f32411dcd99f5e6aa",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "legacy/process_designer.py",
       "code": "arg-type",
@@ -62556,16 +61556,6 @@
       "scope": "",
       "anchor": "property var settingsWindow: window",
       "fingerprint": "efae231f3f09a640edc8d31ef5321836a8a9e20aee7e0a200738e0359839e9eb",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "border.width: Math.max(1, window.unit)",
-      "fingerprint": "efb890462e5b8b0b9035f028cac58fedf2485f0836889e7e98d20dd976e35451",
       "count": 1
     },
     {
@@ -63206,16 +62196,6 @@
       "scope": "",
       "anchor": "from coat_sim.core.film_design_service import FilmDesignService",
       "fingerprint": "f26735078e8cf365c1a9574de8b9d3f23b39e1146eafb98067a95e4268c0b447",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_run_coordinator.py",
-      "code": "arg-type",
-      "message": "Argument 7 to \"Popen\" has incompatible type \"**dict[str, Any | int]\"; expected \"str | bytes | PathLike[str] | PathLike[bytes] | None\"",
-      "scope": "AssistantRunCoordinator.ensure_worker",
-      "anchor": "stdout=subprocess.PIPE, stderr=log, **kwargs)",
-      "fingerprint": "f26cc4797090597024a70df05f58b1e6771931678042c9ee44c66f715ba5547d",
       "count": 1
     },
     {
@@ -65429,16 +64409,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_assistant_window_list.py",
-      "code": "attr-defined",
-      "message": "\"QObject\" has no attribute \"provider_calls\"",
-      "scope": "AssistantWindowListTests.test_controller_owns_one_window_group_and_closes_without_provider_work",
-      "anchor": "self.assertEqual(controller.bridge.provider_calls, 0)",
-      "fingerprint": "fac257a7724a86f8cdb86689cae36a909db1ac188d3240f929f51fe207b7e30d",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "tools/verify_assistant_workflow.py",
       "code": "E702",
@@ -65546,16 +64516,6 @@
       "scope": "",
       "anchor": "import queue",
       "fingerprint": "fb2c54d16bb771db72ac1da1c70fbb462fe16b28b9f7f6ccf8dcae7ed2ba21b4",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "legacy/launcher.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "model: launcher.modules",
-      "fingerprint": "fb473a05faff765244a640f8950891281a22bfebbcc59a7aa7d3f5474a8de01a",
       "count": 1
     },
     {
@@ -65776,26 +64736,6 @@
       "scope": "",
       "anchor": "import qt_test_guard # noqa: E402,F401",
       "fingerprint": "fbf8441bfe76721039608435c01014d75894593595f43cc19244265c177f36d2",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "legacy/launcher_tk.py",
-      "code": "B905",
-      "message": "`zip()` without an explicit `strict=` parameter",
-      "scope": "_mix",
-      "anchor": "return \"#\" + \"\".join(f\"{round(x + (y - x) * amount):02x}\" for x, y in zip(a, b))",
-      "fingerprint": "fc053d79b0cc9b5a10de0193751e40c5e6f64c6dbe3c6cf91b3828ffbbf3afb3",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "assignment",
-      "message": "Incompatible types in assignment (expression has type \"object\", variable has type \"None\")",
-      "scope": "AssistantController._ensure_windows",
-      "anchor": "self._bubble, self._chat = bubble, chat",
-      "fingerprint": "fc086e76222a171746c32170b38b0c22091914847e917eaed7809e3eecfc946b",
       "count": 1
     },
     {
@@ -66126,16 +65066,6 @@
       "scope": "FilmDesignQuickController._on_initialization_finished",
       "anchor": "self._apply_initialized_session(session, snapshot, picker_state)",
       "fingerprint": "fd3b41afbaf67a2f490c0f9908d7be61f2b3203f18fd508c331fe47348a11d4e",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"None\" has no attribute \"setFlag\"",
-      "scope": "AssistantController.show_chat",
-      "anchor": "self._chat.setFlag(Qt.WindowStaysOnTopHint, False)",
-      "fingerprint": "fd3ff5730e96918020b0c3133a774296978cc2beaf135bb2530f593b5362f76f",
       "count": 1
     },
     {
@@ -66609,16 +65539,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/ui/assistant_window_controller.py",
-      "code": "attr-defined",
-      "message": "\"None\" has no attribute \"x\"",
-      "scope": "AssistantController.reload_configuration",
-      "anchor": "max(area.left(), min(self._bubble.x(), area.right() - self._bubble.width() + 1)),",
-      "fingerprint": "ff4818e77fccd22509e648f1237dc53009c851e16437a0218fe9a16adce2f7a7",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/FilmStackDialog.qml",
       "code": "unqualified",
@@ -66800,16 +65720,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_assistant_window_list.py",
-      "code": "attr-defined",
-      "message": "\"QObject\" has no attribute \"provider_calls\"",
-      "scope": "AssistantWindowListTests.test_controller_owns_one_window_group_and_closes_without_provider_work",
-      "anchor": "self.assertEqual(bridge.provider_calls, 0)",
-      "fingerprint": "ffec2fb1874bd7f0632413a9c0823ebd3b5a3c76235837ea98dd38faba0ac48e",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_film_design_reference_bridge.py",
       "code": "attr-defined",
       "message": "\"type[FilmDesignReferenceBridgeTests]\" has no attribute \"temp_path\"",
@@ -66839,6 +65749,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "Remove only diagnostics owned by the six deleted one-off other/ai extraction/patch scripts; no new diagnostic accepted.",
+  "last_prune_reason": "Reviewed resolved diagnostics only: removed obsolete launchers/QML; explicit Qt window bridge/ownership and typed subprocess option/stream boundaries. No new debt accepted.",
   "configuration_review_reason": "2026-10-17: add only BSD-3-Clause pypdf 6.21.0 for isolated research PDF extraction; all previous dependency/tool versions, analyzer rules and diagnostic entries remain unchanged. The lock-file digest changes only for this reviewed runtime dependency."
 }

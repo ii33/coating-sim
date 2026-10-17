@@ -71,3 +71,87 @@ The project session journal records clean/unclean lifecycle and explicitly suppl
 ## UI and errors
 
 Assistant bubble and tray menus expose one Exit application action. While exit is pending, repeated requests reuse the same exit ID. Assistant chat/debug admissions and automatic queued-message drains are frozen after its own exit decision; cancellation restores them without discarding queued work. Cancellation leaves windows alive. Failures are displayed through the existing assistant notification/status channel. Existing shared Theme and window geometry rules apply; no new optical/numerical algorithms are introduced.
+
+
+## Native window recovery and lifecycle diagnostics (2026-10-17)
+
+Closing the conversation hides it; it neither destroys its owner nor exits the
+shared service. The service keeps `quitOnLastWindowClosed=false`. The controller
+owns the QML windows explicitly using C++ ownership. If either native QQuickWindow
+is destroyed independently, it clears that exact generation, discards the old
+pair and recreates the pair/context on the next user open. Late destruction from
+an earlier pair cannot clear its replacement; desktop active-window callbacks
+are rebound. Service generation and conversation storage remain unchanged.
+Shutdown is idempotent and prevents queued UI callbacks from recreating windows.
+
+The source assistant module uses the same Windows native-crash-handler policy as
+the desktop bootstrap: inherited PYTHONFAULTHANDLER does not enable the Windows
+vectored handler. A requested native stack dump cannot obtain a raw descriptor
+from the bounded log stream; that path stays disabled, and Windows crash
+diagnosis uses WER/observed exit codes. This closes a policy discrepancy; it does
+not prove that an unobserved remote crash was caused by that handler.
+
+`status` adds assistant_protocol=1, application version and a source_id. source_id
+hashes the canonical installation directory, not the source bytes: it helps
+identify different installations and is not code-integrity verification. Legacy
+services without the added fields remain accepted after existing authenticated
+PID/creation-time/nonce/generation checks. An explicitly different protocol is
+rejected without terminating or replacing that service. OS-held locks remain
+authoritative; stale endpoint files are not locks and are not cleared to restart.
+
+All application diagnostics are UTF-8 under the launching installation's
+`artifacts/logs/`. Shared-service discovery/ownership still uses
+`%LOCALAPPDATA%\CoatSim\assistant\artifacts/runtime` (or
+COAT_ASSISTANT_RUNTIME_ROOT); this override no longer relocates logs.
+`assistant.log` belongs to the installation that started the shared service;
+`assistant-client.log` belongs to each connecting installation and records the
+authenticated service PID/version/source ID, so mixed installations are visible.
+Other fixed channels are desktop, assistant-worker, project, mcp-ui, scheduler,
+compute-worker and remote-worker. Each `.log` is at most 2 MiB and retains only
+`.log.1` and `.log.2`: nine allowed channels use at most 54 MiB, plus one small
+logging-only rotation lock. No timestamp/PID/job-named logs are created.
+Writes/rotation are serialized across processes with a bounded 250 ms lock wait;
+an unavailable disk/lock drops diagnostics rather than blocking the operation.
+Single writes retain at most 64 KiB. Detached children install their own stream
+before importing the application and do not depend on a parent relay pipe.
+Agent protocol stdout remains a pipe; only diagnostic stderr goes to disk.
+Pre-existing oversized *active channel* logs are trimmed before rotation;
+unrelated/historical files, old external runtime logs and user data are not
+migrated or deleted. The 54 MiB limit applies to these managed channel files.
+Native faulthandler cannot bypass this byte limit with a raw file descriptor;
+Windows native crashes are investigated using WER and observed exit codes. In contrast,
+assistant-debug-PID.json is under the *installation* artifacts/runtime and is a
+development endpoint. Its presence alone proves neither current liveness nor
+shared-service readiness. Never send raw endpoint JSON: it contains IPC tokens.
+For diagnosis share filenames, sizes/times and allowlisted protocol/loopback host/
+PID/role/window_type/parent_pid, with installation paths redacted if necessary.
+Locks, databases, ready-channel keys, tokens and arbitrary runtime payloads are
+not required diagnostic attachments.
+
+Logs can contain both legacy Qt/plain text and bounded structured JSON event
+lines. Structured lines carry UTC timestamp, PID and event; relevant milestones
+include attempt ID, child PID versus authenticated service PID, version/source
+identity, registration recovery/failure, sanitized exception code/type/causes,
+and observed child exit code. Successful status/registration heartbeats are not
+logged repeatedly. Logging failures cannot replace IPC replies or stop GUI work.
+An owned daemon thread observes only the Popen handle created by that client; it
+never scans or signals another process. It cannot record an exit after its own
+client process has already ended. Native failure still requires the observed
+exit code or Windows crash report; ordinary Python exception logs are not proof
+that no native crash happened.
+
+Desktop bootstrap writes its time/PID/interpreter header before handing off to
+the branded Python host. Previously that normal handoff could leave the first
+desktop log empty. The assistant module opens its own log before acquiring its
+lock or importing Qt, and flushes each lifecycle event. Disk/permission failures
+are reported best-effort; log delivery is not a liveness guarantee.
+
+`tests/test_assistant_native_reopen.py` runs owned native Windows processes with
+private runtime, settings, database and debug roots. It covers close/hide/reopen,
+first-user enable, independent window destruction, abrupt self-exit/restart,
+single-instance ownership/real PID, inherited crash-handler policy and Chinese
+installation/QML paths. No existing environment is copied or installed into,
+and no live user installation, endpoint or lock is touched. Normal close/hide
+and OS-lock recovery passed before the fix; destroyed-chat reopening and the
+Windows handler-policy check failed before it. The other machine's spontaneous
+exit has not been reproduced from the supplied successful-action-only log.

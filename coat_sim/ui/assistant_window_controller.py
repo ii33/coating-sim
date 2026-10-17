@@ -5,10 +5,15 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 import subprocess
+import weakref
+from typing import Any, Protocol, TypeGuard, cast
 
-from PySide6.QtCore import QObject, QPoint, QSize, QTimer, QUrl, Slot, Qt
-from PySide6.QtGui import QGuiApplication, QWindow
-from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent, QQmlContext
+from shiboken6 import isValid
+
+from PySide6.QtCore import QObject, QPoint, QSize, QTimer, QUrl, SignalInstance, Slot, Qt
+from PySide6.QtGui import QGuiApplication, QScreen, QWindow
+from PySide6.QtQuick import QQuickWindow
+from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent, QQmlContext, QQmlEngine
 
 from coat_sim.ui.icons import window_icon
 from coat_sim.ui.settings import SETTINGS_PATH
@@ -26,6 +31,16 @@ def _default_bridge_factory(parent: QObject) -> QObject:
     return assistant.AssistantBridge(parent)
 
 
+class _WindowBridge(Protocol):
+    enabled: bool
+    openRequested: SignalInstance
+    toggleRequested: SignalInstance
+    settingsRequested: SignalInstance
+    closeRequested: SignalInstance
+    def reload_configuration(self) -> None: ...
+    def shutdown(self) -> None: ...
+
+
 class AssistantController(QObject):
     """Own two independent top-level windows outside the launcher QML tree."""
 
@@ -36,8 +51,10 @@ class AssistantController(QObject):
         from coat_sim.ui.preview_cursor import register_preview_cursor
         register_preview_cursor()
         self.engine = engine
+        self._closed = False
+        self._window_generation = 0
         self.open_settings_callback = open_settings_callback
-        self.bridge = (bridge_factory or _default_bridge_factory)(self)
+        self.bridge = cast(_WindowBridge, (bridge_factory or _default_bridge_factory)(self))
         self.bridge.openRequested.connect(self.show_chat)
         self.bridge.toggleRequested.connect(self.toggle_chat)
         self.bridge.settingsRequested.connect(self.show_settings)
@@ -45,9 +62,9 @@ class AssistantController(QObject):
         self._context: QQmlContext | None = None
         self._bubble_component: QQmlComponent | None = None
         self._chat_component: QQmlComponent | None = None
-        self._bubble = None
-        self._chat = None
-        self._chat_screen = None
+        self._bubble: QQuickWindow | None = None
+        self._chat: QQuickWindow | None = None
+        self._chat_screen: QScreen | None = None
         self._chat_has_been_shown = False
         self._settings_stamp = self._configuration_stamp()
         self._configuration_timer = QTimer(self)
@@ -56,6 +73,7 @@ class AssistantController(QObject):
         self._configuration_timer.start()
         if self.bridge.enabled:
             self._ensure_windows()
+            assert self._bubble is not None
             self._bubble.show()
 
     @staticmethod
@@ -71,38 +89,80 @@ class AssistantController(QObject):
             self._settings_stamp = stamp
             self.reload_configuration()
 
-    def _create_window(self, name: str, context: QQmlContext) -> tuple[QQmlComponent, object]:
+    def _create_window(self, name: str, context: QQmlContext) -> tuple[QQmlComponent, QQuickWindow]:
         component = QQmlComponent(self.engine, QUrl.fromLocalFile(str(QML_DIR / name)))
         if component.isError():
             raise RuntimeError("\n".join(str(item) for item in component.errors()))
         window = component.create(context)
-        if window is None:
+        if not isinstance(window, QQuickWindow):
             raise RuntimeError("\n".join(str(item) for item in component.errors()))
         return component, window
 
+    @staticmethod
+    def _alive(window: QQuickWindow | None) -> TypeGuard[QQuickWindow]:
+        return window is not None and isValid(window)
+
+    def _discard_windows(self) -> None:
+        self._window_generation += 1
+        if self._chat_screen is not None:
+            try:
+                self._chat_screen.availableGeometryChanged.disconnect(self._screen_geometry_changed)
+            except (RuntimeError, TypeError):
+                pass
+        self._chat_screen = None
+        windows = (self._bubble, self._chat)
+        resources = (self._bubble_component, self._chat_component, self._context)
+        self._bubble = self._chat = None
+        self._bubble_component = self._chat_component = self._context = None
+        self._chat_has_been_shown = False
+        for window in windows:
+            if self._alive(window):
+                window.hide()
+                window.deleteLater()
+        for resource in resources:
+            if isinstance(resource, QObject) and isValid(resource):
+                resource.deleteLater()
+
+    def _watch_window(self, name: str, window) -> None:
+        owner_ref = weakref.ref(self)
+        generation = self._window_generation
+        def destroyed(*_args):
+            owner = owner_ref()
+            if owner is not None and owner._window_generation == generation:
+                setattr(owner, name, None)
+                from coat_sim.assistant_diagnostics import trace
+                trace("assistant_window_destroyed", window=name, generation=str(generation))
+        window.destroyed.connect(destroyed)
+
     def _ensure_windows(self) -> None:
-        if self._bubble is not None:
+        if self._alive(self._bubble) and self._alive(self._chat):
             return
         if not PORTRAIT.is_file():
             raise RuntimeError(f"缺少看板娘图片：{PORTRAIT}")
-        context = QQmlContext(self.engine.rootContext())
-        context.setContextProperty("assistant", self.bridge)
-        bubble_component, bubble = self._create_window("AssistantBubble.qml", context)
-        chat_component, chat = self._create_window("AssistantChatWindow.qml", context)
-        icon = window_icon("launcher")
-        bubble.setIcon(icon)
-        chat.setIcon(icon)
+        self._discard_windows()
+        context = QQmlContext(self.engine.rootContext(), self)
         self._context = context
-        self._bubble_component, self._chat_component = bubble_component, chat_component
-        self._bubble, self._chat = bubble, chat
-        chat.screenChanged.connect(self._chat_screen_changed)
-        screen = QGuiApplication.primaryScreen()
-        if screen is not None:
-            area = screen.availableGeometry()
-            bubble.setPosition(QPoint(area.right() - bubble.width() - 24,
-                                      area.bottom() - bubble.height() - 24))
-        self._chat_screen_changed(chat.screen() or screen)
-        self._fit_chat_to_screen(center=True)
+        context.setContextProperty("assistant", cast(QObject, self.bridge))
+        try:
+            self._bubble_component, self._bubble = self._create_window("AssistantBubble.qml", context)
+            self._chat_component, self._chat = self._create_window("AssistantChatWindow.qml", context)
+            for name, window in (("_bubble", self._bubble), ("_chat", self._chat)):
+                QQmlEngine.setObjectOwnership(window, QQmlEngine.ObjectOwnership.CppOwnership)
+                self._watch_window(name, window)
+                window.setIcon(window_icon("launcher"))
+            self._chat.screenChanged.connect(self._chat_screen_changed)
+            screen = QGuiApplication.primaryScreen()
+            if screen is not None:
+                area = screen.availableGeometry()
+                self._bubble.setPosition(QPoint(area.right() - self._bubble.width() - 24,
+                                               area.bottom() - self._bubble.height() - 24))
+            self._chat_screen_changed(self._chat.screen() or screen)
+            self._fit_chat_to_screen(center=True)
+            from coat_sim.assistant_diagnostics import trace
+            trace("assistant_windows_created", generation=str(self._window_generation))
+        except Exception:
+            self._discard_windows()
+            raise
 
     def _chat_screen_changed(self, screen) -> None:
         if screen is not self._chat_screen:
@@ -148,6 +208,8 @@ class AssistantController(QObject):
 
     @Slot()
     def reload_configuration(self) -> None:
+        if self._closed:
+            return
         self._settings_stamp = self._configuration_stamp()
         self.bridge.reload_configuration()
         if self.bridge.enabled:
@@ -155,6 +217,7 @@ class AssistantController(QObject):
                 self._ensure_windows()
             except RuntimeError:
                 return
+            assert self._bubble is not None
             screen = self._bubble.screen() or QGuiApplication.primaryScreen()
             if screen is not None:
                 area = screen.availableGeometry()
@@ -170,10 +233,11 @@ class AssistantController(QObject):
 
     @Slot()
     def show_chat(self) -> None:
-        if not self.bridge.enabled:
+        if self._closed or not self.bridge.enabled:
             return
         self._ensure_windows()
-        self._chat.setFlag(Qt.WindowStaysOnTopHint, False)
+        assert self._chat is not None and self._bubble is not None
+        self._chat.setFlag(Qt.WindowType.WindowStaysOnTopHint, False)
         if not self._chat_has_been_shown:
             screen = self._bubble.screen() or QGuiApplication.primaryScreen()
             if screen is not None:
@@ -198,9 +262,10 @@ class AssistantController(QObject):
 
     @Slot()
     def toggle_chat(self) -> None:
-        if not self.bridge.enabled:
+        if self._closed or not self.bridge.enabled:
             return
         self._ensure_windows()
+        assert self._chat is not None
         if (self._chat.isVisible()
                 and self._chat.visibility() != QWindow.Visibility.Minimized
                 and self._chat.isActive()):
@@ -215,27 +280,21 @@ class AssistantController(QObject):
             return
         # Independent settings entry shares the same configuration as the launcher.
         root = UI_DIR.parents[1]
-        kwargs = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)}
+        kwargs: dict[str, Any] = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)}
         from coat_sim.process_entry import module_command
         subprocess.Popen(module_command("coat_sim.ui.settings"), cwd=str(root), **kwargs)
 
     @Slot()
     def hide_windows(self) -> None:
-        if self._bubble is not None:
+        if self._alive(self._bubble):
             self._bubble.hide()
-        if self._chat is not None:
+        if self._alive(self._chat):
             self._chat.hide()
 
     def shutdown(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
         self._configuration_timer.stop()
-        if self._chat_screen is not None:
-            try:
-                self._chat_screen.availableGeometryChanged.disconnect(self._screen_geometry_changed)
-            except (RuntimeError, TypeError):
-                pass
-            self._chat_screen = None
         self.bridge.shutdown()
-        self.hide_windows()
-        for window in (self._bubble, self._chat):
-            if window is not None:
-                window.deleteLater()
+        self._discard_windows()

@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-import secrets
 import subprocess
 import sys
 import tempfile
@@ -12,7 +11,7 @@ from typing import Any
 
 from coat_sim.assistant_process import AssistantProcessClient
 from coat_sim.core.project_store import MANIFEST_FILENAME, ProjectStore
-from coat_sim.process_entry import module_command
+from coat_sim.project_logging import logged_module_command, log_path
 from coat_sim.project_activation import activate_shared_project, find_shared_project_owner
 from .control import PROJECT_ROOT, UiControlError
 from .ready_channel import UiReadyChannel
@@ -34,9 +33,7 @@ def _start_runtime(arguments: list[str], shared: Any, application_root: str | Pa
                    timeout: float) -> None:
     """Keep only a local startup handle; never signal or own child lifetime."""
     root = Path(application_root).resolve()
-    logs = shared.root / "artifacts" / "logs"
-    logs.mkdir(parents=True, exist_ok=True)
-    log_path = logs / f"project-{secrets.token_hex(8)}.log"
+    diagnostic_path = log_path("project", root)
     channel = UiReadyChannel()
     environment = os.environ.copy()
     for name in ("COAT_UI_PID", "COAT_UI_PARENT_PID", "COAT_UI_READY_ADDRESS",
@@ -53,15 +50,14 @@ def _start_runtime(arguments: list[str], shared: Any, application_root: str | Pa
     else:
         kwargs["start_new_session"] = True
     try:
-        with log_path.open("ab") as stream:
-            process = subprocess.Popen(module_command("coat_sim.ui.project_runtime", *arguments),
-                                       stdout=stream, **kwargs)
+        process = subprocess.Popen(logged_module_command("coat_sim.ui.project_runtime", *arguments,
+            channel="project", project_root=root), stdout=subprocess.DEVNULL, **kwargs)
         event = channel.wait(process, timeout=timeout)
     finally:
         channel.close()
     if event.get("status") != "ready":
         detail = event.get("error") or event.get("status", "unknown")
-        raise UiControlError("project_start_failed", f"工程进程启动未确认：{detail}。日志：{log_path}")
+        raise UiControlError("project_start_failed", f"工程进程启动未确认：{detail}。日志：{diagnostic_path}")
 
 
 def _confirm_owner(shared: Any, store: ProjectStore) -> ProjectStore:

@@ -141,7 +141,7 @@ JSON、日志和代码使用固定的普通文本预览，保持原始文字，�
 
 模型请求取消了固定 90 秒总截止：仍在收到服务器数据的长输出可继续。连接上限 20 秒，连续 300 秒没有网络数据才按读取超时报错（写入 30 秒、连接池等待 20 秒）；超时与取消保留已接收内容。活动 Token 预留每 30 秒续约，不改变开始时间和账单日；900 秒无续约的未知请求仍保守估算。
 
-浮标右键菜单提供计算队列、提示音开关和隐藏入口；隐藏后显示系统托盘图标，托盘菜单与浮标菜单相同。队列只显示摘要、预计用时和预计完成时间，不提供进度控件。桌面使用跨平台 Python 入口 `launcher.pyw`；Windows 用项目 `pythonw.exe` 打开，Linux 桌面快捷方式设置 `Terminal=false`，界面统一使用随项目提供的 Noto CJK 字体（OFL 许可）。Windows 开发启动使用 `start-dev.bat`（PowerShell 7+）；可用 `start-dev.ps1 -EntryScript launcher.pyw` 选择无终端入口。诊断保留在 `artifacts/logs/desktop-*.log`，后台协议进程使用隐藏的 python.exe 与管道，不用 pythonw 替代通信进程。
+浮标右键菜单提供计算队列、提示音开关和隐藏入口；隐藏后显示系统托盘图标，托盘菜单与浮标菜单相同。队列只显示摘要、预计用时和预计完成时间，不提供进度控件。桌面使用跨平台 Python 入口 `launcher.pyw`；Windows 用项目 `pythonw.exe` 打开，Linux 桌面快捷方式设置 `Terminal=false`，界面统一使用随项目提供的 Noto CJK 字体（OFL 许可）。源码与安装器启动统一使用项目解释器运行 `launcher.py`；无终端任务栏适配继续由 `launcher.pyw` 提供。诊断保留在 `artifacts/logs/desktop.log`（每类日志最多 2 MiB，保留两个轮转备份；完整策略见 `global-assistant-process-contract.md`），后台协议进程使用隐藏的 python.exe 与管道，不用 pythonw 替代通信进程。
 
 ## 软件能力边界
 

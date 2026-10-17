@@ -12,6 +12,11 @@ def main(argv=None):
         sub.add_parser(action).add_argument('job_id')
     worker = sub.add_parser('worker'); worker.add_argument('job_id'); worker.add_argument('owner_pid', type=int); worker.add_argument('owner_instance')
     args = parser.parse_args(argv)
+    if args.command in ('serve', 'worker'):
+        from coat_sim.project_logging import install_process_log
+        from coat_sim.assistant_diagnostics import trace
+        install_process_log('scheduler' if args.command == 'serve' else 'compute-worker', args.root)
+        trace('scheduler_process_start', role=args.command)
     if args.command == 'serve':
         from .daemon import serve
         return serve(args.root)

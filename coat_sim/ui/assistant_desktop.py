@@ -1129,6 +1129,12 @@ class DesktopAssistantController(AssistantController):
         self.desktop = desktop
         desktop.attach(self)
 
+    def _ensure_windows(self):
+        super()._ensure_windows()
+        desktop = getattr(self, "desktop", None)
+        if desktop is not None:
+            desktop.bind_chat()
+
     def reload_configuration(self):
         super().reload_configuration()
         self.desktop.bind_chat()

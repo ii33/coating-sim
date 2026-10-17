@@ -51,6 +51,9 @@ def test_installer_copy_is_absent_and_remote_service_deployment_is_retained():
     for name in ("tools/dependency_manager", "dependency_manager.py", "dependency_manager.cmd",
                  "install.bat", "install.sh", "tools/build_offline_installer.py",
                  "tools/offline_installer_bootstrap.cs", "requirements-dependency-manager-build.txt",
-                 ".github/workflows/dependency-manager-build.yml"):
+                 ".github/workflows/dependency-manager-build.yml",
+                 "start-dev.bat", "start-dev.ps1", "start.sh", "start-cloud.sh",
+                 "legacy/launcher_gpu.py", "legacy/launcher_tk.py", "legacy/launcher.qml",
+                 "tools/check_cloud_runtime.py"):
         assert not (ROOT / name).exists(), name
     assert any((ROOT / "scripts").glob("*remote*")) or any((ROOT / "tools").glob("*remote*"))

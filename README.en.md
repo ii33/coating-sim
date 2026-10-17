@@ -33,7 +33,7 @@ python -m venv .venv
 .venv/bin/python launcher.py
 ```
 
-On Windows substitute `.venv\Scripts\python.exe` in those commands. Appearance rendering also needs Mitsuba/DrJit, currently declared in `requirements-test.txt`; the independent installer selects `desktop + appearance`. Linux needs the distribution's Qt system libraries. On Windows use `start-dev.bat` (PowerShell 7+); `start.sh` and `start-cloud.sh` remain cross-platform application entry points. See the [project-side installation contract](docs/installation.md).
+On Windows substitute `.venv\Scripts\python.exe` in those commands. Appearance rendering also needs Mitsuba/DrJit, currently declared in `requirements-test.txt`; the independent installer selects `desktop + appearance`. Linux needs the distribution's Qt system libraries. Run `launcher.py` with the project interpreter on every platform; installer-generated scripts and shortcuts use the same entry. See the [project-side installation contract](docs/installation.md).
 
 ### Complete example project
 
@@ -56,7 +56,7 @@ Installer implementation, updates, runtime provisioning and packaging belong to 
 ## Platform and compute boundaries
 
 - **CPU is the default starting point.** Backend availability depends on the algorithm. The current desktop film-optimization worker path is CPU-based.
-- **GPU is not a universal switch.** CUDA and DirectML depend on the OS, Python version, driver, device, and task. Successful installation or device detection is not numerical validation. The DirectML profile is restricted to Windows / Python 3.10–3.12.
+- **GPU support is task-specific.** Intel integrated DirectML passed a bounded flat-deposition numerical check; mask edges remain experimental and the default device does not guarantee Intel binding. XPU film batch evaluation timed out, so desktop optimization remains CPU-only. Intel GPU appearance has no product backend; CPU appearance is available. See [Intel support and measured limits](docs/intel-integrated-gpu-support.md). CUDA/DirectML require compatible runtimes; DirectML is limited to Windows / Python 3.10–3.12.
 - **CUDA appearance rendering is a research preview.** A low-resolution workflow has been tested on specific NVIDIA hardware. This is not a guarantee of full-resolution performance or color accuracy on all devices. That appearance backend does not implement AMD / Intel GPU support.
 - **Native validation and automated tests are separate evidence.** Windows smoke tests, Linux offscreen tests, CI, network installation, and physical calibration have different scopes. Clean-system first installation, broad platform/driver coverage, and complete online deployment still require separate acceptance testing.
 

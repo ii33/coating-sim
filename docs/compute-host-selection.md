@@ -1,6 +1,6 @@
 # Compute host and device selection contract
 
-Date: 2026-10-13. This contract covers the settings page and the three desktop
+Date: 2026-10-17. This contract covers the settings page and the three desktop
 calculation entry points: deposition simulation, film optimization, and appearance
 rendering. It does not change physics, units, or frozen input formats.
 
@@ -85,3 +85,28 @@ No remote task has been integration-tested in this checkout. Local appearance
 uses its separate QProcess and does not claim remote routing.
 
 Changing this UI or routing contract is not a physics algorithm change.
+
+## Integrated Intel GPU acceptance scope (2026-10-17)
+
+The pop-up includes a task-specific, read-only support summary independent of
+runtime availability. CPU is supported for the three desktop tasks. Intel
+DirectML has passed a bounded flat-deposition numerical comparison; mask-edge
+accuracy remains experimental. The current default/AMD-preferred DirectML
+binding does not guarantee Intel selection on a multi-GPU host. A successful
+initialization probe is not a complete-task acceptance result.
+
+Intel XPU FP64/complex128 probes passed on the tested 8086:7D67 device, but real
+film batch evaluation timed out at both 90 and 180 seconds. Desktop film
+optimization remains CPU-only. Intel GPU appearance rendering is unavailable
+because the product has no Intel backend; successful CPU appearance does not
+establish GPU support. Exact environment, measured errors and limits are in
+[Intel integrated GPU support](intel-integrated-gpu-support.md).
+
+Optional local probe rows retain `available` as runtime availability and add
+`runtime_probe`, `support_level` and `support_note` as advisory projections.
+These do not change device IDs, frozen jobs, remote schemas or execution
+semantics. Successful optional GPU rows carry an experimental label and keep
+their limitations visible after selection. Unavailable rows retain their failure
+reason; explicit GPU selections and CPU-only algorithm rejection are unchanged.
+The model owns these projections, the QML pop-up only renders them, and existing
+generation checks discard stale asynchronous discovery results.

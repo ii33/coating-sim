@@ -23,6 +23,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, Request, build_opener
 
 from coat_sim.control_errors import UiControlError as UiControlError
+from coat_sim.assistant_diagnostics import source_id, trace
 from coat_sim.core.design_files import default_design_path, design_extension, validate_design_path
 from coat_sim.core.api import CoatService, ServiceError
 from coat_sim.core.atomic_io import replace_with_retry
@@ -45,7 +46,7 @@ def _json(value: Any) -> str:
 def _action_breadcrumb(phase: str, value: dict[str, Any]) -> None:
     """Diagnostics must not own control-request completion or GUI availability."""
     try:
-        print(f"UI action {phase}:", json.dumps(value, ensure_ascii=False), flush=True)
+        trace("ui_action_" + phase, **value)
     except Exception:
         # A console/pipe may disappear while independent project windows stay
         # alive. Logging failure cannot replace the action's actual reply.
@@ -75,9 +76,9 @@ class UiControlClient:
         self._explicit_pid = selected is not None
         self.timeout = timeout
         self._initial_endpoint = initial_endpoint
-        self._spawned = None
+        self._spawned: subprocess.Popen[bytes] | None = None
         self._startup_pending = False
-        self._startup_error = None
+        self._startup_error: str | None = None
 
     def _endpoints(self) -> list[dict[str, Any]]:
         if self._initial_endpoint is not None:
@@ -129,27 +130,26 @@ class UiControlClient:
         command = [sys.executable, str(self.root / "launcher.pyw")]
         if key not in {"launcher", "settings", "about"}:
             command.extend(["--module", key])
-        logs = self.root / "artifacts" / "logs"
-        logs.mkdir(parents=True, exist_ok=True)
-        log_path = logs / f"mcp-ui-{secrets.token_hex(6)}.log"
+        from coat_sim.project_logging import log_path as project_log_path
+        log_path = project_log_path("desktop", self.root)
         channel = UiReadyChannel()
         child_environment = os.environ.copy()
         child_environment.update(channel.child_environment())
         try:
-            with log_path.open("ab") as stream:
-                self._spawned = subprocess.Popen(command, cwd=str(self.root), stdout=stream,
-                    stderr=subprocess.STDOUT,
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                    env=child_environment)
+            self._spawned = subprocess.Popen(command, cwd=str(self.root), stdout=subprocess.DEVNULL,
+                stderr=subprocess.STDOUT,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                env=child_environment)
         except Exception:
             channel.close()
             raise
-        self.target_pid = self._spawned.pid
+        process = self._spawned
+        self.target_pid = process.pid
         self._startup_pending = True
 
         def initialize():
             try:
-                event = channel.wait(self._spawned)
+                event = channel.wait(process)
                 status = event.get("status")
                 if status == "ready":
                     endpoint = event.get("endpoint")
@@ -172,8 +172,8 @@ class UiControlClient:
                         f"诊断日志：{log_path}")
                 elif status == "timeout":
                     self._startup_error = f"窗口启动超时；诊断日志：{log_path}"
-                    if self._spawned.poll() is None:
-                        self._spawned.terminate()
+                    if process.poll() is None:
+                        process.terminate()
                 else:
                     self._startup_error = (
                         "窗口启动通知通道失败："
@@ -279,7 +279,7 @@ class UiControlServer:
                 breadcrumb = {"operation": operation,
                               "window_type": str(arguments.get("window_type", "")),
                               "action": str(arguments.get("action", ""))}
-                trace_action = operation not in ("read_window", "list_windows")
+                trace_action = operation not in ("read_window", "list_windows", "status", "register_client")
                 if trace_action:
                     _action_breadcrumb("begin", breadcrumb)
                 try:
@@ -293,6 +293,9 @@ class UiControlServer:
                         "code": "ui_error", "message": str(exc)}}
                 finally:
                     try:
+                        if not envelope.get("reply", {}).get("ok"):
+                            failure = envelope.get("reply", {}).get("error", {})
+                            trace("ui_action_failed", error=UiControlError(failure.get("code", "ui_error"), failure.get("message", "")), operation=operation)
                         if trace_action:
                             _action_breadcrumb("end", {**breadcrumb,
                                 "ok": bool(envelope.get("reply", {}).get("ok")),
@@ -369,6 +372,7 @@ class UiControlServer:
         threading.Thread(target=self._http.serve_forever, kwargs={"poll_interval": 0.1},
                          name="coat-ui-control", daemon=True).start()
         self.endpoint = endpoint
+        trace("ipc_endpoint_published", role=self.role, source_id=source_id(self.root), protocol=1)
         return dict(endpoint)
 
     def close(self) -> None:

@@ -41,8 +41,10 @@ Clients start the daemon on demand. `serve` runs it in the foreground for
 diagnosis. `--root PATH` selects an independent data/runtime root and precedes
 the command. Stopping the service preserves queued work and explicitly marks
 active computation interrupted. It does not install a Windows service, startup
-entry, firewall rule, or credentials. Logs are `daemon.log` and per-job
-`worker.log`. Work continues after client exit while this application daemon is
+entry, firewall rule, or credentials. Logs are project-local `artifacts/logs/scheduler.log` and
+`artifacts/logs/compute-worker.log` (`remote-worker.log` for remote execution).
+Each channel is limited to 2 MiB plus two rotating backups; job failures return
+the actual diagnostic file path. Job state/result files remain in runtime. Work continues after client exit while this application daemon is
 running; machine shutdown and service termination interrupt computation.
 
 The existing algorithm CLI accepts its previous inputs and defaults, plus

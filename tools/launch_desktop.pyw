@@ -103,20 +103,22 @@ def main() -> int:
             print("CoatSim QA desktop-start budget exhausted or unavailable.", file=sys.stderr)
         return 78
     try:
-        log_directory = PROJECT_ROOT / "artifacts" / "logs"
-        log_directory.mkdir(parents=True, exist_ok=True)
-        log_path = log_directory / ("desktop-" + datetime.now().strftime("%Y%m%d-%H%M%S")
-                                    + "-" + str(os.getpid()) + ".log")
-        log = log_path.open("a", encoding="utf-8", buffering=1)
+        from coat_sim.project_logging import ProjectLog
+        log = ProjectLog("desktop", PROJECT_ROOT)
+        log_path = log.path
     except OSError as exc:
         _alert("无法建立启动日志：" + str(exc))
         return 2
     # pythonw has no console streams. Install real file streams before loading
     # Qt, modules, or libraries that write diagnostics or use faulthandler.
     sys.stdout = sys.stderr = log
-    sys.__stdout__ = sys.__stderr__ = log
+    for name in ("__stdout__", "__stderr__"):
+        setattr(sys, name, log)
+    print("Desktop bootstrap:", datetime.now().astimezone().isoformat(timespec="seconds"), "PID:", os.getpid(), flush=True)
+    print("Python:", sys.executable, flush=True)
     try:
         if _restart_with_desktop_host():
+            print("Desktop bootstrap handed off to branded host", flush=True)
             log.flush()
             return 0
     except Exception as exc:
@@ -140,6 +142,7 @@ def main() -> int:
     # exceptions. Walking every Python thread there can itself fault (as in
     # desktop-20261002-194701-48048.log). Keep normal exception logs and WER;
     # native stack dumping on Windows is an explicit diagnostic opt-in.
+    faulthandler.disable()
     if sys.platform != "win32" or os.environ.get("COAT_NATIVE_TRACE") == "1":
         try:
             faulthandler.enable(file=log, all_threads=sys.platform != "win32")

@@ -132,6 +132,10 @@ def main(argv=None):
     parser.add_argument('owner_pid', type=int)
     parser.add_argument('owner_instance')
     args = parser.parse_args(argv)
+    from coat_sim.project_logging import install_process_log
+    from coat_sim.assistant_diagnostics import trace
+    install_process_log('remote-worker', args.root)
+    trace('remote_worker_start', role='remote-worker')
     return run(args.root, args.job_id, args.owner_pid, args.owner_instance)
 
 

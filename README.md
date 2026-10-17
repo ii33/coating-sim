@@ -32,7 +32,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe launcher.py
 ```
 
-Linux/macOS 将解释器路径换为 `.venv/bin/python`；Linux 另需发行版的 Qt 系统图形库。外观渲染还需要当前声明在 `requirements-test.txt` 的 Mitsuba/DrJit；独立安装器默认选择 `desktop + appearance`。Windows 使用 `start-dev.bat`（PowerShell 7+）；`start.sh`、`start-cloud.sh` 保留跨平台启动用途。项目侧文件与兼容边界见[安装与依赖合同](docs/installation.md)。
+Linux/macOS 将解释器路径换为 `.venv/bin/python`；Linux 另需发行版的 Qt 系统图形库。外观渲染还需要当前声明在 `requirements-test.txt` 的 Mitsuba/DrJit；独立安装器默认选择 `desktop + appearance`。各平台统一使用项目解释器运行 `launcher.py`；安装器生成的启动脚本和快捷方式也使用此入口。项目侧文件与兼容边界见[安装与依赖合同](docs/installation.md)。
 
 ### 完整示例工程
 
@@ -55,7 +55,7 @@ Linux/macOS 将解释器路径换为 `.venv/bin/python`；Linux 另需发行版�
 ## 平台与计算边界
 
 - **CPU 是默认起点。** 不同算法开放的后端不同，当前桌面膜系优化工作路径为 CPU。
-- **GPU 不是通用开关。** CUDA、DirectML 依赖操作系统、Python、驱动、设备与具体任务；安装成功或设备被探测到不等于数值验收通过。DirectML 配置限定 Windows / Python 3.10–3.12。
+- **GPU 按任务区分。** Intel 核显 DirectML 平面沉积数值已有有限验证，遮板边界仍为实验范围；默认设备不保证绑定 Intel。膜系 XPU 批评估超时，桌面优化保持 CPU；外观没有 Intel GPU 后端，CPU 外观可用。设备弹窗说明支持范围与不可用原因，详见[核显支持与实测限制](docs/intel-integrated-gpu-support.md)。CUDA、DirectML 仍依赖具体环境；DirectML 配置限定 Windows / Python 3.10–3.12。
 - **外观 CUDA 仍是研究预览。** 已有特定 NVIDIA 硬件上的低分辨率流程验证，但不能外推为所有设备或完整分辨率的性能、颜色准确度保证。该外观后端未实现 AMD / Intel GPU 支持。
 - **原生验证与自动化测试分开。** Windows 原生冒烟、Linux 离屏测试、CI、网络安装和物理标定各有不同范围。干净系统首次安装、跨平台/驱动覆盖与完整在线部署仍需单独验收。
 

@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import uuid
+from typing import Any
 
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
@@ -28,7 +29,7 @@ class AssistantRunCoordinator(QObject):
 
     def __init__(self, parent: QObject):
         super().__init__(parent)
-        self._worker = None
+        self._worker: subprocess.Popen[bytes] | None = None
         self._worker_tree = None
         self._request_id = ""
         self._run_active = False
@@ -127,12 +128,10 @@ class AssistantRunCoordinator(QObject):
             self._worker_tree.close()
             self._worker_tree = None
         root = UI_DIR.parents[1]
-        log_dir = root / "artifacts" / "logs"
-        log_dir.mkdir(parents=True, exist_ok=True)
         environment = os.environ.copy()
         environment.update({"PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1",
                             "PYTHONUNBUFFERED": "1", "COAT_UI_PID": str(os.getpid())})
-        kwargs = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)}
+        kwargs: dict[str, Any] = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)}
         if sys.platform != "win32":
             kwargs["start_new_session"] = True
         worker_executable = None
@@ -141,13 +140,12 @@ class AssistantRunCoordinator(QObject):
             console_executable = worker_executable.with_name("python.exe")
             if console_executable.is_file():
                 worker_executable = console_executable
-        from coat_sim.process_entry import module_command
-        command = module_command("coat_sim.agent.worker",
+        from coat_sim.project_logging import logged_module_command
+        command = logged_module_command("coat_sim.agent.worker", channel="assistant-worker",
+            project_root=root, stderr_only=True,
             interpreter=str(worker_executable) if worker_executable else None, unbuffered=True)
-        with (log_dir / "assistant-worker.log").open("ab") as log:
-            process = subprocess.Popen(command,
-                                       cwd=str(root), env=environment, stdin=subprocess.PIPE,
-                                       stdout=subprocess.PIPE, stderr=log, **kwargs)
+        process = subprocess.Popen(command, cwd=str(root), env=environment, stdin=subprocess.PIPE,
+                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, **kwargs)
         self._worker = process
         self._worker_tree = ProcessTree(process)
 

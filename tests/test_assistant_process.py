@@ -558,3 +558,25 @@ def test_explicit_abandon_wait_does_not_cancel_already_committed_exit(monkeypatc
     assert result["pending_clients"] == [client.client_id]
     assert "lifecycle_cancel" not in calls
     assert registry._exiting is False
+
+
+@pytest.mark.parametrize("protocol", [None, 1, 2, True])
+def test_assistant_service_protocol_compatibility_never_restarts_existing_owner(tmp_path, monkeypatch, protocol):
+    state, process_start = assistant_process_module._process_identity(os.getpid())
+    assert state == "alive" and process_start
+    overrides = {} if protocol is None else {"assistant_protocol": protocol}
+    endpoint = _AuthenticatedLifecycleEndpoint(tmp_path, pid=os.getpid(), process_start=process_start,
+        generation="assistant-generation", response_overrides=overrides)
+    endpoint.root.joinpath("artifacts/runtime").mkdir(parents=True)
+    endpoint.root.joinpath("artifacts/runtime", f"assistant-{os.getpid()}.json").write_text(json.dumps(endpoint.endpoint))
+    monkeypatch.setattr(assistant_process_module.subprocess, "Popen", lambda *_a, **_k: pytest.fail("Existing owner must not be replaced"))
+    try:
+        client = AssistantProcessClient(tmp_path, application_root=tmp_path/"app", timeout=2)
+        if protocol is None or (type(protocol) is int and protocol == 1):
+            assert client.ensure_running()["pid"] == os.getpid()
+        else:
+            with pytest.raises(UiControlError) as caught:
+                client.ensure_running()
+            assert caught.value.code == "assistant_protocol_mismatch"
+    finally:
+        endpoint.close()

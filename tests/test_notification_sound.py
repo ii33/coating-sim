@@ -2,7 +2,6 @@
 import builtins
 import contextlib
 import importlib.util
-import io
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -95,47 +94,6 @@ class NotificationSoundTests(unittest.TestCase):
         source = (ROOT / "coat_sim/ui/qml/AssistantBubble.qml").read_text()
         self.assertIn("desktop.menuPosition(", source)
         self.assertNotIn("assistant.menuPosition(", source)
-
-
-class RuntimePreflightTests(unittest.TestCase):
-    def preflight(self, missing=(), versions=None):
-        module = load_module("preflight_under_test", ROOT / "tools/check_cloud_runtime.py")
-        versions = versions or {}
-
-        def version(name):
-            if name in missing:
-                raise module.metadata.PackageNotFoundError(name)
-            return versions.get(name, "6.11.2" if name.startswith("PySide6") else "1.25.0")
-
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            (root / "requirements.txt").write_text("numpy>=1.24\nPySide6-Addons>=6.8,<7\n")
-            output = io.StringIO()
-            with patch.object(module, "ROOT", root), \
-                    patch.object(module.metadata, "version", side_effect=version), \
-                    patch.object(module.importlib, "import_module"), contextlib.redirect_stdout(output):
-                result = module.main()
-        return result, output.getvalue()
-
-    def test_missing_sound_extension_warns_but_allows_startup(self):
-        code, text = self.preflight(missing={"PySide6-Addons"})
-        self.assertEqual(code, 0)
-        self.assertIn("降级", text)
-
-    def test_available_sound_extension_has_no_degradation(self):
-        code, text = self.preflight()
-        self.assertEqual(code, 0)
-        self.assertNotIn("降级", text)
-
-    def test_missing_required_dependency_still_fails(self):
-        code, text = self.preflight(missing={"numpy"})
-        self.assertEqual(code, 2)
-        self.assertIn("未安装：numpy", text)
-
-    def test_installed_unsupported_extension_version_still_fails(self):
-        code, text = self.preflight(versions={"PySide6-Addons": "7.0.0"})
-        self.assertEqual(code, 2)
-        self.assertIn("版本不符合要求：PySide6-Addons", text)
 
 
 if __name__ == "__main__":

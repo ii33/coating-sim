@@ -13,7 +13,10 @@ from PySide6.QtCore import QObject, QTimer, Signal, Slot
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from coat_sim.assistant_process import ASSISTANT_OPERATIONS, ApplicationClientRegistry
+from coat_sim.assistant_process import ASSISTANT_OPERATIONS, ASSISTANT_PROTOCOL, ApplicationClientRegistry
+from coat_sim.assistant_diagnostics import source_id, trace
+from coat_sim.ui.control import PROJECT_ROOT
+from coat_sim.version import BUILD_IDENTITY
 from coat_sim.core.process_identity import _process_identity
 from coat_sim.ui.assistant_desktop import DesktopAssistantController
 from coat_sim.ui.control import UiControlError, UiControlServer
@@ -68,6 +71,8 @@ class AssistantProcessHost(QObject):
         if operation == "status":
             return {"application": "coat_sim", "pid": os.getpid(), "process_start": self.process_start,
                     "generation": self.generation, "nonce": arguments.get("nonce"), "state": "ready",
+                    "assistant_protocol": ASSISTANT_PROTOCOL, "version": BUILD_IDENTITY.version,
+                    "source_id": source_id(PROJECT_ROOT),
                     "capabilities": ["activate_project", "project_window"],
                     "enabled": bool(cast(Any, self.controller.bridge).enabled),
                     "bubble_created": self.controller._bubble is not None,
@@ -263,6 +268,8 @@ def run_assistant(runtime_root: Path) -> int:
     engine = QQmlApplicationEngine()
     theme.attach_engine(engine)
     host = AssistantProcessHost(engine, runtime_root)
+    app.aboutToQuit.connect(lambda: trace("assistant_qt_quit", state=str(host._exit.get("state", "unknown"))))
     app.aboutToQuit.connect(host.close)
     host.start()
+    trace("assistant_service_ready", protocol=ASSISTANT_PROTOCOL, generation=host.generation)
     return app.exec()

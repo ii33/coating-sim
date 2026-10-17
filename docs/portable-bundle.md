@@ -1,6 +1,6 @@
-# CoatSim 便携版（Windows x64）
+# 旧版 Windows 便携运行时记录
 
-便携版是 Windows x64 可启动运行时 ZIP，不是 `.coatasset` 设计/计算数据包。安装器由独立的 [coating-sim-installer](https://github.com/ii33/coating-sim-installer)（[CNB 镜像](https://cnb.cool/nonereason/coating-sim-installer)）维护，项目侧边界见[安装与依赖合同](installation.md)。已有完整运行时 ZIP 的用户，将其解压到可写目录后双击包根目录的 `Launch-CoatSim.cmd`。
+本文只记录 2026-10-07 旧版便携运行时的布局和迁移设计，供识别已有包使用。当前仓库不再提供这些启动和构建脚本，也没有可核验的对应运行时 ZIP；本文不是当前安装或启动教程。安装部署统一使用独立的 [coating-sim-installer](https://github.com/ii33/coating-sim-installer)（[CNB 镜像](https://cnb.cool/nonereason/coating-sim-installer)），正式应用入口为项目解释器运行 `launcher.py`。项目侧边界见[安装与依赖合同](installation.md)。便携运行时 ZIP 与 `.coatasset` 设计/计算数据包不同。
 
 ## 首次启动与移动目录
 
@@ -18,15 +18,10 @@ CPU GUI 和仿真在本机离线运行。DirectML 是可选 GPU 后端，仍要�
 
 启动器不扫描或导入所有依赖，也不检查整套材料数据；启动时只做路径修正并启动 GUI。构建交付时会在独立目录运行一次功能冒烟验证。当前构建宿主并非全新 Windows 虚拟机，因此不能据此声称完成全新系统验收。
 
-## 构建与校验
+## 历史验证边界
 
-2026-10-14 本轮审计的源码基线（`bc2fccc7`）不含 `tools/build_portable_bundle.py` 及对应的 portable bootstrap、preflight、delta helper，也没有可核验的运行时 ZIP 和配套发行 manifest/SHA 文件。下面的命令保留为 2026-10-07 的历史构建参考，不能从该源码快照直接重建便携运行时。须先恢复并审核这些构建/启动入口，再在 64 位 Windows 用真实运行包验收首次启动、目录迁移、失败时保留旧运行时指针和数据，以及启动日志恢复。Linux 上的文档/资源隔离验证 ZIP 只证明选定文件的布局与字节一致，不能替代上述 Windows 运行验收。
-
-构建器从 `.conda` 原环境打包，工具 wheel 只安装在 `build/portable_tools_condapack_20261007/`，不会更改原环境或用户级 Miniconda。完整 ZIP 和外置 manifest、SHA-256 文件位于 `dist/`。可在本项目根目录运行：
-
-```powershell
-$env:PYTHONPATH = "build\portable_tools_condapack_20261007\site;$($env:CONDA_EXE | Split-Path -Parent | Split-Path -Parent)\Lib\site-packages"
-.\.conda\python.exe tools\build_portable_bundle.py --conda-pack-site build\portable_tools_condapack_20261007\site
-```
-
-输出目录或 ZIP 已存在时，构建器会拒绝覆盖。SHA-256 请以 `dist/*.sha256` 和外置 manifest 为准。
+2026-10-14 审计基线 `bc2fccc7` 已不含旧便携构建器、bootstrap、preflight
+和 delta helper，也没有配套发行 manifest/SHA 文件。旧命令已移除，不能从当前
+源码按本文重建或启动便携运行时。已有包的行为须以该包实际内容和对应版本说明为准。
+Linux 文档/资源隔离 ZIP 仅验证选定文件的布局和字节一致性，不代表 Windows
+首次启动、目录迁移、失败恢复或完整部署验收。

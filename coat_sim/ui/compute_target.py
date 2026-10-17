@@ -28,6 +28,20 @@ TASK_EXECUTORS = {
     "appearance": "appearance_render",
 }
 _PREFS_LOCK = threading.RLock()
+_TASK_SUPPORT_SUMMARIES = {
+    "deposition": (
+        "已支持：CPU 沉积。Intel 核显 DirectML 平面数值已有限验证；遮板边界为实验范围。"
+        "默认 DirectML 不保证选中 Intel，需核对实际设备与结果后端。"
+    ),
+    "film_optimization": (
+        "已支持：CPU 膜系优化。Intel XPU 仅基础 FP64/complex128 探测通过；"
+        "实际批评估两次超时，尚未通过任务验收，桌面优化保持 CPU。"
+    ),
+    "appearance": (
+        "已支持：CPU 外观。GPU 为 NVIDIA CUDA 实验路径，需单独检测。"
+        "Intel 核显外观 GPU 不可用：当前没有 Intel 渲染后端；CPU 渲染不代表 GPU 支持。"
+    ),
+}
 
 
 class ComputeTargetError(ValueError):
@@ -184,6 +198,11 @@ class ComputeTarget(QObject):
     def message(self):
         return self._message
 
+    @Property(str, constant=True)
+    def supportSummary(self):
+        """Task acceptance scope is separate from transient runtime availability."""
+        return _TASK_SUPPORT_SUMMARIES[self.task]
+
     @Property(bool, notify=changed)
     def canSubmit(self):
         return self._ready and any(row["id"] == self._device_id and row["available"] for row in self._devices)
@@ -234,7 +253,8 @@ class ComputeTarget(QObject):
     def setDeviceId(self, device_id: str):
         if any(row["id"] == device_id and row["available"] for row in self._devices):
             self._device_id = device_id
-            self._message = "所选设备已就绪。"
+            selected = next(row for row in self._devices if row["id"] == device_id)
+            self._message = selected.get("support_note") or "所选设备已就绪。"
             _save_preference(self._prefs_path, self.task, self._host_id, device_id)
             self.changed.emit()
 
@@ -245,7 +265,7 @@ class ComputeTarget(QObject):
         selected = next((row for row in self._devices if row["id"] == self._device_id), None)
         self._message = (selected.get("reason") or "所选设备不可用。"
                          if selected is not None and not selected["available"]
-                         else "所选设备已就绪。")
+                         else (selected.get("support_note") if selected else "") or "所选设备已就绪。")
         self.changed.emit()
 
     def set_appearance_backend(self, backend: str):
@@ -282,7 +302,7 @@ class ComputeTarget(QObject):
             # Enumeration is not executor support: current production solvers
             # and the forward worker are CPU-only, even on a CUDA-capable host.
             return [{**row, "available": False,
-                     "reason": "膜系优化当前使用 CPU 求解，尚未接入 GPU 执行。"}
+                     "reason": "膜系优化当前使用 CPU 求解；Intel XPU 批评估尚未通过任务验收。"}
                     if row["backend"] != "CPU" else row for row in devices]
         if self.task == "deposition":
             filtered = []
@@ -394,10 +414,12 @@ class ComputeTarget(QObject):
                     _save_preference(self._prefs_path, self.task, self._host_id, self._device_id)
             self._ready = True
             selected = next((row for row in self._devices if row["id"] == self._device_id), None)
-            self._message = ("本机 CPU 可用；可选加速设备探测失败。" if phase == "optional-error" and self.canSubmit
-                             else "主机能力已核对。" if self.canSubmit
-                             else selected.get("reason") if selected and selected.get("reason")
-                             else "所选设备不可用；请选择可用设备。")
+            if phase == "optional-error" and self.canSubmit:
+                self._message = "本机 CPU 可用；可选加速设备探测失败。"
+            elif self.canSubmit:
+                self._message = (selected.get("support_note") if selected else "") or "主机能力已核对。"
+            else:
+                self._message = (selected.get("reason") if selected else "") or "所选设备不可用；请选择可用设备。"
             if phase == "local" and self.task == "deposition":
                 self._future = self._executor.submit(self._probe_local_optional, generation)
                 self._poll.start()

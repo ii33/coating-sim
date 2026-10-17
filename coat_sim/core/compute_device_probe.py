@@ -163,6 +163,8 @@ def probe_local_compute_targets(
         "available": True,
         "reason": "",
         "physical_id": "",
+        "support_level": "supported",
+        "support_note": "CPU 沉积路径已支持。",
     }]
 
     for identifier, backend, runtime_name, script, default_name in (
@@ -180,6 +182,14 @@ def probe_local_compute_targets(
             "available": result["available"],
             "reason": result["reason"],
             "physical_id": "",
+            "runtime_probe": "passed" if result["available"] else "failed",
+            "support_level": "experimental",
+            "support_note": (
+                "DirectML 实验加速：Intel 核显平面沉积数值已有限验证；遮板边界精度待验证。"
+                "当前使用默认或 AMD 优先设备，不保证绑定 Intel；基础探测通过不代表完整任务验收。"
+                if backend == "DirectML" else
+                "CUDA 沉积加速：基础运行探测通过不代表所有输入或完整精度已验收。"
+            ),
         })
     return rows
 

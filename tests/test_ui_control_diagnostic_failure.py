@@ -1,7 +1,7 @@
 """A disconnected launcher output stream cannot strand authenticated requests."""
 from __future__ import annotations
 
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr
 from threading import Event
 from typing import Any
 
@@ -41,7 +41,7 @@ def test_control_dispatch_completes_when_begin_or_end_output_fails(operation, er
     server = UiControlServer(dispatch)
     envelope: dict[str, Any] = {"operation": operation, "arguments": {}, "done": Event(), "expired": False}
     stream = FailingOutput(error_type, phase)
-    with redirect_stdout(stream):
+    with redirect_stderr(stream):
         server._relay.receive(envelope)
     assert envelope["done"].is_set()
     assert envelope["reply"] == {"ok": True, "result": {"accepted": True, "operation": operation}}
@@ -59,7 +59,7 @@ def test_end_log_failure_preserves_actual_action_error_and_done(error):
         raise error
     server = UiControlServer(dispatch)
     envelope: dict[str, Any] = {"operation": "open_window", "arguments": {}, "done": Event(), "expired": False}
-    with redirect_stdout(FailingOutput(OSError, "end")):
+    with redirect_stderr(FailingOutput(OSError, "end")):
         server._relay.receive(envelope)
     assert envelope["done"].is_set()
     assert envelope["reply"]["ok"] is False

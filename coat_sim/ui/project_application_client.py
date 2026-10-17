@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from concurrent.futures import Future
 import os
+import time
 from threading import Event, Thread
 from typing import Any, cast
 from uuid import uuid4
@@ -11,6 +12,7 @@ from weakref import WeakKeyDictionary
 from PySide6.QtCore import QObject, QTimer
 
 from coat_sim.assistant_process import AssistantProcessClient
+from coat_sim.assistant_diagnostics import client_trace, trace
 from coat_sim.core.process_identity import _process_identity
 from coat_sim.core.project_film_session import ProjectFilmWorkspace
 from coat_sim.core.project_store import ProjectStore
@@ -45,6 +47,8 @@ class ProjectApplicationClient(QObject):
         self._endpoint: dict | None = None
         self._stopped = False
         self._last_error = ""
+        self._registered_once = False
+        self._registration_started = 0.0
         self._launcher_ids: WeakKeyDictionary[Any, str] = WeakKeyDictionary()
         self._timer = QTimer(self)
         self._timer.setInterval(500)
@@ -52,6 +56,13 @@ class ProjectApplicationClient(QObject):
         self._retry = QTimer(self)
         self._retry.setInterval(10000)
         self._retry.timeout.connect(self._register)
+
+    def _trace(self, event: str, *, error: BaseException | None = None, **values: Any) -> None:
+        root = getattr(self.client, "application_root", None)
+        if root is None:  # Test/embedded client adapters may have no installation root.
+            trace(event, error=error, **values)
+        else:
+            client_trace(root, event, error=error, **values)
 
     def start(self, endpoint: dict) -> None:
         self._endpoint = dict(endpoint)
@@ -66,6 +77,7 @@ class ProjectApplicationClient(QObject):
         if self._stopped or self._pending is not None or self._endpoint is None:
             return
         self.admission.registration_started()
+        self._registration_started = time.monotonic()
         endpoint = dict(self._endpoint)
         future: Future = Future()
         self._pending = future
@@ -92,6 +104,10 @@ class ProjectApplicationClient(QObject):
         try:
             future.result()
             self.admission.registration_succeeded()
+            if not self._registered_once or self._last_error:
+                self._trace("assistant_client_registered", role=self.role, generation=self.generation,
+                      elapsed_s=round(time.monotonic()-self._registration_started,3))
+            self._registered_once = True
             self._last_error = ""
         except Exception as exc:
             self.admission.registration_failed(getattr(exc, "code", "registration_failed"), str(exc))
@@ -100,6 +116,8 @@ class ProjectApplicationClient(QObject):
             message = f"共享助手连接失败，将自动重试：{exc}"
             if message != self._last_error:
                 self._last_error = message
+                self._trace("assistant_registration_failed", error=exc, role=self.role, generation=self.generation,
+                      elapsed_s=round(time.monotonic()-self._registration_started,3))
                 self.bridge.launchError.emit(message)
 
     def stop(self) -> None:

@@ -5,12 +5,14 @@ import os
 from pathlib import Path
 import re
 import subprocess
+from typing import Any
 import sys
 import time
 import threading
 from urllib.request import Request, urlopen, ProxyHandler, build_opener
 from urllib.error import URLError, HTTPError
 from coat_sim.process_entry import module_command
+from coat_sim.project_logging import log_path
 
 class SchedulerClient:
     _endpoints = {}
@@ -75,16 +77,14 @@ class SchedulerClient:
         self._endpoints.pop(str(self.root), None)
         runtime = self.endpoint.parent
         runtime.mkdir(parents=True, exist_ok=True)
-        options = {'cwd': str(Path(__file__).resolve().parents[2]), 'stdin': subprocess.DEVNULL}
+        options: dict[str, Any] = {'cwd': str(Path(__file__).resolve().parents[2]), 'stdin': subprocess.DEVNULL}
         if os.name == 'nt':
             options['creationflags'] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
         else:
             options['start_new_session'] = True
         # Do not inherit a parent's stdio pipe: a closed MCP host cannot kill/block us.
-        with (runtime / 'daemon.log').open('ab') as log:
-            command = module_command('coat_sim.scheduler', '--root', str(self.root), 'serve')
-            process = subprocess.Popen(command,
-                                       stdout=log, stderr=log, **options)
+        command = module_command('coat_sim.scheduler', '--root', str(self.root), 'serve')
+        process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **options)
         self._processes[str(self.root)] = process
         deadline = time.monotonic() + 90
         while time.monotonic() < deadline:
@@ -94,9 +94,9 @@ class SchedulerClient:
                 self._endpoints.pop(str(self.root), None)
             except (OSError, ValueError, URLError):
                 if process.poll() not in (None, 0):
-                    raise RuntimeError(f'scheduler_start_failed: exit={process.returncode}; {runtime / "daemon.log"}')
+                    raise RuntimeError(f'scheduler_start_failed: exit={process.returncode}; {log_path("scheduler", self.root)}') from None
                 time.sleep(.1)
-        raise RuntimeError('scheduler_start_timeout: inspect ' + str(runtime / 'daemon.log'))
+        raise RuntimeError('scheduler_start_timeout: inspect ' + str(log_path("scheduler", self.root)))
 
     def submit(self, spec, job_id=None, metadata=None):
         from uuid import uuid4

@@ -2,6 +2,7 @@
 from dataclasses import asdict
 import json
 import os
+import sys
 from pathlib import Path
 import tempfile
 import time
@@ -461,7 +462,7 @@ def run(root, job_id, owner_pid, owner_instance):
         outcome = {'state': 'cancelled' if isinstance(exc, InterruptedError) else 'failed',
                    'result': partial_result,
                    'error_code': 'cancelled' if isinstance(exc, InterruptedError) else 'result_save_failed' if isinstance(exc, ResultSaveError) else 'algorithm_failed',
-                   'error': str(exc), 'diagnostic_file': str(directory / 'worker.log'),
+                   'error': str(exc), 'diagnostic_file': str(getattr(sys.stderr, 'path', Path(root) / 'artifacts/logs/compute-worker.log')),
                    'elapsed_s': time.monotonic() - started}
         if partial_result is None:
             outcome['result_unavailable_reason'] = unavailable_reason

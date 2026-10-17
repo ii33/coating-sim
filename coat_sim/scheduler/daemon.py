@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+from typing import Any
 import sys
 from coat_sim.process_entry import is_frozen, module_command
 import threading
@@ -443,7 +444,7 @@ class Scheduler:
         frozen = JobSpec.parse_frozen(spec)
         if frozen.fingerprint != value['input_digest']: raise ValueError('frozen_input_digest_mismatch')
         write_text(directory / 'spec.json', frozen.canonical_json)
-        options = {'cwd': str(Path(__file__).resolve().parents[2]), 'stdin': subprocess.DEVNULL}
+        options: dict[str, Any] = {'cwd': str(Path(__file__).resolve().parents[2]), 'stdin': subprocess.DEVNULL}
         if os.name == 'nt': options['creationflags'] = subprocess.CREATE_NO_WINDOW
         else: options['start_new_session'] = True
         process = None
@@ -451,11 +452,10 @@ class Scheduler:
             interpreter, environment = _appearance_gpu_route(frozen, self.root)
             if environment is not None:
                 options['env'] = environment
-            with (directory / 'worker.log').open('ab') as log:
-                command = module_command('coat_sim.scheduler', '--root', str(self.root),
-                    'worker', job_id, str(os.getpid()), self.owner,
-                    **({'interpreter': interpreter} if interpreter is not None else {}))
-                process = subprocess.Popen(command, stdout=log, stderr=log, **options)
+            command = module_command('coat_sim.scheduler', '--root', str(self.root),
+                'worker', job_id, str(os.getpid()), self.owner,
+                **({'interpreter': interpreter} if interpreter is not None else {}))
+            process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **options)
             self.guard.attach(process)
             self.store.set_worker(job_id, process.pid, _process_identity(process.pid)[1])
             write_json(directory / 'launch.json', {'instance': self.owner})
@@ -496,7 +496,7 @@ class Scheduler:
                            'error': f'Worker did not publish a completion envelope; exit={code}', 'exit_code': code}
             if code == 74:
                 outcome = {'state': 'failed', 'error_code': 'result_save_failed',
-                           'error': 'Worker completion envelope could not be saved; inspect worker.log', 'exit_code': code}
+                            'error': 'Worker completion envelope could not be saved; inspect artifacts/logs/compute-worker.log', 'exit_code': code}
             if code and outcome.get('state') == 'succeeded':
                 outcome = {'state': 'failed', 'error_code': 'worker_crashed',
                            'error': f'Worker exit={code}; saved output not accepted as success', 'exit_code': code}

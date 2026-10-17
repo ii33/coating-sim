@@ -11,9 +11,7 @@
 | `README.md`、`README.en.md`、`LICENSE` | 双语入口与许可 |
 | `AGENTS.md` | 当前仓库维护约定 |
 | `agent.md` | 助手运行时读取的提示词资源，不是历史交接记录 |
-| `launcher.py`、`launcher.pyw` | 程序入口；无终端启动、桌面宿主及测试仍引用 `.pyw` |
-| `start-dev.ps1`、`start-dev.bat` | Windows 开发启动，PowerShell 7+，支持明确项目路径与解释器 |
-| `start.sh`、`start-cloud.sh` | POSIX 桌面/云桌面入口，有离线包装回归测试 |
+| `launcher.py`、`launcher.pyw` | 正式入口及应用内无终端适配；独立安装器调用 `launcher.py` |
 | `requirements.txt`、`requirements-test.txt` | 运行依赖与外观渲染依赖；后者也含默认外观功能需要的 Mitsuba/DrJit |
 | `requirements-analysis.txt`、`requirements-analysis-lock.txt` | 静态分析与可复现依赖约束 |
 | `requirements-sandbox.txt`、`requirements-remote-service.txt`、`environment.yml` | 沙箱、远端服务、Conda 环境规范 |
@@ -35,8 +33,7 @@
 
 ## 2026-10-17 清理记录
 
-删除硬编码 `.conda` 且不定位工作目录的 `start.bat`、`dev.bat`；Windows 使用
-`start-dev.bat` 或明确的 `start-dev.ps1`。删除仅用于一次性创建/修补外部
+已删除硬编码 `.conda` 且不定位工作目录的 `start.bat`、`dev.bat`。删除仅用于一次性创建/修补外部
 `other/ai` 项目的六个脚本：`extract_ai.py`、`finalize_ai_extraction.py`、
 `fix_ai_paths.py`、`fix_ai_integration.py`、`fix_ai_verification.py`、`write_ai_docs.py`。
 应用、测试和 CI 没有调用它们；资源审计工具保留这些历史文件名的只读识别能力，
@@ -46,3 +43,19 @@
 两份 2026-10-11 交接文档内容原样归档，生成验收哈希的工具使用新路径；
 既有历史验收记录不重写。删除的跟踪文件均可由 Git 历史恢复，未删除本地环境、
 用户工程或运行日志。
+
+### 统一正式入口
+
+继续删除重复的 `start-dev.bat`、`start-dev.ps1`、`start.sh`、`start-cloud.sh`，
+以及对应包装测试 `tests/test_start_scripts.py`。源码直接使用项目 `.venv` 解释器运行
+`launcher.py`；独立安装器生成的脚本与快捷方式使用相同协议。Windows 开发命令使用
+PowerShell 7+，无需另存启动脚本。仓库外已有的固定启动文件不属于此次删除范围。
+
+删除失效的 `legacy/launcher_gpu.py`、`legacy/launcher_tk.py` 与配套
+`legacy/launcher.qml`；它们指向旧独立模块和已不存在的背景目录，不再属于当前
+工程启动流程。`legacy/` 中算法说明和曲线测试仍依赖的实现保持原样。
+`launcher.pyw`、`tools/launch_desktop.pyw` 仍被应用内重新打开、任务栏与桌面宿主
+使用，继续保留；`tools/setup_sandbox.py` 是现有 LPAC 功能的可信环境准备工具，
+没有被独立安装器替代。
+
+旧云包装器专用 `tools/check_cloud_runtime.py` 及其四个预检测试同时移除；实际通知音降级测试继续保留。依赖检查与部署由独立安装器维护。

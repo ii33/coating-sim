@@ -186,14 +186,23 @@ Item {
                         readonly property var row: selector.target.devices[index]
                         width: deviceBox.popup.width
                         enabled: row ? row.available : false
-                        text: row ? row.label + (row.available ? "" : " · 不可用") : ""
-                        ToolTip.visible: hovered && row && !row.available
-                        ToolTip.text: row ? row.reason : ""
+                        text: row ? row.label + (!row.available ? " · 不可用"
+                                    : row.support_level === "experimental" ? " · 实验加速" : "") : ""
+                        ToolTip.visible: hovered && row && !!(row.reason || row.support_note)
+                        ToolTip.text: row ? (row.reason || row.support_note || "") : ""
                     }
                 }
                 ThemeControls.ThemeLabel {
                     Layout.fillWidth: true
                     text: selector.target.message
+                    wrapMode: Text.WordWrap
+                    muted: true
+                }
+                ThemeControls.ThemeLabel {
+                    objectName: "computeTargetSupportSummary"
+                    Layout.fillWidth: true
+                    text: selector.target.supportSummary || ""
+                    visible: text.length > 0
                     wrapMode: Text.WordWrap
                     muted: true
                 }
