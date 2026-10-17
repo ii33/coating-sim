@@ -34,7 +34,7 @@ _TASK_SUPPORT_SUMMARIES = {
         "默认 DirectML 不保证选中 Intel，需核对实际设备与结果后端。"
     ),
     "film_optimization": (
-        "已支持：CPU 膜系优化。Intel XPU 后端 FP64/complex128 已完成本机限定数值和性能验证；"
+        "已支持：CPU 膜系优化。Intel 8086:7D67 的 XPU 后端 FP64/complex128 已在 sakuya 限定实测通过，其他硬件未验收；"
         "并非普遍快于 CPU。当前窗口尚未接入 XPU 设备和批量执行选择，继续使用 CPU。"
     ),
     "appearance": (
