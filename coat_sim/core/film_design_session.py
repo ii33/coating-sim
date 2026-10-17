@@ -210,6 +210,14 @@ class FilmDesignEditSession:
             optical = substrate["optical_sets"][0]
             design["substrate"].update(material_id=substrate["id"],
                                        optical_set_id=optical["id"])
+        self._bind_default_air(design)
+        design["expression"]["symbols"] = {
+            "H": self._default_symbol_record(), "L": self._default_symbol_record()
+        }
+        return design
+
+    def _bind_default_air(self, design: dict[str, Any]) -> None:
+        """Bind only a fresh draft to the catalog-owned ideal Air dataset."""
         air = next((row for row in self._catalog_options["medium"]
                     if row.get("id") == AIR_MATERIAL_ID), None)
         air_set = next((row for row in (air or {}).get("optical_sets", [])
@@ -219,10 +227,6 @@ class FilmDesignEditSession:
                       "optical_set_id": AIR_OPTICAL_SET_ID}
             design["incident_medium"] = dict(medium)
             design["exit_medium"] = dict(medium)
-        design["expression"]["symbols"] = {
-            "H": self._default_symbol_record(), "L": self._default_symbol_record()
-        }
-        return design
 
     @staticmethod
     def _default_symbol_record() -> dict[str, Any]:

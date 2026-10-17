@@ -28,8 +28,9 @@ class ProjectFilmEditSession(FilmDesignEditSession):
         self._picker_catalog_source = self.service._project_materials
 
     def _default_design(self) -> dict[str, Any]:
-        """Start project films unbound; catalog visibility is not a selection."""
+        """Keep layers/substrate unbound; new surrounding media default to Air."""
         design = self.service.new_design()
+        self._bind_default_air(design)
         design["expression"]["symbols"] = {
             "H": self._default_symbol_record(), "L": self._default_symbol_record(),
         }

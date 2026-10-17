@@ -15,7 +15,7 @@ ColumnLayout {
     function indexFor(options, value) {
         for (let i = 0; i < options.length; ++i)
             if (String(options[i].id || "") === String(value || "")) return i
-        return 0
+        return -1
     }
     function datasetTooltip(option) {
         const parts = []
