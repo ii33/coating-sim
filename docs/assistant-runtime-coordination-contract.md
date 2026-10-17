@@ -27,3 +27,14 @@ The first `cancelTask` while a run is active pauses queued work, marks stop-pend
 Worker startup or command-delivery failure leaves no active run and exposes an actionable status; a failed start write is settled without erasing its debug identity. Worker process identity and request identity are both checked; worker exit and cancellation timeout converge on one terminal settlement. Runtime contract tests instantiate a real `AssistantBridge`, use a temporary `AssistantStore` location and fake worker pipes/processes, and stub settings/discovery so they never read credentials, contact providers, or use user storage. They cover duplicate submit/queue behavior, one-shot cancellation and timeout, stale and post-settlement run-event rejection, retained identity and late accounting, explicit reset/stop, reentrant terminal settlement, current-process exit handling, auxiliary compaction context delivery while active or idle, post-disposal write protection, and session independence.
 
 Window and tray behavior remains separate from worker coordination. Desktop window activation is explicit; closing a window requests close directly so QML close veto and dirty-state confirmation can run without first activating the target. Tray menu commands use `DesktopAssistantBridge` methods, preserving queue access, notification sound toggle/volume preview, and assistant visibility controls. UI tests load the actual `ShellMenu.qml` with a fake desktop bridge and trigger the queue, sound, notification, visibility, volume, and preview paths.
+
+## Console-free MCP subprocess streams (2026-10-17)
+
+The worker's stderr is a rotating ProjectLog and intentionally exposes no raw
+file descriptor. The built-in FastMCP StdioTransport therefore passes an opened
+null-device path for subprocess stderr instead of inheriting sys.stderr. The
+MCP module installs its own bounded mcp-ui stderr log before optional imports;
+stdout and stdin retain their real pipes for JSON-RPC. Module, absolute-script
+and frozen entry routes keep the same contract. No console or unbounded log
+handle is needed. Regression coverage must perform the actual local handshake
+with both a no-fileno parent stream and absent stderr, not just test GUI readiness.

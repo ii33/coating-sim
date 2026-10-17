@@ -25,11 +25,16 @@ import time
 from typing import Annotated, Any, Literal
 from uuid import uuid4
 
-from pydantic import Field, TypeAdapter, ValidationError, StrictInt, StrictFloat
-
 # Permit absolute-script launches from an MCP host with any working directory.
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+# stdout is the MCP protocol; diagnostics stay project-local and bounded.
+if __name__ == "__main__":
+    from coat_sim.project_logging import install_process_log
+    install_process_log("mcp-ui", stderr_only=True).write("MCP stdio server starting\n")
+
+from pydantic import Field, TypeAdapter, ValidationError, StrictInt, StrictFloat
 
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError

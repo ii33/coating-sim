@@ -376,7 +376,10 @@ def _business_server() -> tuple[Client, MCPToolset]:
         command = module_command("coat_sim.mcp.server")
         child_environment["PYTHONUNBUFFERED"] = "1"
         transport = StdioTransport(command=command[0], args=command[1:],
-                                   cwd=str(PROJECT_ROOT), env=child_environment, keep_alive=True)
+                                   cwd=str(PROJECT_ROOT), env=child_environment, keep_alive=True,
+                                   # A rotating ProjectLog deliberately has no raw fd.
+                                   # The child installs its own bounded diagnostics.
+                                   log_file=Path(os.devnull))
         # Pre-built clients own handshake and request timeouts.
         client = Client(transport, init_timeout=20, timeout=360)
         mcp = MCPToolset(client, id="coat_business", max_retries=0, prefer_tasks=False,
