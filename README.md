@@ -1,4 +1,4 @@
-# 行星盘沉积仿真 · Deposition Sim
+# 光学镀膜 · 设计与仿真
 
 中文 | [English](README.en.md)
 

@@ -6,7 +6,7 @@ import "."
 
 AppWindow {
     id: window
-    titleBase: "行星盘沉积仿真"
+    titleBase: "光学镀膜"
     captionBase: ""
     statusText: errorToast.visible ? errorText.text : ""
     statusSeverity: errorToast.visible ? "error" : "info"

@@ -57,8 +57,8 @@ def test_empty_project_name_and_existing_suffix_do_not_duplicate(app_window):
 
 
 def test_global_window_caption_can_remain_empty(app_window):
-    app_window.setProperty("titleBase", "行星盘沉积仿真")
+    app_window.setProperty("titleBase", "光学镀膜")
     app_window.setProperty("captionBase", "")
     app_window.setProperty("projectNameForTitle", "")
-    assert app_window.property("title") == "行星盘沉积仿真"
+    assert app_window.property("title") == "光学镀膜"
     assert app_window.property("caption") == ""

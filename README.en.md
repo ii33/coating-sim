@@ -1,4 +1,6 @@
-# Deposition Sim · Planetary Coating Simulation
+# Optical Coating · Design and Simulation
+
+Product name: 光学镀膜 · 设计与仿真.
 
 [中文](README.md) | English
 

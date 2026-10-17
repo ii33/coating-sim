@@ -28,7 +28,6 @@ Item {
     property var actionEntry: null
     property string fileAction: ""
     property bool recentDetailsDismissed: false
-    property string fullDetailsText: ""
 
     readonly property real contentSpacing: Math.min(
         themeTokens.spaceMd, Math.max(7, root.height * 0.024))
@@ -50,53 +49,6 @@ Item {
         target: root.projectBridge
         function onProjectsChanged() {
             root.recentDetailsDismissed = true
-            fullDetailsDialog.close()
-        }
-    }
-
-    ThemeControls.ThemeDialogBase {
-        id: fullDetailsDialog
-        objectName: "launcherFullProjectDetails"
-        title: "工程详情"
-        parent: Overlay.overlay
-        modal: true
-        width: Math.max(1, Math.min(600, parent.width - 24))
-        height: Math.max(1, Math.min(520, parent.height - 24))
-        x: Math.round((parent.width - width) / 2)
-        y: Math.round((parent.height - height) / 2)
-        onClosed: root.restoreDialogFocus()
-        contentItem: ScrollView {
-            id: fullDetailsScroll
-            objectName: "launcherFullProjectDetailsScroll"
-            Accessible.role: Accessible.Dialog
-            Accessible.name: fullDetailsDialog.title
-            contentWidth: availableWidth
-            clip: true
-            Flickable {
-                id: fullDetailsFlickable
-                contentWidth: width
-                contentHeight: fullDetailsBodyText.implicitHeight
-                boundsBehavior: Flickable.StopAtBounds
-                Text {
-                    id: fullDetailsBodyText
-                    objectName: "launcherFullProjectDetailsText"
-                    width: Math.max(1, fullDetailsFlickable.width - fullDetailsScroll.effectiveScrollBarWidth)
-                    text: root.fullDetailsText
-                    textFormat: Text.PlainText
-                    font.family: root.themeTokens.fontFamily
-                    font.pointSize: root.themeTokens.fontSizeBody
-                    color: root.themeTokens.colorText
-                    wrapMode: Text.WrapAnywhere
-                }
-            }
-        }
-        footer: DialogButtonBox {
-            ThemeControls.ThemeButton {
-                objectName: "launcherCloseFullProjectDetails"
-                text: "关闭"
-                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
-            }
-            onRejected: fullDetailsDialog.close()
         }
     }
 
@@ -633,7 +585,7 @@ Item {
                         textFormat: Text.PlainText
                         id: projectTitle
                         objectName: "launcherProjectManagerTitle"
-                        text: "最近工程"
+                        text: "光学镀膜"
                         heading: true
                         wrapMode: Text.Wrap
                         Layout.fillWidth: true
@@ -642,7 +594,7 @@ Item {
                     ThemeControls.ThemeLabel {
                         textFormat: Text.PlainText
                         objectName: "launcherProjectManagerDescription"
-                        text: "打开最近使用的工程，或新建、浏览打开工程文件。"
+                        text: "设计与仿真"
                         muted: true
                         wrapMode: Text.Wrap
                         visible: root.width >= 360
@@ -766,7 +718,7 @@ Item {
                                 parent: Overlay.overlay
                                 enabled: false
                                 visible: rowHover.hovered && !root.recentDetailsDismissed
-                                    && sidePlacement && !fullDetailsDialog.visible
+                                    && sidePlacement
                                 delay: 500
                                 text: root.rowDetails(projectRow.modelData)
                                 font.family: root.themeTokens.fontFamily
@@ -914,21 +866,6 @@ Item {
                                         Layout.leftMargin: root.themeTokens.spaceXs
                                         Layout.rightMargin: root.themeTokens.spaceXs
                                         horizontalAlignment: Text.AlignLeft
-                                    }
-                                    RecentActionButton {
-                                        objectName: "launcherShowRecentProjectDetails_" + projectRow.index
-                                        text: "详情"
-                                        font.pointSize: root.themeTokens.fontSizeSmall
-                                        topPadding: 0
-                                        bottomPadding: 0
-                                        implicitHeight: contentItem.implicitHeight
-                                        onClicked: {
-                                            root.recentDetailsDismissed = true
-                                            root.fullDetailsText = root.rowDetails(projectRow.modelData)
-                                            root.focusReturnItem = this
-                                            fullDetailsFlickable.contentY = 0
-                                            fullDetailsDialog.open()
-                                        }
                                     }
                                 }
                             }

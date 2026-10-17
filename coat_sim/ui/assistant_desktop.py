@@ -586,7 +586,7 @@ class DesktopAssistantBridge(QObject):
 
     def _create_tray(self):
         self._tray = QSystemTrayIcon(window_icon("launcher"), self)
-        self._tray.setToolTip("看板娘 · 行星盘沉积仿真")
+        self._tray.setToolTip("看板娘 · 光学镀膜")
         if self.controller is not None:
             self._tray_menu_component, self._tray_menu_window = self.controller._create_window(
                 "ShellMenu.qml", self.engine.rootContext())

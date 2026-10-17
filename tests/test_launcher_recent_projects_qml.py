@@ -590,14 +590,11 @@ class TestLauncherRecentProjectsQml:
             assert self.project_bridge.calls[-1] == ("open", "/tmp/Study 1/project.coatproj")
             assert not tip.property("visible")
 
-    def test_narrow_full_details_scroll_close_focus_and_row_actions(self):
-        from PySide6.QtGui import QWheelEvent
-        from tests.qt_test_guard import qml_item_window
-
+    def test_narrow_recent_list_has_no_details_entry_and_keeps_three_actions(self):
         descriptor = "/tmp/Narrow study/project.coatproj"
         self.project_bridge.set_entries([{
-            "descriptorFile": descriptor, "name": "<b>Narrow study</b>",
-            "summary": "S" * 4000, "notes": "N" * 4000,
+            "descriptorFile": descriptor, "name": "Narrow study",
+            "summary": "Summary remains visible", "notes": "Private project notes",
             "available": True, "informationAvailable": True,
         }])
         self.theme._replace_snapshot(build_theme_snapshot("light", font_scale=1.5),
@@ -606,42 +603,21 @@ class TestLauncherRecentProjectsQml:
         QTest.qWait(80)
         row = self._hover_row()
         assert self._eval(row, "!rowDetailsTip.sidePlacement && !rowDetailsTip.visible")
-        self._click("launcherShowRecentProjectDetails_0")
-        QTest.qWait(150)
-        dialog = self.window.findChild(QObject, "launcherFullProjectDetails")
-        assert dialog is not None and dialog.property("visible")
-        text = self._item("launcherFullProjectDetailsText")
-        assert descriptor in text.property("text")
-        assert self._eval(text, "textFormat === Text.PlainText")
-        scroll = self._item("launcherFullProjectDetailsScroll")
-        surface = qml_item_window(scroll)
-        point = scroll.mapToScene(QPointF(scroll.width() / 2, scroll.height() / 2))
-        wheel = QWheelEvent(point, QPointF(surface.mapToGlobal(point.toPoint())), QPoint(), QPoint(0, -120),
-                            Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier,
-                            Qt.ScrollPhase.NoScrollPhase, False)
-        QCoreApplication.sendEvent(surface, wheel)
-        QTest.qWait(150)
-        assert self._eval(scroll, "contentItem.contentY > 0"), "full details must scroll via real wheel input"
-        assert not self.project_bridge.calls
-        close = self._item("launcherCloseFullProjectDetails")
-        surface = qml_item_window(close)
-        point = close.mapToScene(QPointF(close.width() / 2, close.height() / 2))
-        QTest.mouseClick(surface, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point.toPoint())
-        QTest.qWait(150)
-        assert not dialog.property("visible")
-        assert self._item("launcherShowRecentProjectDetails_0").hasActiveFocus()
+        assert self.window.findChild(QObject, "launcherShowRecentProjectDetails_0") is None
+        assert self.window.findChild(QObject, "launcherFullProjectDetails") is None
+        assert self.window.findChild(QObject, "launcherProjectInformationSection") is None
+        assert self._item("launcherRecentProjectName_0").property("text") == "Narrow study"
+        assert self._item("launcherRecentProjectSummary_0").property("text") == "Summary remains visible"
         for action in ("Copy", "Export", "Remove"):
             self._hover_row()
+            button = self._item(f"launcher{action}RecentProject_0")
+            assert button.isVisible() and button.isEnabled()
             self._click(f"launcher{action}RecentProject_0")
             dialog_name = "launcherRemoveProjectDialog" if action == "Remove" else "launcherProjectFileActionDialog"
             action_dialog = self.window.findChild(QObject, dialog_name)
             assert action_dialog is not None and action_dialog.property("visible")
             QTest.keyClick(self.window, Qt.Key.Key_Escape)
             QTest.qWait(150)
-        self._click("launcherShowRecentProjectDetails_0")
-        self.project_bridge.set_entries([])
-        QTest.qWait(150)
-        assert not dialog.property("visible"), "refresh must discard the displayed snapshot"
 
     def test_recent_actions_are_idle_transparent_and_animate_with_keyboard_focus(self):
         self.project_bridge.set_entries([{

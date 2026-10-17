@@ -1978,7 +1978,7 @@ def _fatal(message: str) -> None:
     if sys.platform == "win32":
         try:
             import ctypes
-            ctypes.windll.user32.MessageBoxW(None, message, "行星盘沉积仿真 · 启动器", 0x10)
+            ctypes.windll.user32.MessageBoxW(None, message, "光学镀膜 · 启动器", 0x10)
         except (AttributeError, OSError):
             pass
 

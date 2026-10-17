@@ -18,9 +18,9 @@ from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtGui import QGuiApplication, QIcon, QPlatformSurfaceEvent, QWindow
 
 APP_ID = "com.lyx.coat-sim"
-APP_NAME = "沉积仿真"
+APP_NAME = "光学镀膜"
 MODULE_NAMES = {
-    "launcher": APP_NAME, "main": APP_NAME, "process": "工艺",
+    "launcher": APP_NAME, "main": "沉积仿真", "process": "工艺",
     "machine": "机器结构", "mask": "修正板", "source": "蒸发源",
     "substrate": "基片", "settings": "设置", "about": "关于与帮助",
 }

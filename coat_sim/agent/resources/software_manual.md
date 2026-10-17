@@ -1,4 +1,6 @@
-# 行星盘沉积仿真 · 软件说明书
+# 光学镀膜 · 软件说明书
+
+设计与仿真
 工程工作流与帮助更新：2026-10-16；算法、GUI及真实 provider 验收仍以专项记录为准。用户版：docs/software_manual.html；详细算法：docs/algorithms.html。
 本文件与用户说明书采用相同章节 key，供 read_software_manual 查询。以当前校验器、接口返回和实际依赖状态为准。
 

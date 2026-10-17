@@ -14,7 +14,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from coat_sim.ui.icons import TASKBAR_ICON_SIZES, window_icon
-from coat_sim.ui.taskbar import APP_ID, application_id
+from coat_sim.ui.taskbar import APP_ID, APP_NAME, MODULE_NAMES, application_id
 from coat_sim.ui import desktop_identity
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,7 +44,7 @@ window_icon(PRIMARY)
 before=app.desktopFileName()
 window_icon("settings")
 window_icon("launcher")
-print(json.dumps({"before":before,"after":app.desktopFileName(),"name":app.applicationName(),"platform":app.platformName()}))
+print(json.dumps({"before":before,"after":app.desktopFileName(),"name":app.applicationName(),"displayName":app.applicationDisplayName(),"platform":app.platformName()}))
 '''
         for module in ("launcher","main","mask","process"):
             result = subprocess.run([sys.executable,"-c",code.replace("PRIMARY",repr(module))],
@@ -54,6 +54,10 @@ print(json.dumps({"before":before,"after":app.desktopFileName(),"name":app.appli
             self.assertEqual(data["before"], expected)
             self.assertEqual(data["after"], data["before"])
             self.assertEqual(data["name"], expected if sys.platform == "linux" else "coat-sim")
+            self.assertEqual(data["displayName"], "")
+            self.assertEqual(APP_NAME, "光学镀膜")
+            self.assertEqual(MODULE_NAMES["launcher"], APP_NAME)
+            self.assertEqual(MODULE_NAMES["main"], "沉积仿真")
         self.assertEqual(application_id("launcher"), APP_ID)
 
     def test_independent_qt_windows_inherit_icon_before_show_and_reopen(self):

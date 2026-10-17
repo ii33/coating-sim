@@ -42,7 +42,8 @@ AppWindow {
         z: 2
         Text {
             width: parent.width
-            text: "行星盘沉积仿真"
+            objectName: "aboutProductTitle"
+            text: "光学镀膜"
             color: "#f7fdff"
             font.pixelSize: Math.max(32, Math.min(53, window.width * 0.035))
             font.bold: true
@@ -50,7 +51,8 @@ AppWindow {
         }
         Text {
             width: parent.width
-            text: "探索沉积几何、运动与膜厚分布"
+            objectName: "aboutProductSubtitle"
+            text: "设计与仿真"
             color: "#d4f0ee"
             font.pixelSize: Math.max(17, Math.min(24, window.width * 0.015))
             wrapMode: Text.WordWrap

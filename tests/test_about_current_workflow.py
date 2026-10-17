@@ -55,6 +55,8 @@ class AboutCurrentWorkflowTests(unittest.TestCase):
             self.assertFalse(component.isError(), component.errors())
             window = cast(QQuickWindow, component.createWithInitialProperties({"initialMaximized": False}))
             self.assertIsInstance(window, QQuickWindow)
+            self.assertEqual(window.findChild(QObject, "aboutProductTitle").property("text"), "光学镀膜")
+            self.assertEqual(window.findChild(QObject, "aboutProductSubtitle").property("text"), "设计与仿真")
             window.show()
             QTest.qWait(50)
             author = window.findChild(QObject, "aboutAuthorCredit")
