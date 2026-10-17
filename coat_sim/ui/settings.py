@@ -58,6 +58,7 @@ from coat_sim.ui.assistant_credentials import (
 from coat_sim.agent.external_mcp import (
     MAX_SERVERS, SAFE_ENVIRONMENT, normalized_servers, validate_server, run_probe, exported_stdio_config,
 )
+from coat_sim.agent.mcp_presets import SEED_VERSION, seed_servers, service_description
 from coat_sim.ui.mcp_endpoint_process import McpEndpointProcess
 from coat_sim.ui.settings_coordinator import SettingsProbeCoordinator, SettingsProbeDependencies
 
@@ -693,7 +694,10 @@ def normalized_ui_settings(values: Mapping[str, object] | None = None) -> dict[s
             source.get("assistant_period_minutes"), 1, 10080, 60),
         "assistant_icon_size": _bounded_integer(
             source.get("assistant_icon_size"), 48, 256, DEFAULT_ASSISTANT_ICON_SIZE),
-        "assistant_mcp_servers": normalized_servers(source.get("assistant_mcp_servers", [])),
+        "assistant_mcp_servers": normalized_servers(seed_servers(
+            normalized_servers(source.get("assistant_mcp_servers", [])),
+            source.get("assistant_mcp_seed_version"))),
+        "assistant_mcp_seed_version": SEED_VERSION,
     }
 
 
@@ -2036,7 +2040,8 @@ class SettingsBridge(QObject):
 
     @Property(list, notify=mcpChanged)
     def mcpServers(self) -> list[dict]:
-        return [{**deepcopy(row), "status": self._mcp_statuses.get(row["id"], "尚未检查连接")}
+        return [{**deepcopy(row), "description": service_description(row),
+                 "status": self._mcp_statuses.get(row["id"], "尚未检查连接")}
                 for row in self._settings["assistant_mcp_servers"]]
 
     @Property(str, notify=mcpChanged)
@@ -2106,6 +2111,11 @@ class SettingsBridge(QObject):
         persisted["assistant_mcp_servers"] = servers
         saved = save_ui_settings(persisted)
         self._settings["assistant_mcp_servers"] = saved["assistant_mcp_servers"]
+        self._settings["assistant_mcp_seed_version"] = saved["assistant_mcp_seed_version"]
+        if self._mcp_probe_id:
+            # Invalidate an obsolete probe; its late success must not describe
+            # the replacement target or a permission change.
+            self._mcp_probe_cancel.set()
         self.mcpChanged.emit()
         self.assistantSettingsSaved.emit()
 
@@ -2119,6 +2129,8 @@ class SettingsBridge(QObject):
             if not previous and len(rows) >= MAX_SERVERS:
                 raise ValueError(f"最多配置 {MAX_SERVERS} 个 MCP 服务")
             values["credential_revision"] = previous["credential_revision"] if previous else ""
+            if previous:
+                values["preset_id"] = previous.get("preset_id", "")
             row = validate_server(values, new=True)
             if secret:
                 if not row["credential_field"]:
@@ -2214,6 +2226,8 @@ class SettingsBridge(QObject):
             message = str(result["message"])
         except Exception:
             message = "连接检查失败；请检查服务配置和运行依赖。"
+        if self._mcp_probe_cancel.is_set():
+            message = "连接检查已取消或配置已改变；未执行工具。"
         self._mcp_statuses[self._mcp_probe_id] = message
         self._mcp_probe = None
         self._mcp_poll.stop()

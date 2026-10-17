@@ -104,3 +104,5 @@ Third-party content retains its own licensing and is not relicensed by this proj
 Installation notices and release evidence are maintained in the [independent installer](https://github.com/ii33/coating-sim-installer).
 
 [Project layout and historical-tool cleanup](docs/development/root-layout.md).
+
+[Research evidence and ordinary MCP services](docs/research-integration-contract.md) · [研究证据格式](docs/algorithms.html#project-research-evidence)

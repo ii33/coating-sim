@@ -14,6 +14,8 @@ _ROLE_MODULES = {
     "agent-worker": "coat_sim.agent.worker",
     "assistant": "coat_sim.assistant_process",
     "mcp-server": "coat_sim.mcp.server",
+    "research-mcp": "coat_sim.mcp.research_server",
+    "research-parser": "coat_sim.agent.research_parse_worker",
     "mcp-desktop-endpoint": "coat_sim.mcp.desktop_endpoint",
     "scheduler": "coat_sim.scheduler",
     "settings": "coat_sim.ui.settings",

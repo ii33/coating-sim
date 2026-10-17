@@ -18,6 +18,8 @@ from typing import Any, Mapping
 from urllib.parse import urlsplit
 from uuid import uuid4
 
+from coat_sim.agent.mcp_presets import TOOLS, reserve_call, tool_allowed
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MAX_SERVERS = 20
 MAX_TOOLS = 200
@@ -80,7 +82,18 @@ def validate_server(values: Mapping[str, Any], *, new: bool = False) -> dict[str
     revision = str(values.get("credential_revision", ""))
     if revision and not _IDENTIFIER.fullmatch(revision):
         revision = ""
-    return {"id": identifier, "name": name, "transport": transport,
+    preset = values.get("preset_id", "")
+    if preset not in TOOLS:
+        preset = ""
+    try:
+        limit = int(values.get("daily_call_limit", 0))
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("每日调用上限须为 0–10000") from exc
+    if not 0 <= limit <= 10000:
+        raise ValueError("每日调用上限须为 0–10000")
+    return {"preset_id": preset, "daily_call_limit": limit,
+            "allow_paid_calls": values.get("allow_paid_calls") is True,
+            "id": identifier, "name": name, "transport": transport,
             "command": command, "args": list(args), "cwd": cwd, "url": url,
             "enabled": values.get("enabled") is True,
             "allow_tools": values.get("allow_tools") is True,
@@ -283,7 +296,8 @@ class ExternalMcpPool:
                 raise ValueError(f"服务工具数量超过 {MAX_TOOLS} 项限制")
             if self.configs.get(identifier) != config:
                 raise ValueError("连接期间外部 MCP 配置已改变；未派发工具调用。")
-            self.tools[identifier] = {tool.name: tool for tool in rows}
+            self.tools[identifier] = {tool.name: tool for tool in rows
+                                      if tool_allowed(config, tool.name)}
             self.active[identifier] = (client, transport, secret)
             self._active_configs[identifier] = deepcopy(config)
             self.errors.pop(identifier, None)
@@ -367,6 +381,9 @@ class ExternalMcpPool:
         config = self.configs.get(server_id)
         if not config or not config["allow_tools"]:
             return {"ok": False, "error": "外部 MCP 服务未启用工具调用；请在设置中明确开启。", "effect": "none"}
+        if not tool_allowed(config, tool_name):
+            return {"ok": False, "code": "tool_not_allowed", "effect": "none",
+                    "error": "此服务客户端仅允许已选搜索/研究工具。"}
         if not isinstance(arguments, dict):
             return {"ok": False, "error": "工具参数须为对象。", "effect": "none"}
         # Freeze before the first connection await: the guard must describe the
@@ -413,6 +430,11 @@ class ExternalMcpPool:
             return {"ok": False, "code": "uncertain_capacity_exceeded",
                     "error": "未知效果记录已达本进程上限；请先人工核对服务状态。",
                     "effect": "none", "dispatch_blocked": True}
+        try:
+            reserve_call(config)
+        except ValueError as exc:
+            return {"ok": False, "code": "call_budget_denied", "effect": "none",
+                    "error": str(exc), "dispatch_blocked": True}
         self._inflight_calls.add(identity)
         try:
             result = await client.call_tool_mcp(tool_name, arguments)
@@ -451,7 +473,7 @@ async def probe_server(config: dict[str, Any]) -> dict[str, Any]:
         await pool._ensure(row["id"])
         names = list(pool.tools[row["id"]])
         return {"ok": True, "count": len(names), "tools": names,
-                "message": f"连接成功，发现 {len(names)} 个工具；未执行工具。"}
+                "message": f"连接成功，发现 {len(names)} 个允许的工具；仅初始化和列目录，未执行工具，不验证业务额度。"}
     except Exception as exc:
         return {"ok": False, "message": "连接失败：" + _safe_error(exc)}
     finally:

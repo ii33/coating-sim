@@ -68,3 +68,6 @@ artifacts/logs/*.log
 
 # Local private designs; exclude from version control and project publication.
 /sheji/
+
+# Project-local research evidence/full text is never source publication.
+**/data/research/

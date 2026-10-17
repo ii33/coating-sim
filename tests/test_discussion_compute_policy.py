@@ -3,6 +3,7 @@
 No scheduler daemon, worker, simulation, provider, or network is started.
 """
 from concurrent.futures import Future, ThreadPoolExecutor
+from contextlib import closing
 import json
 from pathlib import Path
 import sqlite3
@@ -167,7 +168,7 @@ class DiscussionComputePolicyTests(unittest.TestCase):
     def test_enqueue_before_mode_switch_is_serialized_even_with_wal(self):
         receipt = self.request('research')
         self.store.decide(receipt['estimate_id'], True)
-        with sqlite3.connect(self.assistant.path) as db:
+        with closing(sqlite3.connect(self.assistant.path)) as db, db:
             self.assertEqual(db.execute('PRAGMA journal_mode=WAL').fetchone()[0], 'wal')
         validating = threading.Event()
         allow_commit = threading.Event()
@@ -196,7 +197,7 @@ class DiscussionComputePolicyTests(unittest.TestCase):
                 try:
                     self.assertTrue(switching.wait(5))
                     # A write lock, not a WAL reader, guards the enqueue boundary.
-                    with connect(self.assistant.path, timeout=0) as db:
+                    with closing(connect(self.assistant.path, timeout=0)) as db, db:
                         with self.assertRaisesRegex(sqlite3.OperationalError, 'locked'):
                             db.execute('BEGIN IMMEDIATE')
                     self.assertFalse(switched.is_set())
@@ -212,7 +213,7 @@ class DiscussionComputePolicyTests(unittest.TestCase):
 
     def test_approval_cannot_overwrite_mode_switch_snapshot_rejection(self):
         receipt = self.request('operate')
-        with sqlite3.connect(self.assistant.path) as db:
+        with closing(sqlite3.connect(self.assistant.path)) as db, db:
             db.execute('PRAGMA journal_mode=WAL')
         validated = threading.Event()
         resume = threading.Event()
@@ -289,7 +290,7 @@ class DiscussionComputePolicyTests(unittest.TestCase):
                 thread.start()
                 try:
                     self.assertTrue(declining.wait(5))
-                    with sqlite3.connect(self.store.path, timeout=0) as db:
+                    with closing(sqlite3.connect(self.store.path, timeout=0)) as db, db:
                         with self.assertRaisesRegex(sqlite3.OperationalError, 'locked'):
                             db.execute('BEGIN IMMEDIATE')
                     self.assertFalse(declined.is_set())

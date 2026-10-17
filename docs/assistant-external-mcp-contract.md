@@ -34,3 +34,45 @@
 这些验收不调用真实第三方服务、模型 provider、系统真实凭据或付费 API；不证明外部程序可信、不能访问用户文件或所有媒体/token 协议均兼容。AI-03 可推进本地 stdio、HTTP 和 SSE 的限定传输阶段；真实第三方服务、TLS / SSO 与重启后持久化恢复仍需独立授权与证据。本轮边界与报告（历史验证记录，未随公开源码发布） 明确列出命令、当前源码哈希、失败与修复结果。
 
 当前安装的 SDK 自动选择 modern stdio 协议，其服务端不能发起 roots/list back-channel；fixture 明确返回 `roots_back_channel=false`，不把未取得响应伪装为端到端 roots 回执。空 roots 的保证另由实际客户端配置的回调直接验证；工具参数、环境和进程生命周期则通过真实子进程往返验证。
+
+
+## 普通服务预填与折叠（2026-10-17）
+
+知乎、OpenAlex、Crossref 作为现有普通 MCP 服务条目预填，不新增栏目。
+`assistant_mcp_seed_version=1` 标记种子迁移；已有同 ID 条目不覆盖，保存后的删除不会在重启时重建。
+全部条目默认折叠为名称按钮和独立启用开关，点击名称或在名称上按 Enter/Space 展开。
+详细权限、编辑、检查、删除和状态只在展开区显示；折叠不丢失配置。
+设置桥仍独占草稿；`ExternalMcpPool` 仍独占实际连接和未知效果屏障。
+
+- 知乎为官方 Streamable HTTP `https://developer.zhihu.com/api/mcp/v1`，
+  用户自行保存 Access Secret，复用系统凭据库及 `Authorization: Bearer …`。
+  MCP 不添加 REST 的时间戳头。客户端目录和派发均只允许 `zhihu_search`/`global_search`，
+  不隐式暴露或执行 `hot_list`、`zhida`。工具输入以实时 tools/list schema 为准。
+- OpenAlex/Crossref 明确是本项目 API 适配器，**非官方 MCP**。
+  源码 stdio 以当前 Python（pythonw 优先换同目录 python.exe）加绝对
+  `research_server.py --provider …` 启动；冻结版走注册的 `research-mcp` child role。工作目录仍为临时目录，
+  不传项目根或聊天；OpenAlex key 仅通过 `COAT_RESEARCH_API_KEY`，
+  Crossref 只在用户显式填写联系邮箱时通过 `COAT_RESEARCH_MAILTO` 传入。
+  匿名 OpenAlex 仅有受限元数据，全文需 key；Crossref 公共元数据无需 key。
+- 全部默认关闭连接与工具调用。原服务编辑器管理凭据/地址/权限/预算，沿用原保存和删除操作。
+  检查连接仅 initialize/tools/list，关闭客户端；不调用搜索、全文或其它业务工具，
+  不验证服务权限、业务额度、下载可用性，也不计本地搜索预算。
+  编辑或撤销配置会取消进行中的旧检查，迟到成功不能冒充新配置通过。
+
+知乎免费额度用完后可能从体验/充值余额扣费。2026-10-17 官方价格页为全网搜索
+12 元/千次、站内搜索 20 元/千次；金额及活动额度以
+[官方价格页](https://developer.zhihu.com/docs?key=billing_price) 为准。
+用户还必须在编辑中确认可能计费，才能派发知乎工具调用。
+默认本地每日调用上限知乎 6、OpenAlex 6、Crossref 12，0 表示禁止。
+这是一项**UTC 日请求次数限制**，并非官方免费额度、人民币预算或账单核对；
+知乎官方免费额度按北京时间零点重置，同一账号的多个密钥可能共享额度。
+保守上限覆盖成功、业务错误、超时和取消的已派发请求；不自动退款、不自动重试。
+计数以 SQLite 原子事务保存在忽略发布的 `artifacts/external-mcp-usage.sqlite3`，
+跨 worker/服务 ID/重启共享同一服务计数；存储错误或锁超时在派发前拒绝。
+此本地文件被用户删除、修改或使用其它客户端时，无法保证账号总消费上限。
+
+官方协议核验来源：[知乎 MCP](https://developer.zhihu.com/docs?key=unified_mcp)
+和上述价格页。官网 SPA 的公开文档数据由 `GET /console/api/v3/docs` 提供，
+本轮仅只读取得这两份文档，未创建密钥或实际调用付费服务。
+新增回归 `tests/test_mcp_presets.py` 覆盖种子/删除/碰撞保留、默认关闭、
+目录与派发 allowlist、计费确认、持久化预算原子竞争与失败拒绝、只列目录探测。

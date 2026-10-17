@@ -38,3 +38,7 @@
 # Keep their exact published bytes on every platform, including Windows clones
 # with core.autocrlf=true. Do not normalize existing or future project assets.
 /example/synthetic-demo/** -text
+
+# Preserve third-party research copyright and private project evidence.
+/data/research export-ignore
+**/data/research export-ignore

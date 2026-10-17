@@ -2,7 +2,7 @@
   "schema": 1,
   "source_commit": "0fb03df0ee67f0839a981d0453f644625085d6d0",
   "reason": "Reverify unchanged initial legacy debt after fail-closed per-run report ownership/atomic publication hardening; no feature code admitted.",
-  "config_digest": "215d6463be0050db98d1dffb2b129e34bd820dd56b08b9a024c494e3a799781c",
+  "config_digest": "770b4c8ccb5c85e0109b522699b3f3d6ed3f34991f0ca8bd7a9e0c0f8a61b958",
   "environment": {
     "python": [
       3,
@@ -108,7 +108,8 @@
       "typing_extensions": "4.16.0",
       "urllib3": "2.8.0",
       "uvicorn": "0.54.0",
-      "zipp": "4.1.1"
+      "zipp": "4.1.1",
+      "pypdf": "6.21.0"
     },
     "tools": {
       "ruff": "0.17.0",
@@ -66839,5 +66840,5 @@
     }
   ],
   "last_prune_reason": "Remove only diagnostics owned by the six deleted one-off other/ai extraction/patch scripts; no new diagnostic accepted.",
-  "configuration_review_reason": "2026-10-14: reviewed source-snapshot drift guard and cache reset only; diagnostic rules, identities and all debt entries unchanged."
+  "configuration_review_reason": "2026-10-17: add only BSD-3-Clause pypdf 6.21.0 for isolated research PDF extraction; all previous dependency/tool versions, analyzer rules and diagnostic entries remain unchanged. The lock-file digest changes only for this reviewed runtime dependency."
 }

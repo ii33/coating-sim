@@ -296,6 +296,7 @@ class StableCompaction(AbstractCapability):
 
 READ_TOOLS = frozenset({
     "project_management_catalog", "project_list", "project_inspect", "project_resolve", "project_editor_snapshot",
+    "project_research_search", "project_research_read",
     "list_material_library", "read_material", "validate_material_optics", "check_machine_structure",
     "list_data_files", "read_data_file", "python_sandbox_status",
     "list_windows", "read_window", "read_design", "input_schema", "preview_design",
@@ -348,7 +349,7 @@ DATA_WRITE_TOOLS = frozenset({"write_data_file", "make_data_directory", "move_da
 MAIN_TOOLS = READ_TOOLS | DATA_WRITE_TOOLS | {"save_design", "export_pdf", "window_action", "open_window", "close_window", "update_window",
                            "correction_board_weights", "correction_board_field", "selected_point_weights", "planet_center_occlusion_ring",
                            "submit_single_source", "submit_process_recipe", "submit_mask_optimization", "create_default_workflow", "estimate_mask_optimization", "import_mask_dxf", "export_mask_dxf", "export_mask_drawing", "cancel_calculation_job"}
-MAIN_TOOLS = MAIN_TOOLS | {"project_open", "project_manage", "save_film_design", "simulate_film_design", "submit_film_optimization", "submit_appearance_render"}
+MAIN_TOOLS = MAIN_TOOLS | {"project_research_save", "project_open", "project_manage", "save_film_design", "simulate_film_design", "submit_film_optimization", "submit_appearance_render"}
 SUBMIT_TOOLS = frozenset({"submit_single_source", "submit_process_recipe", "submit_mask_optimization", "submit_film_optimization", "submit_appearance_render", "create_default_workflow"})
 WORKFLOW_TOOLS = frozenset({"create_design_workflow", "advance_design_workflow", "cancel_design_workflow", "render_design", "render_design_workflow"})
 MAIN_TOOLS = MAIN_TOOLS | WORKFLOW_TOOLS | {"build_film_stack", "import_film_stack", "update_design_fields", "visualize_calculation_result",
@@ -1306,14 +1307,14 @@ async def _cancel_jobs(client: Client, ledger: JobLedger, session: str, request:
 
 
 # Each delegation receives one complete task and its own short history.
-_COMMON = frozenset({"project_management_catalog", "project_list", "project_inspect", "project_resolve", "project_editor_snapshot", "read_software_manual", "input_schema", "read_design", "validate_design", "resolve_design_dependencies",
+_COMMON = frozenset({"project_research_search", "project_research_read", "project_management_catalog", "project_list", "project_inspect", "project_resolve", "project_editor_snapshot", "read_software_manual", "input_schema", "read_design", "validate_design", "resolve_design_dependencies",
                      "list_windows", "read_window", "list_data_files", "read_data_file", "python_sandbox_status",
                      "preview_film_stack_import", "read_process_layers", "film_design_schema",
                      "film_materials", "validate_film_design", "load_film_design",
                      "expand_film_expression"})
 _JOB_READ = frozenset({"calculation_job_status", "wait_calculation_job", "find_calculation_job",
                        "calculation_job_result", "read_calculation_result", "calculation_history", "design_workflow_status"})
-COORDINATOR_TOOLS = frozenset({"project_management_catalog", "project_list", "project_inspect", "project_resolve", "project_editor_snapshot", "list_windows", "read_window", "calculation_history",
+COORDINATOR_TOOLS = frozenset({"project_research_search", "project_research_read", "project_management_catalog", "project_list", "project_inspect", "project_resolve", "project_editor_snapshot", "list_windows", "read_window", "calculation_history",
                                "read_calculation_result", "find_calculation_job", "calculation_job_status", "list_data_files", "read_data_file"})
 EXECUTION_TOOLS = {
     "windows": frozenset({"project_list", "project_editor_snapshot", "project_open", "read_software_manual", "list_windows", "read_window", "open_window", "close_window", "update_window", "window_action"}),
@@ -1334,7 +1335,7 @@ EXECUTION_DESCRIPTIONS = {
     "simulation": "完成沉积、薄膜优化或本地外观渲染的校验、估算与原模式放行申请；外观请求先用inspect_appearance_asset取得asset_path和asset_sha256，再将其用于estimate/submit；完成后用原作业工具读取服务返回的outputs引用，不猜输出路径、不自动应用或打开窗口。",
     "correction": "完整完成修正板几何分析或用户授权的自动优化，返回结果与副本位置。",
 }
-EXECUTION_TOOLS["design"] = EXECUTION_TOOLS["design"] | WORKFLOW_TOOLS | {"project_manage"}
+EXECUTION_TOOLS["design"] = EXECUTION_TOOLS["design"] | WORKFLOW_TOOLS | {"project_manage", "project_research_save"}
 EXECUTION_TOOLS["simulation"] = EXECUTION_TOOLS["simulation"] | WORKFLOW_TOOLS
 EXECUTION_TOOLS["design"] = EXECUTION_TOOLS["design"] | {"build_film_stack", "import_film_stack", "update_design_fields", "visualize_calculation_result",
     "prepare_temporary_design", "save_generated_design", "save_simulation_asset", "read_simulation_asset", "simulation_summaries",

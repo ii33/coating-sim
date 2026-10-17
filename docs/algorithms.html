@@ -12,6 +12,7 @@
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px solid #c8e0db;border-radius:8px;padding:16px;font-size:.88rem;line-height:1.5}</style>
 </head>
 <body>
+<p class="source">研究证据格式补充：2026-10-17，见<a href="#project-research-evidence">项目研究证据 v1</a>；不改变物理求解模型。</p>
 <header>
 <p class="source">优化目标更新：2026-10-14。14i-10 增加入射角范围/步长的含端点网格、旧点集兼容及跨求解路径真实多角评分；取消固定采样条件和可调计算预算的人工顶值，保留有效性、实际资源失败及取消。14i-8 复核并恢复有限厚度needle的显式多轮新增预算。</p>
 <p class="source">当前入口边界复核：2026-10-16。上述多轮新增预算仅指<a href="#film-solver-needle">14i-8 独立有限厚度试插核心 API</a>（<code>FilmNeedleOptimizationRequest</code>），不是当前 GUI 的<a href="#film-structure-classic-needle">14o 经典结构搜索</a>合同。GUI 的 <code>FilmStructureOptimizationRequest</code> 当前仍要求 <code>max_added_layers=1</code>、<code>growth_cycles=1</code>，仅为新增针层和增长周期边界，不表示整个设计只能有一层；设计总层数另受用户约束及文件上限校验。公开厚度 MCP estimate/submit 仍不接收这两类结构请求。以下历史算法与验证记录保留，不据此扩大现行入口能力。</p>
@@ -21,7 +22,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
   <div class="eyebrow">Deposition Simulator / Algorithm Atlas</div>
   <h1>行星盘沉积仿真<br>算法图解与参考来源</h1>
   <p>从独立基片、蒸发源、修正板、机器与工艺文件，到行星运动、射线通量、膜厚归一化和预计用时。本文依据当前代码写成，可离线阅读；公式描述的是本项目的计算模型。</p>
-<div class="meta"><span class="pill">版本：机器 v5 · 工艺 v7 · 源 v2；材料交换包 v1、安全导入冲突预览与原子回滚)</span><span class="pill">更新：2026-10-15（修正板不设数量上限、完整依赖快照与逐板遮挡；工程文件格式契约说明；优化多角网格与计算量人工顶值移除；TFCalc明文层表导入；外观逐光线精确 TMM 与独立波长 CPU 进程并行；Qt Quick 光谱极值与波长通带、场景图曲线预览；多孔厚盖、独立源采样、无固定最大网格与计算隔离；工艺环境、工作气体及零碰撞直达束；材料库、已设计源工艺选择、盖孔射线与快扫描空间分布；桌面仿真共享队列、逐批进度、无固定步数上限、100%快算默认与Å/s界面；五项上下文预算、硬限与安全压缩、后台流合并与固定设计绘图；平滑轮廓、全膜系目标选优与评分进度；凭据反馈与有界模型候选兼容探测；待决选项、模式放行、诊断未读摘要、结果队列身份修复、紧凑产物；计算量估算、后台串行队列、源板分组优化与跨段选区；完整设备回退、成功设备记忆、临时仿真资产包、可选 PDF、历史闭合与滚动高度缓存；批量膜系、物理层表导入、固定图表、工具原文归档与任务成本、视口文本增量渲染；批量工具契约、演示工作流、逐回合展示与复制、撤回确认、本地助手调试、实际生效参数快照、LPAC启动修复；容量自适应上下文、轮次关闭、插话与排队、剪贴板图片、系统语言与语气、开发访问；逐层修正板、轮廓优化、工艺快算、估时、上下文用量、请求续约、原生档位缓存、滚动跟随、二维 CAD 与加工图、模型 Token 上限、缓存命中统计、富文本与开发门禁；修正板视口设备路由、反向滚动与可选输入诊断）</span><span class="pill">单位：mm · s · rpm · nm · px；助手 Token / 字符 / 附件字节</span><span class="pill">离线单文件 HTML</span></div>
+<div class="meta"><span class="pill">版本：机器 v5 · 工艺 v7 · 源 v2；材料交换包 v1、安全导入冲突预览与原子回滚)</span><span class="pill">更新：2026-10-17（研究证据格式；修正板不设数量上限、完整依赖快照与逐板遮挡；工程文件格式契约说明；优化多角网格与计算量人工顶值移除；TFCalc明文层表导入；外观逐光线精确 TMM 与独立波长 CPU 进程并行；Qt Quick 光谱极值与波长通带、场景图曲线预览；多孔厚盖、独立源采样、无固定最大网格与计算隔离；工艺环境、工作气体及零碰撞直达束；材料库、已设计源工艺选择、盖孔射线与快扫描空间分布；桌面仿真共享队列、逐批进度、无固定步数上限、100%快算默认与Å/s界面；五项上下文预算、硬限与安全压缩、后台流合并与固定设计绘图；平滑轮廓、全膜系目标选优与评分进度；凭据反馈与有界模型候选兼容探测；待决选项、模式放行、诊断未读摘要、结果队列身份修复、紧凑产物；计算量估算、后台串行队列、源板分组优化与跨段选区；完整设备回退、成功设备记忆、临时仿真资产包、可选 PDF、历史闭合与滚动高度缓存；批量膜系、物理层表导入、固定图表、工具原文归档与任务成本、视口文本增量渲染；批量工具契约、演示工作流、逐回合展示与复制、撤回确认、本地助手调试、实际生效参数快照、LPAC启动修复；容量自适应上下文、轮次关闭、插话与排队、剪贴板图片、系统语言与语气、开发访问；逐层修正板、轮廓优化、工艺快算、估时、上下文用量、请求续约、原生档位缓存、滚动跟随、二维 CAD 与加工图、模型 Token 上限、缓存命中统计、富文本与开发门禁；修正板视口设备路由、反向滚动与可选输入诊断）</span><span class="pill">单位：mm · s · rpm · nm · px；助手 Token / 字符 / 附件字节</span><span class="pill">离线单文件 HTML</span></div>
 <p class="source">补充更新：2026-10-05——通过服务接口执行的非 CPU 沉积仿真使用一次任务一个短生命周期计算进程；Windows 子进程关闭管道时把 WinError 109 视作 EOF，避免计算完成后误记失败。</p>
 <p class="source">cub 接口补齐更新：2026-10-05。三路径提交、材料业务工具、机器工程检查和 AI 资产导出契约；未覆盖在线模型及实机校准。</p>
 <p class="source">膜系设计更新：2026-10-07；schema v1、严格TFCalc子集、复n光谱与自动单/双面有限基底；RII 1–9、独立 k 数据域、稀疏线性插值、n 显式端点保持及仿真 k 缺失/域外取零。</p>
@@ -187,6 +188,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#gpu-appearance-preview">16h GPU 外观预览候选</a>
 <a href="#project-compute-ownership">工程计算输入冻结、结果归属与 QW 厚度映射</a>
 <a href="#project-resource-metadata-assets">工程元数据与显式二进制输入</a>
+<a href="#project-research-evidence">项目研究证据 v1：来源、分页与隔离</a>
 </nav>
 <main>
 <section id="readme">
@@ -2622,6 +2624,20 @@ cancel/release/owner close → release idle spool; applying owner retains bytes 
 <figure class="figure"><svg viewBox="0 0 810 130" role="img" aria-label="小JSON输入引用受管二进制依赖，选择性复制到另一个工程"><g fill="none" stroke="currentColor"><rect x="10" y="15" width="235" height="95"/><rect x="285" y="15" width="235" height="95"/><rect x="560" y="15" width="240" height="95"/><path d="M245 60h40M520 60h40"/></g><g fill="currentColor" text-anchor="middle"><text x="127" y="43">工程A：输入JSON</text><text x="127" y="72">UUID.casset → owned字节</text><text x="402" y="43">只选所需依赖闭包</text><text x="402" y="72">流式hash / 私有spool</text><text x="680" y="43">工程B：新UUID与own字节</text><text x="680" y="72">不共享可变路径 / 不改default</text></g></svg><figcaption>生成代目录是存储位置，UUID才是资源身份；未选择的输出/凭据/任意附件不进入白名单。</figcaption></figure>
 <p><strong>实现和默认：</strong>core/resource_information.py、project_simulation_resources.py、project_binary_assets.py、project_store.py、project_resource_transfer.py与project_package.py。JSON沿既有32MiB单文件/256MiB总量/1000受管文档；coatasset沿512MiB、SPD沿2,000,000byte，显式AssetReadLimits默认总1GiB安全读取/spool预算，可配置并诊断，不是修正板/采样/计算数量上限。标量CSV须递增有限波长与非负有限值，不推断绝对辐射校准。</p>
 <p><strong>适用条件和近似：</strong>仅支持声明的deposition_asset/spd_csv角色、严格assets相对路径和普通文件；包精确枚举JSON及其声明payload，拒绝链接、加密、重复、越界、超量及hash不符；实际所选副本通过已有coatasset/CSV解析器。空未绑定配置可保存但不宣称可执行。此为本项目文件与状态协议约定，未找到外部依据，仅为本项目实现；不改变原光学算法的适用域和近似。参见<a href="project-simulation-input-contract.md">完整受管输入契约</a>、<a href="resource-information-contract.md">三字段元数据契约</a>。</p></section>
+<section id="project-research-evidence"><h2>项目研究证据 v1：来源、分页与隔离</h2>
+<p><span class="tag local">本项目约定</span>2026-10-17。此节定义研究证据 JSON 与有界资料提取，不改变沉积或薄膜光学求解器。外部来源的叙述、助手推断和实际仿真结果分别表示；研究文字不直接写成材料参数。</p>
+<p><strong>输入与输出：</strong>OpenAlex/Crossref 适配器只接受必要检索词或 DOI/work ID；初始化只列工具。全文使用已选中 work 的内容地址，PDF 保留真实物理页号（从 1 开始），TEI 保留章节/段落，未知页号为 null。检索候选不等于精确 DOI 核验，解析成功不等于结论正确或获得再分发权。材料波长、来源和单位仍由原材料工具解释，缺 k 保持未知，不静默外推。</p>
+<pre>explicit query / DOI → bounded public metadata (untrusted source statement)
+selected content URL → byte limits + private-address rejection → isolated parse
+parsed segments → bounded character pages (physical page / section / paragraph)
+explicit .coatproj + project_id + write permission → append-only evidence JSON
+content_sha256 = SHA256(UTF8(stored content))
+record_sha256 = SHA256(canonical JSON bytes of normalized record)</pre>
+<figure class="figure"><svg viewBox="0 0 820 170" role="img" aria-label="外部资料经过有界解析，再经明确工程身份和写权限保存为独立证据，不进入材料或仿真结果"><g fill="none" stroke="#087f78" stroke-width="2"><rect x="10" y="20" width="165" height="65" rx="8"/><rect x="220" y="20" width="165" height="65" rx="8"/><rect x="430" y="20" width="165" height="65" rx="8"/><rect x="640" y="20" width="165" height="65" rx="8"/><path d="M175 52h45m165 0h45m165 0h45"/></g><g class="svgtext" text-anchor="middle"><text x="92" y="47">来源元数据与原文</text><text x="92" y="69">原许可 / 原始摘要</text><text x="302" y="47">有界下载与隔离解析</text><text x="302" y="69">真实页 / 章节 / 段落</text><text x="512" y="47">显式工程身份和写权限</text><text x="512" y="69">讨论模式拒绝保存</text><text x="722" y="47">独立追加证据记录</text><text x="722" y="69">不改材料 / 配方 / 结果</text><text x="410" y="135">来源陈述 ≠ 助手推断 ≠ 带真实 run_id 的仿真结果</text></g></svg><figcaption>检索与缓存不自动产生正式保存。只有显式保存才写入当前指定工程的研究目录；材料与仿真仍由各自原工具管理。</figcaption></figure>
+<p><strong>格式与状态：</strong>位置为工程 <code>data/research/&lt;project_id&gt;/&lt;evidence_id&gt;.json</code>。外层精确字段为 kind=<code>coat_sim.project_research</code>、version=1、record、record_sha256。record 保留 evidence_id、project_id、title、content、doi、original_url、sha256、sha256_basis、content_sha256、retrieved_at、license、parse_status、segments、source、source_id、statement_kind、untrusted_reference。原字节摘要与 UTF-8 摘录摘要独立；没有原始字节时明确使用 utf8_content 基准。摘要校验保护本地记录完整性，不构成出版者签名、DOI真实性或原论文结论核验。partial 字符页仅代表已保存摘录，不声称已保存整篇。</p>
+<p><strong>坐标、单位与默认边界：</strong>页号、字符 offset、段落序号是文档定位，不是物理坐标或数值采样。默认返回最多 6000 字符；单记录 4 MiB、项目证据总量 64 MiB、1000 条记录是软件容量约定，不是物理精度或收敛门槛。PDF 解析限制内存/CPU/墙钟，TEI 禁 DTD/实体；解析无文本、失败、许可未知保留对应状态，不伪造 OCR 或授权。只追加保存、拒绝跨工程 ID/链接路径/覆盖；读取不隐式创建目录。记录类型只允许 source_statement 或 assistant_inference，仿真结果继续由既有结果工具返回真实 run_id。</p>
+<p><strong>实现与适用范围：</strong><a href="../coat_sim/agent/research_sources.py">research_sources.py</a>、<a href="../coat_sim/agent/research_http.py">research_http.py</a>、<a href="../coat_sim/agent/research_fulltext.py">research_fulltext.py</a>、<a href="../coat_sim/agent/research_parse_worker.py">research_parse_worker.py</a>、<a href="../coat_sim/core/project_research.py">project_research.py</a> 与 <a href="research-integration-contract.md">接入契约</a>。检索和格式限制为本项目实现；未找到外部依据验证其工程物理精度。外部内容一律作为不可信资料，不能授权执行内嵌指令；本地证据与全文默认排除源码发布。</p>
+<p class="source">官方接口与解析参考：<a href="https://help.openalex.org/api/authentication/">OpenAlex 认证、用量及游标</a>、<a href="https://help.openalex.org/access/fulltext/">OpenAlex 全文地址、TEI 与原版权</a>、<a href="https://www.crossref.org/documentation/retrieve-metadata/rest-api/">Crossref REST 元数据</a>、<a href="https://pypdf.readthedocs.io/en/stable/user/extract-text.html">pypdf 文本提取边界</a>。这些资料说明接口与文件提取，不验证本项目保存或光学结论。</p></section>
 </main>
 <article style="grid-column:2;max-width:1000px">
 <section id="film-solver-contract">
@@ -2926,5 +2942,9 @@ dispatch save/restore → request ID → matching actual completion → settle</
 <p><strong>默认行为与资产边界：</strong>checkpoint 仅序列化已经由核心资产服务事务导入的 <code>binary_asset</code> 引用，角色限沉积逐层输入与标量 SPD CSV。已确认选择外部输入后先导入为工程资源，再引用其 UUID；恢复层不复制外部文件。原件缺失、角色/摘要不符、未知字段、错误模块或陈旧受管修订均显式拒绝。输入选择已提交的资源不因取消配置编辑而自动删除；不会新建配置或改变默认项。渲染结果、图片、工作进程、远程主机与凭据不进入新的恢复输入字段。</p>
 <p><strong>异步与取消：</strong>close 预检合并沉积和光学模块 dirty，并拒绝未完成操作。provider 注销前留下分离 JSON 草稿，下次窗口登记后异步恢复；销毁窗口不留下访问已销毁 Qt 对象的回调。保存已开始提交便不能声称取消，失败保留当前草稿和旧文件。恢复逐模块准备失败时保留候选；只有成功采用后完整草稿、provider 与最后 request ID 都未变化且没有新操作，才允许异步回滚该内存草稿。派发后采用前再验完整来源签名及 request ID；新编辑、未确认信息、窗口 owner 或新操作均保留，并报告部分恢复，不覆盖较新内容。批次未结束时新的 provider 登记明确等待，不混入其他批次回滚。信息编辑恢复后仍需用户确认，取消只清 buffer，恢复副本仍未保存。</p>
 <p><strong>实现、样例与边界：</strong><a href="../coat_sim/core/project_optical_drafts.py">project_optical_drafts.py</a> 定义 provider 和请求完成屏障；<a href="../coat_sim/core/project_optical_recovery.py">project_optical_recovery.py</a> 负责严格 JSON、受管引用、token/checksum 与副本语义；<a href="../coat_sim/core/project_compute.py">project_compute.py</a> 汇总生命周期；<a href="../tests/test_project_optical_drafts.py">headless 合同样例</a>覆盖导入输入后删外部原件、未保存配置 checkpoint/恢复/首次保存、无效编辑文本、信息 buffer、失败与陈旧回调。接口细节见<a href="project-simulation-input-contract.md">工程光学输入契约</a>。本机制不提供物理精度、数值收敛或第三方文件兼容保证；未找到外部依据，仅为本项目实现。</p></section>
+
+
+
+
 </body>
 </html>

@@ -103,3 +103,5 @@ python tools/run_tests.py all
 安装器发行记录及第三方运行时许可统一见[独立安装器](https://github.com/ii33/coating-sim-installer)。
 
 [项目目录与历史工具清理说明](docs/development/root-layout.md)。
+
+[研究资料接入与普通 MCP 服务配置](docs/research-integration-contract.md) · [研究证据格式](docs/algorithms.html#project-research-evidence)

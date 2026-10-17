@@ -18,3 +18,6 @@ socksio>=1,<2
 keyring>=25,<26
 ezdxf>=1.4.4,<2
 openpyxl>=3.1.5,<4
+
+# Isolated research PDF text extraction (BSD-3-Clause).
+pypdf>=6.21,<7

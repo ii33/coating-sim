@@ -21,6 +21,9 @@ def sha256(path: Path) -> str:
 def _validate_package_relative_path(relative: Path | PurePosixPath | str, *, context: str) -> None:
     """Reject private design paths from any source or payload tree."""
     parts = PurePosixPath(str(relative).replace("\\", "/")).parts
+    folded = tuple(part.casefold() for part in parts)
+    if any(folded[index:index + 2] == ("data", "research") for index in range(len(folded) - 1)):
+        raise RuntimeError("Refusing to package local research evidence path in " + context)
     if any(part.casefold() == "sheji" for part in parts):
         raise RuntimeError(f"Refusing to package private design path in {context}: {PurePosixPath(*parts).as_posix()}")
 

@@ -297,6 +297,9 @@ AppWindow {
         }
     }
 
+    property string mcpExpandedId: ""
+    property string mcpEditPreset: ""
+    property string mcpEditDescription: ""
     property string mcpEditId: ""
     property bool mcpHasCredential: false
     function editMcpServer(row) {
@@ -853,6 +856,10 @@ AppWindow {
                                     mcpCredentialName.text = row ? row.credential_field : ""
                                     mcpSecret.text = ""
                                     mcpTimeout.value = row ? row.timeout_s : 60
+                                    settingsPage.settingsWindow.mcpEditPreset = row ? (row.preset_id || "") : ""
+                                    settingsPage.settingsWindow.mcpEditDescription = row ? (row.description || "") : ""
+                                    mcpDailyLimit.value = row ? (row.daily_call_limit || 0) : 0
+                                    mcpPaidConsent.checked = row ? row.allow_paid_calls === true : false
                                     mcpEditor.visible = true
                                 }
                                 function saveSettingsDraft() {
@@ -1500,6 +1507,7 @@ AppWindow {
                     }
 
                     Category {
+                        objectName: "externalMcpCategory"
                         title: "外部 MCP 服务"
                         Layout.fillWidth: true
                         ColumnLayout {
@@ -1514,45 +1522,105 @@ AppWindow {
                             Repeater {
                                 model: bridge.mcpServers
                                 delegate: Frame {
+                                    id: mcpRow
                                     required property var modelData
+                                    readonly property bool expanded: settingsPage.settingsWindow.mcpExpandedId === modelData.id
+                                    objectName: "mcpRow_" + modelData.id
                                     background: ThemeControls.ThemeSurface { padding: 0; contentSpacing: 0 }
                                     Layout.fillWidth: true
                                     ColumnLayout {
                                         anchors.fill: parent
                                         spacing: 4
-                                        ThemeControls.ThemeLabel {
-                                            text: modelData.name + " · " + ({stdio: "stdio", http: "HTTP", sse: "SSE"})[modelData.transport]
-                                            font.bold: true
-                                            Layout.fillWidth: true
-                                            wrapMode: Text.WrapAnywhere
-                                        }
                                         RowLayout {
                                             Layout.fillWidth: true
+                                            ThemeControls.ThemeButton {
+                                                id: mcpNameButton
+                                                objectName: "mcpName_" + modelData.id
+                                                text: modelData.name
+                                                flat: true
+                                                Layout.fillWidth: true
+                                                Layout.minimumWidth: 0
+                                                Accessible.name: modelData.name
+                                                Accessible.description: mcpRow.expanded ? "收起服务详细配置" : "展开服务详细配置"
+                                                contentItem: RowLayout {
+                                                    spacing: 4
+                                                    Canvas {
+                                                        Layout.preferredWidth: 12
+                                                        Layout.preferredHeight: 12
+                                                        Accessible.ignored: true
+                                                        property bool expanded: mcpRow.expanded
+                                                        onExpandedChanged: requestPaint()
+                                                        onPaint: {
+                                                            const ctx = getContext("2d")
+                                                            ctx.clearRect(0, 0, width, height)
+                                                            ctx.strokeStyle = mcpNameButton.themeTokens.colorText
+                                                            ctx.lineWidth = 1.5
+                                                            ctx.beginPath()
+                                                            ctx.moveTo(width * .25, height * (expanded ? .35 : .25))
+                                                            ctx.lineTo(width * (expanded ? .5 : .65), height * .5)
+                                                            ctx.lineTo(width * .25, height * (expanded ? .35 : .75))
+                                                            if (expanded) {
+                                                                ctx.moveTo(width * .5, height * .5)
+                                                                ctx.lineTo(width * .75, height * .35)
+                                                            }
+                                                            ctx.stroke()
+                                                        }
+                                                    }
+                                                    Text {
+                                                        Layout.fillWidth: true
+                                                        text: mcpNameButton.text
+                                                        font: mcpNameButton.font
+                                                        color: mcpNameButton.themeTokens.colorText
+                                                        elide: Text.ElideRight
+                                                        Accessible.ignored: true
+                                                    }
+                                                }
+                                                function toggleDetails() {
+                                                    settingsPage.settingsWindow.mcpExpandedId = mcpRow.expanded ? "" : modelData.id
+                                                }
+                                                onClicked: toggleDetails()
+                                                Keys.onReturnPressed: toggleDetails()
+                                                Keys.onEnterPressed: toggleDetails()
+                                            }
                                             CheckBox {
-                                                text: "启用连接"
+                                                objectName: "mcpEnabled_" + modelData.id
+                                                text: "启用"
+                                                Accessible.name: "启用 " + modelData.name
                                                 checked: modelData.enabled
                                                 onToggled: bridge.setMcpPermissions(modelData.id, checked, modelData.allow_tools)
+                                            }
+                                        }
+                                        ColumnLayout {
+                                            objectName: "mcpDetails_" + modelData.id
+                                            visible: mcpRow.expanded
+                                            Layout.fillWidth: true
+                                            ThemeControls.ThemeLabel {
+                                                text: ({stdio: "stdio", http: "HTTP", sse: "SSE"})[modelData.transport]
+                                                    + (modelData.description ? " · " + modelData.description : "")
+                                                Layout.fillWidth: true
+                                                wrapMode: Text.WrapAnywhere
                                             }
                                             CheckBox {
                                                 text: "允许工具调用"
                                                 checked: modelData.allow_tools
                                                 onToggled: bridge.setMcpPermissions(modelData.id, modelData.enabled, checked)
                                             }
-                                            Item { Layout.fillWidth: true }
-                                        }
-                                        RowLayout {
-                                            ThemeControls.ThemeButton { text: "编辑"; onClicked: settingsPage.settingsWindow.editMcpServer(modelData) }
-                                            ThemeControls.ThemeButton {
-                                                text: "检查连接"
-                                                enabled: !bridge.mcpProbeBusy
-                                                onClicked: bridge.checkMcpServer(modelData.id)
+                                            Flow {
+                                                Layout.fillWidth: true
+                                                spacing: 4
+                                                ThemeControls.ThemeButton { text: "编辑"; onClicked: settingsPage.settingsWindow.editMcpServer(modelData) }
+                                                ThemeControls.ThemeButton {
+                                                    text: "检查连接"
+                                                    enabled: !bridge.mcpProbeBusy
+                                                    onClicked: bridge.checkMcpServer(modelData.id)
+                                                }
+                                                ThemeControls.ThemeButton { text: "删除"; onClicked: bridge.deleteMcpServer(modelData.id) }
                                             }
-                                            ThemeControls.ThemeButton { text: "删除"; onClicked: bridge.deleteMcpServer(modelData.id) }
-                                        }
-                                        ThemeControls.ThemeLabel {
-                                            text: modelData.status
-                                            Layout.fillWidth: true
-                                            wrapMode: Text.WordWrap
+                                            ThemeControls.ThemeLabel {
+                                                text: modelData.status
+                                                Layout.fillWidth: true
+                                                wrapMode: Text.WordWrap
+                                            }
                                         }
                                     }
                                 }
@@ -1638,6 +1706,22 @@ AppWindow {
                                         ThemeControls.ThemeLabel { text: "工具超时 / 秒" }
                                         ThemeControls.ThemeSpinBox { id: mcpTimeout; from: 5; to: 600; value: 60; editable: true }
                                     }
+                                    ThemeControls.ThemeLabel {
+                                        text: settingsPage.settingsWindow.mcpEditDescription
+                                        visible: text.length > 0
+                                        Layout.fillWidth: true
+                                        wrapMode: Text.WrapAnywhere
+                                    }
+                                    RowLayout {
+                                        visible: settingsPage.settingsWindow.mcpEditPreset.length > 0
+                                        ThemeControls.ThemeLabel { text: "每日调用上限（UTC；0 为禁止）"; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                                        ThemeControls.ThemeSpinBox { id: mcpDailyLimit; from: 0; to: 10000; value: 0; editable: true }
+                                    }
+                                    CheckBox {
+                                        id: mcpPaidConsent
+                                        visible: settingsPage.settingsWindow.mcpEditPreset === "zhihu"
+                                        text: "我了解限免后可能扣余额，允许预算内计费调用"
+                                    }
                                     CheckBox { id: mcpEnabled; text: "启用连接" }
                                     CheckBox { id: mcpAllowTools; text: "允许看板娘调用此服务的工具" }
                                     CheckBox { id: mcpAllowProject; text: "允许向此服务发送或让其访问项目内容" }
@@ -1658,7 +1742,8 @@ AppWindow {
                                                     cwd: mcpCwd.text, url: mcpUrl.text,
                                                     enabled: mcpEnabled.checked, allow_tools: mcpAllowTools.checked,
                                                     allow_project_data: mcpAllowProject.checked,
-                                                    credential_field: mcpCredentialName.text, timeout_s: mcpTimeout.value
+                                                    credential_field: mcpCredentialName.text, timeout_s: mcpTimeout.value,
+                                                    daily_call_limit: mcpDailyLimit.value, allow_paid_calls: mcpPaidConsent.checked
                                                 }, mcpSecret.text)
                                                 if (saved) {
                                                     mcpSecret.text = ""
