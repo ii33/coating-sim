@@ -41,6 +41,21 @@ def private_store(self, path=original_path):
     original_init(self, state/'assistant.sqlite3' if Path(path)==original_path else path)
 support = ExitStack()
 support.enter_context(patch.object(storage.AssistantStore, "__init__", private_store))
+seed_sessions = []
+if mode == 'lazy_documents':
+    seeded = storage.AssistantStore()
+    for number in range(2):
+        session = seeded.new_session('Native synthetic history ' + str(number))
+        seed_sessions.append(session)
+        seeded.add_message(session, 'assistant',
+            'Synthetic introduction.\n\nSecond paragraph.\n\nThird paragraph.',
+            metadata={'introduction': True})
+        seeded.add_message(session, 'user', 'Return LOCAL_NATIVE_OK.', request_id='native-round')
+        seeded.add_message(session, 'assistant', 'LOCAL_NATIVE_OK', request_id='native-round',
+            metadata={'status': 'completed', 'steps': [{'stepId': 'native-round:1',
+                'source': 'main', 'output': 'LOCAL_NATIVE_OK', 'thinking': '',
+                'thinkingDone': True, 'done': True, 'status': 'complete'}]})
+
 import coat_sim.ui.assistant_desktop as desktop  # noqa: E402 -- private paths must be selected before application imports.
 desktop.CURSOR_PATH = state/'cursor.json'
 support.enter_context(patch.object(desktop, "QSoundEffect", None))
@@ -109,7 +124,10 @@ class ProbeHost(host_module.AssistantProcessHost):
         else:
             self.chat_id = id(self.controller._chat)
             self.cycles = 0
-            self.later(self.close_chat)
+            if mode == 'lazy_documents':
+                QTimer.singleShot(1500, lambda: self.guarded(self.close_chat))
+            else:
+                self.later(self.close_chat)
     def recover_destroyed(self):
         gc.collect()
         self.controller.show_chat()
@@ -133,12 +151,20 @@ class ProbeHost(host_module.AssistantProcessHost):
         assert self.controller._chat is not None and self.controller._chat.isVisible()
         assert id(self.controller._chat) == self.chat_id
         self.cycles += 1
+        if mode == 'lazy_documents' and self.cycles == 1:
+            self.controller.bridge.selectConversation(seed_sessions[0])
         if self.cycles < 3:
             self.later(self.close_chat)
         else:
             self.controller.hide_windows()
             self.later(self.finish_probe)
     def finish_probe(self):
+        if mode == 'lazy_documents':
+            documents = self.controller.bridge._renderer.documents
+            bodies = [document for identity, document in documents.items() if identity.endswith('/body')]
+            assert len(bodies) >= 2, 'Visible history failed to create its lazy body documents'
+            assert all(document.model.rowCount() >= 1 for document in bodies)
+            payload['lazy_body_documents'] = len(bodies)
         payload.update(phase='done', ok=True, quit_on_last=app().quitOnLastWindowClosed())
         write()
         self.later(lambda: app().quit())

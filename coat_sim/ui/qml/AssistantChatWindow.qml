@@ -1567,9 +1567,45 @@ Window {
                         visible: turn.modelData.hasSteps !== true
                             && (turnBody.renderedDocumentReady
                                 || fallbackHtml.length > 0 || fallbackText.length > 0)
-                        document: turn.modelData.document || (typeof assistant.documentForTurn === "function"
-                            ? assistant.documentForTurn(turn.modelData.key, turn.modelData.documentStyle || "")
-                            : null)
+                        // Creating a QObject/model while its binding is being evaluated
+                        // re-enters Qt's property lookup. Resolve it after this update.
+                        property var lazyDocument: null
+                        property var documentTicket: null
+                        property string lazyDocumentKey: ""
+                        function requestDocument() {
+                            if (documentTicket) documentTicket.alive = false
+                            const key = String(turn.modelData.key || "")
+                            const style = String(turn.modelData.documentStyle || "")
+                            if (lazyDocumentKey !== key) lazyDocument = null
+                            lazyDocumentKey = key
+                            if (turn.delegatePooled || turn.modelData.hasSteps === true
+                                    || turn.modelData.document || key.length === 0) {
+                                lazyDocument = null
+                                documentTicket = null
+                                return
+                            }
+                            const ticket = {alive: true}
+                            documentTicket = ticket
+                            Qt.callLater(function() {
+                                if (!ticket.alive) return
+                                const document = typeof assistant.documentForTurn === "function"
+                                    ? assistant.documentForTurn(key, style) : null
+                                if (!ticket.alive) return
+                                turnBody.lazyDocument = document
+                                turnBody.documentTicket = null
+                                ticket.alive = false
+                            })
+                        }
+                        document: turn.modelData.document || lazyDocument
+                        Component.onCompleted: requestDocument()
+                        Component.onDestruction: {
+                            if (documentTicket) documentTicket.alive = false
+                        }
+                        Connections {
+                            target: turn
+                            function onModelDataChanged() { turnBody.requestDocument() }
+                            function onDelegatePooledChanged() { turnBody.requestDocument() }
+                        }
                         fallbackText: turn.delegatePooled ? "" : (turn.modelData.text
                             || (turnBody.document && !turnBody.renderedDocumentReady
                                 ? turnBody.document.sourceText : ""))

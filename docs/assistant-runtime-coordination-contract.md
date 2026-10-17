@@ -38,3 +38,13 @@ stdout and stdin retain their real pipes for JSON-RPC. Module, absolute-script
 and frozen entry routes keep the same contract. No console or unbounded log
 handle is needed. Regression coverage must perform the actual local handshake
 with both a no-fileno parent stream and absent stderr, not just test GUI readiness.
+
+## Lazy history document creation (2026-10-17)
+
+The history delegate queues `documentForTurn` outside declarative property binding
+evaluation. The renderer remains the document owner. A same-key update retains
+the displayed document; row reuse, pooling, step output, and destruction invalidate
+the pending ticket before any delegate access. A superseded result is not applied.
+This avoids native Qt property-cache access violations observed when nonempty
+history mixes lazy message bodies with completed model steps. Native regression
+loads that history, renders real rich blocks, switches sessions, and reopens chat.

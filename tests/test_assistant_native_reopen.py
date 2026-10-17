@@ -103,3 +103,8 @@ def test_native_chinese_installation_source_and_qml_paths(tmp_path):
     # Source/assets only: never copy, move or install an existing environment.
     shutil.copytree(ROOT/'coat_sim',source/'coat_sim',ignore=shutil.ignore_patterns('__pycache__','*.pyc'))
     assert run_probe(tmp_path,'close_cycle',application_root=source)['ok']
+
+
+def test_native_nonempty_history_lazy_documents_survive_reopen_and_session_reuse(tmp_path):
+    result = run_probe(tmp_path, 'lazy_documents')
+    assert result['ok'] and result['lazy_body_documents'] >= 2
