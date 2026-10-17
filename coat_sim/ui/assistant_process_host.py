@@ -146,6 +146,16 @@ class AssistantProcessHost(QObject):
     def external_window_action(self, identity: str, operation: str) -> bool:
         if self._closed:
             return False
+        if operation == "open_window":
+            try:
+                # The menu still owns the actual user input/foreground here.
+                # Deferring this grant until the worker's IPC would lose it.
+                granted = self.registry.prepare_window_activation(identity)
+                trace("window_foreground_permission", operation=operation,
+                      reason="granted" if granted else "denied")
+            except UiControlError as exc:
+                self.controller.desktop.notify("窗口操作未完成：" + str(exc), sound=False)
+                return False
         future = self._window_pool.submit(self.registry.window_action, identity, operation)
 
         def done(item):

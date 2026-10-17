@@ -48,3 +48,14 @@ the pending ticket before any delegate access. A superseded result is not applie
 This avoids native Qt property-cache access violations observed when nonempty
 history mixes lazy message bodies with completed model steps. Native regression
 loads that history, renders real rich blocks, switches sessions, and reopens chat.
+
+## Managed-window foreground handoff (2026-10-17)
+
+On Windows the assistant grants foreground permission only to the selected,
+registered process, synchronously during the menu gesture and before asynchronous
+IPC. The cached client object and OS process creation identity must still match;
+normal authenticated project/session/instance revalidation remains in the worker.
+`AllowSetForegroundWindow` is a transient per-process handoff, not a global policy
+or always-on-top change. The target restores and activates its existing window.
+An admitted action is not proof of foreground ownership: native regression must
+compare `GetForegroundWindow` with the exact target HWND after the real menu click.

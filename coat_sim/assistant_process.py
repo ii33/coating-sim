@@ -204,6 +204,17 @@ class _Client:
                 "project_sessions": [dict(item) for item in self.projects]}
 
 
+def _allow_foreground_process(pid: int) -> bool:
+    if os.name != "nt":
+        return True
+    import ctypes
+    from ctypes import wintypes
+    allow = ctypes.WinDLL("user32", use_last_error=True).AllowSetForegroundWindow
+    allow.argtypes = [wintypes.DWORD]
+    allow.restype = wintypes.BOOL
+    return bool(allow(pid))
+
+
 class ApplicationClientRegistry:
     """Authenticated participants and all-prepare-before-any-commit exit."""
 
@@ -567,6 +578,22 @@ class ApplicationClientRegistry:
         with self._lock:
             self._windows = targets
         return result
+
+    def prepare_window_activation(self, identity: str) -> bool:
+        """Transfer this user gesture's foreground permission before async IPC."""
+        with self._lock:
+            if self._exiting:
+                raise UiControlError("exit_in_progress", "Application exit is in progress")
+            target = self._windows.get(identity)
+            if target is None:
+                raise UiControlError("stale_window", "Managed window identity is no longer registered")
+            client, _arguments = target
+            if self._clients.get(client.client_id) is not client:
+                raise UiControlError("stale_client", "Managed window process generation has changed")
+        state, start = _process_identity(client.endpoint["pid"])
+        if state != "alive" or start != client.process_start:
+            raise UiControlError("process_identity_unknown", "Cannot verify activation target process")
+        return _allow_foreground_process(client.endpoint["pid"])
 
     def window_action(self, identity: str, operation: str) -> dict[str, Any]:
         if operation not in {"open_window", "close_window"}:

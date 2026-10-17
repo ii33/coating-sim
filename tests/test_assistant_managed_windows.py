@@ -158,3 +158,35 @@ def test_management_refresh_rejects_changed_descriptor_binding(management_projec
                                 session_generation="session-a")
     assert error.value.code == "stale_project"
     assert calls == []
+
+
+def test_foreground_handoff_only_targets_verified_registered_process(monkeypatch):
+    import coat_sim.assistant_process as module
+    registry, client, calls = _registry(monkeypatch)
+    identity = registry.list_windows()[0]['id']
+    monkeypatch.setattr(module, '_process_identity', lambda pid: ('alive', client.process_start))
+    grants = []
+    monkeypatch.setattr(module, '_allow_foreground_process', lambda pid: grants.append(pid) or True)
+    assert registry.prepare_window_activation(identity)
+    assert grants == [client.endpoint['pid']]
+    assert not any(op == 'open_window' for op, _ in calls)
+    monkeypatch.setattr(module, '_process_identity', lambda pid: ('alive', 'reused-pid'))
+    with pytest.raises(UiControlError, match='Cannot verify'):
+        registry.prepare_window_activation(identity)
+    assert len(grants) == 1
+
+
+def test_foreground_handoff_preserves_os_denial_and_rejects_stale_target(monkeypatch):
+    import coat_sim.assistant_process as module
+    registry, client, _ = _registry(monkeypatch)
+    identity = registry.list_windows()[0]['id']
+    monkeypatch.setattr(module, '_process_identity', lambda pid: ('alive', client.process_start))
+    monkeypatch.setattr(module, '_allow_foreground_process', lambda pid: False)
+    assert registry.prepare_window_activation(identity) is False
+    registry._clients.clear()
+    with pytest.raises(UiControlError) as stale:
+        registry.prepare_window_activation(identity)
+    assert stale.value.code == 'stale_client'
+    with pytest.raises(UiControlError) as missing:
+        registry.prepare_window_activation('unknown-window')
+    assert missing.value.code == 'stale_window'
