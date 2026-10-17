@@ -17,146 +17,6 @@ audit = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(audit)
 
 
-# Exact upstream notices only: no directory/glob or application-source exemptions.
-LICENSE_REFERENCES = {
-    'CPython-Windows-crtlicense.txt': (
-        'https://raw.githubusercontent.com/python/cpython/v3.13.16/PC/crtlicense.txt',
-        '3c71b3ae243121f6f227374cd1ef7c59ed07b1969b330d0e947f91a3a1b3fd73',
-        None,
-    ),
-    'FreeType-2.8-FTL.TXT': (
-        'https://raw.githubusercontent.com/freetype/freetype/VER-2-8/docs/FTL.TXT',
-        '4a9a548027a2c1d37788519dea833294c9c81f1ebc280e817f41f50d0c642d78',
-        None,
-    ),
-    'OpenSSL-3.5.9-LICENSE.txt': (
-        'https://raw.githubusercontent.com/openssl/openssl/openssl-3.5.9/LICENSE.txt',
-        '7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a',
-        None,
-    ),
-    'Tcl-8.6.18-license.terms': (
-        'https://raw.githubusercontent.com/tcltk/tcl/core-8-6-18/license.terms',
-        'c0a69a2bfd757361ec7e6143973b103c90409316b49e9c88db26ad6388e79f16',
-        None,
-    ),
-    'Tcl-license.terms': (
-        'https://raw.githubusercontent.com/tcltk/tcl/core-9-0-4/license.terms',
-        'c0a69a2bfd757361ec7e6143973b103c90409316b49e9c88db26ad6388e79f16',
-        None,
-    ),
-    'Tk-8.6.18-license.terms': (
-        'https://raw.githubusercontent.com/tcltk/tk/core-8-6-18/license.terms',
-        '2cde822b93ca16ae535c954b7dfe658b4ad10df2a193628d1b358f1765e8b198',
-        None,
-    ),
-    'Tk-license.terms': (
-        'https://raw.githubusercontent.com/tcltk/tk/core-9-0-4/license.terms',
-        '2cde822b93ca16ae535c954b7dfe658b4ad10df2a193628d1b358f1765e8b198',
-        None,
-    ),
-    'bzip2-1.0.6-LICENSE.txt': (
-        'https://sourceware.org/pub/bzip2/bzip2-1.0.6.tar.gz',
-        '4919cfb14a73cd64fcef67b107613970cf1659a09aa675dba31314f373bc7204',
-        'bzip2-1.0.6/LICENSE',
-    ),
-    'fontconfig-2.13.0-COPYING.txt': (
-        'https://fontconfig.org/release/fontconfig-2.13.0.tar.gz',
-        'fa4cd9ab005185e10cd8f7504518856c7dd36c01e766c2bac87f4fc638e9f886',
-        'fontconfig-2.13.0/COPYING',
-    ),
-    'libXft-2.3.2-COPYING.txt': (
-        'https://xorg.freedesktop.org/archive/individual/lib/libXft-2.3.2.tar.gz',
-        '7cda22286b1379b9b73df695f72cbad36595e65b039a5fbc5c89b69ecc44438c',
-        'libXft-2.3.2/COPYING',
-    ),
-    'libffi-LICENSE.txt': (
-        'https://raw.githubusercontent.com/libffi/libffi/v3.0.13/LICENSE',
-        '414f460aed519486beb78e92ea712c9ccf87c1acfb735a82d301f4cdf06f48e3',
-        None,
-    ),
-    'liblzma-5.2.2-COPYING.txt': (
-        'https://raw.githubusercontent.com/tukaani-project/xz/v5.2.2/COPYING',
-        'c4f8e14fafe458d84808a4cd8b69f94673ebe2bf8fc992291629a69ac12218f8',
-        None,
-    ),
-    'libpng-1.5.13-LICENSE.txt': (
-        'https://downloads.sourceforge.net/project/libpng/libpng15/older-releases/1.5.13/libpng-1.5.13-LICENSE.txt',
-        '765fadfb74d68bc20c6793ade8e8d8942a02af17f823e4eec04ab02de4c9f1f4',
-        None,
-    ),
-    'libuuid-BSD-license.txt': (
-        'https://raw.githubusercontent.com/util-linux/util-linux/v2.23.2/Documentation/licenses/COPYING.BSD-3',
-        '9b718a9460fed5952466421235bc79eb49d4e9eacc920d7a9dd6285ab8fd6c6d',
-        None,
-    ),
-    'CPython-3.12.15-LICENSE.txt': (
-        'https://raw.githubusercontent.com/python/cpython/v3.12.15/LICENSE',
-        '3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf',
-        None,
-    ),
-    'CPython-3.13.16-Windows-LICENSE.txt': (
-        'https://www.python.org/ftp/python/3.13.16/python-3.13.16-embed-amd64.zip',
-        '62bec384df47b0328307db41455ff6ea2559e5546b394ac69148561b21703120',
-        'LICENSE.txt',
-    ),
-    'Unicode-DFS-2016-NOTICE.txt': (
-        'https://raw.githubusercontent.com/unicode-org/icu/release-58-2/icu4c/LICENSE',
-        'eeba269c94183d337cbbbf16b75ef2869feaf4b722b04586055c13171e68cfb9',
-        None,
-    ),
-    'fontconfig-2.13.0-subcomponent-NOTICES.txt': (
-        'https://fontconfig.org/release/fontconfig-2.13.0.tar.gz',
-        '3b49dc9f4f3c36fb31547794e91686c5a03c6a55aa632202001243b2e976ac95',
-        None,
-    ),
-    'FreeType-2.8-subcomponent-NOTICES.txt': (
-        'https://github.com/freetype/freetype/tree/VER-2-8',
-        '7b4e3e474939cdb0e49a70903e12eb0332975060fa8ba4ea5e413d42f6a79f57',
-        None,
-    ),
-    'Tcl-8.6.18-Spencer-regex-NOTICE.txt': (
-        'https://raw.githubusercontent.com/tcltk/tcl/core-8-6-18/generic/regcomp.c',
-        'c06f805f44c6dde317bf3ce297df34c32612e2dd57bc2bf95ba7ff046197743c',
-        None,
-    ),
-    'Tcl-8.6.18-LibTomMath-LICENSE.txt': (
-        'https://raw.githubusercontent.com/tcltk/tcl/core-8-6-18/libtommath/LICENSE',
-        '2fa64b163659f41965c9815882a8296d3d03ff546b76153e11445f9bdecf955a',
-        None,
-    ),
-    'Tcl-8.6.18-Bison-parser-NOTICE.txt': (
-        'https://raw.githubusercontent.com/tcltk/tcl/core-8-6-18/generic/tclDate.c',
-        'fbd48d948a615027c03b9dba5d28c8ec1616734129ade40a22e7713f8f5a22f5',
-        None,
-    ),
-    'Tk-8.6.18-GIF-NOTICE.txt': (
-        'https://raw.githubusercontent.com/tcltk/tk/core-8-6-18/generic/tkImgGIF.c',
-        '11e0b203a4b6139282b44d60281a7aaa64b0229564283b871f102ed7076c0827',
-        None,
-    ),
-    'Unicode-V3-license.txt': (
-        'https://www.unicode.org/license.txt',
-        'e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96',
-        None,
-    ),
-    'Unicode-17.0.0-ReadMe.txt': (
-        'https://www.unicode.org/Public/17.0.0/ucd/ReadMe.txt',
-        '9fe1a90bd32659d7953616283dc2bffaa165518aae9ace026040c42c559ba606',
-        None,
-    ),
-    'GNU-GPL-3.0.txt': (
-        'https://raw.githubusercontent.com/NixOS/patchelf/0.19.1/COPYING',
-        'e79e9c8a0c85d735ff98185918ec94ed7d175efc377012787aebcf3b80f0d90b',
-        None,
-    ),
-}
-LICENSE_CRLF = {"CPython-3.13.16-Windows-LICENSE.txt"}
-LICENSE_ORIGINAL_WHITESPACE = {
-    "CPython-Windows-crtlicense.txt", "bzip2-1.0.6-LICENSE.txt",
-    "fontconfig-2.13.0-COPYING.txt", "libXft-2.3.2-COPYING.txt",
-    "liblzma-5.2.2-COPYING.txt",
-}
-
 
 class DistributionGraphAuditTest(unittest.TestCase):
     def write(self, root, name, text):
@@ -343,7 +203,7 @@ class DistributionGraphAuditTest(unittest.TestCase):
         cie = "data/film_design/cie-illuminants-20261006/"
         contents = {name: "guide" for name in audit.DOCUMENTATION_FILES}
         contents["README.md"] = "\n".join(f"[guide]({name})" for name in (
-            "docs/portable-bundle.md", "docs/portable-assets.md", "docs/offline-installer.md"))
+            "docs/portable-bundle.md", "docs/portable-assets.md", "docs/installation.md"))
         contents["docs/algorithms.html"] = (
             '<section id="cie"><a href="../' + cie + 'NOTICE_DATA.md">notice</a>'
             '<a href="../' + cie + 'LICENSE_DATA_CC_BY_SA_4_0.txt">license</a></section>')
@@ -475,43 +335,6 @@ class DistributionGraphAuditTest(unittest.TestCase):
             root, "data/film_design/cie-illuminants-20261006/MANIFEST_SHA256.json")
         self.assertTrue(result["passed"], result["mismatches"])
 
-    def test_repository_license_attributes_match_exact_upstream_bytes_only(self):
-        root = SCRIPT.parents[1]
-        rules = [line.split() for line in (root / ".gitattributes").read_text().splitlines()
-                 if line.strip() and not line.lstrip().startswith("#")]
-        prefix = "/tools/dependency_manager/licenses/"
-        license_rules = [rule for rule in rules if rule[0].startswith(prefix)]
-        other_rules = [rule for rule in rules
-                       if not rule[0].startswith((prefix, "/data/film_design/cie-illuminants-20261006/"))]
-        # The portable example uses byte-hashed project assets; Windows clones
-        # must preserve them too. Keep the allowlist exact, not a broad exemption.
-        self.assertEqual(other_rules, [
-            ["/sheji", "export-ignore"],
-            ["/example/synthetic-demo/**", "-text"],
-        ])
-        self.assertEqual(len(license_rules), len(LICENSE_REFERENCES))
-        self.assertEqual({rule[0] for rule in license_rules},
-                         {prefix + name for name in LICENSE_REFERENCES})
-        for pattern, *attributes in license_rules:
-            self.assertFalse(any(char in pattern for char in "*?[]"))
-            name = pattern.removeprefix(prefix)
-            expected = ["-text"] + (["-whitespace"] if name in LICENSE_ORIGINAL_WHITESPACE else []) + (["whitespace=cr-at-eol"] if name in LICENSE_CRLF else [])
-            self.assertEqual(attributes, expected)
-
-        inventory = json.loads((root / prefix.lstrip("/") / "research-inventory.json").read_text())
-        self.assertEqual(inventory["schema_version"], 1)
-        self.assertEqual(len(inventory["components"]), len(LICENSE_REFERENCES))
-        rows = {row["notice"]: row for row in inventory["components"]}
-        self.assertEqual(set(rows), set(LICENSE_REFERENCES))
-        for name, (source, sha256, archive_member) in LICENSE_REFERENCES.items():
-            with self.subTest(notice=name):
-                row = rows[name]
-                self.assertEqual(row["source"], source)
-                self.assertEqual(row.get("archive_member"), archive_member)
-                self.assertEqual(row["sha256"], sha256)
-                data = (root / prefix.lstrip("/") / name).read_bytes()
-                self.assertEqual(hashlib.sha256(data).hexdigest(), sha256)
-                self.assertEqual(len(data), row["bytes"])
 
 
 if __name__ == "__main__":

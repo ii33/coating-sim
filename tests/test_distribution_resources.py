@@ -6,13 +6,13 @@ from pathlib import Path
 import sys
 from types import ModuleType, SimpleNamespace
 
-from tools import build_offline_installer as builder
+from tools import distribution_resources as builder
 
 
 _DOCUMENTS = (
     "portable-bundle.md",
     "portable-assets.md",
-    "offline-installer.md",
+    "installation.md",
 )
 
 
@@ -44,7 +44,7 @@ def _make_minimal_source_tree(root: Path) -> None:
         path.write_bytes(relative.encode("utf-8"))
 
 
-def test_offline_installer_snapshot_and_data_mapping_include_license_and_documentation(
+def test_application_resources_snapshot_and_data_mapping_include_license_and_documentation(
     tmp_path: Path, monkeypatch
 ) -> None:
     source_root = tmp_path / "source"
@@ -85,7 +85,7 @@ def test_offline_installer_snapshot_and_data_mapping_include_license_and_documen
     assert mappings["LICENSE"] == "."
 
 
-def test_offline_installer_stages_cie_local_license_targets_at_data_root(
+def test_application_resources_stages_cie_local_license_targets_at_data_root(
     tmp_path: Path,
 ) -> None:
     package_assets = tmp_path / "package-assets"

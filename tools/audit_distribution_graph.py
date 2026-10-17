@@ -2,7 +2,7 @@
 
 This is an audit helper, not an installer or a dead-code detector. It parses
 source without importing application modules or executing the fork scripts.
-The optional package check calls only the existing installer's source/static
+The optional package check calls only the application source/static
 data staging helpers; it does not run PyInstaller, install, or launch the app.
 """
 from __future__ import annotations
@@ -519,7 +519,7 @@ class DocumentationParser(HTMLParser):
 
 DOCUMENTATION_FILES = (
     "README.md", "docs/algorithms.html", "docs/software_manual.html",
-    "docs/portable-bundle.md", "docs/portable-assets.md", "docs/offline-installer.md",
+    "docs/portable-bundle.md", "docs/portable-assets.md", "docs/installation.md",
     "coat_sim/agent/resources/software_manual.md",
 )
 REQUIRED_DOCUMENT_LINKS = (
@@ -527,7 +527,7 @@ REQUIRED_DOCUMENT_LINKS = (
     ("docs/algorithms.html", "data/film_design/cie-illuminants-20261006/LICENSE_DATA_CC_BY_SA_4_0.txt"),
     ("README.md", "docs/portable-bundle.md"),
     ("README.md", "docs/portable-assets.md"),
-    ("README.md", "docs/offline-installer.md"),
+    ("README.md", "docs/installation.md"),
     ("docs/software_manual.html", "docs/portable-bundle.md"),
 )
 
@@ -672,10 +672,10 @@ def reference_manifest_validation(layout: Path, relative_manifest: str) -> dict:
 
 def package_validation(root: Path, output: Path) -> dict:
     """Validate staging/selection only; no runtime or release is produced."""
-    script = root / "tools/build_offline_installer.py"
+    script = root / "tools/distribution_resources.py"
     spec = importlib.util.spec_from_file_location("distribution_audit_staging", script)
     if spec is None or spec.loader is None:
-        raise RuntimeError("Cannot load existing installer staging helpers")
+        raise RuntimeError("Cannot load application resource staging helpers")
     builder = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(builder)
     builder.ROOT = root
@@ -721,7 +721,7 @@ def package_validation(root: Path, output: Path) -> dict:
                                                    or name in FORK_SCRIPTS)]
         if forbidden:
             raise RuntimeError("State or candidate scripts entered validation archive: " + repr(forbidden))
-        return {"kind": "existing-installer-source-resource-staging-validation-only",
+        return {"kind": "application-source-resource-staging-validation-only",
                 "not_a_release": True, "runtime_executed": False, "pyinstaller_executed": False,
                 "qt_binaries_or_plugins_in_archive": False, "existing_builder_sha256": digest(script),
                 "source_snapshot_manifest": source_records, "static_data_paths": static_paths,

@@ -8739,16 +8739,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tools/build_offline_installer.py",
-      "code": "arg-type",
-      "message": "Argument 1 to \"Path\" has incompatible type \"SimplePath[Any]\"; expected \"str | PathLike[str]\"",
-      "scope": "stage_license_notices",
-      "anchor": "source = Path(dist.locate_file(file))",
-      "fingerprint": "2207cc7617ed01d1ccbf5e19b9838e23e5f7d9daa7f1c88a884d58f2a2854a32",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_material_optical_editor.py",
       "code": "union-attr",
       "message": "Item \"None\" of \"QObject | None\" has no attribute \"property\"",
@@ -16875,16 +16865,6 @@
       "scope": "",
       "anchor": "&& typeof fallbackEditor.editingFinished !== \"function\"",
       "fingerprint": "409dc26c915f9c5f68dc31494bce3fedd98a1a2d47208f928638606f7a521127",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "tools/build_offline_installer.py",
-      "code": "B007",
-      "message": "Loop control variable `item` not used within loop body",
-      "scope": "main",
-      "anchor": "for item in runtime_distributions:",
-      "fingerprint": "40c983128ba78b57d5cc4fd6e312a18bb5b83db737854fda6553f878ff62c14e",
       "count": 1
     },
     {
@@ -60108,16 +60088,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "tools/build_offline_installer.py",
-      "code": "F401",
-      "message": "`tempfile` imported but unused",
-      "scope": "",
-      "anchor": "import tempfile",
-      "fingerprint": "e6880689adc30db2574df697006b3108cb381fe11970ef079954603ee4d12515",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_optical_material_refinements.py",
       "code": "attr-defined",
@@ -61865,16 +61835,6 @@
       "scope": "run",
       "anchor": "results = [row for item in report[\"cases\"] for row in item[\"results\"]]",
       "fingerprint": "ecd455f30571a21c7c7d7f63df640b31f7ad4282c6e3a58469bf7277b00a6ccc",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "tools/build_offline_installer.py",
-      "code": "F841",
-      "message": "Local variable `package_roots` is assigned to but never used",
-      "scope": "stage_license_notices",
-      "anchor": "package_roots = [Path(sys.prefix) / \"Lib\" / \"site-packages\", Path(sys.prefix) / \"Lib\"]",
-      "fingerprint": "ecdccd552dc9ce86290ae8e2f410db690f2db315f72ac79f52d4a28b2b15ab78",
       "count": 1
     },
     {
@@ -66958,6 +66918,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "Reviewed completed Linux CI for .19: remove the remaining resolved FilmSimulation caption continuation unqualified-access entry (9f6d4ba8); no new findings accepted.",
+  "last_prune_reason": "2026-10-17 installer separation: remove exactly 4 findings owned by deleted tools/build_offline_installer.py; no new debt or rule changes accepted.",
   "configuration_review_reason": "2026-10-14: reviewed source-snapshot drift guard and cache reset only; diagnostic rules, identities and all debt entries unchanged."
 }

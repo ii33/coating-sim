@@ -1,3 +1,0 @@
-# Retired: the online installer uses install.bat / install.sh.
-# No frozen-EXE builder or third-party installer build dependencies are required.
-# Historical native license/audit evidence remains under tools/dependency_manager/licenses.

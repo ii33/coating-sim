@@ -26,7 +26,6 @@ artifacts/logs/*.log
 /history/
 /dist/
 /build/
-/build/offline_installer_windows_x64/
 /config/ui_settings.json
 /config/assistant_model_cache.json
 /config/assistant_model_cache.lock

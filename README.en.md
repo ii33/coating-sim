@@ -4,7 +4,7 @@
 
 A desktop tool for optical thin-film research and engineering development, bringing thin-film design, planetary evaporation deposition, thickness maps, spectral analysis, and result assets into independent projects.
 
-**This is the `dev.20261016.19` development snapshot, not a formal Release.** The project has not completed comprehensive physical calibration. Simulation and optimization support analysis, comparison, and research; they do not replace equipment calibration, process qualification, or optical measurements. Run from source: there is no release-qualified installer or dependency-manager EXE.
+**This is the `dev.20261016.19` development snapshot, not a formal Release.** The project has not completed comprehensive physical calibration. Simulation and optimization support analysis, comparison, and research; they do not replace equipment calibration, process qualification, or optical measurements. Application and independent-installer versions and acceptance scopes are recorded separately.
 
 ## What it does
 
@@ -12,49 +12,28 @@ A desktop tool for optical thin-film research and engineering development, bring
 - **Thin-film optics:** edit layer stacks and material n/k data, calculate spectra, inspect bands and extrema, and use thickness optimization and experimental structure search.
 - **Projects and assets:** isolate inputs, unsaved changes, and results by project. Browse resources and edit materials in a unified asset library, with scoped recycling and recovery for eligible assets.
 - **Results and automation:** manage calculation queues and result assets; use geometric ray tracing and appearance rendering. Some operations also have CLI, MCP, and optional AI-assistant entry points. Their capabilities and permissions differ; see the [entry-point matrix](docs/entrypoint-capabilities.md).
-- **Dependency management:** a terminal-only interactive online installer and advanced standard-library CLI to inspect Python/compute environments, review plans, choose sources and mirrors, and install full end-user dependencies into an isolated virtual environment.
+- **Installation:** the [independent installer](https://github.com/ii33/coating-sim-installer) owns deployment; the application supplies declarative dependencies.
 
 Models, units, sampling rules, approximations, and sources are documented in the [algorithm atlas](docs/algorithms.html). Download this self-contained HTML file and open it locally for offline reading; GitHub's source preview is not a rendered documentation site. The [software manual](docs/software_manual.html) provides fuller usage guidance. Most detailed documentation and UI text are currently in Chinese.
 
 ## Quick start
 
-Download and extract this repository's source, or clone this repository with Git. Run the following commands from the source root. **Python 3.12** is the recommended starting point, and initial dependency installation needs network access. Start with CPU; optional compute backends require separate installation and validation.
+### Independent installer
 
-### Recommended: interactive online installation
+Use [ii33/coating-sim-installer](https://github.com/ii33/coating-sim-installer) or its [CNB mirror](https://cnb.cool/nonereason/coating-sim-installer). Windows EXE downloads and installer commands are maintained in that project's [Releases](https://github.com/ii33/coating-sim-installer/releases) and [guide](https://github.com/ii33/coating-sim-installer/blob/main/README.en.md). This application repository contains no installer copy.
 
-On Windows, double-click `install.bat`; on Linux/macOS, run `sh install.sh`. Choose an installation root, source (default [CNB](https://cnb.cool/nonereason/coating-sim), or [GitHub](https://github.com/ii33/coating-sim)), package-mirror acceleration, and development mode (default: no). The installer discovers Python/compute capabilities and selects full end-user groups `desktop + appearance`; development mode adds testing and static-analysis tools. Mirror acceleration changes the PyPI package source only, not the Git repository URL.
+### Run application source with existing Python
 
-A new installation uses `<root>/.runtime/python`, `.runtime/git`, `app/` for source, and `app/.venv` for dependencies. Selecting a legitimate existing project performs dependency-only work, preserving its source and existing venv interpreter. Unknown contents, damaged environments and incompatible backends produce explicit blockers.
+Use a full compatible Python (3.12 recommended) and a project-local environment:
 
-Windows bootstrap does not require preinstalled Python, Git or PowerShell 7. It uses built-in Windows PowerShell 5.1 and does not bypass script security policies. The official Python installer may write maintenance caches and per-user registration/uninstall records outside the selected root; this is not a completely portable or zero-system-footprint installation. The new interactive workflow still needs native end-to-end acceptance and is not an accepted Release. See the [installer guide](docs/dependency-manager.md).
-
-After installation, bounded GPU numerical probes run in the actual project `.venv`. Dependency installation and GPU usability are reported separately; a failed probe does not automatically change drivers or reinstall packages.
-
-### Windows: Python already installed
-
-```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe launcher.py
-```
-
-Alternatively, double-click `install.bat` for the interactive terminal installer. With suitable Python already available, run `python dependency_manager.py`. The installer needs no third-party Python packages and has no manager GUI.
-
-**No Python installed?** The Windows bootstrap attempts to install a full CPython runtime, including pip and venv, from official sources into the selected installation root. It requires network access and system prerequisites. End-to-end validation on a clean Windows machine with no Python remains outstanding. The managed Python candidate differs from the recommended Python 3.12, and backends such as DirectML have additional limits. Read the [bootstrap guide](docs/dependency-manager-bootstrap.md); passing source checks does not guarantee successful first-time installation.
-
-For PowerShell 7+ development environments, `start-dev.bat` / `start-dev.ps1` prefer the project's `.venv`, then `.conda`. They neither fall back to system Python nor install dependencies. `start-dev.bat -Check` checks installed dependencies only. See the [launcher guide](docs/project-launcher-entry.md).
-
-### Linux: Python already installed
-
-Run `sh install.sh` for interactive installation. The installer needs neither Tk nor third-party Python packages. Linux/macOS without Python currently require manual installation of compatible full Python with venv/pip from official sources; secure automatic bootstrap is not implemented there. Linux also needs the Qt system libraries required by the distribution. This is not verified from-zero installation on every platform.
-
-```bash
-python3.12 -m venv .venv
+```sh
+python -m venv .venv
+# Windows: .venv\Scripts\python.exe; Unix: .venv/bin/python
 .venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python launcher.py
 ```
 
-For Qt platform-plugin errors, consult the [Qt for Linux requirements](https://doc.qt.io/qt-6/linux-requirements.html). Headless tests do not replace native desktop interaction testing. Native end-to-end macOS validation has not been completed; usability on macOS is not promised here.
+On Windows substitute `.venv\Scripts\python.exe` in those commands. Appearance rendering also needs Mitsuba/DrJit, currently declared in `requirements-test.txt`; the independent installer selects `desktop + appearance`. Linux needs the distribution's Qt system libraries. Existing `start.bat`, `start.sh`, `start-cloud.sh` and development launchers remain application entry points. See the [project-side installation contract](docs/installation.md).
 
 ### Complete example project
 
@@ -70,63 +49,9 @@ Open `example/synthetic-demo/project.coatproj` for a self-contained synthetic pr
 
 Each project runs in an independent process. Opening the same project again activates its existing session. Closing the launcher leaves projects running; the shared assistant's Exit Application action checks unsaved changes and coordinates exit. Removing a recent-project entry normally removes only that entry; recycling its directory is a separate confirmed action.
 
-## Dependency manager
+## Installation and dependency declarations
 
-See the [dependency-manager guide](docs/dependency-manager.md) for full details. With Python already available:
-
-```sh
-python dependency_manager.py
-python dependency_manager.py inspect --groups desktop --json
-python dependency_manager.py benchmark --mirrors pypi,tuna,ustc --proxy-mode none --json
-python dependency_manager.py plan --groups desktop --profile runtime --action install --python /path/to/python3.12 --proxy-mode env --json
-# Review the plan; substitute your interpreter path and the returned PLAN_ID:
-python dependency_manager.py install --groups desktop --profile runtime --python /path/to/python3.12 --proxy-mode env --plan-id PLAN_ID --yes --json
-```
-
-`/path/to/python3.12` is an example absolute path to an existing interpreter; use your actual `.exe` path on Windows. The default installation target is the project's `.venv`. The `runtime` profile selects runtime dependencies; `development` adds development tools. Optional groups such as appearance rendering must be selected explicitly. Regenerate the plan if its parameters, target, or requirements change; `--yes` does not replace a matching `plan_id`.
-
-Mirror benchmarks are network estimates. Proxy options affect only the current tool process, not system proxy settings or global pip configuration. Do not put authentication values in command lines or commit them. A virtual environment isolates dependencies; it is not a security sandbox.
-
-### Version checks and online source deployment
-
-Local checks are offline by default; an explicit remote check connects to the selected source. These checks report version, commit, working-tree, and environment information without automatically updating your active installation.
-
-```sh
-python dependency_manager.py project-check --project . --json
-python dependency_manager.py project-check --project . --check-remote --source github --ref main --json
-python dependency_manager.py project-plan --deployment-dir ../coating-sim-checkout --source github --ref main --python /path/to/python3.12 --profile runtime --json
-# Review the full commit, target, and dependency plan; use its deployment PLAN_ID:
-python dependency_manager.py project-deploy --deployment-dir ../coating-sim-checkout --plan-id PLAN_ID --yes --json
-```
-
-The public repository is [ii33/coating-sim](https://github.com/ii33/coating-sim), with Git source `https://github.com/ii33/coating-sim.git`. The interactive installer defaults to CNB at `https://cnb.cool/nonereason/coating-sim`. Advanced CLI CNB deployment uses `--source cnb --repository-url https://cnb.cool/nonereason/coating-sim`; the GitHub CLI examples above do not change the interactive default.
-
-Deployment accepts only a new directory and installs dependencies into that checkout's `.venv`. It does not overwrite your active installation, automatically launch the application, or migrate user projects. Source retrieval requires Git. Windows can install private MinGit through the separate confirmation steps below; this is not a promise of one-click success on arbitrary clean machines. See the [source deployment guide](docs/dependency-manager-deployment.md) for the complete workflow and validation limits.
-
-### Windows without Git
-
-The interactive installer requests confirmation of a private-Git plan when Git is missing. Advanced CLI users can review and execute a plan:
-
-```sh
-python dependency_manager.py git-plan --json
-python dependency_manager.py git-install --plan-id PLAN_ID --yes --json
-```
-
-The tool downloads a pinned MinGit version from official Git for Windows sources, verifies SHA-256, and installs under the selected installation root’s `.runtime/git` without changing system PATH. Source deployment automatically discovers a successfully installed default directory. For a custom private location, use the same `--git-dir` in both commands, then select `--git <directory>/cmd/git.exe` explicitly. Downloaded Git and its bundled components retain their own licenses, not the project's MIT license.
-
-The Windows setup sequence is: start `install.bat` → select the installation root and review Python bootstrap → choose source, package mirror and development mode → review private Git installation if needed → fetch source and review the full dependency plan. The final confirmed plan also creates `app/launch-coating.cmd` (or `.sh`) without overwriting existing files; desktop shortcuts are not created by default. Check each result; confirmations are not skipped automatically. Linux still requires an existing Python, Git, and system graphics libraries. Offline automated tests do not replace native download, installation, shortcut, and launch validation on Windows with neither Python nor Git installed.
-
-### Create launch scripts and shortcuts
-
-After deploying and checking the project's `.venv`, create an entry tied only to that project environment:
-
-```sh
-python dependency_manager.py launch-plan --project . --shortcut none --json
-# Review filenames and targets; use this launch-entry plan's PLAN_ID:
-python dependency_manager.py launch-create --project . --shortcut none --plan-id PLAN_ID --yes --json
-```
-
-The default creates `Coating Simulator.cmd` on Windows or `Coating Simulator.sh` on Linux in the project root. On Windows, replace `none` in both commands with `desktop` or `start-menu` to explicitly create a shortcut using the project icon. For a custom destination, use `custom --shortcut-dir <existing-directory>`. Set a different name with `--launch-name`. Existing same-name files are never overwritten. Creation does not launch the app, register startup tasks, or fall back to system Python. Native Windows shortcuts still require validation on the target machine.
+Installer implementation, updates, runtime provisioning and packaging belong to the [independent repository](https://github.com/ii33/coating-sim-installer) and [CNB mirror](https://cnb.cool/nonereason/coating-sim-installer). The application retains its requirements, locks, environment specification and runtime capabilities. The [consumption contract](docs/installation.md) documents alpha.1 compatibility.
 
 ## Platform and compute boundaries
 
@@ -157,6 +82,8 @@ Do not post exploit details, keys, or private data in public security issues. If
 
 ## Documentation
 
+- [Independent installer and dependency contract](docs/installation.md) · [Existing runtime ZIP guide](docs/portable-bundle.md) · [Project and result assets](docs/portable-assets.md)
+
 - [Algorithm atlas and references](docs/algorithms.html) · [Software manual](docs/software_manual.html)
 - [Thin-film spectral simulation](docs/film-simulation-quick.md) · [Optimization methods](docs/film-optimization-methods.md)
 - [Unified assets and material editing](docs/unified-asset-library-contract.md) · [Last-saved configuration policy](docs/project-recent-configuration-contract.md)
@@ -174,4 +101,4 @@ Third-party content retains its own licensing and is not relicensed by this proj
 - Bundled Noto CJK fonts use [SIL OFL 1.1](coat_sim/ui/assets/fonts/noto-cjk/LICENSE). Python, Qt, and other dependencies retain their respective licenses.
 - Icons and illustrations follow their own provenance and rights statements; see the [artwork record](docs/artwork-provenance.md). Permission to include artwork publicly does not establish its provenance or grant additional redistribution rights.
 
-Historical [packaging records](docs/dependency-manager-distribution.md) do not establish a currently qualified release package.
+Installation notices and release evidence are maintained in the [independent installer](https://github.com/ii33/coating-sim-installer).

@@ -34,36 +34,6 @@
 /data/film_design/cie-illuminants-20261006/upstream/CIE_std_illum_A_1nm.csv_metadata_v2.json -text
 /data/film_design/cie-illuminants-20261006/upstream/CIE_std_illum_D65.csv_metadata_v2.json -text
 
-# Preserve only these exact upstream licence notice SHA256 bytes.
-# Five unchanged upstream originals also retain their original whitespace.
-/tools/dependency_manager/licenses/CPython-Windows-crtlicense.txt -text -whitespace
-/tools/dependency_manager/licenses/FreeType-2.8-FTL.TXT -text
-/tools/dependency_manager/licenses/OpenSSL-3.5.9-LICENSE.txt -text
-/tools/dependency_manager/licenses/Tcl-8.6.18-license.terms -text
-/tools/dependency_manager/licenses/Tcl-license.terms -text
-/tools/dependency_manager/licenses/Tk-8.6.18-license.terms -text
-/tools/dependency_manager/licenses/Tk-license.terms -text
-/tools/dependency_manager/licenses/bzip2-1.0.6-LICENSE.txt -text -whitespace
-/tools/dependency_manager/licenses/fontconfig-2.13.0-COPYING.txt -text -whitespace
-/tools/dependency_manager/licenses/libXft-2.3.2-COPYING.txt -text -whitespace
-/tools/dependency_manager/licenses/libffi-LICENSE.txt -text
-/tools/dependency_manager/licenses/liblzma-5.2.2-COPYING.txt -text -whitespace
-/tools/dependency_manager/licenses/libpng-1.5.13-LICENSE.txt -text
-/tools/dependency_manager/licenses/libuuid-BSD-license.txt -text
-
-/tools/dependency_manager/licenses/CPython-3.12.15-LICENSE.txt -text
-/tools/dependency_manager/licenses/CPython-3.13.16-Windows-LICENSE.txt -text whitespace=cr-at-eol
-/tools/dependency_manager/licenses/Unicode-DFS-2016-NOTICE.txt -text
-/tools/dependency_manager/licenses/fontconfig-2.13.0-subcomponent-NOTICES.txt -text
-/tools/dependency_manager/licenses/FreeType-2.8-subcomponent-NOTICES.txt -text
-/tools/dependency_manager/licenses/Tcl-8.6.18-Spencer-regex-NOTICE.txt -text
-/tools/dependency_manager/licenses/Tcl-8.6.18-LibTomMath-LICENSE.txt -text
-/tools/dependency_manager/licenses/Tcl-8.6.18-Bison-parser-NOTICE.txt -text
-/tools/dependency_manager/licenses/Tk-8.6.18-GIF-NOTICE.txt -text
-/tools/dependency_manager/licenses/Unicode-V3-license.txt -text
-/tools/dependency_manager/licenses/Unicode-17.0.0-ReadMe.txt -text
-/tools/dependency_manager/licenses/GNU-GPL-3.0.txt -text
-
 # Portable example descriptors and managed inputs are byte-hashed by ProjectStore.
 # Keep their exact published bytes on every platform, including Windows clones
 # with core.autocrlf=true. Do not normalize existing or future project assets.

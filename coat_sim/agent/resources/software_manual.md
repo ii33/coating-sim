@@ -29,7 +29,7 @@
 6. 仿真：加载工艺；选转速、初相、时间采样、网格、设备及算法，计算后检查膜厚图、各层摘要、设备与用时；保存PDF或读取完整NPZ。
 7. 迭代：用遮挡曲线/热图或优化候选比较；最后用真实设备测量校准。
 
-Windows 便携运行时 ZIP 是完整可启动应用：将 ZIP 解压到可写目录后，双击包根目录 `Launch-CoatSim.cmd`；首次展开约需 2.4 GB。移动整个目录时，启动器从 `runtime-template.zip` 重建新位置的运行时，路径修复完成后原子切换 `active_runtime.txt`。失败时旧运行时指针保留，日志在 `app/artifacts/logs/portable-startup.log`；请保留整个目录、模板 ZIP，以及 `app/data`、`app/config`、`app/history`、`app/artifacts`，不要手动移动或删除。完整步骤见随包的 `docs/portable-bundle.md`。`.coatasset` 是设计/计算结果资产包，不能代替应用运行时；维护者构建的离线安装器是独立自解压 EXE。
+Windows 便携运行时 ZIP 是完整可启动应用：将 ZIP 解压到可写目录后，双击包根目录 `Launch-CoatSim.cmd`；首次展开约需 2.4 GB。移动整个目录时，启动器从 `runtime-template.zip` 重建新位置的运行时，路径修复完成后原子切换 `active_runtime.txt`。失败时旧运行时指针保留，日志在 `app/artifacts/logs/portable-startup.log`；请保留整个目录、模板 ZIP，以及 `app/data`、`app/config`、`app/history`、`app/artifacts`，不要手动移动或删除。完整步骤见随包的 `docs/portable-bundle.md`。`.coatasset` 是设计/计算结果资产包，不能代替应用运行时；安装器独立维护于 https://github.com/ii33/coating-sim-installer（CNB 镜像：https://cnb.cool/nonereason/coating-sim-installer），项目侧依赖合同见 docs/installation.md。
 编辑器地位平行，各自加载依赖文件。打开默认新建；“保存”更新当前文件，“另存为”选择路径并重定位相对依赖，已有文件须明确确认后原子覆盖。损坏或缺失依赖必须修正后才能保存。原文件不自动迁移。
 description（描述）与 notes（备注）是设计元信息，不进入物理计算。默认目录是 data 对应子目录；桌面文件选择器可选择其他目录。
 

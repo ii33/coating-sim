@@ -1,6 +1,6 @@
 # CoatSim 便携版（Windows x64）
 
-便携版是 Windows x64 可启动运行时 ZIP，不是 `.coatasset` 设计/计算数据包，也不是维护者构建的离线安装器自解压 EXE。将完整 ZIP 解压到可写目录后，双击包根目录的 `Launch-CoatSim.cmd`。
+便携版是 Windows x64 可启动运行时 ZIP，不是 `.coatasset` 设计/计算数据包。安装器由独立的 [coating-sim-installer](https://github.com/ii33/coating-sim-installer)（[CNB 镜像](https://cnb.cool/nonereason/coating-sim-installer)）维护，项目侧边界见[安装与依赖合同](installation.md)。已有完整运行时 ZIP 的用户，将其解压到可写目录后双击包根目录的 `Launch-CoatSim.cmd`。
 
 ## 首次启动与移动目录
 

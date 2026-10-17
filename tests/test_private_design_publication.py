@@ -8,7 +8,7 @@ import zipfile
 
 import pytest
 
-from tools import build_offline_installer as installer
+from tools import distribution_resources as installer
 
 
 @pytest.mark.parametrize(
@@ -36,7 +36,7 @@ def test_payload_zip_rejects_private_design_paths_before_zip_creation(
     payload = tmp_path / "payload.zip"
 
     with pytest.raises(RuntimeError, match="private design path"):
-        installer.write_payload_zip(payload, app_root, assets)
+        installer.write_resource_zip(payload, app_root, assets)
 
     assert not payload.exists()
     assert private_file.read_text(encoding="utf-8") == "private"
@@ -51,7 +51,7 @@ def test_package_tree_allows_similarly_named_benign_paths(tmp_path: Path) -> Non
     (assets / "my_sheji_reference.txt").write_text("asset note", encoding="utf-8")
     payload = tmp_path / "payload.zip"
 
-    payload_bytes, records = installer.write_payload_zip(payload, app_root, assets)
+    payload_bytes, records = installer.write_resource_zip(payload, app_root, assets)
 
     assert payload_bytes > 0
     assert {record["path"] for record in records} == {
@@ -86,7 +86,7 @@ def test_source_snapshot_and_static_staging_leave_root_sheji_local(tmp_path: Pat
         "docs/software_manual.html",
         "docs/portable-bundle.md",
         "docs/portable-assets.md",
-        "docs/offline-installer.md",
+        "docs/installation.md",
     ):
         path = project / relative
         path.parent.mkdir(parents=True, exist_ok=True)
