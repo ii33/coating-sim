@@ -101,6 +101,9 @@ Window {
     Menu {
         id: contextMenu
         objectName: "assistantContextMenu"
+        // A custom background has no implicit width; Fusion can otherwise
+        // create a two-pixel popup despite opened/visible both being true.
+        width: Math.max(230, implicitWidth)
         popupType: Popup.Window
         focus: true
         palette.window: bubble.themeColors ? bubble.themeColors.colorWindow : palette.window

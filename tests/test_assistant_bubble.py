@@ -141,6 +141,37 @@ class BubbleTests(unittest.TestCase):
         # The root menu is narrower, and is the one receiving the Right key.
         return min(windows, key=lambda window: window.width())
 
+    def test_production_theme_menu_has_clickable_surface_and_reopens(self):
+        from coat_sim.ui.theme_service import configure_theme_from_settings
+
+        theme = configure_theme_from_settings({"theme_mode": "light"})
+        theme.attach_engine(self.engine)
+        QTest.qWait(40)
+        queue_item = self.bubble.findChild(QObject, "assistantQueueMenuItem")
+        triggered = []
+        queue_item.triggered.connect(lambda: triggered.append(True))
+        for cycle in range(3):
+            self.open_menu()
+            self.assertGreaterEqual(self.menu.property("width"), 230)
+            self.assertGreater(queue_item.width(), 100)
+            popup = _visual_window_for(queue_item)
+            bounds = popup.screen().availableGeometry()
+            self.assertTrue(bounds.contains(popup.geometry()),
+                            (bounds, popup.geometry()))
+            point = queue_item.mapToGlobal(QPointF(queue_item.width() / 2,
+                                                   queue_item.height() / 2))
+            QTest.mouseClick(popup, Qt.LeftButton, Qt.NoModifier,
+                             QPoint(round(point.x() - popup.x()),
+                                    round(point.y() - popup.y())))
+            QTest.qWait(80)
+            self.assertEqual(len(triggered), cycle + 1)
+            self.assertFalse(self.menu.property("visible"))
+            QTest.mouseClick(self.bubble, Qt.LeftButton, Qt.NoModifier,
+                             QPoint(36, 36))
+            QTest.qWait(40)
+            self.assertEqual(self.assistant.calls, ["chat"])
+            self.assistant.calls.clear()
+
     def test_opens_only_after_right_release_and_stays_open(self):
         QTest.mousePress(self.bubble, Qt.RightButton, Qt.NoModifier, QPoint(36, 36))
         QTest.qWait(40)
