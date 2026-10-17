@@ -198,6 +198,12 @@ class AssistantProcessHost(QObject):
             if decision != QMessageBox.StandardButton.Yes:
                 self._exit.update(state="declined", code="assistant_close_declined")
                 return
+        try:
+            foreground_client_id = self.registry.prepare_exit_activation()
+        except UiControlError as exc:
+            self._exit.update(state="failed", code=exc.code)
+            desktop.notify("退出尚未开始：" + str(exc), sound=False)
+            return
         cast(Any, self.controller.bridge).set_application_exit_frozen(True)
         if self.controller._chat is not None:
             content = self.controller._chat.contentItem()
@@ -208,7 +214,8 @@ class AssistantProcessHost(QObject):
         exit_id = self._exit["exit_id"]
 
         def execute() -> None:
-            result = self.registry.request_exit_all(exit_id, on_progress=self.exitProgress.emit, cancel_wait=self._cancel_wait)
+            result = self.registry.request_exit_all(exit_id, on_progress=self.exitProgress.emit, cancel_wait=self._cancel_wait,
+                                                    foreground_client_id=foreground_client_id)
             self.exitFinished.emit(result)
 
         self._worker = threading.Thread(target=execute, name="assistant-graceful-exit", daemon=True)

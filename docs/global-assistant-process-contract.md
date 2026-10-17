@@ -155,3 +155,22 @@ and no live user installation, endpoint or lock is touched. Normal close/hide
 and OS-lock recovery passed before the fix; destroyed-chat reopening and the
 Windows handler-policy check failed before it. The other machine's spontaneous
 exit has not been reproduced from the supplied successful-action-only log.
+
+## Exit confirmation foreground ownership (2026-10-17)
+
+The explicit assistant menu gesture grants foreground permission to the first
+registered, OS-verified client before starting asynchronous exit work. The worker
+requires that exact first client to remain current. After each ready decision,
+`lifecycle_handoff` carries the same exit/generation/permit plus the next client's
+exact PID and process creation identity. Only a ready, unexpired lease can grant
+the next process foreground permission; malformed or reused identities fail before
+any commit. A denied handoff cancels all uncommitted permits and retains drafts.
+An older client without this operation fails safely; no process is replaced.
+
+The project lifecycle restores an existing dirty view, then the runtime restores
+and activates its existing confirmation window, transient to that view. Cancel
+keeps the project/window/draft identities and releases the existing exit freeze.
+No topmost flag, global foreground policy, or forced process exit is used. Native
+coverage must click the real exit menu, check exact foreground HWNDs for normal,
+minimized and covered windows, and exercise sequential distinct client processes
+with real project drafts and cancellation.

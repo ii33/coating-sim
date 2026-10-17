@@ -104,6 +104,18 @@ class ProjectExitClient:
                 self._cancel()
             self._permit, self._state = "", "declined"
             return {"cancelled": True, "generation": self.generation}
+        if operation == "lifecycle_handoff":
+            if self._state != "ready" or not permit or permit != self._permit:
+                raise UiControlError("stale_permit", "退出前台交接需要当前有效许可。")
+            pid, expected = arguments.get("target_pid"), arguments.get("target_start")
+            if type(pid) is not int or pid <= 0 or not isinstance(expected, str) or not expected:
+                raise UiControlError("invalid_target", "退出前台目标身份无效。")
+            from coat_sim.core.process_identity import _process_identity
+            from coat_sim.assistant_process import _allow_foreground_process
+            state, start = _process_identity(pid)
+            if state != "alive" or start != expected:
+                raise UiControlError("stale_client", "退出前台目标进程已变化。")
+            return {"granted": _allow_foreground_process(pid), "generation": self.generation}
         if operation == "lifecycle_commit":
             if self._state == "committed" and permit == self._permit:
                 return {"accepted": True, "generation": self.generation}

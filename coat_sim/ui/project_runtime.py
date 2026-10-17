@@ -133,10 +133,10 @@ class ProjectRuntime(QObject):
         self.dialog_window.requestActivate()
 
     def _present_shutdown(self) -> None:
+        parent = self.bridge.project_lifecycle.confirmation_owner()
+        self.dialog_window.setTransientParent(parent)
         self.dialog_window.setProperty("reviewKind", "shutdown")
-        self.dialog_window.show()
-        self.dialog_window.raise_()
-        self.dialog_window.requestActivate()
+        LauncherBridge._activate_window(self.dialog_window)
 
     def _present_management(self, project_id: str) -> None:
         session = next((row for row in self.owner.host.sessions()

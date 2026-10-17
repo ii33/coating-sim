@@ -139,8 +139,7 @@ class ProjectApplicationLifecycle(QObject):
                 self._asked = True
                 self._information_review_signature = information_signature
                 bridge._shutdown_confirmation_pending = True
-                if bridge._launcher_window is not None:
-                    bridge._activate_window(bridge._launcher_window)
+                self.activate_confirmation_owner()
                 bridge.shutdownConfirmationRequested.emit()
             return "pending"
         self._freeze = ExitStack()
@@ -167,6 +166,39 @@ class ProjectApplicationLifecycle(QObject):
             self._cancel()
             raise
         return "ready"
+
+    def confirmation_owner(self) -> Any:
+        """Find an existing draft view; do not construct or close any window."""
+        owner = project_owner(self.bridge)
+        if owner is not None:
+            dirty_modules: set[tuple[Any, str]] = set()
+            for session in owner.host.sessions():
+                binding = session.binding
+                film = owner.host.resource_for(binding, "film_workspace")
+                editor = getattr(film, "_editor", None)
+                if editor is not None and editor.snapshot().dirty:
+                    dirty_modules.add((binding, "film_design"))
+                for key in ("resource_workspace", "compute_workspace"):
+                    workspace = owner.host.resource_for(binding, key)
+                    summary = getattr(workspace, "dirty_summary", None)
+                    if not callable(summary):
+                        summary = getattr(workspace, "close_preflight", None)
+                    if callable(summary):
+                        for row in summary():
+                            module = row["module_key"]
+                            dirty_modules.add((binding, "film_appearance" if module == "appearance" else module))
+            for route, view in owner.desktop._views.items():
+                if (route.binding, route.module_key) in dirty_modules:
+                    return view[0]
+        if self._legacy_dirty:
+            return self._legacy_dirty[0].window
+        return self.bridge._launcher_window
+
+    def activate_confirmation_owner(self) -> Any:
+        window = self.confirmation_owner()
+        if window is not None:
+            self.bridge._activate_window(window)
+        return window
 
     def _freeze_window(self, window: Any) -> None:
         content = getattr(window, "contentItem", None)

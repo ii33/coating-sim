@@ -110,6 +110,11 @@ class ProbeHost(host_module.AssistantProcessHost):
         assert self.controller._chat is not None and self.controller._chat.isVisible()
         payload.update(phase='ready', generation=self.generation)
         write()
+        if mode == 'exit_activation':
+            from assistant_exit_probe import run
+            payload.update(run(self, root, state))
+            self.finish_probe()
+            return
         if mode == 'window_activation':
             from assistant_activation_probe import run
             payload.update(run(self, root, state))

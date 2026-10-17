@@ -29,7 +29,7 @@ ASSISTANT_OPERATIONS = frozenset({"status", "show_assistant", "show_queue", "rel
     "activate_project", "project_window"})
 ASSISTANT_PROTOCOL = 1
 
-LIFECYCLE_OPERATIONS = frozenset({"lifecycle_status", "lifecycle_prepare", "lifecycle_commit", "lifecycle_cancel",
+LIFECYCLE_OPERATIONS = frozenset({"lifecycle_status", "lifecycle_prepare", "lifecycle_commit", "lifecycle_cancel", "lifecycle_handoff",
                                   "list_windows", "open_window", "close_window", "read_window", "project_manage",
                                   "project_editor_snapshot", "update_window", "window_action"})
 
@@ -595,6 +595,22 @@ class ApplicationClientRegistry:
             raise UiControlError("process_identity_unknown", "Cannot verify activation target process")
         return _allow_foreground_process(client.endpoint["pid"])
 
+    def prepare_exit_activation(self) -> str:
+        """Grant the menu gesture to the first exact client, never every PID."""
+        with self._lock:
+            if self._exiting:
+                raise UiControlError("exit_in_progress", "Application exit is in progress")
+            self._prune_dead()
+            client = next(iter(self._clients.values()), None)
+            if client is None:
+                return ""
+            state, start = _process_identity(client.endpoint["pid"])
+            if state != "alive" or start != client.process_start:
+                raise UiControlError("process_identity_unknown", "Cannot verify exit activation target")
+            if not _allow_foreground_process(client.endpoint["pid"]):
+                raise UiControlError("foreground_denied", "请从助手菜单重新退出，以显示未保存确认。")
+            return client.client_id
+
     def window_action(self, identity: str, operation: str) -> dict[str, Any]:
         if operation not in {"open_window", "close_window"}:
             raise UiControlError("invalid_operation", "Unknown managed window operation")
@@ -615,7 +631,8 @@ class ApplicationClientRegistry:
             raise UiControlError("stale_project", "Managed window project generation has ended")
         return self._call(client, operation, **arguments)
 
-    def request_exit_all(self, exit_id: str, *, on_progress=None, cancel_wait: Event | None = None) -> dict[str, Any]:
+    def request_exit_all(self, exit_id: str, *, on_progress=None, cancel_wait: Event | None = None,
+                         foreground_client_id: str | None = None) -> dict[str, Any]:
         """Blocking worker operation; pending user decisions have no timeout."""
         with self._lock:
             if self._exiting:
@@ -636,9 +653,19 @@ class ApplicationClientRegistry:
                         or renewed.get("generation") != prepared_client.generation):
                     raise UiControlError("stale_permit", "A prepared exit permit expired or changed")
         try:
+            if (foreground_client_id is not None
+                    and foreground_client_id != (clients[0].client_id if clients else "")):
+                raise UiControlError("stale_client", "退出前台目标已变化，请重新退出。")
             for client in clients:
-                pending = client
                 self._status(client)
+                if foreground_client_id is not None and prepared:
+                    previous, permit = prepared[-1]
+                    handed = self._call(previous, "lifecycle_handoff", exit_id=exit_id,
+                                        client_generation=previous.generation, permit_id=permit,
+                                        target_pid=client.endpoint["pid"], target_start=client.process_start)
+                    if handed.get("generation") != previous.generation or handed.get("granted") is not True:
+                        raise UiControlError("foreground_denied", "未能显示下一工程确认，请重新退出。")
+                pending = client
                 while True:
                     reply = self._call(client, "lifecycle_prepare", exit_id=exit_id,
                                        client_generation=client.generation)
