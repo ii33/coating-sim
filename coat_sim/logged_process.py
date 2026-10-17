@@ -15,7 +15,8 @@ def main() -> None:
     parser.add_argument("--project-root", required=True)
     parser.add_argument("--stderr-only", action="store_true")
     parser.add_argument("--module", required=True, choices=(
-        "coat_sim.assistant_process", "coat_sim.agent.worker", "coat_sim.ui.project_runtime"))
+        "coat_sim.assistant_process", "coat_sim.agent.worker", "coat_sim.ui.project_runtime",
+        "coat_sim.film_xpu_probe"))
     parser.add_argument("arguments", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     install_process_log(args.channel, args.project_root, stderr_only=args.stderr_only)

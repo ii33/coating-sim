@@ -10,7 +10,10 @@ from .film_performance import FrozenFilmEvaluator, PerformanceOptions
 class OptimizationBatchForward:
     """Own prepared optical buffers, never budgets or the incumbent archive."""
 
-    def __init__(self, frozen, objectives, variable_ids, *, options=None, callback=None):
+    def __init__(self, frozen, objectives, variable_ids, *, options=None, callback=None, execution_device=None):
+        if execution_device is not None:
+            from .film_xpu_execution import options_for_device
+            options = options_for_device(execution_device)
         self.options = options or PerformanceOptions()
         if not isinstance(self.options, PerformanceOptions):
             raise TypeError("performance_options must be PerformanceOptions")
@@ -51,7 +54,10 @@ class OptimizationBatchForward:
             if evaluator is None:
                 if len(self.cache) >= self.capacity:
                     self.cache.popitem(last=False)
-                evaluator = FrozenFilmEvaluator(self.frozen, settings, options=self.prepared_options)
+                from .film_xpu_execution import StrictXpuOptions, make_strict_evaluator
+                evaluator = (make_strict_evaluator(self.frozen, settings, self.prepared_options)
+                             if isinstance(self.prepared_options, StrictXpuOptions) else
+                             FrozenFilmEvaluator(self.frozen, settings, options=self.prepared_options))
             self.cache[key] = evaluator
             response = evaluator.evaluate_thickness_batch(self.variable_ids, points, cancel=cancel)
             responses.append(response)
@@ -65,6 +71,11 @@ class OptimizationBatchForward:
 
     @staticmethod
     def candidate_responses(responses, index):
+        from .film_optimization import _wavelength_chunks
         for response in responses:
-            yield {"wavelength_nm": response["wavelength_nm"],
-                   "R": response["R"][index], "T": response["T"][index]}
+            offset = 0
+            for waves in _wavelength_chunks(response["wavelength_nm"]):
+                end = offset + len(waves)
+                yield {"wavelength_nm": waves, "R": response["R"][index, offset:end],
+                       "T": response["T"][index, offset:end]}
+                offset = end

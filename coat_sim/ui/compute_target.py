@@ -5,7 +5,7 @@ selection and discovers capabilities away from the Qt GUI thread.
 """
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlsplit
 import hashlib
@@ -34,8 +34,9 @@ _TASK_SUPPORT_SUMMARIES = {
         "默认 DirectML 不保证选中 Intel，需核对实际设备与结果后端。"
     ),
     "film_optimization": (
-        "已支持：CPU 膜系优化。Intel 8086:7D67 的 XPU 后端 FP64/complex128 已在 sakuya 限定实测通过，其他硬件未验收；"
-        "并非普遍快于 CPU。当前窗口尚未接入 XPU 设备和批量执行选择，继续使用 CPU。"
+        "默认 CPU。实验 Intel XPU：显式检测并选择设备，启用固定拓扑差分进化的延迟批量模式；"
+        "仅单条件单角度、前表面半无限基片。FP64/complex128 XPU批量前向、CPU评分与验证，失败不回退CPU。"
+        "仅 sakuya 8086:7D67 有限定实测，其他硬件未验收，也不保证更快。"
     ),
     "appearance": (
         "已支持：CPU 外观。GPU 为 NVIDIA CUDA 实验路径，需单独检测。"
@@ -157,6 +158,11 @@ class ComputeTarget(QObject):
         self._future = None
         self._generation = 0
         self._remote_client = None
+        self._film_context_reason = "请先选择固定拓扑差分进化并启用延迟批量评估。"
+        self._film_batch_enabled = False
+        self._confirmed_xpu_uuid = ""
+        self._film_probe_busy = False
+        self._film_probe_future: Future | None = None
         self._appearance_cuda_state = "unchecked"
         self._appearance_cuda_reason = "选择 CUDA 后执行独立进程检测。"
         if client_factory is None and task != "appearance":
@@ -175,6 +181,9 @@ class ComputeTarget(QObject):
         self._poll = QTimer(self)
         self._poll.setInterval(60)
         self._poll.timeout.connect(self._finish_probe)
+        self._film_poll = QTimer(self)
+        self._film_poll.setInterval(60)
+        self._film_poll.timeout.connect(self._finish_film_probe)
         self.destroyed.connect(lambda *_: self._executor.shutdown(wait=False, cancel_futures=True))
         self.reloadSettings()
 
@@ -205,7 +214,9 @@ class ComputeTarget(QObject):
 
     @Property(bool, notify=changed)
     def canSubmit(self):
-        return self._ready and any(row["id"] == self._device_id and row["available"] for row in self._devices)
+        selected = next((row for row in self._devices if row["id"] == self._device_id and row["available"]), None)
+        return bool(self._ready and selected and (selected["backend"] != "xpu"
+                    or self._confirmed_xpu_uuid == selected.get("physical_id")))
 
     @Property(bool, constant=True)
     def supportsCudaProbe(self):
@@ -215,6 +226,88 @@ class ComputeTarget(QObject):
     def requestAppearanceCudaProbe(self):
         if self.task == "appearance" and self._host_id == "local":
             self.appearanceCudaProbeRequested.emit()
+
+    @Property(bool, constant=True)
+    def supportsFilmXpuProbe(self):
+        return self.task == "film_optimization"
+
+    @Property(bool, notify=changed)
+    def filmXpuProbeBusy(self):
+        return self._film_probe_busy
+
+    def is_xpu_selected(self) -> bool:
+        return self.task == "film_optimization" and self._device_id.startswith("xpu:")
+
+    def execution_binding(self):
+        from coat_sim.core.film_xpu_execution import CPU_KIND, validate_binding
+        if not self.canSubmit:
+            raise ComputeTargetError("target_not_ready", self._message)
+        row = next(row for row in self._devices if row["id"] == self._device_id)
+        return ({"kind":CPU_KIND} if row["backend"] == "CPU" else validate_binding(row["execution_device"]))
+
+    def configure_film_context(self, reason: str, batch_enabled: bool) -> None:
+        if self.task != "film_optimization":
+            return
+        if reason == self._film_context_reason and batch_enabled == self._film_batch_enabled:
+            return
+        self._film_context_reason, self._film_batch_enabled = reason, batch_enabled
+        self._devices = self._filter_devices(self._all_devices)
+        selected = next((row for row in self._devices if row["id"]==self._device_id), None)
+        self._message = ((selected.get("reason") or selected.get("support_note")) if selected else "所选设备不可用。") or "CPU 就绪。"
+        self.changed.emit()
+
+    @Slot()
+    def requestFilmXpuProbe(self):
+        if self.task != "film_optimization" or self._host_id != "local" or self._film_probe_busy:
+            return
+        self._generation += 1
+        self._confirmed_xpu_uuid = ""
+        self._film_probe_busy = True
+        self._all_devices = self._film_cpu_devices()
+        self._devices = self._filter_devices(self._all_devices)
+        self._message = "正在独立进程检测 Intel XPU 的 UUID 与 FP64…"
+        self._film_probe_future = self._executor.submit(self._probe_film_xpu, self._generation)
+        self._film_poll.start()
+        self.changed.emit()
+
+    def _finish_film_probe(self):
+        future = self._film_probe_future
+        if future is None or not future.done():
+            return
+        self._film_probe_future = None
+        self._film_poll.stop()
+        self._film_probe_busy = False
+        try:
+            generation, devices, _client, _phase = future.result()
+            if generation != self._generation or self._host_id != "local":
+                return
+            self._all_devices = devices
+            self._devices = self._filter_devices(devices)
+            self._ready = True
+            self._message = (
+                "检测已完成；请重新选择 XPU 设备以确认 UUID。"
+                if any(row.get("available") and row.get("backend") == "xpu" for row in self._devices)
+                else next((row.get("reason", "") for row in self._devices
+                           if row.get("backend") == "xpu"), "XPU 不可用。"))
+        finally:
+            self.changed.emit()
+
+    @staticmethod
+    def _film_cpu_devices():
+        return [{"id":"cpu:default","label":f"CPU · {os.cpu_count() or '?'} 逻辑核",
+                 "backend":"CPU","available":True,"reason":"","physical_id":""}]
+
+    def _probe_film_xpu(self, generation):
+        try:
+            capabilities = self._client_factory(self.root).capabilities()
+            if type(capabilities.get("film_xpu_execution")) is not int or capabilities["film_xpu_execution"] != 1:
+                raise RuntimeError("现有后台未支持冻结 XPU 执行协议；请在安全时正常重启后台。")
+            from coat_sim.core.film_xpu_execution import probe_devices
+            rows = probe_devices()
+        except Exception as exc:
+            rows = [{"id":"xpu:unchecked","label":"Intel XPU · 不可用","backend":"xpu",
+                     "available":False,"physical_id":"","reason":str(exc)[:300]}]
+        return generation, self._film_cpu_devices()+rows, None, "film_xpu"
 
     @Slot()
     def reloadSettings(self):
@@ -254,7 +347,12 @@ class ComputeTarget(QObject):
         if any(row["id"] == device_id and row["available"] for row in self._devices):
             self._device_id = device_id
             selected = next(row for row in self._devices if row["id"] == device_id)
+            if selected["backend"] == "xpu":
+                self._confirmed_xpu_uuid = selected.get("physical_id", "")
             self._message = selected.get("support_note") or "所选设备已就绪。"
+            if selected["backend"] == "xpu":
+                binding = selected["execution_device"]
+                self._message = f"UUID {binding['uuid']} · PyTorch {binding['torch_version']} · " + self._message
             _save_preference(self._prefs_path, self.task, self._host_id, device_id)
             self.changed.emit()
 
@@ -299,11 +397,16 @@ class ComputeTarget(QObject):
 
     def _filter_devices(self, devices):
         if self.task == "film_optimization":
-            # Enumeration is not executor support: current production solvers
-            # and the forward worker are CPU-only, even on a CUDA-capable host.
-            return [{**row, "available": False,
-                     "reason": "膜系优化当前使用 CPU 求解；XPU 后端已有限验证，但窗口与队列设备绑定尚未接入。"}
-                    if row["backend"] != "CPU" else row for row in devices]
+            rows = []
+            for row in devices:
+                if row["backend"] == "CPU":
+                    rows.append(row)
+                elif row["backend"] == "xpu" and self._host_id == "local":
+                    rows.append({**row,"available":False,"reason":self._film_context_reason}
+                                if row["available"] and self._film_context_reason else row)
+                else:
+                    rows.append({**row,"available":False,"reason":"此模式仅支持本机显式 Intel XPU 或 CPU。"})
+            return rows
         if self.task == "deposition":
             filtered = []
             for row in devices:
@@ -335,11 +438,11 @@ class ComputeTarget(QObject):
                 self.changed.emit()
                 return
             if self.task == "film_optimization":
-                self._all_devices = [{"id": "cpu:default", "label": f"CPU · {os.cpu_count() or '?'} 逻辑核",
-                                      "backend": "CPU", "available": True, "reason": "", "physical_id": ""}]
+                self._confirmed_xpu_uuid = ""
+                self._all_devices = self._film_cpu_devices()
                 self._devices = list(self._all_devices)
                 self._ready = True
-                self._message = "膜系优化当前使用 CPU 求解；GPU 尚未接入此任务。"
+                self._message = "CPU 就绪；可按需检测 Intel XPU，需显式启用受支持的延迟批量模式。"
                 self.changed.emit()
                 return
             self._future = self._executor.submit(self._probe_local, generation)
@@ -406,6 +509,8 @@ class ComputeTarget(QObject):
                 return
             self._all_devices = devices
             self._devices = self._filter_devices(devices)
+            if phase == "film_xpu":
+                self._film_probe_busy = False
             if client is not None:
                 self._remote_client = client
             if not self._device_id and self._devices:
@@ -414,7 +519,10 @@ class ComputeTarget(QObject):
                     _save_preference(self._prefs_path, self.task, self._host_id, self._device_id)
             self._ready = True
             selected = next((row for row in self._devices if row["id"] == self._device_id), None)
-            if phase == "optional-error" and self.canSubmit:
+            if phase == "film_xpu":
+                self._message = ("检测已完成；请重新选择 XPU 设备以确认 UUID。" if any(row.get("available") and row.get("backend")=="xpu" for row in self._devices)
+                                 else next((row.get("reason", "") for row in self._devices if row.get("backend")=="xpu"), "XPU 不可用。"))
+            elif phase == "optional-error" and self.canSubmit:
                 self._message = "本机 CPU 可用；可选加速设备探测失败。"
             elif self.canSubmit:
                 self._message = (selected.get("support_note") if selected else "") or "主机能力已核对。"
@@ -455,8 +563,16 @@ class ComputeTarget(QObject):
         if not self.canSubmit:
             raise ComputeTargetError("target_not_ready", self._message)
         device = next(row for row in self._devices if row["id"] == self._device_id)
-        if self.task == "film_optimization" and device["backend"] != "CPU":
+        if self.task == "film_optimization" and device["backend"] not in ("CPU", "xpu"):
             raise ComputeTargetError("unsupported_algorithm_device")
+        if self.task == "film_optimization" and self._film_batch_enabled:
+            if self._host_id != "local":
+                raise ComputeTargetError("unsupported_algorithm_device", "延迟批量模式目前仅支持本机。")
+            if local_client is None:
+                raise ComputeTargetError("target_not_ready")
+            capabilities = local_client.capabilities()
+            if type(capabilities.get("film_xpu_execution")) is not int or capabilities["film_xpu_execution"] != 1:
+                raise ComputeTargetError("incompatible_protocol", "后台尚未支持冻结执行设备协议；未提交，请正常重启后台。")
         if self.task == "deposition" and algorithm != "fast" and device["backend"] != "CPU":
             raise ComputeTargetError("unsupported_algorithm_device")
         if self.task == "appearance":

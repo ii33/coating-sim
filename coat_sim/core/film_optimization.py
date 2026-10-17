@@ -75,6 +75,7 @@ class FilmOptimizationRequest:
     validation_samples_multiplier: int = 2
     execution_mode: str = "serial"
     batch_size: int = 16
+    execution_device: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -212,7 +213,8 @@ def freeze_film_optimization_request(
         payload = service.freeze_design(design, _freeze_settings(request, design))
         payload = _checked_frozen_snapshot(payload, design)
     return replace(request, design_snapshot=deepcopy(payload["design"]),
-                   frozen_material_snapshot=payload)
+                   frozen_material_snapshot=payload,
+                   execution_device=deepcopy(request.execution_device))
 
 
 def _validate_execution_controls(request: FilmOptimizationRequest) -> None:
@@ -222,6 +224,9 @@ def _validate_execution_controls(request: FilmOptimizationRequest) -> None:
         raise ValueError("deferred_batch requires differential_evolution")
     if type(request.batch_size) is not int or request.batch_size < 1:
         raise ValueError("batch_size must be a positive integer")
+    if request.execution_device is not None:
+        from .film_xpu_execution import validate_request_domain
+        validate_request_domain(request)
 
 
 def _validate_optimization_controls(request: FilmOptimizationRequest) -> dict[str, Any]:
@@ -497,6 +502,8 @@ def optimize_film_design(
     class _ValidationCancelled(Exception):
         pass
 
+    strict_forward = None
+
     def evaluate(
         values: np.ndarray,
         evaluation_objectives: list[FilmOptimizationObjective] | None = None,
@@ -506,6 +513,9 @@ def optimize_film_design(
         include_details: bool = True,
     ) -> dict[str, Any]:
         candidate = candidate_design(values)
+        if strict_forward is not None and supplied_responses is None and evaluation_objectives is None:
+            response = strict_forward.responses(np.asarray(values).reshape(1, -1))
+            supplied_responses = strict_forward.candidate_responses(response, 0)
         rows_to_evaluate = objectives if evaluation_objectives is None else evaluation_objectives
         score_key = tuple(rows_to_evaluate)
         if score_key not in prepared_scores:
@@ -653,6 +663,11 @@ def optimize_film_design(
 
     # Always evaluate a complete baseline candidate first. This provides a
     # usable return value even when cancellation arrives before the search.
+    if request.execution_device is not None:
+        from .film_optimization_batch_forward import OptimizationBatchForward
+        strict_forward = OptimizationBatchForward(
+            frozen, objectives, tuple(row[1] for row in normalized_variables),
+            execution_device=request.execution_device, callback=performance_callback)
     consider(initial)
     assert best is not None
     termination_reason = "target_met" if best["max_error"] <= acceptable else ""
@@ -711,9 +726,10 @@ def optimize_film_design(
 
         if getattr(service.simulate, "__func__", None) is not FilmDesignService.simulate:
             raise ValueError("deferred_batch requires the canonical FilmDesignService")
-        forward = OptimizationBatchForward(
+        forward = strict_forward or OptimizationBatchForward(
             frozen, objectives, tuple(row[1] for row in normalized_variables),
-            options=performance_options, callback=performance_callback)
+            options=performance_options, callback=performance_callback,
+            execution_device=request.execution_device)
         baseline = best
         baseline_pending = True
 

@@ -40,7 +40,7 @@ _REQUEST_REQUIRED_FIELDS = {
 }
 _SOLVER_REQUEST_FIELDS = {
     "solver", "seed", "multistart_count", "population_size",
-    "validation_samples_multiplier", "execution_mode", "batch_size",
+    "validation_samples_multiplier", "execution_mode", "batch_size", "execution_device",
 }
 _SUPPORTED_SOLVERS = {
     "baseline", "powell", "nelder_mead", "multistart",
@@ -107,6 +107,9 @@ def serialize_request(request: FilmOptimizationRequest) -> dict[str, Any]:
     _validate_execution_controls(request)
     if request.execution_mode != "serial" or request.batch_size != 16:
         value.update(execution_mode=request.execution_mode, batch_size=request.batch_size)
+    if request.execution_device is not None:
+        from .film_xpu_execution import validate_binding
+        value["execution_device"] = validate_binding(request.execution_device)
     json.dumps(value, sort_keys=True, ensure_ascii=False, allow_nan=False)
     return value
 
@@ -148,6 +151,7 @@ def deserialize_request(value: Mapping[str, Any]) -> FilmOptimizationRequest:
             validation_samples_multiplier=value.get("validation_samples_multiplier", 2),
             execution_mode=value.get("execution_mode", "serial"),
             batch_size=value.get("batch_size", 16),
+            execution_device=deepcopy(value.get("execution_device")),
         )
     except (TypeError, ValueError) as exc:
         raise ValueError("film optimization request fields are invalid") from exc
@@ -272,6 +276,9 @@ def _result_payload(request: FilmOptimizationRequest, candidate: dict[str, Any],
         "candidate": candidate,
         "partial_result": _partial_result(candidate),
     }
+    if request.execution_device is not None:
+        from .film_xpu_execution import execution_summary
+        value["execution"] = execution_summary(request.execution_device)
     if state is not None:
         value["state"] = state
     if message is not None:
@@ -649,7 +656,7 @@ def validate_checkpoint(service: Any, checkpoint: Mapping[str, Any]) -> dict[str
 
         return validate_film_structure_payload(service, checkpoint)
     required = {"schema_version", "kind", "request", "candidate", "partial_result"}
-    allowed = required | {"state", "message", "solver_validation"}
+    allowed = required | {"state", "message", "solver_validation", "execution"}
     if not required.issubset(checkpoint) or set(checkpoint) - allowed:
         raise ValueError("film optimization checkpoint fields are invalid")
     state = checkpoint.get("state")
@@ -664,6 +671,11 @@ def validate_checkpoint(service: Any, checkpoint: Mapping[str, Any]) -> dict[str
         raise ValueError("film optimization result kind/version is invalid")
     json.dumps(dict(checkpoint), sort_keys=True, ensure_ascii=False, allow_nan=False)
     request = deserialize_request(checkpoint["request"])
+    from .film_xpu_execution import execution_summary
+    expected_execution = (execution_summary(request.execution_device)
+                          if request.execution_device is not None else None)
+    if checkpoint.get("execution") != expected_execution:
+        raise ValueError("film result execution declaration differs from its frozen request")
     if request.frozen_material_snapshot is None:
         raise ValueError("checkpoint request is missing its frozen material snapshot")
     request = freeze_film_optimization_request(service, request)

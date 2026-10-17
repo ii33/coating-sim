@@ -193,11 +193,11 @@ def test_optimizer_gpu_enumeration_does_not_imply_gpu_solver_support(
         devices = cast(list[dict[str, Any]], target.devices)
         gpu = devices[0]
         assert not gpu["available"]
-        assert "CPU 求解" in gpu["reason"]
+        assert "本机显式 Intel XPU 或 CPU" in gpu["reason"]
         if saved_device:
             assert target.deviceId == saved_device
             assert not target.canSubmit
-            assert "CPU 求解" in cast(str, target.message)
+            assert "本机显式 Intel XPU 或 CPU" in cast(str, target.message)
         else:
             assert target.deviceId == "cpu:node"
             assert target.canSubmit

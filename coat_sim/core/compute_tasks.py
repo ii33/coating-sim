@@ -55,6 +55,7 @@ def _compact_progress(value):
     text_keys = {
         "stage", "objective", "score_scope", "estimate_basis", "algorithm", "status",
         "actual_backend", "dtype",
+        "gpu_runtime", "device", "device_uuid", "output_device", "requested_backend", "cpu_parallel_axis",
         "estimate_kind",
     }
     number_keys = {

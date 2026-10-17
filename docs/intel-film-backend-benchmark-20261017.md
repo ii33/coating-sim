@@ -109,17 +109,9 @@ $env:OMP_NUM_THREADS='1'; $env:MKL_NUM_THREADS='1'; $env:OPENBLAS_NUM_THREADS='1
 
 ## 产品接入边界
 
-本次是数值后端与显式服务/基准接入，**没有把窗口 CPU 选择改成 XPU**。后端可通过 `PerformanceOptions(backend="xpu")` 显式调用；异构仅基准工具实现，产品不接受 `backend="hybrid"`，没有自动分配策略。
+早期后端交付未连接窗口；当前已新增窄范围的实验桌面入口，见[桌面冻结设备/取消/结果应用合同](film-xpu-desktop.md)。默认仍 CPU 串行，显式启用固定拓扑差分进化延迟批量，并检测、选择 Intel UUID 后才走 XPU；单条件单角度、前表面半无限基片之外拒绝 XPU。旧后台协议拒绝新声明；显式 XPU 失败、近临界或身份变化终止，不能用基类后端的 CPU 回退冒充成功。CPU 评分、数值门禁对照、候选重放和独立验证仍明确保留。异构仅基准，不是产品设备选项。
 
-当前具体缺口：
-
-1. `ComputeTarget.refresh()` 对膜系只发布 CPU，`client_for_submit()` 拒绝非 CPU；没有可绑定的 XPU index/UUID 行，也没有有期限的用户环境 FP64 探测。
-2. `FilmOptimizationQuickController._build_request()` 沿用 `execution_mode="serial"`，没有批量执行选择。`deferred_batch` 仅支持固定拓扑差分进化，其代际更新语义有别于旧 immediate，不能因用户选 GPU 自动偷偷切算法或执行模式。
-3. 冻结作业没有携带本地 XPU 物理设备绑定和回退策略；worker 批量路径仍靠既有环境变量选择后端。若只增加下拉框，CPU 选择/旧后台/环境变量可能与实际执行不一致，因此不足以安全接通。
-4. 必须补队列能力版本、冻结的运行时/index/UUID 核对、用户可见的 CPU 回退策略、实际后端与原因持久化、取消及过期结果回归，并在当前安装解释器具备相应 XPU 依赖时验收。不得自动安装/替换用户环境。
-
-本次明确报告这些缺口，保持 CPU 默认与所有既有窗口行为。后端 GPU 失败、临界或未支持模型会返回 CPU，并在服务结果 `metadata.backend` / `requested_backend` / `fallback_reason` 中标明；CPU 结果不是 GPU 通过证据。XPU 不报告 FP64 时在创建复数张量前拒绝；驱动身份不可读或缺失时不复用跨进程 GPU 校准。
-
+下节10000离散目标是旧候选轴 CPU 基线的历史测量。补齐单候选波长并行后胜负反转，不能继续宣称核显单候选更快，也不能把旧异构收益沿用到新 CPU 基线。参见[CPU波长并行公平复测](cpu-wavelength-workers-20261017.md)。
 
 ## 补充：60层、10000离散目标（同日）
 
@@ -135,4 +127,6 @@ $env:OMP_NUM_THREADS='1'; $env:MKL_NUM_THREADS='1'; $env:OPENBLAS_NUM_THREADS='1
 
 每模式独立新进程，批处理预热后计时7次；完整deferred-DE每模式1轮冷、3轮预热，种群64、3代/256次评估、目标/边界/停止条件一致。64候选CPU/异构吞吐比1.278，完整优化为1.139；核显单候选较快、64候选及完整优化反而较慢。不能把单候选或单批收益当作全过程收益。GPU导入/初始化/精度门禁在完整冷优化中计入，批次first-call不等于从程序启动的冷延迟。
 
-最大光谱绝对误差约4.27e-14，保持rtol/atol2e-12。所有模式proposal trace和最优厚度一致、failed=0，正常iteration_limit结束；固定短预算不意味着60维设计已收敛。设备仍为同一8086:7D67及Intel Compute LUID，其他硬件与功耗没有新增验收。详细原始证据在本次私有验收目录的`TARGETS-10000-REPORT.md`及`targets-60-10000/*.json`；未将机器专用启动脚本纳入产品。本节归纳已有测量，不新增自动异构策略，也不改变上述产品接入缺口。
+最大光谱绝对误差约4.27e-14，保持rtol/atol2e-12。所有模式proposal trace和最优厚度一致、failed=0，正常iteration_limit结束；固定短预算不意味着60维设计已收敛。设备仍为同一8086:7D67及Intel Compute LUID，其他硬件与功耗没有新增验收。详细原始证据在本次私有验收目录的`TARGETS-10000-REPORT.md`及`targets-60-10000/*.json`；未将机器专用启动脚本纳入产品。本节归纳已有测量，不新增自动异构策略，不将历史性能数据升级为当前产品的加速承诺。
+
+新异构闭环已完成：60层/10000目标/256评估，独占进程五轮热态中位 CPU2.385s、Intel4.835s、异构2.269s（约4.8%）；冷启动2.291/7.689/4.875s。捕获未知 Python 约1核瞬时活动，4.8%不构成稳定收益保证；旧12.2%作废。异构不自动启用，不再追加调参，见[闭环报告](hybrid-closure-20261017.md)。

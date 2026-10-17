@@ -426,7 +426,7 @@ class Scheduler:
             return {k:v for k,v in item.items() if k != 'local_path'}
         if action == 'capabilities':
             return {'protocol_version': 1, 'executors': sorted(__import__('coat_sim.scheduler.jobs', fromlist=['EXECUTORS']).EXECUTORS),
-                    'execution': 'single_local_worker', 'device_selection': 'parameters.backend',
+                    'execution': 'single_local_worker', 'device_selection': 'parameters.backend', 'film_xpu_execution': 1,
                     'transport': 'loopback_http', 'authentication': 'local_only', 'artifacts': 'download_by_id'}
         if action == 'find_request':
             receipt = self.store.queue.find_request(**arguments)

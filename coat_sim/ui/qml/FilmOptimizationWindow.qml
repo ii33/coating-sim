@@ -968,6 +968,46 @@ AppWindow {
                                     wrapMode: Text.WordWrap
                                     font.pointSize: window.themeTokens.fontSizeSmall
                                 }
+                                CheckBox {
+                                    objectName: "filmDeferredBatchMode"
+                                    visible: window.controller.searchMode === "fixed_topology" && window.controller.showPopulationSize
+                                    Layout.fillWidth: true
+                                    text: "延迟批量评估（显式启用；按代更新）"
+                                    checked: window.controller.deferredBatchEnabled
+                                    enabled: !window.controller.busy
+                                    onToggled: window.controller.setDeferredBatchEnabled(checked)
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "固定拓扑差分进化专用，轨迹不同于旧串行模式。Intel XPU 还需显式检测并选择设备；评分和独立验证仍使用 CPU。"
+                                }
+                                ColumnLayout {
+                                    visible: window.controller.deferredBatchEnabled && window.controller.searchMode === "fixed_topology" && window.controller.showPopulationSize
+                                    Layout.fillWidth: true
+                                    enabled: !window.controller.busy && window.controller.computeTarget.deviceId === "cpu:default"
+                                    Label { text: "CPU 前向线程（默认 1）"; color: window.themeTokens.colorText }
+                                    ThemeControls.ThemeSpinBox {
+                                        objectName: "filmBatchCpuWorkers"
+                                        Layout.fillWidth: true
+                                        from: 1
+                                        to: window.controller.filmCpuWorkerLimit
+                                        value: window.controller.filmCpuWorkers
+                                        onValueModified: window.controller.setFilmCpuWorkers(value)
+                                    }
+                                    ThemeControls.ThemeComboBox {
+                                        objectName: "filmBatchCpuAxis"
+                                        Layout.fillWidth: true
+                                        model: [{label: "自动分块轴", id: "auto"}, {label: "按候选分块", id: "candidates"}, {label: "按波长分块", id: "wavelengths"}]
+                                        textRole: "label"
+                                        currentIndex: window.controller.filmCpuAxis === "wavelengths" ? 2 : window.controller.filmCpuAxis === "candidates" ? 1 : 0
+                                        onActivated: function(index) { window.controller.setFilmCpuAxis(model[index].id) }
+                                    }
+                                }
+                                Label {
+                                    visible: window.controller.deferredBatchEnabled
+                                    Layout.fillWidth: true
+                                    text: "线程越多未必越快；自动轴不自动寻找最佳线程数。Intel XPU 不保证加速，CPU 评分与独立验证保持不变。"
+                                    wrapMode: Text.WordWrap
+                                    color: window.themeTokens.colorTextMuted
+                                }
                                 GridLayout {
                                     visible: window.controller.searchMode === "fixed_topology"
                                     Layout.fillWidth: true

@@ -133,6 +133,26 @@ class FrozenCoherentStack:
     def internal_layer_count(self) -> int:
         return self.indices.shape[1] - 2
 
+    def wavelength_slice(self, start: int, stop: int) -> "FrozenCoherentStack":
+        """Share immutable prepared arrays for a contiguous wavelength interval.
+
+        No refreezing, optical recomputation or copy of resident stack arrays.
+        Each wavelength retains its complete layer/polarization recurrence;
+        callers concatenate spectra before any wavelength-wide reduction.
+        """
+        if (any(isinstance(v, (bool, np.bool_)) or not isinstance(v, (int, np.integer))
+                for v in (start, stop)) or not 0 <= start < stop <= self.waves.size):
+            raise ValueError("wavelength slice requires 0 <= integer start < stop <= wavelength count")
+        selection = slice(start, stop)
+        return FrozenCoherentStack(
+            waves=self.waves[selection], indices=self.indices[selection],
+            transverse=self.transverse[selection], q=self.q[selection],
+            critical=self.critical[selection], polarization=self.polarization,
+            interfaces=MappingProxyType({p: (pair[0][selection], pair[1][selection])
+                                         for p, pair in self.interfaces.items()}),
+            fluxes=MappingProxyType({p: (pair[0][selection], pair[1][selection])
+                                     for p, pair in self.fluxes.items()}))
+
     def evaluate(self, thickness_nm, *, chunk_bytes=64 * 1024**2, cancel=None):
         """Evaluate candidates with thickness shape ``(C, M-2)``.
 

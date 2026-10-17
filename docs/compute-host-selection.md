@@ -31,8 +31,9 @@ marketing GPU name alone is not evidence that a backend can execute this task.
 ## Discovery and admission
 
 Deposition scheduler discovery and optional GPU probing run away from the GUI
-thread. The film optimizer exposes its known CPU-only worker immediately and
-checks the queue at submission. Appearance runs in an isolated local process;
+thread. The film optimizer exposes CPU immediately; its explicit bounded Intel
+XPU probe and frozen UUID binding are specified in [the desktop XPU contract](film-xpu-desktop.md).
+Batch submission requires capability film_xpu_execution=1 and rechecks the queue at submission. Appearance runs in an isolated local process;
 its NVIDIA CUDA option stays unavailable until the user requests the existing
 isolated runtime probe from either the pop-up or appearance controls. The local scheduler must report
 `protocol_version == 1` and advertise the requested executor. The desktop may
@@ -95,20 +96,17 @@ accuracy remains experimental. The current default/AMD-preferred DirectML
 binding does not guarantee Intel selection on a multi-GPU host. A successful
 initialization probe is not a complete-task acceptance result.
 
-Intel XPU FP64/complex128 forward evaluation now passes bounded native numerical
-and performance checks on 8086:7D67 after replacing scalar pow with equivalent
-magnitude multiplication. This is backend acceptance, with variable speedups;
-the desktop device/batch submission route remains unconnected and CPU-only.
-The exact missing route contracts are listed in
-[the integration limits](intel-film-backend-benchmark-20261017.md#产品接入边界). Intel GPU appearance rendering is unavailable
+Intel XPU FP64/complex128 forward evaluation and the narrow explicit desktop route
+are available experimentally on sakuya 8086:7D67. CPU stays the default.
+See [frozen device and lifecycle contract](film-xpu-desktop.md). Intel GPU appearance rendering is unavailable
 because the product has no Intel backend; successful CPU appearance does not
 establish GPU support. Exact environment, measured errors and limits are in
 [Intel integrated GPU support](intel-integrated-gpu-support.md).
 
 Optional local probe rows retain `available` as runtime availability and add
 `runtime_probe`, `support_level` and `support_note` as advisory projections.
-These do not change device IDs, frozen jobs, remote schemas or execution
-semantics. Successful optional GPU rows carry an experimental label and keep
+Deposition projections do not change its execution semantics. Film XPU adds
+a versioned local frozen binding; it does not broaden remote GPU support. Successful optional GPU rows carry an experimental label and keep
 their limitations visible after selection. Unavailable rows retain their failure
 reason; explicit GPU selections and CPU-only algorithm rejection are unchanged.
 The model owns these projections, the QML pop-up only renders them, and existing

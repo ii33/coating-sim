@@ -57,6 +57,7 @@ Item {
         if (!device) return "本机 / 检查中"
         if (device.backend === "CPU" || device.backend === "cpu") return "本机 / CPU"
         if (device.backend === "GPU" || device.backend === "gpu_cuda") return "本机 / CUDA"
+        if (device.backend === "xpu") return "本机 / Intel XPU"
         return "本机 / DirectML"
     }
 
@@ -209,6 +210,13 @@ Item {
                 ThemeControls.ThemeButton {
                     text: "重新检查"
                     onClicked: selector.target.refresh()
+                }
+                ThemeControls.ThemeButton {
+                    objectName: "computeFilmXpuProbeButton"
+                    visible: selector.target.supportsFilmXpuProbe && selector.target.hostId === "local"
+                    enabled: !selector.target.filmXpuProbeBusy
+                    text: selector.target.filmXpuProbeBusy ? "正在检测 Intel XPU…" : "检测 Intel XPU（FP64）"
+                    onClicked: selector.target.requestFilmXpuProbe()
                 }
                 ThemeControls.ThemeButton {
                     objectName: "computeCudaProbeButton"

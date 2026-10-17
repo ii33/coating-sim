@@ -51,12 +51,14 @@ def is_film_optimization_result(result) -> bool:
             or result.get("kind") != _FILM_RESULT_KIND:
         return False
     if set(result) - {"schema_version", "kind", "request", "candidate",
-                      "partial_result", "state", "message", "solver_validation"}:
+                      "partial_result", "state", "message", "solver_validation", "execution"}:
         return False
     # Solver/holdout metadata is an additive terminal-result field. This
     # capability check only verifies its container shape; the frozen core's
     # validate_checkpoint replays the candidate and verifies every value.
     if "solver_validation" in result and not isinstance(result["solver_validation"], dict):
+        return False
+    if "execution" in result and not isinstance(result["execution"], dict):
         return False
     request = result.get("request")
     snapshot = request.get("frozen_material_snapshot") if isinstance(request, dict) else None

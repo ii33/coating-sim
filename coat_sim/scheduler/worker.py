@@ -4,6 +4,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 import tempfile
 import time
 import traceback
@@ -221,12 +222,16 @@ def _film_optimization(service, parameters, cancel, report, checkpoint_path):
         raise ValueError('film_optimization requires one frozen job payload')
     film_service = film_optimization_service(service)
 
+    latest_progress: list[dict[str, Any]] = [{}]
+
     def publish_progress(value):
         progress = _film_progress_payload(value)
+        if isinstance(progress, dict):
+            latest_progress[0] = dict(progress)
         latest = latest_performance[0] if performance_enabled else None
         if isinstance(progress, dict) and isinstance(latest, dict):
             for key in (
-                    'actual_backend', 'dtype', 'cpu_workers', 'capacity',
+                    'actual_backend', 'dtype', 'cpu_workers', 'capacity', 'gpu_runtime', 'device', 'device_uuid', 'output_device', 'requested_backend',
                     'forward_calls', 'cached_forward_calls', 'cache_hits',
                     'prepared_builds', 'cache_evictions', 'fallback_calls',
                     'failed_forward_calls', 'cancelled_forward_calls',
@@ -248,7 +253,7 @@ def _film_optimization(service, parameters, cancel, report, checkpoint_path):
     batch_enabled = payload.get('request', {}).get('execution_mode') == 'deferred_batch'
     performance_enabled = forward_cache_enabled or batch_enabled
     performance_options = None
-    if batch_enabled:
+    if batch_enabled and payload.get('request', {}).get('execution_device') is None:
         from coat_sim.core.film_performance import PerformanceOptions
         performance_options = PerformanceOptions(
             backend=os.environ.get('COAT_SIM_FILM_BACKEND', 'auto'),
@@ -274,12 +279,14 @@ def _film_optimization(service, parameters, cancel, report, checkpoint_path):
         if not isinstance(value, dict):
             return
         latest_performance[0] = deepcopy(value)
-        progress = {
+        progress: dict[str, Any] = {key: latest_progress[0][key] for key in
+                    ('fraction','step_index','evaluations','best_score') if key in latest_progress[0]}
+        progress.update({
             'stage': 'film_batch' if batch_enabled else 'film_forward_cache',
             'status': f"forward cache {value.get('actual_backend', 'running')}",
-        }
+        })
         for key in (
-                'actual_backend', 'dtype', 'cpu_workers', 'capacity', 'forward_calls',
+                'actual_backend', 'dtype', 'cpu_workers', 'capacity', 'gpu_runtime', 'device', 'device_uuid', 'output_device', 'requested_backend', 'forward_calls',
                 'cached_forward_calls', 'cache_hits', 'prepared_builds',
                 'cache_evictions', 'fallback_calls', 'failed_forward_calls',
                 'cancelled_forward_calls', 'forward_seconds', 'prepare_seconds'):
@@ -303,6 +310,8 @@ def _film_optimization(service, parameters, cancel, report, checkpoint_path):
         persist_performance(force=True)
         if performance_enabled and isinstance(latest_performance[0], dict):
             publish_performance(latest_performance[0], force_report=True)
+    if payload.get('request', {}).get('execution_device') is not None and result.get('state') == 'failed':
+        raise RuntimeError('显式设备批量前向失败；未回退 CPU；已保留最后完整候选供查看。')
     return validate_film_optimization_result(film_service, result)
 
 def _geometric_raytrace(root, spec, directory, cancel, report):

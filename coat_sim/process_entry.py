@@ -11,6 +11,7 @@ from typing import Mapping, Sequence
 
 
 _ROLE_MODULES = {
+    "film-xpu-probe": "coat_sim.film_xpu_probe",
     "logged-process": "coat_sim.logged_process",
     "agent-worker": "coat_sim.agent.worker",
     "assistant": "coat_sim.assistant_process",

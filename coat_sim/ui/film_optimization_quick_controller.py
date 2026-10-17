@@ -537,6 +537,9 @@ class _FilmOptimizationTask(QRunnable):
             error = float(error) if error is not None else None
         except (TypeError, ValueError, OverflowError):
             error = None
+        message = str(value.get("message", value.get("status", "")))
+        if value.get("actual_backend") == "gpu" and value.get("gpu_runtime") == "xpu":
+            message = "Intel XPU 批量前向 · " + str(value.get("dtype","")) + " · " + message
         try:
             progress = FilmOptimizationProgress(
                 state=state,
@@ -544,7 +547,7 @@ class _FilmOptimizationTask(QRunnable):
                 iteration=max(0, int(value.get("iteration", value.get("step_index", 0)))),
                 evaluations=max(0, int(value.get("evaluations", 0))),
                 best_max_normalized_error=error,
-                message=str(value.get("message", value.get("status", ""))),
+                message=message,
             )
         except (TypeError, ValueError, OverflowError):
             return
@@ -882,6 +885,9 @@ class FilmOptimizationQuickController(QObject):
         self._compute_target = ComputeTarget(selection_root, "film_optimization", self,
                                              client_factory=SchedulerClient)
 
+        self._deferred_batch_enabled = False
+        self._film_cpu_workers = 1
+        self._film_cpu_axis = "auto"
         self._configuration_loading = True
         self._configuration_load_error = ""
         self._configuration_restore_notice = ""
@@ -955,6 +961,87 @@ class FilmOptimizationQuickController(QObject):
         self._restore_session_configuration(reset_missing=False)
 
         self._attach_source_observers()
+        self._compute_target.changed.connect(self.changed.emit)
+        self._sync_film_execution_target()
+
+    def _batch_execution_enabled(self) -> bool:
+        return bool(self._deferred_batch_enabled and self._solver_id == "differential_evolution"
+                    and self._search_mode == "fixed_topology")
+
+    def _selected_execution_binding(self):
+        binding = self._compute_target.execution_binding()
+        if binding["kind"] == "film_cpu_v1":
+            binding.update(cpu_workers=self._film_cpu_workers, cpu_parallel_axis=self._film_cpu_axis)
+        return binding
+
+    @Property(int, constant=True)
+    def filmCpuWorkerLimit(self) -> int:
+        from coat_sim.core.film_performance import available_cpu_workers
+        return min(1024, available_cpu_workers())
+
+    @Property(int, notify=changed)
+    def filmCpuWorkers(self) -> int:
+        return self._film_cpu_workers
+
+    @Slot(int, result=bool)
+    def setFilmCpuWorkers(self, value: int) -> bool:
+        if self._busy or self._shutting_down or not 1 <= value <= cast(int, self.filmCpuWorkerLimit):
+            return False
+        self._film_cpu_workers = value
+        self._invalidate_result()
+        return True
+
+    @Property(str, notify=changed)
+    def filmCpuAxis(self) -> str:
+        return self._film_cpu_axis
+
+    @Slot(str, result=bool)
+    def setFilmCpuAxis(self, value: str) -> bool:
+        if self._busy or self._shutting_down or value not in {"auto", "candidates", "wavelengths"}:
+            return False
+        self._film_cpu_axis = value
+        self._invalidate_result()
+        return True
+
+    def _film_xpu_unavailable_reason(self) -> str:
+        if getattr(self,"_search_mode",None) != "fixed_topology" or getattr(self,"_solver_id",None) != "differential_evolution":
+            return "Intel XPU 仅支持固定拓扑差分进化；其他方法请选 CPU。"
+        if not getattr(self,"_deferred_batch_enabled",False):
+            return "请显式勾选延迟批量评估；其轨迹不同于旧串行模式。"
+        objectives = getattr(self,"_objectives",[])
+        try:
+            if len(objectives) != 1 or _angle_sample_count(objectives[0]) != 1:
+                return "Intel XPU v1 仅支持一个目标条件和一个固定角度。"
+        except (ValueError,TypeError,KeyError):
+            return "请先修正目标角度配置。"
+        design = getattr(self,"_design",{})
+        if (design.get("first_surface","front")!="front"
+                or design.get("substrate",{}).get("sides")!="single" or design.get("back_layers")):
+            return "Intel XPU v1 仅支持前表面、单面半无限基片；该设计请选 CPU。"
+        if any(row.get("enabled") and row.get("side")!="front" for row in getattr(self,"_variables",[])):
+            return "Intel XPU v1 仅支持前表面厚度变量。"
+        return ""
+
+    def _sync_film_execution_target(self) -> None:
+        if not hasattr(self,"_compute_target") or not hasattr(self,"_solver_id"):
+            return
+        self._compute_target.configure_film_context(self._film_xpu_unavailable_reason(), self._batch_execution_enabled())
+
+    @Property(bool, notify=changed)
+    def deferredBatchEnabled(self) -> bool:
+        return self._deferred_batch_enabled
+
+    @Slot(bool, result=bool)
+    def setDeferredBatchEnabled(self, enabled: bool) -> bool:
+        if self._busy or self._shutting_down:
+            return False
+        if enabled and (self._solver_id!="differential_evolution" or self._search_mode!="fixed_topology"):
+            self._error = "请先选择固定拓扑差分进化。"
+            self.changed.emit()
+            return False
+        self._deferred_batch_enabled = bool(enabled)
+        self._invalidate_result()
+        return True
 
     @Property(bool, constant=True)
     def projectMode(self) -> bool:
@@ -1651,6 +1738,7 @@ class FilmOptimizationQuickController(QObject):
             self.changed.emit()
 
     def _invalidate_result(self) -> None:
+        self._sync_film_execution_target()
         if not self._configuration_loading:
             self._configuration_load_error = ""
         self._result = None
@@ -2088,8 +2176,15 @@ class FilmOptimizationQuickController(QObject):
                   "iteration_limit": "迭代预算用尽", "converged": "搜索停止",
                   "cancelled": "已取消", "completed": "已完成", "failed": "失败"}.get(
                       result.termination_reason or result.state, result.termination_reason or result.state)
-        return (f"方法 {method} · 随机种子 {result.seed} · 终止 {reason}"
+        text = (f"方法 {method} · 随机种子 {result.seed} · 终止 {reason}"
                 f" · 失败评估 {result.failed_evaluations} · 留出评估 {result.validation_evaluations}")
+        binding = getattr(self._frozen_request, "execution_device", None)
+        if binding and binding["kind"] == "intel_xpu_fp64_v1":
+            text += (f" · 执行绑定 Intel XPU {binding['index']} / UUID {binding['uuid']}"
+                     " · FP64/complex128 前向，CPU 评分与独立验证；失败不回退 CPU")
+        elif binding:
+            text += f" · CPU 批量前向 {binding.get('cpu_workers', 1)} 线程 / {binding.get('cpu_parallel_axis', 'auto')}"
+        return text
 
     @Property(str, notify=changed)
     def structureResultSummary(self) -> str:
@@ -2153,6 +2248,10 @@ class FilmOptimizationQuickController(QObject):
                 return "目标波长或角度配置必须至少产生一个计算条件。"
         except (TypeError, ValueError, KeyError):
             return "目标波长或角度配置无效，请修正后再开始。"
+        if self._compute_target.is_xpu_selected() and self._film_xpu_unavailable_reason():
+            return self._film_xpu_unavailable_reason()
+        if self._batch_execution_enabled() and self._compute_target.hostId != "local":
+            return "延迟批量模式目前仅支持本机。"
         if self._search_mode == "structure":
             return self._structure_configuration_error()
         reason = self._solver_unavailable_reason(self._solver_id)
@@ -2861,6 +2960,9 @@ class FilmOptimizationQuickController(QObject):
             multistart_count=self._multistart_count,
             population_size=self._population_size,
             validation_samples_multiplier=self._validation_samples_multiplier,
+            execution_mode="deferred_batch" if fixed_topology and self._batch_execution_enabled() else "serial",
+            execution_device=(self._selected_execution_binding()
+                              if fixed_topology and self._batch_execution_enabled() else None),
         )
 
     def _build_structure_request(self, *,
@@ -2992,6 +3094,9 @@ class FilmOptimizationQuickController(QObject):
             store, _device = self._compute_target.client_for_submit(
                 client_factory=SchedulerClient)
             remote = bool(getattr(getattr(store, "transport", None), "remote_http", False))
+            if getattr(request,"execution_device",None) is not None:
+                if request.execution_device != self._selected_execution_binding():
+                    raise _QueueCompatibilityError("准备期间执行设备已改变；请重新开始，未提交任务。")
             if not remote:
                 try:
                     capabilities = store.capabilities()

@@ -22,7 +22,7 @@ import numpy as np
 
 from .film_optics_batch import FrozenCoherentStack
 
-KERNEL_VERSION = "film-batch-fp64-v3-multiply-square"
+KERNEL_VERSION = "film-batch-fp64-v4-wavelength-workers"
 _PROCESS_CALIBRATION_NONCE = os.urandom(16).hex()
 
 
@@ -97,12 +97,15 @@ class PerformanceOptions:
     max_result_bytes: int = 256 * 1024**2
     max_prepared_bytes: int = 256 * 1024**2
     calibration: dict | None = None
+    cpu_parallel_axis: str = "auto"
 
     def __post_init__(self):
         if self.backend not in {"auto", "cpu", "gpu", "cuda", "rocm", "xpu"}:
             raise ValueError("backend must be auto, cpu, gpu, cuda, rocm or xpu")
         if type(self.cpu_workers) is not int or not 1 <= self.cpu_workers <= available_cpu_workers():
             raise ValueError("cpu_workers must be integer from 1 to available process CPUs")
+        if self.cpu_parallel_axis not in {"auto", "candidates", "wavelengths"}:
+            raise ValueError("cpu_parallel_axis must be auto, candidates or wavelengths")
         if type(self.chunk_bytes) is not int or not 1024 <= self.chunk_bytes <= 256 * 1024**2:
             raise ValueError("chunk_bytes must be integer from 1024 to 256 MiB")
         if type(self.max_result_bytes) is not int or not 1024 <= self.max_result_bytes <= 1024**3:
@@ -132,6 +135,7 @@ class CoherentBatchEvaluator:
         self._gpu_failure = None
         self._lock = RLock()
         self.last_metadata = {}
+        self._wavelength_parts: dict[int, tuple[FrozenCoherentStack, ...]] = {}
 
     def _selection(self, count):
         options = self.options
@@ -148,6 +152,7 @@ class CoherentBatchEvaluator:
                             row.get("layers") == self.stack.internal_layer_count and
                             row.get("polarization") == self.stack.polarization and
                             row.get("chunk_bytes") == options.chunk_bytes and
+                            row.get("cpu_parallel_axis", "auto") == options.cpu_parallel_axis and
                             not np.any(self.stack.critical) and
                             row.get("repetitions", 0) >= 3 and row.get("verified") is True):
                         selected = row.get("backend", "cpu")
@@ -206,7 +211,11 @@ class CoherentBatchEvaluator:
                 self._gpu_failure = error
                 self._gpu = None
                 selected = "cpu"
-        workers = min(workers, max(1, d.shape[0]))
+        axis = self.options.cpu_parallel_axis
+        if axis == "auto":
+            axis = "wavelengths" if d.shape[0] == 1 else "candidates"
+        count = self.stack.waves.size if axis == "wavelengths" else d.shape[0]
+        workers = min(workers, max(1, count))
         workers = min(workers, max(1, self.options.chunk_bytes // 1024))
         if workers > 1 and d.shape[0] * self.stack.waves.size * 48 > self.options.max_result_bytes:
             workers = 1
@@ -218,6 +227,7 @@ class CoherentBatchEvaluator:
         if _cancelled(cancel):
             raise InterruptedError("film batch cancelled")
         self.last_metadata = {"backend": "cpu", "requested_backend": self.options.backend, "cpu_workers": workers,
+                              "cpu_parallel_axis": axis,
                               "selection_reason": reason, "fallback_reason": error,
                               "kernel_version": KERNEL_VERSION, "dtype": "float64/complex128",
                               "jacobian_backend": "cpu_if_supported", "total_seconds": time.perf_counter() - start}
@@ -230,11 +240,24 @@ class CoherentBatchEvaluator:
             # No BLAS calls in this kernel. Total scratch budget is split among
             # the selected NumPy workers; there is no worker x BLAS nesting.
             scratch = max(1024, self.options.chunk_bytes // workers)
-            parts = np.array_split(d, workers)
+            axis = self.options.cpu_parallel_axis
+            if axis == "auto":
+                axis = "wavelengths" if d.shape[0] == 1 else "candidates"
+            if axis == "wavelengths":
+                if workers not in self._wavelength_parts:
+                    edges = np.linspace(0, self.stack.waves.size, workers + 1, dtype=int)
+                    self._wavelength_parts[workers] = tuple(
+                        self.stack.wavelength_slice(int(a), int(b))
+                        for a, b in zip(edges[:-1], edges[1:], strict=True))
+                calls = [(part, d) for part in self._wavelength_parts[workers]]
+                concatenate_axis = 1
+            else:
+                calls = [(self.stack, part) for part in np.array_split(d, workers)]
+                concatenate_axis = 0
             with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="film-spectrum") as pool:
-                jobs = [pool.submit(self.stack.evaluate, part, chunk_bytes=scratch, cancel=cancel)
-                        for part in parts]
-                return np.concatenate([job.result() for job in jobs])
+                jobs = [pool.submit(stack.evaluate, part, chunk_bytes=scratch, cancel=cancel)
+                        for stack, part in calls]
+                return np.concatenate([job.result() for job in jobs], axis=concatenate_axis)
 
 
 class FrozenFilmEvaluator:
