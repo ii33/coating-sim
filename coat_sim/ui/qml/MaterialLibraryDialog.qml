@@ -67,6 +67,7 @@ LocalComponents.ThemePageDialog {
         cancelAllOpticalCurveRequests()
         library.cancelPendingLoad()
         library.cancelImportPreview()
+        library.cancelOpticalInversion()
         if (referenceDialogInstance) referenceDialogInstance.close()
         if (setEditorInstance) setEditorInstance.close()
     }

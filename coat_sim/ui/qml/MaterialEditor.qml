@@ -27,6 +27,25 @@ ThemePageDialog {
     readonly property bool blocksIndependentKLoss: editingId.length > 0 && selectedSpec() &&
         selectedSpec().kind === "tabulated" && Object.keys(existingKData).length > 0
     signal referenceRequested()
+    property var inversionInstance: null
+    function openInversion() {
+        if (editingId.length || library.readOnly || library.loading) return
+        if (!inversionInstance) {
+            inversionInstance = inversionComponent.createObject(editor, {
+                parent: editor.parent, controller: editor.library.opticalInversion })
+            if (inversionInstance)
+                inversionInstance.savedAsNew.connect(function() { editor.close() })
+        }
+        if (inversionInstance) inversionInstance.open()
+    }
+    onClosed: {
+        if (inversionInstance) inversionInstance.close()
+        library.cancelOpticalInversion()
+    }
+    Component {
+        id: inversionComponent
+        OpticalInversionDialog {}
+    }
 
 
     function formulaSvgTextColor() {
@@ -409,6 +428,13 @@ ThemePageDialog {
         ColumnLayout {
             width: parent.width
             spacing: 10
+            ThemeControls.ThemeButton {
+                objectName: "opticalEditorInversionButton"
+                visible: editor.editingId.length === 0
+                text: "从实测 R/T 反演 n、k…"
+                enabled: !editor.library.readOnly && !editor.library.loading
+                onClicked: editor.openInversion()
+            }
             ThemeControls.ThemeField { id: datasetName; objectName: "opticalEditorName"; Layout.fillWidth: true; placeholderText: "数据集名称" }
             ThemeControls.ThemeLabel { text: "数据集备注 / 样品说明" }
             TextArea {

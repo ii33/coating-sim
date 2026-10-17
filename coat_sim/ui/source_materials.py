@@ -525,6 +525,18 @@ def _delete_library_material(folder, identifier):
 class MaterialLibraryBridge(QObject):
 
     @Property(QObject, constant=True)
+    def opticalInversion(self):
+        if not hasattr(self, "_optical_inversion_controller"):
+            from .optical_inversion import OpticalInversionController
+            self._optical_inversion_controller = OpticalInversionController(self)
+        return self._optical_inversion_controller
+
+    @Slot()
+    def cancelOpticalInversion(self):
+        if hasattr(self, "_optical_inversion_controller"):
+            self._optical_inversion_controller.invalidate()
+
+    @Property(QObject, constant=True)
     def informationController(self):
         if not hasattr(self, "_information_controller"):
             from .project_resource_adapter import EditorResourceInformationController

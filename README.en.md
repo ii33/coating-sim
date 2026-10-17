@@ -106,3 +106,5 @@ Installation notices and release evidence are maintained in the [independent ins
 [Project layout and historical-tool cleanup](docs/development/root-layout.md).
 
 [Research evidence and ordinary MCP services](docs/research-integration-contract.md) · [研究证据格式](docs/algorithms.html#project-research-evidence)
+
+[New optical dataset from measured R/T: guide and limits](docs/optical-inversion-guide.md) · [Inversion algorithm and ambiguity](docs/algorithms.html#optical-constant-inversion)

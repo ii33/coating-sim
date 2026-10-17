@@ -105,3 +105,5 @@ python tools/run_tests.py all
 [项目目录与历史工具清理说明](docs/development/root-layout.md)。
 
 [研究资料接入与普通 MCP 服务配置](docs/research-integration-contract.md) · [研究证据格式](docs/algorithms.html#project-research-evidence)
+
+[光谱反演新光学数据集：操作指南与限制](docs/optical-inversion-guide.md) · [算法与非唯一性](docs/algorithms.html#optical-constant-inversion)
