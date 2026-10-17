@@ -408,8 +408,12 @@ class TestLauncherRecentProjectsQml:
             position = row.mapToScene(QPointF(24, min(row.height() / 2, project_list.height() / 2)))
             QTest.mouseMove(self.window, QPoint(round(position.x()), round(position.y())))
             QTest.qWait(850)
-            extra_bound = " && rowDetailsTip.sidePlacement" if window_width == 640 else \
-                " && !rowDetailsTip.sidePlacement"
+            if window_width == 480:
+                expression = QQmlExpression(QQmlEngine.contextForObject(row), row,
+                    "!rowDetailsTip.sidePlacement && !rowDetailsTip.visible")
+                assert expression.evaluate()[0] is True and not expression.hasError()
+                continue
+            extra_bound = " && rowDetailsTip.sidePlacement"
             expression = QQmlExpression(QQmlEngine.contextForObject(row), row,
                 "rowDetailsTip.visible && rowDetailsTip.opened && rowDetailsTip.width >= 220"
                 " && rowDetailsTip.width <= 360 && rowDetailsTip.height <= 360"
@@ -468,9 +472,13 @@ class TestLauncherRecentProjectsQml:
         overlapping_rect = QRectF(float(tip.property("x")), float(tip.property("y")),
                                   float(tip.property("width")), float(tip.property("height")))
         assert tip.property("visible") and overlapping_rect.contains(click_center)
-        QTest.mouseClick(self.window, Qt.MouseButton.LeftButton,
-                         Qt.KeyboardModifier.NoModifier,
-                         QPoint(round(click_center.x()), round(click_center.y())))
+        click_point = QPoint(round(click_center.x()), round(click_center.y()))
+        QTest.mousePress(self.window, Qt.MouseButton.LeftButton,
+                         Qt.KeyboardModifier.NoModifier, click_point)
+        self.app.processEvents()
+        assert not tip.property("visible"), "dismiss on press, before releasing the underlying control"
+        QTest.mouseRelease(self.window, Qt.MouseButton.LeftButton,
+                           Qt.KeyboardModifier.NoModifier, click_point)
         self.app.processEvents()
         assert self.project_bridge.calls[-1] == ("open", "clicked-through.coatproj")
         expression = QQmlExpression(QQmlEngine.contextForObject(row), row, "!rowDetailsTip.visible")
@@ -534,6 +542,106 @@ class TestLauncherRecentProjectsQml:
         QTest.qWait(50)
         expression = QQmlExpression(QQmlEngine.contextForObject(row), row, "!rowDetailsTip.visible")
         assert expression.evaluate()[0] is True and not expression.hasError()
+
+    def _eval(self, item, code):
+        expression = QQmlExpression(QQmlEngine.contextForObject(item), item, code)
+        result = expression.evaluate()[0]
+        assert not expression.hasError(), expression.error().toString()
+        return result
+
+    def _hover_row(self, index=0):
+        QTest.mouseMove(self.window, QPoint(self.window.width() - 2, 2))
+        project_list = self._item("launcherProjectList")
+        self._eval(project_list, f"positionViewAtIndex({index}, 4)")
+        QTest.qWait(30)
+        row = self._item(f"launcherProjectEntry_{index}")
+        position = row.mapToScene(QPointF(24, min(row.height() / 2, project_list.height() / 2)))
+        QTest.mouseMove(self.window, position.toPoint())
+        QTest.qWait(650)
+        return row
+
+    def test_hover_never_covers_any_project_or_action_during_resize(self):
+        self.project_bridge.set_entries([{
+            "descriptorFile": f"/tmp/Study {i}/project.coatproj", "name": f"Project {i}",
+            "summary": "Long summary " * 8, "notes": "Long notes " * 100,
+            "available": True, "informationAvailable": True,
+        } for i in range(12)])
+        manager = self._item("launcherProjectManager")
+        for width, scale in ((1000, .75), (640, 1.5), (480, 1.5),
+                             (640, 8 / 3), (1380, 1), (1000, .75)):
+            self.theme._replace_snapshot(build_theme_snapshot("light", font_scale=scale),
+                                         1, "light", "light", "qa", "QA", {})
+            self.window.resize(width, 700)
+            QTest.qWait(80)
+            row = self._hover_row()
+            tip = self._eval(row, "rowDetailsTip")
+            if tip.property("visible"):
+                origin = manager.mapToScene(QPointF())
+                protected = QRectF(origin.x(), origin.y(), manager.width(), manager.height())
+                rectangle = QRectF(float(tip.property("x")), float(tip.property("y")),
+                                   float(tip.property("width")), float(tip.property("height")))
+                assert not rectangle.intersects(protected), (width, scale, rectangle, protected)
+                assert QRectF(0, 0, self.window.width(), self.window.height()).contains(rectangle)
+            else:
+                assert not tip.property("sidePlacement"), (width, scale)
+            # A real click on a different row must open that row, even after
+            # the first row's long metadata became visible.
+            self._click("launcherOpenRecentProject_1")
+            assert self.project_bridge.calls[-1] == ("open", "/tmp/Study 1/project.coatproj")
+            assert not tip.property("visible")
+
+    def test_narrow_full_details_scroll_close_focus_and_row_actions(self):
+        from PySide6.QtGui import QWheelEvent
+        from tests.qt_test_guard import qml_item_window
+
+        descriptor = "/tmp/Narrow study/project.coatproj"
+        self.project_bridge.set_entries([{
+            "descriptorFile": descriptor, "name": "<b>Narrow study</b>",
+            "summary": "S" * 4000, "notes": "N" * 4000,
+            "available": True, "informationAvailable": True,
+        }])
+        self.theme._replace_snapshot(build_theme_snapshot("light", font_scale=1.5),
+                                     1, "light", "light", "qa", "QA", {})
+        self.window.resize(640, 480)
+        QTest.qWait(80)
+        row = self._hover_row()
+        assert self._eval(row, "!rowDetailsTip.sidePlacement && !rowDetailsTip.visible")
+        self._click("launcherShowRecentProjectDetails_0")
+        QTest.qWait(150)
+        dialog = self.window.findChild(QObject, "launcherFullProjectDetails")
+        assert dialog is not None and dialog.property("visible")
+        text = self._item("launcherFullProjectDetailsText")
+        assert descriptor in text.property("text")
+        assert self._eval(text, "textFormat === Text.PlainText")
+        scroll = self._item("launcherFullProjectDetailsScroll")
+        surface = qml_item_window(scroll)
+        point = scroll.mapToScene(QPointF(scroll.width() / 2, scroll.height() / 2))
+        wheel = QWheelEvent(point, QPointF(surface.mapToGlobal(point.toPoint())), QPoint(), QPoint(0, -120),
+                            Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier,
+                            Qt.ScrollPhase.NoScrollPhase, False)
+        QCoreApplication.sendEvent(surface, wheel)
+        QTest.qWait(150)
+        assert self._eval(scroll, "contentItem.contentY > 0"), "full details must scroll via real wheel input"
+        assert not self.project_bridge.calls
+        close = self._item("launcherCloseFullProjectDetails")
+        surface = qml_item_window(close)
+        point = close.mapToScene(QPointF(close.width() / 2, close.height() / 2))
+        QTest.mouseClick(surface, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point.toPoint())
+        QTest.qWait(150)
+        assert not dialog.property("visible")
+        assert self._item("launcherShowRecentProjectDetails_0").hasActiveFocus()
+        for action in ("Copy", "Export", "Remove"):
+            self._hover_row()
+            self._click(f"launcher{action}RecentProject_0")
+            dialog_name = "launcherRemoveProjectDialog" if action == "Remove" else "launcherProjectFileActionDialog"
+            action_dialog = self.window.findChild(QObject, dialog_name)
+            assert action_dialog is not None and action_dialog.property("visible")
+            QTest.keyClick(self.window, Qt.Key.Key_Escape)
+            QTest.qWait(150)
+        self._click("launcherShowRecentProjectDetails_0")
+        self.project_bridge.set_entries([])
+        QTest.qWait(150)
+        assert not dialog.property("visible"), "refresh must discard the displayed snapshot"
 
     def test_recent_actions_are_idle_transparent_and_animate_with_keyboard_focus(self):
         self.project_bridge.set_entries([{

@@ -28,6 +28,7 @@ Item {
     property var actionEntry: null
     property string fileAction: ""
     property bool recentDetailsDismissed: false
+    property string fullDetailsText: ""
 
     readonly property real contentSpacing: Math.min(
         themeTokens.spaceMd, Math.max(7, root.height * 0.024))
@@ -36,7 +37,67 @@ Item {
     // participating in pointer hit testing so controls below it remain usable.
     TapHandler {
         acceptedButtons: Qt.AllButtons
-        onTapped: root.recentDetailsDismissed = true
+        onPressedChanged: if (pressed) root.recentDetailsDismissed = true
+    }
+
+    Connections {
+        target: root.hostWindow
+        function onActiveChanged() {
+            if (!root.hostWindow.active) root.recentDetailsDismissed = true
+        }
+    }
+    Connections {
+        target: root.projectBridge
+        function onProjectsChanged() {
+            root.recentDetailsDismissed = true
+            fullDetailsDialog.close()
+        }
+    }
+
+    ThemeControls.ThemeDialogBase {
+        id: fullDetailsDialog
+        objectName: "launcherFullProjectDetails"
+        title: "工程详情"
+        parent: Overlay.overlay
+        modal: true
+        width: Math.max(1, Math.min(600, parent.width - 24))
+        height: Math.max(1, Math.min(520, parent.height - 24))
+        x: Math.round((parent.width - width) / 2)
+        y: Math.round((parent.height - height) / 2)
+        onClosed: root.restoreDialogFocus()
+        contentItem: ScrollView {
+            id: fullDetailsScroll
+            objectName: "launcherFullProjectDetailsScroll"
+            Accessible.role: Accessible.Dialog
+            Accessible.name: fullDetailsDialog.title
+            contentWidth: availableWidth
+            clip: true
+            Flickable {
+                id: fullDetailsFlickable
+                contentWidth: width
+                contentHeight: fullDetailsBodyText.implicitHeight
+                boundsBehavior: Flickable.StopAtBounds
+                Text {
+                    id: fullDetailsBodyText
+                    objectName: "launcherFullProjectDetailsText"
+                    width: Math.max(1, fullDetailsFlickable.width - fullDetailsScroll.effectiveScrollBarWidth)
+                    text: root.fullDetailsText
+                    textFormat: Text.PlainText
+                    font.family: root.themeTokens.fontFamily
+                    font.pointSize: root.themeTokens.fontSizeBody
+                    color: root.themeTokens.colorText
+                    wrapMode: Text.WrapAnywhere
+                }
+            }
+        }
+        footer: DialogButtonBox {
+            ThemeControls.ThemeButton {
+                objectName: "launcherCloseFullProjectDetails"
+                text: "关闭"
+                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+            }
+            onRejected: fullDetailsDialog.close()
+        }
     }
 
     // Scoped to the three recent-card actions; shared ThemeButton is unchanged.
@@ -705,6 +766,7 @@ Item {
                                 parent: Overlay.overlay
                                 enabled: false
                                 visible: rowHover.hovered && !root.recentDetailsDismissed
+                                    && sidePlacement && !fullDetailsDialog.visible
                                 delay: 500
                                 text: root.rowDetails(projectRow.modelData)
                                 font.family: root.themeTokens.fontFamily
@@ -717,33 +779,26 @@ Item {
                                     root.Screen.virtualX + root.Screen.desktopAvailableWidth - windowLeft - 12)
                                 readonly property real boundsBottom: Math.min(parent.height - 12,
                                     root.Screen.virtualY + root.Screen.desktopAvailableHeight - windowTop - 12)
-                                readonly property real rowLeft: projectRow.mapToItem(parent, 0, 0).x
-                                readonly property real rowRight: projectRow.mapToItem(parent, projectRow.width, 0).x
+                                // Protect the entire manager, including every recent row
+                                // and the open/create controls, rather than just this row.
+                                // Include the content parent's position explicitly:
+                                // mapToItem alone does not track ancestor movement.
+                                readonly property point managerOrigin: root.parent.parent.mapToItem(parent,
+                                    root.parent.x + root.x, root.parent.y + root.y)
+                                readonly property real rowLeft: managerOrigin.x
+                                readonly property real rowRight: rowLeft + root.width
                                 readonly property real sideGap: 24
                                 readonly property real leftSpace: Math.max(0, rowLeft - boundsLeft - sideGap)
                                 readonly property real rightSpace: Math.max(0, boundsRight - rowRight - sideGap)
                                 readonly property bool showOnRight: rightSpace >= leftSpace
                                 readonly property real sideSpace: showOnRight ? rightSpace : leftSpace
-                                readonly property real tooltipBoundsWidth: Math.max(1, boundsRight - boundsLeft)
                                 readonly property bool sidePlacement: sideSpace >= 220
-                                readonly property real rowTop: projectRow.mapToItem(parent, 0, 0).y
-                                readonly property real rowBottom: rowTop + projectRow.height
-                                readonly property real aboveSpace: Math.max(0, rowTop - boundsTop - sideGap)
-                                readonly property real belowSpace: Math.max(0, boundsBottom - rowBottom - sideGap)
-                                readonly property bool placeBelow: belowSpace >= height
-                                    || (aboveSpace < height && belowSpace >= aboveSpace)
-                                width: Math.max(1, Math.min(360, sidePlacement ? sideSpace : tooltipBoundsWidth))
+                                readonly property real rowTop: rowHover.point.scenePosition.y
+                                width: Math.max(1, Math.min(360, sideSpace))
                                 height: Math.max(1, Math.min(360, boundsBottom - boundsTop,
                                     detailsText.implicitHeight + topPadding + bottomPadding))
-                                x: sidePlacement
-                                    ? (showOnRight ? rowRight + sideGap : rowLeft - width - sideGap)
-                                    : Math.max(boundsLeft, Math.min(boundsRight - width,
-                                        rowHover.point.position.x <= projectRow.width / 2
-                                            ? boundsRight - width : boundsLeft))
-                                y: sidePlacement
-                                    ? Math.max(boundsTop, Math.min(boundsBottom - height, rowTop))
-                                    : Math.max(boundsTop, Math.min(boundsBottom - height,
-                                        placeBelow ? rowBottom + sideGap : rowTop - height - sideGap))
+                                x: showOnRight ? rowRight + sideGap : rowLeft - width - sideGap
+                                y: Math.max(boundsTop, Math.min(boundsBottom - height, rowTop))
                                 contentItem: ScrollView {
                                     id: detailsScroll
                                     objectName: "launcherRecentProjectDetailsScroll_" + projectRow.index
@@ -843,18 +898,38 @@ Item {
                                         onClicked: root.requestRemove(projectRow.modelData, this)
                                     }
                                 }
-                                ThemeControls.ThemeLabel {
-                                    textFormat: Text.PlainText
-                                    objectName: "launcherRecentProjectSummary_" + projectRow.index
-                                    text: String(projectRow.modelData.summary || "未填写摘要").replace(/[\r\n]+/g, " ")
-                                    muted: true
-                                    wrapMode: Text.NoWrap
-                                    elide: Text.ElideRight
-                                    maximumLineCount: 1
+                                RowLayout {
                                     Layout.fillWidth: true
-                                    Layout.leftMargin: root.themeTokens.spaceXs
-                                    Layout.rightMargin: root.themeTokens.spaceXs
-                                    horizontalAlignment: Text.AlignLeft
+                                    spacing: root.themeTokens.spaceXs
+                                    ThemeControls.ThemeLabel {
+                                        textFormat: Text.PlainText
+                                        objectName: "launcherRecentProjectSummary_" + projectRow.index
+                                        text: String(projectRow.modelData.summary || "未填写摘要").replace(/[\r\n]+/g, " ")
+                                        muted: true
+                                        wrapMode: Text.NoWrap
+                                        elide: Text.ElideRight
+                                        maximumLineCount: 1
+                                        Layout.fillWidth: true
+                                        Layout.minimumWidth: 0
+                                        Layout.leftMargin: root.themeTokens.spaceXs
+                                        Layout.rightMargin: root.themeTokens.spaceXs
+                                        horizontalAlignment: Text.AlignLeft
+                                    }
+                                    RecentActionButton {
+                                        objectName: "launcherShowRecentProjectDetails_" + projectRow.index
+                                        text: "详情"
+                                        font.pointSize: root.themeTokens.fontSizeSmall
+                                        topPadding: 0
+                                        bottomPadding: 0
+                                        implicitHeight: contentItem.implicitHeight
+                                        onClicked: {
+                                            root.recentDetailsDismissed = true
+                                            root.fullDetailsText = root.rowDetails(projectRow.modelData)
+                                            root.focusReturnItem = this
+                                            fullDetailsFlickable.contentY = 0
+                                            fullDetailsDialog.open()
+                                        }
+                                    }
                                 }
                             }
                         }
