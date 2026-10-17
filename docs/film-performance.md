@@ -25,9 +25,9 @@
 
 ## 资源与错误边界
 
-CPU 并行至多四个线程，并限制在途数。纯 NumPy 光谱计算不调用 BLAS；泛用评价函数需显式确认可并行，否则串行。批量候选与波长按 scratch 预算分块；结果保留大小另受限。没有无限作业队列、全核默认或全局线程环境变量修改。
+冻结光谱评价器的 CPU 并行可由调用方显式选择进程可用核数，默认仍 1；通用独立候选执行器的既有四线程限制不变，并限制在途数。纯 NumPy 光谱计算不调用 BLAS；泛用评价函数需显式确认可并行，否则串行。批量候选与波长按 scratch 预算分块；结果保留大小另受限。没有无限作业队列、全核默认或全局线程环境变量修改。
 
-仅选已有 PyTorch CUDA 的 complex128/float64；DirectML 不提供本路径要求的精度，不能换成 float32。精确临界层、未实现非相干/背面模型及任何能力失败均使用完整 CPU 参考入口并给回退原因。不改变网格、材料、单位或精度。GPU 失败不等于 GPU 验证成功；本机自动选择须由真实计算对照及端到端耗时校准支持，否则 CPU。
+可显式选已有 PyTorch CUDA/ROCm/XPU 的 complex128/float64 后端；Intel XPU 仅有特定本机的后端验收。当前 DirectML 复数路径未通过，不以 FP32 替代；基础 float64 算子通过不代表整个 TMM 可用。精确临界层、未实现非相干/背面模型及任何能力失败均使用完整 CPU 参考入口并给回退原因。不改变网格、材料、单位或精度。GPU 失败不等于 GPU 验证成功；本机自动选择须由真实计算对照及端到端耗时校准支持，否则 CPU。
 
 调用方停止提交后，已开始候选到计算分块边界检查取消；未开始预留可释放，已开始失败仍计账。只返回完整候选谱，禁止发布半谱。执行器不拥有磁盘归档或覆盖旧 best 的权限。
 
@@ -46,7 +46,7 @@ response = evaluator.evaluate_thickness_batch(
 # response: wavelength_nm[W], R/T/A[C,W], metadata(真实后端/回退理由/精度/冻结摘要)
 ```
 
-实例调用串行化，内部纯 NumPy 批量可开至多四线程；不与共享 GPU 初始化/验证争用。`settings` 返回独立副本，波长与 prepared arrays 不能恢复写权限。材料采样沿用 source_only_zero_defaults 与请求中的 n 外推策略，QW 的参考 n 也使用同一策略。零厚只可通过 `zero_thickness_layer_ids` 明确标临时探针，不能成为合法保存设计。
+实例调用串行化，内部纯 NumPy 批量可显式选到当前进程可用核数（默认 1、且受候选数和总内存预算限制）；不与共享 GPU 初始化/验证争用。`settings` 返回独立副本，波长与 prepared arrays 不能恢复写权限。材料采样沿用 source_only_zero_defaults 与请求中的 n 外推策略，QW 的参考 n 也使用同一策略。零厚只可通过 `zero_thickness_layer_ids` 明确标临时探针，不能成为合法保存设计。
 
 现有八种方法入口为 `optimize_film_design_accelerated(service, request, *, options=None, cancel_event=None, progress_callback=None, checkpoint_callback=None)`，结果仍是原 `FilmOptimizationResult`，前向 prepared LRU 容量为2，解析 J 保留 CPU。该入口不改变旧请求格式、不写 session、不提交新作业。
 

@@ -34,8 +34,8 @@ _TASK_SUPPORT_SUMMARIES = {
         "默认 DirectML 不保证选中 Intel，需核对实际设备与结果后端。"
     ),
     "film_optimization": (
-        "已支持：CPU 膜系优化。Intel XPU 仅基础 FP64/complex128 探测通过；"
-        "实际批评估两次超时，尚未通过任务验收，桌面优化保持 CPU。"
+        "已支持：CPU 膜系优化。Intel XPU 后端 FP64/complex128 已完成本机限定数值和性能验证；"
+        "并非普遍快于 CPU。当前窗口尚未接入 XPU 设备和批量执行选择，继续使用 CPU。"
     ),
     "appearance": (
         "已支持：CPU 外观。GPU 为 NVIDIA CUDA 实验路径，需单独检测。"
@@ -302,7 +302,7 @@ class ComputeTarget(QObject):
             # Enumeration is not executor support: current production solvers
             # and the forward worker are CPU-only, even on a CUDA-capable host.
             return [{**row, "available": False,
-                     "reason": "膜系优化当前使用 CPU 求解；Intel XPU 批评估尚未通过任务验收。"}
+                     "reason": "膜系优化当前使用 CPU 求解；XPU 后端已有限验证，但窗口与队列设备绑定尚未接入。"}
                     if row["backend"] != "CPU" else row for row in devices]
         if self.task == "deposition":
             filtered = []

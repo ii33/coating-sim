@@ -103,7 +103,7 @@ def test_failed_intel_runtime_does_not_switch_cpu_preference(tmp_path, monkeypat
 
 @pytest.mark.parametrize("task,required", (
     ("deposition", ("平面数值已有限验证", "遮板边界", "不保证选中 Intel")),
-    ("film_optimization", ("CPU", "FP64/complex128", "两次超时", "尚未通过任务验收")),
+    ("film_optimization", ("CPU", "FP64/complex128", "本机限定数值和性能验证", "当前窗口尚未接入 XPU")),
     ("appearance", ("CPU", "Intel 核显外观 GPU 不可用", "没有 Intel 渲染后端")),
 ))
 def test_support_summary_is_rendered_in_bounded_scrollable_device_popup(

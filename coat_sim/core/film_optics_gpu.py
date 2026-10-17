@@ -67,6 +67,10 @@ def select_gpu_runtime(torch, requested="gpu"):
 
 def verify_gpu_dtype(torch, runtime, device):
     """Actual FP64/complex128 operators; no implicit FP32 substitution."""
+    if getattr(device, "type", None) == "xpu":
+        properties = runtime.get_device_properties(device)
+        if not getattr(properties, "has_fp64", False):
+            raise RuntimeError("XPU device does not report FP64 support; CPU required")
     sample = np.array([1 + .2j, 2 + .3j], dtype=np.complex128)
     tensor = torch.tensor(sample, dtype=torch.complex128, device=device)
     if tensor.dtype != torch.complex128:
@@ -109,6 +113,17 @@ def gpu_domain_reason(stack):
     if np.any(np.abs(stack.q) < 1e-10 * np.maximum(1, np.abs(stack.indices))):
         return "near critical medium uses CPU reference"
     return None
+
+
+def _squared_magnitude(torch, value):
+    """Keep complex abs semantics without the XPU FP64 scalar-pow kernel.
+
+    On tested Intel Windows runtimes ``abs(value) ** 2`` can stall in
+    aten.pow.Tensor_Scalar. Multiplying the same FP64 magnitude is equivalent
+    and avoids that operator; no precision or optical-model change is made.
+    """
+    magnitude = torch.abs(value)
+    return magnitude * magnitude
 
 
 class TorchCoherentBatch:
@@ -158,8 +173,8 @@ class TorchCoherentBatch:
                 t = ti[:, index].unsqueeze(0) * phase * t / denominator
                 r = (ri[:, index].unsqueeze(0) + r * phase2) / denominator
             f0, fe = self.fluxes[p]
-            reflected = torch.abs(r) ** 2
-            transmitted = torch.abs(t) ** 2 * torch.clamp(fe[selection], min=0) / f0[selection]
+            reflected = _squared_magnitude(torch, r)
+            transmitted = _squared_magnitude(torch, t) * torch.clamp(fe[selection], min=0) / f0[selection]
             absorption = 1 - reflected - transmitted
             absorption = torch.where(torch.abs(absorption) < 5e-13, 0., absorption)
             channels.append(torch.stack((reflected, transmitted, absorption), dim=2))
@@ -169,7 +184,7 @@ class TorchCoherentBatch:
         torch = self.torch
         d = np.asarray(thickness_nm, dtype=np.float64)
         layers = self.stack.indices.shape[1] - 2
-        if d.ndim != 2 or d.shape[1] != layers or np.any(d < 0) or not np.all(np.isfinite(d)):
+        if d.ndim != 2 or d.shape[0] == 0 or d.shape[1] != layers or np.any(d < 0) or not np.all(np.isfinite(d)):
             raise ValueError("thickness_nm requires finite nonnegative [candidate,layer] nm")
         if type(chunk_bytes) is not int or chunk_bytes < 1024:
             raise ValueError("chunk_bytes must be integer >= 1024")
@@ -195,6 +210,8 @@ class TorchCoherentBatch:
                     check()
                     start = time.perf_counter()
                     block = self._compute(dt, w, min(w + wave_count, self.waves.numel()), cancel=cancel)
+                    if block.device != self.device or block.dtype != torch.float64:
+                        raise RuntimeError("GPU spectrum changed device or FP64 dtype")
                     self.runtime.synchronize(self.device)
                     forward += time.perf_counter() - start
                     start = time.perf_counter()
@@ -208,6 +225,8 @@ class TorchCoherentBatch:
         check()
         self.last_timing = {"thickness_upload_seconds": upload, "forward_seconds": forward,
                             "download_seconds": download,
+                            "output_device": str(self.device), "kernel_mode": "eager",
+                            "explicit_compile_seconds": 0.,
                             "peak_allocated_bytes": int(self.runtime.max_memory_allocated(self.device))}
         return result
 

@@ -9,7 +9,7 @@ import json
 import os
 import sys
 
-from coat_sim.core.film_performance import FrozenFilmEvaluator, PerformanceOptions, KERNEL_VERSION
+from coat_sim.core.film_performance import FrozenFilmEvaluator, PerformanceOptions, KERNEL_VERSION, available_cpu_workers
 
 
 def main():
@@ -27,7 +27,7 @@ def main():
             except (ImportError, OSError, ValueError) as exc:
                 torch, cuda, build = str(exc), None, {}
             result = {"kernel_version": KERNEL_VERSION, "logical_cpus": os.cpu_count(),
-                      "max_cpu_workers": 4, "default_cpu_workers": 1,
+                      "max_cpu_workers": available_cpu_workers(), "default_cpu_workers": 1,
                       "precision": "float64/complex128", "torch_build": torch,
                       "cuda_build": cuda, "hip_build": build.get("hip"), "xpu_build": build.get("xpu"),
                       "supported_gpu_runtimes": ["cuda", "rocm", "xpu"],

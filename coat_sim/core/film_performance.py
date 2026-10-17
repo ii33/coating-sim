@@ -10,6 +10,7 @@ from concurrent.futures import CancelledError
 from copy import deepcopy
 from dataclasses import dataclass
 import hashlib
+from importlib import metadata
 import json
 import os
 import platform
@@ -21,12 +22,70 @@ import numpy as np
 
 from .film_optics_batch import FrozenCoherentStack
 
-KERNEL_VERSION = "film-batch-fp64-v2-multivendor"
+KERNEL_VERSION = "film-batch-fp64-v3-multiply-square"
+_PROCESS_CALIBRATION_NONCE = os.urandom(16).hex()
+
+
+def available_cpu_workers() -> int:
+    """Respect process CPU limits where Python/platform exposes them."""
+    process_count = getattr(os, "process_cpu_count", os.cpu_count)
+    count = max(1, process_count() or 1)
+    if hasattr(os, "sched_getaffinity"):
+        try:
+            count = min(count, max(1, len(os.sched_getaffinity(0))))
+        except OSError:
+            pass
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.GetCurrentProcess.restype = wintypes.HANDLE
+        kernel.GetProcessAffinityMask.argtypes = [wintypes.HANDLE,
+            ctypes.POINTER(ctypes.c_size_t), ctypes.POINTER(ctypes.c_size_t)]
+        kernel.GetProcessAffinityMask.restype = wintypes.BOOL
+        process_mask, system_mask = ctypes.c_size_t(), ctypes.c_size_t()
+        if kernel.GetProcessAffinityMask(kernel.GetCurrentProcess(),
+                ctypes.byref(process_mask), ctypes.byref(system_mask)) and process_mask.value:
+            count = min(count, process_mask.value.bit_count())
+    return count
 
 
 def environment_key():
+    # Read package metadata and Windows display-driver declarations without
+    # loading torch, opening a device or running an expensive calibration.
+    packages: list[tuple[str, str | None]] = []
+    for package in ("torch", "numpy", "scipy"):
+        try:
+            packages.append((package, metadata.version(package)))
+        except metadata.PackageNotFoundError:
+            packages.append((package, None))
+    drivers: list[object] = []
+    if sys.platform == "win32":
+        import winreg
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                    r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}") as root:
+                for i in range(winreg.QueryInfoKey(root)[0]):
+                    name = winreg.EnumKey(root, i)
+                    if not name.isdigit():
+                        continue
+                    with winreg.OpenKey(root, name) as adapter:
+                        fields: list[str | None] = []
+                        for field in ("DriverDesc", "DriverVersion", "MatchingDeviceId"):
+                            try:
+                                fields.append(str(winreg.QueryValueEx(adapter, field)[0]))
+                            except OSError:
+                                fields.append(None)
+                        drivers.append(fields)
+            if not drivers or any(None in fields for fields in drivers if isinstance(fields, list)):
+                drivers = ["unreadable", _PROCESS_CALIBRATION_NONCE]
+        except OSError:
+            # Unreadable driver identity must not authorize cached GPU use.
+            # A per-process salt invalidates persistent profiles in this case.
+            drivers = ["unreadable", _PROCESS_CALIBRATION_NONCE]
     identity = [platform.node(), platform.platform(), sys.version, np.__version__,
-                os.cpu_count(), os.environ.get("PROCESSOR_IDENTIFIER", "")]
+                available_cpu_workers(), os.environ.get("PROCESSOR_IDENTIFIER", ""),
+                packages, drivers]
     return hashlib.sha256(json.dumps(identity).encode()).hexdigest()
 
 
@@ -42,8 +101,8 @@ class PerformanceOptions:
     def __post_init__(self):
         if self.backend not in {"auto", "cpu", "gpu", "cuda", "rocm", "xpu"}:
             raise ValueError("backend must be auto, cpu, gpu, cuda, rocm or xpu")
-        if type(self.cpu_workers) is not int or not 1 <= self.cpu_workers <= 4:
-            raise ValueError("cpu_workers must be integer from 1 to 4")
+        if type(self.cpu_workers) is not int or not 1 <= self.cpu_workers <= available_cpu_workers():
+            raise ValueError("cpu_workers must be integer from 1 to available process CPUs")
         if type(self.chunk_bytes) is not int or not 1024 <= self.chunk_bytes <= 256 * 1024**2:
             raise ValueError("chunk_bytes must be integer from 1024 to 256 MiB")
         if type(self.max_result_bytes) is not int or not 1024 <= self.max_result_bytes <= 1024**3:
@@ -65,6 +124,10 @@ class CoherentBatchEvaluator:
     def __init__(self, stack, options=None):
         self.stack = stack
         self.options = options or PerformanceOptions()
+        # Snapshot installation identity once per evaluator. Registry/package
+        # metadata reads must not become per-batch optimization overhead.
+        self._calibration_environment_key = (environment_key()
+            if self.options.backend == "auto" and self.options.calibration is not None else None)
         self._gpu = None
         self._gpu_failure = None
         self._lock = RLock()
@@ -77,7 +140,7 @@ class CoherentBatchEvaluator:
         selected = "cpu" if options.backend == "auto" else options.backend
         profile = options.calibration
         if options.backend == "auto" and isinstance(profile, dict):
-            if (profile.get("environment_key") == environment_key() and
+            if (profile.get("environment_key") == self._calibration_environment_key and
                     profile.get("kernel_version") == KERNEL_VERSION):
                 for row in profile.get("regions", []):
                     if (row.get("min_candidates", 0) <= count <= row.get("max_candidates", -1) and
@@ -89,7 +152,7 @@ class CoherentBatchEvaluator:
                             row.get("repetitions", 0) >= 3 and row.get("verified") is True):
                         selected = row.get("backend", "cpu")
                         workers = int(row.get("cpu_workers", 1))
-                        if selected not in {"cpu", "gpu", "cuda", "rocm", "xpu"} or not 1 <= workers <= 4:
+                        if selected not in {"cpu", "gpu", "cuda", "rocm", "xpu"} or not 1 <= workers <= available_cpu_workers():
                             selected, workers = "cpu", 1
                         reason = "matching bounded measured calibration region"
                         break
@@ -165,7 +228,7 @@ class CoherentBatchEvaluator:
             return self.stack.evaluate(d, chunk_bytes=self.options.chunk_bytes, cancel=cancel)
         else:
             # No BLAS calls in this kernel. Total scratch budget is split among
-            # at most four NumPy workers; there is no worker x BLAS nesting.
+            # the selected NumPy workers; there is no worker x BLAS nesting.
             scratch = max(1024, self.options.chunk_bytes // workers)
             parts = np.array_split(d, workers)
             with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="film-spectrum") as pool:

@@ -95,9 +95,12 @@ accuracy remains experimental. The current default/AMD-preferred DirectML
 binding does not guarantee Intel selection on a multi-GPU host. A successful
 initialization probe is not a complete-task acceptance result.
 
-Intel XPU FP64/complex128 probes passed on the tested 8086:7D67 device, but real
-film batch evaluation timed out at both 90 and 180 seconds. Desktop film
-optimization remains CPU-only. Intel GPU appearance rendering is unavailable
+Intel XPU FP64/complex128 forward evaluation now passes bounded native numerical
+and performance checks on 8086:7D67 after replacing scalar pow with equivalent
+magnitude multiplication. This is backend acceptance, with variable speedups;
+the desktop device/batch submission route remains unconnected and CPU-only.
+The exact missing route contracts are listed in
+[the integration limits](intel-film-backend-benchmark-20261017.md#产品接入边界). Intel GPU appearance rendering is unavailable
 because the product has no Intel backend; successful CPU appearance does not
 establish GPU support. Exact environment, measured errors and limits are in
 [Intel integrated GPU support](intel-integrated-gpu-support.md).
