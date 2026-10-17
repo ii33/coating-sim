@@ -124,6 +124,32 @@ def stop_service(client: SchedulerClient) -> None:
     )
 
 
+@unittest.skipUnless(os.name == "nt", "Windows console allocation regression")
+def test_windows_venv_scheduler_does_not_allocate_a_console() -> None:
+    with scheduler_root() as (_, client):
+        health = client.ensure_started()
+        # Probe the server's actual PID, not the venv redirector Popen PID.
+        # This caught a visible console even though its redirector had none.
+        probe = """
+import ctypes, sys
+kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+kernel.FreeConsole()
+ctypes.set_last_error(0)
+attached = kernel.AttachConsole(int(sys.argv[1]))
+error = ctypes.get_last_error()
+if attached:
+    kernel.FreeConsole()
+assert not attached and error == 6, (bool(attached), error)
+"""
+        result = subprocess.run(
+            [sys.executable, "-c", probe, str(health["pid"])],
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, creationflags=subprocess.CREATE_NO_WINDOW,
+            timeout=15,
+        )
+        assert result.returncode == 0, result.stderr.decode(errors="replace")
+
+
 def test_submitting_client_process_exit_does_not_cancel_job() -> None:
     with scheduler_root() as (root, observer):
         # A real short-lived client process makes this stronger than dropping a

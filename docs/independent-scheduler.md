@@ -25,6 +25,14 @@ admission order. A stale lock filename is not treated as a running service.
 
 ## Start, stop, and inspect
 
+On Windows, automatic service startup uses `CREATE_NO_WINDOW` together with a
+new process group and disconnected standard streams. A source run through
+`python.exe` prefers its sibling `pythonw.exe` from the same environment when
+available: the Windows venv redirector can allocate a console for the real
+interpreter even when the redirector itself has none. Frozen builds retain the
+registered application worker role. No PATH lookup, interpreter installation,
+or shell waiting is involved; closing the submitting GUI leaves the daemon running.
+
 From this project's directory in PowerShell, use the project's Python:
 
 ```powershell

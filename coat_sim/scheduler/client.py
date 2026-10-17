@@ -11,7 +11,7 @@ import time
 import threading
 from urllib.request import Request, urlopen, ProxyHandler, build_opener
 from urllib.error import URLError, HTTPError
-from coat_sim.process_entry import module_command
+from coat_sim.process_entry import is_frozen, module_command
 from coat_sim.project_logging import log_path
 
 class SchedulerClient:
@@ -79,11 +79,20 @@ class SchedulerClient:
         runtime.mkdir(parents=True, exist_ok=True)
         options: dict[str, Any] = {'cwd': str(Path(__file__).resolve().parents[2]), 'stdin': subprocess.DEVNULL}
         if os.name == 'nt':
-            options['creationflags'] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+            # Also select pythonw below: Windows' venv redirector can allocate
+            # a console for its real interpreter child despite these flags.
+            options['creationflags'] = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
         else:
             options['start_new_session'] = True
         # Do not inherit a parent's stdio pipe: a closed MCP host cannot kill/block us.
-        command = module_command('coat_sim.scheduler', '--root', str(self.root), 'serve')
+        interpreter = None
+        if os.name == 'nt' and not is_frozen():
+            executable = Path(sys.executable)
+            gui_interpreter = executable.with_name('pythonw.exe')
+            if executable.name.casefold() == 'python.exe' and gui_interpreter.is_file():
+                # Same environment and ABI; never search PATH or another install.
+                interpreter = str(gui_interpreter)
+        command = module_command('coat_sim.scheduler', '--root', str(self.root), 'serve', interpreter=interpreter)
         process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **options)
         self._processes[str(self.root)] = process
         deadline = time.monotonic() + 90
