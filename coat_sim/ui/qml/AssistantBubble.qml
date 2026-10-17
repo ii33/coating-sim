@@ -143,7 +143,8 @@ Window {
         Menu {
             id: windowListMenu
             objectName: "assistantWindowListMenu"
-            title: "窗口列表"
+            title: desktop && desktop.openWindows.length > 0 ? "窗口列表" : "窗口列表（暂无窗口）"
+            enabled: desktop && desktop.openWindows.length > 0
             width: Math.max(260, implicitWidth)
             palette.window: bubble.themeColors ? bubble.themeColors.colorWindow : palette.window
             palette.windowText: bubble.themeColors ? bubble.themeColors.colorText : palette.windowText
@@ -320,6 +321,7 @@ Window {
         }
         MenuSeparator { }
         MenuItem {
+            objectName: "assistantSoundMenuItem"
             text: "气泡提示音"
             checkable: true
             checked: desktop ? desktop.soundEnabled : false
@@ -330,6 +332,7 @@ Window {
             objectName: "assistantCancelExitWaitingItem"
             text: "停止等待退出，保留助手"
             visible: desktop && desktop.applicationExitWaiting
+            height: visible ? implicitHeight : 0
             enabled: visible
             onTriggered: desktop.cancelExitWaiting()
         }
@@ -342,6 +345,7 @@ Window {
         }
 
         MenuItem {
+            objectName: "assistantHideMenuItem"
             text: "隐藏看板娘"
             onTriggered: desktop.hideAssistant()
         }

@@ -9,7 +9,7 @@ import warnings
 from PySide6.QtCore import QObject, Property, QCoreApplication, QEvent, QPoint, QPointF, QRect, Qt, QUrl, Signal, Slot
 from PySide6.QtGui import QColor, QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent
-from PySide6.QtQuick import QQuickWindow
+from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
@@ -92,6 +92,7 @@ class BubbleTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         for target, replacement in (
             ("load_ui_settings", lambda: {"assistant_notification_sound": False}),
+            ("save_ui_settings", lambda _settings: None),
             ("QSoundEffect", None),
             ("CURSOR_PATH", Path(self.directory.name) / "cursor.json"),
         ):
@@ -171,6 +172,102 @@ class BubbleTests(unittest.TestCase):
             QTest.qWait(40)
             self.assertEqual(self.assistant.calls, ["chat"])
             self.assistant.calls.clear()
+
+    def click_root_item(self, name):
+        item = self.bubble.findChild(QObject, name)
+        self.assertIsNotNone(item)
+        self.assertTrue(item.isVisible())
+        popup = _visual_window_for(item)
+        point = item.mapToGlobal(QPointF(item.width() / 2, item.height() / 2))
+        QTest.mouseClick(popup, Qt.LeftButton, Qt.NoModifier,
+                         QPoint(round(point.x() - popup.x()),
+                                round(point.y() - popup.y())))
+        QTest.qWait(80)
+        self.assertFalse(self.menu.property("visible"))
+
+    def test_hidden_waiting_item_takes_no_space_and_visible_actions_route(self):
+        calls = []
+        self.desktop.controller = SimpleNamespace(
+            _bubble=self.bubble,
+            hide_windows=lambda: (calls.append("hide"), self.bubble.hide()))
+        self.desktop.set_application_exit_callback(lambda: calls.append("exit"))
+        self.desktop.set_application_exit_cancel_callback(lambda: calls.append("cancel"))
+        self.open_menu()
+        waiting = self.bubble.findChild(QObject, "assistantCancelExitWaitingItem")
+        self.assertFalse(waiting.isVisible())
+        self.assertEqual(waiting.height(), 0)
+        normal_height = self.menu.property("height")
+        self.menu.setProperty("visible", False)
+        QTest.qWait(100)
+        self.desktop.set_application_exit_waiting(True)
+        self.open_menu()
+        self.assertTrue(waiting.isVisible())
+        self.assertGreater(waiting.height(), 0)
+        self.assertAlmostEqual(self.menu.property("height") - normal_height,
+                               waiting.height(), delta=1)
+        self.click_root_item("assistantCancelExitWaitingItem")
+        self.assertEqual(calls, ["cancel"])
+        self.desktop.set_application_exit_waiting(False)
+        self.open_menu()
+        waiting = self.bubble.findChild(QObject, "assistantCancelExitWaitingItem")
+        self.assertIsNotNone(waiting)
+        self.assertEqual(waiting.height(), 0)
+        self.assertAlmostEqual(self.menu.property("height"), normal_height, delta=1)
+        self.click_root_item("assistantSoundMenuItem")
+        self.assertTrue(self.desktop.soundEnabled)
+        self.open_menu()
+        self.click_root_item("assistantExitApplicationItem")
+        self.assertEqual(calls[-1], "exit")
+        self.open_menu()
+        with patch.object(assistant_desktop.QSystemTrayIcon,
+                          "isSystemTrayAvailable", return_value=True):
+            self.click_root_item("assistantHideMenuItem")
+        self.assertEqual(calls[-1], "hide")
+        self.assertFalse(self.bubble.isVisible())
+
+    def test_root_labels_and_colors_in_empty_and_project_window_states(self):
+        self.desktop.controller = SimpleNamespace(_bubble=self.bubble)
+        self.desktop.set_application_exit_callback(lambda: None)
+        window_menu = self.bubble.findChild(QObject, "assistantWindowListMenu")
+        for mode in ("light", "dark"):
+            self.theme.set_mode(mode)
+            self.open_menu()
+            self.assertEqual(window_menu.property("title"), "窗口列表（暂无窗口）")
+            self.assertFalse(window_menu.property("enabled"))
+            popup = self.popup_window()
+            items = [node for node in self.menu.findChildren(QQuickItem)
+                     if node.inherits("QQuickMenuItem") and node.isVisible()
+                     and popup.contentItem().isAncestorOf(node)]
+            self.assertEqual([node.property("text") for node in items],
+                             ["窗口列表（暂无窗口）", "查看计算队列", "气泡提示音",
+                              "退出应用", "隐藏看板娘"])
+            background = self.menu.findChild(QObject, "assistantContextMenu_background")
+            for item in items:
+                self.assertTrue(item.property("text").strip())
+                label = item.property("contentItem")
+                color = label.property("color")
+                self.assertIsInstance(color, QColor)
+                self.assertGreater(color.alpha(), 0)
+                self.assertNotEqual(color, background.property("color"))
+            self.menu.setProperty("visible", False)
+            QTest.qWait(100)
+        project = QQuickWindow()
+        project.setTitle("工程 A · 膜系设计")
+        project.show()
+        self.addCleanup(project.close)
+        self.open_menu()
+        self.assertEqual(window_menu.property("title"), "窗口列表")
+        self.assertTrue(window_menu.property("enabled"))
+        self.menu.setProperty("currentIndex", 0)
+        QTest.keyClick(self.popup_window(), Qt.Key_Right)
+        QTest.qWait(80)
+        self.assertTrue(window_menu.property("opened"))
+        rows = [node for node in self.bubble.findChildren(QQuickItem)
+                if node.inherits("QQuickMenuItem")
+                and node.objectName().startswith("assistantWindowListItem_")]
+        self.assertTrue(any(node.property("text") == "工程 A · 膜系设计"
+                            for node in rows))
+        self.assertTrue(all(node.property("text").strip() for node in rows))
 
     def test_opens_only_after_right_release_and_stays_open(self):
         QTest.mousePress(self.bubble, Qt.RightButton, Qt.NoModifier, QPoint(36, 36))

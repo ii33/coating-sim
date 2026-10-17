@@ -89,6 +89,7 @@ Window {
             // DesktopAssistantController injects the desktop context property.
             // qmllint disable unqualified
             visible: desktop && desktop.applicationExitWaiting
+            height: visible ? implicitHeight : 0
             enabled: visible
             onTriggered: desktop.cancelExitWaiting()
             // qmllint enable unqualified

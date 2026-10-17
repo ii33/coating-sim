@@ -719,7 +719,10 @@ class DesktopAssistantBridge(QObject):
         self._external_window_refresh, self._external_window_action = refresh, action
 
     def set_external_windows(self, rows):
-        self._external_windows = [dict(row) for row in rows]
+        self._external_windows = [
+            {**dict(row), "title": str(row.get("title") or "").strip() or "未命名窗口"}
+            for row in rows
+        ]
         self.refreshWindows()
 
     def set_application_exit_cancel_callback(self, callback):

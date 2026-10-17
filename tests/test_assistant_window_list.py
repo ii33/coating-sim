@@ -9,6 +9,7 @@ from unittest.mock import patch
 from PySide6.QtCore import QCoreApplication, QEvent, QMetaObject, QObject, Property, Qt, QUrl, Signal, Slot
 from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent
 from PySide6.QtQuick import QQuickWindow
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from coat_sim.ui import assistant, assistant_desktop
@@ -153,6 +154,19 @@ class AssistantWindowListTests(unittest.TestCase):
             self.app.processEvents()
         return window
 
+    def test_external_window_titles_have_a_nonempty_display_fallback(self):
+        self.desktop.set_external_windows([
+            {"id": "empty-title", "title": ""},
+            {"id": "space-title", "title": "   "},
+            {"id": "null-title", "title": None},
+            {"id": "project-title", "title": " 工程 A · 膜系设计 "},
+        ])
+        titles = {row["id"]: row["title"] for row in self.desktop.openWindows}
+        self.assertEqual(titles["empty-title"], "未命名窗口")
+        self.assertEqual(titles["space-title"], "未命名窗口")
+        self.assertEqual(titles["null-title"], "未命名窗口")
+        self.assertEqual(titles["project-title"], "工程 A · 膜系设计")
+
     def test_lists_only_visible_activatable_windows_and_refreshes(self):
         bubble = self.make_window("看板娘", Qt.Tool)
         self.desktop.controller = SimpleNamespace(_bubble=bubble)
@@ -286,6 +300,18 @@ class AssistantWindowListTests(unittest.TestCase):
         self.assertIsNotNone(menu_window)
         tray_menu = menu_window.findChild(QObject, "assistantTrayQuickMenu")
         self.assertIsNotNone(tray_menu)
+        self.assertTrue(QMetaObject.invokeMethod(menu_window, "openAtCursor"))
+        QTest.qWait(60)
+        waiting = menu_window.findChild(QObject, "assistantCancelExitWaitingItem")
+        self.assertEqual(waiting.property("height"), 0)
+        self.desktop.set_application_exit_waiting(True)
+        self.app.processEvents()
+        self.assertGreater(waiting.property("height"), 0)
+        self.desktop.set_application_exit_waiting(False)
+        self.app.processEvents()
+        self.assertEqual(waiting.property("height"), 0)
+        self.assertTrue(QMetaObject.invokeMethod(menu_window, "closeMenu"))
+        QTest.qWait(60)
         menu_item_names = (
             "assistantTrayQueueItem",
             "assistantTraySoundItem",
