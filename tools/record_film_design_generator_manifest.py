@@ -24,7 +24,7 @@ OWNED = (
     "docs/film-design-generator-stage-report-20261011.md",
     "docs/algorithms.html",
     "README.md",
-    "tasks/film-design-generator-ownership-20261011.md",
+    "docs/development/handoffs/film-design-generator-ownership-20261011.md",
     "tools/verify_film_design_generator.py",
     "tools/verify_film_design_generator_docs.py",
     "tools/verify_film_design_generator_bridge.py",

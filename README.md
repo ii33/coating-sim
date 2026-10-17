@@ -32,7 +32,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe launcher.py
 ```
 
-Linux/macOS 将解释器路径换为 `.venv/bin/python`；Linux 另需发行版的 Qt 系统图形库。外观渲染还需要当前声明在 `requirements-test.txt` 的 Mitsuba/DrJit；独立安装器默认选择 `desktop + appearance`。原有 `start.bat`、`start.sh`、`start-cloud.sh` 和开发启动入口仍保留。项目侧文件与兼容边界见[安装与依赖合同](docs/installation.md)。
+Linux/macOS 将解释器路径换为 `.venv/bin/python`；Linux 另需发行版的 Qt 系统图形库。外观渲染还需要当前声明在 `requirements-test.txt` 的 Mitsuba/DrJit；独立安装器默认选择 `desktop + appearance`。Windows 使用 `start-dev.bat`（PowerShell 7+）；`start.sh`、`start-cloud.sh` 保留跨平台启动用途。项目侧文件与兼容边界见[安装与依赖合同](docs/installation.md)。
 
 ### 完整示例工程
 
@@ -101,3 +101,5 @@ python tools/run_tests.py all
 - 图标与插画按各自出处和权利声明处理，见[素材记录](docs/artwork-provenance.md)；公开纳入许可不等于已确认其来源或授予额外再分发权。
 
 安装器发行记录及第三方运行时许可统一见[独立安装器](https://github.com/ii33/coating-sim-installer)。
+
+[项目目录与历史工具清理说明](docs/development/root-layout.md)。

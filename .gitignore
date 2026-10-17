@@ -3,6 +3,9 @@
 .venv/
 .venv-analysis/
 
+# Independent installer runtime logs/state; preserve locally, never publish.
+/.dependency-manager/
+
 # Python 缓存
 __pycache__/
 *.py[cod]

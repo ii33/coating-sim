@@ -25,6 +25,7 @@ import zipfile
 from urllib.parse import unquote, urlsplit
 
 
+# Historical one-off fork scripts: report them if reintroduced; never execute them.
 FORK_SCRIPTS = (
     "tools/extract_ai.py", "tools/finalize_ai_extraction.py",
     "tools/fix_ai_paths.py", "tools/fix_ai_integration.py",

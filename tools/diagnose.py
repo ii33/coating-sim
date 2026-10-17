@@ -1,8 +1,8 @@
 """启动失败时的环境与代码自检。
 
-由 start.bat 在程序启动失败后自动调用；也可手动运行：
+这是手动诊断工具，启动包装不自动调用它。使用项目当前解释器运行：
 
-    .conda\\python.exe tools\\diagnose.py
+    .venv\\Scripts\\python.exe tools\\diagnose.py
 
 检查三件事：项目内 .py 的语法、被引用但未安装的第三方模块、以及能否成功
 导入入口模块 ``launcher`` 与核心服务 ``coat_sim.core.api``。包在 try/except 里的导入视为

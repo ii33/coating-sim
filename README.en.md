@@ -33,7 +33,7 @@ python -m venv .venv
 .venv/bin/python launcher.py
 ```
 
-On Windows substitute `.venv\Scripts\python.exe` in those commands. Appearance rendering also needs Mitsuba/DrJit, currently declared in `requirements-test.txt`; the independent installer selects `desktop + appearance`. Linux needs the distribution's Qt system libraries. Existing `start.bat`, `start.sh`, `start-cloud.sh` and development launchers remain application entry points. See the [project-side installation contract](docs/installation.md).
+On Windows substitute `.venv\Scripts\python.exe` in those commands. Appearance rendering also needs Mitsuba/DrJit, currently declared in `requirements-test.txt`; the independent installer selects `desktop + appearance`. Linux needs the distribution's Qt system libraries. On Windows use `start-dev.bat` (PowerShell 7+); `start.sh` and `start-cloud.sh` remain cross-platform application entry points. See the [project-side installation contract](docs/installation.md).
 
 ### Complete example project
 
@@ -102,3 +102,5 @@ Third-party content retains its own licensing and is not relicensed by this proj
 - Icons and illustrations follow their own provenance and rights statements; see the [artwork record](docs/artwork-provenance.md). Permission to include artwork publicly does not establish its provenance or grant additional redistribution rights.
 
 Installation notices and release evidence are maintained in the [independent installer](https://github.com/ii33/coating-sim-installer).
+
+[Project layout and historical-tool cleanup](docs/development/root-layout.md).

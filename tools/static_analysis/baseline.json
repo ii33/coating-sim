@@ -3668,16 +3668,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "tools/fix_ai_integration.py",
-      "code": "E702",
-      "message": "Multiple statements on one line (semicolon)",
-      "scope": "edit",
-      "anchor": "p=root/name; p.write_text(callback(p.read_text(encoding='utf-8')),encoding='utf-8',newline='\\n')",
-      "fingerprint": "0f7b36f0350476c3858171ace6573cab583d4a292de266d0267332d5be101781",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_cub_interfaces.py",
       "code": "attr-defined",
@@ -10028,16 +10018,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "tools/fix_ai_paths.py",
-      "code": "E702",
-      "message": "Multiple statements on one line (semicolon)",
-      "scope": "edit",
-      "anchor": "p=root/name;p.write_text(callback(p.read_text(encoding='utf-8')),encoding='utf-8',newline='\\n')",
-      "fingerprint": "2651fb79b2de06eb3a9a2f5d03d0df1ee568148f919bf2935708c947f9907a7e",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_assistant_bubble.py",
       "code": "union-attr",
@@ -15868,16 +15848,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "tools/fix_ai_integration.py",
-      "code": "E702",
-      "message": "Multiple statements on one line (semicolon)",
-      "scope": "",
-      "anchor": "p=root/'docs/algorithms.html'; s=p.read_text(encoding='utf-8')",
-      "fingerprint": "3bcf0bc105f8f29eb5f4e215669a6a821856474a2e9383ecb622970cedcbb3da",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_film_batch_de.py",
       "code": "arg-type",
@@ -18895,16 +18865,6 @@
       "scope": "MaskViewportTests.test_manual_view_survives_edits_resize_and_reset_reloads_fit",
       "anchor": "QTest.mouseClick(self.window, Qt.LeftButton, Qt.NoModifier,",
       "fingerprint": "4866818e8f7c7b4eda47b2147766f0dafcc3a8940c0dda4e1b1ca29d4dc97359",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "tools/finalize_ai_extraction.py",
-      "code": "E702",
-      "message": "Multiple statements on one line (semicolon)",
-      "scope": "desktop",
-      "anchor": "a=s.index(start); b=s.index(end,a)",
-      "fingerprint": "486940e445195ad45ec22f9b072f44556f9eba9c65a19c9e8f3de0abe701e5f2",
       "count": 1
     },
     {
@@ -28288,16 +28248,6 @@
       "count": 2
     },
     {
-      "tool": "ruff",
-      "path": "tools/fix_ai_integration.py",
-      "code": "E402",
-      "message": "Module level import not at top of file",
-      "scope": "",
-      "anchor": "import re",
-      "fingerprint": "6c56cc9bbbff0a46e847eb0af451eef0efabaa19f715713468274550da6e99cf",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "legacy/process_designer.py",
       "code": "arg-type",
@@ -35805,16 +35755,6 @@
       "scope": "test_final_completion_applies_to_real_source_and_refreshes_simulation_once.MemoryMaterialLibrary.options_many",
       "anchor": "result = {purpose: [] for purpose in purposes}",
       "fingerprint": "892508e4acb9a3c71e298d4b4f538e4bd1432aef82ca7feee75eb9c77ed295d3",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "tools/finalize_ai_extraction.py",
-      "code": "F401",
-      "message": "`shutil` imported but unused",
-      "scope": "",
-      "anchor": "import shutil",
-      "fingerprint": "89281497a86832e50a859ebe5608167a7466fef61e120a135c4388e26b21caa7",
       "count": 1
     },
     {
@@ -48269,16 +48209,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tools/write_ai_docs.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"Match[str] | None\" has no attribute \"group\"",
-      "scope": "",
-      "anchor": "style=re.search(r'<style>(.*?)</style>',source,re.S).group(1)",
-      "fingerprint": "b8a902e51acd4c5203c5d03b9a9d8a3bc7785a220a1747f1d2d204f5b4e7beab",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_compact_window_chrome_ui.py",
       "code": "union-attr",
       "message": "Item \"None\" of \"QQuickItem | None\" has no attribute \"width\"",
@@ -60029,16 +59959,6 @@
     },
     {
       "tool": "ruff",
-      "path": "tools/fix_ai_verification.py",
-      "code": "E702",
-      "message": "Multiple statements on one line (semicolon)",
-      "scope": "edit",
-      "anchor": "p=root/name;p.write_text(callback(p.read_text(encoding='utf-8')),encoding='utf-8',newline='\\n')",
-      "fingerprint": "e622e9e114992cfae1ac5a67e7fb8cd5a0677db433764c8e0365fc45ec5804d0",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
       "path": "tests/test_compute_start_failures.py",
       "code": "E702",
       "message": "Multiple statements on one line (semicolon)",
@@ -66918,6 +66838,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "2026-10-17 installer separation: remove exactly 4 findings owned by deleted tools/build_offline_installer.py; no new debt or rule changes accepted.",
+  "last_prune_reason": "Remove only diagnostics owned by the six deleted one-off other/ai extraction/patch scripts; no new diagnostic accepted.",
   "configuration_review_reason": "2026-10-14: reviewed source-snapshot drift guard and cache reset only; diagnostic rules, identities and all debt entries unchanged."
 }
