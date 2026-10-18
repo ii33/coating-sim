@@ -6,6 +6,7 @@
 
 - 宿主 UI 显式选择工程。未选择时仅使用全局记忆，不按前台窗口、唯一打开工程、聊天文字、模型工具参数或文档中的 project_id 猜测工程。
 - UI 在 configure 和 run 消息的顶层传递 assistant_project_target：null 或已认证工程列表返回的六字段 target（client_id、client_generation、project_id、session_generation、root、project_file）。该值不是可由模型调用的工具，不是研究正文或持久设置。
+- 绑定类型与六字段校验定义在可导入的 `coat_sim.agent.project_binding`，不在可执行 worker 入口中重复定义。直接导入、`python -m` 与启动器 `runpy(__main__)` 共享同一严格类型；运行时仍拒绝仿造对象。显式 null 的全局请求不要求打开工程或查询工程 registry，但仍固定并检查选择代际；工程关闭不会把旧请求降级为全局。
 - worker 是当前绑定和单调代际的唯一所有者。每轮接收时固定绑定及代际，初始化等待期间不得重基到更新选择。configure 的切换或清除使旧代际永久失效；即使稍后选回同一工程也不能恢复旧请求。
 - 每次项目记忆访问经宿主 provider 再核验认证 application registry 的完整 target、owner 存活状态及项目会话代际。不打开工程、不遍历任意目录、不读取模型提供的文件路径。连接、身份或核验错误均关闭项目 scope。
 - 持久项目记忆命名空间由宿主选择的 project_id、规范 root 与 descriptor 路径构成；client/session generation 仅用于实时失效。重开同一工程可复用，复制相同 project_id 到另一目录不能读到原工程记忆。

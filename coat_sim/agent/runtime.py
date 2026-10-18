@@ -1227,7 +1227,7 @@ def _stored_memory_scope(store: AssistantStore, session: str, request: str) -> s
 async def _check_project_binding(binding: Any) -> None:
     if binding is None:
         return
-    from coat_sim.agent.worker import ProjectMemoryBinding
+    from coat_sim.agent.project_binding import ProjectMemoryBinding
     if not isinstance(binding, ProjectMemoryBinding) or not await asyncio.to_thread(binding.verify):
         raise ValueError('stale_project_binding: 工程已切换、关闭或暂不可核验；请在当前工程重新发送任务。')
 

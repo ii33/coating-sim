@@ -26,6 +26,7 @@ _TEST_CACHE_TEMP = tempfile.TemporaryDirectory(prefix="deposition-sim-pytest-")
 _TEST_CACHE_ROOT = Path(_TEST_CACHE_TEMP.name)
 
 QT_MODULES = frozenset({
+    "test_assistant_message_body_qml.py",
     "test_toolkit_settings_ui.py",
     "test_assistant_compute_ui_authority.py",
     "test_assistant_discussion_ui.py",
@@ -173,6 +174,7 @@ ALGORITHM_MODULES = frozenset({
 })
 
 CONTRACT_MODULES = frozenset({
+    "test_assistant_message_body_qml.py",
     "test_assistant_compute_ui_authority.py",
     "test_assistant_discussion_ui.py",
     "test_project_editor_snapshot.py",
