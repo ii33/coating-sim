@@ -6,6 +6,7 @@ Only the enumerated editor contracts below are exposed over the loopback socket.
 
 from __future__ import annotations
 
+from concurrent.futures import Future
 from copy import deepcopy
 import hmac
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -25,7 +26,7 @@ from urllib.request import ProxyHandler, Request, build_opener
 from coat_sim.control_errors import UiControlError as UiControlError
 from coat_sim.assistant_diagnostics import source_id, trace
 from coat_sim.core.design_files import default_design_path, design_extension, validate_design_path
-from coat_sim.core.api import CoatService, ServiceError
+from coat_sim.core.api import CoatService
 from coat_sim.core.atomic_io import replace_with_retry
 from coat_sim.ui.ready_channel import UiReadyChannel
 from coat_sim.ui.presentation_scope import (GLOBAL_WINDOWS, legacy_window_scope_error,
@@ -254,7 +255,7 @@ class UiControlClient:
 class UiControlServer:
     """Dispatch authenticated socket requests on the owning Qt GUI thread."""
 
-    def __init__(self, dispatch: Callable[[str, dict[str, Any]], dict[str, Any]], *,
+    def __init__(self, dispatch: Callable[[str, dict[str, Any]], Any], *,
                  root: Path | str = PROJECT_ROOT, role: str = "launcher",
                  window_type: str | None = None, parent_pid: int | None = None,
                  operations=OPERATIONS, endpoint_prefix="ui"):
@@ -282,26 +283,38 @@ class UiControlServer:
                 trace_action = operation not in ("read_window", "list_windows", "status", "register_client")
                 if trace_action:
                     _action_breadcrumb("begin", breadcrumb)
-                try:
-                    envelope["reply"] = {"ok": True, "result": dispatch(
-                        envelope["operation"], envelope["arguments"])}
-                except (UiControlError, ServiceError) as exc:
-                    envelope["reply"] = {"ok": False, "error": {
-                        "code": exc.code, "message": str(exc)}}
-                except Exception as exc:
-                    envelope["reply"] = {"ok": False, "error": {
-                        "code": "ui_error", "message": str(exc)}}
-                finally:
+                def finish(result=None, error=None):
+                    if error is None:
+                        envelope["reply"] = {"ok": True, "result": result}
+                    else:
+                        envelope["reply"] = {"ok": False, "error": {
+                            "code": getattr(error, "code", "ui_error"), "message": str(error)}}
                     try:
-                        if not envelope.get("reply", {}).get("ok"):
-                            failure = envelope.get("reply", {}).get("error", {})
-                            trace("ui_action_failed", error=UiControlError(failure.get("code", "ui_error"), failure.get("message", "")), operation=operation)
+                        if error is not None:
+                            trace("ui_action_failed", error=error, operation=operation)
                         if trace_action:
                             _action_breadcrumb("end", {**breadcrumb,
-                                "ok": bool(envelope.get("reply", {}).get("ok")),
+                                "ok": error is None,
                                 "elapsed_s": round(time.monotonic() - started, 3)})
                     finally:
                         envelope["done"].set()
+                try:
+                    result = dispatch(envelope["operation"], envelope["arguments"])
+                    if isinstance(result, Future):
+                        def complete(future):
+                            try:
+                                value = future.result()
+                            except Exception as exc:
+                                finish(error=exc)
+                            else:
+                                finish(result=value)
+                        # Only socket reply data is touched from the worker;
+                        # Qt owner state is settled by its own GUI timer.
+                        result.add_done_callback(complete)
+                    else:
+                        finish(result=result)
+                except Exception as exc:
+                    finish(error=exc)
 
         self.root = Path(root).resolve()
         self.operations = frozenset(operations)
@@ -1099,6 +1112,8 @@ class WindowRegistry:
                     "isolated_windows": [],
                     "same_process_windows": ["source", "substrate"] if scope == "standalone" else []}
         key = arguments.get("window_type")
+        if key == "project_bbs":
+            raise UiControlError("project_identity_required", "工程 BBS 需要已验证的工程与会话身份。")
         if key not in WINDOW_TYPES:
             raise UiControlError("invalid_window", "未知窗口类型")
         scope_error = legacy_window_scope_error(self.manager, key)

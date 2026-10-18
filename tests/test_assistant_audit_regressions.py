@@ -103,4 +103,5 @@ def test_analyst_cannot_export_or_write_receipts(tmp_path):
             assert len(peer.calls) == 1
     asyncio.run(check())
     source = Path(runtime.__file__).read_text()
-    assert 'toolsets=[mcp.filtered(lambda ctx, tool: tool.name in DISCUSSION_TOOLS)]' in source
+    assert 'toolsets=[mcp.filtered(lambda ctx, tool: tool.name in DISCUSSION_READ_TOOLS)]' in source
+    assert 'project_bbs_comment' not in runtime.DISCUSSION_READ_TOOLS

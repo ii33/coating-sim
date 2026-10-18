@@ -56,8 +56,13 @@ class ProjectApplicationLifecycle(QObject):
         if owner is None:
             return ()
         pending: Any = getattr(owner, "pending_project_information", lambda _binding: {})
-        return tuple((session.binding, repr(value)) for session in owner.host.sessions()
-                     if (value := pending(session.binding)))
+        bbs: Any = getattr(owner, "pending_project_bbs", lambda _binding: {})
+        rows = []
+        for session in owner.host.sessions():
+            value, bbs_value = pending(session.binding), bbs(session.binding)
+            if value or bbs_value:
+                rows.append((session.binding, repr(value), repr(bbs_value)))
+        return tuple(rows)
 
     def _draft_signature(self) -> tuple:
         launcher = project_owner(self.bridge)
@@ -67,6 +72,9 @@ class ProjectApplicationLifecycle(QObject):
                 pending_information: Any = getattr(launcher, "pending_project_information", lambda _binding: {})(session.binding)
                 if pending_information:
                     rows.append((session.binding, "project_information", repr(pending_information)))
+                pending_bbs: Any = getattr(launcher, "pending_project_bbs", lambda _binding: {})(session.binding)
+                if pending_bbs:
+                    rows.append((session.binding, "project_bbs", repr(pending_bbs)))
                 film = launcher.host.resource_for(session.binding, "film_workspace")
                 editor = getattr(film, "_editor", None)
                 if editor is not None:
@@ -109,7 +117,9 @@ class ProjectApplicationLifecycle(QObject):
         dirty = bool(bridge._dirty_project_sessions()) or uncommitted
         if owner is not None:
             pending_information: Any = getattr(owner, "pending_project_information", lambda _binding: {})
-            dirty = any(pending_information(session.binding) for session in owner.host.sessions()) or dirty
+            pending_bbs: Any = getattr(owner, "pending_project_bbs", lambda _binding: {})
+            dirty = any(pending_information(session.binding) or pending_bbs(session.binding)
+                        for session in owner.host.sessions()) or dirty
         for workspace in self._resources():
             dirty = bool(getattr(workspace, "has_dirty_draft", False)) or dirty
             preflight = getattr(workspace, "close_preflight", None)
@@ -225,6 +235,16 @@ class ProjectApplicationLifecycle(QObject):
         return bool(self.bridge._closing or getattr(self.bridge, "_runtime_shutdown_requested", False))
 
     def _cancel(self) -> None:
+        owner = project_owner(self.bridge)
+        if (getattr(owner, "_busy", False) and self._freeze is None
+                and not self._workspaces and not self._windows and not self._close_flags):
+            # A prepare paused before touching any workspace. Cancelling that
+            # pending request must not wait for the BBS worker's host lock.
+            self._decision, self._asked = None, False
+            self._information_review_signature = ()
+            self.bridge._shutdown_confirmation_pending = False
+            self.bridge._project_shutdown_approved = False
+            return
         for workspace in self._resources():
             resume = getattr(workspace, "resume_close_review", None)
             if callable(resume):

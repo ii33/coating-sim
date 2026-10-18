@@ -81,7 +81,10 @@ class ProjectCloseCoordinator:
         host = self.adapter.host
         values: list[Any] = []
         pending_information: Any = getattr(self.adapter, "pending_project_information", lambda _binding: {})(session.binding)
-        dirty = bool(pending_information)
+        pending_bbs: Any = getattr(self.adapter, "pending_project_bbs", lambda _binding: {})(session.binding)
+        dirty = bool(pending_information or pending_bbs)
+        if pending_bbs:
+            values.append(("project_bbs", pending_bbs))
         if pending_information:
             values.append(("project_information", pending_information))
         for route, view in tuple(self.adapter.desktop._views.items()):
@@ -159,6 +162,8 @@ class ProjectCloseCoordinator:
         # This is navigation, not a partial Save All. Retained sibling drafts
         # must stay intact even if their own presentations have been closed.
         modules = []
+        if getattr(self.adapter, "pending_project_bbs", lambda _binding: {})(session.binding):
+            modules.append("project_bbs")
         film = self.adapter.host.resource_for(session.binding, "film_workspace")
         if film is not None and film._editor is not None and film._editor.snapshot().dirty:
             modules.append("film_design")
@@ -215,6 +220,9 @@ class ProjectCloseCoordinator:
         clear_information = getattr(self.adapter, "clear_project_information", None)
         if callable(clear_information):
             clear_information(session.binding)
+        clear_bbs = getattr(self.adapter, "clear_project_bbs", None)
+        if callable(clear_bbs):
+            clear_bbs(session.binding)
         lease = self.adapter._leases.pop(identity)
         pending = self.adapter.recovery.pending.pop(identity, None)
         release = getattr(self.adapter, "release_lease", None)

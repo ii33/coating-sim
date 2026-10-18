@@ -94,7 +94,7 @@ def test_generic_launcher_request_ignores_preferred_runtime_and_reuses_real_pick
     assert result["pid"] == 77 and client.target_pid == 77
 
 
-@pytest.mark.parametrize("key", ["main", "film_design", "film_simulation", "process", "settings", "about"])
+@pytest.mark.parametrize("key", ["main", "film_design", "film_simulation", "process", "settings", "about", "project_bbs"])
 def test_runtime_rejects_unbound_business_and_global_windows(router, key):
     bridge, registry = router
     client = ProjectApplicationClient(bridge, registry, role="project_host")
@@ -165,7 +165,7 @@ def test_thin_launcher_advertises_only_global_windows_and_rejects_business(route
     assert listing["scope"] == "launcher"
     assert listing["available_windows"] == ["launcher", "settings", "about"]
     assert listing["same_process_windows"] == []
-    for key in ("main", "film_design", "source"):
+    for key in ("main", "film_design", "source", "project_bbs"):
         with pytest.raises(UiControlError) as caught:
             registry.dispatch("open_window", {"window_type": key})
         assert caught.value.code == "project_identity_required"

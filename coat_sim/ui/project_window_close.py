@@ -21,6 +21,11 @@ class ProjectWindowCloseFilter(QObject):
         if view is None or view[0] is not watched:
             return False
         closer = desktop.project_closer
+        owner = desktop.parent()
+        if getattr(owner, "_busy", False):
+            event.ignore()
+            owner._set_error("工程请求仍在处理，请稍后关闭窗口。")
+            return True
         if route.binding in desktop._authorized_project_closes or closer is None:
             return self._forward_close(watched, event)
         if closer.is_pending(route.binding):

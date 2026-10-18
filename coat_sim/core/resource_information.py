@@ -20,6 +20,8 @@ _INFORMATION_PATHS = {
 
 def resource_display_name(kind: str, data: Mapping) -> str:
     """Names never borrow overview text, file paths or stable identities."""
+    if kind == "project_bbs_post" and data.get("history"):
+        return str(data["history"][-1]["title"])
     if data.get("name"):
         return str(data["name"])
     if kind in {"material_profile", "optical_material"} and data.get("material", {}).get("name"):

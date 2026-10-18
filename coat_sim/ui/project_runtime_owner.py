@@ -54,6 +54,7 @@ class ProjectRuntimeOwner(QObject):
         self._store_loader = store_loader or ProjectStore.open
         self._default_loader = default_loader or self._load_default
         self._selected_id = ""
+        self._cached_project_entries: list[dict[str, Any]] = []
         self._information_edits: dict[str, dict[str, Any]] = {}
         self._plans: dict[str, Any] = {}
         self._plans_with_snapshot: set[str] = set()
@@ -84,6 +85,18 @@ class ProjectRuntimeOwner(QObject):
         self.desktop.project_closer = self.project_closer
         from .launcher_project_packages import ProjectPackageCoordinator
         self.packages = ProjectPackageCoordinator(self)
+        from .project_bbs_coordinator import ProjectBbsCoordinator
+        self._bbs = ProjectBbsCoordinator(self)
+
+    @Property(QObject, constant=True)
+    def projectBbs(self) -> QObject:
+        return self._bbs
+
+    def pending_project_bbs(self, binding) -> dict[str, Any]:
+        return self._bbs.pending_draft(binding)
+
+    def clear_project_bbs(self, binding) -> None:
+        self._bbs.forget_binding(binding)
 
     def _store_factory(self, root: Path) -> ProjectStore:
         # ProjectSessionHost invokes this on the GUI thread after the worker's
@@ -95,6 +108,8 @@ class ProjectRuntimeOwner(QObject):
 
     @Property(list, notify=projectsChanged)
     def projectEntries(self) -> list[dict[str, Any]]:
+        if self._bbs.busy:
+            return [dict(row) for row in self._cached_project_entries]
         rows = [dict(projectId=session.binding.project_id,
                      name=session.name, root=str(session.binding.root),
                      descriptorFile=str(cast(ProjectStore, self.host.store_for(session.binding)).project_file),
@@ -107,7 +122,8 @@ class ProjectRuntimeOwner(QObject):
         if self._shared is not None:
             rows.extend(dict(row, active=row["projectId"] == self._selected_id)
                         for row in self._shared.entries if row["projectId"] not in local_ids)
-        return rows
+        self._cached_project_entries = rows
+        return [dict(row) for row in rows]
 
     def connect_shared_projects(self, client: Any, generation: str) -> None:
         if self._shared is not None or self._stopped:
@@ -474,6 +490,8 @@ class ProjectRuntimeOwner(QObject):
     @Slot(str, result=bool)
     def closeProject(self, projectId: str) -> bool:
         try:
+            if self._busy:
+                raise ProjectError("project_busy", "工程请求仍在处理，请稍后再关闭。")
             return self.project_closer.request(projectId)
         except Exception as exc:
             self._set_error(str(exc))
@@ -663,6 +681,9 @@ class ProjectRuntimeOwner(QObject):
     def stop(self) -> None:
         self._stopped = True
         self._information_edits.clear()
+        bbs_pending = self._bbs.stop()
+        if bbs_pending is not None and not bbs_pending.done():
+            self._draining_transactions.append(bbs_pending)
         self._poll.stop()
         if self._shared is not None:
             self._shared.stop()
@@ -698,7 +719,19 @@ class ProjectRuntimeOwner(QObject):
                 pending.add_done_callback(release_unadmitted)
             self._pending = None
         for project_id, lease in self._leases.items():
-            self.release_lease(lease, self.recovery.pending.get(project_id), clean=not self._unclean_stop)
+            checkpoint = self.recovery.pending.get(project_id)
+            if bbs_pending is not None and not bbs_pending.done():
+                # A cancelled queued sentinel would release ownership early.
+                # Join running/queued publications without waiting on the GUI.
+                dependencies = [bbs_pending] + ([checkpoint] if checkpoint is not None else [])
+                joined: Future = Future()
+                def completed(_future, dependencies=dependencies, joined=joined):
+                    if all(value.done() for value in dependencies) and not joined.done():
+                        joined.set_result(None)
+                for dependency in dependencies:
+                    dependency.add_done_callback(completed)
+                checkpoint = joined
+            self.release_lease(lease, checkpoint, clean=not self._unclean_stop)
         self._leases.clear()
         self._busy = False
         self.projectsChanged.emit()

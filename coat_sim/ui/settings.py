@@ -33,7 +33,8 @@ from coat_sim.core.atomic_io import replace_with_retry
 
 from coat_sim.agent.toolkit_config import (
     CAPABILITIES, CAPABILITY_LABELS, normalized_capabilities,
-    normalized_toolkit_settings, validate_workspace_root,
+    normalized_toolkit_settings, validate_workspace_root, is_private_workspace_root,
+    default_workspace_root,
 )
 from coat_sim.agent.development import development_available, development_enabled
 from coat_sim.agent.tone_policy import ASSISTANT_TONES, DEFAULT_ASSISTANT_TONE, normalized_tone
@@ -718,10 +719,18 @@ def load_ui_settings() -> dict[str, object]:
     """Read the single shared project configuration; use defaults if absent."""
     try:
         payload = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
-    except (FileNotFoundError, OSError, UnicodeError, json.JSONDecodeError):
+    except FileNotFoundError:
         return normalized_ui_settings()
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        payload = None
     if not isinstance(payload, dict):
-        return normalized_ui_settings()
+        # An unreadable existing file is not a fresh installation: it may have
+        # contained an explicit permission denial. Keep its bytes untouched and
+        # never turn on tool/model access as an error-recovery side effect.
+        return normalized_ui_settings({'assistant_toolkit_enabled': False,
+            'assistant_toolkit_allow_model_context': False,
+            'assistant_toolkit_capabilities': [],
+            'assistant_toolkit_profile_capabilities': []})
     return normalized_ui_settings(payload)
 
 
@@ -996,7 +1005,8 @@ class SettingsBridge(QObject):
         if not self.assistantToolkitEnabled:
             return "工具集已关闭；通用能力调用不可用。"
         try:
-            validate_workspace_root(self.assistantToolkitWorkspaceRoot, PROJECT_ROOT)
+            validate_workspace_root(self.assistantToolkitWorkspaceRoot, PROJECT_ROOT,
+                allow_missing=is_private_workspace_root(self.assistantToolkitWorkspaceRoot))
         except ValueError as exc:
             return str(exc)
         effective = set(cast(list[str], self.assistantToolkitCapabilities)) & set(cast(list[str], self.assistantToolkitProfileCapabilities))
@@ -1004,7 +1014,17 @@ class SettingsBridge(QObject):
             return "全局与配置的能力交集为空；所有工具关闭。"
         if not self.assistantToolkitAllowModelContext:
             return "尚未允许工具结果发送给当前模型；桌面工具未开放。"
-        return "已选择：" + "、".join(sorted(effective)) + "。本地受限文件/任务工具已配置；写入还需当前操作授权。执行/联网/远程/OCR 须独立宿主提供器；选中不等于就绪。"
+        location = "助手独立工作空间" if is_private_workspace_root(self.assistantToolkitWorkspaceRoot) else "所选工作区"
+        return location + "已配置：" + "、".join(sorted(effective)) + "。操作/攻关模式可在其中读写、保存和可恢复删除，无需逐次确认；讨论模式只读。首次写入自动创建默认目录。执行/联网/远程/OCR 仍须独立提供器。"
+
+    @Slot()
+    def resetAssistantToolkitWorkspace(self):
+        self._settings.update(normalized_toolkit_settings({}))
+        self.assistantStateChanged.emit()
+
+    @Property(str, constant=True)
+    def assistantToolkitDefaultWorkspaceRoot(self) -> str:
+        return str(default_workspace_root())
 
     @Slot(bool, str, bool)
     def setAssistantToolkitConfig(self, enabled, root, allow_context):
@@ -2049,7 +2069,8 @@ class SettingsBridge(QObject):
                 from coat_sim.agent.research_library import validate_research_library_root
                 validate_research_library_root(root)
             if self.assistantToolkitEnabled:
-                validate_workspace_root(self.assistantToolkitWorkspaceRoot, PROJECT_ROOT)
+                validate_workspace_root(self.assistantToolkitWorkspaceRoot, PROJECT_ROOT,
+                    allow_missing=is_private_workspace_root(self.assistantToolkitWorkspaceRoot))
             context_error = self._context_profile_save_error()
             if context_error:
                 raise ValueError(context_error)

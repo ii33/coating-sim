@@ -109,3 +109,5 @@ python tools/run_tests.py all
 [光谱反演新光学数据集：操作指南与限制](docs/optical-inversion-guide.md) · [算法与非唯一性](docs/algorithms.html#optical-constant-inversion)
 
 [可迁移看板娘工具集：能力、开关与后端迁移](docs/assistant-toolkit-capability-map.md) · [接口契约](docs/assistant-toolkit-contract.md) · [宿主 provider 边界](docs/assistant-toolkit-provider-contract.md)
+
+助手具备独立持久工作区与[精简长期记忆](docs/assistant-memory-contract.md)。[工程 BBS](docs/project-bbs-contract.md)用于长期保存日志、进度和研究/工作报告，支持修订历史与回复，区别于即时对话。讨论模式只开放 BBS 追加评论/回复，其他修改仍受操作模式约束。

@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot
+from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot, Qt
 from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent, QQmlContext
 from shiboken6 import isValid
 
@@ -65,6 +65,9 @@ class ProjectFilmNavigation(QObject):
 
     @Slot()
     def openProjectManagement(self) -> None:
+        if getattr(self.desktop.parent(), "_busy", False):
+            self.desktop.moduleError.emit("工程请求仍在处理，请稍后打开工程管理。")
+            return
         self.desktop.managementRequested.emit(self.workspace.binding.project_id)
 
     @Slot(str, str, result=bool)
@@ -107,6 +110,9 @@ class ProjectFilmDesktop(QObject):
     def close_project(self, workspace: ProjectFilmWorkspace) -> bool:
         if workspace.host is not self.host or self.project_closer is None:
             return False
+        if getattr(self.parent(), "_busy", False):
+            self.moduleError.emit("工程请求仍在处理，请稍后关闭工程。")
+            return False
         # store_for checks the entire immutable generation, not only project ID.
         self.host.store_for(workspace.binding)
         return bool(self.project_closer.request(workspace.binding.project_id))
@@ -120,6 +126,8 @@ class ProjectFilmDesktop(QObject):
     def open_project_module(self, workspace: ProjectFilmWorkspace, module_key: str) -> str:
         if workspace.host is not self.host:
             raise ValueError("Project workspace belongs to a different desktop host")
+        if getattr(getattr(self.parent(), "_bbs", None), "busy", False):
+            raise ValueError("工程请求仍在处理，请稍后打开窗口。")
         if self.project_closer is not None and self.project_closer.is_pending(workspace.binding):
             raise ValueError("此工程正在等待关闭确认，请先返回保存或取消关闭。")
         from .project_asset_materials import asset_publication_busy
@@ -158,6 +166,8 @@ class ProjectFilmDesktop(QObject):
                     refresh = getattr(existing_controller, "refreshProjectAppearanceContext", None)
                     if callable(refresh):
                         refresh()
+                if module_key == "project_bbs" and reservation.window.windowState() & Qt.WindowState.WindowMinimized:
+                    reservation.window.showNormal()
                 reservation.window.show()
                 reservation.window.raise_()
                 reservation.window.requestActivate()
@@ -200,6 +210,24 @@ class ProjectFilmDesktop(QObject):
                 controller._project_input_resources = resources
                 window = component.createWithInitialProperties(
                     {"projectNavigation": navigation, "projectResources": resources}, context)
+            elif module_key == "project_bbs":
+                from .project_bbs_window import ProjectBbsWindowController
+                owner = self.parent()
+                if owner is None or not hasattr(owner, "projectBbs"):
+                    raise ValueError("工程 BBS 需要已登记的工程运行时所有者。")
+                controller = ProjectBbsWindowController(workspace, owner, self)
+                navigation = ProjectFilmNavigation(self, workspace, controller)
+                component = QQmlComponent(engine, QUrl.fromLocalFile(str(QML_ROOT / "ProjectBbsWindow.qml")))
+                window = component.createWithInitialProperties({
+                    "projectBridge": owner, "projectNavigation": navigation,
+                    "projectId": workspace.binding.project_id,
+                    "sessionGeneration": workspace.binding.generation}, context)
+                if window is not None:
+                    controller.window = window
+                    from .icons import window_icon
+                    from .window_geometry import prepare_window_geometry
+                    window.setIcon(window_icon(module_key))
+                    prepare_window_geometry(window, module_key, settings=self.geometry_settings)
             elif module_key == "project_resources":
                 from .project_resources import ProjectResourcesBridge
                 navigation = ProjectFilmNavigation(self, workspace, engine)
@@ -398,6 +426,9 @@ class _ProjectFilmDesignController(FilmDesignQuickController):
         if (workspace is None or self._source_closed
                 or not isinstance(desktop, ProjectFilmDesktop)
                 or workspace.host is not desktop.host):
+            return
+        if getattr(desktop.parent(), "_busy", False):
+            desktop.moduleError.emit("工程请求仍在处理，请稍后打开工程管理。")
             return
         desktop.managementRequested.emit(workspace.binding.project_id)
 

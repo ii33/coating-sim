@@ -300,7 +300,14 @@ def _registered_context_snapshot(launcher: Any, session: Any, module: str, argum
     if getattr(controller, "project_context", None) is not workspace:
         return _unavailable(identity, "editor_owner_mismatch")
     store = host.store_for(binding)
-    if module == "project_resources":
+    if module == "project_bbs":
+        if (getattr(controller, "owner", None) is not launcher
+                or getattr(controller, "owner_binding", None) != binding
+                or getattr(controller, "window", None) is not window):
+            return _unavailable(identity, "editor_owner_mismatch")
+        from .project_bbs_window import capture_bbs_snapshot
+        capture = capture_bbs_snapshot
+    elif module == "project_resources":
         library_resources = host.resource_for(binding, "resource_workspace")
         service = getattr(controller, "service", None)
         if (library_resources is None or getattr(controller, "resource_workspace", None) is not library_resources
@@ -369,7 +376,7 @@ def _registered_context_snapshot(launcher: Any, session: Any, module: str, argum
         capture = capture_compute_snapshot
     if _context_modal_pending(window, module):
         return _unavailable(identity, "pending_confirmation")
-    if _field_draft(window):
+    if module != "project_bbs" and _field_draft(window):
         return _unavailable(identity, "native_field_editing")
     state, reason = capture(controller, window, module)
     if reason or state is None:

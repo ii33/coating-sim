@@ -139,6 +139,7 @@ def test_close_project_is_a_separate_bottom_command_and_dispatches_to_current_ow
         "projectModuleToolsSeparator",
         "projectModuleAction_project_resources",
         "projectModuleAction_compute_queue",
+        "projectModuleAction_project_bbs",
         "projectCloseSeparator",
         "projectCloseAction",
     ], order

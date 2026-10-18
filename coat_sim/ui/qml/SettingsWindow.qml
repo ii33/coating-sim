@@ -1508,7 +1508,7 @@ AppWindow {
 
                     Category {
                         objectName: "assistantToolkitCategory"
-                        title: "可迁移工具集"
+                        title: "助手独立工作空间"
                         expanded: false
                         Layout.fillWidth: true
                         ColumnLayout {
@@ -1516,7 +1516,7 @@ AppWindow {
                             spacing: 8
                             CheckBox {
                                 objectName: "assistantToolkitEnabledCheck"
-                                text: "启用通用工具集"
+                                text: "启用助手工作空间与工具集"
                                 checked: bridge.assistantToolkitEnabled
                                 onClicked: bridge.setAssistantToolkitConfig(checked,
                                     bridge.assistantToolkitWorkspaceRoot, bridge.assistantToolkitAllowModelContext)
@@ -1525,10 +1525,15 @@ AppWindow {
                                 objectName: "assistantToolkitWorkspaceRootField"
                                 Layout.fillWidth: true
                                 text: bridge.assistantToolkitWorkspaceRoot
-                                placeholderText: "独立工作区的绝对目录（不可使用软件安装目录）"
+                                placeholderText: bridge.assistantToolkitDefaultWorkspaceRoot
                                 onTextEdited: bridge.setAssistantToolkitConfig(bridge.assistantToolkitEnabled,
                                     text, bridge.assistantToolkitAllowModelContext)
                                 Accessible.name: "工具集授权工作区"
+                            }
+                            Button {
+                                objectName: "assistantToolkitResetWorkspaceButton"
+                                text: "使用默认独立工作空间"
+                                onClicked: bridge.resetAssistantToolkitWorkspace()
                             }
                             CheckBox {
                                 objectName: "assistantToolkitContextCheck"
@@ -1540,7 +1545,7 @@ AppWindow {
                             ThemeControls.ThemeLabel {
                                 Layout.fillWidth: true
                                 wrapMode: Text.WordWrap
-                                text: "仅全局和配置两列都选中的能力生效；任一列表为空即全部关闭。本地文件/任务写入仍需当前操作授权；执行、安装、网络、远程与 OCR 还需独立宿主提供器，勾选不会自动安装或授权。凭据不保存在此配置中。"
+                                text: "默认工作空间长期保留，与当前工程和软件目录分开。操作/攻关模式可直接读写、保存和可恢复删除文件；讨论模式只读。长期记忆仅保存精简的重要偏好、约束或结论，不保存凭据和整段对话。仅两列都选中的能力生效；任一列表为空即全部关闭。执行、安装、网络、远程与 OCR 需独立提供器，不会自动开启。"
                             }
                             Repeater {
                                 model: bridge.assistantToolkitCapabilityOptions

@@ -51,6 +51,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <div class="layout">
 <p class="source" style="grid-column:1/-1">离线资源链接复核：2026-10-12。本次仅核对 CIE NOTICE 与 CC BY-SA 文件的相对路径及便携包布局，不代表重新复核算法正文。</p>
 <p class="source" style="grid-column:1/-1">结构合成更新：2026-10-12。新增14o至14o-2：实验性经典零厚敏感度针插、有界已有层增长与分组局部精修；独立结构请求与固定层序/有限试插分开，Dmax是硬约束。补充验证切片、真实求值计数与增长前局部边界检查。接口见 <a href="film-structure-optimization-contract.md">结构合成契约</a>，操作见 <a href="film-structure-optimization-guide.md">使用指南</a>，实际验收见 本轮状态 <span class="historical-reference">（历史验证记录，未随公开源码发布）</span>。</p>
+<p class="source">存储格式补充：2026-10-18。工程 BBS、助手精简记忆和可恢复文件清理均为非物理持久化契约，不改变仿真公式、坐标或数值精度。见<a href="#engineering-notes-storage-20261018">工程记录与助手工作区格式</a>。</p>
 <nav aria-label="章节目录">
 <a href="#frozen-service-boundaries">冻结服务边界与单点归一化</a>
 <a href="#assistant-lifecycle-diagnostics">助手窗口恢复与诊断（2026-10-17）</a>
@@ -195,6 +196,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#project-research-evidence">项目研究证据 v1：来源、分页与隔离</a>
 <a href="#film-xpu-fp64-20261017">FP64 XPU compute and fair CPU comparison (2026-10-17)</a>
 <a href="#film-wavelength-workers-20261017">CPU wavelength workers and fair single-candidate timing (2026-10-17)</a>
+<a href="#engineering-notes-storage-20261018">工程 BBS、精简记忆与回收记录格式（2026-10-18）</a>
 </nav>
 <main>
 <section id="film-wavelength-workers-20261017"><h2>CPU wavelength workers and fair single-candidate timing — 2026-10-17</h2>
@@ -3006,5 +3008,23 @@ dispatch save/restore → request ID → matching actual completion → settle</
 
 
 <p>2026-10-17 核显范围：Intel 8086:7D67 / 驱动 32.0.101.9033 的 DirectML 平面沉积有限用例通过（257×257、600步，最大归一化绝对误差6.31723×10⁻⁷）；遮板用例7/25,445点超本次筛查阈值，最大相对误差约0.364455%，边界精度仍属实验范围。早期XPU批评估90/180秒超时现已定位并修复，18组FP64/complex128后端对照通过；当前窄范围桌面实验入口已接入：显式固定拓扑 DE 延迟批量、单条件单角度、前表面半无限基片，冻结 UUID/运行时并拒绝 CPU 回退；默认仍 CPU。详见<a href="film-xpu-desktop.md">桌面执行合同</a>。详见<a href="#film-xpu-fp64-20261017">XPU后端限定实测与CPU比较</a>。Intel外观GPU后端未实现，CPU外观可用。现有DirectML默认/AMD优先绑定不保证Intel设备。详见<a href="intel-integrated-gpu-support.md">核显支持范围与实测限制</a>。DirectML/外观结论限定基线3ff49166；XPU后端结论限定23bba330加本节等价修复的本机实测，未放宽容差。</p>
+
+<section id="engineering-notes-storage-20261018"><h2>工程 BBS、精简记忆与回收记录格式（2026-10-18）</h2>
+<p><strong>用途、输入与输出：</strong>本节记录本项目新增的非物理 JSON 持久化格式。BBS 输入为显式工程身份、受限类型/标题/正文和期望修订，输出为稳定帖子 ID、可信适配入口记录的 user/assistant 归因、UTC 时间、当前修订及保留历史；精简记忆输入为有界、已确认事实与作用域，输出为受版本检查的条目和有界摘要；清理输入为已授权工作区中的文件及其摘要，输出为保留独立副本的回收记录。三者不得作为计算结果、身份认证或额外工具权限。</p>
+<p><strong>坐标、单位与精度：</strong>物理坐标、长度单位、数值精度与收敛均不适用；容量以 UTF-8 字节或明确字符数计，时间为 UTC ISO-8601，修订为整数。以下边界均为本项目约定，不是物理算法或外部标准验证。</p>
+<pre>BBS admission: explicit .coatproj + project_id + owner/session + expected revision
+post = {kind:"coat_sim.project_bbs_post", version:1, post_id, post_type,
+        parent_id, author, created_at, history:[{revision,title,body,archived,edited_at,editor,
+        body_format?:"plain"|"markdown", attachments?:[{asset_id,name,mime,size,sha256}]}]}
+validate → compare revision → append history → existing atomic project publication
+Comment-only discussion: append topic(type=comment) or reply; never edit/archive/formal-report write.
+Memory: validate scope + expected_revision → bounded ledger update → locked atomic replace
+Recycle: capture bytes + identity/hash → save independent copy/manifest → recheck grant → unlink source</pre>
+<figure class="figure"><svg viewBox="0 0 820 170" role="img" aria-label="三类记录各自绑定所有者，验证后进入其原子保存流程，不改变仿真输入参数"><g fill="none" stroke="#087f78" stroke-width="2"><rect x="15" y="20" width="230" height="75" rx="8"/><rect x="295" y="20" width="230" height="75" rx="8"/><rect x="575" y="20" width="230" height="75" rx="8"/><path d="M245 57h50m230 0h50"/></g><g class="svgtext" text-anchor="middle"><text x="130" y="48">绑定工程 / 助手工作区</text><text x="130" y="73">作用域与入口归因</text><text x="410" y="48">类型、容量、版本检查</text><text x="410" y="73">失败保留旧内容</text><text x="690" y="48">原子发布或独立恢复副本</text><text x="690" y="73">不自动覆盖或永久清理</text><text x="410" y="140">BBS 保留编辑历史；记忆可忘记/恢复；回收快照恢复后仍保留</text></g></svg><figcaption>每种格式遵守自己的所有者和事务边界。保存记录不等于提交仿真参数，也不赋予记录正文执行能力。</figcaption></figure>
+<p><strong>BBS 格式与默认值：</strong>新增受管 kind <code>project_bbs_post</code>，存储于 <code>data/bbs/r&lt;工程版本&gt;/*.cbbs</code>。主题有 journal、progress、research_report、work_report、comment 五类；仅一级回复。标题最多 200 字符，非空正文最多 64 KiB，每条保留至多 100 个版本，达到容量时拒绝修改，不截断历史。富文本原文以可选 <code>body_format</code> 明确区分 plain/markdown，旧版本缺省为纯文本；每个版本最多 8 个已导入的受管附件。附件为 <code>binary_asset</code> 的 <code>bbs_attachment</code> 角色，最多 32 MiB，原名/MIME 与摘要受元数据绑定；全部历史附件都保留为依赖，正文移除引用不删除旧版本文件。全部内容随 <code>.cproject</code> 导出；导入新副本保留记录及历史并采用新工程 ID。既有项目清单版本仍为 v1，旧文件无需迁移；不支持新 kind 的旧版程序应拒绝，而不是忽略后覆盖。实例参见<a href="../tests/test_project_bbs.py">BBS 契约测试</a>；实现见<a href="../coat_sim/core/project_bbs.py">project_bbs.py</a>和<a href="project-bbs-contract.md">完整接口契约</a>。</p>
+<p><strong>工作区 JSON：</strong>精简记忆账本使用既有 OS 锁、全账本 revision CAS 和原子替换，最多保留 40 条（含可恢复的 forgotten 条目），单条事实最多 300 字符，模型摘要最多 1,200 字符；全局/工程作用域不得跨工程读取。回收 v1 清单包含 recycle_id、工作区相对 original_path、bytes、sha256、mode 与 created_at；先保存独立副本再检查原件及授权，恢复拒绝覆盖，保留回收副本。它们不属于 BBS、不随工程包导出；具体字段、限制与平台持久性见<a href="assistant-memory-contract.md">精简记忆契约</a>及<a href="assistant-toolkit-contract.md">工具箱文件/回收契约</a>，实现位于 <code>agent/toolkit/memory.py</code>、<code>_state.py</code>、<code>fs.py</code>。</p>
+<p><strong>适用范围、限制和来源：</strong>仅限经过应用授权的本地工程/助手工作区；归因不具有密码学证明，文件哈希不防止外部管理员同时改文件和清单。通用文件工具拒绝受管工程写入，但不是任意本机代码的安全沙箱。断电保证依赖原有原子发布与平台文件系统；Windows 回收不声称拥有 stdlib 目录 fsync 保证。正文、记忆及报告均作为不可信数据处理。本项目未找到外部依据，仅为本项目实现；本节不声称任何新的物理算法验证。</p>
+</section>
+
 </body>
 </html>

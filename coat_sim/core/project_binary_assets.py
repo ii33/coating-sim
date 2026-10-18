@@ -21,9 +21,17 @@ from .project_dependencies import ProjectError, identifier, portable_path, rejec
 
 _CHUNK = 1024 * 1024
 _SHA = re.compile(r"[0-9a-f]{64}\Z")
-ROLE_SUFFIXES = {"deposition_asset": ".coatasset", "spd_csv": ".csv"}
+ROLE_SUFFIXES = {"deposition_asset": ".coatasset", "spd_csv": ".csv", "bbs_attachment": ".bbsasset"}
 MAX_DEPOSITION_ASSET_BYTES = 512 * 1024 * 1024
 MAX_SPD_BYTES = 2_000_000
+MAX_BBS_ATTACHMENT_BYTES = 32 * 1024 * 1024
+
+
+def role_byte_limit(role: str) -> int:
+    return {"deposition_asset": MAX_DEPOSITION_ASSET_BYTES, "spd_csv": MAX_SPD_BYTES,
+            "bbs_attachment": MAX_BBS_ATTACHMENT_BYTES}[role]
+
+
 DEFAULT_ASSET_BUDGET_BYTES = 1024 * 1024 * 1024
 
 
@@ -49,8 +57,10 @@ DEFAULT_ASSET_LIMITS = AssetReadLimits()
 
 
 def normalize_binary_asset(value: Mapping) -> dict:
-    if (not isinstance(value, Mapping) or set(value) != {
-            "kind", "version", "role", "payload_path", "size", "sha256"} or
+    fields = {"kind", "version", "role", "payload_path", "size", "sha256"}
+    if isinstance(value, Mapping) and value.get("role") == "bbs_attachment":
+        fields |= {"name", "mime"}
+    if (not isinstance(value, Mapping) or set(value) != fields or
             value.get("kind") != "coat_sim.project_binary_asset" or
             type(value.get("version")) is not int or value["version"] != 1):
         raise ProjectError("invalid_document", "Invalid project binary input envelope")
@@ -67,11 +77,15 @@ def normalize_binary_asset(value: Mapping) -> dict:
     if filename.suffix != ROLE_SUFFIXES[role]:
         raise ProjectError("unsafe_path", "Binary input suffix differs from its declared role")
     size = value["size"]
-    maximum = MAX_DEPOSITION_ASSET_BYTES if role == "deposition_asset" else MAX_SPD_BYTES
+    maximum = role_byte_limit(role)
     if type(size) is not int or not 0 < size <= maximum:
         raise ProjectError("capacity_exceeded", f"Binary input size must be 1–{maximum} bytes for {role}")
     if not isinstance(value["sha256"], str) or not _SHA.fullmatch(value["sha256"]):
         raise ProjectError("invalid_document", "Binary input SHA-256 must be lowercase hex")
+    if role == "bbs_attachment":
+        from .project_bbs_attachments import normalize_attachment
+        normalize_attachment({"asset_id": filename.stem, "name": value["name"], "mime": value["mime"],
+                              "size": size, "sha256": value["sha256"]})
     return dict(value)
 
 
@@ -180,6 +194,10 @@ def read_scalar_spectrum(path: str | Path) -> dict:
 
 def validate_asset_content(path: str | Path, metadata: Mapping) -> None:
     metadata = normalize_binary_asset(metadata)
+    if metadata["role"] == "bbs_attachment":
+        # Generic attachments are never executed or decompressed. Preview
+        # decoders validate a separate MIME allowlist after digest verification.
+        return
     if metadata["role"] == "spd_csv":
         read_scalar_spectrum(path)
     else:
@@ -210,7 +228,7 @@ def metadata_for_file(path: str | Path, role: str, payload_path: str, *, expecte
         raise ProjectError("invalid_document", "Unsupported binary input role")
     target = Path(os.path.abspath(Path(path).expanduser()))
     before = file_signature(target)
-    maximum = MAX_DEPOSITION_ASSET_BYTES if role == "deposition_asset" else MAX_SPD_BYTES
+    maximum = role_byte_limit(role)
     if target.suffix.casefold() != ROLE_SUFFIXES[role] or not 0 < before[3] <= maximum:
         raise ProjectError("invalid_document", "Selected binary input has the wrong suffix or exceeds its role limit")
     digest = hashlib.sha256()

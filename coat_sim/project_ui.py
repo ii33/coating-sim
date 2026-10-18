@@ -25,6 +25,7 @@ PROJECT_EDITOR_DETAILS = {
     "film_appearance": frozenset({"summary", "captured_steps"}),
     "compute_queue": frozenset({"summary", "jobs"}),
     "project_resources": frozenset({"summary", "resources"}),
+    "project_bbs": frozenset({"summary"}),
 }
 PROJECT_WINDOW_NAVIGATION = ("list_windows", "open_window", "read_window", "close_window")
 PROJECT_WINDOW_OPERATIONS = frozenset({"list_windows", "open_window", "read_window",

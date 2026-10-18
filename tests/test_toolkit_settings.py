@@ -1,20 +1,48 @@
 """Credential-free toolkit preferences and isolated QML persistence."""
 import json
 import pytest
-from coat_sim.agent.toolkit_config import normalized_toolkit_settings, validate_workspace_root
+from coat_sim.agent.toolkit_config import (
+    normalized_toolkit_settings, validate_workspace_root, default_workspace_root,
+    PRIVATE_CAPABILITIES,
+)
 from coat_sim.ui import settings
 
 
-def test_default_empty_capabilities_and_no_shared_mutable_state():
+def test_default_private_capabilities_and_no_shared_mutable_state():
     a = settings.normalized_ui_settings()
     b = settings.normalized_ui_settings()
-    assert a['assistant_toolkit_enabled'] is False
-    assert a['assistant_toolkit_allow_model_context'] is False
-    assert a['assistant_toolkit_workspace_root'] == ''
-    assert a['assistant_toolkit_capabilities'] == []
-    assert a['assistant_toolkit_profile_capabilities'] == []
-    a['assistant_toolkit_capabilities'].append('fs')
-    assert b['assistant_toolkit_capabilities'] == []
+    assert a['assistant_toolkit_enabled'] is True
+    assert a['assistant_toolkit_allow_model_context'] is True
+    assert a['assistant_toolkit_workspace_root'] == str(default_workspace_root())
+    assert a['assistant_toolkit_capabilities'] == list(PRIVATE_CAPABILITIES)
+    assert a['assistant_toolkit_profile_capabilities'] == list(PRIVATE_CAPABILITIES)
+    a['assistant_toolkit_capabilities'].clear()
+    assert b['assistant_toolkit_capabilities'] == list(PRIVATE_CAPABILITIES)
+
+
+def test_legacy_disables_and_custom_root_missing_permissions_remain_off(tmp_path):
+    explicit = normalized_toolkit_settings({'assistant_toolkit_enabled': False,
+        'assistant_toolkit_allow_model_context': False, 'assistant_toolkit_capabilities': [],
+        'assistant_toolkit_profile_capabilities': [], 'assistant_toolkit_workspace_root': ''})
+    assert not explicit['assistant_toolkit_enabled']
+    assert not explicit['assistant_toolkit_allow_model_context']
+    assert explicit['assistant_toolkit_workspace_root'] == ''
+    assert explicit['assistant_toolkit_capabilities'] == []
+    custom = normalized_toolkit_settings({'assistant_toolkit_workspace_root': str(tmp_path)})
+    assert custom['assistant_toolkit_capabilities'] == []
+    assert not custom['assistant_toolkit_enabled']
+    assert not custom['assistant_toolkit_allow_model_context']
+
+
+@pytest.mark.parametrize('raw', ['broken{', '[]', 'null', '"text"', '\ufffd'])
+def test_corrupt_existing_settings_fail_closed_and_preserve_bytes(tmp_path, monkeypatch, raw):
+    monkeypatch.setattr(settings, 'SETTINGS_PATH', tmp_path / 'settings.json')
+    settings.SETTINGS_PATH.write_text(raw)
+    loaded = settings.load_ui_settings()
+    assert not loaded['assistant_toolkit_enabled']
+    assert not loaded['assistant_toolkit_allow_model_context']
+    assert loaded['assistant_toolkit_capabilities'] == []
+    assert settings.SETTINGS_PATH.read_text() == raw
 
 
 def test_normalization_is_bounded_credential_free_and_explicit():

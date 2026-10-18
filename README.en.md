@@ -112,3 +112,5 @@ Installation notices and release evidence are maintained in the [independent ins
 [New optical dataset from measured R/T: guide and limits](docs/optical-inversion-guide.md) · [Inversion algorithm and ambiguity](docs/algorithms.html#optical-constant-inversion)
 
 [Portable assistant toolkit: capabilities, settings and backend migration](docs/assistant-toolkit-capability-map.md) · [Core contract](docs/assistant-toolkit-contract.md) · [Host provider boundaries](docs/assistant-toolkit-provider-contract.md)
+
+The assistant has a dedicated persistent workspace and [compact long-term memory](docs/assistant-memory-contract.md). The [project BBS](docs/project-bbs-contract.md) stores lasting journals, progress updates, research/work reports, revisions, and replies separately from chat. Discussion mode permits append-only BBS comments and replies; other mutations remain operation-mode gated.

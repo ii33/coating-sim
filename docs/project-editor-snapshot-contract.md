@@ -1,12 +1,12 @@
 # Current project editor snapshots
 
-Date: 2026-10-15. Read-only interface; no numerical, document-format, or editor-write change.
+Date: 2026-10-18. Read-only interface; no numerical, document-format, or editor-write change.
 
 ## Input, ownership and routing
 
 `project_editor_snapshot(project_target, window_type, detail="summary", offset=0,
 limit=50, expected_snapshot_id=None)` requires the exact six-field authenticated
-`project_list` target. All fourteen registered project modules have an existing-owner
+`project_list` target. All registered project modules have an existing-owner
 read adapter. `summary` is accepted for every module; the additional collections are:
 
 | Module | Detail collections |
@@ -23,6 +23,7 @@ read adapter. `summary` is accepted for every module; the additional collections
 | film_appearance | captured_steps |
 | compute_queue | jobs |
 | project_resources | resources |
+| project_bbs | summary only |
 
 Unsupported module/detail pairs fail closed; a detail accepted by another module
 is not an implicit generic document accessor. The returned `available_details`
@@ -156,3 +157,7 @@ content or an automatically refreshed store. An external/global import source
 returns `external_import_source`; no other source is substituted for the current
 project. The window has navigation and read-only context capabilities, with no
 editor update/action whitelist. See [scoped resource libraries](scoped-resource-libraries.md).
+
+## Persistent BBS window summary
+
+`project_bbs` is a managed per-project window. Its summary reads only the existing QML view: selected topic ID/revision/title, type/search filter, page position, history visibility, and unsaved composition mode/target/revision/title/body length. Titles and queries are bounded; body content, local paths and attachment bytes are not returned. This status-only projection remains readable while typing without committing or moving focus. It has no generic editor mutations. The existing exact-binding, registered-controller, lifecycle and snapshot-id checks apply. Closed windows do not create or load a BBS view. The state remains owned by the runtime BBS coordinator and the managed project service.

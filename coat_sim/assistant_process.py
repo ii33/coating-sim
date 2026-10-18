@@ -533,7 +533,7 @@ class ApplicationClientRegistry:
                     management._authorize_path(arguments[field])
             return self._call(client, "project_manage", project_operation=operation, arguments=arguments,
                               session_generation=session_generation, client_generation=client.generation)
-        return management.execute(operation, arguments)
+        return management.execute(operation, arguments, actor="assistant")
 
     def list_windows(self) -> list[dict[str, Any]]:
         """Aggregate exact app-owned windows, never scan the OS desktop."""

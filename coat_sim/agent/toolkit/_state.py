@@ -43,7 +43,7 @@ def location(ctx, args, kind):
 
 def load(ctx, path, scope, kind):
     try:
-        raw = read_bytes(ctx, path)
+        raw = read_bytes(ctx, path, internal=True)
     except FileNotFoundError:
         return None, ''
     try:
@@ -99,7 +99,7 @@ def mutate(ctx, args, kind, update):
         result = {'version': 1, 'kind': kind, 'scope': scope,
                   'revision': revision + 1, 'data': data}
         atomic_write(ctx, path, json.dumps(result, ensure_ascii=False, indent=2,
-                                         allow_nan=False).encode('utf-8'), expected_hash)
+                                         allow_nan=False).encode('utf-8'), expected_hash, internal=True)
     return result
 
 

@@ -27,9 +27,9 @@ from .optical_constants import validate_optical_set
 MAX_PROJECT_DOCUMENTS = 1000
 MAX_PROJECT_BYTES = 256 * 1024 * 1024
 KINDS = frozenset((*DESIGN_EXTENSIONS, "deposition_configuration", "optical_material", "material_profile", "expression_template",
-                   "raytrace_request", "appearance_configuration", "binary_asset"))
+                   "raytrace_request", "appearance_configuration", "binary_asset", "project_bbs_post"))
 EXTENSIONS = {**DESIGN_EXTENSIONS, "deposition_configuration": ".cdep", "optical_material": ".json", "material_profile": ".json", "expression_template": ".json",
-              "raytrace_request": ".cray", "appearance_configuration": ".cappearance", "binary_asset": ".casset"}
+              "raytrace_request": ".cray", "appearance_configuration": ".cappearance", "binary_asset": ".casset", "project_bbs_post": ".cbbs"}
 
 
 class ProjectError(ValueError):
@@ -153,6 +153,9 @@ def normalize_optical_material(value: Any) -> dict:
 
 def normalize_document(kind: str, data: Any) -> dict:
     try:
+        if kind == "project_bbs_post":
+            from .project_bbs import normalize_bbs_post
+            return normalize_bbs_post(data)
         if kind == "binary_asset":
             from .project_binary_assets import normalize_binary_asset
             return normalize_binary_asset(data)

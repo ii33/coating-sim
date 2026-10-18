@@ -18,6 +18,7 @@ PROJECT_MODULES = (
     ("ray_trace", "光线追迹"),
     ("film_appearance", "外观仿真"),
     ("compute_queue", "工程计算队列"),
+    ("project_bbs", "工程 BBS"),
 )
 
 

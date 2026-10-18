@@ -1,6 +1,7 @@
 """Real offline QML interaction, draft isolation and reload for toolkit settings."""
 from tests.test_compute_server_category_ui import compute_ui as compute_ui, _find, _settle, _invoke
 from coat_sim.ui import settings
+from coat_sim.agent.toolkit_config import PRIVATE_CAPABILITIES, default_workspace_root
 import re
 import pytest
 from tests import test_compute_server_category_ui as harness_module
@@ -43,7 +44,7 @@ def test_toolkit_qml_persistence_and_empty_means_off(compute_ui, tmp_path):
     scene = compute_ui.open()
     section = _expand(scene)
     bridge = scene.bridge
-    assert not _find(section, 'assistantToolkitEnabledCheck').property('checked')
+    assert _find(section, 'assistantToolkitEnabledCheck').property('checked')
     root = _find(section, 'assistantToolkitWorkspaceRootField')
     root.setProperty('text', str(tmp_path))
     _invoke(root, 'textEdited')
@@ -57,6 +58,12 @@ def test_toolkit_qml_persistence_and_empty_means_off(compute_ui, tmp_path):
         check = _find(section, name)
         check.setProperty('checked', True)
         _invoke(check, 'clicked')
+    for capability in PRIVATE_CAPABILITIES:
+        if capability != 'fs':
+            for prefix in ('toolkitGlobal_', 'toolkitProfile_'):
+                check = _find(section, prefix + capability)
+                check.setProperty('checked', False)
+                _invoke(check, 'clicked')
     assert bridge.assistantToolkitCapabilities == ['fs']
     assert bridge.assistantToolkitProfileCapabilities == ['fs']
     assert bridge.save()
@@ -82,10 +89,29 @@ def test_toolkit_invalid_root_and_draft_do_not_leak(compute_ui, tmp_path):
     scene.bridge.setAssistantToolkitCapability('tasks', True, False)
     assert not scene.bridge.save()
     assert '绝对路径' in scene.bridge.statusMessage
-    assert settings.load_ui_settings()['assistant_toolkit_enabled'] is False
+    assert settings.load_ui_settings()['assistant_toolkit_enabled'] is True
     scene.close()
     reopened = compute_ui.open()
     _expand(reopened)
-    assert reopened.bridge.assistantToolkitCapabilities == []
-    assert reopened.bridge.assistantToolkitWorkspaceRoot == ''
-    assert not reopened.bridge.assistantToolkitEnabled
+    assert reopened.bridge.assistantToolkitCapabilities == list(PRIVATE_CAPABILITIES)
+    assert reopened.bridge.assistantToolkitWorkspaceRoot == str(default_workspace_root())
+    assert reopened.bridge.assistantToolkitEnabled
+
+
+def test_restore_default_workspace_is_draft_only_until_saved(compute_ui, tmp_path):
+    scene = compute_ui.open()
+    section = _expand(scene)
+    scene.bridge.setAssistantToolkitConfig(False, str(tmp_path), False)
+    assert scene.bridge.save()
+    button = _find(section, 'assistantToolkitResetWorkspaceButton')
+    _invoke(button, 'clicked')
+    assert scene.bridge.assistantToolkitEnabled
+    assert scene.bridge.assistantToolkitAllowModelContext
+    assert scene.bridge.assistantToolkitWorkspaceRoot == str(default_workspace_root())
+    assert scene.bridge.assistantToolkitCapabilities == list(PRIVATE_CAPABILITIES)
+    assert not settings.load_ui_settings()['assistant_toolkit_enabled']
+    assert scene.bridge.save()
+    scene.close()
+    reopened = compute_ui.open()
+    assert reopened.bridge.assistantToolkitEnabled
+    assert reopened.bridge.assistantToolkitWorkspaceRoot == str(default_workspace_root())

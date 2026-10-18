@@ -47,17 +47,33 @@ large objects rather than relying solely on final result checks.
 
 ## Filesystem capability
 
-`register_fs_tools(registry)` registers read, write, edit, list_dir and read_many.
-All have capability `fs`; write/edit declare effect `write`, others `read`.
+`register_fs_tools(registry)` registers read, write, edit, list_dir, read_many,
+mkdir, delete, recycle_list and restore. All have capability `fs`;
+write/edit/mkdir/delete/restore declare effect `write`, others `read`.
 
 Local paths require explicit allowed roots; relative paths use the first root.
 There is no implicit CWD/home access. Parent traversal, symlinks and Windows reparse
-points are refused. Directories are not implicitly created. On POSIX, read and write
+points are refused. Text writes do not implicitly create directories;
+`mkdir(path, parents=false)` creates a directory explicitly, optionally creating
+parents, with at most 32 path components below the permitted root. Existing
+directories are accepted; files and linked/reparse directories are refused.
+On POSIX, read and write
 pin parent directories using no-follow directory descriptors and refuse special-file
 reads. Other platforms check reparse points before operations but these portable
 checks are not an OS security sandbox: hosts must prevent hostile concurrent directory
 replacement, or provide an OS-isolated filesystem adapter. Directory enumeration
 likewise assumes no hostile concurrent directory replacement.
+
+Public mutations also use `policy.user_write_path` and the standard-library-only
+`coat_sim.managed_paths` boundary. A `.coatproj` or `.cbbs` target, or any target
+under an ancestor containing a project descriptor, must go through the typed
+project service even if a user explicitly configured a broad toolkit root.
+Descriptor presence is sufficient; malformed descriptor contents do not disable
+the guard. Public atomic writes (including document/image outputs), mkdir,
+delete and restore recheck this boundary before committing. Generic reads keep
+their existing root permission; trusted `internal=True` toolkit state and recycle
+writes retain their separate reserved-namespace path. This is not a replacement
+for OS isolation against hostile concurrent native filesystem changes.
 
 Text files are bounded at 1 MiB, read output at 10,000 lines, batches at 32 paths and
 1 MiB total, directory listings at 1,000 entries. A file exceeding a requested byte
@@ -77,12 +93,70 @@ replacement. This detects ordinary stale editor/model views but is not an atomic
 cross-process compare-and-swap: hosts sharing files with other writers must serialize
 mutations for full transaction semantics. Temp files are created in the same directory,
 flushed and replaced atomically, with cleanup on failure. File modes are preserved;
-ownership/ACL/xattr and directory-fsync durability guarantees are not provided.
+ownership/ACL/xattr and directory-fsync durability guarantees for ordinary text
+writes are not provided. Generic filesystem mutations recheck the live host grant
+at the commit boundary in addition to registry admission and cancellation checks.
+
+### Reserved state and recoverable deletion
+
+`.toolkit` directories and names beginning `.toolkit-` are reserved,
+case-insensitively, anywhere below an allowed root. Generic filesystem reads,
+writes, edits, directory creation and deletion cannot target them; listings hide
+them. The shared `read_bytes` and `atomic_write` default checks also cover document
+and image input/output, so those tools cannot bypass the reservation. Only trusted
+implementation code may pass `internal=True`, for state stores and recovery;
+no model-visible schema exposes this flag. This is an application policy boundary,
+not protection from other host processes, manually created hardlink aliases or
+an independently authorized execution provider.
+
+`delete(path, expected_hash)` accepts one regular local file up to 32 MiB and
+requires its exact lowercase SHA-256. It refuses directories, special files,
+remote paths, traversal, linked/reparse paths and reserved state. Recovery
+operations are scoped to the first permitted workspace root. There is no recursive
+delete or permanent-purge tool. Larger files and directory cleanup require another
+explicit host workflow; the generic text-read limit remains 1 MiB.
+
+Before removing the source, deletion saves an independent byte copy and a bounded
+JSON manifest under `.toolkit/recycle/<32-hex-id>/`, using exclusively allocated
+entry directories. The manifest owns `version=1`, `recycle_id`, workspace-relative
+`original_path`, `bytes`, `sha256`, permission `mode` (0777 bits only), and UTC
+`created_at`. After saving, it rereads the source and compares its hash and file
+identity, then rechecks live authorization immediately before unlinking. A stale
+source or revoked grant leaves the source untouched; a prepared snapshot may
+remain and can be restored separately. No failure cleanup purges a recovery copy.
+
+Payload and manifest files are flushed before source removal. On POSIX, their
+entry directory and the recovery/workspace ancestor directories are also fsynced;
+an actual directory-sync failure prevents source removal. Windows has no portable
+stdlib directory-fsync guarantee, reports `directory_synced=false`, and promises
+process-interruption recoverability, not arbitrary power-loss durability.
+All platforms still require host isolation from hostile concurrent writers;
+the final identity check and unlink are not an OS-level compare-and-swap.
+
+`recycle_list(max_entries=200)` lists at most 1,000 snapshot manifests, including
+invalid/incomplete entries as unavailable. Listing checks metadata, regular-file
+type and size; full content SHA-256 verification happens on restore. Entries from
+interrupted deletes may coexist with the original source. `truncated` explicitly
+reports a bounded scan; no background scan or purge is scheduled.
+
+`restore(recycle_id, path?)` defaults to the recorded original path, or accepts an
+alternate path within the same workspace. Parents must already exist. It validates
+the manifest and content hash, prepares a separate copy, and publishes without
+overwriting any existing destination (including a destination created during
+preparation). POSIX uses an exclusive hard link from a same-directory temporary;
+Windows uses its no-replacement rename. Unsupported filesystem operations fail
+safely with the snapshot retained. Restore never consumes the snapshot, so editing
+a restored file cannot corrupt later recovery. Cancellation or permission changes
+before publication leave the recovery copy intact. Ordinary file modes are
+restored, but timestamps, ownership, ACLs and extended attributes are not.
 
 `alias:/path` uses explicit remote routing. On Windows, native absolute drive paths
 such as `C:/workspace/file` and `C:\workspace\file` take precedence over one-letter
 aliases; native backslashes are accepted only on Windows. UNC/device paths,
-drive-relative paths and traversal remain denied. Unknown aliases fail `unknown_host`;
+drive-relative paths and traversal remain denied. Windows alternate data streams,
+trailing-dot/space aliases and tilde-bearing components (including DOS short-name
+aliases) are conservatively denied; use explicit long paths without `~`.
+Unknown aliases fail `unknown_host`;
 a configured verified host without its transport fails `provider_unavailable`.
 Neither case creates a local alias-looking directory. The optional injected
 `providers['remote_fs']` callable has signature `(operation, arguments, context)`;
@@ -109,3 +183,10 @@ for image dimensions, archive overhead, exact merge and partial-split behavior.
 authorization defaults, strict types/extras, stale hashes, path escape and symlink
 refusal, unknown hosts, cancellation/budgets, and byte-preserving BOM/charset edits.
 These are filesystem and serialization semantics, not new optical algorithms.
+`tests/test_toolkit_recycle.py` additionally covers recovery round trips, retained
+independent backups, collisions, malformed/tampered snapshots, bounded listings,
+internal-state bypass attempts through other artifact tools, directory creation,
+Windows lexical aliases, source changes, cancellation/live grant revocation, and
+POSIX directory-sync ordering/failures before source removal. Windows filesystem
+behavior still needs a native Windows execution check; Linux tests do not establish
+native NTFS/reparse or power-loss behavior.

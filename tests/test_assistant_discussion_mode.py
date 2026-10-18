@@ -29,7 +29,7 @@ TARGET = {"client_id": "client", "client_generation": "client-generation", "proj
 DENIED = {
     "save_design", "save_film_design", "prepare_temporary_design", "save_generated_design",
     "save_simulation_asset", "write_data_file", "make_data_directory", "move_data_path", "delete_data_path",
-    "project_open", "project_manage", "update_window", "window_action", "open_window", "close_window",
+    "project_open", "project_manage", "project_bbs_import_attachment", "update_window", "window_action", "open_window", "close_window",
     "submit_single_source", "submit_process_recipe", "submit_mask_optimization", "submit_film_optimization",
     "submit_appearance_render", "run_python_script", "submit_python_script", "cancel_calculation_job",
     "estimate_compute_task", "estimate_film_optimization", "estimate_appearance_render", "estimate_mask_optimization",
@@ -52,7 +52,7 @@ async def _actual_run(calls=(), *, recovered=False, cancel=False, mode="chat", b
             return registered
         async def call_tool_mcp(self, name, arguments):
             rpc.append((name, arguments))
-            allowed = {"read_window", "project_editor_snapshot", "validate_film_design", "read_calculation_result"}
+            allowed = {"read_window", "project_editor_snapshot", "validate_film_design", "read_calculation_result", "project_bbs_comment", "project_bbs_import_attachment"}
             if switch_after_write:
                 allowed.add("save_design")
             assert name in allowed

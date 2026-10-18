@@ -46,6 +46,7 @@ class ProjectApplicationClient(QObject):
         self._pending: Future | None = None
         self._endpoint: dict | None = None
         self._stopped = False
+        self._cached_status: dict[str, Any] = {}
         self._last_error = ""
         self._registered_once = False
         self._registration_started = 0.0
@@ -135,7 +136,13 @@ class ProjectApplicationClient(QObject):
 
     def status(self, nonce: Any) -> dict:
         launcher = project_owner(self.bridge)
-        return {"application": "coat_sim", "nonce": nonce, "pid": os.getpid(),
+        bbs = getattr(launcher, "_bbs", None)
+        if bbs is not None and getattr(bbs, "busy", False):
+            return {"application": "coat_sim", "nonce": nonce, "pid": os.getpid(),
+                    "process_start": self.process_start, "generation": self.generation,
+                    "role": self.role, "scope": presentation_scope(self.bridge),
+                    "project_sessions": [dict(row) for row in bbs.session_snapshot]}
+        result = {"application": "coat_sim", "nonce": nonce, "pid": os.getpid(),
                 "process_start": self.process_start, "generation": self.generation,
                 "role": self.role,
                 "scope": presentation_scope(self.bridge),
@@ -144,6 +151,8 @@ class ProjectApplicationClient(QObject):
                      "project_file": str(cast(ProjectStore, launcher.host.store_for(session.binding)).project_file),
                      "generation": session.binding.generation, "name": session.name}
                     for session in self._sessions()]}
+        self._cached_status = result
+        return result
 
     def _project_rows(self) -> list[dict]:
         launcher = project_owner(self.bridge)
@@ -194,9 +203,12 @@ class ProjectApplicationClient(QObject):
         return row | {"instance_id": instance_id, "module_key": module, "open": True,
                       "visible": window.isVisible(), "title": title() if callable(title) else module}
 
-    def dispatch(self, operation: str, arguments: dict) -> dict:
+    def dispatch(self, operation: str, arguments: dict) -> Any:
         if operation == "lifecycle_status":
             return self.status(arguments.get("nonce"))
+        if (getattr(getattr(project_owner(self.bridge), "_bbs", None), "busy", False)
+                and operation not in {"lifecycle_prepare", "lifecycle_cancel"}):
+            raise UiControlError("project_busy", "工程 BBS 请求仍在处理，请稍后重试。")
         if getattr(self.bridge, "_project_starting", False) and operation not in {
                 "list_windows", "read_window", "project_editor_snapshot", "lifecycle_prepare", "lifecycle_cancel"}:
             raise UiControlError("project_starting", "工程窗口仍在完成身份登记，请稍后重试。")
@@ -329,7 +341,7 @@ class ProjectApplicationClient(QObject):
                     "session_generation": session.binding.generation, "module_key": module}
         raise UiControlError("invalid_operation", "该工程窗口不支持此操作。")
 
-    def _manage_project(self, arguments: dict) -> dict:
+    def _manage_project(self, arguments: dict) -> Any:
         from coat_sim.project_management import ProjectManagementService, WRITE_OPERATIONS
         from coat_sim.core.project_dependencies import ProjectError
         if arguments.get("client_generation") != self.generation:
@@ -360,12 +372,18 @@ class ProjectApplicationClient(QObject):
                 # Saved resources can be viewed by several retained adapters.
                 # Replacing a live document requires the editor's own contract.
                 raise UiControlError("editor_owned_document", "请通过该工程编辑器保存已打开的设计。")
+        if operation.startswith("bbs_") and getattr(launcher, "_bbs", None) is not None:
+            # Admission/dirty checks stay on the GUI; disk IO and publication
+            # use the bounded owner worker. The IPC relay completes a Future
+            # without running a nested GUI event loop or blocking Qt.
+            self.status(None)
+            return launcher._bbs.execute_owned_async(session.binding, operation, payload)
         with launcher.host.operation_scope(session.binding):
             store = launcher.host.store_for(session.binding)
             service = ProjectManagementService(authorized_roots=[row.binding.root for row in self._sessions()])
             try:
                 result = service.execute_owned(operation, payload, store=store,
-                                               project_id=session.binding.project_id)
+                                               project_id=session.binding.project_id, actor="assistant")
             except ProjectError as exc:
                 raise UiControlError(exc.code, str(exc)) from exc
             film = launcher.host.resource_for(session.binding, "film_workspace")

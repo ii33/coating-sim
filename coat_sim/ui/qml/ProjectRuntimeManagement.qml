@@ -111,6 +111,14 @@ Item {
 
     function openFor(projectId) {
         const requestedId = String(projectId || "")
+        if (root.projectBridge.projectBusy) {
+            if (requestedId === root.projectId) {
+                managementDialog.open()
+                return true
+            }
+            root.localError = "工程请求仍在处理，请稍后切换。"
+            return false
+        }
         if (requestedId && requestedId !== root.projectId && root.informationDirty) {
             root.pendingManagementProjectId = requestedId
             discardInformationDialog.open()

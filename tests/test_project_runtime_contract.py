@@ -697,7 +697,7 @@ def test_startup_window_is_noninteractive_until_latest_registration(monkeypatch)
     client = SimpleNamespace(_pending=object(), admission=SimpleNamespace(ready=False),
                              _register=lambda: registrations.append(True))
     runtime: Any = SimpleNamespace(_completion=None, _startup_windows=[], application=client,
-        owner=SimpleNamespace(desktop=SimpleNamespace(_views={"film": (window,)}),
+        owner=SimpleNamespace(_busy=False, desktop=SimpleNamespace(_views={"film": (window,)}),
                               host=SimpleNamespace(sessions=lambda: ["live-session"])),
         bridge=SimpleNamespace(_project_starting=True), _finished=False, _failed=False,
         _requested=True, _started_at=time.monotonic(), _endpoint={"pid": 1},
@@ -756,7 +756,7 @@ def test_runtime_quit_uses_exact_close_coordinator_and_waits_for_actual_close():
     def refused(identity):
         calls.append(identity)
         return False
-    owner = SimpleNamespace(host=SimpleNamespace(sessions=lambda: tuple(sessions)),
+    owner = SimpleNamespace(_busy=False, host=SimpleNamespace(sessions=lambda: tuple(sessions)),
         closeProject=refused,
         _set_error=lambda message: pytest.fail(message))
     runtime: Any = SimpleNamespace(bridge=bridge, owner=owner)

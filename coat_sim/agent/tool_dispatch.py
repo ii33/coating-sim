@@ -135,8 +135,14 @@ def normalize_arguments(arguments: Any) -> tuple[dict[str, Any] | None, str]:
 class ProjectGateway:
     def __init__(self, client: Any, allowed: frozenset[str] | set[str],
                  read_only: frozenset[str] | set[str], redact: Callable[[str], str],
-                 shared: dict[str, Any] | None = None, read_only_mode: bool = False) -> None:
+                 shared: dict[str, Any] | None = None, read_only_mode: bool = False,
+                 allow_discussion_comments: bool = False,
+                 comment_authority: Callable[[], bool] | None = None,
+                 allow_attachment_import: bool = False) -> None:
         self.read_only_mode = read_only_mode
+        self.allow_discussion_comments = allow_discussion_comments is True
+        self.comment_authority = comment_authority
+        self.allow_attachment_import = allow_attachment_import is True and not read_only_mode
         self.client, self.allowed, self.read_only, self.redact = client, allowed, read_only, redact
         self._tools: dict[str, dict[str, Any]] | None = None
         self._catalog_lock = asyncio.Lock()
@@ -175,7 +181,9 @@ class ProjectGateway:
                 self._tools = {tool.name: {
                     "name": tool.name, "description": tool.description or "",
                     "input_schema": getattr(tool, "input_schema", None) or getattr(tool, "inputSchema", {})}
-                    for tool in await self.client.list_tools() if tool.name in self.allowed}
+                    for tool in await self.client.list_tools() if tool.name in self.allowed
+                        and (tool.name != 'project_bbs_comment' or self.allow_discussion_comments)
+                        and (tool.name != 'project_bbs_import_attachment' or self.allow_attachment_import)}
         return self._tools
 
     async def catalog(self, names: list[str] | None = None) -> dict[str, Any]:
@@ -195,7 +203,7 @@ class ProjectGateway:
                           for value in tools.values()],
                 "execution_entry": "project_action",
                 "preferred_workflow": tools.get("create_default_workflow"),
-                "read_only": self.allowed.issubset(self.read_only),
+                "read_only": set(tools).issubset(self.read_only),
                 "batch_schema_arguments": {"tool_names": [name for name in
                     ("input_schema", "project_editor_snapshot", "prepare_temporary_design", "submit_process_recipe")
                     if name in tools]}}
@@ -223,16 +231,32 @@ class ProjectGateway:
         encoded = json.dumps([name, stable], sort_keys=True, ensure_ascii=False, default=str)
         return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
+    def _comment_allowed(self) -> bool:
+        try:
+            return (self.allow_discussion_comments and self.comment_authority is not None
+                    and self.comment_authority() is True)
+        except Exception:
+            return False
+
     async def execute(self, name: str, arguments: Any = None) -> Any:
         tools = await self.schemas()
-        if self.read_only_mode and name not in self.read_only:
+        comment = name == 'project_bbs_comment' and self.allow_discussion_comments
+        if self.read_only_mode and name not in self.read_only and not comment:
             return self._error(name, "discussion_read_only", "Discussion only permits read-only project tools.")
+        if comment and not self._comment_allowed():
+            return self._error(name, 'assistant_dispatch_blocked',
+                'The current main-assistant request epoch does not permit a BBS comment.')
         if name not in self.allowed or name not in tools:
             return self._error(name, "unavailable_tool", "Use project_tools to select a currently allowed tool.")
         schema = tools[name]["input_schema"]
         arguments, detail = normalize_arguments(arguments)
         if arguments is None:
             return self._error(name, "invalid_arguments", detail, schema=schema)
+        if (name == 'project_bbs_import_attachment'
+                or name == 'project_manage' and arguments.get('operation') == 'bbs_import_attachment'):
+            if not self.allow_attachment_import:
+                return self._error(name, 'assistant_dispatch_blocked',
+                    'BBS attachment imports require the foreground main assistant in operation/research mode.')
         if self.read_only_mode:
             unknown = set(arguments) - set(schema.get("properties", {}))
             if unknown:
@@ -277,6 +301,10 @@ class ProjectGateway:
             return self._error(name, "repeated_read", "This read was already executed three times with unchanged arguments and no intervening write. "
                                "Reuse its result or select a needed page/field; no further dispatch occurred.")
         try:
+            if comment:
+                if not self._comment_allowed():
+                    return self._error(name, 'assistant_dispatch_blocked',
+                        'The current main-assistant request epoch does not permit a BBS comment.')
             # Raw MCP outcomes preserve is_error; business errors are ordinary
             # observations and do not consume one shared generic-tool retry cap.
             raw = await self.client.call_tool_mcp(name, arguments)

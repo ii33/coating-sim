@@ -8,17 +8,27 @@ No GUI, foreground-project state or implicit project environment is consulted.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from coat_sim.core.project_store import ProjectError, ProjectStore
 from coat_sim.project_recovery import ProjectOwnerLease
 
-READ_OPERATIONS = frozenset({"inspect", "resolve", "export", "recovery_read"})
-WRITE_OPERATIONS = frozenset({"import", "save", "create_document", "configure", "set_default", "recovery_record"})
+READ_OPERATIONS = frozenset({"inspect", "resolve", "export", "recovery_read", "bbs_list", "bbs_read", "bbs_history"})
+WRITE_OPERATIONS = frozenset({"import", "save", "create_document", "configure", "set_default", "recovery_record",
+                              "bbs_create", "bbs_reply", "bbs_update", "bbs_archive", "bbs_comment", "bbs_import_attachment"})
 PROJECT_OPERATIONS = READ_OPERATIONS | WRITE_OPERATIONS | {"create"}
 _FIELDS = {
     "create": {"root", "name", "operation_id"},
+    "bbs_list": {"post_type", "parent_id", "include_archived", "query", "offset", "limit"},
+    "bbs_read": {"post_id"}, "bbs_history": {"post_id", "offset", "limit"},
+    "bbs_create": {"post_type", "title", "body", "body_format", "attachments"},
+    "bbs_comment": {"title", "body", "parent_id", "expected_post_revision", "body_format", "attachments"},
+    "bbs_import_attachment": {"file"},
+    "bbs_reply": {"post_id", "title", "body", "expected_post_revision", "body_format", "attachments"},
+    "bbs_update": {"post_id", "title", "body", "expected_post_revision", "body_format", "attachments"},
+    "bbs_archive": {"post_id", "archived", "expected_post_revision"},
     "inspect": set(), "resolve": {"document_id"}, "export": {"document_id", "destination"},
     "recovery_read": set(), "import": {"file", "materials"},
     "save": {"document_id", "document", "materials"},
@@ -54,7 +64,7 @@ class ProjectManagementService:
         if not any(path == root or root in path.parents for root in self._authorized_roots):
             raise ProjectError("project_root_not_authorized", "Choose this project or file in the project manager before using AI tools")
 
-    def execute(self, operation: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    def execute(self, operation: str, arguments: dict[str, Any], *, actor="user") -> dict[str, Any]:
         if operation not in PROJECT_OPERATIONS or not isinstance(arguments, dict):
             raise ProjectError("invalid_operation", "Unknown project management operation")
         allowed = _FIELDS[operation] | ({"root", "project_id", "operation_id", "expected_revision"}
@@ -86,8 +96,10 @@ class ProjectManagementService:
                 store = ProjectStore.open(store.project_file)
                 if store.manifest["revision"] != expected:
                     raise ProjectError("stale_project", "Expected project revision no longer matches")
-                extra = self._mutate(store, operation, arguments)
+                extra = self._mutate(store, operation, arguments, actor=actor)
                 return self._result(store, identity, **extra)
+        if operation in {"bbs_list", "bbs_read", "bbs_history"}:
+            return self._result(store, **self._bbs(store, operation, arguments, actor=actor, read_only=True))
         if operation == "inspect":
             return self._result(store)
         if operation == "resolve":
@@ -103,7 +115,7 @@ class ProjectManagementService:
         raise AssertionError(operation)
 
     def execute_owned(self, operation: str, arguments: dict[str, Any], *,
-                      store: ProjectStore, project_id: str) -> dict[str, Any]:
+                      store: ProjectStore, project_id: str, actor="user") -> dict[str, Any]:
         """Use the caller's already-owned store under its session admission gate.
 
         This is a trusted in-process adapter seam, never a transport payload
@@ -137,9 +149,9 @@ class ProjectManagementService:
                 raise ProjectError("revision_required", "Mutations require a nonnegative expected_revision")
             if store.manifest["revision"] != expected:
                 raise ProjectError("stale_project", "Expected project revision no longer matches")
-            return self._result(store, operation_id, **self._mutate(store, operation, arguments))
+            return self._result(store, operation_id, **self._mutate(store, operation, arguments, actor=actor))
         # Read/export use the same bounded service contract and saved state.
-        return self.execute(operation, arguments)
+        return self.execute(operation, arguments, actor=actor)
 
     @staticmethod
     def _result(store: ProjectStore, operation_id: str = "", **extra: Any) -> dict[str, Any]:
@@ -150,7 +162,33 @@ class ProjectManagementService:
                 "project": manifest, **extra}
 
     @staticmethod
-    def _mutate(store: ProjectStore, operation: str, args: dict[str, Any]) -> dict[str, Any]:
+    def _bbs(store: ProjectStore, operation: str, args: dict[str, Any], *, actor="user", read_only=False) -> dict[str, Any]:
+        from coat_sim.core.project_bbs import ProjectBbsService
+        service = ProjectBbsService(store, actor=actor, read_only=read_only or operation == "bbs_comment",
+                                    permit_comment=operation == "bbs_comment")
+        parameters = {key: args[key] for key in _FIELDS[operation] if key in args}
+        methods: dict[str, Callable[..., dict[str, Any]]] = {"bbs_list": service.list_posts, "bbs_read": service.read_post,
+                   "bbs_history": service.history, "bbs_create": service.create_post,
+                   "bbs_reply": service.reply, "bbs_update": service.update_post,
+                   "bbs_archive": service.archive_post, "bbs_comment": service.comment}
+        required = {"bbs_list": set(), "bbs_comment": {"title", "body"}, "bbs_read": {"post_id"}, "bbs_history": {"post_id"},
+                    "bbs_create": {"post_type", "title", "body"},
+                    "bbs_reply": {"post_id", "title", "body", "expected_post_revision"},
+                    "bbs_update": {"post_id", "title", "body", "expected_post_revision"},
+                    "bbs_archive": {"post_id", "archived", "expected_post_revision"}}
+        missing = required[operation] - parameters.keys()
+        if missing:
+            raise ProjectError("bbs_invalid_arguments", "Missing BBS argument: " + sorted(missing)[0])
+        result = methods[operation](**parameters)
+        return result if operation in {"bbs_list", "bbs_history"} else {"post": result}
+
+    @staticmethod
+    def _mutate(store: ProjectStore, operation: str, args: dict[str, Any], *, actor="user") -> dict[str, Any]:
+        if operation == "bbs_import_attachment":
+            from coat_sim.core.project_bbs_attachments import import_attachment
+            return {"attachment": import_attachment(store, _text(args.get("file"), "file"))}
+        if operation.startswith("bbs_"):
+            return ProjectManagementService._bbs(store, operation, args, actor=actor)
         if operation == "import":
             return {"document_id": store.import_document(_text(args.get("file"), "file"), materials=args.get("materials"))}
         if operation == "save":

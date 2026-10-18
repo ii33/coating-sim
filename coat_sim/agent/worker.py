@@ -23,13 +23,23 @@ _MAX_LINE = 1_048_576
 _STREAM_BATCH_SECONDS = .040
 _STREAM_BATCH_CHARS = 4096
 _EVENT_BATCH_SECONDS = .100
+_TOOLKIT_SETTING_KEYS = (
+    "assistant_toolkit_enabled", "assistant_toolkit_workspace_root",
+    "assistant_toolkit_capabilities", "assistant_toolkit_profile_capabilities",
+    "assistant_toolkit_allow_model_context",
+)
 
 
 class ProtocolWriter:
     def __init__(self, stream: TextIO) -> None:
+        from coat_sim.agent.toolkit_config import normalized_toolkit_settings
+
         self.stream = stream
         self.secret = ""
         self.quota_config: dict[str, Any] = {}
+        self._toolkit_config = normalized_toolkit_settings({})
+        self._toolkit_generation = 0
+        self._toolkit_lock = threading.Lock()
         self.sessions: dict[str, str] = {}
         self.event_store: Any = None
         self._steering: dict[str, list[dict[str, Any]]] = {}
@@ -270,6 +280,41 @@ class ProtocolWriter:
             value = config.get(key)
             if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
                 self.quota_config[key] = value
+
+    def configure_toolkit(self, config: Mapping[str, Any], *, replace: bool = False) -> bool:
+        """Revoke old request grants on meaningful, credential-free scope changes.
+
+        Live configuration can be partial. A new accepted request instead uses
+        its own complete settings/defaults. Neither path grants more authority
+        to an already-running request, even if settings change back later.
+        """
+        from coat_sim.agent.toolkit_config import CAPABILITIES, normalized_toolkit_settings
+
+        updates = {key: config[key] for key in _TOOLKIT_SETTING_KEYS if key in config}
+        with self._toolkit_lock:
+            source = updates if replace else {**self._toolkit_config, **updates}
+            normalized = normalized_toolkit_settings(source)
+            # Match the adapter's fail-closed handling of malformed explicit
+            # capability grants, rather than silently retaining known entries.
+            for key in ("assistant_toolkit_capabilities", "assistant_toolkit_profile_capabilities"):
+                value = source.get(key, normalized[key])
+                if not isinstance(value, (list, tuple)) or any(item not in CAPABILITIES for item in value):
+                    normalized["assistant_toolkit_capabilities"] = []
+                    normalized["assistant_toolkit_profile_capabilities"] = []
+                    break
+            if normalized == self._toolkit_config:
+                return False
+            self._toolkit_config = normalized
+            self._toolkit_generation += 1
+            return True
+
+    def toolkit_grant_snapshot(self) -> int:
+        with self._toolkit_lock:
+            return self._toolkit_generation
+
+    def toolkit_generation_is_current(self, generation: object) -> bool:
+        with self._toolkit_lock:
+            return type(generation) is int and generation == self._toolkit_generation
 
     def redact(self, text: str) -> str:
         return text.replace(self.secret, "[凭据已隐藏]") if self.secret else text
@@ -582,8 +627,11 @@ async def serve(writer: ProtocolWriter) -> None:
         if op == "configure":
             if isinstance(command.get("config"), dict):
                 writer.configure_quota(command["config"])
+                toolkit_changed = writer.configure_toolkit(command["config"])
                 if active is not None and not active.done():
-                    writer.emit("status", active_id, text="额度设置已更新，将用于下一次模型请求。")
+                    writer.emit("status", active_id, text=(
+                        "工具集设置已更新，本轮旧授权已失效；新的工具集授权从下一轮生效。"
+                        if toolkit_changed else "额度设置已更新，将用于下一次模型请求。"))
             continue
         if op == "cancel":
             if active is not None and not active.done() and (not request_id or request_id == active_id):
@@ -610,6 +658,8 @@ async def serve(writer: ProtocolWriter) -> None:
                             text="上下文整理缺少模型配置。")
                 continue
             active_id, active_kind = request_id, "compact"
+            writer.configure_toolkit(command["config"], replace=True)
+            command["_toolkit_grant_generation"] = writer.toolkit_grant_snapshot()
             active = asyncio.create_task(execute(command), name=f"compact-{request_id}")
             continue
         if op == "decision_response":
@@ -677,6 +727,11 @@ async def serve(writer: ProtocolWriter) -> None:
             writer.emit("error", str(request_id)[:128], text="任务参数无效。")
             continue
         active_id, active_kind = request_id, "run"
+        # Bind before scheduling: a queued configure may run before execute or
+        # while runtime initialization awaits an external provider. Never let
+        # that newer generation authorize this request's older settings.
+        writer.configure_toolkit(config, replace=True)
+        command["_toolkit_grant_generation"] = writer.toolkit_grant_snapshot()
         active = asyncio.create_task(execute(command), name=f"assistant-{request_id}")
 
 

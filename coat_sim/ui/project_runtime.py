@@ -180,6 +180,9 @@ class ProjectRuntime(QObject):
         """Qt Quit and global commit use the same fresh project preflight."""
         if self.bridge._closing or self.bridge._runtime_shutdown_requested:
             return
+        if self.owner._busy:
+            self.owner._set_error("工程请求仍在处理，请稍后关闭。")
+            return
         try:
             for session in self.owner.host.sessions():
                 if self.bridge._project_shutdown_approved:
@@ -217,7 +220,7 @@ class ProjectRuntime(QObject):
                 self._startup_windows.clear()
                 self._record_history()
                 report_startup_event("ready", endpoint=self._endpoint)
-        if self._failed or (self._finished and not self.owner.host.sessions()):
+        if self._failed or (self._finished and not self.owner._busy and not self.owner.host.sessions()):
             if not history_settled:
                 if self._history_draining_started is None:
                     self._history_draining_started = time.monotonic()

@@ -127,7 +127,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
     manage = commands.add_parser("manage", help="Strict identity/revision-bound headless project operation")
     manage.add_argument("operation", choices=("create", "inspect", "resolve", "export", "recovery_read",
-                                              "import", "save", "create_document", "configure", "set_default", "recovery_record"))
+                                              "import", "save", "create_document", "configure", "set_default", "recovery_record",
+                                              "bbs_list", "bbs_read", "bbs_history", "bbs_create", "bbs_reply", "bbs_update", "bbs_archive", "bbs_comment", "bbs_import_attachment"))
     manage.add_argument("arguments", help="Explicit JSON object with root/project_id and mutation operation_id/expected_revision")
     for command in (inspect, import_document, save, create_document, configure, set_default,
                     resolve, export, package_export, recovery_record, recovery_read):

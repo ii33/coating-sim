@@ -28,7 +28,7 @@ def adapter(tmp_path, registry=None, **kwargs):
 def test_factory_manifest_and_lazy_catalog(tmp_path):
     host = adapter(tmp_path)
     manifest = host.portable_manifest()
-    assert len(manifest['tools']) == 30
+    assert len(manifest['tools']) == 39
     assert manifest['backend']['dsh']['integration_tested'] is False
     summary = host.catalog()['data']['tools']
     assert all('parameters' not in s for s in summary)
@@ -128,9 +128,12 @@ def test_actual_offline_runtime_exposes_only_compact_toolkit_entrypoints():
     assert rpc == []
     assert {'toolkit_status', 'toolkit_catalog', 'toolkit_action'} <= observed[0]
     assert 'read' not in observed[0] and 'pip_install' not in observed[0]
-    assert returned[0].content['data']['enabled'] is False
-    assert returned[1].content['data']['tools'] == []
-    assert returned[2].content['error']['code'] == 'capability_disabled'
+    assert returned[0].content['data']['enabled'] is True
+    assert returned[0].content['data']['workspace']['kind'] == 'private'
+    names = {tool['name'] for tool in returned[1].content['data']['tools']}
+    assert {'read', 'write', 'delete', 'restore', 'mkdir', 'memory_upsert'} <= names
+    assert not names.intersection({'run', 'sh', 'pwsh', 'pip_install', 'sftp_hosts'})
+    assert returned[2].content['error']['code'] == 'io_error'
 
 
 def test_active_profile_narrows_scope_and_persona_is_untrusted(tmp_path):

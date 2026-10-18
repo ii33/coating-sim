@@ -9,6 +9,8 @@ import shutil
 import stat
 import uuid
 
+from coat_sim.managed_paths import assert_not_managed_project_path
+
 from .atomic_io import replace_with_retry
 from .design_files import (design_kind_from_path, legacy_design_kind_from_path,
                            validate_design_path)
@@ -161,8 +163,11 @@ def read_data_file(path: str, offset: int = 0, max_chars: int = 16000) -> dict:
     return {**info, "content": text[offset:end], "offset": offset,
             "total_chars": len(text), "truncated": end < len(text)}
 
+
+
 def write_data_file(path: str, content: str, *, overwrite: bool = False, encoding: str = "text") -> dict:
     target = data_path(path, root_allowed=False)
+    assert_not_managed_project_path(target)
     kind = _writable_design_kind(target)
     if target.exists() and not overwrite:
         raise ValueError("文件已存在；覆盖须明确指定 overwrite=true")
@@ -186,6 +191,8 @@ def write_data_file(path: str, content: str, *, overwrite: bool = False, encodin
 
 def move_data_path(source: str, destination: str) -> dict:
     src = data_path(source, root_allowed=False); dst = data_path(destination, root_allowed=False)
+    assert_not_managed_project_path(src, include_descendants=True)
+    assert_not_managed_project_path(dst)
     kind = _writable_design_kind(dst)
     if not src.exists() or dst.exists() or dst.is_relative_to(src):
         raise ValueError("源不存在、目标已存在，或目标在源目录内部")
@@ -199,6 +206,7 @@ def move_data_path(source: str, destination: str) -> dict:
 
 def delete_data_path(path: str, recursive: bool = False) -> dict:
     target = data_path(path, root_allowed=False)
+    assert_not_managed_project_path(target, include_descendants=True)
     if target.is_dir():
         if recursive:
             # Refuse links/junctions before recursive deletion; never follow external paths.
@@ -217,6 +225,7 @@ def delete_data_path(path: str, recursive: bool = False) -> dict:
 
 def make_data_directory(path: str) -> dict:
     target = data_path(path)
+    assert_not_managed_project_path(target)
     target.mkdir(parents=True, exist_ok=True)
     return file_info(target)
 

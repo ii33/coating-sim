@@ -587,6 +587,22 @@ class ProjectStore:
                 raise ProjectError("dependency_conflict", "Project dependency kind mismatch: " + path)
             if dependency not in found:
                 found.append(dependency)
+        if row["kind"] == "project_bbs_post":
+            if document["post_id"] != identity:
+                raise ProjectError("dependency_conflict", "BBS post identity differs from its manifest record")
+            parent = document["parent_id"]
+            if parent is not None:
+                if (parent not in records or records[parent]["kind"] != "project_bbs_post"
+                        or parent not in data or data[parent]["parent_id"] is not None
+                        or data[parent]["post_type"] != document["post_type"]):
+                    raise ProjectError("dependency_conflict", "BBS reply must reference a same-project topic of the same type")
+                found.append(parent)
+            for revision in document["history"]:
+                for attachment in revision.get("attachments", []):
+                    from .project_bbs_attachments import validate_attachment_asset
+                    validate_attachment_asset(attachment, records, data)
+                    if attachment["asset_id"] not in found:
+                        found.append(attachment["asset_id"])
         if row["kind"] == "deposition_configuration":
             dependency = document["process_document_id"]
             if dependency not in records or records[dependency]["kind"] != "process":
@@ -995,6 +1011,8 @@ class ProjectStore:
 
     @staticmethod
     def _add_document(records, data, kind, document):
+        if kind == "project_bbs_post":
+            raise ProjectError("bbs_service_required", "Create BBS posts through ProjectBbsService")
         identity = _new_id()
         if identity in records:
             raise ProjectError("dependency_conflict", "Generated project document identity collided")
@@ -1079,6 +1097,8 @@ class ProjectStore:
             if identity in expected and records[identity]["sha256"] != expected[identity]:
                 raise ProjectError("stale_document", "Managed document changed since it was loaded")
             kind = records[identity]["kind"]
+            if kind == "project_bbs_post":
+                raise ProjectError("bbs_service_required", "Edit BBS posts through ProjectBbsService to preserve attribution/history")
             normalized = normalize_document(kind, document)
             if kind == "expression_template" and normalized["template_id"] != data[identity]["template_id"]:
                 raise ProjectError("dependency_conflict", "Saving a template cannot change its template ID")
@@ -1102,6 +1122,8 @@ class ProjectStore:
         records, data = self._read_all()
         if document_id not in records:
             raise ProjectError("missing_document", "Project document ID does not exist")
+        if records[document_id]["kind"] == "project_bbs_post":
+            raise ProjectError("bbs_service_required", "BBS posts may be archived, never removed")
         if expected_revision is not None and records[document_id]["sha256"] != expected_revision:
             raise ProjectError("stale_document", "Managed document changed since it was loaded")
         if self._manifest["default_configuration_id"] == document_id or any(
@@ -1150,6 +1172,8 @@ class ProjectStore:
             if identity in expected and records[identity]["sha256"] != expected[identity]:
                 raise ProjectError("stale_document", "Managed document changed since this draft was loaded")
             kind = records[identity]["kind"]
+            if kind == "project_bbs_post":
+                raise ProjectError("bbs_service_required", "Edit BBS posts through ProjectBbsService to preserve attribution/history")
             normalized = normalize_document(kind, document)
             if kind == "expression_template" and normalized["template_id"] != data[identity]["template_id"]:
                 raise ProjectError("dependency_conflict", "Saving a template cannot change its template ID")
@@ -1211,6 +1235,8 @@ class ProjectStore:
         if document_id not in records:
             raise ProjectError("missing_document", "Project document ID does not exist")
         kind = records[document_id]["kind"]
+        if kind == "project_bbs_post":
+            raise ProjectError("bbs_service_required", "Edit BBS posts through ProjectBbsService to preserve attribution/history")
         normalized = normalize_document(kind, document)
         if kind == "expression_template" and normalized["template_id"] != data[document_id]["template_id"]:
             raise ProjectError("dependency_conflict", "Saving a template cannot change its template ID")

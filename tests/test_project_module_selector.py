@@ -169,9 +169,10 @@ def test_three_submenus_preserve_all_leaves_and_separate_tools(runtime: Selector
         assert [runtime.category_item(menu, index).objectName() for index in range(len(keys))] == [
             "projectModuleAction_" + key for key in keys
         ]
-    assert top.property("count") == 6  # Three categories, separator, asset library and queue.
+    assert top.property("count") == 7  # Three categories, separator, assets, queue and BBS.
     assert runtime.category_item(top, 4).objectName() == "projectModuleAction_project_resources"
     assert runtime.category_item(top, 5).objectName() == "projectModuleAction_compute_queue"
+    assert runtime.category_item(top, 6).objectName() == "projectModuleAction_project_bbs"
     assert not any(option["key"] == "materials" for option in runtime.qml(root, "toolModules()"))
     assert runtime.item(root, "projectModuleAction_ray_trace").property("checked")
     assert not runtime.item(root, "projectModuleAction_main").property("checked")
@@ -239,7 +240,7 @@ def test_unknown_modules_remain_reachable_without_a_fourth_category(runtime: Sel
     root, owner = runtime.create("future_tool", modules=modules)
     assert runtime.item(root, "projectModuleSelector").property("text") == "未来工具"
     top = runtime.menu(root)
-    assert top.property("count") == 7
+    assert top.property("count") == 8
     runtime.click(runtime.item(root, "projectModuleSelector"))
     runtime.click(runtime.item(root, "projectModuleAction_future_tool"))
     assert owner.calls == ["future_tool"]

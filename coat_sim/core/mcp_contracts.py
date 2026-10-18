@@ -52,14 +52,14 @@ validators = _jsonschema.validators
 # explicit classifications cover the remaining MCP adapters, including optional
 # development tools. New tools must be classified deliberately.
 _READ = frozenset('''project_management_catalog project_list project_inspect
-project_resolve project_research_search project_research_read developer_status
+project_resolve project_bbs_list project_bbs_read project_bbs_history project_research_search project_research_read developer_status
 developer_files python_sandbox_status list_data_files read_data_file
 read_software_manual preview_film_stack_import read_process_layers
 film_design_schema source_quadrature convert_gear_geometry sample_substrate_outline
 sample_substrate_surface calculation_history estimate_calculation convert_time_fields
 list_windows read_window project_editor_snapshot inspect_appearance_asset
 wait_calculation_job mask_optimization_groups'''.split())
-_WRITE = frozenset('''project_open project_research_save project_manage
+_WRITE = frozenset('''project_bbs_import_attachment project_bbs_comment project_bbs_write project_open project_research_save project_manage
  developer_report_issue developer_issue_reports developer_access developer_checks
  developer_persona run_python_script write_data_file move_data_path delete_data_path
  make_data_directory import_mask_dxf export_mask_dxf export_mask_drawing

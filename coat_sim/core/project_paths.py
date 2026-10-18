@@ -23,6 +23,7 @@ PROJECT_TYPED_DIRECTORY_BY_KIND = MappingProxyType({
     "raytrace_request": "data/raytrace",
     "appearance_configuration": "data/appearance",
     "binary_asset": "data/assets",
+    "project_bbs_post": "data/bbs",
 })
 
 PROJECT_LAYOUT_DIRECTORIES = (
@@ -39,6 +40,7 @@ PROJECT_LAYOUT_DIRECTORIES = (
     "data/materials",
     "data/configurations",
     "data/assets",
+    "data/bbs",
     "imports",
     "exports",
     "assets",
