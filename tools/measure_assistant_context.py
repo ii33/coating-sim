@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 import hashlib
 from importlib.metadata import version
 import json
@@ -19,6 +19,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -51,6 +52,62 @@ def measure(value):
     return {"characters": len(text), "utf8_bytes": len(text.encode("utf-8")),
             "project_rule_estimated_tokens": _text_tokens(text),
             "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()}
+
+
+@contextmanager
+def _prohibit_network():
+    """Deny new Python socket traffic, retaining stdlib event-loop wake pipes.
+
+    Keep socket.socket as the real class: Windows asyncio/AnyIO uses both
+    isinstance checks and the TCP socketpair fallback during loop startup.
+    Only the saved stdlib socketpair call may bind/listen/connect, in its own
+    thread. This is a stdlib offline fault guard, not an OS network sandbox or
+    a guard for custom loop implementations. Existing connected sockets retain
+    send/sendall so already-running loops can wake.
+    """
+    real_socketpair = socket.socketpair
+    constructing_pair = threading.local()
+
+    def prohibited(*args, **kwargs):
+        raise AssertionError("Network prohibited during offline context measurement")
+
+    async def prohibited_async(*args, **kwargs):
+        prohibited(*args, **kwargs)
+
+    def pair_operation(operation):
+        def guarded(*args, **kwargs):
+            if getattr(constructing_pair, "active", False):
+                return operation(*args, **kwargs)
+            return prohibited(*args, **kwargs)
+        return guarded
+
+    def internal_socketpair(*args, **kwargs):
+        previous = getattr(constructing_pair, "active", False)
+        constructing_pair.active = True
+        try:
+            return real_socketpair(*args, **kwargs)
+        finally:
+            constructing_pair.active = previous
+
+    with ExitStack() as stack:
+        for name in ("bind", "listen", "connect", "connect_ex"):
+            stack.enter_context(patch.object(socket.socket, name,
+                                             pair_operation(getattr(socket.socket, name))))
+        for name in ("sendto", "sendmsg"):
+            if hasattr(socket.socket, name):
+                stack.enter_context(patch.object(socket.socket, name, prohibited))
+        for name in ("getaddrinfo", "gethostbyname", "gethostbyname_ex", "gethostbyaddr", "getnameinfo"):
+            stack.enter_context(patch.object(socket, name, prohibited))
+        for name in ("create_connection", "create_datagram_endpoint"):
+            stack.enter_context(patch.object(asyncio.BaseEventLoop, name, prohibited_async))
+        if sys.platform == "win32":
+            # IOCP bypasses socket.connect/sendto via ConnectEx/WSASendTo.
+            # Its wake pipe only needs socketpair plus recv/send, left intact.
+            from asyncio.windows_events import IocpProactor
+            for name in ("connect", "sendto"):
+                stack.enter_context(patch.object(IocpProactor, name, prohibited))
+        stack.enter_context(patch.object(socket, "socketpair", internal_socketpair))
+        yield
 
 
 async def capture_configuration(mode="chat", *, external_enabled=False, library_enabled=False,
@@ -106,7 +163,7 @@ async def capture_configuration(mode="chat", *, external_enabled=False, library_
         stack.enter_context(patch.object(runtime, "_chat_model", return_value=FunctionModel(capture, stream_function=stream_capture, profile=production_model.profile)))
         stack.enter_context(patch.object(runtime, "AsyncOpenAI"))
         stack.enter_context(patch.object(Path, "read_text", read_source))
-        stack.enter_context(patch.object(socket, "socket", side_effect=AssertionError("Network prohibited")))
+        stack.enter_context(_prohibit_network())
         try:
             await runtime.run_task(command, writer,
                 research_library=TextFileResearchLibrary(documents={}) if library_enabled else None,
@@ -167,7 +224,7 @@ async def report(*, discussion_policy=True):
         components["on_demand_manual_" + key] = measure(chapter["content"])
     skills = {path.parent.name: measure(path.read_text(encoding="utf-8"))
               for path in sorted(runtime.SKILLS_DIRECTORY.glob("*/SKILL.md"))}
-    return {"method": "Real run_task + local FunctionModel with production OpenAI profile/schema transformer at the prepared request boundary; fresh temporary state, zh-CN, standard tone, empty backend history; no credentials, provider requests or network",
+    return {"method": "Real run_task + local FunctionModel with production OpenAI profile/schema transformer at the prepared request boundary; fresh temporary state, zh-CN, standard tone, empty backend history; no credentials or provider requests; new Python network traffic blocked except stdlib event-loop socketpair construction",
             "token_basis": "Project estimate only: ceil(ASCII characters / 4) + non-ASCII characters. Not model tokenizer or billed usage. Tool JSON uses compact UTF-8 with actual pinned OpenAI profile customization and mapping. Provider framing, messages/history, outputs, cache behavior and dynamic library/MCP data are separate.",
             "dependency_versions": {name: version(name) for name in ("pydantic-ai-slim", "pydantic-ai-harness")},
             "source_sizes_and_hashes": {relative: measure((ROOT / relative).read_text(encoding="utf-8")) for relative in (
