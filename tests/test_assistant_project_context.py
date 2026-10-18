@@ -22,11 +22,13 @@ pytestmark = [pytest.mark.contract, pytest.mark.qt]
 
 
 def clients():
+    # Registry targets are absolute on the host platform, including Windows.
+    base = Path(__file__).resolve().parent / "opened"
     return [{"client_id": "host-one", "generation": "owner-one", "state": "alive",
              "project_sessions": [{"project_id": "project-a", "generation": "session-a",
-                 "root": "/opened/project-a", "project_file": "/opened/project-a/project.coatproj",
+                 "root": str(base / "project-a"), "project_file": str(base / "project-a/project.coatproj"),
                  "name": "工程 A"}, {"project_id": "project-b", "generation": "session-b",
-                 "root": "/opened/project-b", "project_file": "/opened/project-b/project.coatproj",
+                 "root": str(base / "project-b"), "project_file": str(base / "project-b/project.coatproj"),
                  "name": "工程 B"}]}]
 
 
