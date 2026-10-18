@@ -133,6 +133,10 @@ def _cold_font_probe(entrypoint: str, state_directory: str) -> None:
     """Exercise real entry initialization with isolated state and no services."""
     from unittest.mock import patch
 
+    # The real launcher redirects both stdout names to its bounded log.
+    # Keep the probe result channel captured before application initialization.
+    report_stdout = sys.stdout
+
     # The guard isolates QSettings and networking, but never registers fonts.
     from tests import qt_test_guard  # noqa: F401
     from PySide6.QtCore import QTimer
@@ -258,7 +262,7 @@ def _cold_font_probe(entrypoint: str, state_directory: str) -> None:
         if errors:
             raise errors[0]
         assert "default" in report, "entry point did not present a window"
-    print(json.dumps(report), flush=True)
+    print(json.dumps(report), file=report_stdout, flush=True)
 
 
 def test_explicit_theme_package_font_family_override_is_preserved(

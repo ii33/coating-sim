@@ -91,7 +91,7 @@ def test_missing_catalog_is_not_fabricated_and_broken_reference_is_not_repaired(
 def test_native_project_medium_controls_match_model_and_missing_ids(tmp_path):
     from PySide6.QtCore import QCoreApplication, QEvent, QUrl
     from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent
-    from PySide6.QtQuick import QQuickItem
+    from PySide6.QtQuick import QQuickItem, QQuickWindow
     from PySide6.QtTest import QTest
     from coat_sim.ui.film_quick_controller import FilmDesignQuickController
     from coat_sim.ui.theme_service import ThemeService
@@ -102,7 +102,7 @@ def test_native_project_medium_controls_match_model_and_missing_ids(tmp_path):
     ThemeService.instance().attach_engine(engine, "Theme")
     component = QQmlComponent(engine, QUrl.fromLocalFile(str(Path(__file__).resolve().parents[1] / "coat_sim/ui/qml/FilmDesignQuick.qml")))
     root = component.createWithInitialProperties({"controller": controller})
-    assert root is not None, [error.toString() for error in component.errors()]
+    assert isinstance(root, QQuickWindow), [error.toString() for error in component.errors()]
     try:
         root.show()
         tabs = root.findChild(QQuickItem, "filmDesignPageTabs")
@@ -133,11 +133,13 @@ def test_native_project_medium_controls_match_model_and_missing_ids(tmp_path):
         assert controller.setMediumValue("incident_medium", "optical_set_id", "missing-set")
         QTest.qWait(30)
         dataset = root.findChild(QQuickItem, "filmDesignMediumDataset_incident_medium")
+        assert dataset is not None
         assert dataset.property("currentIndex") == -1
         assert controller.currentDesign()["incident_medium"]["optical_set_id"] == "missing-set"
         assert controller.setMediumValue("incident_medium", "material_id", "missing-medium")
         QTest.qWait(30)
         material = root.findChild(QQuickItem, "filmDesignMediumMaterial_incident_medium")
+        assert material is not None
         assert material.property("currentIndex") == -1
         assert not session.save_current()
     finally:
@@ -145,5 +147,5 @@ def test_native_project_medium_controls_match_model_and_missing_ids(tmp_path):
         root.deleteLater()
         controller.deleteLater()
         engine.deleteLater()
-        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         QCoreApplication.processEvents()

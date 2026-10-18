@@ -58,6 +58,19 @@ def ensure_no_reparse_components(path: str | Path) -> Path:
     return absolute
 
 
+def validate_research_library_root(root: str) -> Path:
+    """Validate an explicit local root without enumerating or reading documents."""
+    if not root or len(root) > 4096 or "\0" in root or not Path(root).is_absolute():
+        raise ValueError("本地研究库须为有效的绝对目录路径（最长 4096 字符）。")
+    try:
+        safe_root = ensure_no_reparse_components(root)
+        if not safe_root.is_dir() or not os.access(safe_root, os.R_OK | os.X_OK):
+            raise OSError("unreadable directory")
+    except (OSError, ValueError) as exc:
+        raise ValueError("本地研究库目录不存在、不可读或含 symlink/reparse/UNC；请检查路径及权限。") from exc
+    return safe_root
+
+
 class _DocumentTooLarge(ValueError):
     """Raised when a document exceeds the provider's bounded read size."""
 
@@ -104,6 +117,37 @@ def assistant_tools(provider: ResearchLibraryProvider | None, *,
                     "message": "The local research library is temporarily unavailable."}
 
     return [research_library_search, research_library_read]
+
+
+RESEARCH_LIBRARY_SETUP = (
+    "在设置窗口“本地研究库”填写已授权正文目录的绝对路径并保存；也可在 config/ui_settings.json 设置 assistant_research_library_root，"
+    "或按 docs/assistant.md 配置 config/assistant_research_library.json；下一轮请求重新检查。"
+    "不要填写 GitHub URL，不会自动克隆或下载研究库。")
+
+
+def status_tool(provider: ResearchLibraryProvider | None, *, allow_model_context: bool = False,
+                readiness: Mapping[str, Any] | None = None) -> Callable[..., dict[str, Any]]:
+    """Expose connection diagnostics without reading content or expanding access."""
+    ready = provider is not None and allow_model_context is True
+    supplied = dict(readiness or {})
+    state = str(supplied.get("status", "connected_read_only" if ready else "not_configured"))
+    if not ready and (provider is not None or state.startswith("connected")):
+        state = "context_not_authorized"
+        supplied = {}
+
+    def research_library_status() -> dict[str, Any]:
+        """Check local research library readiness and setup steps, without searching or reading files. This local library is distinct from external literature MCP and project research evidence."""
+        return {
+            "ok": True, "status": state, "ready": ready,
+            "tools": ["research_library_search", "research_library_read"] if ready else [],
+            "message": str(supplied.get("message", "本地研究库已连接（只读）。" if ready else RESEARCH_LIBRARY_SETUP)),
+            "setup": RESEARCH_LIBRARY_SETUP if not ready else None,
+            "metadata": supplied.get("metadata") if ready else None,
+            "scope": "仅本机显式配置的文本研究库；不代表完整远程仓库。",
+            "other_sources": "OpenAlex/Crossref 等外部文献 MCP 和当前项目研究证据是独立来源，不等于本地研究库。",
+        }
+
+    return research_library_status
 
 
 class TextFileResearchLibrary:
@@ -348,8 +392,8 @@ class TextFileResearchLibrary:
 
         result: list[tuple[str, str]] = []
         total_bytes = 0
-        truncation_reason: str | None = None
-        skipped_reasons: dict[str, int] = {}
+        truncation_reason = None
+        skipped_reasons = {}
         started = time.monotonic()
         directories_seen = 0
         directories_scheduled = 1

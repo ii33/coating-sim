@@ -112,8 +112,8 @@ class ProjectExitClient:
                 raise UiControlError("invalid_target", "退出前台目标身份无效。")
             from coat_sim.core.process_identity import _process_identity
             from coat_sim.assistant_process import _allow_foreground_process
-            state, start = _process_identity(pid)
-            if state != "alive" or start != expected:
+            process_state, start = _process_identity(pid)
+            if process_state != "alive" or start != expected:
                 raise UiControlError("stale_client", "退出前台目标进程已变化。")
             return {"granted": _allow_foreground_process(pid), "generation": self.generation}
         if operation == "lifecycle_commit":

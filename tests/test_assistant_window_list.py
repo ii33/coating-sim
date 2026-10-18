@@ -4,6 +4,7 @@ import tempfile
 import unittest
 import warnings
 from types import SimpleNamespace
+from typing import ClassVar, cast
 from unittest.mock import patch
 
 from PySide6.QtCore import QCoreApplication, QEvent, QMetaObject, QObject, Property, Qt, QUrl, Signal, Slot
@@ -107,9 +108,11 @@ class FakeControllerBridge(QObject):
 
 
 class AssistantWindowListTests(unittest.TestCase):
+    app: ClassVar[QApplication]
+
     @classmethod
     def setUpClass(cls):
-        cls.app = QApplication.instance() or QApplication([])
+        cls.app = cast(QApplication, QApplication.instance() or QApplication([]))
 
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -161,7 +164,7 @@ class AssistantWindowListTests(unittest.TestCase):
             {"id": "null-title", "title": None},
             {"id": "project-title", "title": " 工程 A · 膜系设计 "},
         ])
-        titles = {row["id"]: row["title"] for row in self.desktop.openWindows}
+        titles = {row["id"]: row["title"] for row in self.desktop.property("openWindows")}
         self.assertEqual(titles["empty-title"], "未命名窗口")
         self.assertEqual(titles["space-title"], "未命名窗口")
         self.assertEqual(titles["null-title"], "未命名窗口")
@@ -297,12 +300,13 @@ class AssistantWindowListTests(unittest.TestCase):
         )
         self.desktop._create_tray()
         menu_window = self.desktop._tray_menu_window
-        self.assertIsNotNone(menu_window)
+        assert menu_window is not None
         tray_menu = menu_window.findChild(QObject, "assistantTrayQuickMenu")
-        self.assertIsNotNone(tray_menu)
+        assert tray_menu is not None
         self.assertTrue(QMetaObject.invokeMethod(menu_window, "openAtCursor"))
         QTest.qWait(60)
         waiting = menu_window.findChild(QObject, "assistantCancelExitWaitingItem")
+        assert waiting is not None
         self.assertEqual(waiting.property("height"), 0)
         self.desktop.set_application_exit_waiting(True)
         self.app.processEvents()

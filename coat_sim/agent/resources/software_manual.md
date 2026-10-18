@@ -285,6 +285,7 @@ variables 用 side 与稳定 layer_id 指定可变层，lower_nm/upper_nm 为物
 - multistart_count：多起点数；population_size：差分进化群体实际候选数，至少 5。
 - validation_samples_multiplier：留出波长采样加密倍率；训练 targets_met 与 validation_complete/validation_targets_met 分开解读，不能用未完成验证宣称全波段达标。
 - execution_mode=serial/deferred_batch、batch_size：差分进化的更新/批量控制，不是 GPU 开关，不修改冻结身份或预算，也不能给其他 solver 强行加批量模式。
+- execution_device：可选冻结设备绑定，缺省 None 沿用原执行路径；显式绑定仅用于 differential_evolution + deferred_batch。CPU kind=film_cpu_v1，可同时指定 cpu_workers（1–1024）及 cpu_parallel_axis（auto/candidates/wavelengths）；Intel XPU 绑定包含探测返回的 kind/index/uuid/name/torch_version，不手工编造设备身份。XPU 当前只支持单条件、固定单角度、前表面入射、单面半无限基片及前表面厚度变量，运行前复核身份与依赖，失败不静默回退 CPU。
 - 结构专用：candidate_materials 冻结可插层材料/光学组；max_total_layers 包括宿主拆分层，max_added_layers 数新增候选材料层；当前有界结构实现要求 max_added_layers=1 且 growth_cycles=1，不能建议增加这两个值；min_thickness_nm/max_thickness_nm 为单层界限，max_total_thickness_nm 为整堆界限；position_samples、candidate_budget、needle_thickness_samples、growth_steps_nm/growth_phase_fractions/growth_cycles 控制有限候选规模和生长范围，不代表搜索完连续设计空间。
 
 结果保留原作业身份、实际方法/seed、停止原因、成功/失败评估数、训练评分、留出验证、候选与不可用原因。取消请求须等待实际终态；部分候选是否可查看/应用依服务明确合同，不把 cancelled 当 completed，也不把 succeeded 当 targets_met。应用候选、覆盖保存和改变原设计分别遵循用户授权与最新设计修订检查。

@@ -16,7 +16,11 @@ def test_first_gesture_grants_only_first_exact_process_and_rejects_reuse(monkeyp
     states = {501: ('alive', a.process_start), 502: ('alive', b.process_start)}
     monkeypatch.setattr(module, '_process_identity', lambda pid: states[pid])
     granted = []
-    monkeypatch.setattr(module, '_allow_foreground_process', lambda pid: granted.append(pid) or True)
+    def grant_foreground(pid):
+        granted.append(pid)
+        return True
+
+    monkeypatch.setattr(module, '_allow_foreground_process', grant_foreground)
     assert registry.prepare_exit_activation() == 'a'
     assert granted == [501]
     states[501] = ('alive', None)
@@ -55,7 +59,7 @@ def test_handoff_rejects_invalid_exit_or_target_without_os_grant(monkeypatch, fa
     import coat_sim.core.process_identity as identities
     clock = [0.0]
     gate = ProjectExitClient('generation', prepare=lambda: 'pending' if failure == 'pending' else 'ready', commit=lambda: True, cancel=lambda: None, clock=lambda: clock[0])
-    args = {'exit_id': 'exit', 'client_generation': 'generation'}
+    args: dict[str, object] = {'exit_id': 'exit', 'client_generation': 'generation'}
     reply = gate.dispatch('lifecycle_prepare', args)
     args.update(permit_id=reply['permit_id'], target_pid=502, target_start='start-502')
     if failure == 'permit':
@@ -72,7 +76,11 @@ def test_handoff_rejects_invalid_exit_or_target_without_os_grant(monkeypatch, fa
         args['target_pid'] = True
     monkeypatch.setattr(identities, '_process_identity', lambda pid: ('alive', 'reused' if failure == 'target_reused' else 'start-502'))
     grants = []
-    monkeypatch.setattr(module, '_allow_foreground_process', lambda pid: grants.append(pid) or True)
+    def grant_foreground(pid):
+        grants.append(pid)
+        return True
+
+    monkeypatch.setattr(module, '_allow_foreground_process', grant_foreground)
     with pytest.raises(UiControlError):
         gate.dispatch('lifecycle_handoff', args)
     assert grants == []
@@ -80,8 +88,12 @@ def test_handoff_rejects_invalid_exit_or_target_without_os_grant(monkeypatch, fa
 def test_valid_ready_handoff_does_not_close_or_change_permit(monkeypatch):
     import coat_sim.core.process_identity as identities
     closed = []
-    gate = ProjectExitClient('generation', prepare=lambda: 'ready', commit=lambda: closed.append(True) or True, cancel=lambda: None)
-    args = {'exit_id': 'exit', 'client_generation': 'generation'}
+    def commit():
+        closed.append(True)
+        return True
+
+    gate = ProjectExitClient('generation', prepare=lambda: 'ready', commit=commit, cancel=lambda: None)
+    args: dict[str, object] = {'exit_id': 'exit', 'client_generation': 'generation'}
     reply = gate.dispatch('lifecycle_prepare', args)
     monkeypatch.setattr(identities, '_process_identity', lambda pid: ('alive', 'start-502'))
     monkeypatch.setattr(module, '_allow_foreground_process', lambda pid: pid == 502)

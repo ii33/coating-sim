@@ -10,7 +10,7 @@ from PySide6.QtCore import QObject, Property, QCoreApplication, QEvent, QPoint, 
 from PySide6.QtGui import QColor, QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent
 from PySide6.QtQuick import QQuickItem, QQuickWindow
-from PySide6.QtTest import QTest
+from PySide6.QtTest import QSignalSpy, QTest
 from PySide6.QtWidgets import QApplication
 
 from coat_sim.ui import assistant_desktop
@@ -24,6 +24,7 @@ QML = ROOT / "coat_sim/ui/qml"
 
 def _visual_window_for(item: QObject) -> QQuickWindow:
     """Find a popup surface without calling QQuickItem.window() on its child."""
+    assert isinstance(item, QQuickItem)
     for window in QGuiApplication.allWindows():
         if isinstance(window, QQuickWindow):
             content = window.contentItem()
@@ -83,6 +84,9 @@ class ThemeStub(QObject):
 
 
 class BubbleTests(unittest.TestCase):
+    bubble: QQuickWindow
+    menu: QObject
+
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
@@ -110,10 +114,12 @@ class BubbleTests(unittest.TestCase):
         self.engine.rootContext().setContextProperty("Theme", self.theme)
         self.component = QQmlComponent(self.engine, QUrl.fromLocalFile(str(QML / "AssistantBubble.qml")))
         self.assertFalse(self.component.isError(), self.component.errors())
-        self.bubble = self.component.create()
-        self.assertIsNotNone(self.bubble)
-        self.menu = self.bubble.findChild(QObject, "assistantContextMenu")
-        self.assertIsNotNone(self.menu)
+        bubble = self.component.create()
+        assert isinstance(bubble, QQuickWindow)
+        self.bubble = bubble
+        menu = self.bubble.findChild(QObject, "assistantContextMenu")
+        assert menu is not None
+        self.menu = menu
         self.bubble.setPosition(100, 100)
         self.bubble.show()
         QTest.qWait(40)
@@ -123,11 +129,11 @@ class BubbleTests(unittest.TestCase):
         self.bubble.close()
         self.bubble.deleteLater()
         self.desktop.shutdown()
-        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         self.app.processEvents()
 
     def open_menu(self):
-        QTest.mouseClick(self.bubble, Qt.RightButton, Qt.NoModifier, QPoint(36, 36))
+        QTest.mouseClick(self.bubble, Qt.MouseButton.RightButton, Qt.KeyboardModifier.NoModifier, QPoint(36, 36))
         QTest.qWait(80)
         self.assertTrue(self.menu.property("opened"))
         self.assertTrue(self.menu.property("visible"))
@@ -148,9 +154,12 @@ class BubbleTests(unittest.TestCase):
         theme = configure_theme_from_settings({"theme_mode": "light"})
         theme.attach_engine(self.engine)
         QTest.qWait(40)
-        queue_item = self.bubble.findChild(QObject, "assistantQueueMenuItem")
-        triggered = []
-        queue_item.triggered.connect(lambda: triggered.append(True))
+        queue_item = self.bubble.findChild(QQuickItem, "assistantQueueMenuItem")
+        assert queue_item is not None
+        signal_index = queue_item.metaObject().indexOfSignal("triggered()")
+        self.assertGreaterEqual(signal_index, 0)
+        triggered = QSignalSpy(queue_item, queue_item.metaObject().method(signal_index))
+        self.assertTrue(triggered.isValid())
         for cycle in range(3):
             self.open_menu()
             self.assertGreaterEqual(self.menu.property("width"), 230)
@@ -161,25 +170,25 @@ class BubbleTests(unittest.TestCase):
                             (bounds, popup.geometry()))
             point = queue_item.mapToGlobal(QPointF(queue_item.width() / 2,
                                                    queue_item.height() / 2))
-            QTest.mouseClick(popup, Qt.LeftButton, Qt.NoModifier,
+            QTest.mouseClick(popup, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier,
                              QPoint(round(point.x() - popup.x()),
                                     round(point.y() - popup.y())))
             QTest.qWait(80)
-            self.assertEqual(len(triggered), cycle + 1)
+            self.assertEqual(triggered.count(), cycle + 1)
             self.assertFalse(self.menu.property("visible"))
-            QTest.mouseClick(self.bubble, Qt.LeftButton, Qt.NoModifier,
+            QTest.mouseClick(self.bubble, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier,
                              QPoint(36, 36))
             QTest.qWait(40)
             self.assertEqual(self.assistant.calls, ["chat"])
             self.assistant.calls.clear()
 
     def click_root_item(self, name):
-        item = self.bubble.findChild(QObject, name)
-        self.assertIsNotNone(item)
+        item = self.bubble.findChild(QQuickItem, name)
+        assert item is not None
         self.assertTrue(item.isVisible())
         popup = _visual_window_for(item)
         point = item.mapToGlobal(QPointF(item.width() / 2, item.height() / 2))
-        QTest.mouseClick(popup, Qt.LeftButton, Qt.NoModifier,
+        QTest.mouseClick(popup, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier,
                          QPoint(round(point.x() - popup.x()),
                                 round(point.y() - popup.y())))
         QTest.qWait(80)
@@ -187,13 +196,18 @@ class BubbleTests(unittest.TestCase):
 
     def test_hidden_waiting_item_takes_no_space_and_visible_actions_route(self):
         calls = []
+
+        def hide_windows():
+            calls.append("hide")
+            self.bubble.hide()
+
         self.desktop.controller = SimpleNamespace(
-            _bubble=self.bubble,
-            hide_windows=lambda: (calls.append("hide"), self.bubble.hide()))
+            _bubble=self.bubble, hide_windows=hide_windows)
         self.desktop.set_application_exit_callback(lambda: calls.append("exit"))
         self.desktop.set_application_exit_cancel_callback(lambda: calls.append("cancel"))
         self.open_menu()
-        waiting = self.bubble.findChild(QObject, "assistantCancelExitWaitingItem")
+        waiting = self.bubble.findChild(QQuickItem, "assistantCancelExitWaitingItem")
+        assert waiting is not None
         self.assertFalse(waiting.isVisible())
         self.assertEqual(waiting.height(), 0)
         normal_height = self.menu.property("height")
@@ -209,7 +223,8 @@ class BubbleTests(unittest.TestCase):
         self.assertEqual(calls, ["cancel"])
         self.desktop.set_application_exit_waiting(False)
         self.open_menu()
-        waiting = self.bubble.findChild(QObject, "assistantCancelExitWaitingItem")
+        waiting = self.bubble.findChild(QQuickItem, "assistantCancelExitWaitingItem")
+        assert waiting is not None
         self.assertIsNotNone(waiting)
         self.assertEqual(waiting.height(), 0)
         self.assertAlmostEqual(self.menu.property("height"), normal_height, delta=1)
@@ -229,6 +244,7 @@ class BubbleTests(unittest.TestCase):
         self.desktop.controller = SimpleNamespace(_bubble=self.bubble)
         self.desktop.set_application_exit_callback(lambda: None)
         window_menu = self.bubble.findChild(QObject, "assistantWindowListMenu")
+        assert window_menu is not None
         for mode in ("light", "dark"):
             self.theme.set_mode(mode)
             self.open_menu()
@@ -242,6 +258,7 @@ class BubbleTests(unittest.TestCase):
                              ["窗口列表（暂无窗口）", "查看计算队列", "气泡提示音",
                               "退出应用", "隐藏看板娘"])
             background = self.menu.findChild(QObject, "assistantContextMenu_background")
+            assert background is not None
             for item in items:
                 self.assertTrue(item.property("text").strip())
                 label = item.property("contentItem")
@@ -259,7 +276,7 @@ class BubbleTests(unittest.TestCase):
         self.assertEqual(window_menu.property("title"), "窗口列表")
         self.assertTrue(window_menu.property("enabled"))
         self.menu.setProperty("currentIndex", 0)
-        QTest.keyClick(self.popup_window(), Qt.Key_Right)
+        QTest.keyClick(self.popup_window(), Qt.Key.Key_Right)
         QTest.qWait(80)
         self.assertTrue(window_menu.property("opened"))
         rows = [node for node in self.bubble.findChildren(QQuickItem)
@@ -270,10 +287,10 @@ class BubbleTests(unittest.TestCase):
         self.assertTrue(all(node.property("text").strip() for node in rows))
 
     def test_opens_only_after_right_release_and_stays_open(self):
-        QTest.mousePress(self.bubble, Qt.RightButton, Qt.NoModifier, QPoint(36, 36))
+        QTest.mousePress(self.bubble, Qt.MouseButton.RightButton, Qt.KeyboardModifier.NoModifier, QPoint(36, 36))
         QTest.qWait(40)
         self.assertFalse(self.menu.property("visible"))
-        QTest.mouseRelease(self.bubble, Qt.RightButton, Qt.NoModifier, QPoint(36, 36))
+        QTest.mouseRelease(self.bubble, Qt.MouseButton.RightButton, Qt.KeyboardModifier.NoModifier, QPoint(36, 36))
         QTest.qWait(120)
         self.assertTrue(self.menu.property("opened"))
         self.assertTrue(self.menu.property("focus"))
@@ -282,7 +299,7 @@ class BubbleTests(unittest.TestCase):
     def test_escape_dismisses_and_repeated_right_click_reopens(self):
         for _ in range(3):
             self.open_menu()
-            QTest.keyClick(self.popup_window(), Qt.Key_Escape)
+            QTest.keyClick(self.popup_window(), Qt.Key.Key_Escape)
             QTest.qWait(80)
             self.assertFalse(self.menu.property("visible"))
 
@@ -297,9 +314,10 @@ class BubbleTests(unittest.TestCase):
         self.desktop.controller = SimpleNamespace(_bubble=self.bubble)
         self.open_menu()
         self.menu.setProperty("currentIndex", 0)
-        QTest.keyClick(self.popup_window(), Qt.Key_Right)
+        QTest.keyClick(self.popup_window(), Qt.Key.Key_Right)
         QTest.qWait(80)
         window_menu = self.bubble.findChild(QObject, "assistantWindowListMenu")
+        assert window_menu is not None
         self.assertIsNotNone(window_menu)
         self.assertTrue(window_menu.property("opened"))
         self.assertEqual(self.assistant.calls, [])
@@ -312,7 +330,7 @@ class BubbleTests(unittest.TestCase):
         self.desktop.controller = SimpleNamespace(_bubble=self.bubble)
         self.open_menu()
         self.menu.setProperty("currentIndex", 0)
-        QTest.keyClick(self.popup_window(), Qt.Key_Right)
+        QTest.keyClick(self.popup_window(), Qt.Key.Key_Right)
         QTest.qWait(80)
 
         identity = next(row["id"] for row in self.desktop.openWindows
@@ -333,7 +351,7 @@ class BubbleTests(unittest.TestCase):
         self.assertIsNotNone(close_background)
         self.assertIsNotNone(close_label)
         self.assertIsNotNone(label)
-        self.assertIsNotNone(menu_background)
+        assert menu_background is not None
         self.assertTrue(row.property("highlighted"))
 
         submenu_window = _visual_window_for(close_button)
@@ -405,7 +423,7 @@ class BubbleTests(unittest.TestCase):
         self.desktop.controller = SimpleNamespace(_bubble=self.bubble)
         self.open_menu()
         self.menu.setProperty("currentIndex", 0)
-        QTest.keyClick(self.popup_window(), Qt.Key_Right)
+        QTest.keyClick(self.popup_window(), Qt.Key.Key_Right)
         QTest.qWait(80)
         identity = next(row["id"] for row in self.desktop.openWindows
                         if row["title"] == "可激活窗口")
@@ -441,7 +459,7 @@ class BubbleTests(unittest.TestCase):
         self.desktop.controller = SimpleNamespace(_bubble=self.bubble)
         self.open_menu()
         self.menu.setProperty("currentIndex", 0)
-        QTest.keyClick(self.popup_window(), Qt.Key_Right)
+        QTest.keyClick(self.popup_window(), Qt.Key.Key_Right)
         QTest.qWait(100)
 
         row_id = next(row["id"] for row in self.desktop.openWindows
@@ -465,10 +483,10 @@ class BubbleTests(unittest.TestCase):
         QTest.mouseMove(submenu_window, click_point)
         QTest.qWait(100)
         self.assertTrue(pointer_area.property("containsMouse"))
-        QTest.mousePress(submenu_window, Qt.LeftButton, Qt.NoModifier, click_point)
+        QTest.mousePress(submenu_window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, click_point)
         QTest.qWait(30)
         self.assertTrue(row.property("closeButtonPressed"))
-        QTest.mouseRelease(submenu_window, Qt.LeftButton, Qt.NoModifier, click_point)
+        QTest.mouseRelease(submenu_window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, click_point)
         QTest.qWait(100)
         self.assertFalse(first.isVisible())
         self.assertTrue(second.isVisible())
@@ -478,15 +496,15 @@ class BubbleTests(unittest.TestCase):
         print(f"Window list screenshot: {screenshot}")
 
     def test_left_click_keeps_chat_toggle_without_menu(self):
-        QTest.mouseClick(self.bubble, Qt.LeftButton, Qt.NoModifier, QPoint(36, 36))
+        QTest.mouseClick(self.bubble, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, QPoint(36, 36))
         QTest.qWait(40)
         self.assertEqual(self.assistant.calls, ["chat"])
         self.assertFalse(self.menu.property("visible"))
 
     def test_left_drag_does_not_toggle_chat_or_open_menu(self):
-        QTest.mousePress(self.bubble, Qt.LeftButton, Qt.NoModifier, QPoint(15, 15))
+        QTest.mousePress(self.bubble, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, QPoint(15, 15))
         QTest.mouseMove(self.bubble, QPoint(45, 45), 20)
-        QTest.mouseRelease(self.bubble, Qt.LeftButton, Qt.NoModifier, QPoint(45, 45))
+        QTest.mouseRelease(self.bubble, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, QPoint(45, 45))
         QTest.qWait(40)
         self.assertEqual(self.assistant.calls, [])
         self.assertFalse(self.menu.property("visible"))
@@ -603,7 +621,7 @@ class AboutLayoutTests(unittest.TestCase):
         finally:
             window.close()
             window.deleteLater()
-            QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
             self.app.processEvents()
 
 

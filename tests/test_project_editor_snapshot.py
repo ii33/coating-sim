@@ -146,7 +146,8 @@ def test_layer_material_projection_uses_captured_not_new_picker_and_bounds_all_p
     assert result["collections"]["layers"]["total"] == 7
     assert len(result["collections"]["layers"]["items"]) == 2
     assert result["collections"]["layers"]["truncated"] and result["truncated"]
-    material = result["collections"]["materials"]["items"][0]
+    material = next(row for row in result["collections"]["materials"]["items"]
+                    if row["material_id"] == "pinned" and row["optical_set_id"] == "nk")
     assert material["name"] == "Pinned value"
     assert material["optical_data"]["n_sample_count"] == 10000
     assert material["optical_data"]["k_data_present"] is None

@@ -41,7 +41,7 @@ DENIED = {
 }
 
 
-async def _actual_run(calls=(), *, recovered=False, cancel=False, mode="chat", bind=True, switch_after_write=False, switch_back=False):
+async def _actual_run(calls=(), *, recovered=False, cancel=False, mode="chat", bind=True, switch_after_write=False, switch_back=False, instructions=None, previous_mode=None):
     registered = await server.mcp.list_tools()
     rpc = []
     returned: list[ToolReturnPart] = []
@@ -67,6 +67,8 @@ async def _actual_run(calls=(), *, recovered=False, cancel=False, mode="chat", b
         nonlocal requests
         requests += 1
         observed_tools.append({tool.name for tool in info.function_tools})
+        if instructions is not None:
+            instructions.append(info.instructions)
         if cancel:
             raise asyncio.CancelledError()
         if (requests == 1 and calls) or (switch_after_write and requests == 2):
@@ -115,6 +117,11 @@ async def _actual_run(calls=(), *, recovered=False, cancel=False, mode="chat", b
         ui["store"] = store
         with store._db() as database:
             database.execute("INSERT INTO conversations VALUES(?,?,?)", (command["session_id"], "Synthetic UI", 0))
+        if previous_mode is not None:
+            store.set_ui_session_mode(command["session_id"], previous_mode)
+            store.save_history(command["session_id"], runtime.ModelMessagesTypeAdapter.dump_json([
+                ModelRequest(parts=[runtime.UserPromptPart("此前的模式是什么？")]),
+                ModelResponse(parts=[TextPart("当前为讨论模式，只能讨论。")])]))
         if bind:
             store.set_ui_session_mode(command["session_id"], mode)
             store.bind_ui_request(command["session_id"], command["request_id"], mode)
@@ -297,3 +304,84 @@ def test_cancel_cleanup_rechecks_authority_between_each_job():
     asyncio.run(runtime._cancel_jobs(cast(Client, Peer()), cast(runtime.JobLedger, ledger), "session", "request", set(),
                                     can_mutate=lambda: allowed[0]))
     assert calls == [("cancel_calculation_job", {"job_id": "one"})]
+
+
+@pytest.mark.parametrize("mode", ["chat", "operate", "research"])
+def test_each_model_request_sees_current_ui_mode_over_old_history(mode):
+    instructions: list[str] = []
+    _rpc, _returned, tools = asyncio.run(_actual_run(
+        [("read_window", {"window_type": "film_design"})], mode=mode,
+        previous_mode="chat", instructions=instructions))
+    assert len(instructions) == 2
+    for text in instructions:
+        assert '"current_mode": "' + mode + '"' in text
+        assert '"request_mode": "' + mode + '"' in text
+        assert '"current_generation": ' + ("1" if mode == "chat" else "2") in text
+        assert '"side_effects_allowed": ' + ("false" if mode == "chat" else "true") in text
+    assert all(("delegate_task" in names) == (mode != "chat") for names in tools)
+
+
+@pytest.mark.parametrize("switch_back", [False, True])
+def test_request_boundary_observes_revoked_epoch_without_upgrading_old_turn(switch_back):
+    instructions: list[str] = []
+    first = {"kind": "source", "path": "data/sources/first.csrc", "data": {}, "overwrite": False}
+    rpc, returned, _tools = asyncio.run(_actual_run([
+        ("save_design", first), ("save_design", {**first, "path": "data/sources/second.csrc"}),
+    ], mode="operate", switch_after_write=True, switch_back=switch_back, instructions=instructions))
+    assert '"side_effects_allowed": true' in instructions[0]
+    for text in instructions[1:]:
+        assert '"side_effects_allowed": false' in text
+        assert '"request_generation": 1' in text
+        assert '"current_generation": ' + ("3" if switch_back else "2") in text
+        assert '"current_mode": "' + ("operate" if switch_back else "chat") + '"' in text
+        assert "不能恢复或升级旧请求" in text
+    assert len(rpc) == 1
+    assert any(part.content.get("error", {}).get("code") == "assistant_dispatch_blocked" for part in returned)
+
+
+def test_missing_authority_is_reported_as_unknown_not_configured_operate_mode():
+    instructions: list[str] = []
+    asyncio.run(_actual_run(mode="operate", bind=False, instructions=instructions))
+    assert '"current_mode": "unknown"' in instructions[0]
+    assert '"side_effects_allowed": false' in instructions[0]
+
+
+@pytest.mark.parametrize("role", ["main", "execute_machine", "analysis", "summary"])
+def test_live_upgrade_cannot_upgrade_chat_turn_or_config_override_authority(tmp_path, role):
+    store = AssistantStore(tmp_path / "state.sqlite3")
+    with store._db() as database:
+        database.execute("INSERT INTO conversations VALUES(?,?,?)", ("session", "UI", 0))
+    store.set_ui_session_mode("session", "chat")
+    store.bind_ui_request("session", "request", "chat")
+    meter = object.__new__(runtime.BudgetAndTools)
+    meter.store, meter.session, meter.request = store, "session", "request"
+    meter.mode, meter.role = "chat", role
+    meter.config = {"task_mode": "research"}
+    meter.shared, meter.writer = {}, MagicMock()
+    store.set_ui_session_mode("session", "operate")
+    text = meter._current_mode_instruction()
+    assert '"current_mode": "operate"' in text
+    assert '"request_mode": "chat"' in text
+    assert '"tool_scope_mode": "chat"' in text
+    assert '"side_effects_allowed": false' in text
+    assert '"current_generation": 2' in text
+    assert "不能恢复或升级旧请求" in text
+
+
+def test_unreadable_authority_emits_bounded_state_without_path_or_error_details():
+    meter = object.__new__(runtime.BudgetAndTools)
+    meter.store = cast(AssistantStore, SimpleNamespace(path="/private/credentials/missing.sqlite3"))
+    meter.session, meter.request, meter.mode, meter.role = "session", "request", "operate", "execute_machine"
+    meter.shared, meter.writer = {}, MagicMock()
+    text = meter._current_mode_instruction()
+    assert '"current_mode": "unknown"' in text
+    assert '"side_effects_allowed": false' in text
+    assert "/private/credentials" not in text
+    args, kwargs = meter.writer.emit.call_args
+    assert args == ("diagnostic", "request")
+    assert kwargs["source"] == "execute_machine"
+    assert kwargs["phase"] == "mode_authority"
+    assert kwargs["side_effects_allowed"] is False
+    assert "/private/credentials" not in str(kwargs)
+    meter._current_mode_instruction()
+    meter.writer.emit.assert_called_once()

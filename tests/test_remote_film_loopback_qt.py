@@ -44,7 +44,7 @@ class _Source:
                 for row in self.session.design.get(side + "_layers", [])]
 
 
-def test_remote_film_qt_real_cpu_result_and_requested_binding(tmp_path):
+def test_remote_film_qt_real_cpu_result_and_requested_binding(tmp_path, monkeypatch):
     app = QApplication.instance() or QApplication([])
     service, _library, design = fixture(tmp_path / "desktop")
     frozen_request = request(design, [_objective()], bounds=(90.0, 110.0),
@@ -56,13 +56,13 @@ def test_remote_film_qt_real_cpu_result_and_requested_binding(tmp_path):
             token="ephemeral-test-operator-token", allow_loopback_http=True,
             device_id="cpu:default")
 
-        class Target:
-            def client_for_submit(self, *, client_factory=None):
+        class Target(compute_target.ComputeTarget):
+            def client_for_submit(self, *, algorithm: str = "", client_factory=None):
                 return client, {"id": "cpu:default", "backend": "CPU", "available": True}
 
-        with patch.object(compute_target, "ComputeTarget", lambda *_args, **_kwargs: Target()):
+        with patch.object(compute_target, "ComputeTarget", Target):
             controller = FilmOptimizationQuickController(source)
-            controller._build_request = lambda **_kwargs: frozen_request
+            monkeypatch.setattr(controller, "_build_request", lambda **_kwargs: frozen_request)
             try:
                 started = time.monotonic()
                 assert controller.startOptimization()

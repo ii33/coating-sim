@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from coat_sim.core.film_design import validate_design
+from coat_sim.core.film_design_session import AIR_MATERIAL_ID, AIR_OPTICAL_SET_ID
 from coat_sim.core.project_dependencies import ProjectError
 from coat_sim.core.project_film_recovery import (
     film_recovery_current_token,
@@ -105,7 +106,12 @@ def test_blank_project_and_incomplete_symbol_are_recoverable_without_air_fallbac
     recovery = snapshot_film_recovery(workspace)
     checked = validate_film_recovery(workspace, recovery)
     design = checked["film"]["design"]
-    assert checked["film"]["materials"] == []
+    # New drafts bind the shipped Air medium, but incomplete substrate/symbol
+    # references must remain blank rather than being silently replaced by Air.
+    assert [row["id"] for row in checked["film"]["materials"]] == [AIR_MATERIAL_ID]
+    air = {"kind": "material", "material_id": AIR_MATERIAL_ID,
+           "optical_set_id": AIR_OPTICAL_SET_ID}
+    assert design["incident_medium"] == design["exit_medium"] == air
     assert design["substrate"]["material_id"] == ""
     assert design["substrate"]["optical_set_id"] == ""
     assert design["expression"]["symbols"]["H"]["material_id"] == ""

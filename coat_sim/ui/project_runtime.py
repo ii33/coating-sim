@@ -133,7 +133,10 @@ class ProjectRuntime(QObject):
         self.dialog_window.requestActivate()
 
     def _present_shutdown(self) -> None:
-        parent = self.bridge.project_lifecycle.confirmation_owner()
+        lifecycle = self.bridge.project_lifecycle
+        if lifecycle is None:
+            raise RuntimeError("Project lifecycle is unavailable")
+        parent = lifecycle.confirmation_owner()
         self.dialog_window.setTransientParent(parent)
         self.dialog_window.setProperty("reviewKind", "shutdown")
         LauncherBridge._activate_window(self.dialog_window)

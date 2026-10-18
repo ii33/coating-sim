@@ -14,7 +14,7 @@ from coat_sim.ui.control import UiControlClient
 from coat_sim.assistant_process import LIFECYCLE_OPERATIONS
 
 def run(host, root, state):
-    u = ctypes.WinDLL('user32', use_last_error=True)
+    u = vars(ctypes)["WinDLL"]('user32', use_last_error=True)
     u.GetForegroundWindow.restype = wintypes.HWND
     u.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
     u.WindowFromPoint.argtypes = [wintypes.POINT]
@@ -31,7 +31,7 @@ def run(host, root, state):
             QTest.qWait(25)
 
     def click(x, y, right=False):
-        assert u.SetCursorPos(round(x), round(y)), 'Windows desktop input unavailable: WinError ' + str(ctypes.get_last_error())
+        assert u.SetCursorPos(round(x), round(y)), 'Windows desktop input unavailable: WinError ' + str(vars(ctypes)["get_last_error"]())
         u.mouse_event(8 if right else 2, 0, 0, 0, 0)
         u.mouse_event(16 if right else 4, 0, 0, 0, 0)
 
@@ -84,9 +84,9 @@ def run(host, root, state):
         for key in ('first', 'second'):
             directory = state / key
             directory.mkdir()
-            child = subprocess.Popen([str(Path(sys.executable).with_name('pythonw.exe')), '-B', str(root / 'tests/fixtures/assistant_exit_target.py'), str(root), str(directory), key], cwd=root, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
+            child = subprocess.Popen([str(Path(sys.executable).with_name('pythonw.exe')), '-B', str(root / 'tests/fixtures/assistant_exit_target.py'), str(root), str(directory), key], cwd=root, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=vars(subprocess)["CREATE_NO_WINDOW"])
             children.append(child)
-            wait_for(lambda: (directory / 'ready.json').exists() or child.poll() is not None, 'Target readiness timeout')
+            wait_for(lambda directory=directory, child=child: (directory / 'ready.json').exists() or child.poll() is not None, 'Target readiness timeout')
             assert child.poll() is None, str(directory / 'artifacts/logs/project.log')
             ready = json.loads((directory / 'ready.json').read_text())
             endpoint = ready['endpoint']

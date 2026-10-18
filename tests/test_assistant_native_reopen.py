@@ -121,11 +121,11 @@ def test_native_window_menu_activates_exact_remote_hwnd_and_restores_minimized(t
 def test_native_exit_menu_foregrounds_dirty_windows_and_cancel_preserves_projects(tmp_path):
     import ctypes
     from ctypes import wintypes
-    user32 = ctypes.WinDLL('user32', use_last_error=True)
+    user32 = vars(ctypes)["WinDLL"]('user32', use_last_error=True)
     point = wintypes.POINT()
     if not user32.GetCursorPos(ctypes.byref(point)):
         pytest.skip('Interactive Windows desktop input unavailable: WinError '
-                    + str(ctypes.get_last_error()))
+                    + str(vars(ctypes)["get_last_error"]()))
     result = run_probe(tmp_path, 'exit_activation')
     assert result['ok'] and result['cancel_preserved_both_drafts'] and result['sequential_clients']
     assert len(result['exit_cases']) == 5

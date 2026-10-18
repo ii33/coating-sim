@@ -111,13 +111,13 @@ class ProbeHost(host_module.AssistantProcessHost):
         payload.update(phase='ready', generation=self.generation)
         write()
         if mode == 'exit_activation':
-            from assistant_exit_probe import run
+            from tests.fixtures.assistant_exit_probe import run
             payload.update(run(self, root, state))
             self.finish_probe()
             return
         if mode == 'window_activation':
-            from assistant_activation_probe import run
-            payload.update(run(self, root, state))
+            from tests.fixtures.assistant_activation_probe import run as run_activation
+            payload.update(run_activation(self, root, state))
             self.finish_probe()
             return
         if mode == 'hold':
@@ -162,6 +162,8 @@ class ProbeHost(host_module.AssistantProcessHost):
         assert id(self.controller._chat) == self.chat_id
         self.cycles += 1
         if mode == 'lazy_documents' and self.cycles == 1:
+            from coat_sim.ui.assistant import AssistantBridge
+            assert isinstance(self.controller.bridge, AssistantBridge)
             self.controller.bridge.selectConversation(seed_sessions[0])
         if self.cycles < 3:
             self.later(self.close_chat)
@@ -170,6 +172,8 @@ class ProbeHost(host_module.AssistantProcessHost):
             self.later(self.finish_probe)
     def finish_probe(self):
         if mode == 'lazy_documents':
+            from coat_sim.ui.assistant import AssistantBridge
+            assert isinstance(self.controller.bridge, AssistantBridge)
             documents = self.controller.bridge._renderer.documents
             bodies = [document for identity, document in documents.items() if identity.endswith('/body')]
             assert len(bodies) >= 2, 'Visible history failed to create its lazy body documents'

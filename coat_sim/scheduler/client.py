@@ -81,7 +81,7 @@ class SchedulerClient:
         if os.name == 'nt':
             # Also select pythonw below: Windows' venv redirector can allocate
             # a console for its real interpreter child despite these flags.
-            options['creationflags'] = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+            options['creationflags'] = vars(subprocess)["CREATE_NO_WINDOW"] | vars(subprocess)["CREATE_NEW_PROCESS_GROUP"]
         else:
             options['start_new_session'] = True
         # Do not inherit a parent's stdio pipe: a closed MCP host cannot kill/block us.

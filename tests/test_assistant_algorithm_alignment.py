@@ -63,7 +63,7 @@ def test_selection_reference_preserves_distinct_capabilities_and_permissions():
     assert "project_editor_snapshot" in EXECUTION_TOOLS["windows"]
 
 
-@pytest.mark.parametrize(("mode", "count"), [("chat", 5), ("operate", 6), ("research", 16)])
+@pytest.mark.parametrize(("mode", "count"), [("chat", 6), ("operate", 7), ("research", 17)])
 def test_real_prepared_runtime_tool_surface_includes_capability_injection(mode, count):
     captured = asyncio.run(capture_configuration(mode))
     report = configuration_report(captured)
@@ -88,7 +88,7 @@ def test_real_prepared_runtime_tool_surface_includes_capability_injection(mode, 
 def test_enabled_optional_sources_change_actual_top_level_tools_only():
     external = configuration_report(asyncio.run(capture_configuration(external_enabled=True)))
     library = configuration_report(asyncio.run(capture_configuration(library_enabled=True)))
-    assert external["tool_count"] == 6 and library["tool_count"] == 7
+    assert external["tool_count"] == 7 and library["tool_count"] == 8
     assert "external_tools" in external["tool_names"]
     assert "external_action" not in external["tool_names"]
     assert {"research_library_search", "research_library_read"} <= set(library["tool_names"])

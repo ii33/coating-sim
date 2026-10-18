@@ -209,7 +209,7 @@ def _allow_foreground_process(pid: int) -> bool:
         return True
     import ctypes
     from ctypes import wintypes
-    allow = ctypes.WinDLL("user32", use_last_error=True).AllowSetForegroundWindow
+    allow = vars(ctypes)["WinDLL"]("user32", use_last_error=True).AllowSetForegroundWindow
     allow.argtypes = [wintypes.DWORD]
     allow.restype = wintypes.BOOL
     return bool(allow(pid))

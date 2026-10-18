@@ -144,7 +144,7 @@ assert not attached and error == 6, (bool(attached), error)
         result = subprocess.run(
             [sys.executable, "-c", probe, str(health["pid"])],
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE, creationflags=subprocess.CREATE_NO_WINDOW,
+            stderr=subprocess.PIPE, creationflags=vars(subprocess)["CREATE_NO_WINDOW"],
             timeout=15,
         )
         assert result.returncode == 0, result.stderr.decode(errors="replace")

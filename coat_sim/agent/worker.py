@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import re
 import stat
 import sys
@@ -427,25 +426,22 @@ def _configured_research_library(
     is configured, only the fixed small sidecar is consulted. The provider reads
     supported text files on demand after the assistant calls its search tool.
     """
+    from coat_sim.agent.research_library import RESEARCH_LIBRARY_SETUP
     raw_root = config.get("assistant_research_library_root")
     metadata = None
     if not isinstance(raw_root, str) or not raw_root.strip():
         try:
             route = _read_research_library_sidecar()
         except Exception:
-            return None, "unreadable", "本地研究库路由配置无效或不可读；研究库工具未启用，聊天可继续。", None
+            return None, "unreadable", "本地研究库路由配置无效或不可读；请检查 JSON、快照元数据及文件权限。" + RESEARCH_LIBRARY_SETUP, None
         if route is None:
-            return None, "not_configured", "本轮未配置本地研究库；聊天可继续，研究库工具未启用。", None
+            return None, "not_configured", "本轮未配置本地研究库；研究库检索/阅读工具未启用。" + RESEARCH_LIBRARY_SETUP, None
         raw_root, metadata = route
 
     try:
         configured_path = Path(raw_root.strip())
-        if not configured_path.is_absolute():
-            raise ValueError("research library root must be absolute")
-        safe_root = _ensure_research_path_safe(configured_path)
-        if not safe_root.is_dir() or not os.access(safe_root, os.R_OK | os.X_OK):
-            raise OSError("research library root is not readable")
-        from coat_sim.agent.research_library import TextFileResearchLibrary
+        from coat_sim.agent.research_library import TextFileResearchLibrary, validate_research_library_root
+        validate_research_library_root(raw_root.strip())
         if metadata is None:
             provider = TextFileResearchLibrary(configured_path)
         else:
@@ -464,7 +460,7 @@ def _configured_research_library(
             state = "connected_read_only"
         return provider, state, message, metadata
     except Exception:
-        return None, "unreadable", "本地研究库目录无效或不可读；研究库工具未启用，聊天可继续。", None
+        return None, "unreadable", "本地研究库目录无效或不可读；请检查目录是否存在、权限、绝对路径及 symlink/reparse 限制。" + RESEARCH_LIBRARY_SETUP, None
 
 async def _run_task_with_research_library(command: dict[str, Any], writer: Any,
                                           run_task: Any) -> None:
@@ -472,7 +468,8 @@ async def _run_task_with_research_library(command: dict[str, Any], writer: Any,
     writer.emit("progress", str(command.get("request_id", "")), stage="executing",
                 research_library_status=state, research_library_metadata=metadata, text=message)
     await run_task(command, writer, research_library=provider,
-                   allow_research_library_context=provider is not None)
+                   allow_research_library_context=provider is not None,
+                   research_library_readiness={"status": state, "message": message, "metadata": metadata})
 
 
 async def serve(writer: ProtocolWriter) -> None:

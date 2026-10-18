@@ -19,6 +19,7 @@ def test_builtin_mcp_handshake_does_not_require_parent_fileno(tmp_path, monkeypa
         await runtime.shutdown_runtime()
         try:
             client, _ = runtime._business_server()
+            assert runtime._BUSINESS_SERVER is not None
             transport = runtime._BUSINESS_SERVER[2]
             assert isinstance(transport.log_file, Path)
             async with client:

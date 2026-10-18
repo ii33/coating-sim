@@ -951,6 +951,16 @@ class SettingsBridge(QObject):
     def assistantApiUrl(self) -> str:
         return str(self._settings["assistant_api_url"])
 
+    @Property(str, notify=assistantStateChanged)
+    def assistantResearchLibraryRoot(self) -> str:
+        return str(self._settings.get("assistant_research_library_root", ""))
+
+    @Slot(str)
+    def setAssistantResearchLibraryRoot(self, root: str) -> None:
+        # Keep invalid input visible until Save can explain the error.
+        self._settings["assistant_research_library_root"] = root.strip()
+        self.assistantStateChanged.emit()
+
     @Property("QStringList", notify=assistantStateChanged)
     def assistantApiUrls(self) -> list[str]:
         urls = list(self._settings.get("assistant_api_urls", []))
@@ -1969,6 +1979,10 @@ class SettingsBridge(QObject):
                     str(self._settings["assistant_api_url"]))
                 if not str(self._settings["assistant_model"]).strip():
                     raise ValueError("启用看板娘前请填写模型名")
+            root = str(self._settings.get("assistant_research_library_root", ""))
+            if root:
+                from coat_sim.agent.research_library import validate_research_library_root
+                validate_research_library_root(root)
             context_error = self._context_profile_save_error()
             if context_error:
                 raise ValueError(context_error)

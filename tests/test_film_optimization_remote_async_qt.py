@@ -139,13 +139,13 @@ def harness(tmp_path, monkeypatch, app):
         variables=(),
         frozen_material_snapshot={"materials": []},
     )
-    store_box = {}
+    store_box: dict[str, _RemoteStore] = {}
 
-    class _Target:
-        def client_for_submit(self, *, client_factory=None):
+    class _Target(compute_target_module.ComputeTarget):
+        def client_for_submit(self, *, algorithm: str = "", client_factory=None):
             return store_box["store"], {"id": DEVICE_ID, "backend": "CPU", "available": True}
 
-    monkeypatch.setattr(compute_target_module, "ComputeTarget", lambda *_args, **_kwargs: _Target())
+    monkeypatch.setattr(compute_target_module, "ComputeTarget", _Target)
     monkeypatch.setattr(controller_module, "freeze_spec", lambda *_args, **_kwargs: {"frozen": True})
     monkeypatch.setattr(controller_module, "freeze_film_optimization_request",
                         lambda _service, value: value)

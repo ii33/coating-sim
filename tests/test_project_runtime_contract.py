@@ -288,12 +288,14 @@ def test_smoke_snapshot_observes_actual_prepared_freeze_without_admitting_operat
     content.setParent(bridge)
     owner = SimpleNamespace(
         host=host, _busy=False, projectBusy=False, projectError="",
-        desktop=SimpleNamespace(_views={"film": (content,)}),
+        desktop=SimpleNamespace(_views={route: (content,)}),
         project_closer=SimpleNamespace(_reviews={}),
         _leases={session.binding.project_id: SimpleNamespace(generation="test-lease", _closed=False)},
         settled_for_exit=lambda: True,
     )
     bridge.project_runtime = owner
+    activated: list[QQuickItem] = []
+    bridge._activate_window = activated.append
     bridge.dialog = SimpleNamespace(property=lambda key: "shutdown" if key == "reviewKind" else "")
     lifecycle = ProjectApplicationLifecycle(bridge, "test-client-generation")
     bridge.project_lifecycle = lifecycle
@@ -303,6 +305,7 @@ def test_smoke_snapshot_observes_actual_prepared_freeze_without_admitting_operat
     arguments = {"client_generation": "test-client-generation", "exit_id": "test-aggregate-exit"}
     try:
         assert lifecycle.dispatch("lifecycle_prepare", arguments)["state"] == "pending"
+        assert activated == [content]
         pending = smoke_qa_dispatch(runtime, "qa_snapshot", {})
         assert pending["pending_shutdown"] and pending["gate_state"] == "pending"
         lifecycle.decide(True)

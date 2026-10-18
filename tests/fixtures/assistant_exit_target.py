@@ -40,9 +40,14 @@ cover = QQuickWindow()
 cover.setTitle('Owned cover ' + key)
 cover.setGeometry(50, 50, 1000, 690)
 runtime.bridge._project_starting = False
-commits = []
+commits: list[bool] = []
+assert runtime.bridge.project_lifecycle is not None
 original_commit = runtime.bridge.project_lifecycle.gate._commit
-runtime.bridge.project_lifecycle.gate._commit = lambda: (commits.append(True), original_commit())[1]
+def record_commit():
+    commits.append(True)
+    return original_commit()
+
+runtime.bridge.project_lifecycle.gate._commit = record_commit
 
 def snapshot():
     dialog = runtime.dialog_window

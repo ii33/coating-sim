@@ -71,3 +71,6 @@ artifacts/logs/*.log
 
 # Project-local research evidence/full text is never source publication.
 **/data/research/
+
+# Local research routing contains machine-specific private paths.
+/config/assistant_research_library.json

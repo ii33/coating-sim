@@ -166,7 +166,11 @@ def test_foreground_handoff_only_targets_verified_registered_process(monkeypatch
     identity = registry.list_windows()[0]['id']
     monkeypatch.setattr(module, '_process_identity', lambda pid: ('alive', client.process_start))
     grants = []
-    monkeypatch.setattr(module, '_allow_foreground_process', lambda pid: grants.append(pid) or True)
+    def grant_foreground(pid):
+        grants.append(pid)
+        return True
+
+    monkeypatch.setattr(module, '_allow_foreground_process', grant_foreground)
     assert registry.prepare_window_activation(identity)
     assert grants == [client.endpoint['pid']]
     assert not any(op == 'open_window' for op, _ in calls)

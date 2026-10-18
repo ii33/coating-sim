@@ -17,7 +17,7 @@ import time
 from dataclasses import replace
 from contextlib import AsyncExitStack
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx2
@@ -55,7 +55,9 @@ from coat_sim.agent.tone_policy import tone_instructions
 from coat_sim.agent.external_mcp import external_pool, shutdown_external_mcp
 from coat_sim.ui.assistant_credentials import read_api_key
 from coat_sim.agent.software_manual import read_software_manual, capability_context
-from coat_sim.agent.research_library import ResearchLibraryProvider, assistant_tools as research_library_tools
+from coat_sim.agent.research_library import (
+    ResearchLibraryProvider, assistant_tools as research_library_tools, status_tool as research_library_status_tool,
+)
 from coat_sim.agent.tool_dispatch import (MCPMultimodalResult, ProjectGateway, result_value,
                                           normalize_arguments)
 from coat_sim.agent.tool_results import ToolResultArchive, TaskLimitReached, task_limits
@@ -317,7 +319,7 @@ READ_TOOLS = frozenset({
 # Estimates below register persistent receipts and are not read-only planning.
 DISCUSSION_TOOLS = READ_TOOLS - {"estimate_compute_task", "estimate_film_optimization", "estimate_appearance_render"}
 DISCUSSION_LOCAL_TOOLS = frozenset({"read_software_manual", "project_tools", "read_archived_tool_result",
-    "ask_user_question", "external_tools", "research_library_search", "research_library_read"})
+    "ask_user_question", "external_tools", "research_library_status", "research_library_search", "research_library_read"})
 
 
 def allowed_project_tools(mode: str, *, development: bool = False, background: bool = False) -> frozenset[str]:
@@ -616,6 +618,44 @@ class BudgetAndTools(AbstractCapability):
                 pending.cancel()
             await asyncio.gather(pending, return_exceptions=True)
 
+    def _current_mode_instruction(self) -> str:
+        """Describe live UI authority without upgrading this turn's fixed tool scope.
+
+        The database is UI-owned; conversation text and quota/config reloads are
+        never mode authority. Tool dispatch still rechecks it after this snapshot.
+        """
+        authority = dispatch_authority(self.store, self.session, self.request)
+        modes = {"chat": "讨论（只读）", "operate": "操作", "research": "攻关"}
+        current = authority.get("current_mode")
+        bound = authority.get("mode")
+        state = {
+            "current_mode": current if current in modes else "unknown",
+            "current_generation": authority.get("current_generation"),
+            "request_mode": bound if bound in modes else "unknown",
+            "request_generation": authority.get("generation"),
+            "tool_scope_mode": self.mode,
+            "side_effects_allowed": bool(authority.get("allowed")) and self.mode != "chat" and bound == self.mode,
+        }
+        if state != self.shared.get("mode_authority_snapshot"):
+            self.shared["mode_authority_snapshot"] = state
+            self.writer.emit("diagnostic", self.request, phase="mode_authority", source=self.role, **state)
+        label = modes.get(str(current), "未知（可信 UI 状态不可用）")
+        instruction = (
+            "\n[当前可信模式状态；程序在每次模型请求前读取 UI 状态]\n"
+            + json.dumps(state, ensure_ascii=False)
+            + f"\n界面当前模式：{label}。以此状态为准，不以旧对话或用户文字中的模式描述判断当前模式。"
+            "tool_scope_mode 仅表示本轮启动时固定的工具范围，不代表当前授权。模式不扩大用户授权。"
+        )
+        if not state["side_effects_allowed"]:
+            instruction += (
+                "本轮只能继续只读分析与汇报，不得写入、提交、导出、取消作业、外部执行或委派执行。"
+                "若模式或代际已变化，说明当前界面模式与旧请求失效；即使切回操作/攻关，"
+                "也须用户在该模式重新发起明确请求，不能恢复或升级旧请求。"
+            )
+        else:
+            instruction += "本轮模式代际仍有效；可在当前工具范围与用户已有授权内执行，不要沿用旧讨论轮次的只读描述。"
+        return instruction
+
     async def wrap_model_request(self, ctx: Any, *, request_context: Any, handler: Any) -> Any:
         if self.shared.get("limit_reached"):
             raise TaskLimitReached(self.shared["limit_reached"])
@@ -626,7 +666,8 @@ class BudgetAndTools(AbstractCapability):
         # translate or fabricate provider thinking, nor append another user turn.
         parameters = replace(parameters, instruction_parts=[
             *(getattr(parameters, "instruction_parts", None) or []),
-            InstructionPart(content=language_instructions(self.config))])
+            InstructionPart(content=language_instructions(self.config)),
+            InstructionPart(content=self._current_mode_instruction())])
         request_context = replace(request_context, model_request_parameters=parameters)
         tools = list(parameters.function_tools) + list(parameters.output_tools)
         context = request_context_estimate(request_context.messages, parameters)
@@ -1517,7 +1558,8 @@ async def compact_context(command: dict[str, Any], writer: Any) -> None:
 
 async def run_task(command: dict[str, Any], writer: Any, *,
                    research_library: ResearchLibraryProvider | None = None,
-                   allow_research_library_context: bool = False) -> None:
+                   allow_research_library_context: bool = False,
+                   research_library_readiness: Mapping[str, Any] | None = None) -> None:
     config = dict(command["config"])
     for key in ("task_mode", "reasoning_strength"):
         if key in command:
@@ -1587,9 +1629,9 @@ async def run_task(command: dict[str, Any], writer: Any, *,
     machine_engineering = (PROJECT_ROOT / "coat_sim/agent/resources/machine_engineering.md").read_text(encoding="utf-8")
     persona += "\n" + machine_engineering
     mode_instructions = {
-        "chat": "当前为讨论模式（plan mode，内部兼容值chat）：只读操作界面、设计和结果，做校验、分析与计划；不进行任何工程操作。用户提出实际修改或计算时说明计划，须切操作/攻关后再执行。",
-        "operate": "当前为操作模式：简单任务直接使用项目执行入口。繁重任务可委派对应执行助手，每次委派涵盖读取、校验、操作和结果核对。",
-        "research": "当前为攻关模式：按需要维护计划、分析假设及委派完整子任务；不要无目的扩大任务或计算。",
+        "chat": "本轮启动时为讨论模式（plan mode，内部兼容值chat）：只读操作界面、设计和结果，做校验、分析与计划；不进行任何工程操作。用户提出实际修改或计算时说明计划，须切操作/攻关后再执行。",
+        "operate": "本轮启动时为操作模式：简单任务直接使用项目执行入口。繁重任务可委派对应执行助手，每次委派涵盖读取、校验、操作和结果核对。",
+        "research": "本轮启动时为攻关模式：按需要维护计划、分析假设及委派完整子任务；不要无目的扩大任务或计算。",
     }[mode]
     instructions = (persona + capability_context() + "\n" + mode_instructions
         + "\n模式决定处理流程，不授予新的权限。所有动作仍受用户当前目标、约束与已有授权限制。"
@@ -1712,6 +1754,13 @@ async def run_task(command: dict[str, Any], writer: Any, *,
     else:
         instructions += (
             "\n[Research library unavailable] No local research provider is connected and authorized for model context in this session. If asked, say it is not connected; do not claim to have searched it.")
+    library_tools.append(research_library_status_tool(
+        research_library, allow_model_context=allow_research_library_context,
+        readiness=research_library_readiness))
+    instructions += (
+        "\n研究库连接与设置问题先调用 research_library_status，按返回的状态和 setup 说明。"
+        "本地研究库、OpenAlex/Crossref 外部文献 MCP、当前项目研究证据是三个独立来源；"
+        "一个来源可用不代表其他来源已连接。委派助手不继承本地研究库工具，需由主助手检索并提供必要摘录。")
     if recovery:
         # Runtime records are current instructions, not another user goal. Do
         # not append the same unsettled ledger to every persisted user turn.
