@@ -190,16 +190,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"scheduler\"",
-      "scope": "QueueSubmissionTests.test_live_child_enqueue_other_window_and_cancel_waiter_preserves_a",
-      "anchor": "self.scheduler.tick(); APP.processEvents(); time.sleep(.02)",
-      "fingerprint": "007b5adf6c943bd57fcef52b0eb4b32b5c49c9fd4bf1563d4aac582d0239c26c",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/scheduler_real_checks.py",
       "code": "attr-defined",
       "message": "\"object\" has no attribute \"append\"",
@@ -1266,16 +1256,6 @@
       "scope": "",
       "anchor": "onToggled: controller.setFlag(\"environment_enabled\", checked)",
       "fingerprint": "059c1c439c98e3af105b7b54cf017805138e9574257087b4c410c646d4d58d40",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"store\"",
-      "scope": "QueueSubmissionTests.test_later_insert_with_older_clock_does_not_revoke_running_lease",
-      "anchor": "self.assertEqual([r['job_id'] for r in self.store.snapshot()['jobs']], ['a', 'b'])",
-      "fingerprint": "059d4e66f719e40254b6283fff61f6f2e6ebcb81531681cb8e72afde8ca8cd90",
       "count": 1
     },
     {
@@ -3326,16 +3306,6 @@
       "scope": "",
       "anchor": "from pathlib import Path",
       "fingerprint": "0e40735b8814c88f022e4c09060df6d5111d1d8b660853c0cba49c5891c7fb4d",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"store\"",
-      "scope": "QueueSubmissionTests.test_later_insert_with_older_clock_does_not_revoke_running_lease",
-      "anchor": "self.assertTrue(self.store.acquire_execution('a'))",
-      "fingerprint": "0e41000e0752c89fe3484d603f6d415f0312cbd469cfef21fce2919db0d392ba",
       "count": 1
     },
     {
@@ -5696,16 +5666,6 @@
       "scope": "",
       "anchor": "from .optical_constants import (evaluate_optical_set, evaluate_optical_set_with_details,",
       "fingerprint": "174da7bd9d22aa556f5845c23d8d5ecaab0d7a5d80e83363743a74bf5ffeaf15",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"store\"",
-      "scope": "QueueSubmissionTests.test_live_child_enqueue_other_window_and_cancel_waiter_preserves_a",
-      "anchor": "self.assertEqual(self.store.read_job(a_row['job_id'])['state'], 'running')",
-      "fingerprint": "1756f4de7154022fde447ddec843b7abf859219288a89d7d86e4df6ab0ded3f8",
       "count": 1
     },
     {
@@ -10970,16 +10930,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"store\"",
-      "scope": "QueueSubmissionTests.test_later_insert_with_older_clock_does_not_revoke_running_lease",
-      "anchor": "self.store.register_desktop_job('b', summary='B, later insertion / earlier clock')",
-      "fingerprint": "2adb8f486af78ada29dd9e9e8a10a693700f2c87473667a31751319728905cff",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/ui/assistant_credentials.py",
       "code": "assignment",
       "message": "Incompatible types in assignment (expression has type \"BaseException\", variable has type \"Exception\")",
@@ -11866,16 +11816,6 @@
       "scope": "",
       "anchor": "anchors.leftMargin: Theme.snapshot.spaceMd",
       "fingerprint": "2e38b613e1868856b42aa74168138b0176fdf66894f2cd0e75aa2f7e4287eddb",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "misc",
-      "message": "Invalid self argument \"QueueSubmissionTests\" to attribute function \"bridge\" with type \"Callable[[QueueTests], Any]\"",
-      "scope": "QueueSubmissionTests.test_live_child_enqueue_other_window_and_cancel_waiter_preserves_a",
-      "anchor": "a, b, c = self.bridge(), self.bridge(), self.bridge()",
-      "fingerprint": "2e3ef44ab06eff382275aadb38676a7c6df8b341b12e1de2b16516d522b75c6a",
       "count": 1
     },
     {
@@ -13396,16 +13336,6 @@
       "scope": "test_popup_header_render_and_keyboard",
       "anchor": "results[\"logicalWindowSize\"] = [float(window.width()), float(window.height())]",
       "fingerprint": "3445e9601beb908a1f60389577d8c68f73d29fdc90d53d277ed8c58ff0e1133a",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "misc",
-      "message": "Invalid self argument \"QueueSubmissionTests\" to attribute function \"bridge\" with type \"Callable[[QueueTests], Any]\"",
-      "scope": "QueueSubmissionTests.test_failed_live_child_does_not_poison_already_queued_successor",
-      "anchor": "a, b = self.bridge(), self.bridge()",
-      "fingerprint": "3448a13d61116d0b432a0946f7e5cbc23d1ad14b252ea988ff2f3155037ae612",
       "count": 1
     },
     {
@@ -15899,16 +15829,6 @@
       "count": 2
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "misc",
-      "message": "Invalid self argument \"QueueSubmissionTests\" to attribute function \"spin\" with type \"Callable[[QueueTests, Any, Any], Any]\"",
-      "scope": "QueueSubmissionTests.test_live_child_enqueue_other_window_and_cancel_waiter_preserves_a",
-      "anchor": "self.spin(lambda: (gate / 'started-21').exists(), timeout=10)",
-      "fingerprint": "3e873272f3bc52f4b1287e944864e278ddafe6764a679854d47ced67bfd029f3",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/AppearanceWorkspace.qml",
       "code": "unqualified",
@@ -17120,16 +17040,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"store\"",
-      "scope": "QueueSubmissionTests.test_failed_live_child_does_not_poison_already_queued_successor",
-      "anchor": "self.assertEqual(sum(row['state'] == 'succeeded' for row in self.store.snapshot()['jobs']), 1)",
-      "fingerprint": "43b65156a1a97c628e5b69040e08a09118e3dc41bb1a6a96f1bd5450355bb485",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_material_optical_editor.py",
       "code": "union-attr",
       "message": "Item \"None\" of \"QObject | None\" has no attribute \"property\"",
@@ -17366,16 +17276,6 @@
       "scope": "_verify_unindexed_outputs",
       "anchor": "**({\"object_pairs_hook\": _unique_object, \"parse_constant\": _reject_nonfinite}",
       "fingerprint": "44a7b999fe966416f62c8b138a6fbda23bc47e00758321004ecd26cd377f9a52",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"scheduler\"",
-      "scope": "QueueSubmissionTests.test_failed_live_child_does_not_poison_already_queued_successor",
-      "anchor": "with self.scheduler.gated_workers(gate, crash_grid=21):",
-      "fingerprint": "44aecc6229ada51ce49eca3dbe38c92a3f9d7e1fd30651bbbeeac9d1716e63ad",
       "count": 1
     },
     {
@@ -20249,16 +20149,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"store\"",
-      "scope": "QueueSubmissionTests.test_later_insert_with_older_clock_does_not_revoke_running_lease",
-      "anchor": "self.assertTrue(self.store.acquire_execution('b'))",
-      "fingerprint": "5043095b37b8aaaca269fefd1d23567976f5885df197b68f2278f46ac139d17a",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/scheduler/submission.py",
       "code": "E701",
@@ -20556,16 +20446,6 @@
       "scope": "",
       "anchor": "fallbackMove = !hostWindow.startSystemMove()",
       "fingerprint": "519d0e39bc2ac96cccd99512f693601816f5be1ec96f31ecd3234b401a0b0edc",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"root\"",
-      "scope": "QueueSubmissionTests.test_failed_live_child_does_not_poison_already_queued_successor",
-      "anchor": "gate = self.root / 'gate'; gate.mkdir()",
-      "fingerprint": "51a06865ddf8db4a928efc9b98ae700f0f5cf970572f2002b2a855f59e4a5bd6",
       "count": 1
     },
     {
@@ -22930,16 +22810,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"store\"",
-      "scope": "QueueSubmissionTests.test_unregistered_or_terminal_job_cannot_acquire",
-      "anchor": "a = self.store.register_desktop_job('a', summary='A')",
-      "fingerprint": "5bb4d8b25ca7a81c21081cb4f2e89a0bee22638c4281ba1af36e0d264a29a546",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_film_optics_batch.py",
       "code": "assignment",
       "message": "Incompatible types in assignment (expression has type \"int | float | bool\", variable has type \"ndarray[tuple[int], dtype[float64]] | ndarray[tuple[int, int], dtype[float64]] | ndarray[tuple[Any, ...], dtype[Any]]\")",
@@ -23066,16 +22936,6 @@
       "scope": "main",
       "anchor": "json.loads(simulation.designJson) == before)",
       "fingerprint": "5c2b09b4d08bfb895366d594d5cb75a360dea5e83fc36f9461eef21a81f20756",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"store\"",
-      "scope": "QueueSubmissionTests.test_unregistered_or_terminal_job_cannot_acquire",
-      "anchor": "self.assertFalse(self.store.acquire_execution('a'))",
-      "fingerprint": "5c2d6ecc6536927025d46f60c6ab01bf85d93754ff0036b66f7155a0ad135089",
       "count": 1
     },
     {
@@ -27060,16 +26920,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"store\"",
-      "scope": "QueueSubmissionTests.test_later_insert_with_older_clock_does_not_revoke_running_lease",
-      "anchor": "self.store.release_execution('b')",
-      "fingerprint": "6bb06234859342252ffc5eb7d376dde6c05d9cbcc5386bee00ea3af82be69f9c",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_utility_windows_compact_chrome_ui.py",
       "code": "union-attr",
       "message": "Item \"None\" of \"AppearanceWindowController | None\" has no attribute \"_phase\"",
@@ -30079,16 +29929,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"store\"",
-      "scope": "QueueSubmissionTests.test_live_child_enqueue_other_window_and_cancel_waiter_preserves_a",
-      "anchor": "rows = {r['job_id']: r for r in self.store.snapshot()['jobs']}",
-      "fingerprint": "77693c5cb9e7aaa6ed7cea18a7f5377a534b3c9832a7361e859cc300e55f4653",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/SettingsWindow.qml",
       "code": "unqualified",
@@ -30256,16 +30096,6 @@
       "scope": "",
       "anchor": "highlighted: index === setBox.highlightedIndex",
       "fingerprint": "7816550b73343565acb535d8f329a74f160146b8158eca5c91b70de5d7d86db0",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"store\"",
-      "scope": "QueueSubmissionTests.test_failed_live_child_does_not_poison_already_queued_successor",
-      "anchor": "failed = self.store.read_job(a_id)",
-      "fingerprint": "782d3c70685ac8c1f3d243fce983ac7116d597d85676fbe8ec47a6863ab5a498",
       "count": 1
     },
     {
@@ -30656,16 +30486,6 @@
       "scope": "LauncherSingleInstanceTests.test_explicit_return_to_original_pending_source_cancels_deferred_replacement",
       "anchor": "self.launcher._pending_qml[first] = SimpleNamespace(activate_when_ready=False)",
       "fingerprint": "7a02cabc114d38439bb18b930b5aee24717e95ef5999787316d79d3c3be06025",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "misc",
-      "message": "Invalid self argument \"QueueSubmissionTests\" to attribute function \"spin\" with type \"Callable[[QueueTests, Any, Any], Any]\"",
-      "scope": "QueueSubmissionTests.test_live_child_enqueue_other_window_and_cancel_waiter_preserves_a",
-      "anchor": "self.spin(lambda: not b.busy)",
-      "fingerprint": "7a07105008b41540fd6f015529e0251566d4845100a93b65df070d85e4c8e205",
       "count": 1
     },
     {
@@ -31690,16 +31510,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"store\"",
-      "scope": "QueueSubmissionTests.test_later_insert_with_older_clock_does_not_revoke_running_lease",
-      "anchor": "a = self.store.register_desktop_job('a', summary='A')",
-      "fingerprint": "7ea0aa0f91f6950c55d89819e26162f031841ca7c891bb45f5ed95146e81e10f",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_film_plot_settings.py",
       "code": "attr-defined",
       "message": "\"type[QDialogButtonBox]\" has no attribute \"Apply\"",
@@ -32290,16 +32100,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"store\"",
-      "scope": "QueueSubmissionTests.test_unregistered_or_terminal_job_cannot_acquire",
-      "anchor": "self.assertFalse(self.store.acquire_execution('missing'))",
-      "fingerprint": "8097efbb18043db79804e883fc4f5218708f824bda08a73b1b05ce459249b659",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_film_floating_ui.py",
       "code": "attr-defined",
       "message": "\"QObject\" has no attribute \"show\"",
@@ -32496,16 +32296,6 @@
       "scope": "MaskViewportTests.test_late_machine_load_refits_but_late_refresh_preserves_manual_view",
       "anchor": "self.bridge.refreshRings()",
       "fingerprint": "8163f21308522c7d7e6a8fda6d056b38c4f6e0760e9183662831575347a74134",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"root\"",
-      "scope": "QueueSubmissionTests.test_live_child_enqueue_other_window_and_cancel_waiter_preserves_a",
-      "anchor": "gate = self.root / 'gate'; gate.mkdir()",
-      "fingerprint": "81691958d30383bfdf7e440c0711f87e4fc0f39992810d3bf9b2fcf0b81faf21",
       "count": 1
     },
     {
@@ -34159,16 +33949,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"scheduler\"",
-      "scope": "QueueSubmissionTests.test_live_child_enqueue_other_window_and_cancel_waiter_preserves_a",
-      "anchor": "self.scheduler.client().cancel(b_row['job_id'])",
-      "fingerprint": "87d3d43d0a41ef0696e0b23f339ab8902805fcd5ea223206ae2880342b972b5f",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/scheduler/worker.py",
       "code": "E702",
@@ -34720,16 +34500,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"store\"",
-      "scope": "QueueSubmissionTests.test_unregistered_or_terminal_job_cannot_acquire",
-      "anchor": "a['state'] = 'failed'; self.store.update_job(a)",
-      "fingerprint": "8a371de297ca5c8aec2ec4b76ddb0b93fdca3bc7526b45e4c214a473b7b2167b",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_compact_window_chrome_ui.py",
       "code": "union-attr",
       "message": "Item \"None\" of \"QQuickItem | None\" has no attribute \"height\"",
@@ -34899,16 +34669,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"store\"",
-      "scope": "QueueSubmissionTests.test_later_insert_with_older_clock_does_not_revoke_running_lease",
-      "anchor": "self.assertTrue(self.store.acquire_execution('a'), 'enqueue must not revoke A heartbeat')",
-      "fingerprint": "8ab99b468668e946c0d0ddb35dd78c7443d4c8a4916ac9c06c0d049f113c8522",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "tests/test_appearance_asset_descriptor.py",
       "code": "F401",
@@ -35026,16 +34786,6 @@
       "scope": "",
       "anchor": "Layout.maximumWidth: window.numericLabelWidth",
       "fingerprint": "8b383898e84ce7908e56507dbc3501902e44dccb2899d50764c6b70f8aacba7d",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "misc",
-      "message": "Invalid self argument \"QueueSubmissionTests\" to attribute function \"spin\" with type \"Callable[[QueueTests, Any, Any], Any]\"",
-      "scope": "QueueSubmissionTests.test_live_child_enqueue_other_window_and_cancel_waiter_preserves_a",
-      "anchor": "self.spin(lambda: not a.busy and not b.busy and not c.busy, timeout=25)",
-      "fingerprint": "8b4baf19f8d079ff7f33def127bdb9cb4624da8734c0508b0ddadbc35186acc0",
       "count": 1
     },
     {
@@ -36350,16 +36100,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"root\"",
-      "scope": "QueueSubmissionTests.test_live_child_enqueue_other_window_and_cancel_waiter_preserves_a",
-      "anchor": "self.assertFalse(QueueCancelEvent(self.root, a_row['job_id']).is_set())",
-      "fingerprint": "9059589c8beef063dd7ac0f5259dc0b6df7fc0809698bb71fcff48ed735c6220",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_source_substrate_compact_chrome_ui.py",
       "code": "attr-defined",
       "message": "\"QCoreApplication\" has no attribute \"font\"",
@@ -37346,16 +37086,6 @@
       "scope": "MaterialOpticalEditorTests.test_qml_cancel_unsaved_optical_edit_preserves_draft_and_returns_focus",
       "anchor": "warnings = []",
       "fingerprint": "94794fc4ab93431486e51a42df170b9f19cca5eeef17f7d68f538b87fddab65e",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"store\"",
-      "scope": "QueueSubmissionTests.test_live_child_enqueue_other_window_and_cancel_waiter_preserves_a",
-      "anchor": "rows = self.store.snapshot()['jobs']",
-      "fingerprint": "94861e9477c0f326f4a5910445ec7c8b7fa51dbd94f7bd7d73d4f1ff73541ec6",
       "count": 1
     },
     {
@@ -40930,16 +40660,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"store\"",
-      "scope": "QueueSubmissionTests.test_failed_live_child_does_not_poison_already_queued_successor",
-      "anchor": "a_id = self.store.snapshot()['jobs'][0]['job_id']",
-      "fingerprint": "a2deba39fea738f0191a36aeca295a4d650f3244d7b677bf3310676e0c1d02a4",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_ai_appearance_operations_contract.py",
       "code": "index",
       "message": "Value of type \"Any | None\" is not indexable",
@@ -41306,16 +41026,6 @@
       "scope": "ZnSReferenceSnapshotTests.setUp",
       "anchor": "self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)",
       "fingerprint": "a46eba2669c424ebfa0337f1aa22b82234a023a80ae693b4b23fc38d38e56290",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "misc",
-      "message": "Invalid self argument \"QueueSubmissionTests\" to attribute function \"spin\" with type \"Callable[[QueueTests, Any, Any], Any]\"",
-      "scope": "QueueSubmissionTests.test_failed_live_child_does_not_poison_already_queued_successor",
-      "anchor": "self.spin(lambda: (gate / 'started-21').exists(), timeout=10)",
-      "fingerprint": "a4715af84c45e4c93a46c112f2cf116e71a06bfd955043b7387555310678efc4",
       "count": 1
     },
     {
@@ -43850,16 +43560,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"scheduler\"",
-      "scope": "QueueSubmissionTests.test_live_child_enqueue_other_window_and_cancel_waiter_preserves_a",
-      "anchor": "with self.scheduler.gated_workers(gate):",
-      "fingerprint": "ae629ef583fa94554ef429ae0c1b978f2f91093e8e80f998f6a96fbfee79acd4",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tools/verify_film_design_reference_storage.py",
       "code": "union-attr",
       "message": "Item \"None\" of \"FilmDesignEditSession | None\" has no attribute \"snapshot\"",
@@ -44746,16 +44446,6 @@
       "scope": "_link_runtime",
       "anchor": "raise RuntimeError(\"runtime_junction_creation_failed\")",
       "fingerprint": "b28f8078e68e9cdcaa88a6113e5a7cb3af0fe631797383a8478771d712c871cc",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"store\"",
-      "scope": "QueueSubmissionTests.test_live_child_enqueue_other_window_and_cancel_waiter_preserves_a",
-      "anchor": "a_row = self.store.snapshot()['jobs'][0]",
-      "fingerprint": "b28f9cc7eeae567051416e1795da87f236cb32a8e2b63dcaf463ee1883a6c626",
       "count": 1
     },
     {
@@ -51630,16 +51320,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"store\"",
-      "scope": "QueueSubmissionTests.test_later_insert_with_older_clock_does_not_revoke_running_lease",
-      "anchor": "self.store.release_execution('a')",
-      "fingerprint": "ce5608fc0eab917181d674f5d3a859669f5a87c6c40ccf1d50bdb3250c80665f",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/mcp/server.py",
       "code": "attr-defined",
       "message": "Module has no attribute \"locking\"",
@@ -52186,16 +51866,6 @@
       "scope": "",
       "anchor": "onAccepted: bridge.confirmDocumentReplace(true)",
       "fingerprint": "d0803bcbca983836fbcebf54c1c23aa5c32305b0c78dd0cc35cb37e7b4b30f0c",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"store\"",
-      "scope": "QueueSubmissionTests.test_later_insert_with_older_clock_does_not_revoke_running_lease",
-      "anchor": "a['state'] = 'running'; self.store.update_job(a)",
-      "fingerprint": "d083a4d3c1aa4c58da17808d85bc8bc1ba4132b38a55986cbe004986c865356c",
       "count": 1
     },
     {
@@ -53497,16 +53167,6 @@
       "anchor": "nameFilters: filePurpose === \"open\" ? [\"机器设计 (*.cmac)\"] : selectedFilePointer.indexOf(\"sources\") >= 0 ? [\"蒸发源设计 (*.csrc)\"] : [\"修正板设计 (*.cmsk)\"]",
       "fingerprint": "d54617f07b9da579388081c9cc7fa4b0e9eaf09527ca146a6d1aa1b271d2b988",
       "count": 2
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"store\"",
-      "scope": "QueueSubmissionTests.test_later_insert_with_older_clock_does_not_revoke_running_lease",
-      "anchor": "self.assertFalse(self.store.acquire_execution('b'))",
-      "fingerprint": "d54f07f31cb0e2ede625d41accc3f669703f384935338a5111560b651dc3b737",
-      "count": 1
     },
     {
       "tool": "mypy",
@@ -57710,16 +57370,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "attr-defined",
-      "message": "\"QueueSubmissionTests\" has no attribute \"store\"",
-      "scope": "QueueSubmissionTests.test_later_insert_with_older_clock_does_not_revoke_running_lease",
-      "anchor": "a['state'] = 'succeeded'; self.store.update_job(a)",
-      "fingerprint": "e6390bcf4f0bf66fab8989473c0d91f8589d40c8f04f04ff95924912e900f3d5",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_queue_results_resources.py",
       "code": "misc",
       "message": "Invalid self argument \"QueueResultResourceTests\" to attribute function \"bridge\" with type \"Callable[[QueueTests], Any]\"",
@@ -61840,16 +61490,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_queue_submission_isolation.py",
-      "code": "misc",
-      "message": "Invalid self argument \"QueueSubmissionTests\" to attribute function \"spin\" with type \"Callable[[QueueTests, Any, Any], Any]\"",
-      "scope": "QueueSubmissionTests.test_failed_live_child_does_not_poison_already_queued_successor",
-      "anchor": "self.spin(lambda: not a.busy and not b.busy, timeout=25)",
-      "fingerprint": "f69a92bd84515bc3cf53c07dadd1a848d2019ce3e398d05fbe11d92671dfccce",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/appearance/gpu.py",
       "code": "misc",
       "message": "Value expression in dictionary comprehension has incompatible type \"float | None\"; expected type \"int\"",
@@ -64349,6 +63989,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "Remove only resolved async admission test fixture diagnostics after typed adapters and updated async boundaries; no added allowances.",
+  "last_prune_reason": "Remove only resolved queue isolation fixture typing diagnostics after asynchronous admission test repair",
   "configuration_review_reason": "2026-10-17: add only BSD-3-Clause pypdf 6.21.0 for isolated research PDF extraction; all previous dependency/tool versions, analyzer rules and diagnostic entries remain unchanged. The lock-file digest changes only for this reviewed runtime dependency."
 }

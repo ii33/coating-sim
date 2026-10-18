@@ -222,6 +222,14 @@ class MemoryLifecycleTests(unittest.TestCase):
                         self.assertEqual(harness.client().status(cancelled_job_id)['state'], 'running')
                         bridge.cancel()
                         self.assertTrue(bridge._cancel_event.is_set())
+                        # Cancellation intent is immediate, but its transport
+                        # acknowledgement is asynchronous even for local jobs.
+                        cancel_deadline = time.monotonic() + 10
+                        while (not harness.client().status(cancelled_job_id)['cancel_requested']
+                               and time.monotonic() < cancel_deadline):
+                            harness.tick()
+                            APP.processEvents()
+                            time.sleep(.005)
                         self.assertTrue(harness.client().status(cancelled_job_id)['cancel_requested'])
                         wait_until_idle()
                         cancelled_row = harness.client().status(cancelled_job_id)

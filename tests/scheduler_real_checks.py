@@ -77,12 +77,13 @@ def main():
         evidence['checks'].append({'name':'real_result_save_failure','job':failed})
 
         # Execute the real GUI calculate and launcher shutdown paths in a client process.
-        gui_code = '''import os,json,sys
+        gui_code = '''import os,json,sys,time
 os.environ['QT_QPA_PLATFORM']='offscreen'
 from pathlib import Path
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtCore import QTimer
 from coat_sim.core.api import CoatService
+from coat_sim.scheduler import SchedulerClient
 from coat_sim.ui.main import MainBridge
 from coat_sim.ui.launcher import LauncherBridge
 app=QGuiApplication([])
@@ -94,6 +95,15 @@ bridge._device='CPU'
 bridge.calculate()
 ids=[event.job_id for event in bridge._job_cancel_events.values()]
 assert ids,bridge.status
+# A local observer ID is provisional until the service has durably admitted it.
+client=SchedulerClient(sys.argv[1])
+deadline=time.monotonic()+30
+admitted=set()
+while not set(ids).issubset(admitted) and time.monotonic()<deadline:
+    app.processEvents()
+    admitted={row['job_id'] for row in client.snapshot()['jobs']}
+    time.sleep(.01)
+assert set(ids).issubset(admitted),('admission timed out',ids,bridge.status)
 class Harness:
     _closing=False
     _main_bridge=bridge
