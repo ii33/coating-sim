@@ -38,7 +38,7 @@ def test_cwd_output_utf8_and_scope(tmp_path):
         final = wait_done(manager, task_id)
         assert final['state'] == 'completed' and final['exit_code'] == 0
         assert str(tmp_path) in final['stdout'] and '你好' in final['stdout']
-        assert final['stderr'] == 'error\n'
+        assert final['stderr'] == 'error' + os.linesep
         assert final['isolation'] == 'none' and final['terminal_kind'] == 'pipe'
         assert manager.poll(task_id) == final  # cumulative, not destructive
         with pytest.raises(ToolkitError, match='this scope'):
