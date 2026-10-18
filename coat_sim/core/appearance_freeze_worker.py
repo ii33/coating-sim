@@ -43,9 +43,9 @@ def build_frozen_envelope(root, request: dict[str, Any], cancel_event=None) -> d
         _normalize_public_request, _root_path,
     )
     from coat_sim.appearance.contract import validate_job
-    from coat_sim.ui.appearance_worker import (
-        _appearance_context_from_asset,
-        _build_job_from_verified_asset,
+    from coat_sim.appearance.process_adapter import (
+        appearance_context_from_asset,
+        build_job_from_asset,
     )
 
     root_path = _root_path(root)
@@ -60,7 +60,7 @@ def build_frozen_envelope(root, request: dict[str, Any], cancel_event=None) -> d
 
     asset_path = Path(canonical_request["asset_path"])
     asset_sha256 = canonical_request["asset_sha256"]
-    context = _appearance_context_from_asset(
+    context = appearance_context_from_asset(
         asset_path, root_path, asset_sha256, cancel_event=cancel_event)
     context = _plain_json(context)
     if _cancelled(cancel_event):
@@ -69,7 +69,7 @@ def build_frozen_envelope(root, request: dict[str, Any], cancel_event=None) -> d
     thickness = (canonical_request.get("geometry_thickness_mm")
                  if canonical_request["geometry_thickness_mode"] == "explicit_override"
                  else None)
-    job = _build_job_from_verified_asset(
+    job = build_job_from_asset(
         context["process_profile"], str(asset_path), str(root_path),
         canonical_request["render_inputs"]["wavelength_nm"],
         canonical_request["render_inputs"],

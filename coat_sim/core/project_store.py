@@ -10,6 +10,7 @@ from collections.abc import Callable, Mapping
 from contextlib import contextmanager, nullcontext
 from copy import deepcopy
 from datetime import datetime, timezone
+from functools import wraps
 import errno
 import hashlib
 import os
@@ -19,6 +20,7 @@ import stat
 import sys
 import tempfile
 from threading import RLock
+from typing import Any, TypeVar, cast
 import unicodedata
 import uuid
 import weakref
@@ -214,10 +216,31 @@ def _rollback_published_directory(directory: Path, identity: tuple, files: dict[
         return False
 
 
+class _CapturedRecords(dict):
+    """Working membership paired with the descriptor from which it was read."""
+    def __init__(self, records, fingerprint):
+        super().__init__(records)
+        self.fingerprint = fingerprint
+
+
+_StoreMethod = TypeVar("_StoreMethod", bound=Callable[..., Any])
+
+
+def _store_operation(method: _StoreMethod) -> _StoreMethod:
+    @wraps(method)
+    def serialized(self: "ProjectStore", *args: Any, **kwargs: Any) -> Any:
+        with self._operation_scope():
+            return method(self, *args, **kwargs)
+    return cast(_StoreMethod, serialized)
+
+
 class ProjectStore:
     """A captured persisted project revision; reopen after a stale-write error."""
     def __init__(self, root: Path, manifest: dict, fingerprint: str, *,
                  project_file: Path | None = None, asset_limits=None):
+        self._operation_lock = RLock()
+        self._operation_depth = 0
+        self._notification_pending = False
         self._root = root
         self._project_file = project_file if project_file is not None else root / MANIFEST_FILENAME
         self._manifest = manifest
@@ -232,6 +255,25 @@ class ProjectStore:
         if asset_limits is not None and not isinstance(asset_limits, AssetReadLimits):
             raise ProjectError("invalid_limits", "Use AssetReadLimits for project binary input safety limits")
         self.asset_limits = DEFAULT_ASSET_LIMITS if asset_limits is None else asset_limits
+
+    @contextmanager
+    def _operation_scope(self):
+        # Host/service locks precede this lock. Never invoke observers while it
+        # is held: observers may acquire a host lock on another thread.
+        notify = False
+        try:
+            with self._operation_lock:
+                self._operation_depth += 1
+                try:
+                    yield
+                finally:
+                    self._operation_depth -= 1
+                    if self._operation_depth == 0 and self._notification_pending:
+                        self._notification_pending = False
+                        notify = True
+        finally:
+            if notify:
+                self._notify_changes()
 
     def observe_changes(self, callback: Callable[[], None]) -> Callable[[], None]:
         """Observe committed publications weakly; callers marshal any UI work.
@@ -251,6 +293,10 @@ class ProjectStore:
         return unsubscribe
 
     def _notify_changes(self) -> None:
+        with self._operation_lock:
+            if self._operation_depth:
+                self._notification_pending = True
+                return
         with self._change_observer_lock:
             observers = tuple(self._change_observers)
         for reference in observers:
@@ -277,10 +323,12 @@ class ProjectStore:
         return self._project_file
 
     @property
+    @_store_operation
     def maintenance_warnings(self) -> list[dict[str, str]]:
         return deepcopy(self._maintenance_warnings)
 
     @property
+    @_store_operation
     def manifest(self) -> dict:
         return deepcopy(self._manifest)
 
@@ -324,6 +372,7 @@ class ProjectStore:
         store.resolve_default()
         return store
 
+    @_store_operation
     def update_information(self, information: Mapping, *, expected_revision: int | None = None) -> dict:
         """Atomically change project display metadata, retaining membership/ID.
 
@@ -394,6 +443,7 @@ class ProjectStore:
             raise ProjectError("invalid_document", "Persisted project document is not normalized: " + row["id"])
         return normalized
 
+    @_store_operation
     def _read_all(self):
         self._current()
         records = self._index()
@@ -404,25 +454,31 @@ class ProjectStore:
             if total > MAX_PROJECT_BYTES:
                 raise ProjectError("capacity_exceeded", "Managed project input JSON exceeds the safety capacity limit")
         self._validate_graph(records, data)
-        return deepcopy(records), data
+        return _CapturedRecords(deepcopy(records), self._fingerprint), data
 
+    @_store_operation
     def snapshot_saved_inputs(self, *, verify_assets=True) -> dict:
         """Return a validated, detached snapshot of every saved input document.
 
         Includes non-default designs, excludes recovery and runtime state. A
         second fingerprint check rejects concurrent publication during capture.
         """
+        fingerprint, manifest = self._fingerprint, self.manifest
         records, data = self._read_all()
         for identity, row in records.items():
             if row["kind"] == "process":
                 self.resolve_document(identity)
         self._current()
-        snapshot = {"manifest": self.manifest, "documents": data}
+        snapshot = {"manifest": manifest, "documents": data}
         sources = self.asset_sources(records, data, verify=verify_assets)
         if sources:
             snapshot["assets"] = sources
+        self._current()
+        if self._fingerprint != fingerprint:
+            raise ProjectError("stale_project", "Project changed during snapshot capture")
         return snapshot
 
+    @_store_operation
     def asset_sources(self, records=None, data=None, *, verify=False, overrides=None) -> dict:
         from .project_binary_assets import normalize_binary_asset, stream_asset
         if records is None or data is None:
@@ -484,6 +540,7 @@ class ProjectStore:
                         for path in registered:
                             self._asset_publication_receipts.pop(path, None)
 
+    @_store_operation
     def binary_asset_path(self, document_id: str) -> Path:
         from .project_binary_assets import file_signature, stream_asset, validate_asset_content
         row = self._index().get(document_id)
@@ -582,6 +639,7 @@ class ProjectStore:
                     if expected is not None and expected != asset["sha256"]:
                         raise ProjectError("integrity_error", "Simulation input reference differs from its binary digest")
 
+    @_store_operation
     def resolve_document(self, document_id: str) -> dict:
         self._current()
         identifier(document_id)
@@ -640,6 +698,7 @@ class ProjectStore:
             result["configuration"] = deepcopy(data[document_id])
         return result
 
+    @_store_operation
     def resolve_default(self) -> dict | None:
         default = self._manifest["default_configuration_id"]
         if default is None:
@@ -682,6 +741,7 @@ class ProjectStore:
                     "path": str(lock),
                 })
 
+    @_store_operation
     def _publish(self, records, data, *, default=None, change_default=False, assets=None,
                  expected_fingerprint: str | None = None) -> dict[str, str]:
         result = self._publish_transaction(records, data, default=default, change_default=change_default,
@@ -689,11 +749,14 @@ class ProjectStore:
         self._notify_changes()
         return result
 
+    @_store_operation
     def _publish_transaction(self, records, data, *, default=None, change_default=False, assets=None,
                              expected_fingerprint: str | None = None) -> dict[str, str]:
         if len(records) > MAX_PROJECT_DOCUMENTS:
             raise ProjectError("capacity_exceeded", "Project has too many managed input documents")
-        captured_fingerprint = self._fingerprint
+        captured_fingerprint = getattr(records, "fingerprint", self._fingerprint)
+        if captured_fingerprint != self._fingerprint:
+            raise ProjectError("stale_project", "Project changed after its documents were captured")
         if expected_fingerprint is not None and expected_fingerprint != captured_fingerprint:
             raise ProjectError("stale_project", "Project changed after the confirmed asset operation")
         # Capture dependency identities before moving all working versions.
@@ -875,6 +938,7 @@ class ProjectStore:
                 if temporary is not None:
                     temporary.unlink(missing_ok=True)
 
+    @_store_operation
     def import_document(self, path, materials: Mapping | None = None) -> str:
         records, data = self._read_all()
         root_path = Path(os.path.abspath(Path(path).expanduser()))
@@ -966,6 +1030,7 @@ class ProjectStore:
             if set_id not in {row["id"] for row in data[existing_id]["material"]["optical_sets"]}:
                 raise ProjectError("missing_dependency", "Document optical set is missing: " + material_id + "/" + set_id)
 
+    @_store_operation
     def create_document(self, kind: str, document: Mapping, *, materials: Mapping | None = None,
                         make_default: bool = False) -> str:
         """Create a managed typed draft with explicit project-local dependencies."""
@@ -999,6 +1064,7 @@ class ProjectStore:
         # An unordered multi-configuration batch has no last business item.
         return None, False
 
+    @_store_operation
     def write_documents(self, new_documents=(), *, updates=None, expected_revisions=None) -> list[str]:
         """Publish explicit managed creations and updates in a single transaction."""
         records, data = self._read_all()
@@ -1029,6 +1095,7 @@ class ProjectStore:
         self._publish(records, data, default=default, change_default=change_default)
         return created
 
+    @_store_operation
     def remove_document(self, document_id: str, *, expected_revision: str | None = None) -> None:
         """Remove an unreferenced logical document; immutable old generations remain."""
         identifier(document_id)
@@ -1061,6 +1128,7 @@ class ProjectStore:
                     raise ProjectError("missing_dependency", "Save requires an unambiguous typed project-local dependency handle")
                 owner[field] = target + EXTENSIONS[records[target]["kind"]]
 
+    @_store_operation
     def save_documents(self, updates: Mapping[str, Mapping], *,
                        expected_revisions: Mapping[str, str] | None = None,
                        default_configuration_id=_DEFAULT_UNCHANGED) -> None:
@@ -1090,6 +1158,7 @@ class ProjectStore:
         default, change_default = self._saved_configuration_target(records, updates, default_configuration_id)
         self._publish(records, data, default=default, change_default=change_default)
 
+    @_store_operation
     def save_deposition_configuration(self, name: str, process_document: Mapping, parameters=None, *,
                                       process_document_id: str | None = None,
                                       expected_revision: str | None = None,
@@ -1117,6 +1186,7 @@ class ProjectStore:
         self._publish(records, data, default=configuration, change_default=True)
         return configuration, process_document_id
 
+    @_store_operation
     def add_deposition_configuration(self, name: str, process_document_id: str, parameters=None, *,
                                      description: str | None = None, notes: str | None = None) -> str:
         records, data = self._read_all()
@@ -1129,6 +1199,7 @@ class ProjectStore:
         self._publish(records, data, default=identity, change_default=True)
         return identity
 
+    @_store_operation
     def save_document(self, document_id: str, document: Mapping, *, materials: Mapping | None = None) -> None:
         """Save a current working document, retaining its ID and every ancestor.
 
@@ -1156,6 +1227,7 @@ class ProjectStore:
             return
         self._publish(records, data, default=default, change_default=change_default)
 
+    @_store_operation
     def set_default_configuration(self, configuration_id: str | None) -> None:
         records, data = self._read_all()
         if configuration_id is not None:
@@ -1206,6 +1278,7 @@ class ProjectStore:
             if stage.exists():
                 shutil.rmtree(stage, ignore_errors=True)
 
+    @_store_operation
     def record_recovery(self, document_ids) -> None:
         if (not isinstance(document_ids, list) or any(not isinstance(item, str) for item in document_ids)
                 or len(document_ids) != len(set(document_ids))):
@@ -1232,6 +1305,7 @@ class ProjectStore:
             finally:
                 temporary.unlink(missing_ok=True)
 
+    @_store_operation
     def recover_session(self) -> dict | None:
         """Explicit abnormal-recovery metadata read; never replaces saved data."""
         self._current()

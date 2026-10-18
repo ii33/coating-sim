@@ -129,3 +129,7 @@
 ## 当前界面读取与受控操作（2026-10-16）
 
 `project_editor_snapshot` 已登记为只读工具，经精确六字段 project_target 路由到原工程owner，读取膜系设计/光谱仿真/优化真实当前状态；分页带expected_snapshot_id，未保存草稿不替换成保存版。讨论目录允许该工具；绑定窗口的update_window/window_action仅操作/攻关按实时白名单、instance_id和expected_snapshot_id执行，不开放未声明动作或整体路径替换。更完整边界、算法目录与离线规模测量见[助手算法能力合同](assistant-algorithm-capability-contract.md)。
+
+## 2026-10-18 专用 CLI 边界修复
+
+`algorithm_cli --root ROOT` 显式选择项目与队列根目录，工艺输入仍受该根目录约束；冻结输入校验完成后才构造 scheduler。时间步数与步长冲突会拒绝，步长回执含实际平均步长。初始化失败返回 JSON/退出 2 并恢复 SIGINT。膜系 JSON CLI 验证冻结快照对象后才读取设置，支持单波长归一化设置回放。完整优先级、错误和生命周期见 [无界面 CLI 合同](headless-cli-contract.md)。

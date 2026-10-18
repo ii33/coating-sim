@@ -37,7 +37,7 @@ def _retain_remote_worker(worker) -> None:
 
 
 class FilmOptimizationRunStartError(RuntimeError):
-    """A worker could not start after its queue submission was accepted."""
+    """A worker could not start; asynchronous admission has not run."""
 
 
 class FilmOptimizationRunPreparationError(RuntimeError):
@@ -108,7 +108,7 @@ class FilmOptimizationRunCoordinator(QObject):
     def start(self, *, submit: Callable[[], None] | None,
               worker_factory: Callable[[int], object],
               edit_epoch: int | None) -> int | None:
-        """Prepare an attempt; local admission may stay synchronous, remote admission may run in the worker."""
+        """Prepare a busy attempt before dispatch; UI queue admission runs in the worker."""
         if self._busy or self._shutting_down:
             return None
         operation_id = self._operation_serial + 1
@@ -150,7 +150,7 @@ class FilmOptimizationRunCoordinator(QObject):
             if getattr(getattr(worker, "cancel_event", None), "_remote", False):
                 _release_remote_worker(worker)
             self._busy = False
-            detail = f"worker start failed after queue submission: {exc}"
+            detail = f"worker start failed before asynchronous queue admission: {exc}"
             if cancel_error is not None:
                 detail += f"; queue cancellation also failed: {cancel_error}"
             raise FilmOptimizationRunStartError(detail) from exc

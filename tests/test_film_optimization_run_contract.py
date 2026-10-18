@@ -8,12 +8,13 @@ from __future__ import annotations
 
 import os
 from threading import Event
+import time
 from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PySide6.QtCore import QObject, QRunnable, Signal
+from PySide6.QtCore import QObject, QRunnable, Signal, QTimer, QCoreApplication
 
 from coat_sim.core.film_optimization import FilmOptimizationResult
 from coat_sim.ui import film_optimization_quick_controller as module
@@ -44,6 +45,16 @@ class _HeldWorker(QRunnable):
         self.setAutoDelete(False)
         self.__class__.instances.append(self)
 
+    def admit(self):
+        # A deterministic fake pool performs the worker admission phase here;
+        # actual thread affinity is covered by the gated async Qt tests.
+        try:
+            self.remote_admission()
+            self.admitted = True
+        except Exception as exc:
+            message = str(exc)
+            QTimer.singleShot(0, lambda: self.finish(error={"state": "failed", "message": message}))
+
     def finish(self, result=None, error=None):
         self.signals.finished.emit(self.operation_id, result, [], error)
 
@@ -61,7 +72,7 @@ class _Store:
 
     def submit(self, spec, *, job_id, metadata):
         if self.fail_submit:
-            raise RuntimeError("controlled submit failure")
+            raise ValueError("controlled submit failure")
         self.submissions.append((spec, job_id, metadata))
 
     def cancel(self, job_id):
@@ -139,7 +150,10 @@ def attempt_harness(tmp_path, monkeypatch):
         source = _Source(service, session)
         controller = FilmOptimizationQuickController(source)
         monkeypatch.setattr(controller, "_build_request", lambda **_kwargs: request)
-        controller._pool.start = lambda worker: None
+        controller._pool.start = lambda worker: worker.admit()
+        from coat_sim.ui import film_optimization_run_coordinator as coordinator_module
+        monkeypatch.setattr(coordinator_module.QThreadPool, "globalInstance",
+                            lambda: controller._pool)
         return controller, source
 
     return make_controller, stores, request
@@ -163,7 +177,17 @@ def _completed_result(request):
     )
 
 
+def _wait(predicate):
+    until = time.monotonic() + 3
+    while not predicate() and time.monotonic() < until:
+        QCoreApplication.processEvents()
+        time.sleep(.005)
+    assert predicate()
+
+
 def _dispose(controller):
+    if controller._worker is not None:
+        controller._worker.finish(error={"state": "cancelled"})
     controller.shutdown(1000)
     controller.deleteLater()
 
@@ -186,9 +210,8 @@ def test_busy_attempt_submits_once_and_cancel_retry_then_close_is_idempotent(
         controller.cancelOptimization()
         assert controller._cancel_requested
         assert controller._cancel_event is not None
-        assert not controller._cancel_event.is_set()
-        assert stores[0].cancel_attempts == [controller._queue_job_id]
-        assert stores[0].cancellations == []
+        assert controller._cancel_event.is_set()
+        _wait(lambda: len(stores[0].cancel_attempts) >= 1)
         result = _completed_result(_request)
         controller._result_application_eligible = True
         assert not controller._apply_completed_result(
@@ -196,14 +219,17 @@ def test_busy_attempt_submits_once_and_cancel_retry_then_close_is_idempotent(
         assert controller._source_controller.applied == []
 
         controller.cancelOptimization()
+        _wait(lambda: bool(stores[0].cancellations))
         assert stores[0].cancel_attempts == [
             controller._queue_job_id, controller._queue_job_id]
+        _wait(lambda: bool(stores[0].cancellations))
         assert stores[0].cancellations == [controller._queue_job_id]
         assert controller._error == ""
 
         controller.requestClose()
         controller.requestClose()
         assert len(stores[0].cancel_attempts) == 2
+        _wait(lambda: bool(stores[0].cancellations))
         assert stores[0].cancellations == [controller._queue_job_id]
         assert controller._pending_close
         assert controller._busy
@@ -290,6 +316,7 @@ def test_close_during_run_keeps_completed_candidate_from_auto_apply(attempt_harn
         assert controller.startOptimization()
         controller.requestClose()
         assert controller._pending_close
+        _wait(lambda: bool(stores[0].cancellations))
         assert stores[0].cancellations == [controller._queue_job_id]
 
         _HeldWorker.instances[-1].finish(_completed_result(request))
@@ -311,7 +338,7 @@ def test_shutdown_ignores_late_worker_completion(attempt_harness):
         assert controller.startOptimization()
         worker = _HeldWorker.instances[-1]
 
-        assert controller.shutdown(1000)
+        assert not controller.shutdown(1000), "an admitted observer may still be in flight"
         assert controller._shutting_down
         assert not controller._busy
         assert controller._active_operation_id is None
@@ -380,7 +407,7 @@ def test_worker_preparation_failure_never_submits_or_installs_attempt(
         _dispose(controller)
 
 
-def test_submit_failure_never_installs_worker_or_busy_attempt(attempt_harness, monkeypatch):
+def test_async_submit_failure_retires_busy_attempt(attempt_harness, monkeypatch):
     make_controller, stores, _request = attempt_harness
     controller, _source = make_controller()
     # The factory's first store is created only by startOptimization.
@@ -389,22 +416,23 @@ def test_submit_failure_never_installs_worker_or_busy_attempt(attempt_harness, m
 
     def failing_factory(root):
         store = original_factory(root)
+        assert isinstance(store, _Store)
         store.fail_submit = True
         return store
 
     monkeypatch.setattr(module, "SchedulerClient", failing_factory)
     try:
-        assert not controller.startOptimization()
-        assert not controller._busy
+        assert controller.startOptimization()
+        _wait(lambda: not controller._busy)
         assert controller._worker is None
         assert controller._active_operation_id is None
-        assert controller._error == "Unable to submit film optimization to the queue: controlled submit failure"
+        assert "controlled submit failure" in controller._error
     finally:
         _dispose(controller)
 
 
 @pytest.mark.parametrize("cancel_fails", [False, True])
-def test_admitted_job_is_cancelled_if_worker_start_fails(
+def test_worker_start_failure_never_submits_or_cancels(
         attempt_harness, monkeypatch, cancel_fails):
     make_controller, stores, _request = attempt_harness
     controller, _source = make_controller()
@@ -412,6 +440,7 @@ def test_admitted_job_is_cancelled_if_worker_start_fails(
 
     def configured_store(root):
         store = original_factory(root)
+        assert isinstance(store, _Store)
         store.fail_cancel_once = cancel_fails
         return store
 
@@ -420,15 +449,12 @@ def test_admitted_job_is_cancelled_if_worker_start_fails(
         RuntimeError("controlled worker start failure"))
     try:
         assert not controller.startOptimization()
-        assert len(stores[0].submissions) == 1
-        assert stores[0].cancel_attempts == [controller._queue_job_id]
-        assert stores[0].cancellations == ([] if cancel_fails else [controller._queue_job_id])
+        assert stores[0].submissions == []
+        assert stores[0].cancel_attempts == []
+        assert stores[0].cancellations == []
         assert not controller._busy
         assert controller._worker is None
         assert controller._active_operation_id is None
-        assert "worker start failed after queue submission" in controller._error
-        if cancel_fails:
-            assert "queue cancellation also failed" in controller._error
-            assert "controlled cancel transport failure" in controller._error
+        assert "worker start failed" in controller._error
     finally:
         _dispose(controller)

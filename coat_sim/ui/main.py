@@ -148,6 +148,7 @@ class MainBridge(QObject):
     showQueueRequested = Signal()
     resultReady = Signal(int, object, float, object)
     progressReady = Signal(int, object)
+    cancelTransportStatus = Signal(str, str)
 
     _ALGORITHM_LABELS = {
         "fast": "工艺积分",
@@ -258,6 +259,7 @@ class MainBridge(QObject):
         self._axis_bounds = {"x_min": 0.0, "x_max": 0.0,
                              "y_min": 0.0, "y_max": 0.0}
         self.resultReady.connect(self._finish, Qt.QueuedConnection)
+        self.cancelTransportStatus.connect(self._on_cancel_transport_status, Qt.ConnectionType.QueuedConnection)
         self.progressReady.connect(self._on_progress, Qt.QueuedConnection)
         self._refresh_history()
         if self._project_compute is not None and not self._result_view_only:
@@ -1339,7 +1341,6 @@ class MainBridge(QObject):
             self.changed.emit()
             return
         queue_store = queue_job = None
-        remote_submission = False
         project_operation = None
         try:
             # Refresh even when a reused filename has changed on disk.
@@ -1368,6 +1369,7 @@ class MainBridge(QObject):
             algorithm = self._algorithm
             queue_store, target_device = self._compute_target.client_for_submit(
                 algorithm=algorithm, client_factory=SchedulerClient)
+            verify_admission, target_is_current = self._compute_target.admission_verifier(queue_store, target_device)
             device = target_device["backend"]
             estimate = {"work_index": None, "estimated_s": None}
             if algorithm == "fast":
@@ -1410,16 +1412,10 @@ class MainBridge(QObject):
                     raise ValueError("Project submission is missing its frozen operation")
                 submission_metadata = self._project_compute.metadata(
                     project_operation, submission_metadata)
-            remote_submission = bool(getattr(getattr(queue_store, "transport", None),
-                                             "remote_http", False))
-            if not remote_submission:
-                queue_job = queue_store.submit(submission_spec, job_id=queue_id,
-                                               metadata=submission_metadata)
             if self._project_compute is not None:
                 self._project_compute.register_job(
-                    queue_id, module_key="main", service_owned=not remote_submission,
-                    state="submitting" if remote_submission else "queued",
-                    metadata=submission_metadata)
+                    queue_id, module_key="main", service_owned=False,
+                    state="submitting", metadata=submission_metadata)
         except Exception as exc:
             if project_operation is not None and self._project_compute is not None:
                 self._project_compute.retire_operation(project_operation)
@@ -1432,9 +1428,7 @@ class MainBridge(QObject):
             self._busy = True
             self._uniformity_result_notice = ""
             self._uniformity_result_notice_severity = "info"
-            self._status = (f"正在提交计算任务：{self._ALGORITHM_LABELS[algorithm]}"
-                            if remote_submission else
-                            f"已加入计算队列：{self._ALGORITHM_LABELS[algorithm]}")
+            self._status = f"正在提交计算任务：{self._ALGORITHM_LABELS[algorithm]}"
             self._metrics = []
             self._progress_value = 0.0
             self._algorithm_report_text = ""
@@ -1445,7 +1439,8 @@ class MainBridge(QObject):
                 self._project_operations[job_id] = project_operation
                 self._project_queue_ids[job_id] = queue_id
             self._started_revision = self._revision
-            cancel_event = RemoteCancelEvent(queue_store, queue_id)
+            cancel_event = RemoteCancelEvent(queue_store, queue_id, pending_admission=True)
+            cancel_event.on_cancel_status = self.cancelTransportStatus.emit
             self._cancel_event = cancel_event
             self._job_cancel_events[job_id] = cancel_event
             # All algorithm choices are captured before starting the worker.
@@ -1465,6 +1460,8 @@ class MainBridge(QObject):
             }
             self.changed.emit()
 
+            admission_project = self._project_compute
+
             def worker():
                 started = time.monotonic()
                 def publish_progress(value):
@@ -1477,27 +1474,44 @@ class MainBridge(QObject):
                             pass
                 try:
                     observed_id = queue_id
-                    if remote_submission:
-                        try:
+                    verify_admission()
+                    if cancel_event.is_set():
+                        raise InterruptedError("已在作业接纳前取消；未创建作业。")
+                    if (getattr(self, "_observers_closed", False)
+                            or self._project_compute is not admission_project
+                            or (admission_project is not None
+                                and (project_operation is None
+                                     or admission_project.editing_frozen
+                                     or not admission_project.accepts(project_operation)))):
+                        raise InterruptedError("项目已关闭或已改变；未创建作业。")
+                    target_is_current()
+                    try:
+                        if getattr(getattr(queue_store, "transport", None), "remote_http", False):
                             queue_store.submit(submission_spec, job_id=queue_id,
                                                metadata=submission_metadata)
-                            if self._project_compute is not None:
-                                self._project_compute.update_job(
-                                    queue_id, "queued", service_owned=True)
-                        except RemoteSubmissionUnknown as unknown:
-                            if self._project_compute is not None:
-                                self._project_compute.update_job(
-                                    queue_id, "submission_unknown", service_owned=False)
-                            cancel_event.replace_job_id_before_admission(unknown.job_id)
-                            publish_progress(
-                                f"提交回执未确认；正在按任务 ID {unknown.job_id} 核对服务端状态…")
-                            resolve_unknown_submission(
-                                queue_store, unknown,
-                                should_stop=lambda: getattr(self, "_observers_closed", False))
-                            observed_id = unknown.job_id
-                        cancel_event.mark_admitted()
-                    if self._project_compute is not None:
-                        self._project_compute.update_job(queue_id, "running")
+                        else:
+                            from coat_sim.scheduler.desktop import submit_local_with_receipt
+                            submit_local_with_receipt(queue_store, submission_spec,
+                                                      job_id=queue_id, metadata=submission_metadata)
+                        if admission_project is not None:
+                            admission_project.update_job(
+                                queue_id, "queued", service_owned=True)
+                    except RemoteSubmissionUnknown as unknown:
+                        if not getattr(getattr(queue_store, "transport", None), "remote_http", False):
+                            raise
+                        if admission_project is not None:
+                            admission_project.update_job(
+                                queue_id, "submission_unknown", service_owned=False)
+                        cancel_event.replace_job_id_before_admission(unknown.job_id)
+                        publish_progress(
+                            f"提交回执未确认；正在按任务 ID {unknown.job_id} 核对服务端状态…")
+                        resolve_unknown_submission(
+                            queue_store, unknown,
+                            should_stop=lambda: getattr(self, "_observers_closed", False))
+                        observed_id = unknown.job_id
+                    cancel_event.mark_admitted()
+                    if admission_project is not None:
+                        admission_project.update_job(queue_id, "running")
                     reply = observe_job(queue_store, observed_id, publish_progress,
                                         disconnected=lambda: getattr(self, "_observers_closed", False))
                     from coat_sim.scheduler.worker import load_result
@@ -1506,10 +1520,11 @@ class MainBridge(QObject):
                     elapsed = reply.get("elapsed_s", time.monotonic() - started)
                 except Exception as exc:
                     result, error, elapsed = None, exc, time.monotonic() - started
-                if self._project_compute is not None:
-                    state = ("cancelled" if isinstance(error, InterruptedError) else
+                if admission_project is not None:
+                    state = ("submission_unknown" if isinstance(error, RemoteSubmissionUnknown) else
+                             "cancelled" if isinstance(error, InterruptedError) else
                              "failed" if error is not None else "succeeded")
-                    self._project_compute.update_job(queue_id, state)
+                    admission_project.update_job(queue_id, state)
                 _detach_error_tracebacks(error)
                 if not getattr(self, "_observers_closed", False):
                     try:
@@ -1547,6 +1562,16 @@ class MainBridge(QObject):
                 self._status = f"{label}：正在整理结果…"
         elif payload:
             self._status = str(payload)
+        self.changed.emit()
+
+    @Slot(str, str)
+    def _on_cancel_transport_status(self, queue_id: str, code: str) -> None:
+        if not any(event.job_id == queue_id for event in self._job_cancel_events.values()):
+            return
+        if code:
+            self._status = f"取消请求尚未确认（{code}）；可再次点击取消，按原作业 ID 重试。"
+        else:
+            self._status = "取消请求已送达；等待队列确认终态…"
         self.changed.emit()
 
     @Slot()
@@ -1606,7 +1631,8 @@ class MainBridge(QObject):
                 self._uniformity_result_notice_severity = "info"
                 self.changed.emit()
                 return
-        self._queued_keys.pop(job_id, None)
+        if not isinstance(error, RemoteSubmissionUnknown):
+            self._queued_keys.pop(job_id, None)
         finished_cancel_event = self._job_cancel_events.pop(job_id, None)
         self._busy = bool(self._job_cancel_events)
         if job_id != self._job_id:
@@ -1615,6 +1641,7 @@ class MainBridge(QObject):
                 self._project_operations.pop(job_id, None)
                 self._project_compute.update_job(
                     self._project_queue_ids.pop(job_id, ""),
+                    "submission_unknown" if isinstance(error, RemoteSubmissionUnknown) else
                     "cancelled" if isinstance(error, InterruptedError) else
                     "failed" if error is not None else "succeeded")
             self.changed.emit()
@@ -1624,7 +1651,8 @@ class MainBridge(QObject):
             self._project_operations.pop(job_id, None)
             self._project_compute.update_job(
                 self._project_queue_ids.pop(job_id, ""),
-                "cancelled" if isinstance(error, InterruptedError) else
+                "submission_unknown" if isinstance(error, RemoteSubmissionUnknown) else
+                    "cancelled" if isinstance(error, InterruptedError) else
                 "failed" if error is not None else "succeeded")
         self._cancel_event = None
         if error is not None:

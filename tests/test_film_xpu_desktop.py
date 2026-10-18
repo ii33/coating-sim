@@ -125,8 +125,12 @@ def test_old_queue_rejects_new_batch_without_stopping_it(app, tmp_path):
     target = ComputeTarget(tmp_path, "film_optimization", client_factory=Old)
     try:
         target.configure_film_context("", True)
-        with pytest.raises(ComputeTargetError, match="后台尚未支持"):
-            target.client_for_submit()
+        client, device = target.client_for_submit()
+        verify, _current = target.admission_verifier(client, device)
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with pytest.raises(ComputeTargetError, match="后台尚未支持"):
+                pool.submit(verify).result()
         target.configure_film_context("", False)
         assert isinstance(target.client_for_submit()[0], Old)
     finally:

@@ -5,6 +5,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 import copy
 import math
+import hashlib
+import json
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -86,7 +90,7 @@ def build_job_from_v7(process_profile: Mapping, captured_fields: Mapping,
                       geometry_thickness_mm: float | None = None) -> dict:
     """Join actual captured per-step fields to exact frozen film layer IDs.
 
-    ``captured_fields`` is the result of ``load_layer_fields_from_asset``. The
+    ``captured_fields`` contains a manifest mapping and a step-ID keyed fields mapping. The
     process profile and both snapshots remain read-only. A single process run
     can contribute only the surface it actually imported; a non-empty opposing
     design face requires its own captured field run.
@@ -274,29 +278,157 @@ def build_job_from_v7(process_profile: Mapping, captured_fields: Mapping,
     return job
 
 
-def build_job_from_asset(process_profile: Mapping, asset_path, asset_root,
-                         wavelengths_nm, render_inputs: Mapping, *,
-                         expected_sha256: str | None = None,
-                         geometry_thickness_mm: float | None = None,
-                         cancel_event=None):
-    """Load captured fields and their saved substrate outline from one verified asset snapshot."""
-    from ..core.ray_trace_job import (_asset_snapshot, _read_layer_fields,
-                                      _substrate_profile, MAX_RAYTRACE_ASSET_BYTES)
-    from ..core.simulation_assets import read_simulation_asset
-    with _asset_snapshot(asset_path, root=asset_root, expected_sha256=expected_sha256,
+def appearance_context_from_asset(path: Path, root: Path, asset_sha256: str,
+                                  *, cancel_event=None) -> dict[str, Any]:
+    """Resolve the exact v7 process profile without importing the Qt UI."""
+    from coat_sim.core.ray_trace_job import (_asset_snapshot, _read_layer_fields,
+                                             _substrate_profile,
+                                             MAX_RAYTRACE_ASSET_BYTES)
+    from coat_sim.core.simulation_assets import read_simulation_asset
+    from coat_sim.core.process_profiles import validate_process_profile
+
+    with _asset_snapshot(path, root=root, expected_sha256=asset_sha256,
                          cancel_event=cancel_event,
                          max_asset_bytes=MAX_RAYTRACE_ASSET_BYTES) as snapshot:
+        content = read_simulation_asset(snapshot["path"], detail="full",
+                                        include_arrays=False, cancel_event=cancel_event)
+        configuration = content.get("configuration") or {}
+        candidates = []
+        process = configuration.get("process")
+        if isinstance(process, Mapping):
+            candidates.append(process)
+        frozen_inputs = configuration.get("input_snapshot")
+        rows = frozen_inputs.get("files") if isinstance(frozen_inputs, Mapping) else None
+        if isinstance(rows, list):
+            for row in rows:
+                if isinstance(row, Mapping) and row.get("kind") == "process":
+                    process_data = row.get("data")
+                    if isinstance(process_data, Mapping):
+                        candidates.append(process_data)
+        process_profile = None
+        for candidate in candidates:
+            if candidate.get("schema_version") != 7:
+                continue
+            try:
+                normalized = validate_process_profile(candidate)
+            except (ValueError, TypeError):
+                continue
+            if (isinstance(normalized.get("film_design_snapshot"), Mapping) and
+                    isinstance(normalized.get("film_design_import"), Mapping)):
+                process_profile = normalized
+                break
+        if process_profile is None:
+            raise ValueError("The selected process asset does not contain a complete frozen v7 FilmDesign snapshot.")
+        captured = _read_layer_fields(snapshot["path"], include_arrays=False,
+                                      cancel_event=cancel_event)
+        if not captured.get("fields"):
+            raise ValueError("The selected process asset has no captured deposition simulation per-layer thickness fields.")
+        profile = _substrate_profile(configuration)
+        if not isinstance(profile, Mapping):
+            raise ValueError("The selected process asset has no inherited substrate profile.")
+        outline = profile.get("outline")
+        if not isinstance(outline, Mapping) or outline.get("kind") not in ("rectangle", "circle"):
+            raise ValueError("Thin-film appearance requires a flat rectangular or circular process substrate profile.")
+        profile_for_adapter(profile)
+        profile_sha256 = hashlib.sha256(json.dumps(
+            process_profile, sort_keys=True, ensure_ascii=False,
+            separators=(",", ":"), allow_nan=False).encode("utf-8")).hexdigest()
+        return {
+            "schema": "coat_sim.appearance_launch_context",
+            "version": 1,
+            "asset_path": str(Path(path).resolve()),
+            "asset_sha256": snapshot["sha256"],
+            "asset_root": str(Path(root).resolve()),
+            "process_profile": process_profile,
+            "process_profile_sha256": profile_sha256,
+            "substrate_profile": dict(profile),
+            "captured_step_ids": sorted(row["step_id"] for row in captured["fields"]
+                                         if isinstance(row, Mapping) and isinstance(row.get("step_id"), str)),
+            "layer_field_units": captured["manifest"].get("field_units", ""),
+            "layer_field_coordinate_frame": (captured["manifest"].get("coordinates") or {}).get("frame", ""),
+        }
+
+
+def profile_for_adapter(profile: Mapping[str, Any]) -> dict[str, Any]:
+    """Preserve a circle or normalize a v1 rectangle without changing geometry."""
+    surface = profile.get("surface")
+    if not isinstance(surface, Mapping) or surface.get("kind") != "flat":
+        raise ValueError("Thin-film appearance requires an explicitly flat process substrate surface.")
+    outline = profile.get("outline")
+    if not isinstance(outline, Mapping) or outline.get("kind") not in ("rectangle", "circle"):
+        raise ValueError("Thin-film appearance requires a flat rectangular or circular process substrate profile.")
+    result = dict(profile)
+    normalized_outline = dict(outline)
+    if normalized_outline["kind"] == "circle":
+        radius = normalized_outline.get("radius_mm")
+        if isinstance(radius, bool) or not isinstance(radius, (int, float)) or not math.isfinite(float(radius)) or radius <= 0:
+            raise ValueError("Circular process substrate requires a positive finite radius_mm.")
+        result["outline"] = normalized_outline
+        return result
+    points = normalized_outline.get("points")
+    if points is None:
+        try:
+            width = float(normalized_outline["width_mm"])
+            height = float(normalized_outline["height_mm"])
+        except (KeyError, TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("Rectangular process substrate width and height are missing.") from exc
+        if not math.isfinite(width) or not math.isfinite(height) or width <= 0 or height <= 0:
+            raise ValueError("Rectangular process substrate width and height must be positive finite millimetres.")
+        normalized_outline["points"] = [
+            [-width / 2, -height / 2], [width / 2, -height / 2],
+            [width / 2, height / 2], [-width / 2, height / 2],
+        ]
+    result["outline"] = normalized_outline
+    return result
+
+
+def build_job_from_asset(process_profile: Mapping[str, Any], asset_path,
+                         asset_root, wavelengths_nm, render_inputs: Mapping[str, Any],
+                         *, expected_sha256: str | None = None,
+                         geometry_thickness_mm: float | None = None,
+                         cancel_event=None, progress_callback=None) -> dict[str, Any]:
+    """Build a job from verified captured fields and the saved flat substrate.
+
+    The optional callback receives ``(stage, message)`` synchronously. It does
+    not own job state; callers own transport/status and cancellation lifetime.
+    No renderer, Qt import, or process-global optical evaluator patch is used.
+    """
+    from coat_sim.core.ray_trace_job import (_asset_snapshot, _read_layer_fields,
+                                             _substrate_profile,
+                                             MAX_RAYTRACE_ASSET_BYTES)
+    from coat_sim.core.simulation_assets import read_simulation_asset
+    from coat_sim.core.ray_trace_job import _check_cancel
+
+    def progress(stage, message):
+        _check_cancel(cancel_event)
+        if progress_callback is not None:
+            progress_callback(stage, message)
+        _check_cancel(cancel_event)
+
+    with _asset_snapshot(asset_path, root=asset_root,
+                         expected_sha256=expected_sha256,
+                         cancel_event=cancel_event,
+                         max_asset_bytes=MAX_RAYTRACE_ASSET_BYTES) as snapshot:
+        progress("field_load", "Reading the captured per-step field arrays.")
         captured = _read_layer_fields(snapshot["path"], include_arrays=True,
-                                       cancel_event=cancel_event)
-        content = read_simulation_asset(snapshot["path"], detail="full", include_arrays=False,
-                                        cancel_event=cancel_event)
-        substrate_profile = _substrate_profile(content.get("configuration") or {})
-        if not isinstance(substrate_profile, Mapping):
-            raise AppearanceInputError("verified process asset does not include a frozen substrate profile")
-        parameters = copy.deepcopy(dict(render_inputs))
-        parameters["substrate_profile"] = substrate_profile
+                                      cancel_event=cancel_event)
+        progress("asset_read", "Captured thickness arrays validated; reading the frozen process asset metadata.")
+        content = read_simulation_asset(snapshot["path"], detail="full",
+                                        include_arrays=False, cancel_event=cancel_event)
+        metadata = content.get("result_metadata") or {}
+        field_manifest = metadata.get("layer_field_manifest")
+        if not isinstance(field_manifest, Mapping) or field_manifest.get("captured") is not True:
+            raise ValueError("Verified process asset has no captured per-step field manifest.")
+        source_profile = _substrate_profile(content.get("configuration") or {})
+        if not isinstance(source_profile, Mapping):
+            raise ValueError("Verified process asset has no inherited substrate profile.")
+        render_parameters = dict(render_inputs)
+        render_parameters["substrate_profile"] = profile_for_adapter(source_profile)
+        progress("film_adapter", "Joining captured fields to frozen FilmDesign layer IDs.")
         job = build_job_from_v7(
-            process_profile, captured, wavelengths_nm, parameters,
+            process_profile, {"manifest": dict(field_manifest), "fields": captured},
+            wavelengths_nm, render_parameters,
             geometry_thickness_mm=geometry_thickness_mm)
+        progress("film_adapter_complete", "The frozen film stack passed input validation.")
         job["provenance"]["process_asset_sha256"] = snapshot["sha256"]
         return job

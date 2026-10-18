@@ -25,7 +25,7 @@ AI 工具仅可访问软件数据根或已由项目管理器认证登记的项�
 
 ## 工程窗口导航
 
-工程 UI 使用 `project_list` 返回的完整 `project_target` 六字段对象。`project_open(project_file)` 只在既有授权根内打开指定 `.coatproj`，返回已确认的独立 runtime target。向 `list_windows`、`open_window`、`read_window`、`close_window` 显式传 target；不从当前窗口/焦点/PID猜工程。read 只读取窗口身份、可见性、状态与真实 navigation capabilities，不能称为完整编辑器内容。open 仅导航，不填文档或字段；bound update/window_action 当前明确不支持，应在原工程编辑器操作。不要用 project_manage 绕过 dirty/editor-owned save 限制。force 不绕过工程关闭 review；关闭入场不表示异步审核已完成。
+工程 UI 使用 `project_list` 返回的完整 `project_target` 六字段对象。`project_open(project_file)` 只在既有授权根内打开指定 `.coatproj`，返回已确认的独立 runtime target。向 `list_windows`、`open_window`、`read_window`、`close_window` 显式传 target；不从当前窗口/焦点/PID猜工程。read 只读取窗口身份、可见性、状态与真实 navigation capabilities，不能称为完整编辑器内容。open 仅导航，不填文档或字段。绑定编辑先用 project_editor_snapshot 读取模块状态、实时 editor_capabilities 和窗口 instance_id；update_window/window_action 仅在该模块白名单内使用，并携带 instance_id 与 expected_snapshot_id。一次更新仅改支持的字段；队列/结果视图只读，不替换文档或绕过原生审核。不要用 project_manage 绕过 dirty/editor-owned save 限制。force 不绕过工程关闭 review；关闭入场不表示异步审核已完成。
 
 ## 读取与准备
 
@@ -43,10 +43,10 @@ AI 工具仅可访问软件数据根或已由项目管理器认证登记的项�
 - 单源使用 `submit_single_source`，工艺配方使用 `submit_process_recipe`。运行时会注入稳定的 `client_request_id` 用于去重，不要人为改写它。
 - 高计算量任务先调用 `estimate_compute_task`，再调用 `request_compute_confirmation`；本机界面展示估算并按持久化会话模式放行：讨论模式只读，不登记估算/计算或放行；操作10秒倒计时、攻关默认放行；模型不能伪造模式或授权。放行后持久串行入队并立即返回，保留 `job_id`，助手继续会话。队列只显示摘要、预计用时、预计完成时间，无进度控件。完成事件在原会话由程序独立只读读取状态与结果摘要并汇报；聊天工具不等待终态、不反复轮询。queued/running 不是结果，failed/cancelled 不是成功；failed 且 interrupted=true 表示计算服务曾中断。
 - 成功后用 `calculation_job_result` 获得 `run_id` 和摘要。需要分析历史结果时使用 `read_calculation_result`、`calculation_history`，先读摘要，仅在当前分析确实需要时请求完整网格。
-- 不调用旧的同步沉积入口 `simulate_single_source` / `simulate_process_recipe`，使用上述后台作业替代。修正板权重/场、选定点权重、中心遮挡环等工程分析保留对应业务接口。不要仅因为上一工具回复丢失就重复提交；先核对原 job_id，缺失编号时用 `find_calculation_job(client_request_id)` 查询。新计算应沿用已核实的输入，并明确产生了新作业。
+- `simulate_single_source` / `simulate_process_recipe` 是兼容的后台入队别名，并非同步计算；新调用优先使用上述 submit 入口。修正板权重/场、选定点权重、中心遮挡环等工程分析保留对应业务接口。不要仅因为上一工具回复丢失就重复提交；先核对原 job_id，缺失编号时用 `find_calculation_job(client_request_id)` 查询。新计算应沿用已核实的输入，并明确产生了新作业。
 - 取消操作使用 `cancel_calculation_job`。它是协作取消，返回 running 仍表示在收尾；不要声称取消请求等于计算已经结束。
 
-用户明确要求在主窗口点击计算时，可以使用 `window_action` 的 calculate，并通过 `read_window` 核对 busy/status；这类界面计算没有 job_id。取消该界面计算使用同一窗口的 cancel 操作，不能把它当作 MCP 后台作业查询。
+主窗口以及绑定工程窗口的 calculate 等重计算动作会被拒绝；必须使用 estimate_compute_task → request_compute_confirmation 的估算、真实会话放行与后台入队路径，不能用 window_action 绕过。唯一保留的 calculate 窗口例外是未传 project_target 的独立 film_simulation 窗口；它不具备队列 job_id/取消合同，不能当作后台作业查询。
 
 ## 分析与交付
 

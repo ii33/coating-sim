@@ -75,12 +75,23 @@ without a launcher. Multiple projects have isolated runtime presenters; the
 existing coordinator's queued reviews are retained. Shared assistant menu Close
 Project follows the same owner route. Cancel and Return to save retain drafts
 and lease. The normal authorized close flow releases the lease. If writing the
-clean journal fails, `ProjectOwnerLease.close()` still marks itself closed and
-cleans up this owner's OS locks in `finally`; the runtime does not report a
-successful close. There is no automatic retry after I/O repair in this candidate;
-see the known close-I/O recovery limitation（历史引用目标，当前公开源码不包含此文件）.
+clean journal fails, `ProjectOwnerLease.close()` attempts every owned OS handle
+release and marks the lease closed. Only when all releases succeed does it raise
+`JournalCloseError`: journal persistence is uncertain, ownership is released.
+The runtime consumes that completed Future once and presents a dedicated warning
+with an explicit “确认并退出” acknowledgement. Acknowledgement clears only the
+in-memory warning; it performs no journal write, reacquisition or lock release.
+It preserves any abnormal recovery evidence and cannot affect a new owner that
+acquires the project meanwhile. The dialog's native close does not silently
+acknowledge this warning. Repairing I/O alone does not rewrite an old generation.
+Unknown/OS-release errors remain blocking errors, cannot use this acknowledgement,
+and do not repeatedly emit the same timer error message. The runtime owner is the
+sole warning-state owner; `releaseWarningPending` and
+`acknowledgeReleaseWarning()` are the narrow Quick contract. Pending work still
+blocks settlement; acknowledgement never cancels admission/package/recovery work.
 The runtime exits after pending admission/package/recovery transactions and
-lease releases settle successfully. It neither cancels service-owned computation
+lease releases settle successfully or released-ownership journal warnings have
+been explicitly acknowledged. It neither cancels service-owned computation
 nor terminates any other process.
 
 The runtime's narrow review host is a transient `ApplicationWindow` using

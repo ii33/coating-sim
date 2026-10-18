@@ -31,6 +31,10 @@ from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply
 
 from coat_sim.core.atomic_io import replace_with_retry
 
+from coat_sim.agent.toolkit_config import (
+    CAPABILITIES, CAPABILITY_LABELS, normalized_capabilities,
+    normalized_toolkit_settings, validate_workspace_root,
+)
 from coat_sim.agent.development import development_available, development_enabled
 from coat_sim.agent.tone_policy import ASSISTANT_TONES, DEFAULT_ASSISTANT_TONE, normalized_tone
 from coat_sim.ui.token_format import format_tokens
@@ -660,6 +664,7 @@ def normalized_ui_settings(values: Mapping[str, object] | None = None) -> dict[s
             MAX_DENSITY_SCALE_PERCENT,
             DEFAULT_DENSITY_SCALE_PERCENT,
         ),
+        **normalized_toolkit_settings(source),
         "assistant_enabled": source.get("assistant_enabled") is True,
         "assistant_notification_sound": source.get("assistant_notification_sound") is not False,
         "assistant_notification_volume_percent": _bounded_integer(
@@ -959,6 +964,66 @@ class SettingsBridge(QObject):
     def setAssistantResearchLibraryRoot(self, root: str) -> None:
         # Keep invalid input visible until Save can explain the error.
         self._settings["assistant_research_library_root"] = root.strip()
+        self.assistantStateChanged.emit()
+
+    @Property(bool, notify=assistantStateChanged)
+    def assistantToolkitEnabled(self) -> bool:
+        return self._settings.get("assistant_toolkit_enabled") is True
+
+    @Property(str, notify=assistantStateChanged)
+    def assistantToolkitWorkspaceRoot(self) -> str:
+        return str(self._settings.get("assistant_toolkit_workspace_root", ""))
+
+    @Property(bool, notify=assistantStateChanged)
+    def assistantToolkitAllowModelContext(self) -> bool:
+        return self._settings.get("assistant_toolkit_allow_model_context") is True
+
+    # Qt accepts named meta-types here; its shipped stub only declares type.
+    @Property(cast(type, "QStringList"), notify=assistantStateChanged)
+    def assistantToolkitCapabilities(self) -> list[str]:
+        return list(cast(list[str], self._settings.get("assistant_toolkit_capabilities", [])))
+
+    @Property(cast(type, "QStringList"), notify=assistantStateChanged)
+    def assistantToolkitProfileCapabilities(self) -> list[str]:
+        return list(cast(list[str], self._settings.get("assistant_toolkit_profile_capabilities", [])))
+
+    @Property(cast(type, "QVariantList"), notify=assistantStateChanged)
+    def assistantToolkitCapabilityOptions(self) -> list[dict[str, str]]:
+        return [{"id": name, "label": CAPABILITY_LABELS[name]} for name in CAPABILITIES]
+
+    @Property(str, notify=assistantStateChanged)
+    def assistantToolkitStatus(self) -> str:
+        if not self.assistantToolkitEnabled:
+            return "工具集已关闭；通用能力调用不可用。"
+        try:
+            validate_workspace_root(self.assistantToolkitWorkspaceRoot, PROJECT_ROOT)
+        except ValueError as exc:
+            return str(exc)
+        effective = set(cast(list[str], self.assistantToolkitCapabilities)) & set(cast(list[str], self.assistantToolkitProfileCapabilities))
+        if not effective:
+            return "全局与配置的能力交集为空；所有工具关闭。"
+        if not self.assistantToolkitAllowModelContext:
+            return "尚未允许工具结果发送给当前模型；桌面工具未开放。"
+        return "已选择：" + "、".join(sorted(effective)) + "。本地受限文件/任务工具已配置；写入还需当前操作授权。执行/联网/远程/OCR 须独立宿主提供器；选中不等于就绪。"
+
+    @Slot(bool, str, bool)
+    def setAssistantToolkitConfig(self, enabled, root, allow_context):
+        self._settings["assistant_toolkit_enabled"] = enabled is True
+        self._settings["assistant_toolkit_workspace_root"] = root.strip()
+        self._settings["assistant_toolkit_allow_model_context"] = allow_context is True
+        self.assistantStateChanged.emit()
+
+    @Slot(str, bool, bool)
+    def setAssistantToolkitCapability(self, capability, enabled, profile):
+        if capability not in CAPABILITIES:
+            return
+        key = "assistant_toolkit_profile_capabilities" if profile else "assistant_toolkit_capabilities"
+        values = set(cast(list[str], self._settings.get(key, [])))
+        if enabled:
+            values.add(capability)
+        else:
+            values.discard(capability)
+        self._settings[key] = normalized_capabilities(list(values))
         self.assistantStateChanged.emit()
 
     @Property("QStringList", notify=assistantStateChanged)
@@ -1983,6 +2048,8 @@ class SettingsBridge(QObject):
             if root:
                 from coat_sim.agent.research_library import validate_research_library_root
                 validate_research_library_root(root)
+            if self.assistantToolkitEnabled:
+                validate_workspace_root(self.assistantToolkitWorkspaceRoot, PROJECT_ROOT)
             context_error = self._context_profile_save_error()
             if context_error:
                 raise ValueError(context_error)

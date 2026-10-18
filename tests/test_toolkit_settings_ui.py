@@ -1,0 +1,91 @@
+"""Real offline QML interaction, draft isolation and reload for toolkit settings."""
+from tests.test_compute_server_category_ui import compute_ui as compute_ui, _find, _settle, _invoke
+from coat_sim.ui import settings
+import re
+import pytest
+from tests import test_compute_server_category_ui as harness_module
+
+
+@pytest.fixture(autouse=True)
+def known_existing_advanced_layout_warnings(monkeypatch):
+    # This test opens the pre-existing advanced sections as well. Ignore only
+    # their exact old anchor warnings, never warnings in the new toolkit body.
+    original = harness_module._unexpected_warnings
+    source = harness_module.QML.read_text(encoding='utf-8')
+    lines = set()
+    for title in ('服务商与连接', '模型与推理', '用量与额度', '外部 MCP 服务', '本软件对外 MCP', '开发选项'):
+        offset = source.index('title: "' + title + '"')
+        offset = source.index('ColumnLayout {', offset)
+        lines.add(source.count('\n', 0, offset) + 1)
+    def filtered(warnings):
+        result = []
+        for warning in original(warnings):
+            match = re.search(r'SettingsWindow.qml:(\d+):\d+: QML ColumnLayout: Detected anchors on an item that is managed by a layout\.', warning)
+            if match is None or int(match.group(1)) not in lines:
+                result.append(warning)
+        return result
+    monkeypatch.setattr(harness_module, '_unexpected_warnings', filtered)
+
+
+
+def _expand(scene):
+    advanced = _find(scene.window, 'settingsAdvancedCategory')
+    advanced.setProperty('expanded', True)
+    _settle()
+    section = _find(scene.window, 'assistantToolkitCategory')
+    assert section.property('expanded') is False
+    section.setProperty('expanded', True)
+    _settle()
+    return section
+
+
+def test_toolkit_qml_persistence_and_empty_means_off(compute_ui, tmp_path):
+    scene = compute_ui.open()
+    section = _expand(scene)
+    bridge = scene.bridge
+    assert not _find(section, 'assistantToolkitEnabledCheck').property('checked')
+    root = _find(section, 'assistantToolkitWorkspaceRootField')
+    root.setProperty('text', str(tmp_path))
+    _invoke(root, 'textEdited')
+    enabled = _find(section, 'assistantToolkitEnabledCheck')
+    enabled.setProperty('checked', True)
+    _invoke(enabled, 'clicked')
+    context = _find(section, 'assistantToolkitContextCheck')
+    context.setProperty('checked', True)
+    _invoke(context, 'clicked')
+    for name in ('toolkitGlobal_fs', 'toolkitProfile_fs'):
+        check = _find(section, name)
+        check.setProperty('checked', True)
+        _invoke(check, 'clicked')
+    assert bridge.assistantToolkitCapabilities == ['fs']
+    assert bridge.assistantToolkitProfileCapabilities == ['fs']
+    assert bridge.save()
+    scene.close()
+    reopened = compute_ui.open()
+    section = _expand(reopened)
+    assert _find(section, 'assistantToolkitEnabledCheck').property('checked')
+    assert _find(section, 'assistantToolkitWorkspaceRootField').property('text') == str(tmp_path)
+    assert _find(section, 'toolkitGlobal_fs').property('checked')
+    check = _find(section, 'toolkitProfile_fs')
+    check.setProperty('checked', False)
+    _invoke(check, 'clicked')
+    assert reopened.bridge.assistantToolkitProfileCapabilities == []
+    assert '全部' in reopened.bridge.assistantToolkitStatus or '所有工具关闭' in reopened.bridge.assistantToolkitStatus
+    assert reopened.bridge.save()
+    assert settings.load_ui_settings()['assistant_toolkit_profile_capabilities'] == []
+
+
+def test_toolkit_invalid_root_and_draft_do_not_leak(compute_ui, tmp_path):
+    scene = compute_ui.open()
+    _expand(scene)
+    scene.bridge.setAssistantToolkitConfig(True, 'relative/path', True)
+    scene.bridge.setAssistantToolkitCapability('tasks', True, False)
+    assert not scene.bridge.save()
+    assert '绝对路径' in scene.bridge.statusMessage
+    assert settings.load_ui_settings()['assistant_toolkit_enabled'] is False
+    scene.close()
+    reopened = compute_ui.open()
+    _expand(reopened)
+    assert reopened.bridge.assistantToolkitCapabilities == []
+    assert reopened.bridge.assistantToolkitWorkspaceRoot == ''
+    assert not reopened.bridge.assistantToolkitEnabled

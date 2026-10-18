@@ -453,3 +453,27 @@ def test_archiving_prior_archive_generation_preserves_live_draft_and_other_gener
         assert archived["checkpoint"]["resources"] == {"draft": "resources-first"}
     finally:
         reviewer.close(clean=False)
+
+
+def test_close_attempts_all_owned_locks_but_does_not_mislabel_failure(tmp_path, monkeypatch):
+    from coat_sim.project_recovery import JournalCloseError
+    from types import SimpleNamespace
+    store = ProjectStore.create(tmp_path / "synthetic", "synthetic")
+    lease = ProjectOwnerLease.acquire(store.project_file, store.manifest["id"],
+                                      owner_runtime_root=tmp_path / "owners")
+    lease.checkpoint({"synthetic": True})
+    real_locks = lease._locks
+    calls = []
+    def failed_close():
+        calls.append("failed")
+        raise OSError("synthetic lock failure")
+    monkeypatch.setattr(lease, "_locks", [SimpleNamespace(close=lambda: calls.append("other")),
+                                         SimpleNamespace(close=failed_close)])
+    try:
+        with pytest.raises(OSError, match="synthetic lock failure") as error:
+            lease.close()
+        assert not isinstance(error.value, JournalCloseError)
+        assert calls == ["failed", "other"]
+    finally:
+        for lock in real_locks:
+            lock.close()

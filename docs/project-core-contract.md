@@ -96,3 +96,33 @@ are project conventions, with no external scientific validation claimed.
 Tests in `tests/test_project_named_resources.py` cover path safety, rename
 identity, read-only legacy opening, current/old bytes, dependency closure, package
 and recovery parity, descriptor failures, destination races and metadata I/O.
+
+## Shared-store concurrency (2026-10-18 audit follow-up)
+
+`ProjectStore` owns a reentrant operation lock covering complete public
+read-modify-publish operations and saved-input capture, including headless
+`ProjectResourceService.fork_editor()` callers that have separate service locks.
+Lock ordering is host/service → store → writer/receipt locks; store observers
+run only after the outermost store operation unlocks, so callbacks cannot
+invert the host/store ordering. Long-lived asset staging remains outside this
+operation lock; captured record sets retain their original descriptor fingerprint
+and stale prepared publication fails with `stale_project`. Selective resource
+transfer retains the fingerprint from its isolated target preview store and
+passes it explicitly to the locked publication check: reconstructing a plain
+merged membership mapping must not discard the preview generation. Service
+admission checks alone are not an atomic publication check. Separate store
+instances still use the existing exclusive writer and descriptor-fingerprint
+checks. Neither same-instance serialization nor separate-instance rejection
+permits reporting two successful independent document edits while losing one.
+
+Saved-input snapshots capture one detached manifest, documents, hashes and asset
+metadata under that same lock, and check the original fingerprint after asset
+work. Reentrant or external mutation causes a typed stale error rather than a
+mixed snapshot. Callers reopen/retry after stale errors; immutable generation
+files are retained. This does not add power-loss durability or compaction claims.
+Synthetic regression: `tests/test_project_audit_concurrency.py` covers
+create/create, save/save, forked headless services, create/delete/edit during
+snapshot capture, stale prepared publication and observers outside the lock.
+`tests/test_project_transfer_publication_generation.py` pauses a transfer after
+service admission, allows a forked editor to publish successfully, and requires
+the stale transfer to fail without removing the concurrently added resource.

@@ -6,6 +6,7 @@ selection and discovers capabilities away from the Qt GUI thread.
 from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor
+from copy import deepcopy
 from pathlib import Path
 from urllib.parse import urlsplit
 import hashlib
@@ -157,6 +158,7 @@ class ComputeTarget(QObject):
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="compute-host-probe")
         self._future = None
         self._generation = 0
+        self._selection_serial = 0
         self._remote_client = None
         self._film_context_reason = "请先选择固定拓扑差分进化并启用延迟批量评估。"
         self._film_batch_enabled = False
@@ -345,6 +347,8 @@ class ComputeTarget(QObject):
     @Slot(str)
     def setDeviceId(self, device_id: str):
         if any(row["id"] == device_id and row["available"] for row in self._devices):
+            if self._device_id != device_id:
+                self._selection_serial += 1
             self._device_id = device_id
             selected = next(row for row in self._devices if row["id"] == device_id)
             if selected["backend"] == "xpu":
@@ -550,19 +554,22 @@ class ComputeTarget(QObject):
         self.changed.emit()
 
     def client_for_submit(self, *, algorithm: str = "", client_factory=None):
-        """Return the exact route/backend after an admission-time compatibility check."""
+        """Capture the exact route/backend without scheduler I/O.
+
+        Call ``admission_verifier`` on the GUI thread and execute its returned
+        callable in the submission worker before submitting this route.
+        """
         local_client = ((client_factory or self._client_factory)(self.root)
                         if self._host_id == "local" and self.task != "appearance" else None)
-        if self._host_id == "local" and not self._ready:
-            # Preserve direct Python entry points while discovery is still
-            # running. These already perform synchronous queue admission.
-            self._devices = (self._appearance_local_devices() if self.task == "appearance" else
-                             validate_capabilities(local_client.capabilities(), TASK_EXECUTORS[self.task], remote=False))
-            self._ready = True
-            self.changed.emit()
+        # Capture only. RPC verification belongs to the admission worker, never
+        # a Qt slot. Discovery remains the owner of the visible device catalog.
         if not self.canSubmit:
-            raise ComputeTargetError("target_not_ready", self._message)
-        device = next(row for row in self._devices if row["id"] == self._device_id)
+            if self._host_id == "local" and not self._ready and self._device_id == "cpu:default":
+                device = {"id": "cpu:default", "backend": "CPU", "available": True}
+            else:
+                raise ComputeTargetError("target_not_ready", self._message)
+        else:
+            device = deepcopy(next(row for row in self._devices if row["id"] == self._device_id))
         if self.task == "film_optimization" and device["backend"] not in ("CPU", "xpu"):
             raise ComputeTargetError("unsupported_algorithm_device")
         if self.task == "film_optimization" and self._film_batch_enabled:
@@ -570,17 +577,11 @@ class ComputeTarget(QObject):
                 raise ComputeTargetError("unsupported_algorithm_device", "延迟批量模式目前仅支持本机。")
             if local_client is None:
                 raise ComputeTargetError("target_not_ready")
-            capabilities = local_client.capabilities()
-            if type(capabilities.get("film_xpu_execution")) is not int or capabilities["film_xpu_execution"] != 1:
-                raise ComputeTargetError("incompatible_protocol", "后台尚未支持冻结执行设备协议；未提交，请正常重启后台。")
         if self.task == "deposition" and algorithm != "fast" and device["backend"] != "CPU":
             raise ComputeTargetError("unsupported_algorithm_device")
         if self.task == "appearance":
             raise ComputeTargetError("appearance_uses_isolated_process")
         if self._host_id == "local":
-            # Status can change between discovery and submission. Existing local
-            # capabilities are inexpensive once the daemon is warm.
-            validate_capabilities(local_client.capabilities(), TASK_EXECUTORS[self.task], remote=False)
             return local_client, device
         if self._remote_client is None:
             raise ComputeTargetError("target_not_ready")
@@ -596,3 +597,40 @@ class ComputeTarget(QObject):
             self._remote_url, self.root, token=transport.token,
             ca_file=self._remote_ca_file or None if self._remote_tls else None,
             allow_insecure_http=not self._remote_tls, device_id=device["id"]), device
+
+    def selection_identity(self):
+        """Capture a comparison-only selection token, including changes away/back."""
+        return (self._host_id, self._device_id, self._generation,
+                self._film_batch_enabled, self._confirmed_xpu_uuid, self._selection_serial)
+
+    def admission_verifier(self, client, device):
+        """Freeze selection identity and return worker-only admission verification."""
+        identity = self.selection_identity()
+        local = not bool(getattr(getattr(client, "transport", None), "remote_http", False))
+        batch = self._film_batch_enabled
+        frozen_device = deepcopy(device)
+        executor = TASK_EXECUTORS[self.task]
+
+        def current():
+            if identity != self.selection_identity():
+                raise ComputeTargetError("target_changed", "准备期间计算设备已改变；未提交任务。")
+            selected = next((row for row in self._devices
+                             if row.get("id") == frozen_device.get("id")), None)
+            if selected is not None and (not selected.get("available") or any(
+                    selected.get(key) != frozen_device.get(key)
+                    for key in ("backend", "physical_id", "execution_device")
+                    if key in frozen_device)):
+                raise ComputeTargetError("target_changed", "准备期间计算设备绑定已改变；未提交任务。")
+
+        def verify():
+            current()
+            if local:
+                capabilities = client.capabilities()
+                validate_capabilities(capabilities, executor, remote=False)
+                if batch and (type(capabilities.get("film_xpu_execution")) is not int
+                              or capabilities["film_xpu_execution"] != 1):
+                    raise ComputeTargetError("incompatible_protocol",
+                        "后台尚未支持冻结执行设备协议；未提交，请正常重启后台。")
+            current()
+
+        return verify, current

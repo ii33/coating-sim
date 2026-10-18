@@ -1507,6 +1507,77 @@ AppWindow {
                     }
 
                     Category {
+                        objectName: "assistantToolkitCategory"
+                        title: "可迁移工具集"
+                        expanded: false
+                        Layout.fillWidth: true
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            CheckBox {
+                                objectName: "assistantToolkitEnabledCheck"
+                                text: "启用通用工具集"
+                                checked: bridge.assistantToolkitEnabled
+                                onClicked: bridge.setAssistantToolkitConfig(checked,
+                                    bridge.assistantToolkitWorkspaceRoot, bridge.assistantToolkitAllowModelContext)
+                            }
+                            ThemeControls.ThemeField {
+                                objectName: "assistantToolkitWorkspaceRootField"
+                                Layout.fillWidth: true
+                                text: bridge.assistantToolkitWorkspaceRoot
+                                placeholderText: "独立工作区的绝对目录（不可使用软件安装目录）"
+                                onTextEdited: bridge.setAssistantToolkitConfig(bridge.assistantToolkitEnabled,
+                                    text, bridge.assistantToolkitAllowModelContext)
+                                Accessible.name: "工具集授权工作区"
+                            }
+                            CheckBox {
+                                objectName: "assistantToolkitContextCheck"
+                                text: "允许所选工作区工具结果发送给当前模型服务"
+                                checked: bridge.assistantToolkitAllowModelContext
+                                onClicked: bridge.setAssistantToolkitConfig(bridge.assistantToolkitEnabled,
+                                    bridge.assistantToolkitWorkspaceRoot, checked)
+                            }
+                            ThemeControls.ThemeLabel {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                text: "仅全局和配置两列都选中的能力生效；任一列表为空即全部关闭。本地文件/任务写入仍需当前操作授权；执行、安装、网络、远程与 OCR 还需独立宿主提供器，勾选不会自动安装或授权。凭据不保存在此配置中。"
+                            }
+                            Repeater {
+                                model: bridge.assistantToolkitCapabilityOptions
+                                delegate: RowLayout {
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    ThemeControls.ThemeLabel {
+                                        text: modelData.id + " · " + modelData.label
+                                        Layout.fillWidth: true
+                                        wrapMode: Text.WordWrap
+                                    }
+                                    CheckBox {
+                                        objectName: "toolkitGlobal_" + modelData.id
+                                        text: "全局"
+                                        checked: bridge.assistantToolkitCapabilities.indexOf(modelData.id) >= 0
+                                        onClicked: bridge.setAssistantToolkitCapability(modelData.id, checked, false)
+                                        Accessible.name: modelData.id + " 全局能力"
+                                    }
+                                    CheckBox {
+                                        objectName: "toolkitProfile_" + modelData.id
+                                        text: "配置"
+                                        checked: bridge.assistantToolkitProfileCapabilities.indexOf(modelData.id) >= 0
+                                        onClicked: bridge.setAssistantToolkitCapability(modelData.id, checked, true)
+                                        Accessible.name: modelData.id + " 配置能力"
+                                    }
+                                }
+                            }
+                            ThemeControls.ThemeLabel {
+                                objectName: "assistantToolkitStatusLabel"
+                                text: bridge.assistantToolkitStatus
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+                    }
+
+                    Category {
                         objectName: "researchLibraryCategory"
                         title: "本地研究库"
                         Layout.fillWidth: true

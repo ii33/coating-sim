@@ -38,10 +38,13 @@ ApplicationWindow {
     font.pointSize: colors ? colors.fontSizeBody : 10
     onClosing: function(close) {
         close.accepted = false
-        window.rejectReview()
+        if (reviewKind !== "releaseWarning")
+            window.rejectReview()
     }
     function rejectReview() {
-        if (reviewKind === "project")
+        if (reviewKind === "releaseWarning") {
+            projectBridge.acknowledgeReleaseWarning()
+        } else if (reviewKind === "project")
             projectBridge.cancelCloseProject(closeProjectId)
         else if (reviewKind === "shutdown")
             desktopBridge.cancelShutdown()
@@ -87,12 +90,13 @@ ApplicationWindow {
             }
             ThemeControls.ThemeButton {
                 objectName: "projectRuntimeCancelClose"
-                text: window.reviewKind === "error" ? "关闭提示" : "取消"
+                text: window.reviewKind === "releaseWarning" ? "确认并退出"
+                      : window.reviewKind === "error" ? "关闭提示" : "取消"
                 onClicked: window.rejectReview()
             }
             ThemeControls.ThemeButton {
                 objectName: "projectRuntimeDiscardClose"
-                visible: window.reviewKind !== "error"
+                visible: window.reviewKind === "project" || window.reviewKind === "shutdown"
                 text: "丢弃并关闭"
                 onClicked: {
                     window.hide()

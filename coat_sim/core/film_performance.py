@@ -270,7 +270,7 @@ class FrozenFilmEvaluator:
 
     def __init__(self, frozen_snapshot, settings=None, *, options=None):
         from .film_design import validate_design, physical_thickness_nm
-        from .film_design_service import simulation_settings, automatic_substrate_handling
+        from .film_design_service import simulation_settings, automatic_substrate_handling, validate_external_ports
         from .film_optimization import _checked_frozen_snapshot
         from .optical_constants import prepare_optical_set
         design = validate_design(deepcopy(frozen_snapshot["design"]))
@@ -281,13 +281,14 @@ class FrozenFilmEvaluator:
         self._settings = simulation_settings(configured)
         self._lock = RLock()
         self.options = options or PerformanceOptions()
-        active_media = (len(design["front_layers"]) + len(design["back_layers"]) + 3)
+        active_sides = ("front", "back") if design["substrate"]["sides"] == "double" else ("front",)
+        active_media = sum(len(design[side + "_layers"]) for side in active_sides) + 3
         estimated_prepared_bytes = self._settings["samples"] * (active_media * 128 + 128)
         if estimated_prepared_bytes > self.options.max_prepared_bytes:
             raise ValueError("estimated frozen optical arrays exceed max_prepared_bytes")
         self.waves = np.frombuffer(np.linspace(self._settings["wavelength_min_nm"], self._settings["wavelength_max_nm"],
                                   self._settings["samples"]).tobytes(), dtype=np.float64)
-        self._layers = {row["id"]: row for side in ("front", "back") for row in design[side + "_layers"]}
+        self._layers = {row["id"]: row for side in active_sides for row in design[side + "_layers"]}
         records = {row["id"]: row for row in self._payload["materials"]}
         samplers, series = {}, {}
         def sampler(reference):
@@ -319,10 +320,11 @@ class FrozenFilmEvaluator:
         self.resolved_mode = handling["resolved_mode"]
         self._batch = None
         self.last_metadata = {}
+        ni = sample(design["incident_medium"])
+        ne = sample(design["exit_medium"]) if design["substrate"]["sides"] == "double" else None
+        validate_external_ports(ni, ne)
         if self.resolved_mode != "incoherent":
             front, back = design["front_layers"], design["back_layers"]
-            ni = sample(design["incident_medium"])
-            ne = sample(design["exit_medium"]) if design["substrate"]["sides"] == "double" else None
             if self._settings["first_surface"] == "back":
                 if self.resolved_mode == "semi_infinite":
                     raise ValueError("semi-infinite substrate cannot have back incidence")

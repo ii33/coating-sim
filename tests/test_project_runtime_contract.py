@@ -10,7 +10,7 @@ import sys
 from threading import Event
 import time
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from PySide6.QtCore import QSettings
@@ -973,3 +973,92 @@ def test_pending_project_transaction_blocks_close_before_lease_release():
     with pytest.raises(ProjectError) as caught:
         closer._preflight(object())
     assert caught.value.code == "project_busy"
+
+
+def test_journal_close_failure_acknowledges_without_touching_new_owner(app, tmp_path, monkeypatch):
+    from coat_sim.project_recovery import ProjectOwnerLease
+    owner = ProjectRuntimeOwner(geometry_settings=QSettings(str(tmp_path / "geometry.ini"), QSettings.Format.IniFormat))
+    store = ProjectStore.create(tmp_path / "synthetic", "synthetic")
+    lease = ProjectOwnerLease.acquire(store.project_file, store.manifest["id"],
+                                      owner_runtime_root=tmp_path / "owners")
+    lease.checkpoint({"synthetic_draft": "keep for recovery"})
+    original_write = lease._write
+    attempts = []
+    def fail_once(**kwargs):
+        attempts.append(kwargs)
+        raise OSError("synthetic transient journal failure")
+    monkeypatch.setattr(lease, "_write", fail_once)
+    owner.release_lease(lease)
+    monkeypatch.setattr(lease, "_write", original_write)
+    notifications = []
+    owner.projectsChanged.connect(lambda: notifications.append(owner.projectError))
+    try:
+        assert lease._closed
+        assert not owner.settled_for_exit()
+        assert owner.releaseWarningPending
+        assert "所有权已释放" in str(owner.projectError)
+        assert "未能确认" in str(owner.projectError)
+        assert not owner._pending_lease_releases
+        for _ in range(3):
+            assert not owner.settled_for_exit()
+        assert len(notifications) == 1
+        second = ProjectOwnerLease.acquire(store.project_file, store.manifest["id"],
+                                           owner_runtime_root=tmp_path / "owners")
+        try:
+            assert second.recovery_candidate()["checkpoint"] == {"synthetic_draft": "keep for recovery"}
+            second.checkpoint({"new_owner": "must remain untouched"})
+            journal = second._journal.read_bytes()
+            assert owner.acknowledgeReleaseWarning()
+            assert not owner.acknowledgeReleaseWarning()
+            assert owner.settled_for_exit()
+            from coat_sim.ui.project_runtime import ProjectRuntime
+            shutdown = []
+            runtime = SimpleNamespace(_finished=True, _failed=False, owner=owner,
+                application=SimpleNamespace(), _poll_history=lambda: True,
+                _timer=SimpleNamespace(stop=lambda: shutdown.append("timer")),
+                _history_worker=SimpleNamespace(stop=lambda: shutdown.append("history")),
+                bridge=SimpleNamespace(shutdown=lambda: shutdown.append("shutdown")))
+            ProjectRuntime._tick(cast(ProjectRuntime, runtime))
+            assert shutdown == ["timer", "history", "shutdown"]
+            assert runtime.bridge._runtime_shutdown_authorized
+            assert second._journal.read_bytes() == journal
+            assert not second._closed
+            assert len(attempts) == 1  # No retry after release, even after I/O repair.
+            assert not owner.releaseWarningPending
+        finally:
+            second.close(clean=False)
+    finally:
+        owner.stop()
+
+
+def test_unknown_release_failure_cannot_be_acknowledged(app, tmp_path):
+    owner = ProjectRuntimeOwner(geometry_settings=QSettings(str(tmp_path / "geometry.ini"), QSettings.Format.IniFormat))
+    def fail(**_kwargs):
+        raise OSError("unknown lock release status")
+    from coat_sim.project_recovery import ProjectOwnerLease
+    owner.release_lease(cast(ProjectOwnerLease, SimpleNamespace(close=fail)))
+    try:
+        with pytest.raises(OSError, match="unknown lock"):
+            owner.settled_for_exit()
+        assert not owner.releaseWarningPending
+        assert not owner.acknowledgeReleaseWarning()
+        with pytest.raises(OSError, match="unknown lock"):
+            owner.settled_for_exit()
+    finally:
+        owner.stop()
+
+
+def test_journal_warning_has_explicit_runtime_dialog_route():
+    from coat_sim.ui.project_runtime import ProjectRuntime
+    changes = []
+    dialog = SimpleNamespace(isVisible=lambda: False,
+                             setProperty=lambda *args: changes.append(args),
+                             show=lambda: changes.append("show"))
+    runtime = SimpleNamespace(_finished=True, _failed=False,
+        owner=SimpleNamespace(projectError="uncertain journal", releaseWarningPending=True),
+        dialog_window=dialog)
+    ProjectRuntime._owner_changed(cast(ProjectRuntime, runtime))
+    assert changes == [("reviewKind", "releaseWarning"), "show"]
+    qml = (Path(__file__).parents[1] / "coat_sim/ui/qml/ProjectRuntimeDialogs.qml").read_text()
+    assert "projectBridge.acknowledgeReleaseWarning()" in qml
+    assert '"确认并退出"' in qml

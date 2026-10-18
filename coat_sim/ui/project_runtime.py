@@ -160,7 +160,8 @@ class ProjectRuntime(QObject):
             # recovery or global-exit decision and strand its coordinator.
             if self.dialog_window.isVisible() and self.dialog_window.property("reviewKind") != "error":
                 return
-            self.dialog_window.setProperty("reviewKind", "error")
+            self.dialog_window.setProperty("reviewKind",
+                "releaseWarning" if getattr(self.owner, "releaseWarningPending", False) else "error")
             self.dialog_window.show()
 
     def _fail(self, message: str) -> None:
@@ -234,7 +235,9 @@ class ProjectRuntime(QObject):
                         self.bridge.project_runtime = None
                     self.bridge.shutdown()
             except Exception as exc:
-                self.owner._set_error(f"工程所有权释放失败，请保留此窗口：{exc}")
+                message = f"工程所有权释放失败，请保留此窗口：{exc}"
+                if self.owner.projectError != message:
+                    self.owner._set_error(message)
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -163,8 +163,8 @@ def simulation_settings(value=None):
     target_step = value.get('step_nm')
     if target_step is not None:
         target_step = _finite(target_step, '波长采样间隔')
-        if target_step <= 0:
-            raise ValueError('波长采样间隔须为正数 (nm)')
+        if target_step < 0 or (target_step == 0 and not (single_wavelength and count == 1)):
+            raise ValueError('波长采样间隔须为正数 (nm)；零仅用于单波长单点归一化设置')
         if single_wavelength:
             count = 1
         else:
@@ -311,6 +311,13 @@ def source_spectrum(wavelength_nm, source):
     if maximum <= 0:
         raise ValueError('所选波段光源谱为零')
     return values / maximum
+
+
+def validate_external_ports(incident, exit_medium=None):
+    """Service domain: sampled active external ports must be transparent."""
+    if np.any(np.abs(incident.imag) > 1e-14) or (
+            exit_medium is not None and np.any(np.abs(exit_medium.imag) > 1e-14)):
+        raise ValueError('首版外部入射/出射介质须透明；不支持吸收外部端口')
 
 
 def active_material_references(design):
@@ -661,8 +668,7 @@ class FilmDesignService:
         ns = index_series(substrate)
         ni = medium(design['incident_medium'])
         ne = medium(design['exit_medium']) if substrate['sides'] == 'double' else None
-        if np.any(np.abs(ni.imag)>1e-14) or (ne is not None and np.any(np.abs(ne.imag)>1e-14)):
-            raise ValueError('首版外部入射/出射介质须透明；不支持吸收外部端口')
+        validate_external_ports(ni, ne)
         front = design['front_layers']
         back = design['back_layers'] if substrate['sides']=='double' else []
         if settings['first_surface']=='back':

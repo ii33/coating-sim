@@ -57,3 +57,38 @@ def test_missing_stderr_never_falls_back_to_protocol_stdout():
     with patch('sys.stderr',None),patch('sys.stdout',protocol):
         trace('diagnostic_without_console')
     assert protocol.getvalue()==''
+
+
+def test_quoted_secret_values_are_redacted_in_full_in_trace_and_causes():
+    from coat_sim.assistant_diagnostics import trace
+    examples = [
+        'password="SYNTHETIC one two"',
+        "secret='SYNTHETIC one, two; three'",
+        r'api_key="SYNTHETIC escaped \"quote\" tail"',
+        r"token='SYNTHETIC escaped \'quote\' tail'",
+        'authkey="SYNTHETIC first\nsecond\nlast"',
+        '{"password": "SYNTHETIC spaced JSON value"}',
+        'password="SYNTHETIC https://user:pass@example.test/ and tail"',
+        'Authorization: Bearer "SYNTHETIC bearer with spaces"',
+        'password="SYNTHETIC unterminated tail',
+        'password="SYNTHETIC trailing escape' + chr(92),
+        r'password="Bearer \"SYNTHETIC escaped quote\" tail"',
+        'secret="SYNTHETIC ' + 'long tail ' * 400,
+    ]
+    for message in examples:
+        output = io.StringIO()
+        error = RuntimeError(message)
+        error.__cause__ = ValueError(message)
+        trace("failure", error=error, stream=output)
+        row = json.loads(output.getvalue())
+        assert row["message"].endswith("<redacted>") or row["message"].endswith("<redacted>}")
+        for secret_part in ("SYNTHETIC", "tail", "second", "three", "with spaces", "spaced JSON"):
+            assert secret_part not in output.getvalue()
+
+
+def test_bearer_and_url_redaction_remain_effective():
+    from coat_sim.assistant_diagnostics import _clean
+    result = _clean('Authorization: Bearer SYNTHETIC_TOKEN https://user:secret@example.test/?key=private')
+    assert "SYNTHETIC_TOKEN" not in result
+    assert "example.test" not in result
+    assert "private" not in result

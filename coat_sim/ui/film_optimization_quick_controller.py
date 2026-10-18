@@ -670,8 +670,8 @@ class _FilmOptimizationTask(QRunnable):
                 self.signals.finished.emit(self.operation_id, None, [],
                                            {"state": "detached", "message": str(exc)})
                 return
-            self._record_state("failed")
             from coat_sim.scheduler.remote_client import RemoteSubmissionUnknown
+            self._record_state("submission_unknown" if isinstance(exc, RemoteSubmissionUnknown) else "failed")
             if (not self.admitted and
                     isinstance(exc, RemoteSubmissionUnknown)):
                 # A lost acknowledgement is not a rejection. Preserve the
@@ -685,7 +685,7 @@ class _FilmOptimizationTask(QRunnable):
                         "state": "submission_unknown",
                         "job_id": self.job_id,
                         "message": (
-                            "远程提交状态仍未知；不会自动重复提交。"
+                            "队列提交状态仍未知；不会自动重复提交。"
                             f"请使用作业 ID {self.job_id} 核对状态。"
                         ),
                     },
@@ -707,39 +707,12 @@ class _FilmOptimizationTask(QRunnable):
 
 
 class _LocalAdmissionCancelEvent(RemoteCancelEvent):
-    """Remember local cancellation intent while an async submit has no row yet.
-
-    ``RemoteCancelEvent`` intentionally calls local cancellation synchronously,
-    which is right for an already-admitted job but can lose a cancellation if
-    the queue row has not been created yet. This token defers that attempt
-    until the exact asynchronous submit returns successfully, and retains the
-    normal retry behavior if an admitted cancel fails.
-    """
+    """Local admission uses the same nonblocking, exact-ID cancellation protocol."""
 
     def __init__(self, client, job_id: str) -> None:
-        super().__init__(client, job_id)
-        self.cancel_intent = threading.Event()
-        self._admission_lock = threading.Lock()
-        self._queue_admitted = False
-        self.cancel_error_message = ""
+        super().__init__(client, job_id, pending_admission=True)
+        self.cancel_intent = self
 
-    def set(self) -> None:
-        self.cancel_intent.set()
-        with self._admission_lock:
-            admitted = self._queue_admitted
-        if not admitted or threading.Event.is_set(self):
-            return
-        try:
-            self.client.cancel(self.job_id)
-        except Exception as exc:
-            self.cancel_error_message = f"{type(exc).__name__}: {exc}"
-            raise
-        self.cancel_error_message = ""
-        threading.Event.set(self)
-
-    def mark_admitted(self) -> None:
-        with self._admission_lock:
-            self._queue_admitted = True
 
 class _QueueCompatibilityError(RuntimeError):
     pass
@@ -757,6 +730,7 @@ class FilmOptimizationQuickController(QObject):
     sourceReuseConfirmationRequested = Signal()
 
     _sessionChange = Signal(object)
+    _cancelTransportStatus = Signal(str, str)
 
     # Private forwarding properties retain the controller's existing internal
     # test seams while keeping all attempt state in one composition owner.
@@ -846,6 +820,7 @@ class FilmOptimizationQuickController(QObject):
         self._run_coordinator.progress.connect(self._on_progress_for_operation)
         self._run_coordinator.jobIdChanged.connect(self._on_job_id_for_operation)
         self._run_coordinator.finished.connect(self._on_finished)
+        self._cancelTransportStatus.connect(self._on_cancel_transport_status)
         self._snapshot_source = (
             source_controller
             if isinstance(source_controller, FilmOptimizationSourceSnapshot) else None)
@@ -3032,6 +3007,7 @@ class FilmOptimizationQuickController(QObject):
             "operation_id": operation_id,
             "design_revision": revision,
             "edit_epoch": edit_epoch,
+            "target_identity": self._compute_target.selection_identity(),
             "job_id": job_id,
         }
         try:
@@ -3053,6 +3029,10 @@ class FilmOptimizationQuickController(QObject):
 
     def _start_optimization(self, *, prepared_start: _PreparedAngleGrid | None = None
                             ) -> bool:
+        if self._result_terminal_state == "提交状态未知" and self._queue_job_id:
+            self._error = f"请先核对作业 {self._queue_job_id} 的提交状态；未重复提交。"
+            self.changed.emit()
+            return False
         if self._pending_reuse_source is not None:
             self._pending_reuse_start = True
             return True
@@ -3089,7 +3069,6 @@ class FilmOptimizationQuickController(QObject):
             self._error = str(exc)
             self.changed.emit()
             return False
-        async_prepared = prepared_start is not None
         try:
             store, _device = self._compute_target.client_for_submit(
                 client_factory=SchedulerClient)
@@ -3097,23 +3076,7 @@ class FilmOptimizationQuickController(QObject):
             if getattr(request,"execution_device",None) is not None:
                 if request.execution_device != self._selected_execution_binding():
                     raise _QueueCompatibilityError("准备期间执行设备已改变；请重新开始，未提交任务。")
-            if not remote:
-                try:
-                    capabilities = store.capabilities()
-                except Exception as exc:
-                    raise _QueueCompatibilityError(
-                        "当前后台队列无法报告执行器能力；未提交优化任务。"
-                        f"队列诊断：{exc}") from exc
-                if (not isinstance(capabilities, dict) or
-                        capabilities.get("protocol_version") != 1 or
-                        not isinstance(capabilities.get("executors"), (list, tuple))):
-                    raise _QueueCompatibilityError(
-                        "当前后台队列未提供兼容的能力信息；未提交优化任务。"
-                        "请在安全时重启桌面程序后重试。")
-                if "film_optimization" not in capabilities["executors"]:
-                    raise _QueueCompatibilityError(
-                        "当前后台队列不支持膜系优化；未提交优化任务。"
-                        "请在安全时重启桌面程序后重试。")
+            verify_admission, target_is_current = self._compute_target.admission_verifier(store, _device)
         except _QueueCompatibilityError as exc:
             self._error = str(exc)
             self.changed.emit()
@@ -3125,8 +3088,8 @@ class FilmOptimizationQuickController(QObject):
             self.changed.emit()
             return False
         try:
-            # Freeze the design and referenced optical records only after the
-            # running queue confirms it can accept this executor.
+            # Freeze inputs on the owner thread before background admission.
+            # The worker still verifies the running queue before submission.
             if prepared_start is None:
                 if self._search_mode == "structure":
                     from coat_sim.core.film_optimization_structure import (
@@ -3176,8 +3139,9 @@ class FilmOptimizationQuickController(QObject):
                     raise ValueError("Project optimization is missing its frozen operation")
                 metadata = self._project_compute.metadata(self._project_operation, metadata)
             cancel_event = (_LocalAdmissionCancelEvent(store, job_id)
-                            if async_prepared and not remote else
+                            if not remote else
                             RemoteCancelEvent(store, job_id))
+            cancel_event.on_cancel_status = self._cancelTransportStatus.emit
             admission_project = self._project_compute
             admission_operation = self._project_operation
             admission_stopped = self._admission_stopped
@@ -3201,6 +3165,7 @@ class FilmOptimizationQuickController(QObject):
                         "远程请求设备与冻结的设备选择不一致；未提交任务。")
 
                 def remote_admission():
+                    target_is_current()
                     if not admission_project_is_current():
                         raise InterruptedError("项目已关闭或正在退出；未接纳新的远程作业。")
                     from coat_sim.ui.compute_target import validate_capabilities
@@ -3233,6 +3198,7 @@ class FilmOptimizationQuickController(QObject):
                             "已在远程任务接纳前取消；未创建作业。")
                     if not admission_project_is_current():
                         raise InterruptedError("项目已关闭或正在退出；未接纳新的远程作业。")
+                    target_is_current()
                     try:
                         store.submit(spec, job_id=job_id, metadata=metadata)
                     except RemoteSubmissionUnknown as unknown:
@@ -3257,31 +3223,20 @@ class FilmOptimizationQuickController(QObject):
                     cancel_event.mark_admitted()
 
             async_local_admission = None
-            if async_prepared and not remote:
+            if not remote:
                 local_cancel_event = cast(_LocalAdmissionCancelEvent, cancel_event)
 
                 def async_local_admission():
+                    verify_admission()
                     if local_cancel_event.cancel_intent.is_set():
                         raise InterruptedError(
                             "已在本地作业接纳前取消；未创建作业。")
                     if not admission_project_is_current():
                         raise InterruptedError("项目已关闭或正在退出；未接纳新的优化作业。")
-                    store.submit(spec, job_id=job_id, metadata=metadata)
+                    target_is_current()
+                    from coat_sim.scheduler.desktop import submit_local_with_receipt
+                    submit_local_with_receipt(store, spec, job_id=job_id, metadata=metadata)
                     local_cancel_event.mark_admitted()
-                    cancel_warning = ""
-                    # Cancellation can race the local submit. Retry against
-                    # this exact ID only after the queue row is accepted.
-                    if (local_cancel_event.cancel_intent.is_set()
-                            and not local_cancel_event.is_set()):
-                        try:
-                            local_cancel_event.set()
-                        except Exception as exc:
-                            # Keep the base event unset so a later click can
-                            # retry the now-admitted local cancellation.
-                            cancel_warning = (
-                                "队列已接纳，但首次取消请求失败（"
-                                f"{type(exc).__name__}: {exc}）；请再次点击取消重试。")
-                    return cancel_warning
 
             def create_worker(operation_id):
                 args: tuple[Any, FilmOptimizationRequest, Any, str, RemoteCancelEvent, int] = (
@@ -3294,31 +3249,21 @@ class FilmOptimizationQuickController(QObject):
                         if queue_admission is not None else
                         _FilmOptimizationTask(*args, project_compute=self._project_compute))
 
-            def submit_job():
-                store.submit(spec, job_id=job_id, metadata=metadata)
-                if self._project_compute is not None:
-                    self._project_compute.register_job(
-                        job_id, module_key="film_optimization", service_owned=True,
-                        metadata=metadata)
-                self._queue_job_id = job_id
-
             previous_job_id = self._queue_job_id
-            if remote or async_prepared:
-                self._queue_job_id = job_id
-                if self._project_compute is not None:
-                    self._project_compute.register_job(
-                        job_id, module_key="film_optimization", service_owned=False,
-                        state="submitting", metadata=metadata)
+            self._queue_job_id = job_id
+            if self._project_compute is not None:
+                self._project_compute.register_job(
+                    job_id, module_key="film_optimization", service_owned=False,
+                    state="submitting", metadata=metadata)
             self._run_coordinator.start(
-                submit=None if (remote or async_prepared) else submit_job,
+                submit=None,
                 worker_factory=create_worker,
                 edit_epoch=self._source_edit_epoch(),
             )
         except Exception as exc:
             if self._project_compute is not None and "job_id" in locals():
                 self._project_compute.update_job(job_id, "failed")
-            if locals().get("remote", False):
-                self._queue_job_id = locals().get("previous_job_id", self._queue_job_id)
+            self._queue_job_id = locals().get("previous_job_id", self._queue_job_id)
             detail = str(exc)
             if isinstance(exc, FilmOptimizationRunStartError):
                 self._error = f"Unable to start film optimization worker: {detail}"
@@ -3372,12 +3317,25 @@ class FilmOptimizationQuickController(QObject):
             self.refreshDesign()
         return self.startOptimization()
 
+    @Slot(str, str)
+    def _on_cancel_transport_status(self, job_id: str, code: str) -> None:
+        if (not self._busy or job_id != self._queue_job_id
+                or not self._project_current()):
+            return
+        if code:
+            self._error = f"Unable to request queue cancellation: {code}"
+            self._progress_text = "取消请求尚未确认；可再次点击取消，继续按原作业 ID 重试。"
+        elif self._error.startswith("Unable to request queue cancellation:"):
+            self._error = ""
+        self.changed.emit()
+
     @Slot()
     def cancelOptimization(self) -> None:
         if self._busy and self._cancel_event is not None:
             error = self._run_coordinator.request_cancel()
             if error is not None:
                 detail = str(getattr(self._cancel_event, "cancel_error_message", "")
+                             or getattr(self._cancel_event, "cancel_error_code", "")
                              or f"{type(error).__name__}: {error}")
                 self._error = f"Unable to request queue cancellation: {detail}"
             elif self._error.startswith("Unable to request queue cancellation:"):
@@ -3458,7 +3416,8 @@ class FilmOptimizationQuickController(QObject):
             return
         if not isinstance(progress, FilmOptimizationProgress):
             return
-        cancel_error = str(getattr(self._cancel_event, "cancel_error_message", "") or "")
+        cancel_error = str(getattr(self._cancel_event, "cancel_error_message", "")
+                           or getattr(self._cancel_event, "cancel_error_code", "") or "")
         if cancel_error:
             self._error = f"Unable to request queue cancellation: {cancel_error}"
         self._progress = float(progress.fraction)
@@ -3529,12 +3488,16 @@ class FilmOptimizationQuickController(QObject):
         project_changed = (self._project_compute is not None and (
             bool(getattr(self._project_compute, "editing_frozen", False))
             or not self._project_current()))
-        if source_changed or project_changed:
+        target_changed = (pending.get("target_identity")
+                          != self._compute_target.selection_identity())
+        if source_changed or project_changed or target_changed:
             self._project_operation = None
             self._prepared_angle_job_id = None
             self._source_stale = True
             self._error = ("项目已关闭或正在关闭；未提交队列作业。"
                            if project_changed else
+                           "计算设备在准备角度网格期间发生改变；未提交队列作业。"
+                           if target_changed else
                            "原设计在准备角度网格期间发生编辑；未提交队列作业。")
             self._progress_text = self._error
             self.changed.emit()
@@ -3557,7 +3520,8 @@ class FilmOptimizationQuickController(QObject):
             self._on_angle_preparation_finished(operation_id, result, error)
             return
         if self._project_compute is not None and operation_id == self._operation_serial:
-            state = ("cancelled" if isinstance(error, dict) and error.get("state") == "cancelled"
+            state = ("submission_unknown" if isinstance(error, dict) and error.get("state") == "submission_unknown"
+                     else "cancelled" if isinstance(error, dict) and error.get("state") == "cancelled"
                      else "failed" if error else "succeeded")
             self._project_compute.update_job(self._queue_job_id, state)
             if self._project_compute.editing_frozen and not self._shutting_down:
@@ -3596,7 +3560,7 @@ class FilmOptimizationQuickController(QObject):
             job_id = str(error.get("job_id") or self._queue_job_id)
             self._result_terminal_state = "提交状态未知"
             self._error = (
-                "远程提交状态仍未知；不会自动重复提交。"
+                "队列提交状态仍未知；不会自动重复提交。"
                 f"请使用作业 ID {job_id} 核对状态。"
             )
             self._progress_text = self._error

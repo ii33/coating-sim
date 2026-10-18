@@ -25,9 +25,14 @@ def _clean(value: Any, depth: int = 0) -> Any:
     if isinstance(value,(list,tuple)):
         return [_clean(item,depth+1) for item in value[:12]]
     text=str(value)[:2000]
+    # Quoted values can contain spaces, delimiters, escaped quotes and newlines.
+    # Treat a truncated/unclosed quote as secret through the end of the buffer.
+    secret_value = r"""(?:"(?:\\(?:.|$)|[^"\\])*(?:"|$)|'(?:\\(?:.|$)|[^'\\])*(?:'|$)|[^\s,"';}]+)"""
+    # One pass avoids a Bearer replacement changing nested quote boundaries.
+    secret_prefix = r"""(?is)\b(?:(authorization|x-coat-token|api[_-]?key|authkey|token|secret|password)\b["']?\s*[:=]\s*(?:Bearer\s+)?|Bearer\s+)"""
+    text=re.sub(secret_prefix + secret_value,
+                lambda match: (match.group(1) + '=' if match.group(1) else 'Bearer ') + '<redacted>',text)
     text=re.sub(r'https?://[^\s]+','<url>',text)
-    text=re.sub(r'(?i)\bBearer\s+[^\s,;]+','Bearer <redacted>',text)
-    text=re.sub(r"""(?i)\b(authorization|x-coat-token|api[_-]?key|authkey|token|secret|password)\b["']?\s*[:=]\s*["']?[^\s,"';}]+""",r'\1=<redacted>',text)
     text=re.sub(r'\b(?:sk-(?:proj-)?|gh[pousr]_)[A-Za-z0-9_-]{16,}','<redacted>',text)
     home=str(Path.home())
     if len(home)>3:

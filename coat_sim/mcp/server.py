@@ -46,6 +46,7 @@ from coat_sim.core.film_compute import FILM_TOOL_ARGUMENTS, validate_tool_argume
 from coat_sim.core.appearance_compute import (APPEARANCE_TOOL_ARGUMENTS,
                                              validate_tool_arguments as validate_appearance_arguments)
 from coat_sim.core.compute_tasks import ComputeTaskStore
+from coat_sim.core.mcp_contracts import tool_annotations, validate_mcp_arguments
 from coat_sim.core.design_files import design_extension
 from coat_sim.core.compute_estimation import input_file_fingerprints
 from coat_sim.core.result_summary import (algorithm_result_metadata,
@@ -70,9 +71,17 @@ from coat_sim.core.design_workflow import (DesignWorkflowSpec, design_pipeline,
 
 
 class CapabilityMCPServer(MCPServer):
-    """Validate shared operations before SDK coercion or extra-field removal."""
+    """Validate published contracts before SDK coercion or extra-field removal."""
 
     async def call_tool(self, name, arguments, context=None):
+        for tool in await self.list_tools():
+            if tool.name == name:
+                schema = getattr(tool, "input_schema", None) or getattr(tool, "inputSchema", {})
+                try:
+                    arguments = validate_mcp_arguments(schema, arguments)
+                except CapabilityError as exc:
+                    raise ToolError(exc.transport_text()) from exc
+                break
         if name in APPEARANCE_TOOL_ARGUMENTS:
             try:
                 arguments = validate_appearance_arguments(name, arguments)
@@ -98,17 +107,15 @@ class CapabilityMCPServer(MCPServer):
         schemas.update({name: model.model_json_schema() for name, model in APPEARANCE_TOOL_ARGUMENTS.items()})
         result = []
         for tool in registered:
-            if tool.name in schemas:
-                # SDK releases use either spelling; preserve the Tool object
-                # and its annotations while replacing only the input contract.
-                key = "input_schema" if "input_schema" in type(tool).model_fields else "inputSchema"
-                updates = {key: schemas[tool.name]}
-                if tool.name in QUEUE_OPERATIONS:
-                    updates["description"] = (tool.description or "") + (
-                        "\nQueue route: project-local scheduler by default; remote transport requires "
-                        "explicit application injection. The capability CLI cannot select a remote endpoint.")
-                tool = tool.model_copy(update=updates)
-            result.append(tool)
+            key = "input_schema" if "input_schema" in type(tool).model_fields else "inputSchema"
+            schema = deepcopy(schemas.get(tool.name, getattr(tool, key)))
+            schema["additionalProperties"] = False
+            updates = {key: schema, "annotations": tool_annotations(tool.name)}
+            if tool.name in QUEUE_OPERATIONS:
+                updates["description"] = (tool.description or "") + (
+                    "\nQueue route: project-local scheduler by default; remote transport requires "
+                    "explicit application injection. The capability CLI cannot select a remote endpoint.")
+            result.append(tool.model_copy(update=updates))
         return result
 
 

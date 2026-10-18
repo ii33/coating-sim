@@ -6,6 +6,7 @@ import threading
 import time
 import unittest
 from unittest.mock import patch
+from typing import Callable, cast
 
 from coat_sim.scheduler.desktop import RemoteCancelEvent, resolve_unknown_submission
 from coat_sim.scheduler.remote_client import RemoteServiceError, RemoteSubmissionUnknown
@@ -214,3 +215,148 @@ class RemoteMainAsyncTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class _SlowLocalClient(_SlowRemoteClient):
+    def __init__(self):
+        super().__init__()
+        self.transport = None
+        self.capabilities: Callable[[], dict[str, object]] = lambda: {
+            "protocol_version": 1, "executors": ["process_recipe"]}
+        self.status: Callable[[str], dict[str, str]] = lambda job_id: {
+            "job_id": job_id, "input_digest": ""}
+        self.submit_override: Callable[..., object] | None = None
+
+    def submit(self, spec, job_id=None, metadata=None):
+        if self.submit_override is not None:
+            return self.submit_override(spec, job_id=job_id, metadata=metadata)
+        return super().submit(spec, job_id=job_id, metadata=metadata)
+
+
+class LocalMainAsyncTests(RemoteMainAsyncTests):
+    """Local capability startup, POST and cancellation use gated offline fakes."""
+
+    def bridge(self):
+        return support.QueueTests.bridge(cast(support.QueueTests, self))
+
+    def spin(self, predicate: Callable[[], bool], timeout: float = 12) -> None:
+        support.QueueTests.spin(cast(support.QueueTests, self), predicate, timeout)
+
+    def test_local_admission_capabilities_stays_responsive_and_cancel_prevents_post(self):
+        from PySide6.QtCore import QTimer
+        bridge = self.bridge()
+        client = _SlowLocalClient()
+        client.transport = None
+        entered, release = threading.Event(), threading.Event()
+        threads = []
+        def capabilities():
+            threads.append(threading.get_ident())
+            entered.set()
+            assert release.wait(5)
+            return {"protocol_version": 1, "executors": ["process_recipe"]}
+        client.capabilities = capabilities
+        target = {"id": "cpu:default", "backend": "CPU", "available": True}
+        beats = []
+        timer = QTimer()
+        timer.setInterval(5)
+        timer.timeout.connect(lambda: beats.append(True))
+        timer.start()
+        try:
+            with patch.object(bridge._compute_target, "client_for_submit", return_value=(client, target)):
+                start = time.monotonic()
+                bridge.calculate()
+                assert time.monotonic() - start < .5
+                assert entered.wait(1)
+                assert bridge.busy
+                bridge.calculate()
+            self.spin(lambda: len(beats) >= 2, timeout=1)
+            start = time.monotonic()
+            bridge.cancel()
+            assert time.monotonic() - start < .3
+            release.set()
+            self.spin(lambda: not bridge.busy)
+            assert client.submissions == []
+            assert client.cancel_calls == []
+            assert threads == [threads[0]] and threads[0] != threading.get_ident()
+        finally:
+            timer.stop()
+            release.set()
+            client.submit_release.set()
+            client.cancel_release.set()
+            client.terminal.set()
+
+    def test_local_submit_and_cancel_are_off_gui(self):
+        bridge = self.bridge()
+        client = _SlowLocalClient()
+        client.transport = None
+        client.capabilities = lambda: {"protocol_version": 1, "executors": ["process_recipe"]}
+        target = {"id": "cpu:default", "backend": "CPU", "available": True}
+        try:
+            with patch.object(bridge._compute_target, "client_for_submit", return_value=(client, target)):
+                bridge.calculate()
+                assert client.submit_entered.wait(1)
+                bridge.calculate()
+            bridge.cancel()
+            assert not client.cancel_calls
+            client.submit_release.set()
+            assert client.cancel_entered.wait(1)
+            assert len(client.submissions) == 1
+            assert client.cancel_calls == client.submissions
+            assert all(t != threading.get_ident() for t in client.network_threads)
+            client.cancel_release.set()
+            self.spin(lambda: not bridge.busy)
+        finally:
+            client.submit_release.set()
+            client.cancel_release.set()
+            client.terminal.set()
+
+    def test_local_unknown_receipt_preserves_deduplication(self):
+        bridge = self.bridge()
+        client = _SlowLocalClient()
+        client.transport = None
+        client.capabilities = lambda: {"protocol_version": 1, "executors": ["process_recipe"]}
+        def submit(spec, *, job_id, metadata):
+            client.submissions.append(job_id)
+            raise OSError("ambiguous local acknowledgment")
+        client.submit_override = submit
+        client.status = lambda job_id: {"job_id": job_id, "input_digest": "mismatched"}
+        target = {"id": "cpu:default", "backend": "CPU", "available": True}
+        with patch.object(bridge._compute_target, "client_for_submit", return_value=(client, target)):
+            bridge.calculate()
+            self.spin(lambda: not bridge.busy)
+            assert "提交状态未知" in bridge.status
+            bridge.calculate()
+        assert len(client.submissions) == 1
+        assert len(bridge._queued_keys) == 1
+
+    def test_local_lost_ack_releases_pending_cancel_for_matching_receipt(self):
+        from coat_sim.scheduler.jobs import JobSpec
+        bridge = self.bridge()
+        client = _SlowLocalClient()
+        client.transport = None
+        client.capabilities = lambda: {"protocol_version": 1, "executors": ["process_recipe"]}
+        receipt: dict[str, str] = {}
+        original_submit = super(_SlowLocalClient, client).submit
+        def submit(spec, *, job_id, metadata):
+            receipt.update(job_id=job_id, input_digest=JobSpec.parse_frozen(spec).fingerprint)
+            original_submit(spec, job_id=job_id, metadata=metadata)
+            raise OSError("accepted then response lost")
+        client.submit_override = submit
+        client.status = lambda job_id: dict(receipt)
+        target = {"id": "cpu:default", "backend": "CPU", "available": True}
+        try:
+            with patch.object(bridge._compute_target, "client_for_submit", return_value=(client, target)):
+                bridge.calculate()
+            assert client.submit_entered.wait(1)
+            bridge.cancel()
+            assert not client.cancel_calls
+            client.submit_release.set()
+            assert client.cancel_entered.wait(1)
+            client.cancel_release.set()
+            self.spin(lambda: not bridge.busy)
+            assert client.cancel_calls == client.submissions
+            assert len(client.submissions) == 1
+        finally:
+            client.submit_release.set()
+            client.cancel_release.set()
+            client.terminal.set()

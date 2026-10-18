@@ -41,6 +41,8 @@ def validate_server(values: Mapping[str, Any], *, new: bool = False) -> dict[str
     transport = values.get("transport", "stdio")
     if transport not in ("stdio", "http", "sse"):
         raise ValueError("MCP 传输须为 stdio、HTTP 或 SSE")
+    # Normalize once before admission checks; truthy strings/integers are not consent.
+    allow_project_data = values.get("allow_project_data") is True
     command, args, cwd, url = "", [], "", ""
     if transport == "stdio":
         command = str(values.get("command", "")).strip()
@@ -53,7 +55,7 @@ def validate_server(values: Mapping[str, Any], *, new: bool = False) -> dict[str
         cwd = str(values.get("cwd", "")).strip()
         if cwd and (len(cwd) > 2048 or not Path(cwd).is_absolute() or "\x00" in cwd):
             raise ValueError("工作目录须为绝对路径，留空使用临时目录")
-        if cwd and not values.get("allow_project_data", False):
+        if cwd and not allow_project_data:
             try:
                 Path(cwd).resolve().relative_to(PROJECT_ROOT.resolve())
             except ValueError:
@@ -97,7 +99,7 @@ def validate_server(values: Mapping[str, Any], *, new: bool = False) -> dict[str
             "command": command, "args": list(args), "cwd": cwd, "url": url,
             "enabled": values.get("enabled") is True,
             "allow_tools": values.get("allow_tools") is True,
-            "allow_project_data": values.get("allow_project_data") is True,
+            "allow_project_data": allow_project_data,
             "credential_field": field, "credential_revision": revision,
             "timeout_s": timeout}
 

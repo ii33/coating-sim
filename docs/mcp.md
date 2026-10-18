@@ -2,12 +2,18 @@
 
 2026-10-11 入口解耦：22 个现有具体工具已委托无 GUI/LLM 的共享能力层，工具名及看板娘权限集合不扩展。[能力矩阵](entrypoint-capabilities.md) 区分可用/受限/缺失；[服务契约](entrypoint-service-contract.md) 说明实时生成目录、JSON CLI、错误码、部分文件副作用与队列取消边界。共享工具的 `ToolError` 保留人类可读错误及机器错误字段，看板娘网关据此沿用与 CLI 相同的 code/message/effect；其余工具保留原错误规则。
 
+## 参数与效果提示（2026-10-18）
+
+所有注册工具在 SDK 类型转换、未知字段移除和业务执行之前，按实际发布的输入 JSON Schema 校验。顶层参数对象统一 `additionalProperties=false`：不支持的 `project_target`、`project_id`、`root` 或拼写错误必须拒绝，不能静默丢弃后写入默认数据根。布尔字段只接受 JSON `true`/`false`，整数字段不接受字符串、布尔或浮点值；整个请求须为有限 JSON，任何深度的 NaN/Infinity 都会被拒绝。校验遵守嵌套 `$ref`、联合类型、范围与枚举；`dict[str, Any]` 领域内容中模式允许的扩展键仍保留给领域校验。共享能力及膜系/外观 typed 校验器继续执行。统一的前置参数错误使用 `invalid_arguments`、`effect=none` 机器标记；其他业务错误仍沿用各工具已有合同。
+
+`list_tools` 同时发布 MCP annotations。共享操作从核心 `POLICIES` 推导效果，其余适配器在 `coat_sim/core/mcp_contracts.py` 显式分类。`read_calculation_result`（可导出）、持久估算和开发诊断中带写入分支的工具不标为无条件只读。写入能力保守标记可能破坏、非幂等；提示不授予权限，不替代路径、覆盖、项目身份、模式放行或原生审核。新增工具必须显式分类；不能仅凭 `read_` 或 `estimate_` 名字推断安全。
+
 ## 独立调度服务（协议 v1，2026-10-05）
 
 MCP 的 stdio 只负责工具调用，计算统一提交到独立本机 scheduler；没有进程内计算队列。`calculation_job_status`、`cancel_calculation_job`、`calculation_job_result`、`find_calculation_job` 与 GUI/CLI 使用相同任务 ID/状态。结果返回 artifact ID/大小/SHA-256，数组通过下载接口显式读取；MCP 进程退出不取消已接收任务。授权/估算策略仍由现有应用层管理。启动停止及协议见[独立调度服务](independent-scheduler.md)。
 
 
-文档更新：2026-10-02。
+文档更新：2026-10-18。
 
 服务使用本机标准输入输出（stdio）。安装项目 requirements.txt 后，客户端用项目 Python 启动绝对路径 coat_sim/mcp/server.py；MCP 进程不导入桌面 GUI 模块，标准输出仅供 MCP 协议使用。
 
@@ -132,7 +138,7 @@ read_window 返回 fields、document、path、dirty、valid、status、editable_
 
 修正板还公开 QML 控件：tool_index、shift_x_mm、shift_y_mm、scale_x、scale_y、mask_slot、source_slot、angular_radius_mm、patch_radius_mm、auto_weight_y、weight_y_min、weight_y_max、heat_weight_mode。基片公开 tool_index、selected_point_index、point_x_mm、point_y_mm。控件当前值及范围见 controls；选项索引从 0 开始，源/板位次从 1 开始。修改选择项会触发原有 activated 处理；Y 范围会重绘；角向半径会触发现有延时后台分析。
 
-window_action 只接受 read_window 给出的动作：设计新建/保存、基片点操作、工艺步骤操作、机器依赖及列表操作、修正板变换、设置保存/模型探测及取消等。模型调用 calculate、start_optimization、compute_weights、compute_field、compute_point 会返回 compute_confirmation_required，须走计算估算与模式放行入口。人工在 GUI 点击计算按钮仍使用原有行为。动作参数见 action_arguments。save 和 export_pdf 要求显式 overwrite 布尔值；新建或替换脏文档要求 force=true。
+window_action 只接受 read_window 给出的动作：设计新建/保存、基片点操作、工艺步骤操作、机器依赖及列表操作、修正板变换、设置保存/模型探测及取消等。模型调用 calculate、start_optimization、compute_weights、compute_field、compute_point 会返回 compute_confirmation_required，须走计算估算与模式放行入口。唯一 calculate 兼容例外是未传 project_target 的独立 film_simulation 窗口；该路径不具备 scheduler job_id/取消合同。人工在 GUI 点击计算按钮仍使用原有行为。动作参数见 action_arguments。save 和 export_pdf 要求显式 overwrite 布尔值；新建或替换脏文档要求 force=true。
 
 带 target 的 close_window 进入原生工程窗口关闭流程；force 不跳过草稿、最后窗口 preflight 或工程 Save/Discard/Cancel review，accepted 也不表示异步 review 已完成。轻量 launcher 关闭只影响其本进程及全局窗口，不关闭工程 runtime 或共享助手。explicit standalone 的 dirty/busy/加载窗口仍保留原 force=true 合同；CAD 导入/导出计入 busy。
 
@@ -206,7 +212,7 @@ planet_center_occlusion_ring 是固定机器 XY、单位 mm 的源中心到行�
 
 新的异步作业在跨进程查重成功后、入队前，将已校验的设计 JSON 依赖图复制到 artifacts/runtime/job-inputs/<uuid>/，重写机器和工艺引用为同图内的相对路径。每个原绝对路径与设计种类只复制一次，所有原路径和副本均受 CoatService 项目路径边界约束。完成后再校验整个复制图，并将 JSON 标记为只读。相同 client_request_id 重试返回原作业，不重新生成或覆盖快照。
 
-作业的 input_snapshot_file 指向 manifest.json，记录原绝对路径、设计种类、副本路径和实际调用参数。计算、计算工作量与结果中的机器/工艺元信息均使用同一复制图；NPZ 元信息也保存快照清单，成功后保留输入文件以便追溯。对原设计文件的后续编辑不影响已入队计算。两个原同步 simulate_* 入口也在计算前使用同一快照机制。
+作业的 input_snapshot_file 指向 manifest.json，记录原绝对路径、设计种类、副本路径和实际调用参数。计算、计算工作量与结果中的机器/工艺元信息均使用同一复制图；NPZ 元信息也保存快照清单，成功后保留输入文件以便追溯。对原设计文件的后续编辑不影响已入队计算。两个 simulate_* 兼容入队入口也在计算前使用同一快照机制。
 
 快照保证已复制图的自洽及计算/导出输入一致；原文件可在复制过程中被编辑，不保证原文件编辑者的多文件原子保存。
 

@@ -6,7 +6,7 @@ Product name: 光学镀膜 · 设计与仿真.
 
 A desktop tool for optical thin-film research and engineering development, bringing thin-film design, planetary evaporation deposition, thickness maps, spectral analysis, and result assets into independent projects.
 
-**This is the `dev.20261016.19` development snapshot, not a formal Release.** The project has not completed comprehensive physical calibration. Simulation and optimization support analysis, comparison, and research; they do not replace equipment calibration, process qualification, or optical measurements. Application and independent-installer versions and acceptance scopes are recorded separately.
+**This is a development snapshot, not a formal Release; see [version.txt](coat_sim/version.txt) for the exact version.** The project has not completed comprehensive physical calibration. Simulation and optimization support analysis, comparison, and research; they do not replace equipment calibration, process qualification, or optical measurements. Application and independent-installer versions and acceptance scopes are recorded separately.
 
 ## What it does
 
@@ -110,3 +110,5 @@ Installation notices and release evidence are maintained in the [independent ins
 [Research evidence and ordinary MCP services](docs/research-integration-contract.md) · [研究证据格式](docs/algorithms.html#project-research-evidence)
 
 [New optical dataset from measured R/T: guide and limits](docs/optical-inversion-guide.md) · [Inversion algorithm and ambiguity](docs/algorithms.html#optical-constant-inversion)
+
+[Portable assistant toolkit: capabilities, settings and backend migration](docs/assistant-toolkit-capability-map.md) · [Core contract](docs/assistant-toolkit-contract.md) · [Host provider boundaries](docs/assistant-toolkit-provider-contract.md)

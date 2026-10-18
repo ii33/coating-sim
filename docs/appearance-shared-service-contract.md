@@ -1,6 +1,6 @@
 # 外观共享计算入口契约
 
-日期：2026-10-12；离线时限与 CUDA 接入：2026-10-13；源码边界文字核对：2026-10-14。实现前冻结的 CAP-02 契约；验收记录另存 `docs/remediation/20261012-appearance-shared/`。
+日期：2026-10-12；离线时限与 CUDA 接入：2026-10-13；源码边界文字核对：2026-10-14；资产适配器统一：2026-10-18。实现前冻结的 CAP-02 契约；验收记录另存 `docs/remediation/20261012-appearance-shared/`。
 
 ## 输入与状态所有者
 
@@ -19,7 +19,7 @@ MCP 增加 `estimate_appearance_render(request: dict[str, Any])` 与
 
 只读发现工具 `inspect_appearance_asset(asset_path: str)` 严格只接受一个路径字段，复用上述root/data/.coatasset边界和既有私有快照。返回字段恰为 `schema_version=1`、`root`、规范化 `asset_path`、`asset_sha256`、`asset_bytes`。整体SHA和大小来自同一快照；资产合法性摘要读取也只解析该快照，不从成员摘要拼凑或读取另一份源字节。该工具不表示v7/逐层场一定可渲染，领域有效性继续由estimate判断。源在快照后变动时描述仍为当时快照，后续estimate按预期SHA拒绝变动并要求重新发现。
 
-固定 headless 冻结子进程复用 `ui.appearance_worker` 的资产验证和构 job 函数，并调用现有 validate_job。该函数临时替换光学求值器并输出状态，故禁止在 MCP 进程内直接调用。子进程不渲染、不访问网络、不加载用户代码；固定模块与参数。2026-10-13 大场接入修订：公开控制请求及冻结输入 JSON 仍至多 16,000,000 UTF-8 字节，保留完整逐层场的冻结输出与队列 spec 则分别有 60,000,000 字节上限，真实紧凑序列化的本地 RPC 消息仍须低于既有 64 MiB 服务门禁。文件读取前检查大小，超限明确失败，不抽样逐层场。离线冻结与渲染均不设默认壁钟时限，存活的冻结子进程可以继续工作；进程退出立即读取返回码并检查输出，非零退出、缺失/非法输出仍报真实失败，不等待已退出的子进程继续计算。执行阶段既有取消边界、IPC 失效/进程退出检查和资源安全校验不变。失败在创建估算/队列记录前返回；不改变沙箱、网络或工具超时。
+固定 headless 冻结子进程与 UI worker 共同调用 `appearance.process_adapter.appearance_context_from_asset` / `build_job_from_asset`，并调用现有 validate_job。领域适配器是资产快照校验、冻结上下文提取、`{manifest, fields}` 封装、矩形表示转换与来源摘要的唯一所有者；UI 保留兼容包装，仅将可选 `(stage, message)` 回调转为状态协议。光学常数沿用领域内的逐波长标量求值，不再临时替换进程全局函数。隔离冻结进程及其 IPC 生命周期保持不变。子进程不渲染、不访问网络、不加载用户代码；固定模块与参数。2026-10-13 大场接入修订：公开控制请求及冻结输入 JSON 仍至多 16,000,000 UTF-8 字节，保留完整逐层场的冻结输出与队列 spec 则分别有 60,000,000 字节上限，真实紧凑序列化的本地 RPC 消息仍须低于既有 64 MiB 服务门禁。文件读取前检查大小，超限明确失败，不抽样逐层场。离线冻结与渲染均不设默认壁钟时限，存活的冻结子进程可以继续工作；进程退出立即读取返回码并检查输出，非零退出、缺失/非法输出仍报真实失败，不等待已退出的子进程继续计算。执行阶段既有取消边界、IPC 失效/进程退出检查和资源安全校验不变。失败在创建估算/队列记录前返回；不改变沙箱、网络或工具超时。
 
 服务内部 `appearance_render` 冻结包绑定原始规范请求、服务根、资产摘要、上下文摘要和原始渲染 job 摘要；公共工具不接受该包。执行前在隔离 worker 重读资产并重建，逐项核对摘要。资产变动须重新估算，不能沿用旧批准。
 
@@ -45,4 +45,10 @@ estimate 输出沿用 ComputeTaskStore 的公开回执：`estimate_id`、`kind=a
 
 实际 SDK 发现/调用两个工具；严格输入与拒绝资产越界/摘要错/非法预算；估算、稳定 ID、真实来源批准与同 ID 冲突；明确拒绝远端/未知路由；新建合成 v7 资产的冻结/重建；小尺寸真实 renderer（依赖可用时）；完整输出摘要/形状检查与损坏拒绝；运行取消保持运行直至 worker 终态、无部分成功；固定子进程硬 guard 防止测试意外 daemon。再运行现有 typed film 8 项回归并核对其 helper 和两个工具函数未改动。
 
-当前实现位置：`core/appearance_compute.py`、`core/appearance_freeze_worker.py`、`core/appearance_result.py`，以及 MCP/compute_estimation/scheduler 的薄分支。Renderer、process_adapter、Qt 页面与薄膜物理算法不修改。本契约解释接口边界，代码类型、签名和契约测试是接口真值。
+当前实现位置：`core/appearance_compute.py`、`core/appearance_freeze_worker.py`、`core/appearance_result.py`，以及 MCP/compute_estimation/scheduler 的薄分支。2026-10-18 仅统一 process_adapter 的资产边界实现；Renderer、Qt 页面与薄膜物理算法不修改。本契约解释接口边界，代码类型、签名和契约测试是接口真值。
+
+## 资产适配器回归边界（2026-10-18）
+
+`build_job_from_asset` 接收 v7 process profile、资产路径与项目根、波长和渲染输入，可选预期 SHA-256、厚度覆盖、取消事件与进度回调；返回原有 job 字典。源资产、process profile 与渲染输入均只读。无回调时不输出 UI 协议；回调不拥有任务状态。取消在资产读取和适配阶段边界检查，抛出 `InterruptedError`；不承诺中断单次光学采样。无异步状态或新取消所有者。旧 UI 私有包装调用同一实现，冻结入口直接依赖领域模块，不再反向导入 UI。
+
+真实合成矩形/圆形 `.coatasset` 验证三入口 job、光学材料、厚度场、几何与 provenance 完全一致；陈旧 SHA、缺失/非法逐层场清单、缺失基片及预先/阶段间取消均失败关闭。冻结入口先做上下文验证，缺失基片的诊断可早于构 job，但不允许回退为猜测几何。测试为 `tests/test_appearance_asset_adapter_parity.py`；不调用 renderer、GPU、网络或 daemon。矩形宽高到中心对称四点的既有表示转换保持不变，无物理算法、几何判定、格式或数值语义变更。

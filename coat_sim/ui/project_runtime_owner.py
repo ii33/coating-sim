@@ -14,7 +14,7 @@ from coat_sim.core.project_store import ProjectError, ProjectStore, project_file
 from coat_sim.core.project_film_session import ProjectFilmWorkspace
 from coat_sim.core.project_default_loading import ProjectDefaultPlan
 from coat_sim.core.project_resource_workspace import ProjectResourceWorkspace
-from coat_sim.project_recovery import ProjectOwnerLease
+from coat_sim.project_recovery import JournalCloseError, ProjectOwnerLease
 from coat_sim.project_session import ProjectSessionHost, ProjectStoreView
 from .project_film_host import ProjectFilmDesktop
 from .local_files import local_file_path
@@ -60,6 +60,7 @@ class ProjectRuntimeOwner(QObject):
         self._initialized_film_drafts: set[str] = set()
         self._leases: dict[str, ProjectOwnerLease] = {}
         self._pending_lease_releases: list[Future] = []
+        self._journal_close_warnings: list[str] = []
         self._draining_transactions: list[Future] = []
         self._external_pending: Future | None = None
         self._unclean_stop = False
@@ -598,6 +599,20 @@ class ProjectRuntimeOwner(QObject):
         else:
             finish()
 
+    @Property(bool, notify=projectsChanged)
+    def releaseWarningPending(self) -> bool:
+        return bool(self._journal_close_warnings)
+
+    @Slot(result=bool)
+    def acknowledgeReleaseWarning(self) -> bool:
+        """Acknowledge uncertain journal persistence, without any further I/O."""
+        if not self._journal_close_warnings:
+            return False
+        self._journal_close_warnings.clear()
+        self._error = ""
+        self.projectsChanged.emit()
+        return True
+
     def settled_for_exit(self) -> bool:
         if self._busy or self._pending is not None:
             return False
@@ -609,9 +624,20 @@ class ProjectRuntimeOwner(QObject):
                    *self._pending_lease_releases, *self._draining_transactions, self._external_pending]
         if any(value is not None and not value.done() for value in pending):
             return False
-        for release in self._pending_lease_releases:
-            release.result()  # A release failure is a visible blocker, not success.
-        return True
+        warnings = []
+        for release in tuple(self._pending_lease_releases):
+            try:
+                release.result()
+            except JournalCloseError as exc:
+                warnings.append(str(exc))
+            # Unknown/OS lock failures remain blockers, not acknowledgeable
+            # journal warnings. Only known released ownership can be dismissed.
+            self._pending_lease_releases.remove(release)
+        if warnings:
+            self._journal_close_warnings.extend(warnings)
+            self._set_error("工程所有权已释放，但关闭日志未能确认写入；恢复记录可能仍显示异常关闭。"
+                            "请确认后退出；不会重写日志或影响新工程进程：" + "; ".join(warnings))
+        return not self._journal_close_warnings
 
     def abort_startup(self) -> None:
         """Unsuccessful first presentation cannot mark recovery as clean."""

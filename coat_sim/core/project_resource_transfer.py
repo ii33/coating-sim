@@ -482,6 +482,7 @@ class _Plan:
     source_snapshot: dict | None = None
     asset_owner: Any = None
     applying: bool = False
+    target_fingerprint: str | None = None
 
 
 class _PlanSpool:
@@ -658,11 +659,14 @@ class ProjectResourceExchange:
         selected, closure = _selection(catalog.snapshot, selected_ids)
         store = None
         target_service = None
+        target_fingerprint = None
         if target == "project":
             target_type, target_path = "project", str(self.service.store.project_file)
             store = self.service.store
             target_service = self.service
-            snapshot = ProjectStore.open(store.project_file, asset_limits=self.service.store.asset_limits).snapshot_saved_inputs()
+            captured = ProjectStore.open(store.project_file, asset_limits=self.service.store.asset_limits)
+            snapshot = captured.snapshot_saved_inputs()
+            target_fingerprint = captured._fingerprint
         elif target == "global":
             from .project_global_resources import read_global_resources
             target_type, target_path = "global", "global"
@@ -696,7 +700,9 @@ class ProjectResourceExchange:
                 if target_service is not None:
                     with target_service._operation():
                         pass
-                snapshot = ProjectStore.open(store.project_file, asset_limits=self.service.store.asset_limits).snapshot_saved_inputs()
+                captured = ProjectStore.open(store.project_file, asset_limits=self.service.store.asset_limits)
+                snapshot = captured.snapshot_saved_inputs()
+                target_fingerprint = captured._fingerprint
             elif path.suffix.casefold() == ".cproject":
                 target_type = "package"
                 if path.exists():
@@ -730,7 +736,8 @@ class ProjectResourceExchange:
                 raise
         try:
             plan = _Plan(catalog_id, selected, target_type, target_path,
-                         deepcopy(snapshot), store, target_service, deepcopy(rows), captured_source, owner)
+                         deepcopy(snapshot), store, target_service, deepcopy(rows), captured_source, owner,
+                         target_fingerprint=target_fingerprint)
             with self.service._operation(), self._token_lock:
                 if self._closed or catalog_id not in self._catalogs:
                     raise ProjectError("expired_catalog", "Resource browser was closed while previewing")
@@ -795,7 +802,10 @@ class ProjectResourceExchange:
                 self._catalog(plan.catalog_id)
                 with self._publication_scope(plan_id, plan):
                     if changed:
-                        plan.target_store._publish(_index(merged), merged["documents"], assets=prepared_assets)
+                        # _index rebuilds plain records, so carry the immutable preview
+                        # fingerprint explicitly into the store's locked CAS boundary.
+                        plan.target_store._publish(_index(merged), merged["documents"], assets=prepared_assets,
+                                                   expected_fingerprint=plan.target_fingerprint)
         elif plan.target_type == "global":
             from .project_global_resources import write_global_resources
             if changed and result["selected_ids"]:

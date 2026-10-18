@@ -32,6 +32,14 @@ def project_owner_runtime_root() -> Path:
     return Path("/tmp") / f"coat-sim-project-owners-{os.getuid()}"
 
 
+class JournalCloseError(OSError):
+    """Clean-close persistence is uncertain, but this owner's locks are released.
+
+    Never retry this journal write after release: a new owner may have started.
+    The prior abnormal checkpoint remains available when publication failed.
+    """
+
+
 class HeldFileLock:
     """Cross-platform nonblocking OS lock, released on normal exit or crash."""
 
@@ -489,13 +497,27 @@ class ProjectOwnerLease:
         with self._metadata_lock:
             if self._closed:
                 return
+            journal_error = None
+            release_error = None
             try:
                 if clean and self._recording:
                     self._write(clean=True, checkpoint={})
+            except Exception as exc:
+                journal_error = exc
             finally:
                 self._closed = True
+                # Attempt every owned handle even if one fails. Never unlink a
+                # lock pathname, reacquire ownership, or touch a new generation.
                 for lock in reversed(self._locks):
-                    lock.close()
+                    try:
+                        lock.close()
+                    except Exception as exc:
+                        if release_error is None:
+                            release_error = exc
+            if release_error is not None:
+                raise release_error
+            if journal_error is not None:
+                raise JournalCloseError(str(journal_error)) from journal_error
 
     def __enter__(self):
         return self

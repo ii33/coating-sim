@@ -16,7 +16,7 @@ os.environ.setdefault("QT_QUICK_BACKEND", "software")
 
 import pytest
 import numpy as np
-from PySide6.QtCore import QEventLoop, QObject, QPointF, QTimer, QUrl
+from PySide6.QtCore import QObject, QPointF, QUrl
 from PySide6.QtGui import QGuiApplication, QValidator
 from PySide6.QtQml import QQmlComponent, QQmlEngine
 from PySide6.QtQuick import QQuickItem, QQuickWindow
@@ -567,8 +567,9 @@ def test_project_owned_angle_preparation_is_cancelled_on_disposal(
         _dispose(controller)
 
 
+@pytest.mark.parametrize("change", ["edit", "device"])
 def test_stale_edit_epoch_discards_prepared_grid_before_queue_submission(
-        tmp_path, monkeypatch):
+        tmp_path, monkeypatch, change):
     app = QGuiApplication.instance() or QGuiApplication([])
     service, _library, design = fixture(tmp_path)
     controller = FilmOptimizationQuickController(_snapshot(service, design))
@@ -600,7 +601,10 @@ def test_stale_edit_epoch_discards_prepared_grid_before_queue_submission(
             lambda **_kwargs: pytest.fail("stale preparation reached queue submission"))
         assert controller.startOptimization()
         assert started.wait(1)
-        epoch["value"] = 8
+        if change == "edit":
+            epoch["value"] = 8
+        else:
+            controller._compute_target._device_id = "changed-device"
         release.set()
         deadline = time.monotonic() + 2
         while controller.busy and time.monotonic() < deadline:
@@ -608,7 +612,9 @@ def test_stale_edit_epoch_discards_prepared_grid_before_queue_submission(
             time.sleep(0.005)
         app.processEvents()
         assert not controller.busy
-        assert "原设计在准备角度网格期间发生编辑" in _text_property(controller, "error")
+        expected = ("原设计在准备角度网格期间发生编辑" if change == "edit"
+                    else "计算设备在准备角度网格期间发生改变")
+        assert expected in _text_property(controller, "error")
         assert controller.queueJobId == ""
     finally:
         release.set()
@@ -643,6 +649,7 @@ def test_prepared_grid_button_flow_freezes_and_submits_off_gui_thread(
         transport = None
 
         def capabilities(self):
+            observed_threads["capabilities"] = threading.get_ident()
             return {"protocol_version": 1, "executors": ["film_optimization"]}
 
         def submit(self, spec, *, job_id, metadata):
@@ -736,6 +743,7 @@ def test_prepared_grid_button_flow_freezes_and_submits_off_gui_thread(
         assert observed_threads["angles"] != main_thread
         assert observed_threads["freeze"] != main_thread
         assert observed_threads["spec"] != main_thread
+        assert observed_threads["capabilities"] != main_thread
         assert observed_threads["submit"] != main_thread
         assert submitted
         assert submitted[0][1] == controller.queueJobId
@@ -837,45 +845,12 @@ def test_local_cancel_during_async_submit_retries_after_exact_job_admission(
         controller.cancelOptimization()
         assert not cancel_calls, "pre-admission cancellation must not hit a missing queue row"
 
-        warning_loop = QEventLoop()
-        warning_timeout = QTimer()
-        warning_timeout.setSingleShot(True)
-        warning_timeout.timeout.connect(warning_loop.quit)
-        warning_visible = False
-
-        def finish_when_cancel_warning_is_visible():
-            nonlocal warning_visible
-            warning_visible = (
-                "首次取消请求失败" in _text_property(controller, "progressText")
-                and "RuntimeError: synthetic transient cancellation failure"
-                in _text_property(controller, "error"))
-            if warning_visible:
-                warning_loop.quit()
-
-        # cancel_calls is written before the worker catches the exception and
-        # emits its queued progress. Wait for the GUI-visible changed state,
-        # with the timer serving only as a watchdog for missing delivery.
-        controller.changed.connect(finish_when_cancel_warning_is_visible)
-        try:
-            release_submit.set()
-            assert submit_finished.wait(1)
-            finish_when_cancel_warning_is_visible()
-            if not warning_visible:
-                warning_timeout.start(1000)
-                warning_loop.exec()
-        finally:
-            warning_timeout.stop()
-            controller.changed.disconnect(finish_when_cancel_warning_is_visible)
-
-        assert cancel_calls == [store.job_id]
-        assert "首次取消请求失败" in _text_property(controller, "progressText")
-        assert "RuntimeError: synthetic transient cancellation failure" in _text_property(controller, "error")
-
-        # The automatic post-submit attempt failed transiently; an explicit
-        # retry against the same accepted ID must still be possible.
-        controller.cancelOptimization()
-        deadline = time.monotonic() + 2
-        while controller.busy and time.monotonic() < deadline:
+        # Cancellation intent is immediate; the exact-ID transport retries
+        # asynchronously after admission, without blocking the Qt slot.
+        release_submit.set()
+        assert submit_finished.wait(1)
+        deadline = time.monotonic() + 3
+        while (controller.busy or len(cancel_calls) < 2) and time.monotonic() < deadline:
             app.processEvents()
             time.sleep(0.005)
         app.processEvents()

@@ -49,11 +49,14 @@ def main():
                        "zero_thickness_layer_ids"}
             if not isinstance(request, dict) or set(request) - allowed:
                 raise ValueError("unknown batch request fields")
+            snapshot = request.get("frozen_snapshot")
+            if not isinstance(snapshot, dict):
+                raise ValueError("frozen_snapshot must be an object")
             options = PerformanceOptions(**request.get("performance", {}))
             # JSON float lists carry more overhead than raw numeric arrays.
             # Explicit inline result cap; never subsample the spectrum.
             from coat_sim.core.film_design_service import simulation_settings
-            settings = simulation_settings(request.get("settings", request["frozen_snapshot"].get("settings")))
+            settings = simulation_settings(request["settings"] if "settings" in request else snapshot.get("settings"))
             if len(request["thickness_nm"]) * settings["samples"] * 24 > 8 * 1024**2:
                 raise ValueError("inline raw output exceeds 8 MiB; use fewer candidates or the Python service")
             evaluator = FrozenFilmEvaluator(request["frozen_snapshot"], request.get("settings"), options=options)

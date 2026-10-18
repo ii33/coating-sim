@@ -103,6 +103,7 @@ class QueueTests(unittest.TestCase):
     def test_bridge_double_click_real_result_persistence_and_stale_progress(self):
         bridge = self.bridge()
         bridge.calculate(); bridge.calculate()
+        self.spin(lambda: bool(self.store.snapshot()["jobs"]))
         self.assertEqual(len(self.store.snapshot()['jobs']), 1)
         self.spin(lambda: not bridge.busy)
         self.assertTrue(bridge.hasResult, bridge.status)
@@ -115,17 +116,38 @@ class QueueTests(unittest.TestCase):
         bridge._on_progress(bridge._job_id - 1, {'fraction': .1})
         self.assertEqual(bridge.status, old)
     def test_cancel_waiting_job_and_repeated_cancel(self):
-        first = self.store.register_desktop_job('occupied', summary='other')
+        scheduler = self.scheduler
+        assert scheduler is not None
+        gate = self.root / 'worker-gate'
+        gate.mkdir()
+        first = self.bridge()
         bridge = self.bridge()
-        bridge.calculate()
-        row = next(r for r in self.store.snapshot()['jobs'] if r['job_id'] != 'occupied')
-        self.assertEqual(row['state'], 'queued')
-        self.store.request_cancel(row['job_id'])
-        bridge.cancel(); bridge.cancel()
-        self.spin(lambda: not bridge.busy)
-        row = next(r for r in self.store.snapshot()['jobs'] if r['job_id'] != 'occupied')
-        self.assertEqual(row['state'], 'cancelled')
-        self.assertFalse(bridge.hasResult)
+        bridge._values['grid_size'] = '23'
+        with scheduler.gated_workers(gate):
+            try:
+                first.calculate()
+                self.spin(lambda: (gate / 'started-21').exists())
+                occupied = scheduler.scheduler.active
+                self.assertIsNotNone(occupied)
+                assert occupied is not None
+                occupied_id = occupied[0]
+                self.assertEqual(scheduler.client().status(occupied_id)['state'], 'running')
+                bridge.calculate()
+                self.spin(lambda: any(r['job_id'] != occupied_id
+                                     for r in self.store.snapshot()['jobs']))
+                row = next(r for r in self.store.snapshot()['jobs'] if r['job_id'] != occupied_id)
+                self.assertEqual(row['state'], 'queued')
+                bridge.cancel(); bridge.cancel()
+                self.spin(lambda: not bridge.busy)
+                row = scheduler.client().status(row['job_id'])
+                self.assertEqual(row['state'], 'cancelled')
+                self.assertFalse((gate / 'started-23').exists())
+                self.assertFalse(bridge.hasResult)
+                self.assertEqual(scheduler.client().status(occupied_id)['state'], 'running')
+                (gate / 'release').touch()
+                self.spin(lambda: not first.busy)
+            finally:
+                (gate / 'release').touch()
     def test_queue_qml_reopen_percentage_and_cancel_button(self):
         from PySide6.QtQml import QQmlApplicationEngine
         from coat_sim.ui.compute_queue import ComputeQueueView
@@ -163,6 +185,7 @@ class QueueTests(unittest.TestCase):
         from coat_sim.ui.launcher import LauncherBridge
         bridge = self.bridge()
         bridge.calculate()
+        self.spin(lambda: bool(self.store.snapshot()['jobs']))
         job = self.store.snapshot()['jobs'][0]
         window = Mock()
         handle = SimpleNamespace(key='main', bridge=bridge, window=window,

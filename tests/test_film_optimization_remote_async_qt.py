@@ -58,7 +58,7 @@ class _Source:
 class _RemoteStore:
     def __init__(self, *, capabilities_gate=None, submit_gate=None, unknown=False,
                  device_available=True, cancel_failures=0):
-        self.transport = SimpleNamespace(remote_http=True, device_id=DEVICE_ID)
+        self.transport: SimpleNamespace | None = SimpleNamespace(remote_http=True, device_id=DEVICE_ID)
         self.capabilities_gate = capabilities_gate
         self.submit_gate = submit_gate
         self.unknown = unknown
@@ -179,11 +179,14 @@ def _dispose(controller, app):
     app.processEvents()
 
 
+@pytest.mark.parametrize("local", [False, True])
 def test_capabilities_get_is_off_gui_and_cancel_before_post_never_cancels_or_submits(
-        harness, app):
+        harness, app, local):
     create, _request = harness
     release_capabilities = threading.Event()
     store = _RemoteStore(capabilities_gate=release_capabilities)
+    if local:
+        store.transport = None
     controller = create(store)
     gui_thread = threading.get_ident()
     closed = []
@@ -210,10 +213,13 @@ def test_capabilities_get_is_off_gui_and_cancel_before_post_never_cancels_or_sub
         _dispose(controller, app)
 
 
-def test_post_and_cancel_are_off_gui_and_cancel_waits_for_admission(harness, app):
+@pytest.mark.parametrize("local", [False, True])
+def test_post_and_cancel_are_off_gui_and_cancel_waits_for_admission(harness, app, local):
     create, _request = harness
     release_submit = threading.Event()
     store = _RemoteStore(submit_gate=release_submit)
+    if local:
+        store.transport = None
     controller = create(store)
     gui_thread = threading.get_ident()
     closed = []
@@ -282,9 +288,12 @@ def test_changed_device_availability_blocks_post_after_capability_recheck(harnes
         _dispose(controller, app)
 
 
-def test_remote_cancel_retry_can_be_retriggered_after_transient_failures(harness, app):
+@pytest.mark.parametrize("local", [False, True])
+def test_remote_cancel_retry_can_be_retriggered_after_transient_failures(harness, app, local):
     create, _request = harness
     store = _RemoteStore(cancel_failures=3)
+    if local:
+        store.transport = None
     controller = create(store)
     gui_thread = threading.get_ident()
     try:
@@ -294,6 +303,8 @@ def test_remote_cancel_retry_can_be_retriggered_after_transient_failures(harness
         _wait(app, lambda: len(store.cancel_records) == 3, timeout=3)
         _wait(app, lambda: not controller._cancel_event._cancel_started, timeout=2)
         assert not store.cancel_succeeded.is_set()
+        _wait(app, lambda: "cancel_request_unknown" in controller.error)
+        assert "取消请求尚未确认" in controller.progressText
         # The coordinator must allow a second user click through to the event
         # after the first off-thread three-attempt retry budget is exhausted.
         controller.cancelOptimization()
@@ -333,3 +344,26 @@ def test_remote_shutdown_does_not_block_on_inflight_post_or_destroy_live_worker(
     finally:
         release_submit.set()
         app.processEvents()
+
+
+@pytest.mark.parametrize("change", ["target", "detach"])
+def test_local_pending_admission_rejects_stale_binding(harness, app, change):
+    create, _request = harness
+    gate = threading.Event()
+    store = _RemoteStore(capabilities_gate=gate)
+    store.transport = None
+    controller = create(store)
+    try:
+        assert controller.startOptimization()
+        assert store.capabilities_entered.wait(1)
+        if change == "target":
+            controller._compute_target._device_id = "different-device"
+        else:
+            controller.detach_observers()
+        gate.set()
+        _wait(app, lambda: not controller.busy)
+        assert not store.submit_records
+        assert not store.cancel_records
+    finally:
+        gate.set()
+        _dispose(controller, app)

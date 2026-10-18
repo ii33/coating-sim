@@ -26950,16 +26950,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_film_optimization_run_contract.py",
-      "code": "attr-defined",
-      "message": "\"SchedulerClient\" has no attribute \"fail_cancel_once\"",
-      "scope": "test_admitted_job_is_cancelled_if_worker_start_fails.configured_store",
-      "anchor": "store.fail_cancel_once = cancel_fails",
-      "fingerprint": "6a32b9439acb91bb33f91088496b43346f7ef3e9e05676e5d65817f26c93bd71",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_film_simulation_settings.py",
       "code": "attr-defined",
       "message": "\"type[Qt]\" has no attribute \"Key_Enter\"",
@@ -30186,16 +30176,6 @@
       "scope": "FilmFloatingUiTests.test_floating_plot_diagnostics_sidebar_and_session_lifecycle",
       "anchor": "clipping_screenshot = self.case_root / \"out-of-range-curve-clipping.png\"",
       "fingerprint": "766fc0ebbc21917f09add5eef1eef1ae4e3b3357f23cd8740e3344f8b6945923",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/compute_target.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"Any | None\" has no attribute \"capabilities\"",
-      "scope": "ComputeTarget.client_for_submit",
-      "anchor": "validate_capabilities(local_client.capabilities(), TASK_EXECUTORS[self.task], remote=False))",
-      "fingerprint": "767023d9ed1f17cf268fd556171700b083367883328ee846507b2aa52cceb19e",
       "count": 1
     },
     {
@@ -39450,16 +39430,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/appearance_worker.py",
-      "code": "misc",
-      "message": "Generator has incompatible item type \"Any | None\"; expected \"Mapping[Any, Any]\"",
-      "scope": "_appearance_context_from_asset",
-      "anchor": "candidates.extend(row.get(\"data\") for row in rows",
-      "fingerprint": "9b62212a9bdc78e3b4eb9b49d33995e4d792f43f017c625d1fc4f58b53855132",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_film_quick_controller.py",
       "code": "index",
       "message": "Value of type \"dict[Any, Any] | None\" is not indexable",
@@ -44709,16 +44679,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_film_optimization_run_contract.py",
-      "code": "attr-defined",
-      "message": "\"SchedulerClient\" has no attribute \"fail_submit\"",
-      "scope": "test_submit_failure_never_installs_worker_or_busy_attempt.failing_factory",
-      "anchor": "store.fail_submit = True",
-      "fingerprint": "b001dfdda0b568020fd55221fde0b4779bc08c6f76b773f4141ecd6bb6f197fa",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/ui/film_design.py",
       "code": "E702",
@@ -47936,16 +47896,6 @@
       "scope": "FilmSimulationQuickController.plotView",
       "anchor": "bounds[\"x_min\"], bounds[\"x_max\"], settings[\"x\"]),",
       "fingerprint": "bcbca66dea7b5d76de214ead2c6d1e065e7618cb080c2233847499f67eeb3d2f",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "tests/test_desktop_compute_queue.py",
-      "code": "F841",
-      "message": "Local variable `first` is assigned to but never used",
-      "scope": "QueueTests.test_cancel_waiting_job_and_repeated_cancel",
-      "anchor": "first = self.store.register_desktop_job('occupied', summary='other')",
-      "fingerprint": "bcbebd4fd516a503d60e0edf293bdee778b54743cc70c4147705c6582e253015",
       "count": 1
     },
     {
@@ -62850,16 +62800,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/compute_target.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"Any | None\" has no attribute \"capabilities\"",
-      "scope": "ComputeTarget.client_for_submit",
-      "anchor": "validate_capabilities(local_client.capabilities(), TASK_EXECUTORS[self.task], remote=False)",
-      "fingerprint": "f7d9cd752fb9ab71ca02a2173c97edce451481a86123492077526ef9252437fe",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_material_optical_editor.py",
       "code": "union-attr",
       "message": "Item \"None\" of \"QObject | None\" has no attribute \"property\"",
@@ -65059,6 +64999,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "2026-10-18 CI repair: remove only 70 verified resolved diagnostics (68 mypy, 2 Ruff) across Qt test type narrowing, research annotation reuse, Windows API lookup and remote test fixtures; no new allowances.",
+  "last_prune_reason": "2026-10-18 toolkit/audit integration: zero-new/fatal full scan; remove six obsolete compute-target capability, migrated appearance adapter, typed async factory, and replaced queue-test allowances. Evidence artifacts/static-analysis/toolkit-audit-20261018/resolution-review.json; no allowances added or increased.",
   "configuration_review_reason": "2026-10-17: add only BSD-3-Clause pypdf 6.21.0 for isolated research PDF extraction; all previous dependency/tool versions, analyzer rules and diagnostic entries remain unchanged. The lock-file digest changes only for this reviewed runtime dependency."
 }

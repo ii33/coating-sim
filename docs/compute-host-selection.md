@@ -111,3 +111,28 @@ their limitations visible after selection. Unavailable rows retain their failure
 reason; explicit GPU selections and CPU-only algorithm rejection are unchanged.
 The model owns these projections, the QML pop-up only renders them, and existing
 generation checks discard stale asynchronous discovery results.
+
+
+## 2026-10-18：本机与远程统一后台接纳边界
+
+`ComputeTarget.client_for_submit` 只捕获路由和设备，不查询队列。调用方在 Qt
+线程取得 `admission_verifier` 的验证及身份检查闭包，冻结输入和作业 ID，先登记
+submitting/busy，再派发工作线程。本机 capabilities（包括启动后台服务和批量执行
+协议检查）与 submit 均在此工作线程执行；普通膜系优化、角度网格准备后的优化及
+沉积采用相同边界。发现缓存不替代接纳时验证。
+
+验证前后、POST 前再次检查捕获的主机、设备、选择代数及项目操作身份；失效或
+接纳前取消均不创建作业。POST 已开始后的取消按唯一作业 ID 在接纳成功后异步
+发送，失败可按同一 ID 重试，不再次提交。窗口关闭保持响应，已接纳的服务作业
+仍由队列拥有，观察者不能替代终态确认。`RemoteCancelEvent(pending_admission=True)`
+为本机启用此延迟取消协议，未选择该参数的既有调用保持原行为。
+
+定向验证：`tests/test_film_optimization_remote_async_qt.py`、
+`tests/test_remote_ui_async_qt.py` 使用本机和远程假客户端的 capabilities/submit
+门控、Qt 心跳及取消/失效断言；无需真实 GPU、服务网络或用户电脑。
+
+本机 POST 回执丢失时，`submit_local_with_receipt` 只查询原 ID，并核对
+`input_digest` 与冻结 `JobSpec` 的指纹；匹配后才接纳并释放取消意图，不重复 POST。
+无法核实时保留 submission_unknown：沉积保留输入去重键，优化阻止同窗口再次启动，
+提示用户先按原 ID 核对。取消重试耗尽通过独立 Qt 信号显示可重试警告，不依赖队列
+有新进度；取消意图、取消请求送达和队列取消终态仍分开处理。

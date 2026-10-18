@@ -90,133 +90,15 @@ class _FileCancel:
 
 def _appearance_context_from_asset(path: Path, root: Path, asset_sha256: str,
                                    *, cancel_event=None) -> dict[str, Any]:
-    """Resolve the exact v7 process profile without importing the Qt UI."""
-    from coat_sim.core.ray_trace_job import (_asset_snapshot, _read_layer_fields,
-                                             _substrate_profile,
-                                             MAX_RAYTRACE_ASSET_BYTES)
-    from coat_sim.core.simulation_assets import read_simulation_asset
-    from coat_sim.core.process_profiles import validate_process_profile
-
-    with _asset_snapshot(path, root=root, expected_sha256=asset_sha256,
-                         cancel_event=cancel_event,
-                         max_asset_bytes=MAX_RAYTRACE_ASSET_BYTES) as snapshot:
-        content = read_simulation_asset(snapshot["path"], detail="full",
-                                        include_arrays=False, cancel_event=cancel_event)
-        configuration = content.get("configuration") or {}
-        candidates = []
-        process = configuration.get("process")
-        if isinstance(process, Mapping):
-            candidates.append(process)
-        frozen_inputs = configuration.get("input_snapshot")
-        rows = frozen_inputs.get("files") if isinstance(frozen_inputs, Mapping) else None
-        if isinstance(rows, list):
-            candidates.extend(row.get("data") for row in rows
-                              if isinstance(row, Mapping) and row.get("kind") == "process"
-                              and isinstance(row.get("data"), Mapping))
-        process_profile = None
-        for candidate in candidates:
-            if candidate.get("schema_version") != 7:
-                continue
-            try:
-                normalized = validate_process_profile(candidate)
-            except (ValueError, TypeError):
-                continue
-            if (isinstance(normalized.get("film_design_snapshot"), Mapping) and
-                    isinstance(normalized.get("film_design_import"), Mapping)):
-                process_profile = normalized
-                break
-        if process_profile is None:
-            raise ValueError("The selected process asset does not contain a complete frozen v7 FilmDesign snapshot.")
-        captured = _read_layer_fields(snapshot["path"], include_arrays=False,
-                                      cancel_event=cancel_event)
-        if not captured.get("fields"):
-            raise ValueError("The selected process asset has no captured deposition simulation per-layer thickness fields.")
-        profile = _substrate_profile(configuration)
-        if not isinstance(profile, Mapping):
-            raise ValueError("The selected process asset has no inherited substrate profile.")
-        outline = profile.get("outline")
-        if not isinstance(outline, Mapping) or outline.get("kind") not in ("rectangle", "circle"):
-            raise ValueError("Thin-film appearance requires a flat rectangular or circular process substrate profile.")
-        _profile_for_adapter(profile)
-        profile_sha256 = _sha256_bytes(_canonical(process_profile))
-        return {
-            "schema": "coat_sim.appearance_launch_context",
-            "version": 1,
-            "asset_path": str(Path(path).resolve()),
-            "asset_sha256": snapshot["sha256"],
-            "asset_root": str(Path(root).resolve()),
-            "process_profile": process_profile,
-            "process_profile_sha256": profile_sha256,
-            "substrate_profile": dict(profile),
-            "captured_step_ids": sorted(row["step_id"] for row in captured["fields"]
-                                         if isinstance(row, Mapping) and isinstance(row.get("step_id"), str)),
-            "layer_field_units": captured["manifest"].get("field_units", ""),
-            "layer_field_coordinate_frame": (captured["manifest"].get("coordinates") or {}).get("frame", ""),
-        }
+    """Compatibility entrypoint; domain adapter owns verified context extraction."""
+    from coat_sim.appearance.process_adapter import appearance_context_from_asset
+    return appearance_context_from_asset(path, root, asset_sha256, cancel_event=cancel_event)
 
 
 def _profile_for_adapter(profile: Mapping[str, Any]) -> dict[str, Any]:
-    """Preserve a circle or normalize a v1 rectangle without changing geometry."""
-    surface = profile.get("surface")
-    if not isinstance(surface, Mapping) or surface.get("kind") != "flat":
-        raise ValueError("Thin-film appearance requires an explicitly flat process substrate surface.")
-    outline = profile.get("outline")
-    if not isinstance(outline, Mapping) or outline.get("kind") not in ("rectangle", "circle"):
-        raise ValueError("Thin-film appearance requires a flat rectangular or circular process substrate profile.")
-    result = dict(profile)
-    normalized_outline = dict(outline)
-    if normalized_outline["kind"] == "circle":
-        radius = normalized_outline.get("radius_mm")
-        if isinstance(radius, bool) or not isinstance(radius, (int, float)) or not math.isfinite(float(radius)) or radius <= 0:
-            raise ValueError("Circular process substrate requires a positive finite radius_mm.")
-        result["outline"] = normalized_outline
-        return result
-    points = normalized_outline.get("points")
-    if points is None:
-        try:
-            width = float(normalized_outline["width_mm"])
-            height = float(normalized_outline["height_mm"])
-        except (KeyError, TypeError, ValueError, OverflowError) as exc:
-            raise ValueError("Rectangular process substrate width and height are missing.") from exc
-        if not math.isfinite(width) or not math.isfinite(height) or width <= 0 or height <= 0:
-            raise ValueError("Rectangular process substrate width and height must be positive finite millimetres.")
-        normalized_outline["points"] = [
-            [-width / 2, -height / 2], [width / 2, -height / 2],
-            [width / 2, height / 2], [-width / 2, height / 2],
-        ]
-    result["outline"] = normalized_outline
-    return result
-
-
-def _vectorize_scalar_optical_evaluator(scalar_evaluator):
-    """Adapt the core's scalar wavelength API to the v7 adapter's list contract."""
-    import numpy as np
-
-    def evaluate(record, wavelengths, wavelength_unit,
-                 extrapolation_policy="error"):
-        query = np.asarray(wavelengths, dtype=np.float64)
-        if query.ndim == 0:
-            return scalar_evaluator(record, float(query), wavelength_unit,
-                                    extrapolation_policy=extrapolation_policy)
-        if query.ndim != 1 or not np.isfinite(query).all() or np.any(query <= 0):
-            raise ValueError("Optical evaluation wavelengths must be a positive finite vector.")
-        sampled_n = []
-        sampled_k = []
-        k_is_unknown = None
-        for wavelength_nm in query:
-            n_value, k_value = scalar_evaluator(
-                record, float(wavelength_nm), wavelength_unit,
-                extrapolation_policy=extrapolation_policy)
-            if k_is_unknown is None:
-                k_is_unknown = k_value is None
-            elif k_is_unknown != (k_value is None):
-                raise ValueError("Optical set k availability changes across the requested wavelengths.")
-            sampled_n.append(float(n_value))
-            if k_value is not None:
-                sampled_k.append(float(k_value))
-        return sampled_n, (None if k_is_unknown else sampled_k)
-
-    return evaluate
+    """Compatibility entrypoint for the shared representation-only bridge."""
+    from coat_sim.appearance.process_adapter import profile_for_adapter
+    return profile_for_adapter(profile)
 
 
 def _build_job_from_verified_asset(process_profile: Mapping[str, Any], asset_path: str,
@@ -224,46 +106,13 @@ def _build_job_from_verified_asset(process_profile: Mapping[str, Any], asset_pat
                                    *, expected_sha256: str,
                                    geometry_thickness_mm: float | None,
                                    cancel_event=None) -> dict[str, Any]:
-    """Use the frozen adapter with only a rectangular-profile representation bridge."""
-    from coat_sim.core.ray_trace_job import (_asset_snapshot, _read_layer_fields,
-                                             _substrate_profile,
-                                             MAX_RAYTRACE_ASSET_BYTES)
-    from coat_sim.core.simulation_assets import read_simulation_asset
-    from coat_sim.appearance.process_adapter import build_job_from_v7
-    from coat_sim.core import optical_constants
-
-    with _asset_snapshot(asset_path, root=asset_root,
-                         expected_sha256=expected_sha256,
-                         cancel_event=cancel_event,
-                         max_asset_bytes=MAX_RAYTRACE_ASSET_BYTES) as snapshot:
-        _emit("status", "field_load", "Reading the captured per-step field arrays.")
-        captured = _read_layer_fields(snapshot["path"], include_arrays=True,
-                                      cancel_event=cancel_event)
-        _emit("status", "asset_read", "Captured thickness arrays validated; reading the frozen process asset metadata.")
-        content = read_simulation_asset(snapshot["path"], detail="full",
-                                        include_arrays=False, cancel_event=cancel_event)
-        metadata = content.get("result_metadata") or {}
-        field_manifest = metadata.get("layer_field_manifest")
-        if not isinstance(field_manifest, Mapping) or field_manifest.get("captured") is not True:
-            raise ValueError("Verified process asset has no captured per-step field manifest.")
-        source_profile = _substrate_profile(content.get("configuration") or {})
-        if not isinstance(source_profile, Mapping):
-            raise ValueError("Verified process asset has no inherited substrate profile.")
-        render_parameters = dict(render_inputs)
-        render_parameters["substrate_profile"] = _profile_for_adapter(source_profile)
-        _emit("status", "film_adapter", "Joining captured fields to frozen FilmDesign layer IDs.")
-        original_evaluator = optical_constants.evaluate_optical_set
-        optical_constants.evaluate_optical_set = _vectorize_scalar_optical_evaluator(original_evaluator)
-        try:
-            job = build_job_from_v7(
-                process_profile, {"manifest": dict(field_manifest), "fields": captured},
-                wavelengths_nm, render_parameters,
-                geometry_thickness_mm=geometry_thickness_mm)
-        finally:
-            optical_constants.evaluate_optical_set = original_evaluator
-        _emit("status", "film_adapter_complete", "The frozen film stack passed input validation.")
-        job["provenance"]["process_asset_sha256"] = snapshot["sha256"]
-        return job
+    """Attach the worker status protocol to the shared headless adapter."""
+    from coat_sim.appearance.process_adapter import build_job_from_asset
+    return build_job_from_asset(
+        process_profile, asset_path, asset_root, wavelengths_nm, render_inputs,
+        expected_sha256=expected_sha256, geometry_thickness_mm=geometry_thickness_mm,
+        cancel_event=cancel_event,
+        progress_callback=lambda stage, message: _emit("status", stage, message))
 
 
 def _atomic_json(path: Path, value: dict[str, Any]) -> None:

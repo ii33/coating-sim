@@ -2,15 +2,20 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from pathlib import Path, PurePosixPath
 import shutil
+import stat
+import tempfile
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
+STATIC_MANIFEST = Path(__file__).with_name("distribution_static_manifest.json")
 
 
 def sha256(path: Path) -> str:
+    _validate_path(path)
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for block in iter(lambda: stream.read(4 * 1024 * 1024), b""):
@@ -28,16 +33,35 @@ def _validate_package_relative_path(relative: Path | PurePosixPath | str, *, con
         raise RuntimeError(f"Refusing to package private design path in {context}: {PurePosixPath(*parts).as_posix()}")
 
 
+def _validate_path(path: Path) -> None:
+    """Reject links/reparse points in every existing ancestor, without following them."""
+    if ".." in path.parts:
+        raise RuntimeError("Refusing parent traversal in a package path")
+    absolute = Path(os.path.abspath(path))
+    for item in (*reversed(absolute.parents), absolute):
+        try:
+            info = item.lstat()
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
+            raise RuntimeError("Refusing to package a link or reparse point")
+        if not (stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode)):
+            raise RuntimeError("Refusing to package a non-regular resource")
+
+
 def validate_package_tree(root: Path, *, context: str) -> None:
-    """Fail closed if a package input contains a path component named sheji."""
+    """Validate roots, ancestors and members before copying, hashing or archiving."""
+    _validate_path(root)
     if not root.exists():
         return
     for item in root.rglob("*"):
+        _validate_path(item)
         _validate_package_relative_path(item.relative_to(root), context=context)
 
 
 def copy_tree(source: Path, destination: Path) -> None:
     validate_package_tree(source, context=f"source tree {source}")
+    validate_package_tree(destination, context="copy destination")
     for item in source.rglob("*"):
         relative = item.relative_to(source)
         if any(part in {"__pycache__", ".pytest_cache", ".mypy_cache"} for part in relative.parts):
@@ -58,6 +82,8 @@ def copy_tree(source: Path, destination: Path) -> None:
 
 def stage_source_snapshot(destination: Path) -> list[dict[str, object]]:
     """Freeze application sources for distribution resource validation."""
+    _validate_path(destination)
+    _validate_path(ROOT)
     destination.mkdir(parents=True, exist_ok=False)
     copy_tree(ROOT / "coat_sim", destination / "coat_sim")
     for relative in (
@@ -70,6 +96,7 @@ def stage_source_snapshot(destination: Path) -> list[dict[str, object]]:
         Path("docs") / "installation.md",
     ):
         source = ROOT / relative
+        _validate_path(source)
         if source.is_file():
             target = destination / relative
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -113,47 +140,73 @@ def snapshot_records(root: Path) -> list[dict[str, object]]:
     return records
 
 
+def _static_resources() -> dict[str, str]:
+    _validate_path(STATIC_MANIFEST)
+    manifest = json.loads(STATIC_MANIFEST.read_text(encoding="utf-8"))
+    if manifest.get("schema") != 1 or not isinstance(manifest.get("files"), dict):
+        raise RuntimeError("Invalid static resource manifest")
+    files = manifest["files"]
+    for name, digest in files.items():
+        relative = PurePosixPath(name)
+        if (relative.is_absolute() or not relative.parts or ".." in relative.parts
+                or "\\" in name or ":" in name or relative.as_posix() != name
+                or not isinstance(digest, str) or len(digest) != 64
+                or any(char not in "0123456789abcdef" for char in digest)):
+            raise RuntimeError("Invalid static resource manifest entry")
+        _validate_package_relative_path(name, context="static manifest")
+    if not files:
+        raise RuntimeError("Empty static resource manifest")
+    return files
+
+
+def _reference_digest(path: Path) -> str:
+    _validate_path(path)
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+
 def prepare_static_data(stage: Path, source_root: Path = ROOT) -> list[str]:
-    """Copy catalog inputs only; mutable app databases and user files stay out."""
+    """Stage only reviewed, content-pinned public seeds; never reuse existing data.
+
+    The manifest is maintained with the packaging code, not taken from an input
+    installation. Writable materials and overrides are intentionally absent.
+    Existing staging data is rejected without deleting or changing its contents.
+    """
     data = source_root / "data"
     target = stage / "data"
-    target.mkdir(parents=True, exist_ok=True)
-    validate_package_tree(target, context="existing staged static data")
-    copied: list[str] = []
-
-    def add_file(source: Path, relative: Path) -> None:
-        _validate_package_relative_path(relative, context="selected static data")
-        dest = target / relative
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, dest)
-        copied.append((Path("data") / relative).as_posix())
-
-    add_file(data / "README.md", Path("README.md"))
-    add_file(data / "optical_catalog.json", Path("optical_catalog.json"))
-    for item in sorted((data / "materials").glob("*.json")):
-        add_file(item, Path("materials") / item.name)
-    for relative_root in (Path("optical_catalog_sources"), Path("film_design") / "cie-illuminants-20261006"):
-        source_root = data / relative_root
-        if not source_root.is_dir():
-            raise FileNotFoundError(f"Required reference data is missing: data/{relative_root.as_posix()}")
-        before = len(copied)
-        for item in sorted(source_root.rglob("*")):
-            if item.is_file():
-                rel = item.relative_to(data)
-                _validate_package_relative_path(rel, context="selected static data source")
-                if item.suffix.lower() in {".sqlite", ".sqlite3", ".db", ".log", ".lock", ".pyc", ".pyo"}:
-                    continue
-                if any(part in {"__pycache__", "tmp", "cache"} for part in rel.parts):
-                    continue
-                add_file(item, rel)
-        if len(copied) == before:
-            raise RuntimeError(f"No files were staged for data/{relative_root.as_posix()}")
-
-    # Empty, application-owned locations are created on first use. The
-    # resource selection never copies existing mutable contents.
-    for folder in ("machines", "masks", "processes", "sources", "substrates", "results", "tmp"):
-        (target / folder).mkdir(parents=True, exist_ok=True)
-    return copied
+    _validate_path(data)
+    _validate_path(target)
+    if target.exists():
+        raise FileExistsError("Static data staging requires a fresh data directory")
+    resources = _static_resources()
+    # Reject aliases even in otherwise unselected writable material storage.
+    for folder in ("materials", "optical_catalog_sources", "film_design/cie-illuminants-20261006"):
+        validate_package_tree(data / folder, context="static resource inputs")
+    for relative, digest in resources.items():
+        source = data / relative
+        _validate_path(source)
+        if not source.is_file() or _reference_digest(source) != digest:
+            raise RuntimeError("Missing or modified reviewed static resource: " + relative)
+    stage.mkdir(parents=True, exist_ok=True)
+    # Build privately and publish only a complete validated data tree.
+    with tempfile.TemporaryDirectory(prefix=".static-data-", dir=stage) as temporary:
+        prepared = Path(temporary) / "data"
+        prepared.mkdir()
+        for relative, digest in resources.items():
+            source = data / relative
+            _validate_path(source)
+            destination = prepared / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination, follow_symlinks=False)
+            if _reference_digest(destination) != digest:
+                raise RuntimeError("Static resource changed during staging")
+        for folder in ("materials", "machines", "masks", "processes", "sources", "substrates", "results", "tmp"):
+            (prepared / folder).mkdir(parents=True, exist_ok=True)
+        validate_package_tree(prepared, context="staged static resources")
+        _validate_path(target)
+        if target.exists():
+            raise FileExistsError("Static data stage appeared during preparation")
+        prepared.rename(target)
+    return ["data/" + relative for relative in resources]
 
 
 def add_qt_and_source_data_arguments(command: list[str], data_stage: Path, source_root: Path) -> None:
@@ -182,6 +235,7 @@ def add_qt_and_source_data_arguments(command: list[str], data_stage: Path, sourc
         (qml, "PySide6/Qt/qml"),
     ]
     for source, destination in mappings:
+        validate_package_tree(source, context="package resource mapping")
         if not source.exists():
             if source.name == "software_manual.html":
                 continue
@@ -190,33 +244,34 @@ def add_qt_and_source_data_arguments(command: list[str], data_stage: Path, sourc
 
 
 def write_resource_zip(payload_zip: Path, app_root: Path, assets: Path) -> tuple[int, list[dict[str, object]]]:
-    """Create a resource archive only after validating both application trees."""
+    """Validate both trees and atomically publish a complete resource archive."""
     validate_package_tree(app_root, context="final application payload")
     validate_package_tree(assets, context="final package assets")
+    _validate_path(payload_zip)
+    for root in (app_root, assets):
+        if payload_zip.absolute().is_relative_to(root.absolute()):
+            raise RuntimeError("Resource archive must be outside input trees")
     payload_bytes = 0
     file_manifest: list[dict[str, object]] = []
-    with zipfile.ZipFile(payload_zip, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6, allowZip64=True) as archive:
-        for path in sorted(app_root.rglob("*"), key=lambda p: p.relative_to(app_root).as_posix().casefold()):
-            if path.is_symlink():
-                raise RuntimeError(f"Application resources contain an unexpected link: {path.name}")
-            relative = path.relative_to(app_root).as_posix()
-            _validate_package_relative_path(relative, context="final application payload")
-            if path.is_dir():
-                archive.writestr(relative.rstrip("/") + "/", b"")
-                continue
-            archive.write(path, relative)
-            size = path.stat().st_size
-            payload_bytes += size
-            file_manifest.append({"path": relative, "size_bytes": size, "sha256": sha256(path)})
-        for path in sorted(assets.rglob("*"), key=lambda p: p.relative_to(assets).as_posix().casefold()):
-            relative = path.relative_to(assets).as_posix()
-            _validate_package_relative_path(relative, context="final package assets")
-            full_relative = "package-info/" + relative
-            if path.is_dir():
-                archive.writestr(full_relative.rstrip("/") + "/", b"")
-            else:
-                archive.write(path, full_relative)
-                size = path.stat().st_size
-                payload_bytes += size
-                file_manifest.append({"path": full_relative, "size_bytes": size, "sha256": sha256(path)})
+    descriptor, name = tempfile.mkstemp(prefix=".resource-", suffix=".zip", dir=payload_zip.parent)
+    os.close(descriptor)
+    temporary = Path(name)
+    try:
+        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6, allowZip64=True) as archive:
+            for root, prefix in ((app_root, ""), (assets, "package-info/")):
+                for path in sorted(root.rglob("*"), key=lambda p: p.relative_to(root).as_posix().casefold()):
+                    _validate_path(path)
+                    relative = prefix + path.relative_to(root).as_posix()
+                    _validate_package_relative_path(relative, context="final resource archive")
+                    if path.is_dir():
+                        archive.writestr(relative.rstrip("/") + "/", b"")
+                    else:
+                        archive.write(path, relative)
+                        size = path.stat().st_size
+                        payload_bytes += size
+                        file_manifest.append({"path": relative, "size_bytes": size, "sha256": sha256(path)})
+        _validate_path(payload_zip)
+        temporary.replace(payload_zip)
+    finally:
+        temporary.unlink(missing_ok=True)
     return payload_bytes, file_manifest

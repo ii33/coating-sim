@@ -11,6 +11,15 @@ import json
 from dataclasses import dataclass
 from typing import Any, Callable
 
+# Live GUI observations can change outside the assistant's mutation epoch.
+# The runtime still applies its independent shared total-call/token budgets.
+LIVE_READ_TOOLS = frozenset({'read_window', 'list_windows', 'project_list',
+    'project_inspect', 'project_resolve', 'project_editor_snapshot', 'calculation_queue_snapshot'})
+STRONG_IDEMPOTENT_TOOLS = frozenset({'submit_single_source', 'submit_process_recipe',
+    'submit_mask_optimization', 'submit_film_optimization', 'submit_appearance_render',
+    'create_default_workflow', 'create_design_workflow', 'submit_mask_weights',
+    'submit_mask_field', 'submit_point_weights', 'submit_python_script', 'request_compute_confirmation'})
+
 MCP_IMAGE_MAX_COUNT = 8
 MCP_IMAGE_TURN_MAX_BYTES = 32 * 1024 * 1024
 
@@ -253,17 +262,18 @@ class ProjectGateway:
                                    "Change the arguments or report the remaining issue; no further dispatch occurred.", schema=schema)
         if key in self._unknown:
             return {**self._unknown[key], "dispatch_blocked": True}
-        if name not in self.read_only and key in self._completed:
-            # client_request_id differs each model turn, but cannot turn the
-            # same already confirmed task action into another mutation.
-            previous = self._completed[key]
+        completed_key = key if name in STRONG_IDEMPOTENT_TOOLS else f"{self._guard.get('epoch', 0)}:{key}"
+        if name not in self.read_only and completed_key in self._completed:
+            # Submission identity is strong across epochs. Ordinary writes are
+            # reusable only while no intervening mutation changed project state.
+            previous = self._completed[completed_key]
             if isinstance(previous, dict):
                 return {**previous, "reused_result": True, "dispatch_blocked": True}
             return {"ok": True, "reused_result": True, "dispatch_blocked": True, "result": previous}
         mutation = name not in self.read_only
         poll_tools = {"calculation_job_status", "wait_calculation_job", "find_calculation_job", "design_workflow_status"}
         read_key = f"{self._guard.get('epoch', 0)}:{key}"
-        if not mutation and name not in poll_tools and self._reads.get(read_key, 0) >= 3:
+        if not mutation and name not in poll_tools | LIVE_READ_TOOLS and self._reads.get(read_key, 0) >= 3:
             return self._error(name, "repeated_read", "This read was already executed three times with unchanged arguments and no intervening write. "
                                "Reuse its result or select a needed page/field; no further dispatch occurred.")
         try:
@@ -346,9 +356,10 @@ class ProjectGateway:
             # a second estimate/job for the same requested work.
             pending_release = (name == "request_compute_confirmation" and isinstance(value, dict)
                                and value.get("state") in ("prepared", "awaiting_confirmation", "pending", "approved"))
-            if not pending_release:
-                self._completed[key] = value
             self._guard["epoch"] = self._guard.get("epoch", 0) + 1
+            if not pending_release:
+                completed_key = key if name in STRONG_IDEMPOTENT_TOOLS else f"{self._guard['epoch']}:{key}"
+                self._completed[completed_key] = value
         else:
             self._failures.pop(key, None)
             self._reads[read_key] = self._reads.get(read_key, 0) + 1

@@ -4,7 +4,7 @@
 
 面向光学薄膜研究与工程开发的桌面工具：将膜系设计、行星式蒸发沉积、膜厚分布、光谱分析和结果资产组织到独立工程中。
 
-**当前为开发快照 `dev.20261016.19`，不是正式 Release。** 项目尚未完成全面物理标定；仿真和优化结果用于分析、比较与研究，不能替代设备标定、工艺验证或光学测量。应用与独立安装器的版本和验收范围分别记录。
+**当前为开发快照，不是正式 Release；准确版本见 [version.txt](coat_sim/version.txt)。** 项目尚未完成全面物理标定；仿真和优化结果用于分析、比较与研究，不能替代设备标定、工艺验证或光学测量。应用与独立安装器的版本和验收范围分别记录。
 
 ## 能做什么
 
@@ -107,3 +107,5 @@ python tools/run_tests.py all
 [研究资料接入与普通 MCP 服务配置](docs/research-integration-contract.md) · [研究证据格式](docs/algorithms.html#project-research-evidence)
 
 [光谱反演新光学数据集：操作指南与限制](docs/optical-inversion-guide.md) · [算法与非唯一性](docs/algorithms.html#optical-constant-inversion)
+
+[可迁移看板娘工具集：能力、开关与后端迁移](docs/assistant-toolkit-capability-map.md) · [接口契约](docs/assistant-toolkit-contract.md) · [宿主 provider 边界](docs/assistant-toolkit-provider-contract.md)

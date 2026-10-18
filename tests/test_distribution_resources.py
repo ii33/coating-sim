@@ -100,3 +100,185 @@ def test_application_resources_stages_cie_local_license_targets_at_data_root(
         assert staged.is_file()
         assert f"data/{relative}" in copied
         assert hashlib.sha256(staged.read_bytes()).hexdigest() == expected_sha256
+
+
+def _make_static_source(root: Path, monkeypatch) -> None:
+    """Synthetic, explicitly reviewed seeds; no checkout/user resources involved."""
+    import json
+    files = {
+        "README.md": b"public readme\n",
+        "optical_catalog.json": b'{"seed": "public"}',
+        "materials/public-seed.json": b'{"name": "reviewed seed"}',
+        "optical_catalog_sources/reference.txt": b"public reference",
+        "film_design/cie-illuminants-20261006/reference.txt": b"public CIE",
+    }
+    for relative, content in files.items():
+        path = root / "data" / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+    manifest = root / "reviewed-manifest.json"
+    manifest.write_text(json.dumps({"schema": 1, "files": {
+        name: hashlib.sha256(content).hexdigest() for name, content in files.items()
+    }}))
+    monkeypatch.setattr(builder, "STATIC_MANIFEST", manifest)
+
+
+def test_static_manifest_excludes_custom_overrides_and_unreviewed_references_from_zip(tmp_path, monkeypatch):
+    import zipfile
+    source = tmp_path / "source"
+    _make_static_source(source, monkeypatch)
+    for name in ("materials/customer.json", "materials/.overrides/builtin.json",
+                 "optical_catalog_sources/private.json"):
+        path = source / "data" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('SYNTHETIC_PRIVATE')
+    stage = tmp_path / "stage"
+    copied = builder.prepare_static_data(stage, source)
+    assert "data/materials/public-seed.json" in copied
+    assert all("customer" not in name and "overrides" not in name and "private" not in name for name in copied)
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    archive = tmp_path / "resources.zip"
+    builder.write_resource_zip(archive, stage, assets)
+    with zipfile.ZipFile(archive) as stream:
+        assert "data/materials/public-seed.json" in stream.namelist()
+        assert all(b"SYNTHETIC_PRIVATE" not in stream.read(name) for name in stream.namelist())
+
+
+def test_static_manifest_rejects_modified_seed_and_preserves_existing_stage(tmp_path, monkeypatch):
+    import pytest
+    source = tmp_path / "source"
+    _make_static_source(source, monkeypatch)
+    stage = tmp_path / "stage"
+    sentinel = stage / "data/materials/customer.json"
+    sentinel.parent.mkdir(parents=True)
+    sentinel.write_text("SYNTHETIC_PRIVATE")
+    with pytest.raises(FileExistsError):
+        builder.prepare_static_data(stage, source)
+    assert sentinel.read_text() == "SYNTHETIC_PRIVATE"
+    assert list((stage / "data").rglob("*.json")) == [sentinel]
+    (source / "data/materials/public-seed.json").write_text("SYNTHETIC_OVERRIDE")
+    with pytest.raises(RuntimeError, match="modified reviewed"):
+        builder.prepare_static_data(tmp_path / "fresh", source)
+    assert not (tmp_path / "fresh/data").exists()
+
+
+def _symlink(link, target, *, directory=False):
+    import pytest
+    try:
+        link.symlink_to(target, target_is_directory=directory)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlink creation is unavailable")
+
+
+def test_static_staging_rejects_file_root_parent_and_destination_links(tmp_path, monkeypatch):
+    import pytest
+    source = tmp_path / "source"
+    _make_static_source(source, monkeypatch)
+    outside = tmp_path / "outside.txt"
+    outside.write_text("SYNTHETIC_OUTSIDE")
+    link = source / "data/materials/linked.json"
+    _symlink(link, outside)
+    with pytest.raises(RuntimeError, match="link or reparse"):
+        builder.prepare_static_data(tmp_path / "stage", source)
+    link.unlink()
+    alias = tmp_path / "alias"
+    _symlink(alias, source, directory=True)
+    for source_path in (alias, alias / "."):
+        with pytest.raises(RuntimeError, match="link or reparse"):
+            builder.prepare_static_data(tmp_path / "stage", source_path)
+    stage_alias = tmp_path / "stage-alias"
+    real_stage = tmp_path / "real-stage"
+    real_stage.mkdir()
+    _symlink(stage_alias, real_stage, directory=True)
+    with pytest.raises(RuntimeError, match="link or reparse"):
+        builder.prepare_static_data(stage_alias, source)
+    assert not list(real_stage.iterdir())
+
+
+def test_package_roots_and_assets_links_are_rejected_before_zip_publication(tmp_path):
+    import pytest
+    app = tmp_path / "app"
+    assets = tmp_path / "assets"
+    app.mkdir()
+    assets.mkdir()
+    (app / "main.py").write_text("public source")
+    external = tmp_path / "external.txt"
+    external.write_text("SYNTHETIC_OUTSIDE")
+    link = assets / "reference.txt"
+    _symlink(link, external)
+    output = tmp_path / "package.zip"
+    output.write_bytes(b"existing output")
+    with pytest.raises(RuntimeError, match="link or reparse"):
+        builder.write_resource_zip(output, app, assets)
+    assert output.read_bytes() == b"existing output"
+    with pytest.raises(RuntimeError, match="link or reparse"):
+        builder.snapshot_records(assets)
+    link.unlink()
+    alias = tmp_path / "alias"
+    _symlink(alias, app, directory=True)
+    with pytest.raises(RuntimeError, match="link or reparse"):
+        builder.snapshot_records(alias)
+    with pytest.raises(RuntimeError, match="link or reparse"):
+        builder.copy_tree(alias, tmp_path / "copy")
+    with pytest.raises(RuntimeError, match="link or reparse"):
+        builder.write_resource_zip(output, alias, assets)
+
+
+def test_reparse_attribute_rejected_without_following(tmp_path, monkeypatch):
+    import pytest
+    path = tmp_path / "junction"
+    path.mkdir()
+    original = Path.lstat
+    def fake_lstat(self, *args, **kwargs):
+        info = original(self, *args, **kwargs)
+        if self == path:
+            return SimpleNamespace(st_mode=info.st_mode, st_file_attributes=0x400)
+        return info
+    monkeypatch.setattr(Path, "lstat", fake_lstat)
+    with pytest.raises(RuntimeError, match="link or reparse"):
+        builder.validate_package_tree(path / "child", context="synthetic Windows junction")
+
+
+def test_readmes_link_authoritative_current_version_without_duplicate_literal():
+    import re
+    for name in ("README.md", "README.en.md"):
+        introduction = (builder.ROOT / name).read_text(encoding="utf-8").split("##", 1)[0]
+        assert "(coat_sim/version.txt)" in introduction
+        assert not re.search(r"dev\.\d{8}\.\d+", introduction)
+
+
+def test_failed_zip_write_preserves_existing_archive(tmp_path, monkeypatch):
+    import pytest
+    import zipfile
+    app = tmp_path / "app"
+    assets = tmp_path / "assets"
+    app.mkdir()
+    assets.mkdir()
+    (app / "safe.txt").write_text("public")
+    output = tmp_path / "out.zip"
+    output.write_bytes(b"previous complete artifact")
+    def fail_write(*args, **kwargs):
+        raise OSError("synthetic write failure")
+    monkeypatch.setattr(zipfile.ZipFile, "write", fail_write)
+    with pytest.raises(OSError, match="synthetic"):
+        builder.write_resource_zip(output, app, assets)
+    assert output.read_bytes() == b"previous complete artifact"
+    assert not list(tmp_path.glob(".resource-*"))
+
+
+def test_snapshot_individual_document_and_source_parent_links_are_rejected(tmp_path, monkeypatch):
+    import pytest
+    source = tmp_path / "source"
+    _make_minimal_source_tree(source)
+    outside = tmp_path / "outside.txt"
+    outside.write_text("SYNTHETIC_OUTSIDE")
+    (source / "README.md").unlink()
+    _symlink(source / "README.md", outside)
+    monkeypatch.setattr(builder, "ROOT", source)
+    with pytest.raises(RuntimeError, match="link or reparse"):
+        builder.stage_source_snapshot(tmp_path / "snapshot")
+    alias = tmp_path / "alias"
+    _symlink(alias, tmp_path / "source", directory=True)
+    with pytest.raises(RuntimeError, match="link or reparse"):
+        builder.copy_tree(alias / "coat_sim", tmp_path / "copy")

@@ -2,19 +2,31 @@
 import threading
 import time
 import re
+from typing import Callable
 
 
 class RemoteCancelEvent(threading.Event):
-    def __init__(self, client, job_id):
+    def __init__(self, client, job_id, *, pending_admission=False):
         super().__init__()
         self.client, self.job_id = client, job_id
-        self._remote = bool(getattr(getattr(client, "transport", None),
+        # Historical name: this flag selects asynchronous transport/lifetime
+        # handling for remote jobs and opt-in pending local admission alike.
+        self._remote = pending_admission or bool(getattr(getattr(client, "transport", None),
                                     "remote_http", False))
         self._lock = threading.Lock()
         self._admitted = not self._remote
         self._cancel_started = False
         self.cancel_acknowledged = False
         self.cancel_error_code = None
+        self.on_cancel_status: Callable[[str, str], None] | None = None
+
+    def _notify_cancel_status(self):
+        callback = self.on_cancel_status
+        if callback is not None:
+            try:
+                callback(self.job_id, self.cancel_error_code or "")
+            except Exception:
+                pass  # The observer may already have been destroyed.
 
     def mark_admitted(self):
         """Release a pre-admission cancel only after this exact ID is accepted."""
@@ -60,6 +72,7 @@ class RemoteCancelEvent(threading.Event):
             with self._lock:
                 self._cancel_started = False
                 self.cancel_error_code = "cancel_thread_start_failed"
+            self._notify_cancel_status()
 
     def _cancel_remote(self):
         # Cancel is idempotent by job ID. A bounded retry covers a brief
@@ -71,6 +84,7 @@ class RemoteCancelEvent(threading.Event):
                 self.cancel_acknowledged = bool(reply.get("cancel_requested")
                                                 or reply.get("state") == "cancelled")
                 self.cancel_error_code = None
+                self._notify_cancel_status()
                 return
             except Exception as exc:
                 code = getattr(exc, "code", None)
@@ -81,6 +95,7 @@ class RemoteCancelEvent(threading.Event):
             # A later user click may retry the same idempotent ID. The intent
             # stays set; only a terminal service record confirms cancellation.
             self._cancel_started = False
+        self._notify_cancel_status()
 
 
 def resolve_unknown_submission(client, error, *, timeout_s=90, should_stop=None):
@@ -147,3 +162,31 @@ def observe_job(client, job_id, progress=None, *, disconnected=None, wait_s=1.0)
     if job['state'] == 'cancelled': raise InterruptedError(job.get('error') or '计算已取消')
     if job['state'] == 'failed': raise RuntimeError(f"{job.get('error_code', 'failed')}: {job.get('error')}")
     raise RuntimeError("observer_stopped: admitted job continues")
+
+
+def submit_local_with_receipt(client, spec, *, job_id, metadata):
+    """Submit once; reconcile an ambiguous local ACK against frozen identity.
+
+    Explicit scheduler ValueError rejections remain failures. Transport/startup
+    errors may follow a committed POST, so only a matching persisted receipt
+    authorizes admission and release of a pending cancellation. Never repost.
+    """
+    import json
+    from .jobs import JobSpec
+    from .remote_client import RemoteSubmissionUnknown
+
+    try:
+        return client.submit(spec, job_id=job_id, metadata=metadata)
+    except Exception as exc:
+        if isinstance(exc, ValueError) and not isinstance(exc, json.JSONDecodeError):
+            raise
+        unknown = RemoteSubmissionUnknown(job_id)
+        try:
+            expected = JobSpec.parse_frozen(spec).fingerprint
+            receipt = client.status(job_id)
+            if (isinstance(receipt, dict) and receipt.get("job_id") == job_id
+                    and receipt.get("input_digest") == expected):
+                return receipt
+        except Exception:
+            pass
+        raise unknown from None
