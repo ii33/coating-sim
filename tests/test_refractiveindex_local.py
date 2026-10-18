@@ -421,3 +421,108 @@ def test_all_nine_formula_types_survive_original_coefficients_and_preview(
     assert converted["formula_number"] == number
     assert converted["coefficients"] == [float(value) for value in coefficients.split()]
     assert store.preview(entry_id, max_points=5)["blocks"][0]["status"] == "ok"
+
+
+@pytest.mark.parametrize("outcome", ["publish", "rebuild", "write_error", "check_error", "invalid_catalog"])
+def test_build_closes_connections_before_publish_or_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome: str,
+) -> None:
+    source = _make_source(tmp_path / "source")
+    root = tmp_path / "store"
+    if outcome == "rebuild":
+        build_from_directory(source, root, upstream_commit=COMMIT)
+    elif outcome == "invalid_catalog":
+        _write(source / "database/data/main/X/nk.yml", {"COMMENTS": "No indexable DATA"})
+    before = (root / "CURRENT.json").read_bytes() if (root / "CURRENT.json").exists() else None
+    connections: list[sqlite3.Connection] = []
+    boundaries: list[str] = []
+    real_connect = sqlite3.connect
+    real_replace = local_rii.os.replace
+    real_rmtree = local_rii.shutil.rmtree
+
+    class TrackedConnection(sqlite3.Connection):
+        def execute(self, sql: str, *args: Any, **kwargs: Any) -> sqlite3.Cursor:
+            if (outcome == "write_error" and sql == "PRAGMA integrity_check") or (
+                outcome == "check_error" and sql == "SELECT source_path FROM entries"
+            ):
+                raise sqlite3.OperationalError("injected index failure")
+            return super().execute(sql, *args, **kwargs)
+
+    def connect(*args: Any, **kwargs: Any) -> sqlite3.Connection:
+        connection = real_connect(*args, factory=TrackedConnection, **kwargs)
+        # Keep strong references so garbage collection cannot hide a leaked handle.
+        connections.append(connection)
+        return connection
+
+    def assert_closed() -> None:
+        assert connections
+        for connection in connections:
+            with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+                connection.execute("SELECT 1")
+
+    def replace(src: Any, dst: Any) -> None:
+        assert_closed()
+        boundaries.append("replace")
+        real_replace(src, dst)
+
+    def rmtree(path: Any, *args: Any, **kwargs: Any) -> None:
+        assert_closed()
+        boundaries.append("cleanup")
+        real_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(local_rii.sqlite3, "connect", connect)
+    monkeypatch.setattr(local_rii.os, "replace", replace)
+    monkeypatch.setattr(local_rii.shutil, "rmtree", rmtree)
+    try:
+        if outcome in ("publish", "rebuild"):
+            assert build_from_directory(source, root, upstream_commit=COMMIT)["status"] == "ready"
+            assert boundaries == (["replace", "replace"] if outcome == "publish" else ["cleanup", "replace"])
+        else:
+            with pytest.raises(RiiLocalError) as caught:
+                build_from_directory(source, root, upstream_commit=COMMIT)
+            assert caught.value.code == ("INVALID_CATALOG" if outcome == "invalid_catalog" else "BUILD_FAILED")
+            assert boundaries == ["cleanup"]
+            assert not (root / "CURRENT.json").exists()
+        assert len(connections) == (1 if outcome == "write_error" else 2)
+        assert_closed()
+        assert not list((root / "versions").glob(".building-*"))
+        if before is not None:
+            assert (root / "CURRENT.json").read_bytes() == before
+    finally:
+        # Also release handles when this regression test runs against a broken implementation.
+        for connection in connections:
+            connection.close()
+
+
+@pytest.mark.parametrize("failed_pragma", ["PRAGMA query_only=ON", "PRAGMA trusted_schema=OFF"])
+def test_reader_closes_connection_when_setup_fails(
+    installed: tuple[Path, Path, RefractiveIndexLocalStore],
+    monkeypatch: pytest.MonkeyPatch, failed_pragma: str,
+) -> None:
+    _source, _root, store = installed
+    connections: list[sqlite3.Connection] = []
+    real_connect = sqlite3.connect
+
+    class FailingConnection(sqlite3.Connection):
+        def execute(self, sql: str, *args: Any, **kwargs: Any) -> sqlite3.Cursor:
+            if sql == failed_pragma:
+                raise sqlite3.OperationalError("injected setup failure")
+            return super().execute(sql, *args, **kwargs)
+
+    def connect(*args: Any, **kwargs: Any) -> sqlite3.Connection:
+        connection = real_connect(*args, factory=FailingConnection, **kwargs)
+        connections.append(connection)
+        return connection
+
+    monkeypatch.setattr(local_rii.sqlite3, "connect", connect)
+    try:
+        with pytest.raises(RiiLocalError) as caught:
+            store.search()
+        assert caught.value.code == "INVALID_STORE"
+        assert isinstance(caught.value.__cause__, sqlite3.OperationalError)
+        assert len(connections) == 1
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            connections[0].execute("SELECT 1")
+    finally:
+        for connection in connections:
+            connection.close()

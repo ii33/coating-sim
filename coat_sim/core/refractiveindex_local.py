@@ -582,8 +582,12 @@ def build_from_directory(source_dir: str | Path, store_root: str | Path, *, upst
         finally:
             connection.close()
         indexed_paths: set[str] = set()
-        with sqlite3.connect(staging / "index.sqlite3") as check:
+        check = sqlite3.connect(staging / "index.sqlite3")
+        try:
             indexed_paths.update(row[0] for row in check.execute("SELECT source_path FROM entries"))
+        finally:
+            # SQLite context managers end transactions; they do not close file handles.
+            check.close()
         if set(classification) - indexed_paths:
             raise RiiLocalError("INVALID_CATALOG", "Some classified files lack indexable DATA")
         manifest = {
@@ -685,8 +689,12 @@ class RefractiveIndexLocalStore:
             if _index_digest(index) != self._manifest["index_sha256"]:
                 raise RiiLocalError("SOURCE_INTEGRITY_ERROR", "Index bytes no longer match this snapshot")
             connection = sqlite3.connect(index.resolve().as_uri() + "?mode=ro&immutable=1", uri=True)
-            connection.execute("PRAGMA query_only=ON")
-            connection.execute("PRAGMA trusted_schema=OFF")
+            try:
+                connection.execute("PRAGMA query_only=ON")
+                connection.execute("PRAGMA trusted_schema=OFF")
+            except BaseException:
+                connection.close()
+                raise
             return connection
         except (sqlite3.Error, OSError) as exc:
             raise RiiLocalError("INVALID_STORE", "Cannot open local RII index read-only") from exc
