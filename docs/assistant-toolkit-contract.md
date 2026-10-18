@@ -125,6 +125,14 @@ identity, then rechecks live authorization immediately before unlinking. A stale
 source or revoked grant leaves the source untouched; a prepared snapshot may
 remain and can be restored separately. No failure cleanup purges a recovery copy.
 
+Snapshot-to-snapshot identity checks retain exact device, full inode/file ID, size,
+nanosecond modification time and change time. At the final path-stat versus
+descriptor-stat comparison, Windows uses `st_birthtime_ns` instead of
+`st_ctime_ns`: CPython can report creation time for path stat but change time for
+fstat. Missing Windows birthtime fails closed. Device, full file ID, size and
+nanosecond modification time still must match, and the source hash reread remains
+mandatory. POSIX keeps its exact change-time comparison at every stage.
+
 Payload and manifest files are flushed before source removal. On POSIX, their
 entry directory and the recovery/workspace ancestor directories are also fsynced;
 an actual directory-sync failure prevents source removal. Windows has no portable
@@ -187,6 +195,8 @@ These are filesystem and serialization semantics, not new optical algorithms.
 independent backups, collisions, malformed/tampered snapshots, bounded listings,
 internal-state bypass attempts through other artifact tools, directory creation,
 Windows lexical aliases, source changes, cancellation/live grant revocation, and
-POSIX directory-sync ordering/failures before source removal. Windows filesystem
-behavior still needs a native Windows execution check; Linux tests do not establish
-native NTFS/reparse or power-loss behavior.
+POSIX directory-sync ordering/failures before source removal. It also covers
+edit/delete/restore, synthetic Windows cross-API timestamp differences, strict
+same-API change-time checks, and replacement/same-size content conflicts. Windows
+filesystem behavior still needs a native Windows execution check; Linux tests do
+not establish native NTFS/reparse or power-loss behavior.

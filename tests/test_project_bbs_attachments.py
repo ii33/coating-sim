@@ -190,7 +190,8 @@ def test_pdf_text_preview_uses_real_isolated_parser_and_pages(project, tmp_path)
     assert "bytes" not in result and result["image_source"] == ""
 
 
-@pytest.mark.parametrize("raw", [b"%PDF-truncated", _pdf(encrypted=True), _pdf(pages=201)])
+@pytest.mark.parametrize("raw", [b"%PDF-truncated", _pdf(encrypted=True), _pdf(pages=201)],
+                         ids=["truncated", "encrypted", "excess-pages"])
 def test_invalid_encrypted_or_excess_pages_pdf_fails_to_safe_export(project, tmp_path, raw):
     store, binding = project
     attachment = _attach(store, tmp_path, "unsupported.pdf", raw)

@@ -292,8 +292,16 @@ def _recycle_directory(context, authorization=None):
     return resolve_path(context, target)
 
 
-def _identity(info):
-    return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+def _identity(info, *, cross_api=False):
+    # Keep strict change-time checks between fstat snapshots. On Windows,
+    # fstat can expose ChangeTime while path stat exposes CreationTime as
+    # st_ctime_ns; only that cross-API comparison uses their shared birthtime.
+    timestamp = info.st_ctime_ns
+    if cross_api and os.name == 'nt':
+        timestamp = getattr(info, 'st_birthtime_ns', None)
+        if timestamp is None:
+            raise ToolkitError('conflict', 'File creation identity is unavailable; original was preserved')
+    return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, timestamp)
 
 
 def _sync_recovery_directories(context, entry):
@@ -381,7 +389,8 @@ def delete(context, args):
         check_authorized(context, *authorization)
         current = os.stat(checked.name if parent_fd is not None else checked,
                           dir_fd=parent_fd, follow_symlinks=False)
-        if _identity(current) != _identity(info) or not stat.S_ISREG(current.st_mode):
+        if (_identity(current, cross_api=True) != _identity(info, cross_api=True)
+                or not stat.S_ISREG(current.st_mode)):
             raise ToolkitError('conflict', 'File was replaced before deletion; original was preserved')
         user_write_path(context, target)
         os.unlink(checked.name if parent_fd is not None else checked, dir_fd=parent_fd)

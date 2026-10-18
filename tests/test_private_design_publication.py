@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from io import BytesIO
+import json
 from pathlib import Path
 import subprocess
 import tarfile
@@ -73,6 +74,7 @@ def test_snapshot_records_rejects_private_design_paths_in_reused_inputs(tmp_path
 
 
 def test_source_snapshot_and_static_staging_leave_root_sheji_local(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project_root = Path(__file__).resolve().parents[1]
     project = tmp_path / "project"
     (project / "coat_sim").mkdir(parents=True)
     (project / "coat_sim" / "core.py").write_text("value = 1\n", encoding="utf-8")
@@ -101,18 +103,26 @@ def test_source_snapshot_and_static_staging_leave_root_sheji_local(tmp_path: Pat
     snapshot = project / "build" / "snapshot"
     snapshot.parent.mkdir()
     records = installer.stage_source_snapshot(snapshot)
-    assert not any("sheji" in Path(str(record["path"])).parts for record in records)
+    assert not any(
+        part.casefold() == "sheji"
+        for record in records
+        for part in Path(str(record["path"])).parts
+    )
     assert not (snapshot / "sheji").exists()
     assert root_design.read_bytes() == original
 
     data = project / "data"
-    (data / "optical_catalog_sources").mkdir(parents=True)
-    cie = data / "film_design" / "cie-illuminants-20261006"
-    cie.mkdir(parents=True)
-    (data / "README.md").write_text("data readme", encoding="utf-8")
-    (data / "optical_catalog.json").write_text("{}", encoding="utf-8")
-    (data / "optical_catalog_sources" / "catalog.json").write_text("{}", encoding="utf-8")
-    (cie / "reference.json").write_text("{}", encoding="utf-8")
+    # Exercise the production content pins with reviewed checkout bytes, not
+    # dummy resources or a replacement manifest that bypasses those pins.
+    reviewed_files = json.loads(installer.STATIC_MANIFEST.read_text(encoding="utf-8"))["files"]
+    expected_resources = {
+        "data/" + relative: (project_root / "data" / relative).read_bytes()
+        for relative in reviewed_files
+    }
+    for relative, content in expected_resources.items():
+        path = project / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
     ignored_local = data / "machines" / "sheji" / "local.json"
     ignored_local.parent.mkdir(parents=True)
     ignored_local.write_text("unselected local data", encoding="utf-8")
@@ -122,7 +132,17 @@ def test_source_snapshot_and_static_staging_leave_root_sheji_local(tmp_path: Pat
     copied = installer.prepare_static_data(stage, source_root=project)
 
     assert "data/README.md" in copied
-    assert (stage / "data" / "README.md").read_text(encoding="utf-8") == "data readme"
+    assert set(copied) == set(expected_resources)
+    assert {
+        path.relative_to(stage).as_posix(): path.read_bytes()
+        for path in stage.rglob("*")
+        if path.is_file()
+    } == expected_resources
+    assert not any(
+        part.casefold() == "sheji"
+        for path in stage.rglob("*")
+        for part in path.relative_to(stage).parts
+    )
     assert not (stage / "sheji").exists()
     assert root_design.read_bytes() == original
     assert ignored_local.read_bytes() == ignored_bytes

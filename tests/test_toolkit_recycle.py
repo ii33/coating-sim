@@ -37,6 +37,108 @@ def recycled(kit, name='notes.txt', raw=b'original\x00\xff\n'):
     return result['data']
 
 
+def _stat_copy(info, **changes):
+    fields = {name: getattr(info, name) for name in dir(info) if name.startswith('st_')}
+    return SimpleNamespace(**{**fields, **changes})
+
+
+def _windows_stat_api(monkeypatch):
+    """Model Windows cross-API timestamps without changing global os.name."""
+    native = fs.os
+    proxy = SimpleNamespace(**vars(native))
+    proxy.name = 'nt'
+    birthtime = 1792293853630122400
+    proxy.fstat = lambda fd: _stat_copy(native.fstat(fd), st_birthtime_ns=birthtime)
+    proxy.stat = lambda *args, **kwargs: _stat_copy(
+        native.stat(*args, **kwargs), st_birthtime_ns=birthtime, st_ctime_ns=birthtime)
+    monkeypatch.setattr(fs, 'os', proxy)
+
+
+@pytest.mark.parametrize('synthetic_windows', [False, True], ids=['native', 'windows-stat-difference'])
+def test_edit_delete_restore_roundtrip(kit, monkeypatch, synthetic_windows):
+    written = invoke(kit, 'write', path='notes.txt', text='before\r\n')
+    assert written['ok'], written
+    edited = invoke(kit, 'edit', path='notes.txt', old='before', new='after',
+                    expected_hash=written['data']['sha256'])
+    assert edited['ok'], edited
+    assert (kit[2] / 'notes.txt').read_bytes() == b'after\r\n'
+    with monkeypatch.context() as patch:
+        if synthetic_windows:
+            _windows_stat_api(patch)
+        result = invoke(kit, 'delete', path='notes.txt', expected_hash=edited['data']['sha256'])
+    assert result['ok'], result
+    data = result['data']
+    assert data['deleted'] and data['recoverable'] and data['sha256'] == edited['data']['sha256']
+    assert not (kit[2] / 'notes.txt').exists()
+    restored = invoke(kit, 'restore', recycle_id=data['recycle_id'])
+    assert restored['ok'], restored
+    assert (kit[2] / 'notes.txt').read_bytes() == b'after\r\n'
+
+
+@pytest.mark.parametrize('inode,size,mtime,ctime,birthtime', [
+    pytest.param(2251799815868689, 6, 1792293853557419900, 1792293853590321300,
+                 1792293853557419900, id='before-edit'),
+    pytest.param(2533274792579516, 5, 1792293853630626800, 1792293853665713900,
+                 1792293853630122400, id='after-edit'),
+])
+def test_windows_cross_api_identity_uses_shared_birthtime(
+        monkeypatch, inode, size, mtime, ctime, birthtime):
+    monkeypatch.setattr(fs, 'os', SimpleNamespace(name='nt'))
+    descriptor = SimpleNamespace(st_dev=10834137086799782993, st_ino=inode, st_size=size,
+                                 st_mtime_ns=mtime, st_ctime_ns=ctime, st_birthtime_ns=birthtime)
+    path = _stat_copy(descriptor, st_ctime_ns=birthtime)
+    assert fs._identity(descriptor) != fs._identity(path)
+    assert fs._identity(descriptor, cross_api=True) == fs._identity(path, cross_api=True)
+
+
+@pytest.mark.parametrize('field,delta', [
+    ('st_dev', 1), ('st_dev', 1 << 64), ('st_ino', 1), ('st_ino', 1 << 96),
+    ('st_size', 1), ('st_mtime_ns', 1), ('st_birthtime_ns', 1),
+])
+def test_windows_cross_api_identity_keeps_replacement_and_change_guards(monkeypatch, field, delta):
+    monkeypatch.setattr(fs, 'os', SimpleNamespace(name='nt'))
+    descriptor = SimpleNamespace(st_dev=11, st_ino=22, st_size=33, st_mtime_ns=44,
+                                 st_ctime_ns=55, st_birthtime_ns=66)
+    path = _stat_copy(descriptor, st_ctime_ns=66,
+                      **{field: getattr(descriptor, field) + delta})
+    assert fs._identity(descriptor, cross_api=True) != fs._identity(path, cross_api=True)
+
+
+def test_windows_cross_api_identity_without_birthtime_fails_closed(monkeypatch):
+    monkeypatch.setattr(fs, 'os', SimpleNamespace(name='nt'))
+    info = SimpleNamespace(st_dev=11, st_ino=22, st_size=33, st_mtime_ns=44, st_ctime_ns=55)
+    with pytest.raises(ToolkitError, match='identity is unavailable') as error:
+        fs._identity(info, cross_api=True)
+    assert error.value.code == 'conflict'
+
+
+def test_posix_cross_api_identity_retains_change_time(monkeypatch):
+    monkeypatch.setattr(fs, 'os', SimpleNamespace(name='posix'))
+    info = SimpleNamespace(st_dev=11, st_ino=22, st_size=33, st_mtime_ns=44,
+                           st_ctime_ns=55, st_birthtime_ns=66)
+    changed = _stat_copy(info, st_ctime_ns=56)
+    assert fs._identity(info, cross_api=True) != fs._identity(changed, cross_api=True)
+
+
+@pytest.mark.parametrize('platform', ['posix', 'nt'])
+def test_snapshot_rejects_same_api_change_time_difference(kit, monkeypatch, platform):
+    path = kit[2] / 'notes.txt'
+    path.write_bytes(b'unchanged')
+    native_fstat = os.fstat
+    calls = 0
+    def changing_stat(fd):
+        nonlocal calls
+        calls += 1
+        return _stat_copy(native_fstat(fd), st_ctime_ns=calls, st_birthtime_ns=1)
+    proxy = SimpleNamespace(**vars(os))
+    proxy.name, proxy.fstat = platform, changing_stat
+    monkeypatch.setattr(fs, 'os', proxy)
+    with pytest.raises(ToolkitError, match='changed while preparing') as error:
+        fs._file_snapshot(kit[1], path)
+    assert error.value.code == 'conflict' and calls == 2
+    assert path.read_bytes() == b'unchanged'
+
+
 def test_delete_restore_roundtrip_and_independent_backup(kit):
     raw = b'private binary\x00\xff\r\n'
     data = recycled(kit, raw=raw)
@@ -67,11 +169,12 @@ def test_restore_refuses_collision_and_keeps_snapshot(kit):
 
 def test_restore_collision_created_at_commit_is_not_overwritten(kit, monkeypatch):
     data = recycled(kit)
-    original_link = fs.os.link
-    def competing_link(source, destination, **kwargs):
+    operation = 'rename' if os.name == 'nt' else 'link'
+    original_publish = getattr(fs.os, operation)
+    def competing_publish(source, destination, **kwargs):
         (kit[2] / 'notes.txt').write_bytes(b'concurrent')
-        return original_link(source, destination, **kwargs)
-    monkeypatch.setattr(fs.os, 'link', competing_link)
+        return original_publish(source, destination, **kwargs)
+    monkeypatch.setattr(fs.os, operation, competing_publish)
     result = invoke(kit, 'restore', recycle_id=data['recycle_id'])
     assert result['error']['code'] == 'conflict'
     assert (kit[2] / 'notes.txt').read_bytes() == b'concurrent'
@@ -167,6 +270,78 @@ def test_changed_source_preserved_with_recoverable_snapshot(kit, monkeypatch):
     result = invoke(kit, 'delete', path='notes.txt', expected_hash=fs.digest(b'original'))
     assert result['error']['code'] == 'conflict'
     assert (kit[2] / 'notes.txt').read_bytes() == b'new content'
+    row = invoke(kit, 'recycle_list')['data']['entries'][0]
+    assert invoke(kit, 'restore', recycle_id=row['recycle_id'], path='recovered')['ok']
+    assert (kit[2] / 'recovered').read_bytes() == b'original'
+
+
+@pytest.mark.parametrize('phase', ['preparation', 'final-unlink'])
+@pytest.mark.parametrize('synthetic_windows', [False, True], ids=['native', 'windows-stat-difference'])
+def test_same_bytes_replacement_is_preserved(kit, monkeypatch, phase, synthetic_windows):
+    path, replacement = kit[2] / 'notes.txt', kit[2] / 'replacement'
+    raw = b'original'
+    path.write_bytes(raw)
+    original_info = path.stat()
+    replacement.write_bytes(raw)
+    os.utime(replacement, ns=(original_info.st_atime_ns, original_info.st_mtime_ns))
+    assert replacement.stat().st_ino != original_info.st_ino
+    snapshot = fs._file_snapshot
+    calls = 0
+    def replace_source(context, entry):
+        os.replace(replacement, path)
+        return False
+    def replace_after_snapshot(context, target):
+        nonlocal calls
+        result = snapshot(context, target)
+        calls += 1
+        if calls == 2:
+            replace_source(context, None)
+        return result
+    with monkeypatch.context() as patch:
+        if synthetic_windows:
+            _windows_stat_api(patch)
+        if phase == 'preparation':
+            patch.setattr(fs, '_sync_recovery_directories', replace_source)
+        else:
+            patch.setattr(fs, '_file_snapshot', replace_after_snapshot)
+        result = invoke(kit, 'delete', path='notes.txt', expected_hash=fs.digest(raw))
+    assert result['error']['code'] == 'conflict', result
+    message = 'changed during recovery' if phase == 'preparation' else 'replaced before deletion'
+    assert message in result['error']['message']
+    assert not replacement.exists() and path.read_bytes() == raw
+    assert path.stat().st_ino != original_info.st_ino
+    row = invoke(kit, 'recycle_list')['data']['entries'][0]
+    assert invoke(kit, 'restore', recycle_id=row['recycle_id'], path='recovered')['ok']
+    assert (kit[2] / 'recovered').read_bytes() == raw
+
+
+@pytest.mark.parametrize('same_snapshot_metadata', [False, True], ids=['native-metadata', 'same-metadata'])
+def test_same_size_changed_hash_is_preserved(kit, monkeypatch, same_snapshot_metadata):
+    path = kit[2] / 'notes.txt'
+    path.write_bytes(b'original')
+    original_info = path.stat()
+    def changed(context, entry):
+        path.write_bytes(b'changed!')
+        os.utime(path, ns=(original_info.st_atime_ns, original_info.st_mtime_ns))
+        return False
+    monkeypatch.setattr(fs, '_sync_recovery_directories', changed)
+    if same_snapshot_metadata:
+        snapshot = fs._file_snapshot
+        first_info = None
+        def identical_metadata(context, target):
+            nonlocal first_info
+            raw, info = snapshot(context, target)
+            if first_info is None:
+                first_info = info
+            return raw, first_info
+        monkeypatch.setattr(fs, '_file_snapshot', identical_metadata)
+    result = invoke(kit, 'delete', path='notes.txt', expected_hash=fs.digest(b'original'))
+    assert result['error']['code'] == 'conflict', result
+    assert 'changed during recovery' in result['error']['message']
+    assert path.read_bytes() == b'changed!'
+    current = path.stat()
+    assert (current.st_dev, current.st_ino, current.st_size, current.st_mtime_ns) == (
+        original_info.st_dev, original_info.st_ino, original_info.st_size, original_info.st_mtime_ns)
     row = invoke(kit, 'recycle_list')['data']['entries'][0]
     assert invoke(kit, 'restore', recycle_id=row['recycle_id'], path='recovered')['ok']
     assert (kit[2] / 'recovered').read_bytes() == b'original'
