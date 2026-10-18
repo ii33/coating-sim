@@ -8,9 +8,10 @@ from types import SimpleNamespace
 
 import pytest
 from PySide6.QtCore import QSettings, QUrl
-from PySide6.QtQml import QQmlComponent, QQmlEngine
-from PySide6.QtQuick import QQuickWindow
+from PySide6.QtQml import QQmlComponent, QQmlEngine, QQmlExpression
+from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtWidgets import QApplication
+from shiboken6 import isValid
 
 from coat_sim.core import data_files, material_business
 from coat_sim.core.global_resource_library import GlobalResourceLibrary
@@ -403,14 +404,12 @@ def test_global_minimum_window_keeps_large_font_resources_reachable(app, global_
     component = QQmlComponent(engine, QUrl.fromLocalFile(str(Path(__file__).parents[1] / "coat_sim/ui/qml/GlobalResourcesWindow.qml")))
     window = component.create()
     assert isinstance(window, QQuickWindow)
-    def item(name):
-        pending = [window.contentItem()]
-        while pending:
-            candidate = pending.pop()
-            if candidate.objectName() == name:
-                return candidate
-            pending.extend(candidate.childItems())
-        pytest.fail("missing visual item: " + name)
+    def item(name, owner=window):
+        # QObject ownership lookup avoids wrapping every unrelated visual child
+        # (including transient Qt Controls internals) through childItems().
+        found = owner.findChild(QQuickItem, name)
+        assert isinstance(found, QQuickItem) and isValid(found), "missing visual item: " + name
+        return found
     try:
         window.resize(680, 500)
         window.show()
@@ -429,8 +428,15 @@ def test_global_minimum_window_keeps_large_font_resources_reachable(app, global_
         information = item("globalResourceInformation")
         assert resource_list.height() >= 100
         assert information.height() >= 100
-        select = item("globalResourceSelect_0")
-        action = item("globalResourceInformation_0")
+        # ListView delegates are visual children, not necessarily QObject
+        # descendants of the window. Ask the view for the actual first row,
+        # retain its wrapper, and limit child lookup to that row's ownership tree.
+        expression = QQmlExpression(engine.rootContext(), resource_list, "itemAtIndex(0)")
+        row = expression.evaluate()[0]
+        assert not expression.hasError(), expression.error().toString()
+        assert isinstance(row, QQuickItem) and isValid(row), "missing first resource delegate"
+        select = item("globalResourceSelect_0", row)
+        action = item("globalResourceInformation_0", row)
         viewport = scroll.mapRectToScene(QRectF(0, 0, scroll.width(), scroll.height()))
         initial = select.mapRectToScene(QRectF(0, 0, select.width(), select.height()))
         flick.setProperty("contentY", max(0, initial.center().y() - viewport.center().y()))
