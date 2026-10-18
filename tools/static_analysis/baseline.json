@@ -1469,16 +1469,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "call-overload",
-      "message": "No overload variant of \"mouseMove\" of \"QTest\" matches argument types \"QObject\", \"QPoint\", \"int\"",
-      "scope": "BubbleTests.test_left_drag_does_not_toggle_chat_or_open_menu",
-      "anchor": "QTest.mouseMove(self.bubble, QPoint(45, 45), 20)",
-      "fingerprint": "064d0a2e3936b2ecc2b38803139adb89ba8f5d6887edd427c3d7d7d885ace827",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/ProcessWindow.qml",
       "code": "unqualified",
@@ -3290,16 +3280,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"QObject | None\" has no attribute \"setProperty\"",
-      "scope": "BubbleTests.test_window_list_menu_item_opens_submenu",
-      "anchor": "self.menu.setProperty(\"currentIndex\", 0)",
-      "fingerprint": "0d9b992cb17811315a7f31847858200d2bff128d13a9f9e774e0c0e8b42fc098",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_remote_ui_async_qt.py",
       "code": "attr-defined",
       "message": "\"RemoteMainAsyncTests\" has no attribute \"patches\"",
@@ -4016,16 +3996,6 @@
       "scope": "",
       "anchor": "import qt_test_guard # noqa: E402,F401",
       "fingerprint": "112ae4d6f778f65ec879188996df74c4b73a2a6c820be8dfd46d91d93087abda",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "call-overload",
-      "message": "No overload variant of \"mousePress\" of \"QTest\" matches argument types \"QObject\", \"Any\", \"Any\", \"QPoint\"",
-      "scope": "BubbleTests.test_opens_only_after_right_release_and_stays_open",
-      "anchor": "QTest.mousePress(self.bubble, Qt.RightButton, Qt.NoModifier, QPoint(36, 36))",
-      "fingerprint": "112eb71bc21d607cecda6af27f0df58c958448aa1e0d4a11d431322f731936c5",
       "count": 1
     },
     {
@@ -5949,16 +5919,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "attr-defined",
-      "message": "\"QObject\" has no attribute \"setPosition\"",
-      "scope": "BubbleTests.setUp",
-      "anchor": "self.bubble.setPosition(100, 100)",
-      "fingerprint": "179e4bdba44e1a65683c1683f41df62b53907fe4ad3d5e824e73ed3374cbf699",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/core/film_design_service.py",
       "code": "E702",
@@ -6297,16 +6257,6 @@
       "anchor": "font.pointSize: Theme.snapshot.fontSizeSmall",
       "fingerprint": "193f2eba15bd7cbcaed0c9a2f74b71c28c5071134300f64248ced30d428fbfa2",
       "count": 7
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_window_list.py",
-      "code": "attr-defined",
-      "message": "\"AssistantWindowListTests\" has no attribute \"app\"",
-      "scope": "AssistantWindowListTests.test_lists_only_visible_activatable_windows_and_refreshes",
-      "anchor": "self.app.processEvents()",
-      "fingerprint": "1946132904cdcc87596ca99e3d548d1fc99898f612fb9adb5fbadc46c6f9f871",
-      "count": 1
     },
     {
       "tool": "mypy",
@@ -9730,16 +9680,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "attr-defined",
-      "message": "\"type[Qt]\" has no attribute \"RightButton\"",
-      "scope": "BubbleTests.test_opens_only_after_right_release_and_stays_open",
-      "anchor": "QTest.mouseRelease(self.bubble, Qt.RightButton, Qt.NoModifier, QPoint(36, 36))",
-      "fingerprint": "25db61a0181373cf01d3d02a02d86506ae144de1caac31ea9bd2c5edf6f6b60b",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_film_design_reference_qt.py",
       "code": "attr-defined",
       "message": "\"FilmDesignReferenceQtTests\" has no attribute \"temp_path\"",
@@ -10456,16 +10396,6 @@
       "scope": "ComputeStartFailureTests.test_main_failed_new_observer_preserves_running_submission_identity",
       "anchor": "self.spin(lambda: all(row['state'] in ('succeeded', 'failed') for row in self.store.snapshot()['jobs']))",
       "fingerprint": "281768fdb7f2ba339f533c727bff3ecfa2ac72c2c8f0cbe91b8daecc165a7630",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "attr-defined",
-      "message": "\"type[Qt]\" has no attribute \"NoModifier\"",
-      "scope": "BubbleTests.test_left_drag_does_not_toggle_chat_or_open_menu",
-      "anchor": "QTest.mousePress(self.bubble, Qt.LeftButton, Qt.NoModifier, QPoint(15, 15))",
-      "fingerprint": "2840e4cb860b42453c8c335bb5ad20e57135ee3a970dcfa058d0bbd29f9ae717",
       "count": 1
     },
     {
@@ -11486,16 +11416,6 @@
       "scope": "",
       "anchor": "from dataclasses import replace",
       "fingerprint": "2be0756f901fa07feb78ec6b056b418c93d6fd04426b8435ed0dc99d509bebd9",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "attr-defined",
-      "message": "\"type[Qt]\" has no attribute \"LeftButton\"",
-      "scope": "BubbleTests.test_window_close_button_does_not_activate_row_and_captures_menu",
-      "anchor": "QTest.mouseRelease(submenu_window, Qt.LeftButton, Qt.NoModifier, click_point)",
-      "fingerprint": "2bee11dea71ce38528389766da52edcc3befc0bd7c6ff2cd995be34f2be1f0fa",
       "count": 1
     },
     {
@@ -12810,16 +12730,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"QObject | None\" has no attribute \"property\"",
-      "scope": "BubbleTests.test_escape_dismisses_and_repeated_right_click_reopens",
-      "anchor": "self.assertFalse(self.menu.property(\"visible\"))",
-      "fingerprint": "30910cb4fc9ee7979faa5a2d044b73ac2b0c52844e2db6cc84a827aa58f7f824",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_ai_appearance_operations_contract.py",
       "code": "dict-item",
       "message": "Unpacked dict entry 0 has incompatible type \"Any | None\"; expected \"SupportsKeysAndGetItem[Any, Any]\"",
@@ -14086,16 +13996,6 @@
       "scope": "optimize_film_design_with_structure",
       "anchor": "growth_branch: dict[str, Any] | None = None",
       "fingerprint": "36028f42460473cfe26f005d960d3f58612797ff126dc1ac8ebc894a86737518",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"QObject | Any | None\" has no attribute \"property\"",
-      "scope": "BubbleTests.test_window_list_rows_follow_light_and_dark_theme",
-      "anchor": "self.assertEqual(menu_background.property(\"color\"), QColor(dark[\"colorSurface\"]))",
-      "fingerprint": "36034df3ffd163eac7342e17980edd4727075265e0d695b573cd80831584b25d",
       "count": 1
     },
     {
@@ -16219,16 +16119,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"QObject | None\" has no attribute \"property\"",
-      "scope": "BubbleTests.popup_window",
-      "anchor": "and window.width() >= self.menu.property(\"width\")]",
-      "fingerprint": "3e7444089e706727a46f2f0a2f564499b7b1016b429333aa34a7968727bc0151",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/ComputeQueueWindow.qml",
       "code": "unqualified",
@@ -16286,16 +16176,6 @@
       "scope": "",
       "anchor": "import os",
       "fingerprint": "3ee429279760c63390dd1bb90a003ce8cc98623131051f25716c1b44b29d6f75",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "attr-defined",
-      "message": "\"type[Qt]\" has no attribute \"NoModifier\"",
-      "scope": "BubbleTests.test_left_click_keeps_chat_toggle_without_menu",
-      "anchor": "QTest.mouseClick(self.bubble, Qt.LeftButton, Qt.NoModifier, QPoint(36, 36))",
-      "fingerprint": "3eec4165f14bbc5ba3b4456c79650f4303945db5feff6d965079410075468cd0",
       "count": 1
     },
     {
@@ -17290,16 +17170,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"QObject | None\" has no attribute \"setProperty\"",
-      "scope": "BubbleTests.test_window_list_rows_follow_light_and_dark_theme",
-      "anchor": "self.menu.setProperty(\"currentIndex\", 0)",
-      "fingerprint": "42d087d851fec6b82f09b61683f7e4b92ce098b1b1426a84d5c14c44949cc496",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/ui/settings.py",
       "code": "operator",
       "message": "Unsupported right operand type for in (\"Property\")",
@@ -17437,16 +17307,6 @@
       "anchor": "self.assertEqual(len(self.view.jobs), 24)",
       "fingerprint": "437a680e7f0462a2ff72b21fd221abe9d630e345c4268fd30d68bd1785bb76cd",
       "count": 2
-    },
-    {
-      "tool": "ruff",
-      "path": "tests/test_scheduler_service.py",
-      "code": "F401",
-      "message": "`os` imported but unused",
-      "scope": "",
-      "anchor": "import os",
-      "fingerprint": "437caf0a6e50d0f3df382d90ce81be0b174bb9c7da6ddc16e8292e1f013509c1",
-      "count": 1
     },
     {
       "tool": "mypy",
@@ -17946,26 +17806,6 @@
       "scope": "observe_job",
       "anchor": "if job['state'] == 'failed': raise RuntimeError(f\"{job.get('error_code', 'failed')}: {job.get('error')}\")",
       "fingerprint": "456909db967fb113e93d78a095e9bae435f6accb7ac18428d81c2b1e895cc98e",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "attr-defined",
-      "message": "\"type[Qt]\" has no attribute \"LeftButton\"",
-      "scope": "BubbleTests.test_left_drag_does_not_toggle_chat_or_open_menu",
-      "anchor": "QTest.mouseRelease(self.bubble, Qt.LeftButton, Qt.NoModifier, QPoint(45, 45))",
-      "fingerprint": "456b684db7b0c4e4f01e51e3e284ddc743a21038b2b74bc734163214a0110459",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "attr-defined",
-      "message": "\"QObject\" has no attribute \"show\"",
-      "scope": "BubbleTests.setUp",
-      "anchor": "self.bubble.show()",
-      "fingerprint": "456bb55d55350cb664a48e7f6461c1516e24a3aebd74b87297e77f9b4b188607",
       "count": 1
     },
     {
@@ -19469,16 +19309,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"QObject | None\" has no attribute \"property\"",
-      "scope": "BubbleTests.open_menu",
-      "anchor": "self.assertTrue(self.menu.property(\"visible\"))",
-      "fingerprint": "4b3a1b6f47b27907a5a149bfa94563473b961edb3224e8c587031498d9a911cc",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/SubstrateWindow.qml",
       "code": "unqualified",
@@ -19700,16 +19530,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"QObject | None\" has no attribute \"property\"",
-      "scope": "BubbleTests.test_left_drag_does_not_toggle_chat_or_open_menu",
-      "anchor": "self.assertFalse(self.menu.property(\"visible\"))",
-      "fingerprint": "4bef577ce5e3100d0032b7771899ba13c72a47217fe1f074e4dc356bc74c90e9",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/core/capabilities.py",
       "code": "call-overload",
       "message": "No overload variant of \"create_model\" matches argument types \"Any\", \"ConfigDict\", \"dict[str, tuple[Any, EllipsisType | Any]]\"",
@@ -19867,16 +19687,6 @@
       "anchor": "self.assertNotIn(SECRET, self.bridge.assistantKeyMessage + self.bridge.statusMessage)",
       "fingerprint": "4cbe5416a64e999345d96fb229fdc6c58e5c6e2b79b3ae28fdba2e717a66b430",
       "count": 2
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "attr-defined",
-      "message": "\"type[Qt]\" has no attribute \"NoModifier\"",
-      "scope": "BubbleTests.test_window_close_button_does_not_activate_row_and_captures_menu",
-      "anchor": "QTest.mousePress(submenu_window, Qt.LeftButton, Qt.NoModifier, click_point)",
-      "fingerprint": "4cca9651ec05bb179dba8efd44a3ff9b8199ce4a15b7858cd73d10a41e509e69",
-      "count": 1
     },
     {
       "tool": "mypy",
@@ -20110,16 +19920,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "attr-defined",
-      "message": "\"type[Qt]\" has no attribute \"RightButton\"",
-      "scope": "BubbleTests.open_menu",
-      "anchor": "QTest.mouseClick(self.bubble, Qt.RightButton, Qt.NoModifier, QPoint(36, 36))",
-      "fingerprint": "4dcc2572c114d00fa2092029502974a5077d413bf553c5112a799ea2c229c2ec",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/core/api.py",
       "code": "arg-type",
       "message": "Argument 1 to \"len\" has incompatible type \"object\"; expected \"Sized\"",
@@ -20166,16 +19966,6 @@
       "scope": "QueueTests.test_launcher_shutdown_detaches_main_observer_without_cancelling_job",
       "anchor": "window.close.side_effect = lambda: LauncherBridge._window_visibility_changed(dummy, 'main-instance', False)",
       "fingerprint": "4e35f59b0ecf162474a04c21db07cbbcce2f9efb63ab5bfde39706abf1b0898b",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/agent/research_library.py",
-      "code": "no-redef",
-      "message": "Name \"truncation_reason\" already defined on line <line>",
-      "scope": "TextFileResearchLibrary._iter_documents",
-      "anchor": "truncation_reason: str | None = None",
-      "fingerprint": "4e3ab4db18830ee5b699c266958c34f93542d8c62cb04dd31d175860fc82105d",
       "count": 1
     },
     {
@@ -21139,16 +20929,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_remote_film_loopback_qt.py",
-      "code": "method-assign",
-      "message": "Cannot assign to a method",
-      "scope": "test_remote_film_qt_real_cpu_result_and_requested_binding",
-      "anchor": "controller._build_request = lambda **_kwargs: frozen_request",
-      "fingerprint": "51f54cd2a250b311d5f100921396f3aa57c0aab6dfac478c89c2c042b8ce5e36",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "tests/test_film_optics.py",
       "code": "E702",
@@ -21497,16 +21277,6 @@
       "anchor": "typeof Theme.tokenValues !== \"undefined\" ? Theme.tokenValues : Theme.snapshot",
       "fingerprint": "52f355fcf0ce565897c5ac6a2623bbc25dcf8a75e820fe0d8c99df32b3b1bacc",
       "count": 3
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_film_optimization_remote_async_qt.py",
-      "code": "var-annotated",
-      "message": "Need type annotation for \"store_box\" (hint: \"store_box: dict[<type>, <type>] = ...\")",
-      "scope": "harness",
-      "anchor": "store_box = {}",
-      "fingerprint": "52f545061ebf015621075cee1ca80f0d0df26a7e39cc6b626219979bbd4255d9",
-      "count": 1
     },
     {
       "tool": "qmllint",
@@ -23150,16 +22920,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "arg-type",
-      "message": "Argument 1 to \"isAncestorOf\" of \"QQuickItem\" has incompatible type \"QObject\"; expected \"QQuickItem\"",
-      "scope": "_visual_window_for",
-      "anchor": "if content is item or content.isAncestorOf(item):",
-      "fingerprint": "5a19f940347cdae48729bb0b0c210b9c65c93dae07671822e308715a63db0829",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/ui/theme_service.py",
       "code": "attr-defined",
       "message": "\"QObject\" has no attribute \"evaluate\"",
@@ -23206,16 +22966,6 @@
       "scope": "ComputeQueueView.__init__",
       "anchor": "self.timer = QTimer(self); self.timer.setInterval(500)",
       "fingerprint": "5a7a648a5be18d4f5945391e50be58056b5b1d4c56cc3dee753ce39d6183c2bf",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "call-overload",
-      "message": "No overload variant of \"mouseClick\" of \"QTest\" matches argument types \"QObject\", \"Any\", \"Any\", \"QPoint\"",
-      "scope": "BubbleTests.test_left_click_keeps_chat_toggle_without_menu",
-      "anchor": "QTest.mouseClick(self.bubble, Qt.LeftButton, Qt.NoModifier, QPoint(36, 36))",
-      "fingerprint": "5a7aae8a054b47cc65236114709db1711bb034b609a0c874f9748415b73df04e",
       "count": 1
     },
     {
@@ -23400,16 +23150,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "attr-defined",
-      "message": "\"type[Qt]\" has no attribute \"NoModifier\"",
-      "scope": "BubbleTests.open_menu",
-      "anchor": "QTest.mouseClick(self.bubble, Qt.RightButton, Qt.NoModifier, QPoint(36, 36))",
-      "fingerprint": "5b50662338d0b6aed8d454a0cd02e33657cdfe95b06771457f60128691f0f6da",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/scheduler/remote_appearance.py",
       "code": "attr-defined",
       "message": "\"object\" has no attribute \"get\"",
@@ -23426,16 +23166,6 @@
       "scope": "OpticalLibraryUiTests.test_use_button_fast_snapshot_is_immutable_under_all_library_edits",
       "anchor": "detached = lib.draftData()",
       "fingerprint": "5b7025d8dd203bb218f35104cb7614ccac679079ee85728d440f11ffa60a5fd5",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "attr-defined",
-      "message": "\"type[Qt]\" has no attribute \"Key_Right\"",
-      "scope": "BubbleTests.test_window_list_rows_follow_light_and_dark_theme",
-      "anchor": "QTest.keyClick(self.popup_window(), Qt.Key_Right)",
-      "fingerprint": "5b8d08aede5c08c5961da89e57b0e5b83598b52a3e6f5c0f2c38cba540b5e69e",
       "count": 1
     },
     {
@@ -23756,16 +23486,6 @@
       "scope": "",
       "anchor": "border.color: Theme.snapshot.colorBorder",
       "fingerprint": "5cb3bdb3e0d794b1b280aae5d096bbdb75a0cde0701970cfec5e9e686dcaa777",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "attr-defined",
-      "message": "\"type[Qt]\" has no attribute \"NoModifier\"",
-      "scope": "BubbleTests.test_window_close_button_does_not_activate_row_and_captures_menu",
-      "anchor": "QTest.mouseRelease(submenu_window, Qt.LeftButton, Qt.NoModifier, click_point)",
-      "fingerprint": "5cb4c4d989900ee49a71e94ee467158c50c3c11c123398c928ea70f62e9d1849",
       "count": 1
     },
     {
@@ -24746,16 +24466,6 @@
       "scope": "",
       "anchor": "from tools.validation.gpu_appearance_preview import (",
       "fingerprint": "603398ddac17b1645810c9a27e4609889b63d169949040d56a7da8e58eb79fa1",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"QObject | None\" has no attribute \"setProperty\"",
-      "scope": "BubbleTests.test_window_close_button_does_not_activate_row_and_captures_menu",
-      "anchor": "self.menu.setProperty(\"currentIndex\", 0)",
-      "fingerprint": "604f2749ff4f68fe45a8c8b56e0ba55beac15c72c51f00c4387df50577c2c36a",
       "count": 1
     },
     {
@@ -26730,16 +26440,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "call-overload",
-      "message": "No overload variant of \"mousePress\" of \"QTest\" matches argument types \"QObject\", \"Any\", \"Any\", \"QPoint\"",
-      "scope": "BubbleTests.test_left_drag_does_not_toggle_chat_or_open_menu",
-      "anchor": "QTest.mousePress(self.bubble, Qt.LeftButton, Qt.NoModifier, QPoint(15, 15))",
-      "fingerprint": "682911d0944d2ef69a9ee81d9b6adf821cafa701fe46afec71bdc3aace61763c",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/ui/film_design.py",
       "code": "attr-defined",
       "message": "\"type[QEvent]\" has no attribute \"ActivationChange\"",
@@ -28229,16 +27929,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_assistant_window_list.py",
-      "code": "attr-defined",
-      "message": "\"AssistantWindowListTests\" has no attribute \"app\"",
-      "scope": "AssistantWindowListTests.test_controller_owns_one_window_group_and_closes_without_provider_work",
-      "anchor": "self.app.processEvents()",
-      "fingerprint": "6d908d94f75a15076621bc63fa69f9d8852affe642d8f34f64f5faec52ef7167",
-      "count": 2
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/FilmSimulationCalculationItems.qml",
       "code": "unqualified",
@@ -28789,16 +28479,6 @@
       "count": 6
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "attr-defined",
-      "message": "\"type[QEvent]\" has no attribute \"DeferredDelete\"",
-      "scope": "AboutLayoutTests.test_small_offset_preserves_responsive_size_and_anchors",
-      "anchor": "QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)",
-      "fingerprint": "6fb24c67af2adf1d9baa4e805800622c1919c8348afdb72e03ff7d79edea6658",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/core/film_design_service.py",
       "code": "E701",
@@ -29300,16 +28980,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/scheduler/client.py",
-      "code": "attr-defined",
-      "message": "Module has no attribute \"CREATE_NEW_PROCESS_GROUP\"",
-      "scope": "SchedulerClient._ensure_started",
-      "anchor": "options['creationflags'] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP",
-      "fingerprint": "71909f3a10f0d3c6e84f0f6852975a7d646376a2da3898c6f814334efadb3426",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_gpu_appearance_preview.py",
       "code": "index",
       "message": "Unsupported target for indexed assignment (\"object\")",
@@ -29426,16 +29096,6 @@
       "scope": "",
       "anchor": "ThemeControls.ThemeButton { text: \"材料库\"; onClicked: { bridge.materialLibrary.prepareForSubstrate(); window.openMaterialLibrary() } }",
       "fingerprint": "72083dee114b5ed7e43ac6a6cdb49075595a12a371fef680b1ec379673275e89",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"QObject | Any | None\" has no attribute \"property\"",
-      "scope": "BubbleTests.test_window_list_rows_follow_light_and_dark_theme",
-      "anchor": "self.assertEqual(menu_background.property(\"color\"), QColor(light[\"colorSurface\"]))",
-      "fingerprint": "721c2114ac8b8bc9e87baeec717a811ed802b8620bcd1dbebe57d59539032850",
       "count": 1
     },
     {
@@ -29766,16 +29426,6 @@
       "scope": "MaskViewportTests.test_automatic_mode_keeps_angle_only_diagonal_horizontal_compatibility",
       "anchor": "self.wheel(angle=(120,60), modifiers=Qt.ControlModifier, touchpad=False,",
       "fingerprint": "7385302b54e541fa30d5326fe0ddec8589e8b8c712c3f0c798914e0cc82e1c4d",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"QObject | None\" has no attribute \"property\"",
-      "scope": "BubbleTests.test_left_click_keeps_chat_toggle_without_menu",
-      "anchor": "self.assertFalse(self.menu.property(\"visible\"))",
-      "fingerprint": "73972606751bb27460b812bf45dcadfd66d53c9d73281045dc53260ebba4e297",
       "count": 1
     },
     {
@@ -30256,16 +29906,6 @@
       "scope": "FilmDesignQuickControllerTests._assert_layer_insert_click_at_row_count",
       "anchor": "QTimer.singleShot(0, lambda: response.append(perf_counter()))",
       "fingerprint": "756ad86f614551fc38adf77f4487f936c306a8f9161d4d2cde4f0217969a6934",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_window_list.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"Any | None\" has no attribute \"findChild\"",
-      "scope": "AssistantWindowListTests.test_context_menu_removes_only_the_four_requested_entries",
-      "anchor": "menu_items = [menu_window.findChild(QObject, name) for name in menu_item_names]",
-      "fingerprint": "756b6bae2745de2f032ad2dd4d8ca4fced7278ced526c1c629196cf0b3dc6b35",
       "count": 1
     },
     {
@@ -31220,16 +30860,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "attr-defined",
-      "message": "\"type[QEvent]\" has no attribute \"DeferredDelete\"",
-      "scope": "BubbleTests.tearDown",
-      "anchor": "QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)",
-      "fingerprint": "7952b97d668a5e00002dd0ada3f146fd3666828595d41dad839a6856707419dc",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_film_automatic_substrate.py",
       "code": "attr-defined",
       "message": "\"AutomaticSubstrateTests\" has no attribute \"design\"",
@@ -31666,16 +31296,6 @@
       "scope": "",
       "anchor": "editorScroll.contentItem.contentY = 0",
       "fingerprint": "7b4224bc1965fddc68f1eaaa34398d5161007834a007a8ed6be730cecb2b4787",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"QObject | None\" has no attribute \"property\"",
-      "scope": "BubbleTests.test_window_list_menu_item_opens_submenu",
-      "anchor": "self.assertTrue(window_menu.property(\"opened\"))",
-      "fingerprint": "7b42d5d6ff52f2bfbc353ebe3259e20726e5a1fbad5af48210cdf2695953a506",
       "count": 1
     },
     {
@@ -33829,16 +33449,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_assistant_window_list.py",
-      "code": "attr-defined",
-      "message": "\"type[AssistantWindowListTests]\" has no attribute \"app\"",
-      "scope": "AssistantWindowListTests.setUpClass",
-      "anchor": "cls.app = QApplication.instance() or QApplication([])",
-      "fingerprint": "835fbffbc30e603a8a7dc185a3c8b93cd29bb9081dcc790fc40113cdc9cc9473",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/AppearanceWorkspace.qml",
       "code": "unqualified",
@@ -35396,16 +35006,6 @@
       "scope": "_probe",
       "anchor": "if count < 0: raise ValueError('invalid_payload_bytes')",
       "fingerprint": "89cdd82223bbf4cec6aa23027d05de7f364a1b46bd545ae63a1d3c119104027b",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "attr-defined",
-      "message": "\"type[Qt]\" has no attribute \"NoModifier\"",
-      "scope": "BubbleTests.test_left_drag_does_not_toggle_chat_or_open_menu",
-      "anchor": "QTest.mouseRelease(self.bubble, Qt.LeftButton, Qt.NoModifier, QPoint(45, 45))",
-      "fingerprint": "89d2ad9598bd5233f806a92f06c7462c35a0423d7ebae0c9e71aba7f2e7c8036",
       "count": 1
     },
     {
@@ -37160,16 +36760,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "attr-defined",
-      "message": "\"type[Qt]\" has no attribute \"Key_Right\"",
-      "scope": "BubbleTests.test_window_list_menu_item_opens_submenu",
-      "anchor": "QTest.keyClick(self.popup_window(), Qt.Key_Right)",
-      "fingerprint": "904ff4210e41a9e6e81d86f97fd0a9b146b3eb9e199b2f9118bc92d90a36b300",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_queue_submission_isolation.py",
       "code": "attr-defined",
       "message": "\"QueueSubmissionTests\" has no attribute \"root\"",
@@ -38839,16 +38429,6 @@
       "count": 2
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_assistant_window_list.py",
-      "code": "attr-defined",
-      "message": "\"AssistantWindowListTests\" has no attribute \"app\"",
-      "scope": "AssistantWindowListTests.test_repeated_activation_raises_without_permanent_always_on_top",
-      "anchor": "self.app.processEvents()",
-      "fingerprint": "979a68f928c085ad5273bce670adfcab16264e644bc5aa3ed9b51519cec8bf14",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/mcp/server.py",
       "code": "F401",
@@ -39276,16 +38856,6 @@
       "scope": "ImmutableQueueTests.test_same_window_two_jobs_refresh_same_filename",
       "anchor": "with self.scheduler.gated_workers(gate):",
       "fingerprint": "993db6b89bb563e5e7246af06d105add04c6e56dffdf86770e32b01745ceee13",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "attr-defined",
-      "message": "\"type[Qt]\" has no attribute \"LeftButton\"",
-      "scope": "BubbleTests.test_left_click_keeps_chat_toggle_without_menu",
-      "anchor": "QTest.mouseClick(self.bubble, Qt.LeftButton, Qt.NoModifier, QPoint(36, 36))",
-      "fingerprint": "994a90d5d934db37de7ce9bd849d0d0144e247ec7e5bbdcbd8acaf73a70acdbf",
       "count": 1
     },
     {
@@ -39950,16 +39520,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"QObject | None\" has no attribute \"findChild\"",
-      "scope": "BubbleTests.test_window_list_rows_follow_light_and_dark_theme",
-      "anchor": "menu_background = self.menu.findChild(QObject, \"assistantContextMenu_background\")",
-      "fingerprint": "9b9415ffff9726f63c3a4a20895eedbe9a86dfc7cba737975cc96c7ff2024177",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/ui/raytrace.py",
       "code": "arg-type",
       "message": "Argument 1 to \"Property\" has incompatible type \"str\"; expected \"type\"",
@@ -39996,16 +39556,6 @@
       "scope": "",
       "anchor": "import sys",
       "fingerprint": "9babac5ddc986b705e2fcf79ba7afc544ec7974c916786739650f510fb172c0e",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "attr-defined",
-      "message": "\"type[Qt]\" has no attribute \"RightButton\"",
-      "scope": "BubbleTests.test_opens_only_after_right_release_and_stays_open",
-      "anchor": "QTest.mousePress(self.bubble, Qt.RightButton, Qt.NoModifier, QPoint(36, 36))",
-      "fingerprint": "9baccd4213cfeac9f2440fbe686a28d621444866cdf3caefd58cdbb67223ffd1",
       "count": 1
     },
     {
@@ -40226,16 +39776,6 @@
       "scope": "LauncherBridge.open_or_reuse_film_companion",
       "anchor": "pending_qml.bridge.refreshFromSource()",
       "fingerprint": "9c9f22bef494ce726f4acca03856fc104217fbb42432b510ff1e76c811f6dd0f",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_window_list.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"Any | None\" has no attribute \"findChild\"",
-      "scope": "AssistantWindowListTests.test_context_menu_removes_only_the_four_requested_entries",
-      "anchor": "tray_menu = menu_window.findChild(QObject, \"assistantTrayQuickMenu\")",
-      "fingerprint": "9ccdfddf961aa50b014f12294bff0d673a0e98f3baf833a2391245d6c547ba83",
       "count": 1
     },
     {
@@ -40826,16 +40366,6 @@
       "scope": "MaterialOpticalEditorTests.test_qml_editable_tables_keyboard_paste_cancel_save_and_reload",
       "anchor": "self.assertEqual(n_model.property(\"rows\")[2][\"k\"], \"0.02\")",
       "fingerprint": "9f65048399ae498fb3d41fa04b802a163f12aa061cb5073ab5e6cb5fef7afcbb",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_window_list.py",
-      "code": "attr-defined",
-      "message": "\"AssistantWindowListTests\" has no attribute \"app\"",
-      "scope": "AssistantWindowListTests.test_cancelled_dirty_close_stays_listed_then_last_window_disappears",
-      "anchor": "self.app.processEvents()",
-      "fingerprint": "9f82734e5c71d469d80fc6adc068a60a7299205ee69e3254b9a410f165e83119",
       "count": 1
     },
     {
@@ -42166,26 +41696,6 @@
       "scope": "AssetBrowserBridge",
       "anchor": "@Property('QVariantList', notify=changed)",
       "fingerprint": "a438580a97effe14f70925aa72ad34e73769ae973be5467d333bf744b9dfdcfc",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "call-overload",
-      "message": "No overload variant of \"mouseRelease\" of \"QTest\" matches argument types \"QObject\", \"Any\", \"Any\", \"QPoint\"",
-      "scope": "BubbleTests.test_left_drag_does_not_toggle_chat_or_open_menu",
-      "anchor": "QTest.mouseRelease(self.bubble, Qt.LeftButton, Qt.NoModifier, QPoint(45, 45))",
-      "fingerprint": "a43f57af100269c3944ac8bf16e377403596ebe34b2b329181e188bc8f95b89e",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "attr-defined",
-      "message": "\"type[Qt]\" has no attribute \"NoModifier\"",
-      "scope": "BubbleTests.test_opens_only_after_right_release_and_stays_open",
-      "anchor": "QTest.mousePress(self.bubble, Qt.RightButton, Qt.NoModifier, QPoint(36, 36))",
-      "fingerprint": "a4520f7c1f24d37f30246065bfa04122b21dd26e567e37dec93c0171f7ceeda8",
       "count": 1
     },
     {
@@ -44259,16 +43769,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"QObject | None\" has no attribute \"property\"",
-      "scope": "BubbleTests.test_opens_only_after_right_release_and_stays_open",
-      "anchor": "self.assertTrue(self.menu.property(\"focus\"))",
-      "fingerprint": "abea1c8849a0be6faa174025b5b345f55cf23c398c5796f0d9046400f93ff0b0",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "tests/test_finite_periodic_integration.py",
       "code": "E702",
@@ -44506,16 +44006,6 @@
       "scope": "validate_film_structure_candidate_topology",
       "anchor": "for group in groups:",
       "fingerprint": "acb91f145cfba633d7a5921402f7155375b0ad7bf64cbac16474d64e82534013",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"QObject | None\" has no attribute \"setProperty\"",
-      "scope": "BubbleTests.tearDown",
-      "anchor": "self.menu.setProperty(\"visible\", False)",
-      "fingerprint": "acc188614ab1bfe59ccbd7af1ef287180b3c5487a64c4d6377aff9b1f86c49b7",
       "count": 1
     },
     {
@@ -45280,16 +44770,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "attr-defined",
-      "message": "\"type[Qt]\" has no attribute \"NoModifier\"",
-      "scope": "BubbleTests.test_opens_only_after_right_release_and_stays_open",
-      "anchor": "QTest.mouseRelease(self.bubble, Qt.RightButton, Qt.NoModifier, QPoint(36, 36))",
-      "fingerprint": "b0577d623153c0a34544ac184cf68e327850c6994c7a257cc17f483950edc349",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_process_editor_navigation_qt.py",
       "code": "arg-type",
       "message": "Argument 1 to \"Property\" has incompatible type \"str\"; expected \"type\"",
@@ -45786,16 +45266,6 @@
       "scope": "_assert_non_overlapping",
       "anchor": "and _left_in_root(chrome, status) + status.width()",
       "fingerprint": "b2b5c2327435ceeebce1a0c68a3953700415258db6ff09eabd152135ef26aa6d",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "attr-defined",
-      "message": "\"type[Qt]\" has no attribute \"Key_Right\"",
-      "scope": "BubbleTests.test_window_close_button_does_not_activate_row_and_captures_menu",
-      "anchor": "QTest.keyClick(self.popup_window(), Qt.Key_Right)",
-      "fingerprint": "b2c2e1eb14c14b033443075c6ce7fb719cc95dd45a93d491d4ae4c62f310fe04",
       "count": 1
     },
     {
@@ -47216,16 +46686,6 @@
       "scope": "FilmQuickPageUiRefinementTests.test_rapid_sidebar_switches_preserve_models_focus_commits_and_scroll",
       "anchor": "float(self.root.height()) + 1.0)",
       "fingerprint": "b7db9b18fd2f4cb42a8a691f7904b1f5a62ee361e16131d12e4e16946417ee60",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_window_list.py",
-      "code": "attr-defined",
-      "message": "\"AssistantWindowListTests\" has no attribute \"app\"",
-      "scope": "AssistantWindowListTests._clean_windows",
-      "anchor": "self.app.processEvents()",
-      "fingerprint": "b7df691d9e48955504351318be0d591d91b44920d6677c04cf71c7e4a3f2de0a",
       "count": 1
     },
     {
@@ -48919,16 +48379,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "coat_sim/scheduler/client.py",
-      "code": "F401",
-      "message": "`sys` imported but unused",
-      "scope": "",
-      "anchor": "import sys",
-      "fingerprint": "bee0138fae73fbc05361e290d49e789212b5d4ff43df91b0f3fb700cb65c9624",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/SettingsWindow.qml",
       "code": "unqualified",
@@ -49450,16 +48900,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "attr-defined",
-      "message": "\"type[Qt]\" has no attribute \"LeftButton\"",
-      "scope": "BubbleTests.test_left_drag_does_not_toggle_chat_or_open_menu",
-      "anchor": "QTest.mousePress(self.bubble, Qt.LeftButton, Qt.NoModifier, QPoint(15, 15))",
-      "fingerprint": "c1288375d92b28459c0dc0cff0de1fb6940fb9e5d5d5c097b0a7d6120fa1fd89",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/ui/source_substrate.py",
       "code": "attr-defined",
       "message": "\"_EditorBridge\" has no attribute \"_fields\"",
@@ -49696,26 +49136,6 @@
       "scope": "",
       "anchor": "from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent, QQmlExpression, QQmlEngine",
       "fingerprint": "c207d821f8547165ae00eccdba5d2fb4c842b06619d8e770fddd710e37cfad0c",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/agent/research_library.py",
-      "code": "no-redef",
-      "message": "Name \"skipped_reasons\" already defined on line <line>",
-      "scope": "TextFileResearchLibrary._iter_documents",
-      "anchor": "skipped_reasons: dict[str, int] = {}",
-      "fingerprint": "c21312f2db840c19530ac719ef76c98e00b8c6bf7da37df3c83482423548c3f9",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"QObject | None\" has no attribute \"setProperty\"",
-      "scope": "BubbleTests.test_clicking_window_name_activates_without_setting_always_on_top",
-      "anchor": "self.menu.setProperty(\"currentIndex\", 0)",
-      "fingerprint": "c217f8800000021c372f3f1802381fff9a3b841a61e582a147ce7b1401c96b87",
       "count": 1
     },
     {
@@ -50130,16 +49550,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"QObject | None\" has no attribute \"property\"",
-      "scope": "BubbleTests.open_menu",
-      "anchor": "self.assertTrue(self.menu.property(\"opened\"))",
-      "fingerprint": "c39b213c4fc22f27999d7312527e52845931020048635aa9948cb12ee4043deb",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_scheduler_resource_fixture.py",
       "code": "union-attr",
       "message": "Item \"None\" of \"IO[bytes] | None\" has no attribute \"closed\"",
@@ -50507,16 +49917,6 @@
       "anchor": "ThemeControls.ThemeLabel { width: parent.width; text: modelData.name; wrapMode: Text.Wrap; font.bold: modelData.key === dialog.library.currentKey }",
       "fingerprint": "c50480646a1b01d232363be24b9fd833a4919e41a55133b15905b9362276a590",
       "count": 3
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"QObject | None\" has no attribute \"property\"",
-      "scope": "BubbleTests.test_opens_only_after_right_release_and_stays_open",
-      "anchor": "self.assertFalse(self.menu.property(\"visible\"))",
-      "fingerprint": "c505248ace0bf19e13015310aaa7b3567893e0a4a0bfc8cae866f75f537edb4a",
-      "count": 1
     },
     {
       "tool": "mypy",
@@ -54350,16 +53750,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"QObject | None\" has no attribute \"property\"",
-      "scope": "BubbleTests.test_opens_only_after_right_release_and_stays_open",
-      "anchor": "self.assertTrue(self.menu.property(\"opened\"))",
-      "fingerprint": "d38feb02fe3a573bb667dbbac5d797daa97769331dc4c0cbbf2595ed30f15ba5",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_utility_windows_compact_chrome_ui.py",
       "code": "attr-defined",
       "message": "\"QObject\" has no attribute \"setGeometry\"",
@@ -55610,16 +55000,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "attr-defined",
-      "message": "\"type[Qt]\" has no attribute \"LeftButton\"",
-      "scope": "BubbleTests.test_window_close_button_does_not_activate_row_and_captures_menu",
-      "anchor": "QTest.mousePress(submenu_window, Qt.LeftButton, Qt.NoModifier, click_point)",
-      "fingerprint": "d8ed2adee997dfe70b7f386038a32b534a63c4ee1e14db412a4f3b565af0c744",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/core/material_physics.py",
       "code": "union-attr",
       "message": "Item \"str\" of \"list[Any] | str | None\" has no attribute \"append\"",
@@ -55636,16 +55016,6 @@
       "scope": "",
       "anchor": "currentIndex: bridge.providerPresetIndexForUrl(assistantUrlField.text)",
       "fingerprint": "d8f3f90c8af965010ef9e30dc6a08eb168824ee3b6ef28d8051b9455486b01ae",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "attr-defined",
-      "message": "\"type[Qt]\" has no attribute \"Key_Escape\"",
-      "scope": "BubbleTests.test_escape_dismisses_and_repeated_right_click_reopens",
-      "anchor": "QTest.keyClick(self.popup_window(), Qt.Key_Escape)",
-      "fingerprint": "d8f98f5906938f10673c83456fe850c13d31bd4b5df48e095f499e8e8aebbb3d",
       "count": 1
     },
     {
@@ -56126,16 +55496,6 @@
       "scope": "runtime_auto_advance_states",
       "anchor": "runtime._observe_tool = lambda *args: observations.append(args)",
       "fingerprint": "daed09c3d272e75201853fd89f7d170baeb6fba3225c9ca331608a6f26f18112",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_window_list.py",
-      "code": "attr-defined",
-      "message": "\"AssistantWindowListTests\" has no attribute \"app\"",
-      "scope": "AssistantWindowListTests.make_window",
-      "anchor": "self.app.processEvents()",
-      "fingerprint": "db2b6702c6099618b6094643edb49ce2576292424541e4813c57ddcc11c52c01",
       "count": 1
     },
     {
@@ -58760,16 +58120,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "call-overload",
-      "message": "No overload variant of \"mouseRelease\" of \"QTest\" matches argument types \"QObject\", \"Any\", \"Any\", \"QPoint\"",
-      "scope": "BubbleTests.test_opens_only_after_right_release_and_stays_open",
-      "anchor": "QTest.mouseRelease(self.bubble, Qt.RightButton, Qt.NoModifier, QPoint(36, 36))",
-      "fingerprint": "e53d0f129740ef941cd59d125597a7ebf214d722427a6f82a6e9992bb2e10f72",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_settings_credentials.py",
       "code": "arg-type",
       "message": "Argument 1 to \"_on_models_finished\" of \"SettingsBridge\" has incompatible type \"Reply\"; expected \"QNetworkReply\"",
@@ -59397,16 +58747,6 @@
       "anchor": "self.assertEqual(source.state[\"design\"], before)",
       "fingerprint": "e7a1b9bda3d7643b11a798ca4765ade69de6107fc47de19db462c1cd091f8c8e",
       "count": 3
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/scheduler/client.py",
-      "code": "attr-defined",
-      "message": "Module has no attribute \"DETACHED_PROCESS\"",
-      "scope": "SchedulerClient._ensure_started",
-      "anchor": "options['creationflags'] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP",
-      "fingerprint": "e7a36aa21a8cf5ec109ad58651dba72be2923c11cef69115c16a94eba5455ca8",
-      "count": 1
     },
     {
       "tool": "mypy",
@@ -61456,16 +60796,6 @@
       "scope": "PressureReferenceTests.test_gas_gibbs_sign_standard_state_and_inclusive_domain",
       "anchor": "for t in (1179.99999, 1210.00001, 1000, 1223.15):",
       "fingerprint": "ef55119202d171eefc418691670906e945d3a03f287aa2539e7ff373c5219098",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "attr-defined",
-      "message": "\"QObject\" has no attribute \"close\"",
-      "scope": "BubbleTests.tearDown",
-      "anchor": "self.bubble.close()",
-      "fingerprint": "ef56405a4839e353c656a84d2bc0d02ff1062e5f0d2cc0fab7bcd998c0e033a9",
       "count": 1
     },
     {
@@ -64390,16 +63720,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "attr-defined",
-      "message": "\"type[Qt]\" has no attribute \"Key_Right\"",
-      "scope": "BubbleTests.test_clicking_window_name_activates_without_setting_always_on_top",
-      "anchor": "QTest.keyClick(self.popup_window(), Qt.Key_Right)",
-      "fingerprint": "fabde8192cd0a5ecaf2ce6b8307cb181afd5f6547986a70226154154a8f8f1d3",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_material_optical_editor.py",
       "code": "union-attr",
       "message": "Item \"QObject\" of \"QObject | Any\" has no attribute \"mapToItem\"",
@@ -64706,16 +64026,6 @@
       "scope": "AutomaticSubstrateTests.test_coherent_under_sampling_is_reported_without_altering_grid",
       "anchor": "self.design['substrate'].update(sides='double',thickness={'value':6000.,'unit':'nm'})",
       "fingerprint": "fbf3de87b82ba5a292fe9eff803576a224edf981c30adc8b4ec8b666c5a00593",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_assistant_bubble.py",
-      "code": "call-overload",
-      "message": "No overload variant of \"mouseClick\" of \"QTest\" matches argument types \"QObject\", \"Any\", \"Any\", \"QPoint\"",
-      "scope": "BubbleTests.open_menu",
-      "anchor": "QTest.mouseClick(self.bubble, Qt.RightButton, Qt.NoModifier, QPoint(36, 36))",
-      "fingerprint": "fbf5faa7f365eb64d03f14ef124fb07e185a875b5aab6c67522b2abc6d49cc00",
       "count": 1
     },
     {
@@ -65749,6 +65059,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "Reviewed resolved diagnostics only: removed obsolete launchers/QML; explicit Qt window bridge/ownership and typed subprocess option/stream boundaries. No new debt accepted.",
+  "last_prune_reason": "2026-10-18 CI repair: remove only 70 verified resolved diagnostics (68 mypy, 2 Ruff) across Qt test type narrowing, research annotation reuse, Windows API lookup and remote test fixtures; no new allowances.",
   "configuration_review_reason": "2026-10-17: add only BSD-3-Clause pypdf 6.21.0 for isolated research PDF extraction; all previous dependency/tool versions, analyzer rules and diagnostic entries remain unchanged. The lock-file digest changes only for this reviewed runtime dependency."
 }
