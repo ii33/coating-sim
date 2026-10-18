@@ -566,7 +566,7 @@ def _short_text(value: object, maximum: int) -> str:
 
 
 def _research_library_root(value: object) -> str:
-    """Keep a bounded explicit path intact; never truncate a filesystem path."""
+    """Keep an optional external override intact; empty retains default routing."""
     if not isinstance(value, str):
         return ""
     root = value.strip()

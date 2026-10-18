@@ -115,3 +115,34 @@ def test_restore_default_workspace_is_draft_only_until_saved(compute_ui, tmp_pat
     reopened = compute_ui.open()
     assert reopened.bridge.assistantToolkitEnabled
     assert reopened.bridge.assistantToolkitWorkspaceRoot == str(default_workspace_root())
+
+
+def test_research_library_qml_optional_override_and_save_errors(compute_ui, tmp_path):
+    scene = compute_ui.open()
+    _expand(scene)
+    section = _find(scene.window, 'researchLibraryCategory')
+    section.setProperty('expanded', True)
+    _settle()
+    root = _find(section, 'researchLibraryRootField')
+    assert root.property('text') == ''
+    assert '可选' in root.property('placeholderText')
+    assert scene.bridge.save()
+    original = settings.SETTINGS_PATH.read_bytes()
+    root.setProperty('text', 'relative/private-library')
+    _invoke(root, 'textEdited')
+    assert not scene.bridge.save()
+    assert '绝对目录路径' in scene.bridge.statusMessage
+    assert root.property('text') == 'relative/private-library'
+    assert settings.SETTINGS_PATH.read_bytes() == original
+    root.setProperty('text', str(tmp_path))
+    _invoke(root, 'textEdited')
+    assert scene.bridge.save()
+    scene.close()
+    before_open = settings.SETTINGS_PATH.read_bytes()
+    reopened = compute_ui.open()
+    _expand(reopened)
+    assert reopened.bridge.assistantResearchLibraryRoot == str(tmp_path)
+    assert settings.SETTINGS_PATH.read_bytes() == before_open
+    reopened.bridge.setAssistantResearchLibraryRoot('')
+    assert reopened.bridge.save()
+    assert settings.load_ui_settings()['assistant_research_library_root'] == ''

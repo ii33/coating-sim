@@ -96,6 +96,7 @@ def stage_source_snapshot(destination: Path) -> list[dict[str, object]]:
         Path("docs") / "installation.md",
         Path("docs") / "assistant-knowledge-contract.md",
         Path("docs") / "assistant-memory-research-contract.md",
+        Path("docs") / "research-library-provider-contract.md",
         Path("docs") / "refractiveindex-local-contract.md",
         Path("docs") / "refractiveindex-tools-contract.md",
         Path("docs") / "refractiveindex-browser-contract.md",
@@ -227,6 +228,8 @@ def add_qt_and_source_data_arguments(command: list[str], data_stage: Path, sourc
         (source_root / "coat_sim" / "version.txt", "coat_sim"),
         (source_root / "coat_sim" / "ui" / "qml", "coat_sim/ui/qml"),
         (source_root / "coat_sim" / "ui" / "assets", "coat_sim/ui/assets"),
+        # Recursive mapping includes the bundled public research corpus and manifest.
+        # Keep its module-relative layout identical in source and frozen builds.
         (source_root / "coat_sim" / "agent" / "resources", "coat_sim/agent/resources"),
         (source_root / "coat_sim" / "core" / "resources", "coat_sim/core/resources"),
         (source_root / "docs" / "algorithms.html", "docs"),
@@ -236,6 +239,7 @@ def add_qt_and_source_data_arguments(command: list[str], data_stage: Path, sourc
         (source_root / "docs" / "installation.md", "docs"),
         (source_root / "docs" / "assistant-knowledge-contract.md", "docs"),
         (source_root / "docs" / "assistant-memory-research-contract.md", "docs"),
+        (source_root / "docs" / "research-library-provider-contract.md", "docs"),
         (source_root / "docs" / "refractiveindex-local-contract.md", "docs"),
         (source_root / "docs" / "refractiveindex-tools-contract.md", "docs"),
         (source_root / "docs" / "refractiveindex-browser-contract.md", "docs"),

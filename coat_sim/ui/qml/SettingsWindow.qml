@@ -1584,7 +1584,7 @@ AppWindow {
 
                     Category {
                         objectName: "researchLibraryCategory"
-                        title: "本地研究库"
+                        title: "研究资料库"
                         Layout.fillWidth: true
                         ColumnLayout {
                             Layout.fillWidth: true
@@ -1593,12 +1593,12 @@ AppWindow {
                                 objectName: "researchLibraryRootField"
                                 Layout.fillWidth: true
                                 text: bridge.assistantResearchLibraryRoot
-                                placeholderText: "已授权本地研究正文目录的绝对路径"
+                                placeholderText: "可选：已授权外部研究正文目录的绝对路径"
                                 onTextEdited: bridge.setAssistantResearchLibraryRoot(text)
-                                Accessible.name: "本地研究库目录"
+                                Accessible.name: "可选外部研究库目录"
                             }
                             ThemeControls.ThemeLabel {
-                                text: "保存后下一轮请求检查连接。留空时使用本机 sidecar 配置；无配置时研究库不可用。仅按需读取文本，不自动下载远程仓库。外部文献 MCP 和当前项目研究证据是独立来源。"
+                                text: "内置公开研究资料随应用只读提供，无需填写路径。此处可选配置已授权的外部资料目录；留空时保留已有本机 sidecar 配置，无此配置则使用内置资料。保存后下一轮生效，实际来源、版本和覆盖范围以研究库状态为准。仅按需读取，不自动下载远程仓库；外部文献 MCP 和当前项目研究证据仍是独立来源。"
                                 Layout.fillWidth: true
                                 wrapMode: Text.WordWrap
                                 color: settingsPage && settingsPage.settingsWindow.themeColors ? settingsPage.settingsWindow.themeColors.colorTextMuted : Theme.snapshot.colorTextMuted

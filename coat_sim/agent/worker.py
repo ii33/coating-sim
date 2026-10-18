@@ -513,22 +513,35 @@ def _read_research_library_sidecar() -> tuple[str, dict[str, Any]] | None:
 
 def _configured_research_library(
         config: Mapping[str, Any]) -> tuple[Any | None, str, str, dict[str, Any] | None]:
-    """Return a read-only provider only for an explicit, readable absolute root.
+    """Resolve a host-selected public bundle or explicit external private route.
 
-    Checking root metadata does not enumerate its contents. If no explicit root
-    is configured, only the fixed small sidecar is consulted. The provider reads
-    supported text files on demand after the assistant calls its search tool.
+    Existing sidecars remain explicit external routes. Invalid external routes
+    never fall back to public data; no model argument can select either root.
     """
     from coat_sim.agent.research_library import RESEARCH_LIBRARY_SETUP
     raw_root = config.get("assistant_research_library_root")
     metadata = None
-    if not isinstance(raw_root, str) or not raw_root.strip():
+    if raw_root is not None and not isinstance(raw_root, str):
+        return None, "unreadable", "研究库路径配置类型无效；未切换到其他来源。", None
+    if not raw_root or not raw_root.strip():
         try:
             route = _read_research_library_sidecar()
         except Exception:
             return None, "unreadable", "本地研究库路由配置无效或不可读；请检查 JSON、快照元数据及文件权限。" + RESEARCH_LIBRARY_SETUP, None
         if route is None:
-            return None, "not_configured", "本轮未配置本地研究库；研究库检索/阅读工具未启用。" + RESEARCH_LIBRARY_SETUP, None
+            from coat_sim.agent.research_library import BuiltinResearchLibrary
+            try:
+                builtin_provider = BuiltinResearchLibrary()
+                metadata = {"source_kind": builtin_provider.source_kind, "version": builtin_provider.version,
+                            "included_files": builtin_provider.document_count,
+                            "coverage_note": builtin_provider.coverage_note}
+                return builtin_provider, "connected_builtin_read_only", (
+                    "内置公开研究资料已就绪（只读精选，版本 " + builtin_provider.version + "）。"
+                    + builtin_provider.coverage_note + " 仅按需检索，不会自动注入整库。"), metadata
+            except (OSError, ValueError, TypeError):
+                return None, "builtin_missing", (
+                    "内置公开研究资料缺失、损坏或版本不兼容；请修复或重新安装软件。"
+                    "无需配置绝对路径；未检索或下载其他来源。"), None
         raw_root, metadata = route
 
     try:
@@ -562,7 +575,13 @@ async def _run_task_with_research_library(command: dict[str, Any], writer: Any,
                 research_library_status=state, research_library_metadata=metadata, text=message)
     await run_task(command, writer, research_library=provider,
                    allow_research_library_context=provider is not None,
-                   research_library_readiness={"status": state, "message": message, "metadata": metadata},
+                   research_library_readiness={
+                       "status": state, "message": message, "metadata": metadata,
+                       "source_kind": ("builtin_public" if state in {"connected_builtin_read_only", "builtin_missing"}
+                                       else "external_private"),
+                       "scope": ("仅随软件发布的公开研究资料精选，不代表完整远程仓库。"
+                                 if state in {"connected_builtin_read_only", "builtin_missing"}
+                                 else "仅显式授权的外部本地文本研究库，不代表完整远程仓库。")},
                    project_memory_binding=command.get('_project_memory_binding'))
 
 

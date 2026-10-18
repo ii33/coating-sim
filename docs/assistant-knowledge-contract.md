@@ -123,3 +123,13 @@ assumptions and missing evidence separately. Missing k remains unknown; an
 explicit lossless assumption does not rewrite data or authorize simulation,
 material changes, source lookups or external transmission. Bad bands, unknown
 material/dataset IDs and invalid source records fail explicitly.
+
+## Shipped research references
+
+The assistant research provider is independent of project BBS/evidence and the
+fixed algorithm reference. Fresh installations select a manifest-allowlisted,
+read-only public corpus without absolute-path setup. Explicit external roots and
+legacy sidecars retain their own authorization and never silently fall back.
+Source kind, version and limited coverage are reported; neither bundled notes
+nor successful retrieval certify physical correctness. See
+[the provider contract](research-library-provider-contract.md).

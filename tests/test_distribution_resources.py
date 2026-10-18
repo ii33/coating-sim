@@ -15,6 +15,7 @@ _DOCUMENTS = (
     "installation.md",
     "assistant-knowledge-contract.md",
     "assistant-memory-research-contract.md",
+    "research-library-provider-contract.md",
     "refractiveindex-local-contract.md",
     "refractiveindex-tools-contract.md",
     "refractiveindex-browser-contract.md",
@@ -45,6 +46,8 @@ def _make_minimal_source_tree(root: Path) -> None:
         "coat_sim/ui/qml/Main.qml",
         "coat_sim/ui/assets/icon.png",
         "coat_sim/agent/resources/software_manual.md",
+        "coat_sim/agent/resources/research_library/manifest.json",
+        "coat_sim/agent/resources/research_library/optics/thin_films.md",
         "coat_sim/core/resources/reference_sources.json",
     )
     for relative in files:
@@ -65,6 +68,15 @@ def test_application_resources_snapshot_and_data_mapping_include_license_and_doc
     staged_paths = {record["path"] for record in records}
     assert all(f"docs/{name}" in staged_paths for name in _DOCUMENTS)
     assert "LICENSE" in staged_paths
+    # The existing agent/resources mapping must preserve nested public corpus
+    # files and provenance, without a second mapping that could diverge.
+    corpus_files = (
+        "coat_sim/agent/resources/research_library/manifest.json",
+        "coat_sim/agent/resources/research_library/optics/thin_films.md",
+    )
+    for relative in corpus_files:
+        assert relative in staged_paths
+        assert (snapshot / relative).read_bytes() == (source_root / relative).read_bytes()
     assert (snapshot / "LICENSE").read_bytes() == (source_root / "LICENSE").read_bytes()
 
     qml_imports = tmp_path / "qt-qml-imports"
@@ -91,6 +103,9 @@ def test_application_resources_snapshot_and_data_mapping_include_license_and_doc
             source, destination = command[index + 1].rsplit(os.pathsep, 1)
             mappings[Path(source).name] = destination
     assert all(mappings[name] == "docs" for name in _DOCUMENTS)
+    agent_mapping = str(snapshot / "coat_sim/agent/resources") + os.pathsep + "coat_sim/agent/resources"
+    assert command.count(agent_mapping) == 1
+    assert not any("resources/research_library" in item for item in command)
     assert mappings["version.txt"] == "coat_sim"
     assert mappings["LICENSE"] == "."
     assert str(snapshot / "coat_sim/core/resources") + os.pathsep + "coat_sim/core/resources" in command

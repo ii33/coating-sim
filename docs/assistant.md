@@ -278,13 +278,15 @@ Windows 桌面入口 `launcher.pyw` 会在本地生成并使用 `.conda/沉积�
 
 ### 当前连接和配置契约
 
-设置窗口“本地研究库”中的目录输入由 SettingsBridge 持有未保存值，使用现有“保存/关闭”流程，不自动保存。输入为当前计算机上已授权正文目录的绝对路径；保存时检查路径存在、可读并拒绝 symlink/reparse/UNC，不读取正文。留空时使用固定 sidecar 回退，不能据此承诺断开已有 sidecar。保存失败保留输入并显示错误；关闭/恢复默认值沿用原窗口行为，不新增异步任务或取消边界。控件沿用 Theme、布局和窗口几何规范。下一轮 worker 重新判定连接；保存成功不代表已搜索、完整覆盖或远程同步。
+设置窗口“研究资料库”中的目录是可选的外部覆盖，由 SettingsBridge 持有未保存值，使用现有“保存/关闭”流程，不自动保存，也不因打开窗口改写私人配置。内置公开研究资料随应用只读提供，无需填写路径。已有显式目录或本机 sidecar 保留优先级，不会被内置资料悄悄替换；没有这两项配置才使用内置资料。
 
-- 本地研究库：`assistant_research_library_root`（可在设置窗口编辑）优先；为空才读取 `config/assistant_research_library.json`。缺省不猜测目录、不扫描磁盘、不自动下载 GitHub 仓库。
-- 无论连接成功与否，主助手都有 `research_library_status`，只报告本轮连接状态、修复方法和快照范围，不读取正文。`research_library_search/read` 仍需 provider 和 model-context 双门禁；委派助手不继承工具。
-- 外部文献服务（例如 OpenAlex/Crossref）通过外部 MCP 配置；当前项目研究证据通过项目工具访问；两者都不会自动接通本地研究库。
-- 不使用设置窗口时，可在 `config/ui_settings.json` 中设置 `assistant_research_library_root`，Windows JSON 路径需转义反斜杠或使用 `/`。sidecar 适合经过核验的快照，需 `root`、`snapshot_kind`、`revision`、`included_files`、`excluded_files`、`repository_files`、`coverage_note`，含义与校验见下文。不要编造快照提交号或覆盖计数。根目录及 sidecar 是本机配置，不随源码发布。
-- `not_configured` 表示两条配置都未提供；`unreadable` 表示路径/配置检查失败；`connected_read_only[_partial]` 仅表明目录可用，正文仍按需检索。当前 GUI、当前机器是否连接以本轮状态为准，历史记录不能替代当前检查。
+非空输入必须为当前计算机上已授权正文目录的绝对路径；保存时检查路径存在、可读并拒绝 symlink/reparse/UNC，不读取正文。空输入合法，不要求为内置资料填写安装目录。保存失败保留输入并显示错误；关闭/恢复默认值沿用原窗口行为，不新增异步任务或取消边界。控件沿用 Theme、布局和窗口几何规范。下一轮 worker 重新判定连接；保存成功不代表已搜索、完整覆盖或远程同步。
+
+- 选择顺序：`assistant_research_library_root` 非空的显式外部目录 → 已存在的 `config/assistant_research_library.json` → 随应用发布的内置公开资料。无效的显式外部配置报告失败，不静默回退到内置资料冒充连接成功。缺省不猜测其他目录、不扫描磁盘、不自动下载 GitHub 仓库。
+- 无论连接成功与否，主助手都有 `research_library_status`，报告本轮连接状态、来源类型、版本和覆盖范围；这些元数据不代表已阅读正文。内置资料版本由随包 manifest 描述，不等于完整远程研究仓库版本。实际状态优先于历史快照记录。
+- 内置资料可按需只读检索，外部目录保留现有显式授权与 provider/model-context 门禁。不会因内置资料可用而启用外部 MCP、`allow_project_data` 或其他外发权限；工具集工作区权限不代替研究库授权。当前项目研究证据及外部文献服务（例如 OpenAlex/Crossref）仍是独立来源。
+- 不使用设置窗口时，可在 `config/ui_settings.json` 中设置 `assistant_research_library_root`，Windows JSON 路径需转义反斜杠或使用 `/`。sidecar 适合经过核验的外部快照，需 `root`、`snapshot_kind`、`revision`、`included_files`、`excluded_files`、`repository_files`、`coverage_note`，含义与校验见下文。不要编造快照提交号或覆盖计数。外部根目录及 sidecar 是本机配置，不随源码发布。
+- 内置正文和 manifest 位于 `coat_sim/agent/resources/research_library/`，沿既有资源目录递归打包，源码及冻结发行均使用包内路径，不依赖开发机或用户主目录。资料仅覆盖已纳入主题，不能声称搜索过完整远程库或实时网页。
 
 ### 历史快照验收（2026-10-11，仅当时机器）
 

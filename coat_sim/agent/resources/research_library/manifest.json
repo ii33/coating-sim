@@ -1,0 +1,268 @@
+{
+  "schema_version": 1,
+  "version": "2026-10-18.1",
+  "language": "zh-CN",
+  "coverage_note": "8 篇随项目内置的原创学习与研究指南；基于公开基础资料及独立教学推导，不是任何外部研究库的完整镜像；不包含私有研究、生产数据、第三方全文、图表或供应商原始数据库。",
+  "license": "MIT (project LICENSE); third-party cited works retain their own rights and are not bundled",
+  "source_policy": {
+    "runtime_network_required": false,
+    "executable_content": false,
+    "private_sources_included": false,
+    "full_text_third_party_included": false,
+    "source_commit_policy": "Public pages do not expose a source commit/blob SHA; null means unavailable, never a verified immutable snapshot. Bundled original text is fixed by SHA-256.",
+    "verification_date": "2026-10-18",
+    "limitations": [
+      "Teaching examples are synthetic and not production qualification.",
+      "No machine calibration or product certification.",
+      "Source URLs may change; runtime reading does not fetch them.",
+      "ITO process citation is publisher abstract excerpt returned by search; direct page access failed; reading lead only, no recipe or full-text claims."
+    ]
+  },
+  "sources": {
+    "optics": {
+      "title": "S. J. Byrnes, Multilayer optical calculations, arXiv:1603.02720v5",
+      "url": "https://arxiv.org/html/1603.02720v5",
+      "accessed_on": "2026-10-18",
+      "source_commit": null,
+      "source_blob_sha": null,
+      "evidence_scope": "已读取公开正文；支持平面各向同性膜、相位和功率约定；不复制正文或图。",
+      "redistribution": "metadata/link only; no third-party full text included"
+    },
+    "least": {
+      "title": "SciPy, least_squares 官方文档",
+      "url": "https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.least_squares.html",
+      "accessed_on": "2026-10-18",
+      "source_commit": null,
+      "source_blob_sha": null,
+      "evidence_scope": "已读取官方 API；仅支持局部有界最小二乘特性；不表示本软件已接入。",
+      "redistribution": "metadata/link only; no third-party full text included"
+    },
+    "de": {
+      "title": "SciPy, differential_evolution 官方文档",
+      "url": "https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.differential_evolution.html",
+      "accessed_on": "2026-10-18",
+      "source_commit": null,
+      "source_blob_sha": null,
+      "evidence_scope": "已读取官方 API；支持随机无梯度搜索及求值成本说明。",
+      "redistribution": "metadata/link only; no third-party full text included"
+    },
+    "qcm": {
+      "title": "INFICON, IMM-200 官方产品说明",
+      "url": "https://www.inficon.com/en/products/thin-film-technology/imm-200",
+      "accessed_on": "2026-10-18",
+      "source_commit": null,
+      "source_blob_sha": null,
+      "evidence_scope": "已读取官方网页；支持 QCM 速率/厚度读数有密度和 Z-ratio 条件；不复制规格表。",
+      "redistribution": "metadata/link only; no third-party full text included"
+    },
+    "plume": {
+      "title": "P. K. Schenck 等，Design and spectroscopic reflectometry characterization of pulsed laser deposition combinatorial libraries, Applied Surface Science 254 (2007), 781–784, doi:10.1016/j.apsusc.2007.05.086",
+      "url": "https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=854361",
+      "accessed_on": "2026-10-18",
+      "source_commit": null,
+      "source_blob_sha": null,
+      "evidence_scope": "已读取公开论文；仅用于说明沉积空间分布需带条件标定；不沿用其样品数据。",
+      "redistribution": "metadata/link only; no third-party full text included"
+    },
+    "hall": {
+      "title": "NIST, The Hall Effect",
+      "url": "https://www.nist.gov/pml/nanoscale-device-characterization-division/popular-links/hall-effect/hall-effect",
+      "accessed_on": "2026-10-18",
+      "source_commit": null,
+      "source_blob_sha": null,
+      "evidence_scope": "已读取公开存档页；支持单载流子解释及 van der Pauw 适用条件；页面已停止更新。",
+      "redistribution": "metadata/link only; no third-party full text included"
+    },
+    "resistivity": {
+      "title": "NIST, Resistivity and Hall Measurements",
+      "url": "https://www.nist.gov/pml/nanoscale-device-characterization-division/popular-links/hall-effect/resistivity-and-hall",
+      "accessed_on": "2026-10-18",
+      "source_commit": null,
+      "source_blob_sha": null,
+      "evidence_scope": "已读取公开存档页；支持电阻率/方阻与测量反转检查；不沿用仪器阈值。",
+      "redistribution": "metadata/link only; no third-party full text included"
+    },
+    "ito": {
+      "title": "Thickness dependence of In2O3:Sn film growth, 原始研究摘要",
+      "url": "https://www.sciencedirect.com/science/article/abs/pii/S0040609004002597",
+      "accessed_on": "2026-10-18",
+      "source_commit": null,
+      "source_blob_sha": null,
+      "evidence_scope": "仅检索工具返回出版商摘要摘录；直接打开页面失败。只作 ITO 条件依赖的阅读线索，不提取工艺配方或认定全文已核验。",
+      "redistribution": "metadata/link only; no third-party full text included"
+    },
+    "sphere": {
+      "title": "NIST, Reference Integrating Sphere for Spectral Reflectance",
+      "url": "https://www.nist.gov/laboratories/tools-instruments/reference-integrating-sphere-spectral-reflectance",
+      "accessed_on": "2026-10-18",
+      "source_commit": null,
+      "source_blob_sha": null,
+      "evidence_scope": "已读取官方仪器网页；支持方向—半球反射测量与收集几何；不转用其准确度。",
+      "redistribution": "metadata/link only; no third-party full text included"
+    }
+  },
+  "documents": [
+    {
+      "id": "01_thin_film_fundamentals",
+      "title": "薄膜光学：约定、单位与最小验算",
+      "path": "01_thin_film_fundamentals.md",
+      "sha256": "3461c9fa5e6bb2bfeb04fa65fc8d720db7e42e1bc3e0c38292516130bb6eea83",
+      "size_bytes": 2375,
+      "source_url": "https://arxiv.org/html/1603.02720v5",
+      "source_urls": [
+        "https://arxiv.org/html/1603.02720v5"
+      ],
+      "source_commit": null,
+      "source_path": null,
+      "source_blob_sha": null,
+      "license": "MIT (new original project documentation); referenced works are not redistributed",
+      "evidence_scope": "Original educational synthesis and independently derived synthetic examples; public references limited to claims specified in sources; not calibrated or production-qualified.",
+      "source_ids": [
+        "optics"
+      ]
+    },
+    {
+      "id": "02_design_optimization",
+      "title": "膜系设计与优化：目标、约束和独立复核",
+      "path": "02_design_optimization.md",
+      "sha256": "03169d0d8ce64625827326f7713897dd9ed29a3ad7ea1d0a486918fcfbad0618",
+      "size_bytes": 2811,
+      "source_url": "https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.least_squares.html",
+      "source_urls": [
+        "https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.least_squares.html",
+        "https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.differential_evolution.html"
+      ],
+      "source_commit": null,
+      "source_path": null,
+      "source_blob_sha": null,
+      "license": "MIT (new original project documentation); referenced works are not redistributed",
+      "evidence_scope": "Original educational synthesis and independently derived synthetic examples; public references limited to claims specified in sources; not calibrated or production-qualified.",
+      "source_ids": [
+        "least",
+        "de"
+      ]
+    },
+    {
+      "id": "03_deposition_and_qcm",
+      "title": "沉积与 QCM：从质量通量到膜厚",
+      "path": "03_deposition_and_qcm.md",
+      "sha256": "65ac30aadddb05a10e6e94d1ab62e70e565f470374cc4fbc8ec56c5f841b130e",
+      "size_bytes": 2801,
+      "source_url": "https://www.inficon.com/en/products/thin-film-technology/imm-200",
+      "source_urls": [
+        "https://www.inficon.com/en/products/thin-film-technology/imm-200",
+        "https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=854361"
+      ],
+      "source_commit": null,
+      "source_path": null,
+      "source_blob_sha": null,
+      "license": "MIT (new original project documentation); referenced works are not redistributed",
+      "evidence_scope": "Original educational synthesis and independently derived synthetic examples; public references limited to claims specified in sources; not calibrated or production-qualified.",
+      "source_ids": [
+        "qcm",
+        "plume"
+      ]
+    },
+    {
+      "id": "04_masks_and_uniformity",
+      "title": "修正板与均匀性：实体遮挡和收敛检查",
+      "path": "04_masks_and_uniformity.md",
+      "sha256": "18e3341458c937cd301b737699b3a1857d8371bcce04327eb218e40ede1adb69",
+      "size_bytes": 2681,
+      "source_url": "https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=854361",
+      "source_urls": [
+        "https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=854361"
+      ],
+      "source_commit": null,
+      "source_path": null,
+      "source_blob_sha": null,
+      "license": "MIT (new original project documentation); referenced works are not redistributed",
+      "evidence_scope": "Original educational synthesis and independently derived synthetic examples; public references limited to claims specified in sources; not calibrated or production-qualified.",
+      "source_ids": [
+        "plume"
+      ]
+    },
+    {
+      "id": "05_ito_sheet_resistance",
+      "title": "ITO 电学：方阻、电阻率、Hall 与几何",
+      "path": "05_ito_sheet_resistance.md",
+      "sha256": "3812280d1603356db3230221a88ebd80676fb5a2cbfaaf5aac59841a0f8b0143",
+      "size_bytes": 2550,
+      "source_url": "https://www.nist.gov/pml/nanoscale-device-characterization-division/popular-links/hall-effect/hall-effect",
+      "source_urls": [
+        "https://www.nist.gov/pml/nanoscale-device-characterization-division/popular-links/hall-effect/hall-effect",
+        "https://www.nist.gov/pml/nanoscale-device-characterization-division/popular-links/hall-effect/resistivity-and-hall"
+      ],
+      "source_commit": null,
+      "source_path": null,
+      "source_blob_sha": null,
+      "license": "MIT (new original project documentation); referenced works are not redistributed",
+      "evidence_scope": "Original educational synthesis and independently derived synthetic examples; public references limited to claims specified in sources; not calibrated or production-qualified.",
+      "source_ids": [
+        "hall",
+        "resistivity"
+      ]
+    },
+    {
+      "id": "06_ito_process_optics",
+      "title": "ITO 工艺与电光闭环：保留可辨识边界",
+      "path": "06_ito_process_optics.md",
+      "sha256": "19c0f20ed1dee3b60e66d8afbd19de1bd52aeb48d046d9ddb24f99df4399d63f",
+      "size_bytes": 2922,
+      "source_url": "https://www.sciencedirect.com/science/article/abs/pii/S0040609004002597",
+      "source_urls": [
+        "https://www.sciencedirect.com/science/article/abs/pii/S0040609004002597",
+        "https://www.nist.gov/pml/nanoscale-device-characterization-division/popular-links/hall-effect/hall-effect"
+      ],
+      "source_commit": null,
+      "source_path": null,
+      "source_blob_sha": null,
+      "license": "MIT (new original project documentation); referenced works are not redistributed",
+      "evidence_scope": "Original educational synthesis and independently derived synthetic examples; public references limited to claims specified in sources; not calibrated or production-qualified.",
+      "source_ids": [
+        "ito",
+        "hall"
+      ]
+    },
+    {
+      "id": "07_metrology_and_uncertainty",
+      "title": "光学计量：收集口径、基片和不确定度",
+      "path": "07_metrology_and_uncertainty.md",
+      "sha256": "4510ebddb7a8d170f78980bdf01a353766e8bdc31a8fd70557380ef6ba92ad18",
+      "size_bytes": 2328,
+      "source_url": "https://www.nist.gov/laboratories/tools-instruments/reference-integrating-sphere-spectral-reflectance",
+      "source_urls": [
+        "https://www.nist.gov/laboratories/tools-instruments/reference-integrating-sphere-spectral-reflectance"
+      ],
+      "source_commit": null,
+      "source_path": null,
+      "source_blob_sha": null,
+      "license": "MIT (new original project documentation); referenced works are not redistributed",
+      "evidence_scope": "Original educational synthesis and independently derived synthetic examples; public references limited to claims specified in sources; not calibrated or production-qualified.",
+      "source_ids": [
+        "sphere"
+      ]
+    },
+    {
+      "id": "08_troubleshooting_evidence",
+      "title": "故障排查：用最小对照缩小解释范围",
+      "path": "08_troubleshooting_evidence.md",
+      "sha256": "49fd8ce364d7163d3de6d13371c7a02f08286ee3b8306c25b8d64d5e387c27d9",
+      "size_bytes": 2908,
+      "source_url": "https://www.inficon.com/en/products/thin-film-technology/imm-200",
+      "source_urls": [
+        "https://www.inficon.com/en/products/thin-film-technology/imm-200",
+        "https://www.nist.gov/laboratories/tools-instruments/reference-integrating-sphere-spectral-reflectance"
+      ],
+      "source_commit": null,
+      "source_path": null,
+      "source_blob_sha": null,
+      "license": "MIT (new original project documentation); referenced works are not redistributed",
+      "evidence_scope": "Original educational synthesis and independently derived synthetic examples; public references limited to claims specified in sources; not calibrated or production-qualified.",
+      "source_ids": [
+        "qcm",
+        "sphere"
+      ]
+    }
+  ]
+}

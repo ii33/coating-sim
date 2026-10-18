@@ -1,12 +1,14 @@
-"""Bounded, read-only access to an explicitly supplied local research mirror.
+"""Bounded, read-only access to shipped public references or a private mirror.
 
-The assistant does not discover a library or scan it at startup. A caller must
-construct this provider from an authorized local root and explicitly pass it to
-the runtime. Search scans text files on demand and keeps no persistent index.
+The host selects shipped public references or an authorized external local root
+and explicitly passes the provider to the runtime. Search reads text on demand
+and keeps no persistent index. Model arguments never select the provider root.
 """
 from __future__ import annotations
 
 import os
+import hashlib
+import json
 import re
 import stat
 import time
@@ -139,7 +141,7 @@ def _permission_revoked() -> dict[str, Any]:
 
 
 RESEARCH_LIBRARY_SETUP = (
-    "在设置窗口“本地研究库”填写已授权正文目录的绝对路径并保存；也可在 config/ui_settings.json 设置 assistant_research_library_root，"
+    "默认使用随软件附带的公开研究资料精选；内置文件损坏或缺失时请修复或重新安装软件。可选外部私有库：在设置窗口“本地研究库”填写已授权正文目录的绝对路径并保存；也可在 config/ui_settings.json 设置 assistant_research_library_root，"
     "或按 docs/assistant.md 配置 config/assistant_research_library.json；下一轮请求重新检查。"
     "不要填写 GitHub URL，不会自动克隆或下载研究库。")
 
@@ -164,9 +166,13 @@ def status_tool(provider: ResearchLibraryProvider | None, *, allow_model_context
             "ok": True, "status": state, "ready": ready,
             "tools": ["research_library_search", "research_library_read"] if ready else [],
             "message": str(supplied.get("message", "本地研究库已连接（只读）。" if ready else RESEARCH_LIBRARY_SETUP)),
-            "setup": RESEARCH_LIBRARY_SETUP if not ready else None,
+            "setup": ("请修复或重新安装软件以恢复内置公开研究资料；无需绝对路径。"
+                      if state == "builtin_missing" else RESEARCH_LIBRARY_SETUP) if not ready else None,
             "metadata": supplied.get("metadata") if ready else None,
-            "scope": "仅本机显式配置的文本研究库；不代表完整远程仓库。",
+            "scope": str(supplied.get("scope", "仅当前来源的文本资料；不代表完整远程仓库。")),
+            "source_kind": str(supplied.get("source_kind", getattr(provider, "source_kind",
+                               "builtin_public" if state == "builtin_missing" else "external_private"))),
+            "version": getattr(provider, "version", None) if ready else None,
             "other_sources": "OpenAlex/Crossref 等外部文献 MCP 和当前项目研究证据是独立来源，不等于本地研究库。",
         }
 
@@ -180,6 +186,8 @@ class TextFileResearchLibrary:
     providers. Production callers should pass an explicitly authorized root.
     This class never writes to the root or creates an index.
     """
+
+    source_kind = "external_private"
 
     def __init__(self, root: str | Path | None = None, *,
                  documents: Mapping[str, str] | None = None,
@@ -637,3 +645,110 @@ def validate_research_library_metadata(
         metadata: Mapping[str, Any] | None) -> dict[str, Any] | None:
     """Validate and sanitize the fixed snapshot sidecar schema for provider callers."""
     return TextFileResearchLibrary._validate_library_metadata(metadata)
+
+
+
+def builtin_research_library_root() -> Path:
+    """Host-selected package data, also valid for PyInstaller module __file__."""
+    return Path(__file__).absolute().parent / "resources" / "research_library"
+
+
+class BuiltinResearchLibrary(TextFileResearchLibrary):
+    """Immutable manifest allowlist of shipped public text; never a user path."""
+
+    source_kind = "builtin_public"
+
+    def __init__(self) -> None:
+        super().__init__(builtin_research_library_root())
+        root = self._safe_library_root()
+        manifest_path = self._resolve_contained(root / "manifest.json", root)
+        if not manifest_path.is_file():
+            raise ValueError("missing built-in manifest")
+        manifest = json.loads(self._read_bounded_bytes(manifest_path, 256 * 1024))
+        if not isinstance(manifest, dict) or manifest.get("schema_version") != 1:
+            raise ValueError("unsupported built-in manifest")
+        version = manifest.get("version")
+        coverage_note = manifest.get("coverage_note")
+        if (not isinstance(version, str) or not version.strip()
+                or len(version) > MAX_VERSION_CHARS
+                or not isinstance(coverage_note, str) or not coverage_note.strip()
+                or len(coverage_note) > 1000):
+            raise ValueError("invalid built-in version or coverage")
+        self.version: str = version
+        self.coverage_note: str = coverage_note
+        documents = manifest.get("documents")
+        if not isinstance(documents, list) or not 1 <= len(documents) <= MAX_SEARCH_FILES:
+            raise ValueError("invalid built-in document list")
+        self._bundled_hashes: dict[str, str] = {}
+        total = 0
+        for entry in documents:
+            if not isinstance(entry, dict):
+                raise ValueError("invalid built-in entry")
+            path = entry.get("path")
+            if not isinstance(path, str):
+                raise ValueError("invalid built-in document path")
+            relative = self._validate_relative_path(path)
+            digest = entry.get("sha256")
+            if (relative in self._bundled_hashes or not isinstance(digest, str)
+                    or not re.fullmatch(r"[a-f0-9]{64}", digest)):
+                raise ValueError("invalid built-in digest")
+            target = self._resolve_contained(root / relative, root)
+            info = target.stat()
+            if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_DOCUMENT_BYTES:
+                raise ValueError("invalid built-in file")
+            total += info.st_size
+            if total > MAX_SEARCH_BYTES:
+                raise ValueError("built-in corpus exceeds budget")
+            self._bundled_hashes[relative] = digest
+
+    @property
+    def document_count(self) -> int:
+        return len(self._bundled_hashes)
+
+    def read(self, path: str, offset: int = 0,
+             max_chars: int = MAX_READ_CHARS) -> dict[str, Any]:
+        result = super().read(path, offset=offset, max_chars=max_chars)
+        if not result["ok"] and isinstance(path, str) and path in self._bundled_hashes:
+            result.update(error="builtin_missing",
+                          message="The shipped research document is missing or corrupt; repair the installation.")
+        return result
+
+    def _read_document(self, relative: str) -> str:
+        if relative not in self._bundled_hashes:
+            raise ValueError("document not in built-in manifest")
+        root = self._safe_library_root()
+        target = self._resolve_contained(root / relative, root)
+        if not stat.S_ISREG(target.stat().st_mode):
+            raise ValueError("invalid built-in file")
+        payload = self._read_bounded_bytes(target, MAX_DOCUMENT_BYTES)
+        if hashlib.sha256(payload).hexdigest() != self._bundled_hashes[relative]:
+            raise ValueError("built-in checksum mismatch")
+        return payload.decode("utf-8-sig")
+
+    def _iter_documents(self) -> tuple[
+            list[tuple[str, str]], bool, str | None, str | None, dict[str, int]]:
+        values: list[tuple[str, str]] = []
+        started = time.monotonic()
+        total = 0
+        for relative in sorted(self._bundled_hashes):
+            if time.monotonic() - started >= MAX_SEARCH_SECONDS:
+                return values, True, None, "time_limit", {}
+            try:
+                text = self._read_document(relative)
+            except (OSError, ValueError, UnicodeError):
+                return [], False, "builtin_missing", None, {}
+            total += len(text.encode("utf-8"))
+            if total > MAX_SEARCH_BYTES:
+                return values, True, None, "byte_limit", {}
+            values.append((relative, text))
+        return values, False, None, None, {}
+
+    def _with_library_metadata(self, result: dict[str, Any]) -> dict[str, Any]:
+        result.update(source_kind=self.source_kind, version=self.version,
+                      coverage_note=self.coverage_note, included_files=len(self._bundled_hashes))
+        return result
+
+    def _source_metadata(self, path: str, text: str, position: int) -> dict[str, Any]:
+        result = super()._source_metadata(path, text, position)
+        result.update(source_kind=self.source_kind, version=self.version)
+        return result

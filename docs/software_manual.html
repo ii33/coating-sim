@@ -180,7 +180,7 @@ figcaption{font-size:14px;line-height:1.7;margin:6px 9px}footer{max-width:1320px
 <section id="assistant"><h2>看板娘与权限</h2><p>资产库的“折射率数据库…”面板可离线查询 RII 本地快照、显式打开厂商 AGF 目录并查看官方来源。数据源与材料库分离：只有单条明确确认导入才写入宿主固定的工程/全局目标，不自动把全库加入材料。RII 缺库时明确提示；厂商目录默认只是只读会话，不能说成已安装全厂商数据库。</p><p>AGF 使用参考空气数值，默认阻止按绝对折射率/真空波长直接准备导入；用户显式接受近似后，来源和近似选择永久保留。未知 k 保留未知，内透过率不直接转为吸收或整片透射；来源不一致会提示。原始资料的公开下载与公开再分发是不同权限，见<a href="reference-sources.md">来源目录</a>、<a href="vendor-optical-catalog-contract.md">厂商适配边界</a>和<a href="refractiveindex-browser-contract.md">浏览操作</a>。</p><p>知识查询按需展开：看板娘可检索固定随仓算法文档并按章节、版次分页读取；在明确工程内统一发现 BBS 和研究证据，再按引用读取原文。检索有预算与版本检查，不能以一次未命中断言完整资料库不存在。</p>
 <p>材料数据检查区分 n/k 的各自有效波段、来源、显式无损假设与工艺标定声明。数据齐全不等于生产验证；未知 k 不等于零，不自动用晶体数据代替薄膜或猜补缺少的材料数据。</p>
 <p>在看板娘输入区显式选择工程上下文，未选择时为“全局”。切换或关闭工程使旧请求的工程记忆权限失效；可见聊天保留，发送给模型的历史按工程隔离。精简记忆只保存重要事实，BBS 保存持久日志和研究报告；讨论模式可以追加评论和回复。</p>
-<p>本地研究库必须显式配置，随后可在当前任务内按需检索，委派助手只有受控只读访问。外部文献 MCP 是独立来源，不自动启用；不得将查阅许可扩展为任意外发工程或私人资料。相关边界见<a href="assistant-knowledge-contract.md">知识检索契约</a>与<a href="assistant-memory-research-contract.md">工程记忆和研究访问契约</a>。</p><figure>
+<p>内置公开研究资料随应用只读提供，无需填写路径，可按需检索；实际来源、版本与覆盖范围以研究库状态为准，不代表完整远程研究库。设置中的外部目录可选；已有显式目录或本机 sidecar 保留优先级和原授权边界。委派助手只有受控只读访问。外部文献 MCP 是独立来源，不自动启用；不得将查阅许可扩展为任意外发工程或私人资料。相关边界见<a href="assistant-knowledge-contract.md">知识检索契约</a>与<a href="assistant-memory-research-contract.md">工程记忆和研究访问契约</a>。</p><figure>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 850 310" role="img" aria-label="看板娘数据权限与受控脚本执行边界">
 <defs><marker id="s" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 8 4 0 8" fill="#315b83"/></marker></defs>
 <rect x="22" y="47" width="186" height="212" rx="15" fill="#edf5fd" stroke="#6688ab"/>

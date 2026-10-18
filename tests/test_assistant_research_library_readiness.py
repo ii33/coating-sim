@@ -18,10 +18,12 @@ def sidecar(tmp_path, monkeypatch):
     return path
 
 
-def test_missing_route_is_actionable_without_tools(sidecar):
+def test_missing_builtin_is_actionable_without_tools(sidecar, monkeypatch, tmp_path):
+    from coat_sim.agent import research_library
+    monkeypatch.setattr(research_library, "builtin_research_library_root", lambda: tmp_path / "absent-bundle")
     provider, state, message, metadata = worker._configured_research_library({})
-    assert provider is None and state == "not_configured" and metadata is None
-    assert "assistant_research_library_root" in message and "设置窗口" in message
+    assert provider is None and state == "builtin_missing" and metadata is None
+    assert "重新安装" in message and "无需配置绝对路径" in message
     assert assistant_tools(provider, allow_model_context=True) == []
     status = status_tool(provider, readiness={"status": state, "message": message})()
     assert not status["ready"] and status["tools"] == []
@@ -70,14 +72,16 @@ def test_relative_and_missing_root_rejected(sidecar, tmp_path):
         assert provider is None and state == "unreadable" and "绝对路径" in message
 
 
-def test_worker_forwards_readiness_and_gate(sidecar):
+def test_worker_forwards_readiness_and_gate(sidecar, monkeypatch, tmp_path):
+    from coat_sim.agent import research_library
+    monkeypatch.setattr(research_library, "builtin_research_library_root", lambda: tmp_path / "absent-bundle")
     run = AsyncMock()
     writer = Mock()
     asyncio.run(worker._run_task_with_research_library({"config": {}, "request_id": "request"}, writer, run))
     assert run.call_args.kwargs["research_library"] is None
     assert run.call_args.kwargs["allow_research_library_context"] is False
-    assert run.call_args.kwargs["research_library_readiness"]["status"] == "not_configured"
-    assert writer.emit.call_args.kwargs["research_library_status"] == "not_configured"
+    assert run.call_args.kwargs["research_library_readiness"]["status"] == "builtin_missing"
+    assert writer.emit.call_args.kwargs["research_library_status"] == "builtin_missing"
 
 
 def test_settings_input_preserves_invalid_text_for_save_validation():
