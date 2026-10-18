@@ -97,7 +97,7 @@ access, or DSH end-to-end compatibility.
 | --- | --- | --- |
 | `fs` | `read`, `write`, `edit`, `list_dir`, `read_many`, `mkdir`, `delete`, `recycle_list`, `restore` | Local workspace-confined text/byte handling, bounded output, encoding/BOM/EOL metadata, digest-based conflict checks and atomic single-file replacement. Remote aliases are handled through an explicit provider; unknown aliases must not silently fall back to unrestricted local paths. Writes need live authority. Directory creation is explicit; file deletion requires the current digest and keeps a local recovery snapshot, restore never overwrites. No recursive directory deletion or permanent purge. |
 | `sftp` | `sftp_hosts`, `search_remote` | Typed remote provider contract; host listing and ping are supported, while add/remove remain host-owned configuration. Search is bounded literal search rather than an unbounded regex backend. No default SSH session, credential lookup, asyncssh installation, or network connection. Host must supply a verified remote provider and authorization. |
-| `run` | `run` | Structured argv execution through a host execution provider, bounded timeout/output and cancellation. No implicit subprocess provider in the desktop integration. |
+| `run` | `run`, `terminal_start`, `terminal_poll`, `terminal_cancel` | Explicitly enabled operate-only host pipe terminal; bounded timeout/output and request-scoped cancellation. `isolation=none`: cwd is not chroot. Default off. |
 | `sh` | `sh` | Explicit shell operation through the execution provider with verified selected bash; not a string-to-local-shell escape hatch. Unavailable without that provider. |
 | `pwsh` | `pwsh` | Explicit PowerShell operation requires verified **PowerShell 7+**. Windows PowerShell 5.1 and cmd are not substitutes. This requirement applies to this tool, not to normal application startup/runtime. |
 | `env` | `env_setup`, `pip_install` | Selected-interpreter probe and explicit `python -m pip` installation contract, bounded requirements and verification. Never auto-installs missing dependencies; installation requires its own authorization and provider. |
@@ -110,7 +110,7 @@ access, or DSH end-to-end compatibility.
 | `preset` | `preset_create`, `preset_list`, `preset_delete`, `preset_inject`, `preset_eject` | Backend-neutral versioned JSON profile data. Injection records a declarative active profile; it does not patch DSH YAML/bundles, execute persona text, or silently alter trusted desktop gates. |
 | `memory` | `memory_list`, `memory_read`, `memory_upsert`, `memory_forget`, `memory_restore` | Fixed host-owned persistent memory ledger, concise important facts only, 300 characters per fact, 40 records total (including recoverable forgotten entries), 1200-character untrusted context summary. Revision-checked writes; global/project separation requires a trusted project binding. See [memory contract](assistant-memory-contract.md). |
 
-The desktop currently supplies no execution, environment, network, SFTP or OCR
+The desktop supplies the explicitly enabled `run` host terminal; it supplies no generic shell/environment, network, SFTP or OCR
 provider. Merely installing a binary does not make those capabilities available.
 The current desktop request has no trusted stable active-project memory binding,
 so it exposes global important memories only; project memory tools fail closed

@@ -12,13 +12,18 @@ from importlib.util import find_spec
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 import threading
-from typing import Any, Mapping
+import time
+import uuid
+from typing import TYPE_CHECKING, Any, Mapping
 
 from . import API_VERSION, ToolContext, ToolRegistry
 from coat_sim.agent.toolkit_config import (
     CAPABILITIES, is_private_workspace_root, toolkit_setting_defaults,
     validate_workspace_root,
 )
+
+if TYPE_CHECKING:
+    from coat_sim.agent.terminal import AssistantTerminal
 
 # Conservative process-wide serialization also covers overlapping configured
 # workspaces and Windows path aliases. No cross-process lock is implied.
@@ -52,14 +57,14 @@ def build_registry():
     from .images import register_image_tools
     from .tasks import register_tasks
     from .profiles import register_profiles
-    from .execution import register_execution_tools
+    from .execution import register_execution_tools, register_terminal_tools
     from .environment import register_environment_tools
     from .network import register_network_tools
     from .remote import register_remote_tools
     from .memory import register_memory_tools
     registry = ToolRegistry()
     for register in (register_fs_tools, register_document_tools, register_image_tools,
-                     register_tasks, register_profiles, register_execution_tools,
+                     register_tasks, register_profiles, register_execution_tools, register_terminal_tools,
                      register_environment_tools, register_network_tools, register_remote_tools,
                      register_memory_tools):
         register(registry)
@@ -77,6 +82,7 @@ class ToolkitAdapter:
         self.live_grant = live_grant
         self.cancel_event = threading.Event()
         self.providers = dict(providers or {})
+        self._host_terminal: AssistantTerminal | None = None
         self.enabled = config.get('assistant_toolkit_enabled') is True
         self.content_allowed = config.get('assistant_toolkit_allow_model_context') is True
         self.mode = str(config.get('task_mode', 'chat'))
@@ -113,6 +119,57 @@ class ToolkitAdapter:
             allowed_roots=self.roots, authorize=self._authorize,
             cancelled=lambda: not self.result_allowed(), providers=self.providers)
 
+    def enable_host_terminal(self):
+        """Desktop host opt-in wiring; never expands configured capabilities.
+
+        The model cannot call this method or supply a scope/root/provider.
+        No interpreter selection, package install or credential injection occurs.
+        """
+        if self._host_terminal is not None or not self.roots:
+            return
+        from coat_sim.agent.terminal import AssistantTerminal
+        from .contracts import ToolSpec, ToolkitError
+        execute_spec = ToolSpec('terminal_start', 'run', '', {'type': 'object'}, 'execute')
+        read_spec = ToolSpec('terminal_poll', 'run', '', {'type': 'object'}, 'read')
+        terminal = AssistantTerminal(self.roots[0], uuid.uuid4().hex,
+            can_execute=lambda: self.mode == 'operate' and self._authorize(execute_spec, {}),
+            can_read=lambda: self._authorize(read_spec, {}))
+        self._host_terminal = terminal
+        self.providers['terminal'] = terminal
+        # Do not replace a separately sanctioned provider in portable hosts.
+        if not callable(self.providers.get('execution')):
+            def execute(request, context):
+                from .policy import check_cancelled
+                check_cancelled(context)
+                result = terminal.start(request['argv'], cwd=request['cwd'],
+                    timeout_ms=request['timeout_ms'], max_output_bytes=request['max_output_bytes'])
+                task_id = result['task_id']
+                try:
+                    while result['state'] == 'running':
+                        check_cancelled(context)
+                        time.sleep(0.025)
+                        result = terminal.poll(task_id)
+                    if result['state'] == 'cancelled':
+                        raise ToolkitError('cancelled', 'Host terminal was cancelled')
+                    if result['state'] == 'permission_revoked':
+                        raise ToolkitError('authorization_denied', 'Host terminal permission was revoked')
+                    if result['state'] == 'failed':
+                        raise ToolkitError('terminal_unavailable', 'Host terminal failed')
+                    if result['state'] == 'timed_out':
+                        raise ToolkitError('timeout', 'Host terminal timed out')
+                    return {**result, 'warning': 'Host execution is not OS sandboxed; cwd is not chroot.'}
+                finally:
+                    if result['state'] == 'running':
+                        terminal.close()
+            self.providers['host_execution'] = execute
+        self.context = replace(self.context, providers=self.providers)
+
+    def close(self):
+        """Revoke this request and reap only its own host processes."""
+        self.cancel_event.set()
+        if self._host_terminal is not None:
+            self._host_terminal.close()
+
     def result_allowed(self):
         try:
             return not self.cancel_event.is_set() and self.live_grant() is True
@@ -121,6 +178,8 @@ class ToolkitAdapter:
 
     def _authorize(self, spec, args):
         if spec.capability not in self.capabilities or not self.enabled or not self.content_allowed or not self.roots or not self.result_allowed():
+            return False
+        if self._host_terminal is not None and spec.capability == 'run' and spec.effect != 'read' and self.mode != 'operate':
             return False
         if spec.capability in {'tasks', 'preset'}:
             scope = self.task_scope()
@@ -142,6 +201,8 @@ class ToolkitAdapter:
 
     def _provider_status(self, capability):
         provider = PROVIDERS.get(capability)
+        if capability == 'run' and callable(self.providers.get('host_execution')):
+            provider = 'host_execution'
         if provider and not callable(self.providers.get(provider)):
             return 'provider_unavailable'
         executable = {'sh': 'bash', 'pwsh': 'pwsh', 'env': 'python'}.get(capability)
@@ -179,6 +240,10 @@ class ToolkitAdapter:
                       'disabled' if capability not in self.capabilities else
                       'model_context_denied' if not self.content_allowed else
                       'workspace_unavailable' if not self.roots else self._provider_status(capability))
+            if reason == 'ready' and capability == 'run' and self._host_terminal is not None:
+                spec = next(s for s in self.registry.specs() if s.name == 'terminal_start')
+                if not self._authorize(spec, {}):
+                    reason = 'execution_authority_denied'
             rows.append({'capability': capability, 'available': reason == 'ready', 'status': reason,
                          'kind': 'policy' if capability == 'guard' else 'tools'})
         memory_ready = any(row['capability'] == 'memory' and row['available'] for row in rows)
@@ -186,6 +251,11 @@ class ToolkitAdapter:
         return {'ok': True, 'data': {'enabled': self.enabled, 'configuration_error': self.configuration_error,
                 'capabilities': rows, 'scope': self.task_scope(), 'backend': backend_probe(),
                 'workspace': self.workspace_status(),
+                'terminal': {'provider': 'host' if self._host_terminal is not None else 'unavailable',
+                    'isolation': 'none' if self._host_terminal is not None else None,
+                    'warning': '主机终端不在操作系统沙箱中；工作目录不是 chroot，程序可访问当前用户可访问的主机文件和网络。',
+                    'enable': '在工具集能力和配置能力中明确启用 run，并切换至操作模式；默认关闭。',
+                    'lifetime': 'current_request', 'stdin': False, 'pty': False},
                 'memory_scope': {'global': memory_ready,
                     'project_id': self.providers.get('memory_project_id') if project_ready else '',
                     'project_available': project_ready,
@@ -277,7 +347,7 @@ class ToolkitAdapter:
                     return failure('scope_denied', 'Project binding changed; result withheld. Start a new request in the selected project.')
             return result
         except asyncio.CancelledError:
-            self.cancel_event.set()
+            self.close()
             raise
         except (OSError, ValueError):
             # Workspace bootstrap failures must not leak host exception text.

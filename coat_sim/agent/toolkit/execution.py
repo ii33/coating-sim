@@ -1,8 +1,8 @@
 """Sanctioned execution boundary. This module never starts a process itself.
 
 An injected execution(request, context) adapter MUST enforce the application's
-sandbox and approvals, kill/reap on cancellation/timeout, and drain bounded
-output. String guards below are hygiene, not a sandbox or command allowlist.
+declared isolation and approvals, kill/reap on cancellation/timeout, and drain
+bounded output. Host terminal execution explicitly reports isolation='none'. String guards below are hygiene, not a sandbox or command allowlist.
 """
 from collections.abc import Mapping
 import re
@@ -49,9 +49,9 @@ def selected_executable(context, name):
     return value
 
 
-def execute(context, argv, args):
+def execute(context, argv, args, *, provider_name='execution'):
     check_cancelled(context)
-    provider = context.providers.get('execution')
+    provider = context.providers.get(provider_name)
     if not callable(provider):
         raise ToolkitError('provider_unavailable', 'A sanctioned execution adapter is required')
     request = {'argv': validate_argv(argv), 'cwd': str(resolve_path(context, args.get('cwd', '.'))),
@@ -72,13 +72,17 @@ def execute(context, argv, args):
         data[key] = raw[:budget].decode('utf-8', errors='ignore')
         data['truncated'] |= len(raw) > budget
         budget = max(0, budget - len(raw))
+    if 'isolation' in result:
+        data['isolation'] = result['isolation']
+        data['warning'] = result.get('warning', '')
     if result.get('timed_out'):
         raise ToolkitError('timeout', 'Execution adapter reported a timeout')
     return data
 
 
 def run(context, args):
-    return execute(context, args['argv'], args)
+    provider = 'host_execution' if callable(context.providers.get('host_execution')) else 'execution'
+    return execute(context, args['argv'], args, provider_name=provider)
 
 
 def sh(context, args):
@@ -102,3 +106,26 @@ def register_execution_tools(registry):
         field = 'argv' if name == 'run' else 'command'
         schema = {'type': 'array', 'items': {'type': 'string', 'maxLength': 65536}, 'minItems': 1, 'maxItems': 256} if name == 'run' else STRING
         registry.register(ToolSpec(name, name, 'Execute through a sanctioned, bounded adapter', {'type': 'object', 'properties': {**common, field: schema}, 'required': [field], 'additionalProperties': False}, 'execute'), handler)
+
+
+def terminal_action(context, operation, args):
+    check_cancelled(context)
+    provider = context.providers.get('terminal')
+    if provider is None or not callable(getattr(provider, operation, None)):
+        raise ToolkitError('provider_unavailable', 'Host terminal is unavailable; explicitly enable run in toolkit and profile settings')
+    result = getattr(provider, operation)(**args)
+    return {**result, 'warning': 'Host execution is not OS sandboxed; cwd is not chroot; host files/network may be accessible.'}
+
+
+def register_terminal_tools(registry):
+    start_schema = {'type': 'object', 'properties': {
+        'argv': {'type': 'array', 'items': {'type': 'string', 'maxLength': 65536}, 'minItems': 1, 'maxItems': 256},
+        'cwd': STRING, 'timeout_ms': TIMEOUT,
+        'max_output_bytes': {'type': 'integer', 'minimum': 1, 'maximum': MAX_OUTPUT}},
+        'required': ['argv'], 'additionalProperties': False}
+    task_schema = {'type': 'object', 'properties': {'task_id': {'type': 'string', 'minLength': 1, 'maxLength': 128}},
+                   'required': ['task_id'], 'additionalProperties': False}
+    for operation, schema, effect in [('start', start_schema, 'execute'), ('poll', task_schema, 'read'), ('cancel', task_schema, 'execute')]:
+        registry.register(ToolSpec('terminal_' + operation, 'run',
+            'Request-owned bounded host terminal; isolation=none, NOT an OS sandbox or chroot; no stdin/PTY',
+            schema, effect), lambda context, args, op=operation: terminal_action(context, op, args))

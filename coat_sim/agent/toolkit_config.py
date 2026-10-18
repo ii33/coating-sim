@@ -7,7 +7,7 @@ CAPABILITIES = ('fs', 'sftp', 'run', 'sh', 'pwsh', 'env', 'proxy', 'doc', 'split
 PRIVATE_CAPABILITIES = ('fs', 'doc', 'split', 'img', 'tasks', 'preset', 'memory')
 CAPABILITY_LABELS = {
     'fs': '本地文件', 'sftp': 'SFTP（需宿主提供连接）',
-    'run': '程序执行（桌面适配器未开放）', 'sh': 'Shell（需 bash；桌面未开放）',
+    'run': '主机终端（非系统沙箱，可访问主机文件/网络；默认关闭）', 'sh': 'Shell（需 bash；桌面未开放）',
     'pwsh': 'PowerShell（需 7+；桌面未开放）',
     'env': '环境与安装（安装需授权；桌面未开放）',
     'proxy': '网络与代理（需网络提供器；桌面未开放）',

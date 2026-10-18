@@ -1,7 +1,9 @@
 # Portable toolkit provider boundaries
 
-Version 1, 2026-10-18. These modules do not implement a process launcher, socket
+Version 1, 2026-10-18. Portable handlers do not implement a process launcher, socket
 client, package bootstrapper, credential store or persistent remote access setup.
+The desktop explicitly wires a separate bounded host terminal for `run`; see
+[Assistant terminal contract](assistant-terminal-contract.md).
 They have no backend or Qt imports. Importing/registering a tool is not readiness.
 The existing application's sandbox and confirmation owner remains authoritative.
 Registry invocation first validates arguments/capabilities and requires the
@@ -14,11 +16,14 @@ Handlers are implementation internals, not an alternate public authorization API
 It receives `argv` (never a joined command), local confined `cwd`, `shell=False`,
 `timeout_ms` (1–600000), `max_output_bytes` (1–1048576), and UTF-8 `env` overrides.
 Return `exit_code: int`, `stdout: str`, `stderr: str`, optional `truncated: bool`
-and `timed_out: bool`. The host adapter **must** enforce sandboxing for process
-filesystem/network/child-process access, approval refinements, terminate/reap on
-timeout or cancellation, bound memory while draining output and suppress secrets.
+and `timed_out: bool`. A sanctioned provider must truthfully declare its isolation,
+enforce its stated approval refinements, terminate/reap on timeout or cancellation,
+and bound memory while draining output. Sandboxed providers must enforce their
+filesystem/network/child-process isolation. Host terminal execution instead returns
+`isolation: "none"` plus an explicit warning and is not a security boundary.
 Pre/post cancellation checks and response truncation cannot interrupt a blocking
-provider. No supplied native subprocess fallback bypasses these requirements.
+provider. The desktop host provider is a separate explicit opt-in, not a silent
+fallback when another provider fails.
 A `run` executable is not restricted to an interpreter; command-name and shell
 checks are defensive hygiene, never a substitute for the process sandbox.
 
@@ -35,7 +40,16 @@ credentials; no `--trusted-host`, TLS disabling or system proxy changes are adde
 `pwsh` probes the selected executable for major version >=7 before each command;
 `sh` selects bash without startup profiles. cmd and Windows PowerShell are denied.
 
-Readiness requires callable execution provider; `sh`/`pwsh`/`env` additionally
+Desktop `host_execution` serves only `run` and does not supply generic `execution`
+for shell/environment tools. It retains the existing configured/profile capability
+intersection and requires live operate-mode authority. It never selects interpreters
+or performs installation automatically. `terminal_start`, `terminal_poll`, and
+`terminal_cancel` share this request-owned manager; all tasks are closed at request
+exit, grant/project revocation, or worker shutdown. The status warning and every
+successful terminal/run response disclose that host files/network are accessible
+and cwd is not chroot. No model-supplied environment or ownership field is accepted.
+
+Portable readiness requires callable execution provider; `sh`/`pwsh`/`env` additionally
 require the selected interpreter setting. Configuration does not prove that an
 executable exists: probe results remain the actual runtime evidence.
 

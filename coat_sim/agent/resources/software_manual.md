@@ -154,7 +154,7 @@ Pygal提供XY、折线、条形等既有图表，并没有pygal.Heatmap；coat_p
 
 ## development · 源码开发诊断
 源码可直接在设置启用“开发模式”，developer_enabled默认false，保存后下一轮生效；--development/COAT_DEVELOPMENT=1是源码兼容入口。COAT_RELEASE_BUILD=1、冻结/Nuitka发行构建强制关闭，助手不能自行打开门禁，未启用开发模式的运行不开放开发工具。
-开发工具environment/syntax/unit-tests是固定检查，既有unittest最长60秒；没有通用终端、任意检查参数或任意脚本执行入口。developer_persona只读写固定agent.md，更新需最新SHA256，冲突拒绝、先备份后原子保存，下一轮任务生效。
+开发工具environment/syntax/unit-tests是固定检查，既有unittest最长60秒；这些固定检查不接受任意检查参数。另有独立、默认关闭的助手主机终端（见下节）；它不属于开发工具固定检查或脚本沙箱。developer_persona只读写固定agent.md，更新需最新SHA256，冲突拒绝、先备份后原子保存，下一轮任务生效。
 developer_access提供grant/revoke/status会话内只读路径授权；developer_files仅对授权且OS可读路径提供分页read/list/stat。不得据此声称有外部写入、执行或管理员权限，不扩大Python沙箱范围；人设/语气不能绕过后端授权。
 源码版启动器提供独立的外部本地调试接口 AssistantDebugClient，可向真实助手 submit/steer/withdraw/cancel，分页查询 transcript/events/status。只在开发门禁下生效，发行不启动，回环认证，不提供密钥或通用执行。调试默认4096输出Token、12请求、60 K累计，主/子/整理代理共享；同进程接收回执去重，跨重启必须核对持久作业。说明与示例见docs/assistant.md和docs/mcp.md。
 统计单位K/M自动切换，缓存读取/创建只有实报字段才显示，旧记录和估算保持未知，明确0也算已报告。命中率只使用有缓存读取统计请求的输入量；缓存不从总输入与输出配额扣除。
@@ -303,3 +303,12 @@ variables 用 side 与稳定 layer_id 指定可变层，lower_nm/upper_nm 为物
 每个 quantity 必填 value（有限正数）、unit、provenance（theoretical/measured/assumed）、source（非空来源）；可填同单位的 standard_uncertainty（非负标准不确定度）。长度单位 m/cm/mm/um/nm，方阻 ohm/sq，电阻率 ohm*m/ohm*cm，电阻 ohm。理论/假设电阻率仅产生相应条件下的预测，不能标为实测校准；实际膜的材料、微结构与工艺影响不能由一个材料名消除。
 rectangle 可由 resistance、length、width 得到方阻 Rs = R × width / length。length 沿电流方向，width 为横向宽度；必须显式声明 electrode_boundary=full_width_opposite_edges、contact_assumption=negligible_or_corrected。点接触、四探针、任意电极或未校正接触电阻不能套用此矩形公式；rectangle 与显式 sheet_resistance 不得同时提交。
 operation 仅支持 solve（可省略）。uncertainty_assumption=independent 明确声明不确定度传播的独立假设；相关输入不能假装独立。consistency_relative_tolerance 默认 1e-6，是数值一致性容差，不是测量验收标准。以工具返回的状态、来源、适用范围与不确定度说明为准。讨论/chat、操作、攻关均可使用；无效单位、非有限值或未知字段返回 invalid_arguments，不执行外部操作。
+
+
+## 助手主机终端（显式启用，非操作系统沙箱）
+
+工具集设置中的“主机终端”对应 run 能力，须在工具集能力及配置能力中都明确启用，并允许工具内容进入模型上下文。默认私有工作区能力不包含 run。仅操作模式且当前执行授权有效的主助手可启动；讨论、攻关、后台只读请求均不可启动。设置或工程绑定变化会撤销旧请求，切换模式后须重新发送任务。
+
+通过 toolkit_catalog 读取 terminal_start、terminal_poll、terminal_cancel 的模式，再由 toolkit_action 调用。terminal_start 接收 argv（数组）、cwd（工作区内目录，默认 .）、timeout_ms（1–600000，默认120000）、max_output_bytes（1–1048576，默认1048576）；立即返回 task_id。poll 返回累计 stdout/stderr、state、exit_code、truncated；cancel 只接受本请求拥有的 task_id。原 run 复用同一后端，等待结果并以结构化错误返回超时或撤权。每次用户请求结束或失败、停止、工程切换、授权撤回和工作进程正常关闭都会清理该请求进程。需要完成的短命令应在本轮结束前核对终态；它不是跨轮后台作业服务。
+
+所有结果报告 isolation=none 和主机执行警告：助手工作区只是 cwd，不是 chroot 或文件/网络隔离；命令可访问当前操作系统用户可访问的其他文件与网络，输出也可能包含命令自行读取的信息。不可把它用于运行不可信代码或声称具备沙箱保障。终端只提供管道输出，没有 PTY、交互 stdin 或任意环境变量参数；不会注入模型服务密钥，也不自动安装依赖、提权或改变系统安全设置。run 授权不替代用户对具体任务、安装和敏感操作的授权。sh/pwsh/env 等独立能力仍要求各自宿主提供器，不会随 run 自动开放。

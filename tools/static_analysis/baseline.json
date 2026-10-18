@@ -7169,16 +7169,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "coat_sim/agent/runtime.py",
-      "code": "E701",
-      "message": "Multiple statements on one line (colon)",
-      "scope": "run_task.stream_handler.forward",
-      "anchor": "elif isinstance(event.part, ThinkingPart): thought = event.part.content",
-      "fingerprint": "1d46aa251bf016232d30c3b53fed2b1748bfcfd4dca8fe821441f1041fa88542",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_compute_target_selection.py",
       "code": "attr-defined",
@@ -8486,16 +8476,6 @@
       "scope": "BudgetAndTools._record_issue",
       "anchor": "error._coat_environment_issue_logged = True",
       "fingerprint": "226080b4a1c04fbcbca7aa0b6ef4393223b5f7ab53b6191d9c6fe1891ab13e8a",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "coat_sim/agent/runtime.py",
-      "code": "E701",
-      "message": "Multiple statements on one line (colon)",
-      "scope": "run_task.stream_handler.forward",
-      "anchor": "elif isinstance(event.delta, ThinkingPartDelta): thought = event.delta.content_delta or \"\"",
-      "fingerprint": "22658c098a98c205f4807bb68e75f5f85911c7d6a17e4517084110d89e98809e",
       "count": 1
     },
     {
@@ -19196,16 +19176,6 @@
       "scope": "source_board_groups",
       "anchor": "active = {}",
       "fingerprint": "4c14bbbe56427e13725a9b2a5af2c5536ae163b62fda7ea6c556702abfdb2139",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "coat_sim/agent/runtime.py",
-      "code": "E701",
-      "message": "Multiple statements on one line (colon)",
-      "scope": "run_task.stream_handler.forward",
-      "anchor": "if isinstance(event.delta, TextPartDelta): text = event.delta.content_delta",
-      "fingerprint": "4c15c097536cba3cca2485e47cb416c1486684c202837e225f80c9bc18c514b9",
       "count": 1
     },
     {
@@ -33820,16 +33790,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/agent/runtime.py",
-      "code": "call-overload",
-      "message": "No overload variant of \"Agent\" matches argument types \"MediaChatModel\", \"str\", \"str\", \"list[Callable[..., dict[str, Any]] | function]\", \"list[Never]\", \"dict[str, int]\", \"dict[str, bool]\", \"list[Any]\"",
-      "scope": "run_task",
-      "anchor": "agent = Agent(model, name=\"banniang\", instructions=instructions,",
-      "fingerprint": "87459f12afe5130ca1668a9a57345b1c6c1ea979f980ba14d9e1dbef24535115",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_result_capability_import_contract.py",
       "code": "return-value",
       "message": "Incompatible return value type (got \"SimpleNamespace\", expected \"Document\")",
@@ -48359,16 +48319,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "coat_sim/agent/runtime.py",
-      "code": "E701",
-      "message": "Multiple statements on one line (colon)",
-      "scope": "run_task.stream_handler.forward",
-      "anchor": "if isinstance(event.part, TextPart): text = event.part.content",
-      "fingerprint": "c26f5aef7ca5af7c243ef2a4d6052ecc0d5bd7e056747d60beb9403c2ab6afcd",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_film_workflow_document.py",
       "code": "union-attr",
@@ -52636,16 +52586,6 @@
       "scope": "RateCacheTests.test_same_slot_different_responsive_rates_cannot_reuse_cycle",
       "anchor": "runtime['profile']['steps'] = [dict(source_slot=1, target_nm=120., rate_nm_s=rate,",
       "fingerprint": "d2bcb005e6d3a3a5a60fa8bce1b4e20f8bc604fdcad4d133ff3831925736bd4f",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/agent/runtime.py",
-      "code": "dict-item",
-      "message": "Dict entry 0 has incompatible type \"str\": \"Omit\"; expected \"str\": \"str\"",
-      "scope": "run_task",
-      "anchor": "default_headers={\"Authorization\": Omit()} if not secret else None,",
-      "fingerprint": "d2bde6e4782a96a14195357ca5de376138c337e425540cdf382e486e6a894673",
       "count": 1
     },
     {
@@ -63969,6 +63909,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "Remove only resolved runtime typing diagnostics after scoped knowledge and memory integration",
+  "last_prune_reason": "Terminal request lifecycle refactor: reviewed and corrected six old runtime diagnostics (four E701 blocks and two SDK/tool-list typing boundaries); remove resolved entries only, no new debt.",
   "configuration_review_reason": "2026-10-17: add only BSD-3-Clause pypdf 6.21.0 for isolated research PDF extraction; all previous dependency/tool versions, analyzer rules and diagnostic entries remain unchanged. The lock-file digest changes only for this reviewed runtime dependency."
 }

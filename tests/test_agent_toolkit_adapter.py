@@ -28,7 +28,7 @@ def adapter(tmp_path, registry=None, **kwargs):
 def test_factory_manifest_and_lazy_catalog(tmp_path):
     host = adapter(tmp_path)
     manifest = host.portable_manifest()
-    assert len(manifest['tools']) == 39
+    assert len(manifest['tools']) == 42
     assert manifest['backend']['dsh']['integration_tested'] is False
     summary = host.catalog()['data']['tools']
     assert all('parameters' not in s for s in summary)
