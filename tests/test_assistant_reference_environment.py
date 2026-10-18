@@ -54,8 +54,8 @@ def test_business_child_reads_existing_host_reference_store(tmp_path, monkeypatc
 import json, os, sys
 from types import SimpleNamespace
 from coat_sim.core import refractiveindex_local as rii
-if sys.argv[1] == 'LOCALAPPDATA':
-    rii.os = SimpleNamespace(name='nt', environ=os.environ)
+if sys.argv[1] in {'LOCALAPPDATA', 'XDG_DATA_HOME'}:
+    rii.os = SimpleNamespace(name='nt' if sys.argv[1] == 'LOCALAPPDATA' else 'posix', environ=os.environ)
 root = rii.default_store_root()
 print(json.dumps({'root': str(root), 'status': rii.RefractiveIndexLocalStore(root).status(),
                   'leaked': any(key in os.environ for key in json.loads(sys.argv[2]))}))
