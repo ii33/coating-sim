@@ -395,6 +395,15 @@ LocalComponents.AppWindow {
                         onClicked: window.resourceBridge.browseLibrary()
                     }
                     ThemeControls.ThemeButton {
+                        objectName: "refractiveIndexDatabaseButton"
+                        text: "折射率数据库…"
+                        enabled: !window.operationBusy
+                        onClicked: {
+                            window.focusReturnItem = this
+                            window.resourceBridge.openRefractiveIndexBrowser()
+                        }
+                    }
+                    ThemeControls.ThemeButton {
                         objectName: "globalResourcesImportButton"
                         text: "导入…"
                         enabled: !window.operationBusy
@@ -667,6 +676,16 @@ LocalComponents.AppWindow {
                         }
                     }
                 }
+            }
+        }
+    }
+    Loader {
+        active: !!window.resourceBridge && !!window.resourceBridge.refractiveIndexBrowser
+        sourceComponent: Component {
+            LocalComponents.RefractiveIndexBrowserDialog {
+                parent: Overlay.overlay
+                browser: window.resourceBridge.refractiveIndexBrowser
+                onClosed: window.restoreFocus()
             }
         }
     }

@@ -182,6 +182,17 @@ def test_budget_rejection_keeps_pending_steering_text_and_binary_attachment_in_c
 class _FakeStore:
     def __init__(self, *_args: Any, **_kwargs: Any) -> None:
         self.saves: list[dict[str, Any]] = []
+        self.events: list[tuple[str, str, str, dict[str, Any]]] = []
+
+    def record_event(self, session: str, request: str, event: str,
+                     payload: dict[str, Any]) -> None:
+        self.events.append((session, request, event, dict(payload)))
+
+    def request_memory_scope(self, session: str, request: str) -> str:
+        for saved_session, saved_request, event, payload in reversed(self.events):
+            if (saved_session, saved_request, event) == (session, request, "project_memory_scope"):
+                return str(payload["scope"])
+        return "global"
 
     def history_state(self, _session: str) -> dict[str, Any]:
         return {}
@@ -285,6 +296,8 @@ def test_run_task_cancellation_persists_streamed_text_and_skips_post_terminal_co
         asyncio.run(runtime.run_task(command, writer))
 
     final = store.saves[-1]
+    assert store.request_memory_scope("offline-session", "cancel-request") == "global"
+    assert any(event == "project_memory_scope" for _, _, event, _ in store.events)
     assert final["state"] == "cancelled"
     assert final["request_id"] == "cancel-request"
     history = ModelMessagesTypeAdapter.validate_json(final["history"])

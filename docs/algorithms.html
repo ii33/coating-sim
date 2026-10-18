@@ -198,6 +198,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#film-wavelength-workers-20261017">CPU wavelength workers and fair single-candidate timing (2026-10-17)</a>
 <a href="#engineering-notes-storage-20261018">工程 BBS、精简记忆与回收记录格式（2026-10-18）</a>
 <a href="#assistant-material-readiness-ito">材料有效域诊断与 ITO 条件光学数据（2026-10-18）</a>
+<a href="#local-optical-reference-import">本地 RII 与厂商 AGF 数据投影（2026-10-18）</a>
 </nav>
 <main>
 <section id="film-wavelength-workers-20261017"><h2>CPU wavelength workers and fair single-candidate timing — 2026-10-17</h2>
@@ -3043,6 +3044,31 @@ for each explicitly available dataset:
 <p><strong>本批 ITO 记录：</strong><code>builtin_research_ITO_film / ri_ito_minenkov_glass_2024</code>，110 nm ITO / XY15S 玻璃商用样品，706 对 n/k 点，原表 0.19146–1.68869 μm。膜厚为光学模型样品厚度，不与供应商标称规格混用。数据来自椭偏与透射联合光学模型拟合；沉积温度、气氛、组成比例及独立核验实测/拟合有效波段未知。声明范围是原始数值表域，不是逐点直接测量或全域精度保证。</p>
 <p>保留原始十进制行，沿用既有域内线性插值 <code>q(λ)=q_i+(q_(i+1)-q_i)·(λ-λ_i)/(λ_(i+1)-λ_i)</code>，其中 q 为 n 或 k；不补点、不平滑、不扩域、不设为通用生产默认。既有材料行、研究物性和源模型保持原语义。来源档案、固定 commit、SHA-256 与 CC0 原许可见 <a href="../data/optical_catalog_sources/rii_ito_minenkov_20261018_v1/README.md">ITO 数据说明</a>和 <a href="../data/optical_catalog_sources/rii_ito_minenkov_20261018_v1/provenance.json">来源元数据</a>；适用性与边界回归见 <code>tests/test_material_readiness.py</code>、<code>tests/test_ito_optical_reference.py</code>。</p>
 <p><strong>来源与限制：</strong><a href="https://doi.org/10.1021/acsami.3c17923">Minenkov 等，ACS Applied Materials &amp; Interfaces 16, 9517–9531 (2024)</a>；<a href="https://github.com/polyanskiy/refractiveindex.info-database/tree/c5c2f188e848453def5970e347399d653df2ffc2">固定版 RII 数据库</a>。CC0 仅针对收录的数据库数值记录，不扩展到论文图文。ZnS 薄膜 380–400 nm、H4、K9 等本轮未取得可验收数据的缺口继续保留，不用晶体或其他玻璃自动替代。覆盖诊断及工作流约定是本项目实现，不是新的材料物理定律。</p>
+</section>
+
+
+<section id="local-optical-reference-import">
+<h2>本地 RII 与厂商 AGF 数据投影（2026-10-18）</h2>
+<p><strong>目的与所有者：</strong>参考库不等于工程材料。<code>core/refractiveindex_local.py</code> 是本地版本快照与 SQLite 索引的唯一所有者；只有显式 build 写入，status/search/detail/preview/convert 均离线只读。<code>core/vendor_optical_catalog.py</code> 将用户明确选择的 AGF 读为内存参考目录，不复制整库进入材料。GUI 确认后由既有全局/工程材料服务负责冲突处理和原子导入，不能由参考解析器绕过保存边界。</p>
+<p><strong>RII 文件与数值语义：</strong>本地版本保存原始 YAML、分类、条件、引用及许可；索引以规范源相对路径摘要作为条目身份，独立保留别名分类。manifest、文件摘要和 CURRENT 原子指针用于本地完整性与版次，不把操作者填写的 Git SHA 当作已验证上游身份。公式 1–9 复用现有光学核心；表格 n/nk 保留原始波长与未知 k，公式的独立 k 表保留自己的有效域。异网格 n/k 不自动重采样；重复/冲突点、无效域或未知格式明示拒绝转换。多表示需要显式选择数据块。catalog-n2 的非线性折射率系数不是线性 n²，也不是消光系数 k。</p>
+<pre>explicit source directory → safe YAML + bounds → immutable source snapshot + SQLite index
+read query → bounded rows + snapshot ID → selected raw record → validated candidate
+user previews target + conflicts → existing material service applies one import
+build failure/cancellation: keep previous CURRENT; read/preview: never create materials</pre>
+<figure class="figure"><svg viewBox="0 0 840 185" role="img" aria-label="原始参考资料、只读投影与显式工程导入为三个独立阶段"><g fill="none" stroke="#087f78" stroke-width="2"><rect x="15" y="25" width="240" height="85" rx="8"/><rect x="300" y="25" width="240" height="85" rx="8"/><rect x="585" y="25" width="240" height="85" rx="8"/><path d="M255 67h45m240 0h45"/></g><g class="svgtext" text-anchor="middle"><text x="135" y="57">原始数据、许可、版本</text><text x="135" y="83">保留不可转换条目</text><text x="420" y="57">只读搜索、显示与转换</text><text x="420" y="83">未知 k 保持未知</text><text x="705" y="57">用户确认单条导入</text><text x="705" y="83">宿主固定工程 / 全局目标</text><text x="420" y="153">能显示 ≠ 可计算；可转换 ≠ 数据精度认证；公开下载 ≠ 可公开再分发</text></g></svg><figcaption>一条参考记录只有经过明确选取、数值校验、基准确认和现有材料保存流程，才成为可用的用户材料。资料查询本身不会写入工程。</figcaption></figure>
+<p><strong>AGF 映射：</strong>输入 CD 系数顺序与厂商原表一致，λ 的数值单位为 μm。下表只做代数等价映射；不改变参数、不拟合源数据。</p>
+<table><thead><tr><th>AGF 类型</th><th>既有 RII 表示</th><th>系数映射</th></tr></thead><tbody>
+<tr><td>1 Schott</td><td>RII 3，n²</td><td>a0 后各项 a1…a5 对应 λ 指数 2, −2, −4, −6, −8</td></tr>
+<tr><td>2 Sellmeier 1</td><td>RII 2</td><td>[0,K1,L1,K2,L2,K3,L3]；分母 λ²−Li，Li 已为 μm²，不再次平方</td></tr>
+<tr><td>3 Herzberger</td><td>RII 7，n</td><td>[A,B,C,D,E,F]；L=1/(λ²−0.028)，n=A+BL+CL²+Dλ²+Eλ⁴+Fλ⁶</td></tr>
+<tr><td>6 Sellmeier 3</td><td>RII 2，四项</td><td>[0,K1,L1,K2,L2,K3,L3,K4,L4]</td></tr>
+<tr><td>12 Extended 2</td><td>RII 3，n²</td><td>a0 后 a1…a7 对应指数 2, −2, −4, −6, −8, 4, 6</td></tr>
+<tr><td>13 Extended 3</td><td>RII 3，n²</td><td>a0 后 a1…a8 对应指数 2, 4, −2, −4, −6, −8, −10, −12</td></tr>
+</tbody></table>
+<p><strong>空气参考系必须确认：</strong>AGF 的 n 与波长使用参考空气约定；现有薄膜核使用真空波长和绝对折射率约定。精确代数映射不是这两个物理基准的精确换算。默认 <code>allow_reference_air_approximation=false</code> 阻止导入准备；仅用户显式接受该近似后产候选，永久记录未进行温压/空气到真空换算的 provenance、notes 与 process_parameters。界面默认不勾选；不把非布尔值当批准，不静默转换。TD 参考温度与 IT 内透过率/样片厚度作为来源资料保留；IT 不是含表面反射的整片透射率，本版不据此求 k，输出 k 保持未知。</p>
+<p><strong>数值域筛查与来源一致性：</strong>除既有 schema 检查外，在 x=λ² 的声明 LD 域中检查极点、端点、驻点候选及 65 个对数采样点，拒绝非有限或非正实 n/n²。驻点来自各支持公式导数分子的数值多项式根；这是工程筛查，不是区间算术连续证明。prepare 与 preview 共用该门，低显示点数不能绕过。源 NM.nd 与 CD 在 d 线的差异按项目阈值提示，仅作一致性诊断，不证明目录精度；源不一致警告保留到导入候选，绝不修造厂商值。</p>
+<p><strong>显示与限制：</strong>预览为有限显示采样，不是完整导入数据。MCP convert 完整 UTF-8 JSON 超过 1 MiB 明确拒绝，不截断或抽样候选；GUI/CLI 可处理完整合法条目。未知 n2 单位不画成线性 n/k 曲线。完整文件字段、路径/版本/取消、显示和写入限制见<a href="refractiveindex-local-contract.md">RII 核心契约</a>、<a href="vendor-optical-catalog-contract.md">AGF 契约</a>、<a href="refractiveindex-browser-contract.md">浏览导入契约</a>与<a href="reference-sources.md">来源与许可目录</a>。</p>
+<p><strong>原始依据：</strong><a href="https://github.com/polyanskiy/refractiveindex.info-database">RII 官方数据仓库与格式</a>；<a href="https://optics.ansys.com/hc/en-us/articles/46891219767827-Zemax-AGF-material-catalog-file-format">Ansys AGF 格式</a>及其官方 <a href="https://ansyshelp.ansys.com/public/Views/Secured/Zemax/v26103/en/OpticStudio_User_Guide/OpticStudio_Help/topics/The_Herzberger_Formula.html">Herzberger</a>、<a href="https://ansyshelp.ansys.com/public/Views/Secured/Zemax/v26103/en/OpticStudio_User_Guide/OpticStudio_Help/topics/The_Sellmeier_3_Formula.html">Sellmeier 3</a>、<a href="https://ansyshelp.ansys.com/public/Views/Secured/Zemax/v26103/en/OpticStudio_User_Guide/OpticStudio_Help/topics/The_Extended_2_Formula.html">Extended 2</a>、<a href="https://ansyshelp.ansys.com/public/Views/Secured/Zemax/v26103/en/OpticStudio_User_Guide/OpticStudio_Help/topics/The_Extended_3_Formula.html">Extended 3</a>。目录格式、数值筛查、预算和显式近似门控是本项目实现，不把公式核验冒称厂家测量或生产资格认证。</p>
 </section>
 
 </body>

@@ -1,0 +1,1321 @@
+{
+  "schema_version": 1,
+  "catalog_version": "2026-10-18.1",
+  "reviewed_at": "2026-10-18",
+  "scope": "Reference metadata only. Offline capability does not imply installation, calculation readiness, or redistribution permission.",
+  "sources": [
+    {
+      "id": "cie-standard-colorimetry",
+      "title": "CIE 1931 2° 与 D65 官方数据",
+      "organization": "International Commission on Illumination",
+      "category": "colorimetry",
+      "priority": 1,
+      "data_kind": [
+        "standard"
+      ],
+      "domains": [
+        "visible",
+        "colorimetry"
+      ],
+      "summary": "1 nm 标准色匹配函数及 D65 光谱，带 CSV、JSON 元数据和校验和。复用项目既有离线资源，目录查询不下载。",
+      "offline_status": "open_license",
+      "access": {
+        "online_view": true,
+        "download_available": true,
+        "login": "not_required",
+        "payment": "free",
+        "formats": [
+          "CSV",
+          "JSON"
+        ],
+        "api": []
+      },
+      "rights": {
+        "offline_use": "allowed",
+        "redistribution": "conditional",
+        "license": "CC-BY-SA-4.0",
+        "evidence_urls": [
+          "https://files.cie.co.at/Publications-datasets/CIE_xyz_1931_2deg.csv_metadata.json",
+          "https://files.cie.co.at/Publications-datasets/CIE_std_illum_D65.csv_metadata_v2.json"
+        ],
+        "notes": [
+          "只核实以上两份数据表；保留署名、许可和变更说明，改编分发遵守相同方式共享要求。"
+        ]
+      },
+      "reviewed_at": "2026-10-18",
+      "links": [
+        {
+          "role": "official_source",
+          "title": "CIE 1931 2° 与 D65 官方数据",
+          "url": "https://www.cie.co.at/datatable/cie-1931-colour-matching-functions-2-degree-observer"
+        },
+        {
+          "role": "official_source",
+          "title": "D65",
+          "url": "https://www.cie.co.at/datatable/cie-standard-illuminant-d65"
+        },
+        {
+          "role": "license",
+          "title": "CC BY-SA 4.0",
+          "url": "https://creativecommons.org/licenses/by-sa/4.0/"
+        }
+      ],
+      "files": [],
+      "limitations": [
+        "数据表许可不等于整本标准文档许可。",
+        "计算仍需明确观察者、光源、积分和归一化策略。"
+      ],
+      "unknowns": [
+        "当前主机是否已有具体副本不由静态目录断言。"
+      ],
+      "integration": {
+        "workflow": "reuse_existing_cie_resources",
+        "bundled_numeric_data": false,
+        "host_installation": "not_checked"
+      }
+    },
+    {
+      "id": "zenodo-ito-15055400",
+      "title": "ITO / 钠钙玻璃 / SiO2 作者数据 V0.1",
+      "organization": "University of Latvia authors / Zenodo",
+      "category": "optical_constants",
+      "priority": 1,
+      "data_kind": [
+        "measured"
+      ],
+      "domains": [
+        "visible",
+        "near_infrared",
+        "thin_film",
+        "ITO"
+      ],
+      "summary": "作者发布 210–1690 nm 的 n,k 或介电函数数据；官方 API 明确 CC BY 4.0，6个原始文件总计859455 bytes。",
+      "offline_status": "open_license",
+      "access": {
+        "online_view": true,
+        "download_available": true,
+        "login": "not_required",
+        "payment": "free",
+        "formats": [
+          "MAT",
+          "OPJU",
+          "7Z"
+        ],
+        "api": [
+          {
+            "name": "Zenodo public record REST API",
+            "url": "https://zenodo.org/api/records/15055400",
+            "verification": "read_verified",
+            "auth": "none"
+          }
+        ]
+      },
+      "rights": {
+        "offline_use": "allowed",
+        "redistribution": "conditional",
+        "license": "CC-BY-4.0",
+        "evidence_urls": [
+          "https://zenodo.org/api/records/15055400"
+        ],
+        "notes": [
+          "API metadata.license.id=cc-by-4.0，access_right=open；分发须署名并说明变更。",
+          "记录版本V0.1，2025-03-20发布。"
+        ]
+      },
+      "reviewed_at": "2026-10-18",
+      "links": [
+        {
+          "role": "official_source",
+          "title": "ITO / 钠钙玻璃 / SiO2 作者数据 V0.1",
+          "url": "https://zenodo.org/records/15055400"
+        },
+        {
+          "role": "metadata_api",
+          "title": "Zenodo record API",
+          "url": "https://zenodo.org/api/records/15055400"
+        },
+        {
+          "role": "license",
+          "title": "CC BY 4.0",
+          "url": "https://creativecommons.org/licenses/by/4.0/"
+        },
+        {
+          "role": "paper",
+          "title": "关联论文",
+          "url": "https://doi.org/10.1016/j.omx.2025.100408"
+        }
+      ],
+      "files": [
+        {
+          "name": "ITO nk.opju",
+          "url": "https://zenodo.org/api/records/15055400/files/ITO%20nk.opju/content",
+          "bytes": 366594,
+          "sha256": "6ba723874f1ca9f5095151d9e8eb9bfda36d66f4e7f34e19230ad61dcd793820",
+          "md5": "5891794daf3ae87a8ce1cfba319c5bc1"
+        },
+        {
+          "name": "SiO2 buffer_e1e2.mat",
+          "url": "https://zenodo.org/api/records/15055400/files/SiO2%20buffer_e1e2.mat/content",
+          "bytes": 33481,
+          "sha256": "9f77114accb03666bed4321dd16fc1e8a1f24ab80e6d1f5fe7ce735b1118604e",
+          "md5": "36fe8a4cb58cff55a9971877a1529013"
+        },
+        {
+          "name": "Soda lime_e1e2.mat",
+          "url": "https://zenodo.org/api/records/15055400/files/Soda%20lime_e1e2.mat/content",
+          "bytes": 37749,
+          "sha256": "73d1ee7d5c06073885e97267334f06722fd0040d6f2d2559a8093212e3ce04f8",
+          "md5": "0b63f27595dfbf19dda5b5ca0e3ad6e5"
+        },
+        {
+          "name": "SiO2 buffer_soda-lime glass.opju",
+          "url": "https://zenodo.org/api/records/15055400/files/SiO2%20buffer_soda-lime%20glass.opju/content",
+          "bytes": 72437,
+          "sha256": "b33ef7387c916f51d2ad02ba188fc083dded748c3b74fd059a414483cf6dabbb",
+          "md5": "add5f404494db12336f48b63f4858b12"
+        },
+        {
+          "name": "ITO_glass_SiO2 buffer.7z",
+          "url": "https://zenodo.org/api/records/15055400/files/ITO_glass_SiO2%20buffer.7z/content",
+          "bytes": 313892,
+          "sha256": "92051d2332f39b59ac298bcb6b936a0f8f6cd60b2905fef546867181952e6a89",
+          "md5": "6cca1a99454dcef939f16dcb03abe727"
+        },
+        {
+          "name": "ITO_20 Ohm_105 nm_e1e2.mat",
+          "url": "https://zenodo.org/api/records/15055400/files/ITO_20%20Ohm_105%20nm_e1e2.mat/content",
+          "bytes": 35302,
+          "sha256": "83fee12ee17f85163fb10c8a5b5846d563ce8ba02e3da21110337836c2b9c603",
+          "md5": "3b2515cc0664ebacc018bae7464b31fe"
+        }
+      ],
+      "limitations": [
+        "原始文件保存不代表已解析或已变成可计算光学组。",
+        "不得将MAT当程序执行；专有Origin格式需要另行读取支持。",
+        "ITO参数适用于具体样品，不能泛化为所有ITO薄膜。"
+      ],
+      "unknowns": [
+        "各文件的完整字段结构和解析一致性尚未核验。"
+      ],
+      "integration": {
+        "workflow": "raw_reference_files_only",
+        "bundled_numeric_data": false,
+        "host_installation": "not_checked"
+      }
+    },
+    {
+      "id": "st-andrews-ito-sputtering",
+      "title": "ITO 溅射与 ENZ 原始椭偏数据",
+      "organization": "University of St Andrews",
+      "category": "optical_constants",
+      "priority": 1,
+      "data_kind": [
+        "measured"
+      ],
+      "domains": [
+        "near_infrared",
+        "ITO",
+        "sputtering"
+      ],
+      "summary": "原始Woollam椭偏数据与沉积参数对照表；可研究工艺和光学响应的联系。",
+      "offline_status": "open_license",
+      "access": {
+        "online_view": true,
+        "download_available": true,
+        "login": "not_required",
+        "payment": "free",
+        "formats": [
+          "SE",
+          "XLSX",
+          "ZIP"
+        ],
+        "api": []
+      },
+      "rights": {
+        "offline_use": "allowed",
+        "redistribution": "conditional",
+        "license": "CC BY (version not verified)",
+        "evidence_urls": [
+          "https://research-portal.st-andrews.ac.uk/en/datasets/tuning-the-epsilon-near-zero-wavelength-of-ito-in-the-near-ir-spe/"
+        ],
+        "notes": [
+          "官方数据页标CC BY，具体许可证版本仍需从下载记录核对。"
+        ]
+      },
+      "reviewed_at": "2026-10-18",
+      "links": [
+        {
+          "role": "official_source",
+          "title": "ITO 溅射与 ENZ 原始椭偏数据",
+          "url": "https://research-portal.st-andrews.ac.uk/en/datasets/tuning-the-epsilon-near-zero-wavelength-of-ito-in-the-near-ir-spe/"
+        }
+      ],
+      "files": [],
+      "limitations": [
+        "SE为Woollam专有格式，说明要求CompleteEase；并非现成通用n,k表。"
+      ],
+      "unknowns": [
+        "下载文件逐项大小与校验和未核实。",
+        "CC BY具体版本未核实。"
+      ],
+      "integration": {
+        "workflow": "raw_files_candidate",
+        "bundled_numeric_data": false,
+        "host_installation": "not_checked"
+      }
+    },
+    {
+      "id": "amotchkina-2020-films",
+      "title": "电子束蒸发 Ge / YbF3 / ZnS / LaF3 薄膜论文",
+      "organization": "Amotchkina et al. / Optica",
+      "category": "optical_constants",
+      "priority": 1,
+      "data_kind": [
+        "measured"
+      ],
+      "domains": [
+        "visible",
+        "infrared",
+        "ZnS",
+        "YbF3",
+        "e_beam_evaporation"
+      ],
+      "summary": "官方摘要确认0.4–12 μm薄膜表征与色散拟合；用于寻找条件明确的样品数据。",
+      "offline_status": "reference_only",
+      "access": {
+        "online_view": true,
+        "download_available": false,
+        "login": "route_dependent",
+        "payment": "route_dependent",
+        "formats": [
+          "article"
+        ],
+        "api": []
+      },
+      "rights": {
+        "offline_use": "unknown",
+        "redistribution": "unknown",
+        "license": "Not verified",
+        "evidence_urls": [
+          "https://opg.optica.org/ao/abstract.cfm?uri=ao-59-5-A40"
+        ],
+        "notes": []
+      },
+      "reviewed_at": "2026-10-18",
+      "links": [
+        {
+          "role": "official_source",
+          "title": "电子束蒸发 Ge / YbF3 / ZnS / LaF3 薄膜论文",
+          "url": "https://opg.optica.org/ao/abstract.cfm?uri=ao-59-5-A40"
+        }
+      ],
+      "files": [],
+      "limitations": [
+        "摘要可读不等于全文或完整数值附件可下载。",
+        "不同制备条件的数据不能直接互换。"
+      ],
+      "unknowns": [
+        "完整数值附件、当前全文访问条件、个人离线及再分发许可未核实。"
+      ],
+      "integration": {
+        "workflow": "reference_metadata_only",
+        "bundled_numeric_data": false,
+        "host_installation": "not_checked"
+      }
+    },
+    {
+      "id": "lesker-deposition-guides",
+      "title": "Lesker 材料沉积表与 YbF3 蒸发指导",
+      "organization": "Kurt J. Lesker Company",
+      "category": "process",
+      "priority": 1,
+      "data_kind": [
+        "process_guidance"
+      ],
+      "domains": [
+        "vacuum_deposition",
+        "thermal_evaporation",
+        "ZnS",
+        "YbF3"
+      ],
+      "summary": "密度、蒸气压对应温度、源/坩埚兼容性与工艺建议；用于工艺先验而非通用保证。",
+      "offline_status": "reference_only",
+      "access": {
+        "online_view": true,
+        "download_available": false,
+        "login": "not_required",
+        "payment": "free",
+        "formats": [
+          "HTML"
+        ],
+        "api": []
+      },
+      "rights": {
+        "offline_use": "unknown",
+        "redistribution": "unknown",
+        "license": "Not verified",
+        "evidence_urls": [
+          "https://www.lesker.com/newweb/deposition_materials/materialdepositionchart.cfm"
+        ],
+        "notes": []
+      },
+      "reviewed_at": "2026-10-18",
+      "links": [
+        {
+          "role": "official_source",
+          "title": "Lesker 材料沉积表与 YbF3 蒸发指导",
+          "url": "https://www.lesker.com/newweb/deposition_materials/materialdepositionchart.cfm"
+        },
+        {
+          "role": "process_guidance",
+          "title": "YbF3 thermal evaporation",
+          "url": "https://www.lesker.com/newweb/faqs/question.cfm?id=404"
+        }
+      ],
+      "files": [],
+      "limitations": [
+        "基压不同于平衡蒸气压；沉积速率依赖设备几何和工艺。"
+      ],
+      "unknowns": [
+        "批量离线许可、开放API与再分发许可未核实。"
+      ],
+      "integration": {
+        "workflow": "reference_metadata_only",
+        "bundled_numeric_data": false,
+        "host_installation": "not_checked"
+      }
+    },
+    {
+      "id": "schott-optical-glass",
+      "title": "SCHOTT 官方光学玻璃目录",
+      "organization": "SCHOTT",
+      "category": "substrates",
+      "priority": 1,
+      "data_kind": [
+        "manufacturer_catalog"
+      ],
+      "domains": [
+        "substrate",
+        "glass",
+        "dispersion",
+        "thermo_optic"
+      ],
+      "summary": "官方提供XLSX与Zemax AGF压缩包，可作个人本地导入候选；保留厂商牌号、目录版本与波段。",
+      "offline_status": "official_download",
+      "access": {
+        "online_view": true,
+        "download_available": true,
+        "login": "not_required",
+        "payment": "free",
+        "formats": [
+          "XLSX",
+          "AGF",
+          "ZIP",
+          "PDF"
+        ],
+        "api": []
+      },
+      "rights": {
+        "offline_use": "conditional",
+        "redistribution": "conditional",
+        "license": "Vendor terms; no blanket open redistribution license verified",
+        "evidence_urls": [
+          "https://www.schott.com/en-us/products/optical-glass",
+          "https://www.schott.com/en-us/disclaimer"
+        ],
+        "notes": [
+          "官网明确提供下载与使用；个人原文件离线和软件公开打包是不同范围。",
+          "官网条款要求商业目的复制/传播/修改/第三方提供获得事先书面许可；非商业打包权限仍未明确核实。",
+          "已核实AGF包CC头为June 2025，不能以本次下载日期替代数据版本。"
+        ]
+      },
+      "reviewed_at": "2026-10-18",
+      "links": [
+        {
+          "role": "official_source",
+          "title": "SCHOTT 官方光学玻璃目录",
+          "url": "https://www.schott.com/en-us/products/optical-glass"
+        },
+        {
+          "role": "license_evidence",
+          "title": "SCHOTT disclaimer",
+          "url": "https://www.schott.com/en-us/disclaimer"
+        },
+        {
+          "role": "independent_context",
+          "title": "Essential Macleod historical catalogue updates",
+          "url": "https://www.thinfilmcenter.com/support/changes.htm"
+        }
+      ],
+      "files": [
+        {
+          "name": "schott-optical-glass-overview.xlsx",
+          "url": "https://media.schott.com/api/public/content/7f5a58f7fa754445abab44cafc76acb3?v=a102056c&download=true",
+          "bytes": 325985,
+          "sha256": "4130b9a56d8f29eff8dedeeb7ce29758de68895cbf5d625ba301031bf8a2ac06"
+        },
+        {
+          "name": "schott-optical-glass-zemax.zip",
+          "url": "https://media.schott.com/api/public/content/a79c07aa61da4c05a2c0bbab93d09a7f?v=3b65e351&download=true",
+          "bytes": 69798,
+          "sha256": "448c1ae62ed661f4e6e5e20fe5c30ddefeed9187fe4b5786a848e2bec7ef6047"
+        }
+      ],
+      "limitations": [
+        "块体玻璃不是沉积薄膜；内部透过率不含表面反射损失。",
+        "Macleod内置目录不授权从该商业软件抽取数据。"
+      ],
+      "unknowns": [
+        "目录专属公开再分发许可未发现；当前主机安装状态未检查。"
+      ],
+      "integration": {
+        "workflow": "local_import_candidate",
+        "bundled_numeric_data": false,
+        "host_installation": "not_checked"
+      }
+    },
+    {
+      "id": "ohara-optical-glass",
+      "title": "OHARA 官方光学玻璃目录",
+      "organization": "OHARA",
+      "category": "substrates",
+      "priority": 1,
+      "data_kind": [
+        "manufacturer_catalog"
+      ],
+      "domains": [
+        "substrate",
+        "glass",
+        "dispersion",
+        "thermo_optic"
+      ],
+      "summary": "官方公开目录，可离线文件获取；数据格式、厂商品牌和原始版本单独保留。",
+      "offline_status": "official_download",
+      "access": {
+        "online_view": true,
+        "download_available": true,
+        "login": "not_required",
+        "payment": "free",
+        "formats": [
+          "CSV",
+          "XLSX",
+          "AGF",
+          "ZIP",
+          "PDF"
+        ],
+        "api": []
+      },
+      "rights": {
+        "offline_use": "conditional",
+        "redistribution": "unknown",
+        "license": "Vendor terms; no open redistribution license verified",
+        "evidence_urls": [
+          "https://www.ohara-inc.co.jp/en/product/catalog/"
+        ],
+        "notes": [
+          "页面2026-05-29/2026-07-01目录；各文件版本可能不同，保留文件名和表内版本。",
+          "官网下载入口支持个人离线取得原文件；并未确认随软件再分发的一般许可。"
+        ]
+      },
+      "reviewed_at": "2026-10-18",
+      "links": [
+        {
+          "role": "official_source",
+          "title": "OHARA 官方光学玻璃目录",
+          "url": "https://www.ohara-inc.co.jp/en/product/catalog/"
+        }
+      ],
+      "files": [
+        {
+          "name": "OHARA_260529_CATALOG.zip",
+          "url": "https://www.ohara-inc.co.jp/wp-content/uploads/2022/02/OHARA_260529_CATALOG.zip",
+          "bytes": 40875,
+          "sha256": "d892108afd3206379b39b4d0603497759e42d1689112d39835c1d75e14467765",
+          "members": [
+            "OHARA_260529_CATALOG.AGF"
+          ]
+        },
+        {
+          "name": "OHARA_20260402_6.csv",
+          "url": "https://www.ohara-inc.co.jp/wp-content/uploads/2022/02/OHARA_20260402_6.csv",
+          "bytes": 308128,
+          "sha256": "a6c3e0f5d895b8f44858ccd0ce0e8443afe72508fc1ac91def2e5508988174ad"
+        }
+      ],
+      "limitations": [
+        "玻璃目录不是薄膜n,k；不能根据相似牌号直接认定配方或光学参数相同。"
+      ],
+      "unknowns": [
+        "软件公开打包权限须按厂商具体条款复核。"
+      ],
+      "integration": {
+        "workflow": "local_import_candidate",
+        "bundled_numeric_data": false,
+        "host_installation": "not_checked"
+      }
+    },
+    {
+      "id": "hoya-optical-glass",
+      "title": "HOYA 官方光学玻璃目录",
+      "organization": "HOYA",
+      "category": "substrates",
+      "priority": 1,
+      "data_kind": [
+        "manufacturer_catalog"
+      ],
+      "domains": [
+        "substrate",
+        "glass",
+        "dispersion",
+        "thermo_optic"
+      ],
+      "summary": "官方公开目录，可离线文件获取；数据格式、厂商品牌和原始版本单独保留。",
+      "offline_status": "official_download",
+      "access": {
+        "online_view": true,
+        "download_available": true,
+        "login": "not_required",
+        "payment": "free",
+        "formats": [
+          "XLSX",
+          "AGF",
+          "GLC",
+          "TXT"
+        ],
+        "api": []
+      },
+      "rights": {
+        "offline_use": "allowed",
+        "redistribution": "restricted",
+        "license": "Vendor personal-use terms",
+        "evidence_urls": [
+          "https://www.hoya-opticalworld.com/english/datadownload/index.html",
+          "https://www.hoya-opticalworld.com/english/sitepolicy.html"
+        ],
+        "notes": [
+          "XLSX标2026-06-01，AGF标2026-07-07；现售与含停产品种目录应区分。",
+          "HOYA条款明确允许个人使用的电脑存储/打印；其他复制、修改或分发需事先书面许可。"
+        ]
+      },
+      "reviewed_at": "2026-10-18",
+      "links": [
+        {
+          "role": "official_source",
+          "title": "HOYA 官方光学玻璃目录",
+          "url": "https://www.hoya-opticalworld.com/english/datadownload/index.html"
+        },
+        {
+          "role": "terms",
+          "title": "Vendor terms",
+          "url": "https://www.hoya-opticalworld.com/english/sitepolicy.html"
+        }
+      ],
+      "files": [
+        {
+          "name": "HOYA20260707.agf",
+          "url": "https://www.hoya-opticalworld.com/common/agf/HOYA20260707.agf",
+          "bytes": 519762,
+          "sha256": "4b4c9aaf5c87b1abb233992891fdba42b9568157c13d0bd56e10eeac77c4727d"
+        },
+        {
+          "name": "HOYA20260601.xlsx",
+          "url": "https://www.hoya-opticalworld.com/common/xls/HOYA20260601.xlsx",
+          "bytes": 1534669,
+          "sha256": "89e1d0926e1af6c36b19c3ad8569c307a68eecc6bec6c9517e817862d3c6d0d5"
+        }
+      ],
+      "limitations": [
+        "玻璃目录不是薄膜n,k；不能根据相似牌号直接认定配方或光学参数相同。"
+      ],
+      "unknowns": [
+        "软件公开打包权限须按厂商具体条款复核。"
+      ],
+      "integration": {
+        "workflow": "local_import_candidate",
+        "bundled_numeric_data": false,
+        "host_installation": "not_checked"
+      }
+    },
+    {
+      "id": "nikon-optical-glass",
+      "title": "Nikon 官方 Zemax 玻璃目录",
+      "organization": "Nikon",
+      "category": "substrates",
+      "priority": 1,
+      "data_kind": [
+        "manufacturer_catalog"
+      ],
+      "domains": [
+        "substrate",
+        "glass",
+        "dispersion",
+        "thermo_optic"
+      ],
+      "summary": "官方公开目录，可离线文件获取；数据格式、厂商品牌和原始版本单独保留。",
+      "offline_status": "official_download",
+      "access": {
+        "online_view": true,
+        "download_available": true,
+        "login": "not_required",
+        "payment": "free",
+        "formats": [
+          "AGF",
+          "ZIP",
+          "PDF"
+        ],
+        "api": []
+      },
+      "rights": {
+        "offline_use": "conditional",
+        "redistribution": "restricted",
+        "license": "Vendor terms; no open redistribution license verified",
+        "evidence_urls": [
+          "https://www.nikon.com/business/components/downloads/",
+          "https://www.nikon.com/usage/",
+          "https://www.nikon.com/usage/group-info/"
+        ],
+        "notes": [
+          "官方Zemax ZIP页面标2019-11；必须保留历史版本，不当作2026材料更新。",
+          "官网下载入口支持个人离线取得原文件；并未确认随软件再分发的一般许可。",
+          "Nikon条款保留非商业个人用途例外；其他复制/发布/分发需书面许可。目录不推断商业授权。"
+        ]
+      },
+      "reviewed_at": "2026-10-18",
+      "links": [
+        {
+          "role": "official_source",
+          "title": "Nikon 官方 Zemax 玻璃目录",
+          "url": "https://www.nikon.com/business/components/downloads/"
+        },
+        {
+          "role": "terms",
+          "title": "Vendor terms",
+          "url": "https://www.nikon.com/usage/"
+        },
+        {
+          "role": "terms",
+          "title": "Nikon Terms and Conditions of Use",
+          "url": "https://www.nikon.com/usage/group-info/"
+        }
+      ],
+      "files": [
+        {
+          "name": "nikon_zemax_data.zip",
+          "url": "https://www.nikon.com/business/components/assets/pdf/nikon_zemax_data.zip",
+          "bytes": 56513,
+          "sha256": "0aa6710cd842e18639f8148b4c2b5d24c19c0770309d9bfdb75ed16cc702406c",
+          "members": [
+            "NIKON-HIKARI_201911.AGF"
+          ]
+        }
+      ],
+      "limitations": [
+        "玻璃目录不是薄膜n,k；不能根据相似牌号直接认定配方或光学参数相同。"
+      ],
+      "unknowns": [
+        "软件公开打包权限须按厂商具体条款复核。"
+      ],
+      "integration": {
+        "workflow": "local_import_candidate",
+        "bundled_numeric_data": false,
+        "host_installation": "not_checked"
+      }
+    },
+    {
+      "id": "sumita-optical-glass",
+      "title": "SUMITA 官方光学玻璃目录",
+      "organization": "SUMITA",
+      "category": "substrates",
+      "priority": 1,
+      "data_kind": [
+        "manufacturer_catalog"
+      ],
+      "domains": [
+        "substrate",
+        "glass",
+        "dispersion",
+        "thermo_optic"
+      ],
+      "summary": "官方公开目录，可离线文件获取；数据格式、厂商品牌和原始版本单独保留。",
+      "offline_status": "official_download",
+      "access": {
+        "online_view": true,
+        "download_available": true,
+        "login": "not_required",
+        "payment": "free",
+        "formats": [
+          "XLSX",
+          "AGF",
+          "PDF"
+        ],
+        "api": []
+      },
+      "rights": {
+        "offline_use": "conditional",
+        "redistribution": "unknown",
+        "license": "Vendor terms; no open redistribution license verified",
+        "evidence_urls": [
+          "https://www.sumita-opt.co.jp/en/download/"
+        ],
+        "notes": [
+          "Excel目录版本14.02.00，Zemax网页更新2026-08-26；含停产与不含停产文件分开。",
+          "官网下载入口支持个人离线取得原文件；并未确认随软件再分发的一般许可。"
+        ]
+      },
+      "reviewed_at": "2026-10-18",
+      "links": [
+        {
+          "role": "official_source",
+          "title": "SUMITA 官方光学玻璃目录",
+          "url": "https://www.sumita-opt.co.jp/en/download/"
+        }
+      ],
+      "files": [
+        {
+          "name": "sumita-official-selection.zip",
+          "url": "https://www.sumita-opt.co.jp/en/wp/wp-content/themes/sumita-opt-en-v2026/download-files.php",
+          "bytes": 201206,
+          "sha256": "d6cb7435fa8490207f7117dab85810e480f47e645a860c24b765b5abd1e6aa9d",
+          "request_method": "POST",
+          "form_fields": [
+            [
+              "files[]",
+              "glassdata_ver14.02.00_en.xlsx"
+            ],
+            [
+              "files[]",
+              "zemax.agf"
+            ],
+            [
+              "category",
+              "data"
+            ],
+            [
+              "submit",
+              ""
+            ]
+          ],
+          "members": [
+            "sumita-opt-dl-data-20261018052610/",
+            "sumita-opt-dl-data-20261018052610/glassdata_ver14.02.00_en.xlsx",
+            "sumita-opt-dl-data-20261018052610/zemax.agf"
+          ]
+        }
+      ],
+      "limitations": [
+        "玻璃目录不是薄膜n,k；不能根据相似牌号直接认定配方或光学参数相同。"
+      ],
+      "unknowns": [
+        "软件公开打包权限须按厂商具体条款复核。"
+      ],
+      "integration": {
+        "workflow": "local_import_candidate",
+        "bundled_numeric_data": false,
+        "host_installation": "not_checked"
+      }
+    },
+    {
+      "id": "cdgm-optical-glass",
+      "title": "成都光明 CDGM 官方光学玻璃目录",
+      "organization": "CDGM GLASS",
+      "category": "substrates",
+      "priority": 1,
+      "data_kind": [
+        "manufacturer_catalog"
+      ],
+      "domains": [
+        "substrate",
+        "glass",
+        "dispersion",
+        "thermo_optic"
+      ],
+      "summary": "官方公开目录，可离线文件获取；数据格式、厂商品牌和原始版本单独保留。",
+      "offline_status": "official_download",
+      "access": {
+        "online_view": true,
+        "download_available": true,
+        "login": "not_required",
+        "payment": "free",
+        "formats": [
+          "AGF",
+          "XLSX",
+          "PDF"
+        ],
+        "api": []
+      },
+      "rights": {
+        "offline_use": "conditional",
+        "redistribution": "unknown",
+        "license": "Vendor terms; no open redistribution license verified",
+        "evidence_urls": [
+          "https://www.cdgmgd.com/"
+        ],
+        "notes": [
+          "厂商官网提供Optical Glass的ZEMAX/PDF/EXCEL下载；本轮保留原始版本。",
+          "官网下载入口支持个人离线取得原文件；并未确认随软件再分发的一般许可。",
+          "本轮官方响应Content-Disposition为CDGM-ZEMAX202609.AGF和CDGM202609.xlsx。"
+        ]
+      },
+      "reviewed_at": "2026-10-18",
+      "links": [
+        {
+          "role": "official_source",
+          "title": "成都光明 CDGM 官方光学玻璃目录",
+          "url": "https://www.cdgmgd.com/"
+        }
+      ],
+      "files": [
+        {
+          "name": "cdgm-zemax.agf",
+          "url": "https://www.cdgmgd.com/downloadFile.htm?uid=pvntrGdxCC64MZei1SX",
+          "bytes": 1325696,
+          "sha256": "e0933fe14749919b2b7c5170f814765af570ef53b78171dc98dae6b542f8e9ce",
+          "content_disposition": "attachment;filename=CDGM-ZEMAX202609.AGF",
+          "members": []
+        },
+        {
+          "name": "cdgm-excel.xlsx",
+          "url": "https://www.cdgmgd.com/downloadFile.htm?uid=d5ilBXjFgXCK9VxoDmb",
+          "bytes": 512077,
+          "sha256": "a387ad79999689b0d56bb263f70704f7e90f24108e377cfd215e20c7f74d1ac6",
+          "content_disposition": "attachment;filename=CDGM202609.xlsx",
+          "members": [
+            "[Content_Types].xml",
+            "_rels/",
+            "_rels/.rels",
+            "customXml/",
+            "customXml/_rels/",
+            "customXml/_rels/item1.xml.rels",
+            "customXml/item1.xml",
+            "customXml/itemProps1.xml",
+            "docProps/",
+            "docProps/app.xml",
+            "docProps/core.xml",
+            "docProps/custom.xml",
+            "xl/",
+            "xl/_rels/",
+            "xl/_rels/workbook.xml.rels",
+            "xl/sharedStrings.xml",
+            "xl/styles.xml",
+            "xl/theme/",
+            "xl/theme/theme1.xml",
+            "xl/workbook.xml",
+            "xl/worksheets/",
+            "xl/worksheets/sheet1.xml",
+            "xl/worksheets/sheet2.xml",
+            "xl/worksheets/sheet3.xml",
+            "xl/worksheets/sheet4.xml"
+          ]
+        }
+      ],
+      "limitations": [
+        "玻璃目录不是薄膜n,k；不能根据相似牌号直接认定配方或光学参数相同。"
+      ],
+      "unknowns": [
+        "软件公开打包权限须按厂商具体条款复核。"
+      ],
+      "integration": {
+        "workflow": "local_import_candidate",
+        "bundled_numeric_data": false,
+        "host_installation": "not_checked"
+      }
+    },
+    {
+      "id": "merck-patinal",
+      "title": "Merck / EMD Patinal 镀膜材料资料",
+      "organization": "Merck / Sigma-Aldrich / EMD",
+      "category": "process",
+      "priority": 1,
+      "data_kind": [
+        "manufacturer_catalog"
+      ],
+      "domains": [
+        "thin_film",
+        "evaporation",
+        "Patinal",
+        "H4",
+        "H4 HD",
+        "ZnS",
+        "YbF3"
+      ],
+      "summary": "官方H4 HD产品资料及Patinal手册，覆盖商品混合物、工艺建议与光学图表。H4、H4 HD保持独立商品身份。",
+      "offline_status": "official_download",
+      "access": {
+        "online_view": true,
+        "download_available": true,
+        "login": "not_required",
+        "payment": "free",
+        "formats": [
+          "PDF"
+        ],
+        "api": []
+      },
+      "rights": {
+        "offline_use": "conditional",
+        "redistribution": "unknown",
+        "license": "Not verified",
+        "evidence_urls": [
+          "https://www.sigmaaldrich.com/deepweb/assets/sigmaaldrich/product/documents/534/266/subh4hd-us-102437-ms.pdf"
+        ],
+        "notes": [
+          "H4 HD产品PDF自身版本为02/2009；brochure文件名含2016。本轮访问日期不代表数据更新日期。",
+          "原文件可作为离线产品参考；开放再分发许可未核实。"
+        ]
+      },
+      "reviewed_at": "2026-10-18",
+      "links": [
+        {
+          "role": "official_source",
+          "title": "Merck / EMD Patinal 镀膜材料资料",
+          "url": "https://www.sigmaaldrich.com/deepweb/assets/sigmaaldrich/product/documents/534/266/subh4hd-us-102437-ms.pdf"
+        },
+        {
+          "role": "brochure",
+          "title": "Patinal evaporation materials brochure",
+          "url": "https://www.sigmaaldrich.com/deepweb/assets/sigmaaldrich/product/documents/204/730/161109-02-patinalbrochure-rebranding-a4-engl-deutsch-screen-ms.pdf"
+        }
+      ],
+      "files": [
+        {
+          "name": "h4-hd-patinal-102437-200902.pdf",
+          "url": "https://www.sigmaaldrich.com/deepweb/assets/sigmaaldrich/product/documents/534/266/subh4hd-us-102437-ms.pdf",
+          "bytes": 134204,
+          "sha256": "1c66010ae956febba7e190494153eaf259007f4a023536fd5b038f75a7644057"
+        },
+        {
+          "name": "patinal-brochure-2016.pdf",
+          "url": "https://www.sigmaaldrich.com/deepweb/assets/sigmaaldrich/product/documents/204/730/161109-02-patinalbrochure-rebranding-a4-engl-deutsch-screen-ms.pdf",
+          "bytes": 2060210,
+          "sha256": "43223c62ae8f8301a15268f374758e0d5dc61d44a75b2a6b9d4efe72918a119e"
+        }
+      ],
+      "limitations": [
+        "H4等是厂商品牌混合物，不能猜成TiO2/ZrO2等通用氧化物。",
+        "PDF曲线不是机器可用精确n,k表；需另核查表格/拟合参数和制备条件。",
+        "专利/产品资料的存在不授权制造或公开复制全部资料。"
+      ],
+      "unknowns": [
+        "当前产品批次、商品配方、完整数字光谱和再分发许可未核实。"
+      ],
+      "integration": {
+        "workflow": "offline_product_reference_candidate",
+        "bundled_numeric_data": false,
+        "host_installation": "not_checked"
+      }
+    },
+    {
+      "id": "nist-chemistry-webbook",
+      "title": "NIST Chemistry WebBook SRD 69",
+      "organization": "NIST",
+      "category": "thermochemistry",
+      "priority": 2,
+      "data_kind": [
+        "reviewed_compilation"
+      ],
+      "domains": [
+        "thermochemistry",
+        "vapor_pressure",
+        "phase_change"
+      ],
+      "summary": "物种热容、焓、熵、相变与蒸气压资料及原文参考；按字段和适用温区核对。",
+      "offline_status": "reference_only",
+      "access": {
+        "online_view": true,
+        "download_available": false,
+        "login": "not_required",
+        "payment": "free",
+        "formats": [
+          "HTML"
+        ],
+        "api": []
+      },
+      "rights": {
+        "offline_use": "unknown",
+        "redistribution": "unknown",
+        "license": "NIST SRD copyright; no bulk redistribution grant verified",
+        "evidence_urls": [
+          "https://webbook.nist.gov/chemistry/contact/",
+          "https://www.nist.gov/open/copyright-fair-use-and-licensing-statements-srd-data-software-and-technical-series-publications"
+        ],
+        "notes": [
+          "SRD受专门版权规则保护，不因美国政府来源而自动视为公有领域。"
+        ]
+      },
+      "reviewed_at": "2026-10-18",
+      "links": [
+        {
+          "role": "official_source",
+          "title": "NIST Chemistry WebBook SRD 69",
+          "url": "https://webbook.nist.gov/chemistry/guide/"
+        }
+      ],
+      "files": [],
+      "limitations": [
+        "不是薄膜n,k库；不同物种字段不齐。"
+      ],
+      "unknowns": [
+        "ZnS/YbF3具体字段覆盖、整体离线获取许可、官方批量API未核实。"
+      ],
+      "integration": {
+        "workflow": "reference_metadata_only",
+        "bundled_numeric_data": false,
+        "host_installation": "not_checked"
+      }
+    },
+    {
+      "id": "jena-ocdb",
+      "title": "Jena 宇宙尘埃光学常数库",
+      "organization": "Friedrich Schiller University Jena",
+      "category": "optical_constants",
+      "priority": 2,
+      "data_kind": [
+        "measured"
+      ],
+      "domains": [
+        "infrared",
+        "minerals",
+        "cosmic_dust"
+      ],
+      "summary": "矿物/氧化物/硫化物/碳的波长或波数、n,k文本数据，部分含中远红外温度依赖。",
+      "offline_status": "official_download",
+      "access": {
+        "online_view": true,
+        "download_available": true,
+        "login": "not_required",
+        "payment": "free",
+        "formats": [
+          "text"
+        ],
+        "api": []
+      },
+      "rights": {
+        "offline_use": "unknown",
+        "redistribution": "unknown",
+        "license": "Not verified",
+        "evidence_urls": [
+          "https://www2.astro.uni-jena.de/Laboratory/OCDB/"
+        ],
+        "notes": [
+          "官方提供下载并要求引用原论文；引用要求不能代替完整再分发许可。"
+        ]
+      },
+      "reviewed_at": "2026-10-18",
+      "links": [
+        {
+          "role": "official_source",
+          "title": "Jena 宇宙尘埃光学常数库",
+          "url": "https://www2.astro.uni-jena.de/Laboratory/OCDB/"
+        }
+      ],
+      "files": [],
+      "limitations": [
+        "多为块体/薄切片实验与拟合，不等同工业沉积膜。"
+      ],
+      "unknowns": [
+        "个人离线具体许可和公开再分发条款未明确核实。"
+      ],
+      "integration": {
+        "workflow": "metadata_only_pending_rights",
+        "bundled_numeric_data": false,
+        "host_installation": "not_checked"
+      }
+    },
+    {
+      "id": "nist-jarvis-optical",
+      "title": "JARVIS 光学与介电计算数据",
+      "organization": "NIST JARVIS",
+      "category": "theoretical",
+      "priority": 3,
+      "data_kind": [
+        "computed"
+      ],
+      "domains": [
+        "crystalline_materials",
+        "dielectric_function",
+        "DFT"
+      ],
+      "summary": "DFT频率依赖介电函数、张量和带隙；只登记与光学直接相关的数据路线，不下载庞大全库。",
+      "offline_status": "official_download",
+      "access": {
+        "online_view": true,
+        "download_available": true,
+        "login": "route_dependent",
+        "payment": "free",
+        "formats": [
+          "JSON",
+          "XML"
+        ],
+        "api": [
+          {
+            "name": "JARVIS OPTIMADE",
+            "url": "https://jarvis.nist.gov/optimade/jarvisdft/",
+            "verification": "officially_documented_not_called",
+            "auth": "not_verified"
+          },
+          {
+            "name": "JARVIS REST documentation",
+            "url": "https://jarvis.nist.gov/help/",
+            "verification": "officially_documented_not_called",
+            "auth": "account_may_be_required"
+          }
+        ]
+      },
+      "rights": {
+        "offline_use": "unknown",
+        "redistribution": "unknown",
+        "license": "Not verified",
+        "evidence_urls": [
+          "https://jarvis.nist.gov/"
+        ],
+        "notes": [
+          "当前网页数据库/应用要求免费账号；官方另列Figshare/Python和OPTIMADE路线。",
+          "代码许可证与每个具体数据集许可证分开核实。"
+        ]
+      },
+      "reviewed_at": "2026-10-18",
+      "links": [
+        {
+          "role": "official_source",
+          "title": "JARVIS 光学与介电计算数据",
+          "url": "https://jarvis.nist.gov/"
+        },
+        {
+          "role": "documentation",
+          "title": "JARVIS data download documentation",
+          "url": "https://pages.nist.gov/jarvis/databases/"
+        },
+        {
+          "role": "documentation",
+          "title": "JARVIS REST help",
+          "url": "https://jarvis.nist.gov/help/"
+        }
+      ],
+      "files": [],
+      "limitations": [
+        "理论理想晶体不能代替实际薄膜、ITO载流子和工艺效应。",
+        "OPTIMADE结构API不保证返回完整光学谱。"
+      ],
+      "unknowns": [
+        "待选光学数据子集的确切文件、体积、授权和API光谱字段未核实。"
+      ],
+      "integration": {
+        "workflow": "metadata_only_pending_subset_and_rights",
+        "bundled_numeric_data": false,
+        "host_installation": "not_checked"
+      }
+    },
+    {
+      "id": "palik-handbook",
+      "title": "Palik Handbook of Optical Constants of Solids",
+      "organization": "Elsevier / Academic Press",
+      "category": "handbook",
+      "priority": 3,
+      "data_kind": [
+        "reviewed_compilation"
+      ],
+      "domains": [
+        "optical_constants",
+        "solid_materials"
+      ],
+      "summary": "经评述的光学常数与原始文献，用于交叉核查、测量方法背景和波段缺口追溯。",
+      "offline_status": "access_required",
+      "access": {
+        "online_view": true,
+        "download_available": false,
+        "login": "route_dependent",
+        "payment": "paid_or_institutional",
+        "formats": [
+          "book",
+          "PDF"
+        ],
+        "api": []
+      },
+      "rights": {
+        "offline_use": "unknown",
+        "redistribution": "unknown",
+        "license": "Not verified",
+        "evidence_urls": [
+          "https://shop.elsevier.com/books/handbook-of-optical-constants-of-solids/palik/978-0-08-053378-0"
+        ],
+        "notes": []
+      },
+      "reviewed_at": "2026-10-18",
+      "links": [
+        {
+          "role": "official_source",
+          "title": "Palik Handbook of Optical Constants of Solids",
+          "url": "https://shop.elsevier.com/books/handbook-of-optical-constants-of-solids/palik/978-0-08-053378-0"
+        }
+      ],
+      "files": [],
+      "limitations": [
+        "未购买、登录或获取全文；阅读权限不等于数值表公开分发权。"
+      ],
+      "unknowns": [
+        "具体购买/机构版本的个人离线和再分发许可未核实。"
+      ],
+      "integration": {
+        "workflow": "reference_metadata_only",
+        "bundled_numeric_data": false,
+        "host_installation": "not_checked"
+      }
+    },
+    {
+      "id": "cxro-henke",
+      "title": "CXRO / Henke 原子散射因子",
+      "organization": "Lawrence Berkeley National Laboratory",
+      "category": "optical_constants",
+      "priority": 3,
+      "data_kind": [
+        "reviewed_compilation"
+      ],
+      "domains": [
+        "EUV",
+        "X_ray"
+      ],
+      "summary": "主要服务EUV/X射线的能量、f1、f2数据文件；当前可见/红外镀膜任务不优先。",
+      "offline_status": "official_download",
+      "access": {
+        "online_view": true,
+        "download_available": true,
+        "login": "not_required",
+        "payment": "free",
+        "formats": [
+          "ASCII",
+          "archive"
+        ],
+        "api": []
+      },
+      "rights": {
+        "offline_use": "unknown",
+        "redistribution": "unknown",
+        "license": "Not verified",
+        "evidence_urls": [
+          "https://henke.lbl.gov/optical_constants/asf.html"
+        ],
+        "notes": []
+      },
+      "reviewed_at": "2026-10-18",
+      "links": [
+        {
+          "role": "official_source",
+          "title": "CXRO / Henke 原子散射因子",
+          "url": "https://henke.lbl.gov/optical_constants/asf.html"
+        }
+      ],
+      "files": [],
+      "limitations": [
+        "标准文件低能段f1可能为-9999缺值；不能当可见/红外n,k库。",
+        "化合物计算依赖密度和模型假设。"
+      ],
+      "unknowns": [
+        "个人离线及公开再分发具体许可未核实。"
+      ],
+      "integration": {
+        "workflow": "metadata_only_outside_current_domain",
+        "bundled_numeric_data": false,
+        "host_installation": "not_checked"
+      }
+    }
+  ]
+}

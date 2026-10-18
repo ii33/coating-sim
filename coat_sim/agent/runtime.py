@@ -299,6 +299,9 @@ class StableCompaction(AbstractCapability):
 READ_TOOLS = frozenset({
     "algorithm_reference_catalog", "algorithm_reference_search", "algorithm_reference_read",
     "project_knowledge_search", "material_data_readiness",
+    "refractiveindex_status", "refractiveindex_search", "refractiveindex_detail",
+    "refractiveindex_preview", "refractiveindex_convert",
+    "reference_sources_catalog", "reference_sources_detail",
     "project_management_catalog", "project_list", "project_inspect", "project_resolve", "project_editor_snapshot",
     "project_research_search", "project_research_read",
     "project_bbs_list", "project_bbs_read", "project_bbs_history",
@@ -1443,6 +1446,9 @@ async def _cancel_jobs(client: Client, ledger: JobLedger, session: str, request:
 _COMMON = frozenset({"project_bbs_list", "project_bbs_read", "project_bbs_history", "project_research_search", "project_research_read", "project_management_catalog", "project_list", "project_inspect", "project_resolve", "project_editor_snapshot", "read_software_manual", "input_schema", "read_design", "validate_design", "resolve_design_dependencies",
                      "algorithm_reference_catalog", "algorithm_reference_search", "algorithm_reference_read",
                      "project_knowledge_search", "material_data_readiness",
+    "refractiveindex_status", "refractiveindex_search", "refractiveindex_detail",
+    "refractiveindex_preview", "refractiveindex_convert",
+    "reference_sources_catalog", "reference_sources_detail",
                      "list_windows", "read_window", "list_data_files", "read_data_file", "python_sandbox_status",
                      "preview_film_stack_import", "read_process_layers", "film_design_schema",
                      "film_materials", "validate_film_design", "load_film_design",
@@ -1451,6 +1457,9 @@ _JOB_READ = frozenset({"calculation_job_status", "wait_calculation_job", "find_c
                        "calculation_job_result", "read_calculation_result", "calculation_history", "design_workflow_status"})
 COORDINATOR_TOOLS = frozenset({"project_bbs_list", "project_bbs_read", "project_bbs_history", "project_research_search", "project_research_read", "project_management_catalog", "project_list", "project_inspect", "project_resolve", "project_editor_snapshot", "list_windows", "read_window", "calculation_history",
                                "algorithm_reference_catalog", "algorithm_reference_search", "algorithm_reference_read", "project_knowledge_search", "material_data_readiness",
+                               "refractiveindex_status", "refractiveindex_search", "refractiveindex_detail",
+                               "refractiveindex_preview", "refractiveindex_convert",
+    "reference_sources_catalog", "reference_sources_detail",
                                "read_calculation_result", "find_calculation_job", "calculation_job_status", "list_data_files", "read_data_file"})
 EXECUTION_TOOLS = {
     "windows": frozenset({"project_list", "project_editor_snapshot", "project_open", "read_software_manual", "list_windows", "read_window", "open_window", "close_window", "update_window", "window_action"}),
@@ -1902,7 +1911,10 @@ async def run_task(command: dict[str, Any], writer: Any, *,
         "算法细节用project_tools发现algorithm_reference_catalog/search/read，正文按section_id和expected_version分页。"
         "工程经验用project_knowledge_search按明确工程检索BBS和研究证据，沿read_tool/read_arguments读取；"
         "next_offset是扫描位置，即使本页无命中也可继续，不能视作总库无资料。"
-        "材料范围用material_data_readiness检查真实库记录、波段和optical_set_id，未知不等于透明或无损。")
+        "材料范围用material_data_readiness检查真实库记录、波段和optical_set_id，未知不等于透明或无损。"
+        "本地RII参考库用refractiveindex_status/search/detail/preview/convert按需查询；未安装就如实报告，不触发下载。"
+        "预览曲线不等于可计算数据，非线性n2不是消光系数k；convert只返回候选，不自动导入或覆盖材料。"
+        "其它官方资料用reference_sources_catalog/detail查看来源、适用范围和离线/再分发条件；目录存在不代表已下载或本机可用。")
     instructions += (
         "\nPortable toolkit: call toolkit_status for actual readiness, toolkit_catalog for compact discovery or exact schemas, "
         "and toolkit_action to invoke. Disabled/missing providers are unavailable; do not claim remote, execution, OCR or DSH integration. "

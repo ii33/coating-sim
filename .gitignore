@@ -74,3 +74,7 @@ artifacts/logs/*.log
 
 # Local research routing contains machine-specific private paths.
 /config/assistant_research_library.json
+
+# Optional local reference snapshots and generated indexes are not source assets.
+/data/refractiveindex/
+/reference-databases/

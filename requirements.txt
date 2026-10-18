@@ -21,3 +21,6 @@ openpyxl>=3.1.5,<4
 
 # Isolated research PDF text extraction (BSD-3-Clause).
 pypdf>=6.21,<7
+
+# Safe parsing of the explicitly imported local refractiveindex data snapshot.
+PyYAML>=6.0.3,<7

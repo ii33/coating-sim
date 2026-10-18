@@ -87,6 +87,8 @@ python tools/run_tests.py all
 - [固定膜系参考配方](docs/algorithms.html#film-reference-fixed-recipes) · [参考配方契约](docs/film-design-reference-library-contract.md)
 - [助手算法与工程知识检索](docs/assistant-knowledge-contract.md) · [工程记忆与研究访问](docs/assistant-memory-research-contract.md)
 - [材料数据适用性诊断](docs/material-data-readiness.md) · [ITO 条件化光学数据](data/optical_catalog_sources/rii_ito_minenkov_20261018_v1/README.md)
+- [本地 refractiveindex 参考库](docs/refractiveindex-local-contract.md) · [离线浏览与按需导入](docs/refractiveindex-browser-contract.md) · [CLI/MCP](docs/refractiveindex-tools-contract.md)
+- [厂商 AGF 目录及空气参考近似](docs/vendor-optical-catalog-contract.md) · [官方参考来源与离线许可](docs/reference-sources.md)
 - [膜系光谱仿真](docs/film-simulation-quick.md) · [优化方法](docs/film-optimization-methods.md)
 - [统一资产与材料编辑](docs/unified-asset-library-contract.md) · [最近保存配置策略](docs/project-recent-configuration-contract.md)
 - [CLI / MCP / 助手能力矩阵](docs/entrypoint-capabilities.md) · [MCP 接入](docs/mcp.md)

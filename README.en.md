@@ -90,6 +90,8 @@ Do not post exploit details, keys, or private data in public security issues. If
 - [Fixed film-stack reference recipes](docs/algorithms.html#film-reference-fixed-recipes) · [Reference recipe contract](docs/film-design-reference-library-contract.md)
 - [Assistant algorithm and project knowledge retrieval](docs/assistant-knowledge-contract.md) · [Project memory and research access](docs/assistant-memory-research-contract.md)
 - [Material data applicability checks](docs/material-data-readiness.md) · [Sample-specific ITO optical data](data/optical_catalog_sources/rii_ito_minenkov_20261018_v1/README.md)
+- [Local refractiveindex reference snapshots](docs/refractiveindex-local-contract.md) · [Offline browsing and explicit import](docs/refractiveindex-browser-contract.md) · [CLI/MCP](docs/refractiveindex-tools-contract.md)
+- [Vendor AGF catalogues and reference-air approximation](docs/vendor-optical-catalog-contract.md) · [Official sources and offline rights](docs/reference-sources.md)
 - [Thin-film spectral simulation](docs/film-simulation-quick.md) · [Optimization methods](docs/film-optimization-methods.md)
 - [Unified assets and material editing](docs/unified-asset-library-contract.md) · [Last-saved configuration policy](docs/project-recent-configuration-contract.md)
 - [CLI / MCP / assistant capability matrix](docs/entrypoint-capabilities.md) · [MCP setup](docs/mcp.md)

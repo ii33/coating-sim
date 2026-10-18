@@ -30,6 +30,7 @@ class ResourceLibraryBridge(AssetLibraryActions):
         self.window: Any = None
         self._material_bridge: Any = None
         self._material_controller: Any = None
+        self._refractive_index_browser: Any = None
         self._material_editor_active = False
         self._material_pending_id = ""
         self._material_section_pending = False
@@ -76,7 +77,8 @@ class ResourceLibraryBridge(AssetLibraryActions):
     def assetApplying(self):
         return bool(self._deletion_applying or self._transfer_applying or (self._material_controller is not None
                     and self._material_controller._transfer_applying)
-                    or (self._material_bridge is not None and self._material_bridge.operationBusy))
+                    or (self._material_bridge is not None and self._material_bridge.operationBusy)
+                    or (self._refractive_index_browser is not None and self._refractive_index_browser.applying))
 
     @Property(bool, notify=libraryChanged)
     def assetCancellable(self):
@@ -89,6 +91,51 @@ class ResourceLibraryBridge(AssetLibraryActions):
     @Property(QObject, notify=libraryChanged)
     def materialResources(self):
         return self._material_controller
+
+    @Property(QObject, notify=libraryChanged)
+    def refractiveIndexBrowser(self):
+        return self._refractive_index_browser
+
+    @Slot(result=bool)
+    def openRefractiveIndexBrowser(self):
+        if self._disposed or self.assetApplying or self._deletion_busy or self._transfer_busy:
+            return False
+        if self._refractive_index_browser is None:
+            from .refractiveindex_browser import RefractiveIndexBrowserBridge
+            try:
+                self._refractive_index_browser = RefractiveIndexBrowserBridge(self)
+            except (ValueError, OSError) as exc:
+                self._message = "本地折射率数据库配置无效：" + str(exc)
+                self.libraryChanged.emit()
+                return False
+            self._refractive_index_browser.changed.connect(self.libraryChanged)
+            self.libraryChanged.emit()
+        return bool(self._refractive_index_browser.open())
+
+    def refractiveIndexImportBlocker(self):
+        """Admit one import without treating its own read-only popup as an edit."""
+        if (not self._current_catalog_owner() or self.assetApplying or self._transfer_busy
+                or self._deletion_busy or self._catalog_refresh_pending):
+            return "资产库仍在处理操作或已关闭，请等待后重新预览。"
+        if self._library_scope == "global":
+            from coat_sim.core.data_files import data_path
+            if self.service.root != data_path("data"):
+                return "全局材料库位置已变化，请重新打开资产库。"
+        if self.dirty or (self._material_bridge is not None and self._material_bridge.loading):
+            return "材料仍有未保存修改或正在加载，请先保存或明确放弃修改。"
+        resources = getattr(self, "resource_workspace", None)
+        if resources is not None and any(controller.dirty for controller in tuple(resources.controllers.values())):
+            return "当前工程仍有未保存的资源输入，请先处理后导入。"
+        if self.window is not None:
+            if self.window.property("projectPendingTextEdited"):
+                return "当前工程仍有待确认输入，请先完成或取消编辑。"
+            allowed = {"refractiveIndexBrowserDialog", "materialReferenceDialog",
+                       "materialReferenceDetailsDialog", "projectModuleMenu"}
+            for dialog in self.window.findChildren(QObject):
+                if (dialog.property("visible") is True and dialog.property("modal") is True
+                        and dialog.objectName() not in allowed):
+                    return "请先完成或取消其他待确认对话框。"
+        return ""
 
     @Property(bool, notify=libraryChanged)
     def materialEditorActive(self):
@@ -418,6 +465,8 @@ class ResourceLibraryBridge(AssetLibraryActions):
         if self.assetApplying:
             return  # The visible window rejects close while publication runs.
         self._disposed = True
+        if self._refractive_index_browser is not None:
+            self._refractive_index_browser.dispose()
         self._catalog_refresh_timer.stop()
         self._catalog_refresh_pending = False
         if self._unsubscribe_store is not None:

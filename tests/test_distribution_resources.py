@@ -15,6 +15,11 @@ _DOCUMENTS = (
     "installation.md",
     "assistant-knowledge-contract.md",
     "assistant-memory-research-contract.md",
+    "refractiveindex-local-contract.md",
+    "refractiveindex-tools-contract.md",
+    "refractiveindex-browser-contract.md",
+    "vendor-optical-catalog-contract.md",
+    "reference-sources.md",
 )
 
 
@@ -22,6 +27,7 @@ def _make_minimal_source_tree(root: Path) -> None:
     (root / "coat_sim" / "ui" / "qml").mkdir(parents=True)
     (root / "coat_sim" / "ui" / "assets").mkdir(parents=True)
     (root / "coat_sim" / "agent" / "resources").mkdir(parents=True)
+    (root / "coat_sim" / "core" / "resources").mkdir(parents=True)
     (root / "tools").mkdir()
     (root / "docs").mkdir()
 
@@ -39,6 +45,7 @@ def _make_minimal_source_tree(root: Path) -> None:
         "coat_sim/ui/qml/Main.qml",
         "coat_sim/ui/assets/icon.png",
         "coat_sim/agent/resources/software_manual.md",
+        "coat_sim/core/resources/reference_sources.json",
     )
     for relative in files:
         path = root / relative
@@ -76,6 +83,7 @@ def test_application_resources_snapshot_and_data_mapping_include_license_and_doc
     data_stage.mkdir()
     command: list[str] = []
     builder.add_qt_and_source_data_arguments(command, data_stage, snapshot)
+    assert command[command.index("--hidden-import") + 1] == "yaml"
 
     mappings = {}
     for index, item in enumerate(command[:-1]):
@@ -85,6 +93,8 @@ def test_application_resources_snapshot_and_data_mapping_include_license_and_doc
     assert all(mappings[name] == "docs" for name in _DOCUMENTS)
     assert mappings["version.txt"] == "coat_sim"
     assert mappings["LICENSE"] == "."
+    assert str(snapshot / "coat_sim/core/resources") + os.pathsep + "coat_sim/core/resources" in command
+    assert (snapshot / "coat_sim/core/resources/reference_sources.json").is_file()
 
 
 def test_application_resources_stages_cie_local_license_targets_at_data_root(
