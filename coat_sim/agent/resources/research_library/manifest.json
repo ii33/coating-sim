@@ -1,21 +1,24 @@
 {
   "schema_version": 1,
-  "version": "2026-10-18.1",
+  "version": "2026-10-18.2",
   "language": "zh-CN",
-  "coverage_note": "8 篇随项目内置的原创学习与研究指南；基于公开基础资料及独立教学推导，不是任何外部研究库的完整镜像；不包含私有研究、生产数据、第三方全文、图表或供应商原始数据库。",
-  "license": "MIT (project LICENSE); third-party cited works retain their own rights and are not bundled",
+  "coverage_note": "内置精选：公开研究库固定版本的42篇核心研究正文、11篇来源/权利说明，保留8篇原创入门指南及1篇收录说明；覆盖11专题，非全库镜像。研究正文不改授MIT，历史研究不等于软件实现或实机验证。",
+  "license": "Mixed: original 8 software guides retain MIT; research_snapshot imports are user-authorized project-authored text with no declared upstream blanket license. See RESEARCH_SNAPSHOT_NOTICE.md; no relicensing.",
   "source_policy": {
     "runtime_network_required": false,
     "executable_content": false,
     "private_sources_included": false,
     "full_text_third_party_included": false,
-    "source_commit_policy": "Public pages do not expose a source commit/blob SHA; null means unavailable, never a verified immutable snapshot. Bundled original text is fixed by SHA-256.",
+    "source_commit_policy": "Imported research uses exact upstream commit and blob SHA; existing public-web guide sources have null commit/blob. Provider SHA-256 identifies each packaged text after documented link/provenance transformations.",
     "verification_date": "2026-10-18",
     "limitations": [
       "Teaching examples are synthetic and not production qualification.",
       "No machine calibration or product certification.",
       "Source URLs may change; runtime reading does not fetch them.",
-      "ITO process citation is publisher abstract excerpt returned by search; direct page access failed; reading lead only, no recipe or full-text claims."
+      "ITO process citation is publisher abstract excerpt returned by search; direct page access failed; reading lead only, no recipe or full-text claims.",
+      "Selected upstream research only; not a full repository mirror or executable package.",
+      "Imported source claims retain their original date and scope, not freshly independently revalidated.",
+      "Upstream public visibility does not grant a blanket license; imported text is not under software MIT."
     ]
   },
   "sources": {
@@ -263,6 +266,1051 @@
         "qcm",
         "sphere"
       ]
+    },
+    {
+      "id": "snapshot_01_machine_structures__chapters__01_architectures",
+      "title": "设备分类与典型架构",
+      "path": "research_snapshot/01_machine_structures/chapters/01_architectures.md",
+      "sha256": "4b9295f574816370b2114067836ee0c8cc1717b3ad772b4999703dbb1a41a49f",
+      "size_bytes": 7239,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/01_machine_structures/chapters/01_architectures.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "01_machine_structures/chapters/01_architectures.md",
+      "source_blob_sha": "62ecf0b9657ab1365da7cf7a86f813b21d6b993e",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_01_machine_structures__chapters__03_kinematics",
+      "title": "坐标与运动学",
+      "path": "research_snapshot/01_machine_structures/chapters/03_kinematics.md",
+      "sha256": "6361db8c5e99488ced6bd16041210a20e806c4b40b6602917fc721eba92f0283",
+      "size_bytes": 8257,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/01_machine_structures/chapters/03_kinematics.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "01_machine_structures/chapters/03_kinematics.md",
+      "source_blob_sha": "bd975b3f222703e816b440293bae886f85cf8e84",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_02_machine_modeling__chapters__01_physics_and_fidelity",
+      "title": "01 沉积厚度模型的物理边界与精度层级",
+      "path": "research_snapshot/02_machine_modeling/chapters/01_physics_and_fidelity.md",
+      "sha256": "4eeaf8c5ad5194e43f3402e45c6ae2c5fd8c9d28a47354e91d1b29930c205799",
+      "size_bytes": 10239,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/02_machine_modeling/chapters/01_physics_and_fidelity.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "02_machine_modeling/chapters/01_physics_and_fidelity.md",
+      "source_blob_sha": "16c203601dab7867408a6883ea83630bf46a0dd2",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_02_machine_modeling__chapters__02_geometry_kinematics_visibility",
+      "title": "02 三维运动几何与遮挡的可检验规范",
+      "path": "research_snapshot/02_machine_modeling/chapters/02_geometry_kinematics_visibility.md",
+      "sha256": "187d2bb17cb9653d64424df56d165b635f7a98398213583c23c4aede56a0ca0d",
+      "size_bytes": 7351,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/02_machine_modeling/chapters/02_geometry_kinematics_visibility.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "02_machine_modeling/chapters/02_geometry_kinematics_visibility.md",
+      "source_blob_sha": "8e8d52d461eae08d2c99a3d883501dd62fb9913b",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_02_machine_modeling__chapters__03_numerical_integration",
+      "title": "03 时间 源面积和工件面积的数值积分",
+      "path": "research_snapshot/02_machine_modeling/chapters/03_numerical_integration.md",
+      "sha256": "056e35c77c6fb8b5f1a94be06147dd20601eeb8c475174db6d52cc3b4ddd0904",
+      "size_bytes": 9886,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/02_machine_modeling/chapters/03_numerical_integration.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "02_machine_modeling/chapters/03_numerical_integration.md",
+      "source_blob_sha": "024d94298860164b70a09f5beba610585c95bf3c",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_02_machine_modeling__chapters__04_calibration_uncertainty",
+      "title": "04 标定 可辨识性和误差预算",
+      "path": "research_snapshot/02_machine_modeling/chapters/04_calibration_uncertainty.md",
+      "sha256": "664abd06697f875eae0278c45da59fdcc34c836b9ebf9ae17a00124c98cfd6ac",
+      "size_bytes": 9734,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/02_machine_modeling/chapters/04_calibration_uncertainty.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "02_machine_modeling/chapters/04_calibration_uncertainty.md",
+      "source_blob_sha": "23de9e8a7718a624698a8754d9a28e9efa7ec55b",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_03_correction_plate_optimization__reports__01_forward_operator",
+      "title": "修正板设计的物理正向算子",
+      "path": "research_snapshot/03_correction_plate_optimization/reports/01_forward_operator.md",
+      "sha256": "c50ec1e8095ac751753ebe3511f743d9d1a4191bc6f4f88d1bed9df8d2c5f23f",
+      "size_bytes": 5733,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/03_correction_plate_optimization/reports/01_forward_operator.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "03_correction_plate_optimization/reports/01_forward_operator.md",
+      "source_blob_sha": "6b67ec0edf91ccfc4f5bfd9e69725a190f4259fa",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_03_correction_plate_optimization__reports__02_objectives_and_constraints",
+      "title": "均匀性目标与制造约束",
+      "path": "research_snapshot/03_correction_plate_optimization/reports/02_objectives_and_constraints.md",
+      "sha256": "7a1c3daf7bad546c453ce0c8fab2ee96c14f96b360ff2d064b406b4514c8b180",
+      "size_bytes": 5109,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/03_correction_plate_optimization/reports/02_objectives_and_constraints.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "03_correction_plate_optimization/reports/02_objectives_and_constraints.md",
+      "source_blob_sha": "dd6c04901eef8da7f4aae0248ef9948b4fad6750",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_03_correction_plate_optimization__reports__03_algorithms_and_linear_algebra",
+      "title": "从连续松弛到实体板形",
+      "path": "research_snapshot/03_correction_plate_optimization/reports/03_algorithms_and_linear_algebra.md",
+      "sha256": "fbfc212c47fbce247eaf57d6e845dd70f19ee55d30c7c192c95d17f309946c22",
+      "size_bytes": 6055,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/03_correction_plate_optimization/reports/03_algorithms_and_linear_algebra.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "03_correction_plate_optimization/reports/03_algorithms_and_linear_algebra.md",
+      "source_blob_sha": "4edb0ea5d2f0961d6dc2941866ac60b531fcad7d",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_03_correction_plate_optimization__reports__04_robustness_and_calibration",
+      "title": "标定误差与稳健设计",
+      "path": "research_snapshot/03_correction_plate_optimization/reports/04_robustness_and_calibration.md",
+      "sha256": "d5ebb444e45bd8a9afb480ff51abfdf1b4afd226dd4ac539d57a16a0d6687213",
+      "size_bytes": 4987,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/03_correction_plate_optimization/reports/04_robustness_and_calibration.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "03_correction_plate_optimization/reports/04_robustness_and_calibration.md",
+      "source_blob_sha": "d40280522633deb541adf45826e3f4224d1e3e9a",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_04_coating_and_substrate_materials__reports__01_engineering_handbook",
+      "title": "优先镀膜材料与基片材料工程手册 第一轮",
+      "path": "research_snapshot/04_coating_and_substrate_materials/reports/01_engineering_handbook.md",
+      "sha256": "ea5f24f02edf8053e96cf7e4d93a40b7d29f59133130582326e1058866fb9ff2",
+      "size_bytes": 15888,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/04_coating_and_substrate_materials/reports/01_engineering_handbook.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "04_coating_and_substrate_materials/reports/01_engineering_handbook.md",
+      "source_blob_sha": "11ed3c1565fe8ca280665d291190887296f6f4a0",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_04_coating_and_substrate_materials__reports__02_cross_material_selection",
+      "title": "跨材料选择与证据缺口",
+      "path": "research_snapshot/04_coating_and_substrate_materials/reports/02_cross_material_selection.md",
+      "sha256": "6444a9a6f9d3db84847524fad8e706faab364a3bec87952400f870bde64649a5",
+      "size_bytes": 8954,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/04_coating_and_substrate_materials/reports/02_cross_material_selection.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "04_coating_and_substrate_materials/reports/02_cross_material_selection.md",
+      "source_blob_sha": "ebb3cc83aedb6e957a49437dc62937109d144b65",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_04_coating_and_substrate_materials__reports__03_data_quality_and_validation",
+      "title": "数据结构 质量控制与复用说明",
+      "path": "research_snapshot/04_coating_and_substrate_materials/reports/03_data_quality_and_validation.md",
+      "sha256": "d86c5af46b677f595dc90ba39df1672751153368df95c0211ed046e0e5d1d619",
+      "size_bytes": 4966,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/04_coating_and_substrate_materials/reports/03_data_quality_and_validation.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "04_coating_and_substrate_materials/reports/03_data_quality_and_validation.md",
+      "source_blob_sha": "fce6981707cddcf12a7e11d29f70a4d64dfc0208",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_05_evaporation_sources__reports__01_source_physics_and_normalization",
+      "title": "蒸发源物理量与归一化建模",
+      "path": "research_snapshot/05_evaporation_sources/reports/01_source_physics_and_normalization.md",
+      "sha256": "877d8b16368287775c1b7d4326ab82994ae35358a4d368e9e4654b9ff23e85c9",
+      "size_bytes": 9296,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/05_evaporation_sources/reports/01_source_physics_and_normalization.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "05_evaporation_sources/reports/01_source_physics_and_normalization.md",
+      "source_blob_sha": "a6f8d1c4275c96d28d3d55510de563dde94452e2",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_05_evaporation_sources__reports__02_resistance_sources_and_thermal_history",
+      "title": "电阻蒸发源结构与热历史",
+      "path": "research_snapshot/05_evaporation_sources/reports/02_resistance_sources_and_thermal_history.md",
+      "sha256": "3ea51603b30a252066bf51a08ad0919dbc9b961491131e351778a9cd99e89403",
+      "size_bytes": 9361,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/05_evaporation_sources/reports/02_resistance_sources_and_thermal_history.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "05_evaporation_sources/reports/02_resistance_sources_and_thermal_history.md",
+      "source_blob_sha": "3ba2097f8c6128d812c6a604ed6b5653d7ba7499",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_05_evaporation_sources__reports__03_electron_beam_sources_and_sweep",
+      "title": "电子束蒸发源与扫束耦合",
+      "path": "research_snapshot/05_evaporation_sources/reports/03_electron_beam_sources_and_sweep.md",
+      "sha256": "5088a64480140486f02223b1ba155e73870e78ece40e4c448acf8f4b9e58344b",
+      "size_bytes": 7960,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/05_evaporation_sources/reports/03_electron_beam_sources_and_sweep.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "05_evaporation_sources/reports/03_electron_beam_sources_and_sweep.md",
+      "source_blob_sha": "524ebc865fde2327cddab2d58d6bf6b13a1351bc",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_05_evaporation_sources__reports__05_calibration_identifiability_and_interfaces",
+      "title": "标定 可辨识性与跨专题接口",
+      "path": "research_snapshot/05_evaporation_sources/reports/05_calibration_identifiability_and_interfaces.md",
+      "sha256": "1e11e1d53260401c6c0edd93a29894a6a0c7443157364cd907da39f713e9e97d",
+      "size_bytes": 8469,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/05_evaporation_sources/reports/05_calibration_identifiability_and_interfaces.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "05_evaporation_sources/reports/05_calibration_identifiability_and_interfaces.md",
+      "source_blob_sha": "e2894fb32b6ce04cd78b9995b5a1e5472c1fecd0",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_05_evaporation_sources__round2_qcm_flux_transfer__reports__01_qcm_acoustics_and_units",
+      "title": "01 原始频率到面质量：固定模型、符号和适用域",
+      "path": "research_snapshot/05_evaporation_sources/round2_qcm_flux_transfer/reports/01_qcm_acoustics_and_units.md",
+      "sha256": "9f5d17ac393178ab0fd155b992c356f923b96ecc04da0f621f80fbe067abd630",
+      "size_bytes": 6159,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/05_evaporation_sources/round2_qcm_flux_transfer/reports/01_qcm_acoustics_and_units.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "05_evaporation_sources/round2_qcm_flux_transfer/reports/01_qcm_acoustics_and_units.md",
+      "source_blob_sha": "328c1099b88c166b312b998d9c7ecfd2194a31b8",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_05_evaporation_sources__round2_qcm_flux_transfer__reports__03_identifiability_and_uncertainty",
+      "title": "03 有界识别与不确定度",
+      "path": "research_snapshot/05_evaporation_sources/round2_qcm_flux_transfer/reports/03_identifiability_and_uncertainty.md",
+      "sha256": "3680fbe046ce0cf775be027e2339673bb897f3c67b787f148e96b66ce1c34980",
+      "size_bytes": 5913,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/05_evaporation_sources/round2_qcm_flux_transfer/reports/03_identifiability_and_uncertainty.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "05_evaporation_sources/round2_qcm_flux_transfer/reports/03_identifiability_and_uncertainty.md",
+      "source_blob_sha": "2e3e0c3a69038f7aa1acf57e7458aba3c1eb525a",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_06_optical_coating_families__reports__02_ar_and_window_engineering",
+      "title": "02 增透膜与窗口：从单层起点到双带实件",
+      "path": "research_snapshot/06_optical_coating_families/reports/02_ar_and_window_engineering.md",
+      "sha256": "fcb406ce0b10e3802bd6bebc7c014a0d5ee048094b2e5b5d2413f96e1b5d6ff1",
+      "size_bytes": 7272,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/06_optical_coating_families/reports/02_ar_and_window_engineering.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "06_optical_coating_families/reports/02_ar_and_window_engineering.md",
+      "source_blob_sha": "eaf74fb0825e51e3de236e51fcb085338b1c4ee6",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_06_optical_coating_families__reports__03_dielectric_and_metal_mirrors",
+      "title": "03 高反膜、金属镜与保护层：把反射、吸收和寿命拆开",
+      "path": "research_snapshot/06_optical_coating_families/reports/03_dielectric_and_metal_mirrors.md",
+      "sha256": "473d415e15e8afacc98245a2aceddcdf8c110dfca7c7dd72aef7dc957b7cd03b",
+      "size_bytes": 6153,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/06_optical_coating_families/reports/03_dielectric_and_metal_mirrors.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "06_optical_coating_families/reports/03_dielectric_and_metal_mirrors.md",
+      "source_blob_sha": "20b818e1fe14b075a9772a02098f7f122a3941f1",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_06_optical_coating_families__reports__04_filters_edges_and_cavities",
+      "title": "04 滤光膜：带通、边缘、陷波与远带泄漏",
+      "path": "research_snapshot/06_optical_coating_families/reports/04_filters_edges_and_cavities.md",
+      "sha256": "7e9b65e86e7201f8e6749abdc0316e9b7b4d48bac93482172051c5e4a4cfbc43",
+      "size_bytes": 6115,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/06_optical_coating_families/reports/04_filters_edges_and_cavities.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "06_optical_coating_families/reports/04_filters_edges_and_cavities.md",
+      "source_blob_sha": "82fb748b9dfa83f5b71300412163a858a2b349c2",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_07_thin_film_design_theory__reports__01_maxwell_conventions_and_observables",
+      "title": "01 · 从 Maxwell 边界到可检验的光学量",
+      "path": "research_snapshot/07_thin_film_design_theory/reports/01_maxwell_conventions_and_observables.md",
+      "sha256": "78f3989186869571c3f65aeaa94d08bbaa5469abceaf8f3ea27d7a1456baa5fc",
+      "size_bytes": 7874,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/07_thin_film_design_theory/reports/01_maxwell_conventions_and_observables.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "07_thin_film_design_theory/reports/01_maxwell_conventions_and_observables.md",
+      "source_blob_sha": "346d9554d73ab7c75109f01d2214e259c432c711",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_07_thin_film_design_theory__reports__02_admittance_transfer_and_scattering",
+      "title": "02 · 导纳、特征矩阵与稳定散射矩阵",
+      "path": "research_snapshot/07_thin_film_design_theory/reports/02_admittance_transfer_and_scattering.md",
+      "sha256": "63642b12f2e2e7f9b6af813e641c245d1925e4a7195f290fca417ee7ded3d2b4",
+      "size_bytes": 6851,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/07_thin_film_design_theory/reports/02_admittance_transfer_and_scattering.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "07_thin_film_design_theory/reports/02_admittance_transfer_and_scattering.md",
+      "source_blob_sha": "4686eded3d86a42966d6035525ef423e525efe0e",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_07_thin_film_design_theory__reports__03_coherence_substrates_angles_and_polarization",
+      "title": "03 · 相干边界、有限基片、光锥与偏振",
+      "path": "research_snapshot/07_thin_film_design_theory/reports/03_coherence_substrates_angles_and_polarization.md",
+      "sha256": "aa4a5894636996c9a29211e0711df8d414667ae9110376406eb199836925b937",
+      "size_bytes": 7259,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/07_thin_film_design_theory/reports/03_coherence_substrates_angles_and_polarization.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "07_thin_film_design_theory/reports/03_coherence_substrates_angles_and_polarization.md",
+      "source_blob_sha": "f784bb908fb36b5887beb651c563867841252310",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_07_thin_film_design_theory__reports__04_quarter_wave_matching_and_periodic_bands",
+      "title": "04 · 四分之一波、匹配与反射禁带",
+      "path": "research_snapshot/07_thin_film_design_theory/reports/04_quarter_wave_matching_and_periodic_bands.md",
+      "sha256": "2e1621a345757032f6181200a946ad3faa562f49f2572e7c099073bbeabb9329",
+      "size_bytes": 6143,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/07_thin_film_design_theory/reports/04_quarter_wave_matching_and_periodic_bands.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "07_thin_film_design_theory/reports/04_quarter_wave_matching_and_periodic_bands.md",
+      "source_blob_sha": "2ffa54d81a524f3f5ed9662f0f74e4fa052220c8",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_07_thin_film_design_theory__reports__06_cavities_phase_and_group_delay",
+      "title": "06 · 腔、相位与群延迟",
+      "path": "research_snapshot/07_thin_film_design_theory/reports/06_cavities_phase_and_group_delay.md",
+      "sha256": "7b85059fca8775e192a7b999a98436d8af4525519ecd222f48d593ca8e4014b3",
+      "size_bytes": 6423,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/07_thin_film_design_theory/reports/06_cavities_phase_and_group_delay.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "07_thin_film_design_theory/reports/06_cavities_phase_and_group_delay.md",
+      "source_blob_sha": "2a86781c67fae797df0619f3188bd500b1712c98",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_08_stack_optimization_algorithms__reports__01_design_contract_and_objectives",
+      "title": "01 · 先定义优化问题，再选择优化器",
+      "path": "research_snapshot/08_stack_optimization_algorithms/reports/01_design_contract_and_objectives.md",
+      "sha256": "37c02bcd9f8f38010aa24502cc3612a31554ba6caf82c5a4bb835a255a1654c9",
+      "size_bytes": 6438,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/08_stack_optimization_algorithms/reports/01_design_contract_and_objectives.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "08_stack_optimization_algorithms/reports/01_design_contract_and_objectives.md",
+      "source_blob_sha": "a48d7e017e7428989dd3cd71fc4b9aefa8c2dc41",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included",
+        "Added topic search aliases 膜系优化 and 薄膜设计优化; source body unchanged"
+      ]
+    },
+    {
+      "id": "snapshot_08_stack_optimization_algorithms__reports__03_local_refinement_and_constraints",
+      "title": "03 · 固定拓扑的高精度精修",
+      "path": "research_snapshot/08_stack_optimization_algorithms/reports/03_local_refinement_and_constraints.md",
+      "sha256": "03ea01a85b7b0b879fcae114bcd7a28d3d8167e1bcaa453065bbb38f59af9746",
+      "size_bytes": 5666,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/08_stack_optimization_algorithms/reports/03_local_refinement_and_constraints.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "08_stack_optimization_algorithms/reports/03_local_refinement_and_constraints.md",
+      "source_blob_sha": "ebe746248d03bf8724b0cc2579f4f00879087e8d",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included",
+        "Added topic search aliases 膜系优化 and 薄膜设计优化; source body unchanged"
+      ]
+    },
+    {
+      "id": "snapshot_08_stack_optimization_algorithms__reports__04_global_search_needle_and_topology",
+      "title": "04 · 多起点、结构探索与可制造化",
+      "path": "research_snapshot/08_stack_optimization_algorithms/reports/04_global_search_needle_and_topology.md",
+      "sha256": "f98cc6b79f4d6cdcb640166c2a795e4cefdfef6a95eb9167b78e5e6ea931049e",
+      "size_bytes": 5559,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/08_stack_optimization_algorithms/reports/04_global_search_needle_and_topology.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "08_stack_optimization_algorithms/reports/04_global_search_needle_and_topology.md",
+      "source_blob_sha": "177d5d18205e89c3633eea65f74b4ddad09de79d",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included",
+        "Added topic search aliases 膜系优化 and 薄膜设计优化; source body unchanged"
+      ]
+    },
+    {
+      "id": "snapshot_08_stack_optimization_algorithms__reports__05_fast_approximations_and_surrogate_control",
+      "title": "05 · 快速近似、多保真与回证",
+      "path": "research_snapshot/08_stack_optimization_algorithms/reports/05_fast_approximations_and_surrogate_control.md",
+      "sha256": "70d74c486db77d71ed9df5e681490105cc655923a4e94a480d202d750678ece2",
+      "size_bytes": 5902,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/08_stack_optimization_algorithms/reports/05_fast_approximations_and_surrogate_control.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "08_stack_optimization_algorithms/reports/05_fast_approximations_and_surrogate_control.md",
+      "source_blob_sha": "4d9c77745595f3ceb1e27962977dad7956ce49c6",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included",
+        "Added topic search aliases 膜系优化 and 薄膜设计优化; source body unchanged"
+      ]
+    },
+    {
+      "id": "snapshot_08_stack_optimization_algorithms__reports__06_robustness_and_identifiability",
+      "title": "06 · 鲁棒设计、不确定性和不可辨识性",
+      "path": "research_snapshot/08_stack_optimization_algorithms/reports/06_robustness_and_identifiability.md",
+      "sha256": "8d5a1d5b88ea500e32555f96cce085145d499749da679e5cdc578cdb1bad2b53",
+      "size_bytes": 4841,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/08_stack_optimization_algorithms/reports/06_robustness_and_identifiability.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "08_stack_optimization_algorithms/reports/06_robustness_and_identifiability.md",
+      "source_blob_sha": "3f05585a0e12fc1d10787669ff27c870eabbadfd",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included",
+        "Added topic search aliases 膜系优化 and 薄膜设计优化; source body unchanged"
+      ]
+    },
+    {
+      "id": "snapshot_09_standards_and_qualification__reports__03_optical_metrology_and_uncertainty",
+      "title": "光学与薄膜计量的完整测量对象",
+      "path": "research_snapshot/09_standards_and_qualification/reports/03_optical_metrology_and_uncertainty.md",
+      "sha256": "a8960aa353f54339a82d60991bfd2bb7b40573f7a24ace9711cce317139172de",
+      "size_bytes": 6959,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/09_standards_and_qualification/reports/03_optical_metrology_and_uncertainty.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "09_standards_and_qualification/reports/03_optical_metrology_and_uncertainty.md",
+      "source_blob_sha": "f4ce0a8017437b2ab9f6296072cd53a6df3f88ef",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_09_standards_and_qualification__reports__07_decision_rules_sampling_and_demo",
+      "title": "判定规则 保护带 抽样与合成数据演示",
+      "path": "research_snapshot/09_standards_and_qualification/reports/07_decision_rules_sampling_and_demo.md",
+      "sha256": "88c633c1941c6420829eae38b1764bdd75061a7f0227ad66c3f1d30d7ac956e5",
+      "size_bytes": 6445,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/09_standards_and_qualification/reports/07_decision_rules_sampling_and_demo.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "09_standards_and_qualification/reports/07_decision_rules_sampling_and_demo.md",
+      "source_blob_sha": "db476db813a584aa4417369006054e8fb844d9cf",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_09_standards_and_qualification__reports__08_root_cause_and_process_validation",
+      "title": "异常根因 工艺变量与验证闭环",
+      "path": "research_snapshot/09_standards_and_qualification/reports/08_root_cause_and_process_validation.md",
+      "sha256": "2f70549891c34ff5e341ac9e855a2477a5335391cf8eaa049c0838ab7b5cb639",
+      "size_bytes": 7498,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/09_standards_and_qualification/reports/08_root_cause_and_process_validation.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "09_standards_and_qualification/reports/08_root_cause_and_process_validation.md",
+      "source_blob_sha": "32f700c6c61bc88afa53cc116f07e791d4b499d4",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_10_ion_sources__reports__01_kaufman_source_and_beam_physics",
+      "title": "1 · Kaufman栅控源：从放电室到工件表面",
+      "path": "research_snapshot/10_ion_sources/reports/01_kaufman_source_and_beam_physics.md",
+      "sha256": "f792713d260c2f32f83438506107475b1b416e70ae879f76c94f9c135469e2d2",
+      "size_bytes": 7533,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/10_ion_sources/reports/01_kaufman_source_and_beam_physics.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "10_ion_sources/reports/01_kaufman_source_and_beam_physics.md",
+      "source_blob_sha": "112701e4ece1bdd1c38c2dc9fdb0f806490279d5",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_10_ion_sources__reports__02_flux_energy_dose_normalization",
+      "title": "2 · 基片通量、离/原子比、能流与注量的统一口径",
+      "path": "research_snapshot/10_ion_sources/reports/02_flux_energy_dose_normalization.md",
+      "sha256": "e486c383ec69a633a3ae38fe9b07c552d933fb76d5f3e19309acadc291b6c2bf",
+      "size_bytes": 6621,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/10_ion_sources/reports/02_flux_energy_dose_normalization.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "10_ion_sources/reports/02_flux_energy_dose_normalization.md",
+      "source_blob_sha": "b8255abd28337c053a3be44d325d78621d2bd98f",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_10_ion_sources__reports__03_metrology_calibration_and_mapping",
+      "title": "3 · 测量、校准和二维束流映射",
+      "path": "research_snapshot/10_ion_sources/reports/03_metrology_calibration_and_mapping.md",
+      "sha256": "dcd4e0cfe1fbc4e4cf18d4145607863fba8e1aec1330f9f63edd78c4f79531c0",
+      "size_bytes": 6546,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/10_ion_sources/reports/03_metrology_calibration_and_mapping.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "10_ion_sources/reports/03_metrology_calibration_and_mapping.md",
+      "source_blob_sha": "bd297e3215572b9884081e77869a69af112d5e6b",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_11_transparent_conductive_films__ito__process__report",
+      "title": "ITO蒸镀工艺：从原始实验窗口到可标定模型的证据底稿",
+      "path": "research_snapshot/11_transparent_conductive_films/ito/process/report.md",
+      "sha256": "6fcea2e96ce20880a071bad3a109866dce9defe3f413cb4188b326e82ec96a9e",
+      "size_bytes": 24740,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/11_transparent_conductive_films/ito/process/report.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "11_transparent_conductive_films/ito/process/report.md",
+      "source_blob_sha": "cfb81a16ffab4f6c6d83fba874cc89ac8e5fe81a",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_11_transparent_conductive_films__ito__electro_optics__report",
+      "title": "ITO：从蒸镀得到的材料状态，到电学与光学可验证模型",
+      "path": "research_snapshot/11_transparent_conductive_films/ito/electro_optics/report.md",
+      "sha256": "5905962aeeae4af20bd40dad0ed62e02d5829e0d284e314143fb632c5ed36686",
+      "size_bytes": 22323,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/11_transparent_conductive_films/ito/electro_optics/report.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "11_transparent_conductive_films/ito/electro_optics/report.md",
+      "source_blob_sha": "7f981e3251ba64a9f0cfb557b926e9dbe11e8e6d",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_11_transparent_conductive_films__ito__integration__01_flux_material_state",
+      "title": "通量到 ITO 材料状态的可追溯链",
+      "path": "research_snapshot/11_transparent_conductive_films/ito/integration/01_flux_material_state.md",
+      "sha256": "96913a1cc24d14e91d81fb39dfd4bb219283befab0b084ad79cfcbc6e8e89ec3",
+      "size_bytes": 8669,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/11_transparent_conductive_films/ito/integration/01_flux_material_state.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "11_transparent_conductive_films/ito/integration/01_flux_material_state.md",
+      "source_blob_sha": "e90b506cdd3d34f43c0508c0f65af10a25b80828",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_11_transparent_conductive_films__ito__integration__02_calibration_validation",
+      "title": "校准实验与模型选择",
+      "path": "research_snapshot/11_transparent_conductive_films/ito/integration/02_calibration_validation.md",
+      "sha256": "1c8855acaf44e60526726ab507c2b180677de281acb4ba71153a6f2da92922bc",
+      "size_bytes": 8239,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/11_transparent_conductive_films/ito/integration/02_calibration_validation.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "11_transparent_conductive_films/ito/integration/02_calibration_validation.md",
+      "source_blob_sha": "86c73c95350648f7c438b9d2fbb8c0de264190d0",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "research_chapter",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_01_machine_structures__sources__RIGHTS_AND_ACCESS",
+      "title": "原文存档和权利边界",
+      "path": "research_snapshot/01_machine_structures/sources/RIGHTS_AND_ACCESS.md",
+      "sha256": "ade7a070415d9d91a622d69ec598336d8cb59fadf2993f8c1260ce2ffcfad1d7",
+      "size_bytes": 1741,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/01_machine_structures/sources/RIGHTS_AND_ACCESS.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "01_machine_structures/sources/RIGHTS_AND_ACCESS.md",
+      "source_blob_sha": "2393bf1abae91b8a0b310bf0210fdf0bee6521db",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "source_rights_notice",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_02_machine_modeling__sources__RIGHTS_AND_ACCESS",
+      "title": "T02 原文读取与权利边界",
+      "path": "research_snapshot/02_machine_modeling/sources/RIGHTS_AND_ACCESS.md",
+      "sha256": "45b8ffb921979f9c907cd564b09efa60f23e99b1ec8d0bf99959e51711b5eabf",
+      "size_bytes": 2196,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/02_machine_modeling/sources/RIGHTS_AND_ACCESS.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "02_machine_modeling/sources/RIGHTS_AND_ACCESS.md",
+      "source_blob_sha": "b5f63d0b6a75b617f8c7aaa4fc3efedc91bc8994",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "source_rights_notice",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_03_correction_plate_optimization__sources__RIGHTS_AND_ACCESS",
+      "title": "原文存档和分发边界",
+      "path": "research_snapshot/03_correction_plate_optimization/sources/RIGHTS_AND_ACCESS.md",
+      "sha256": "4ca819ff833e2df48000b027f5464be8fb3bde68239bec54263af23208f6b42c",
+      "size_bytes": 1667,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/03_correction_plate_optimization/sources/RIGHTS_AND_ACCESS.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "03_correction_plate_optimization/sources/RIGHTS_AND_ACCESS.md",
+      "source_blob_sha": "2347313e785d1ca777a4640158cd5eb32edb6a8c",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "source_rights_notice",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_04_coating_and_substrate_materials__sources__README",
+      "title": "来源与版权边界",
+      "path": "research_snapshot/04_coating_and_substrate_materials/sources/README.md",
+      "sha256": "dfed88f7eda6fbd1ee4a380c19bdd98cc734121a6f1a3d5c10b6db65d0ad4775",
+      "size_bytes": 1996,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/04_coating_and_substrate_materials/sources/README.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "04_coating_and_substrate_materials/sources/README.md",
+      "source_blob_sha": "c34c7bdba42ddec2c89470ec9cefb7a3e818f6c5",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "source_rights_notice",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_05_evaporation_sources__sources__RIGHTS_AND_ACCESS",
+      "title": "来源核读与原文权利",
+      "path": "research_snapshot/05_evaporation_sources/sources/RIGHTS_AND_ACCESS.md",
+      "sha256": "250e9c4504fca4fb461c8b599b9e0fb290650b0d582119bc2ef6226a565d8454",
+      "size_bytes": 1827,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/05_evaporation_sources/sources/RIGHTS_AND_ACCESS.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "05_evaporation_sources/sources/RIGHTS_AND_ACCESS.md",
+      "source_blob_sha": "9a4d5bbc1b7771bd896caf5090a95222ca4368a2",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "source_rights_notice",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_06_optical_coating_families__sources__README",
+      "title": "T06证据索引",
+      "path": "research_snapshot/06_optical_coating_families/sources/README.md",
+      "sha256": "a49b44994d0b35fbd36a5337b79508644f58da22d5845169d7ba0b192a7d6ba6",
+      "size_bytes": 1519,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/06_optical_coating_families/sources/README.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "06_optical_coating_families/sources/README.md",
+      "source_blob_sha": "255a3f1c4ee7fae67a93057b999a326a6b5eb6c5",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "source_rights_notice",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_07_thin_film_design_theory__sources__README",
+      "title": "T07 来源与原文索引",
+      "path": "research_snapshot/07_thin_film_design_theory/sources/README.md",
+      "sha256": "9fcb0e67bc1117edd583f2c3007f9c6d9be1ecf9a9f3ed03baf4310889d69246",
+      "size_bytes": 4939,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/07_thin_film_design_theory/sources/README.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "07_thin_film_design_theory/sources/README.md",
+      "source_blob_sha": "ebf6719f3ba0f31b9017748315810354514456e3",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "source_rights_notice",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_08_stack_optimization_algorithms__sources__README",
+      "title": "来源分级与引用",
+      "path": "research_snapshot/08_stack_optimization_algorithms/sources/README.md",
+      "sha256": "3a263ac7ea773cc1f64c2991c252a78dd0ff45b5e6c353d2ab353b3bc341aa92",
+      "size_bytes": 1542,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/08_stack_optimization_algorithms/sources/README.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "08_stack_optimization_algorithms/sources/README.md",
+      "source_blob_sha": "21eb73a9e28fd6e9b9cae80755ff212f78dd8d53",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "source_rights_notice",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_09_standards_and_qualification__sources__README",
+      "title": "来源与版权边界",
+      "path": "research_snapshot/09_standards_and_qualification/sources/README.md",
+      "sha256": "bd188d09d2e2234f8109f6c2826bec0c0f54f92c3dd2354245814d1a2846f22b",
+      "size_bytes": 1872,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/09_standards_and_qualification/sources/README.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "09_standards_and_qualification/sources/README.md",
+      "source_blob_sha": "d7394f368bef9133916d0156a848ad51c47b0fd7",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "source_rights_notice",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_10_ion_sources__sources__README",
+      "title": "T10来源与原文权利",
+      "path": "research_snapshot/10_ion_sources/sources/README.md",
+      "sha256": "969cd9e0bd3cf2fea898491824b832b194deb4530406a29d9f76e41b1430aba2",
+      "size_bytes": 2203,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/10_ion_sources/sources/README.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "10_ion_sources/sources/README.md",
+      "source_blob_sha": "ca9886b1d3e36cb145b04118a77a9314412686dc",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "source_rights_notice",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "snapshot_11_transparent_conductive_films__ito__sources__README",
+      "title": "来源与证据阅读说明",
+      "path": "research_snapshot/11_transparent_conductive_films/ito/sources/README.md",
+      "sha256": "36f9b86cc5561cdd28e196a017423f14d4a2df1961d02b125b91295ea6005a2e",
+      "size_bytes": 2185,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/11_transparent_conductive_films/ito/sources/README.md",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": "11_transparent_conductive_films/ito/sources/README.md",
+      "source_blob_sha": "aa4a450093468f35e77db8d6a3a0506b703166bf",
+      "license": "User-authorized inclusion of project-authored research text; upstream declares no repository-wide license. Not relicensed under software MIT; retain source rights notices; no additional downstream license inferred.",
+      "evidence_scope": "Imported project-authored research; original reported/derived/synthetic limitations retained. Not independent revalidation or software implementation evidence.",
+      "document_kind": "source_rights_notice",
+      "transformations": [
+        "Inserted provenance and scope paragraph",
+        "Relative Markdown links resolved to fixed upstream commit",
+        "Markdown images changed to links; no image binaries included"
+      ]
+    },
+    {
+      "id": "research_snapshot_notice",
+      "title": "内置研究正文快照：范围与权利",
+      "path": "RESEARCH_SNAPSHOT_NOTICE.md",
+      "sha256": "9e21554c65bb3603c47ace52cd4686d01e428c9b43242f3f9c03244218cf27e1",
+      "size_bytes": 2365,
+      "source_url": "https://github.com/ii33/coating-research-library/blob/d1acac3766a3a1f0a14064edcbeadb7ea4244f4e/",
+      "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+      "source_path": null,
+      "source_blob_sha": null,
+      "license": "Original inclusion notice; upstream imported text is not relicensed",
+      "evidence_scope": "Packaging scope and rights notice; no scientific validation claim",
+      "document_kind": "inclusion_notice"
     }
-  ]
+  ],
+  "research_snapshot": {
+    "repository": "ii33/coating-research-library",
+    "source_commit": "d1acac3766a3a1f0a14064edcbeadb7ea4244f4e",
+    "source_visibility": "public",
+    "included_research_chapters": 42,
+    "included_source_rights_notices": 11,
+    "retained_original_guides": 8,
+    "inclusion_notices": 1,
+    "upstream_blanket_license": null,
+    "inclusion_basis": "User requested the research library built into the project and made the source repository public; selected original project research only.",
+    "excluded_categories": [
+      "sources/originals and third-party full text",
+      "vendor raw data and complete manuals",
+      "images/binaries",
+      "code and execution data",
+      "dependency duplicate copies",
+      "full later-round sets and publication archives"
+    ]
+  }
 }
