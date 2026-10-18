@@ -12,6 +12,7 @@
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px solid #c8e0db;border-radius:8px;padding:16px;font-size:.88rem;line-height:1.5}</style>
 </head>
 <body>
+<p class="source">ITO 电学计算补充：2026-10-18，见<a href="#ito-electrical-20261018">膜厚、方阻、电阻率及矩形测量边界</a>。</p>
 <p class="source">单层光谱反演补充：2026-10-17，见<a href="#optical-constant-inversion">模型、背面与非唯一性</a>。</p>
 <p class="source">研究证据格式补充：2026-10-17，见<a href="#project-research-evidence">项目研究证据 v1</a>；不改变物理求解模型。</p>
 <header>
@@ -53,6 +54,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <p class="source" style="grid-column:1/-1">结构合成更新：2026-10-12。新增14o至14o-2：实验性经典零厚敏感度针插、有界已有层增长与分组局部精修；独立结构请求与固定层序/有限试插分开，Dmax是硬约束。补充验证切片、真实求值计数与增长前局部边界检查。接口见 <a href="film-structure-optimization-contract.md">结构合成契约</a>，操作见 <a href="film-structure-optimization-guide.md">使用指南</a>，实际验收见 本轮状态 <span class="historical-reference">（历史验证记录，未随公开源码发布）</span>。</p>
 <p class="source">存储格式补充：2026-10-18。工程 BBS、助手精简记忆和可恢复文件清理均为非物理持久化契约，不改变仿真公式、坐标或数值精度。见<a href="#engineering-notes-storage-20261018">工程记录与助手工作区格式</a>。</p>
 <nav aria-label="章节目录">
+<a href="#ito-electrical-20261018">ITO 膜厚、方阻与电阻率（2026-10-18）</a>
 <a href="#frozen-service-boundaries">冻结服务边界与单点归一化</a>
 <a href="#assistant-lifecycle-diagnostics">助手窗口恢复与诊断（2026-10-17）</a>
 <a href="#optical-constant-inversion">光谱反演 n/k（2026-10-17）</a>
@@ -2699,6 +2701,18 @@ record_sha256 = SHA256(canonical JSON bytes of normalized record)</pre>
 <figure class="figure"><svg viewBox="0 0 800 130" role="img" aria-label="归一化与共同校验流程"><rect x="10" y="25" width="190" height="65" rx="8" fill="#e3f1ed"/><text x="22" y="62" class="svgtext">原始或已归一化单点设置</text><text x="210" y="62" class="svgtext">→</text><rect x="245" y="25" width="260" height="65" rx="8" fill="#e3f1ed"/><text x="258" y="62" class="svgtext">归一化 / 活动层 / 透明端口校验</text><text x="515" y="62" class="svgtext">→</text><rect x="550" y="25" width="235" height="65" rx="8" fill="#e3f1ed"/><text x="562" y="62" class="svgtext">参考或冻结批次：同一适用域</text></svg><figcaption>单点设置可冻结后再次读取；同一活动层和端口策略位于物理核之前。低层 coherent 核支持的范围不据此扩张为高层服务承诺。</figcaption></figure>
 <p>实现位置：<code>film_design_service.simulation_settings / validate_external_ports</code>、<code>film_performance.FrozenFilmEvaluator</code>；回归见 <code>tests/test_audit_compute_cli_contracts.py</code>。适用限制：仅验证服务一致性，不是材料数据、全部数值精度、硬件或生产工艺认证。</p>
 <p class="source">来源：本项目约定，未找到外部依据，仅为本项目实现。既有物理公式和参考来源保持不变；服务合同见 <a href="film-performance.md">冻结膜系性能服务</a>，CLI 见 <a href="headless-cli-contract.md">无界面 CLI 合同</a>。</p>
+</section>
+
+<section id="ito-electrical-20261018">
+<h2>ITO 膜厚、方阻与电阻率（2026-10-18）</h2>
+<p>用途：以明确来源的理论、实测或假设值进行只读标量计算。输入厚度 t、方阻 Rs、电阻率 ρ 中任意两项，求第三项；三项齐全只检查一致性，不覆盖测量值。缺少独立已知量时返回解释，不填入所谓通用 ITO 电阻率。实现：<code>coat_sim/core/ito_electrical.py</code>；CLI：<code>python -m coat_sim.ito_cli solve</code>；接口见 <a href="ito-electrical-contract.md">ITO 电学契约</a>。</p>
+<div class="formula">ρ = Rs · t；t = ρ / Rs；Rs = ρ / t<br>ρ[Ω·cm] = Rs[Ω/□] × t[nm] × 10⁻⁷<br>矩形：Rs = R · W / L（L 沿电流方向，W 横向）</div>
+<figure class="figure"><svg viewBox="0 0 700 220" role="img" aria-label="矩形导电膜和完整边电极的电阻模型"><rect x="130" y="45" width="400" height="115" fill="#cce4df" stroke="#087f78" stroke-width="2"/><rect x="120" y="40" width="20" height="125" fill="#b56527"/><rect x="520" y="40" width="20" height="125" fill="#b56527"/><path d="M165 100H490 M480 94L490 100L480 106" fill="none" stroke="#18303a" stroke-width="3"/><text x="270" y="87" class="svgtext">电流方向 / L</text><text x="558" y="105" class="svgtext">W</text><text x="125" y="195" class="svgtext">对边全宽电极；厚度 t 垂直于膜面；R = ρL/(Wt)</text></svg><figcaption>仅在均匀各向同性、欧姆连续膜和完整对边电极条件下，将已去除或可忽略接触/引线电阻的 R 化为方阻。点探针、边界电流拥挤、旁路导电、非均匀膜及曲面不适用；这里没有套用四探针修正因子。</figcaption></figure>
+<p>所有输入须显式给单位、来源文字及 <code>theoretical / measured / assumed</code> 分类；结果保留输入和依赖关系。内部使用 m、Ω、Ω·m，输出 nm、Ω/□、Ω·cm 并保留 SI 值。接受长度 m/cm/mm/um/nm，拒绝未知单位、布尔数、NaN、无穷值、非正物理值及转换后溢出/下溢。电阻率因工艺、组分、温度等而变，基于给定 ρ 推得的 t 是条件估计，不能冒充独立测厚。</p>
+<h3>过定约束与不确定度</h3>
+<div class="formula">r = ρ − Rs·t；r_rel = r / max(ρ, Rs·t)<br>u(y)² ≈ Σᵢ(∂f/∂xᵢ)² u(xᵢ)²（仅显式独立假设）<br>乘/除两量：u(y) = |y| √[(u(a)/a)²+(u(b)/b)²]<br>u(r) = √[u(ρ)² + (Rs·u(t))² + (t·u(Rs))²]</div>
+<p>三项提供时返回带符号残差及相对残差。默认相对容差 10⁻⁶（可指定 [0,1]）为<strong>本项目数值比较约定</strong>，不是实验合格标准或置信区间。没有拟合、采样或隐式校准。可选标准不确定度与输入同单位，须非负有限；只有显式 <code>uncertainty_assumption=independent</code> 且每项贡献均提供不确定度才传播，不把缺失当零。相关误差需要协方差项，本接口不接收协方差；共享校准/样品可能违反独立假设。相对标准不确定度 ≥10% 时提示一阶近似风险，该阈值为本项目提示约定，非外部验证边界。</p>
+<p class="source">来源：NIST <a href="https://www.nist.gov/pml/nanoscale-device-characterization-division/popular-links/hall-effect/hall-effect">The Hall Effect</a> 给出 ρ = Rs d；NIST <a href="https://www.nist.gov/pml/nist-technical-note-1297/nist-tn-1297-appendix-law-propagation-uncertainty">TN 1297 Appendix A</a> 给出一阶不确定度传播及协方差。矩形公式由均匀导体 R = ρL/A、A = Wt 得到；边界条件令牌、JSON 格式与容差为本项目实现约定。</p>
 </section>
 
 </main>

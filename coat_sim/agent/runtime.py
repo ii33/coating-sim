@@ -301,7 +301,7 @@ READ_TOOLS = frozenset({
     "project_knowledge_search", "material_data_readiness",
     "refractiveindex_status", "refractiveindex_search", "refractiveindex_detail",
     "refractiveindex_preview", "refractiveindex_convert",
-    "reference_sources_catalog", "reference_sources_detail",
+    "reference_sources_catalog", "reference_sources_detail", "ito_electrical_calculate",
     "project_management_catalog", "project_list", "project_inspect", "project_resolve", "project_editor_snapshot",
     "project_research_search", "project_research_read",
     "project_bbs_list", "project_bbs_read", "project_bbs_history",
@@ -1448,7 +1448,7 @@ _COMMON = frozenset({"project_bbs_list", "project_bbs_read", "project_bbs_histor
                      "project_knowledge_search", "material_data_readiness",
     "refractiveindex_status", "refractiveindex_search", "refractiveindex_detail",
     "refractiveindex_preview", "refractiveindex_convert",
-    "reference_sources_catalog", "reference_sources_detail",
+    "reference_sources_catalog", "reference_sources_detail", "ito_electrical_calculate",
                      "list_windows", "read_window", "list_data_files", "read_data_file", "python_sandbox_status",
                      "preview_film_stack_import", "read_process_layers", "film_design_schema",
                      "film_materials", "validate_film_design", "load_film_design",
@@ -1459,7 +1459,7 @@ COORDINATOR_TOOLS = frozenset({"project_bbs_list", "project_bbs_read", "project_
                                "algorithm_reference_catalog", "algorithm_reference_search", "algorithm_reference_read", "project_knowledge_search", "material_data_readiness",
                                "refractiveindex_status", "refractiveindex_search", "refractiveindex_detail",
                                "refractiveindex_preview", "refractiveindex_convert",
-    "reference_sources_catalog", "reference_sources_detail",
+    "reference_sources_catalog", "reference_sources_detail", "ito_electrical_calculate",
                                "read_calculation_result", "find_calculation_job", "calculation_job_status", "list_data_files", "read_data_file"})
 EXECUTION_TOOLS = {
     "windows": frozenset({"project_list", "project_editor_snapshot", "project_open", "read_software_manual", "list_windows", "read_window", "open_window", "close_window", "update_window", "window_action"}),
@@ -1914,6 +1914,8 @@ async def run_task(command: dict[str, Any], writer: Any, *,
         "材料范围用material_data_readiness检查真实库记录、波段和optical_set_id，未知不等于透明或无损。"
         "本地RII参考库用refractiveindex_status/search/detail/preview/convert按需查询；未安装就如实报告，不触发下载。"
         "预览曲线不等于可计算数据，非线性n2不是消光系数k；convert只返回候选，不自动导入或覆盖材料。"
+        "ITO电学用ito_electrical_calculate，只读且不取材料默认值：Rs、rho、t需两个独立输入，只有Rs不能反推厚度。"
+        "每个输入带单位、provenance与source，理论/假设不冒充实测；矩形换算仅限全宽对边电极且接触电阻可忽略或已校正。"
         "其它官方资料用reference_sources_catalog/detail查看来源、适用范围和离线/再分发条件；目录存在不代表已下载或本机可用。")
     instructions += (
         "\nPortable toolkit: call toolkit_status for actual readiness, toolkit_catalog for compact discovery or exact schemas, "

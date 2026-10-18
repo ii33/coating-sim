@@ -296,3 +296,10 @@ variables 用 side 与稳定 layer_id 指定可变层，lower_nm/upper_nm 为物
 - 结构专用：candidate_materials 冻结可插层材料/光学组；max_total_layers 包括宿主拆分层，max_added_layers 数新增候选材料层；当前有界结构实现要求 max_added_layers=1 且 growth_cycles=1，不能建议增加这两个值；min_thickness_nm/max_thickness_nm 为单层界限，max_total_thickness_nm 为整堆界限；position_samples、candidate_budget、needle_thickness_samples、growth_steps_nm/growth_phase_fractions/growth_cycles 控制有限候选规模和生长范围，不代表搜索完连续设计空间。
 
 结果保留原作业身份、实际方法/seed、停止原因、成功/失败评估数、训练评分、留出验证、候选与不可用原因。取消请求须等待实际终态；部分候选是否可查看/应用依服务明确合同，不把 cancelled 当 completed，也不把 succeeded 当 targets_met。应用候选、覆盖保存和改变原设计分别遵循用户授权与最新设计修订检查。
+
+
+## ito_electrical · ITO 方阻、电阻率与厚度
+使用只读工具 ito_electrical_calculate，request 为显式输入对象；不写入文件、不访问网络、不从材料库隐式取值。基本关系 rho = Rs × t。thickness、sheet_resistance、resistivity 至少需要两个独立量才能求第三个；仅有方阻返回 insufficient_data，不能反推出唯一厚度。三量齐全返回 consistent 或 inconsistent，两个量可解时返回 solved。不一致不得自动覆盖实测值。
+每个 quantity 必填 value（有限正数）、unit、provenance（theoretical/measured/assumed）、source（非空来源）；可填同单位的 standard_uncertainty（非负标准不确定度）。长度单位 m/cm/mm/um/nm，方阻 ohm/sq，电阻率 ohm*m/ohm*cm，电阻 ohm。理论/假设电阻率仅产生相应条件下的预测，不能标为实测校准；实际膜的材料、微结构与工艺影响不能由一个材料名消除。
+rectangle 可由 resistance、length、width 得到方阻 Rs = R × width / length。length 沿电流方向，width 为横向宽度；必须显式声明 electrode_boundary=full_width_opposite_edges、contact_assumption=negligible_or_corrected。点接触、四探针、任意电极或未校正接触电阻不能套用此矩形公式；rectangle 与显式 sheet_resistance 不得同时提交。
+operation 仅支持 solve（可省略）。uncertainty_assumption=independent 明确声明不确定度传播的独立假设；相关输入不能假装独立。consistency_relative_tolerance 默认 1e-6，是数值一致性容差，不是测量验收标准。以工具返回的状态、来源、适用范围与不确定度说明为准。讨论/chat、操作、攻关均可使用；无效单位、非有限值或未知字段返回 invalid_arguments，不执行外部操作。

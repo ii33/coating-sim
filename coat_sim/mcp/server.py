@@ -46,7 +46,8 @@ from coat_sim.core.film_compute import FILM_TOOL_ARGUMENTS, validate_tool_argume
 from coat_sim.core.appearance_compute import (APPEARANCE_TOOL_ARGUMENTS,
                                              validate_tool_arguments as validate_appearance_arguments)
 from coat_sim.core.compute_tasks import ComputeTaskStore
-from coat_sim.core.mcp_contracts import tool_annotations, validate_mcp_arguments
+from coat_sim.core.mcp_contracts import (ITO_ELECTRICAL_INPUT_SCHEMA,
+                                          tool_annotations, validate_mcp_arguments)
 from coat_sim.core.design_files import design_extension
 from coat_sim.core.compute_estimation import input_file_fingerprints
 from coat_sim.core.result_summary import (algorithm_result_metadata,
@@ -105,6 +106,7 @@ class CapabilityMCPServer(MCPServer):
                    for entry in CapabilityService(service).catalog()["operations"]}
         schemas.update({name: model.model_json_schema() for name, model in FILM_TOOL_ARGUMENTS.items()})
         schemas.update({name: model.model_json_schema() for name, model in APPEARANCE_TOOL_ARGUMENTS.items()})
+        schemas["ito_electrical_calculate"] = ITO_ELECTRICAL_INPUT_SCHEMA
         result = []
         for tool in registered:
             key = "input_schema" if "input_schema" in type(tool).model_fields else "inputSchema"
@@ -140,6 +142,25 @@ def _project_management_service():
     # A tuple is covariant; the collection may contain service Path objects
     # and authenticated project-root strings without asserting list invariance.
     return ProjectManagementService(authorized_roots=tuple(roots))
+
+
+@mcp.tool()
+def ito_electrical_calculate(request: dict[str, Any]) -> dict[str, Any]:
+    """Read-only ITO electrical calculation: rho = Rs * thickness.
+
+    Supply two independent quantities among thickness, sheet_resistance and
+    resistivity, with explicit units, provenance and source. One sheet resistance
+    alone is underdetermined. No material defaults, network calls or file writes.
+    Theoretical/assumed quantities are not measured evidence. Rectangle conversion
+    requires full-width opposite-edge electrodes and negligible/corrected contacts.
+    Three quantities check consistency; uncertainties require explicit independence.
+    """
+    from coat_sim.core.ito_electrical import calculate_ito_electrical
+    try:
+        return calculate_ito_electrical(request)
+    except ValueError as exc:
+        error = CapabilityError("invalid_arguments", str(exc), effect="none")
+        raise ToolError(error.transport_text()) from exc
 
 
 @mcp.tool()

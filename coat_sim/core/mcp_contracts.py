@@ -63,7 +63,7 @@ preview_film_stack_import read_process_layers
 film_design_schema source_quadrature convert_gear_geometry sample_substrate_outline
 sample_substrate_surface calculation_history estimate_calculation convert_time_fields
 list_windows read_window project_editor_snapshot inspect_appearance_asset
-wait_calculation_job mask_optimization_groups'''.split())
+wait_calculation_job mask_optimization_groups ito_electrical_calculate'''.split())
 _WRITE = frozenset('''project_bbs_import_attachment project_bbs_comment project_bbs_write project_open project_research_save project_manage
  developer_report_issue developer_issue_reports developer_access developer_checks
  developer_persona run_python_script write_data_file move_data_path delete_data_path
@@ -80,6 +80,38 @@ _WRITE = frozenset('''project_bbs_import_attachment project_bbs_comment project_
  submit_single_source submit_process_recipe create_default_workflow create_design_workflow
  advance_design_workflow design_workflow_status cancel_design_workflow
  estimate_mask_optimization submit_mask_optimization read_calculation_result'''.split())
+
+
+def _ito_quantity_schema(units: list[str]) -> dict[str, Any]:
+    return {"type": "object", "additionalProperties": False,
+            "required": ["value", "unit", "provenance", "source"],
+            "properties": {
+                "value": {"type": "number", "exclusiveMinimum": 0},
+                "unit": {"type": "string", "enum": units},
+                "provenance": {"type": "string", "enum": ["theoretical", "measured", "assumed"]},
+                "source": {"type": "string", "minLength": 1, "pattern": r"\S"},
+                "standard_uncertainty": {"type": "number", "minimum": 0}}}
+
+
+ITO_ELECTRICAL_INPUT_SCHEMA: dict[str, Any] = {
+    "type": "object", "additionalProperties": False, "required": ["request"],
+    "properties": {"request": {
+        "type": "object", "additionalProperties": False,
+        "properties": {
+            "operation": {"type": "string", "enum": ["solve"], "default": "solve"},
+            "thickness": _ito_quantity_schema(["m", "cm", "mm", "um", "nm"]),
+            "sheet_resistance": _ito_quantity_schema(["ohm/sq"]),
+            "resistivity": _ito_quantity_schema(["ohm*m", "ohm*cm"]),
+            "rectangle": {"type": "object", "additionalProperties": False,
+                "required": ["resistance", "length", "width", "electrode_boundary", "contact_assumption"],
+                "properties": {
+                    "resistance": _ito_quantity_schema(["ohm"]),
+                    "length": _ito_quantity_schema(["m", "cm", "mm", "um", "nm"]),
+                    "width": _ito_quantity_schema(["m", "cm", "mm", "um", "nm"]),
+                    "electrode_boundary": {"const": "full_width_opposite_edges"},
+                    "contact_assumption": {"const": "negligible_or_corrected"}}},
+            "uncertainty_assumption": {"const": "independent"},
+            "consistency_relative_tolerance": {"type": "number", "minimum": 0, "maximum": 1, "default": 1e-6}}}}}
 
 
 def tool_annotations(name: str) -> ToolAnnotations:
