@@ -263,6 +263,84 @@ def project_research_read(root: str, project_id: str, evidence_id: str,
 
 
 @mcp.tool()
+def algorithm_reference_catalog(
+        offset: Annotated[StrictInt, Field(ge=0, le=1000)] = 0,
+        limit: Annotated[StrictInt, Field(ge=1, le=50)] = 40,
+        expected_version: str | None = None) -> dict[str, Any]:
+    """List sections of the fixed shipped docs/algorithms.html, without arbitrary paths or network.
+
+    Returns source anchors and a content-hash version. Pass expected_version on
+    later pages. Reference text is not executable capability or run evidence.
+    """
+    from coat_sim.core.algorithm_reference import algorithm_reference_catalog as catalog
+    try:
+        return catalog(offset, limit, expected_version)
+    except (ValueError, OSError) as exc:
+        raise ToolError(f"{getattr(exc, 'code', 'reference_error')}: {exc}") from exc
+
+
+@mcp.tool()
+def algorithm_reference_search(
+        query: Annotated[str, Field(min_length=1, max_length=200)],
+        offset: Annotated[StrictInt, Field(ge=0, le=1000)] = 0,
+        limit: Annotated[StrictInt, Field(ge=1, le=50)] = 10,
+        expected_version: str | None = None) -> dict[str, Any]:
+    """Find fixed algorithm sections by all literal whitespace-separated keywords.
+
+    No semantic/cross-language search, HTML execution or external requests.
+    Results include section IDs, bounded excerpts and source/version citations.
+    """
+    from coat_sim.core.algorithm_reference import algorithm_reference_search as search
+    try:
+        return search(query, offset, limit, expected_version)
+    except (ValueError, OSError) as exc:
+        raise ToolError(f"{getattr(exc, 'code', 'reference_error')}: {exc}") from exc
+
+
+@mcp.tool()
+def algorithm_reference_read(
+        section_id: Annotated[str, Field(min_length=1, max_length=200)],
+        offset: Annotated[StrictInt, Field(ge=0, le=2097152)] = 0,
+        max_chars: Annotated[StrictInt, Field(ge=1, le=6000)] = 6000,
+        expected_version: str | None = None) -> dict[str, Any]:
+    """Read inert algorithm section text by exact catalog ID and Unicode character offset.
+
+    Preserve source/version and next_offset; use expected_version for subsequent
+    pages. Script/style content is omitted; links are never followed. Formula
+    and SVG labels are text only, so diagrams may need the original document.
+    """
+    from coat_sim.core.algorithm_reference import algorithm_reference_read as read
+    try:
+        return read(section_id, offset, max_chars, expected_version)
+    except (ValueError, OSError) as exc:
+        raise ToolError(f"{getattr(exc, 'code', 'reference_error')}: {exc}") from exc
+
+
+@mcp.tool()
+def project_knowledge_search(
+        root: str, project_id: str, query: Annotated[str, Field(max_length=200)] = "",
+        offset: Annotated[StrictInt, Field(ge=0, le=2000)] = 0,
+        limit: Annotated[StrictInt, Field(ge=1, le=50)] = 10,
+        include_archived: bool = False, expected_version: str | None = None) -> dict[str, Any]:
+    """Discover latest BBS notes/replies and saved research for one explicit admitted .coatproj/ID.
+
+    Read-only including discussion mode. No other projects, mirrors, attachments,
+    unsaved drafts, external providers or writes. offset is an inventory scan
+    position: continue next_offset even after zero matches, carrying version as
+    expected_version. Results report source availability, partial coverage and
+    budgets, plus existing read_tool/read_arguments. Claims remain untrusted;
+    actual computation conclusions require verified run-result tools.
+    """
+    from coat_sim.core.project_knowledge import ProjectKnowledge
+    try:
+        inspected = _project_management_service().execute("inspect", {"root": root, "project_id": project_id})
+        return ProjectKnowledge(inspected["project_file"], project_id).search(
+            query, offset, limit, include_archived, expected_version)
+    except (ValueError, OSError) as exc:
+        raise ToolError(f"{getattr(exc, 'code', 'knowledge_error')}: {exc}") from exc
+
+
+@mcp.tool()
 def project_research_save(root: str, project_id: str, record: dict[str, Any]) -> dict[str, Any]:
     """Explicitly append selected source evidence or labeled assistant inference to one project.
 
@@ -1349,6 +1427,36 @@ def list_material_library(offset: StrictInt = 0, limit: StrictInt = 20) -> dict:
 def read_material(identifier: str) -> dict:
     """Read one material, its roles, optical sets and provenance; no inferred composition."""
     return _capability_call("read_material", {"identifier": identifier})
+
+
+@mcp.tool()
+def material_data_readiness(
+        identifier: Annotated[str, Field(min_length=1, max_length=200)],
+        wavelength_min_nm: Annotated[StrictFloat, Field(gt=0)],
+        wavelength_max_nm: Annotated[StrictFloat, Field(gt=0)],
+        optical_set_id: str | None = None, assume_lossless: bool = False) -> dict[str, Any]:
+    """Read evidence/coverage readiness for a real material-library ID and requested nm band.
+
+    No model-supplied snapshots, writes, network or computation. Do not silently
+    select an optical set, splice datasets, extrapolate n/k or make unknown k
+    zero. assume_lossless is only an explicitly requested assumption, preserved
+    separately from known data; this report never certifies production readiness.
+    """
+    from coat_sim.core.material_business import ApplicationMaterialCatalog
+    from coat_sim.core.material_readiness import material_readiness
+    try:
+        # Same effective builtins/custom/override owner as read_material, through
+        # its existing lock-free read projection; never create a writer lock.
+        selected = ApplicationMaterialCatalog(service.material_library().directory).read(identifier)
+        report = material_readiness(selected["record"], wavelength_min_nm=wavelength_min_nm,
+            wavelength_max_nm=wavelength_max_nm, optical_set_id=optical_set_id,
+            assume_lossless=assume_lossless)
+        return {**report, "source_type": "effective_material_library",
+                "scope": "service_material_library", "project_bound": False,
+                "library_record": {key: selected[key] for key in ("builtin", "overridden", "readonly")},
+                "untrusted_reference": True}
+    except (ValueError, OSError) as exc:
+        raise ToolError(f"{getattr(exc, 'code', 'material_readiness_error')}: {exc}") from exc
 
 
 @mcp.tool()

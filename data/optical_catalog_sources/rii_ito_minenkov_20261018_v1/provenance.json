@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "dataset_id": "rii_ito_minenkov_20261018_v1",
+  "optical_set_id": "ri_ito_minenkov_glass_2024",
+  "material_id": "ITO_film",
+  "builtin_material_id": "builtin_research_ITO_film",
+  "category": "film",
+  "source_repository": "https://github.com/polyanskiy/refractiveindex.info-database",
+  "source_commit": "c5c2f188e848453def5970e347399d653df2ffc2",
+  "source_url": "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/other/mixed%20crystals/In2O3-SnO2/nk/Minenkov-glass.yml",
+  "retrieved_date_utc": "2026-10-18",
+  "source_sha256": "2861e8774e0d8a95f485ea56721a70d239bf43ff7e11f48c1f60b12a551fad78",
+  "source_bytes": 23346,
+  "source_git_blob_sha1": "94862a11bc7e58ef94d3f472aeb7d885e3c20a6a",
+  "license": "CC0-1.0",
+  "license_url": "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/LICENSE",
+  "license_sha256": "36ffd9dc085d529a7e60e1276d73ae5a030b020313e6c5408593a6ae2af39673",
+  "publication": {
+    "doi": "10.1021/acsami.3c17923",
+    "url": "https://pubs.acs.org/doi/10.1021/acsami.3c17923",
+    "title": "Monitoring the Electrochemical Failure of Indium Tin Oxide Electrodes via Operando Ellipsometry",
+    "year": 2024,
+    "scope": "Optical-model fit for the original commercial ITO/glass sample; not a generic ITO composition."
+  },
+  "references_raw": "A. Minenkov, S. Hollweger, J. Duchoslav, O. Erdene-Ochir, M. Weise, E. Ermilova, A. Hertwig, M. Schiek.\nMonitoring the electrochemical failure of indium tin oxide electrodes via operando ellipsometry.\n<a href=\"https://doi.org/10.1021/acsami.3c17923\"><i>ACS Appl Mater Interfaces</i> <b>16</b>, 9517-9531 (2024)</a>\n(Numerical data kindly provided by Manuela Schiek)\n",
+  "comments_raw": "110 nm thick ITO layer on glass type XY15S purchased from Xinyan Technology LTD.\n",
+  "conditions_raw": {
+    "film_thickness": "110e-9",
+    "substrate": "glass"
+  },
+  "conditions": {
+    "film_thickness_nm": 110.0,
+    "substrate": "XY15S glass",
+    "supplier": "Xinyan Technology LTD",
+    "deposition_temperature_C": null,
+    "deposition_atmosphere": null,
+    "composition_ratio": null,
+    "unknown_condition_policy": "Not confirmed for this commercial sample; do not borrow wafer sample preparation parameters."
+  },
+  "representation": "tabulated_nk_from_joint_ellipsometry_transmission_optical_model_fit",
+  "sample_count": 706,
+  "wavelength_unit": "um",
+  "declared_table_range_um": [
+    0.19146,
+    1.68869
+  ],
+  "independently_verified_measurement_range_um": null,
+  "independently_verified_fit_range_um": null,
+  "range_note": "The imported range is the official numerical table domain. It is not claimed to be an independently verified measurement or fit-validity range. The operando liquid-cell measurement window is a separate experiment.",
+  "adaptation": {
+    "numeric_values": "All wavelength, n and k rows preserved exactly as decimal values from the single source table.",
+    "interpolation": "Existing product in-domain linear interpolation only; no added source samples or extrapolation.",
+    "schema_validation": "Existing validate_optical_sets and exact material/role importer.",
+    "machine_calibration": false,
+    "automatic_default_selection": false,
+    "research_data_changed": false,
+    "source_model_changed": false
+  },
+  "rights_note": "CC0 applies to the database numeric record. It is not blanket permission for paper PDFs or images; none are redistributed."
+}

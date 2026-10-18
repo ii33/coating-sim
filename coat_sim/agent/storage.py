@@ -274,6 +274,18 @@ class AssistantStore:
         with self._db() as db:
             row = db.execute("SELECT request_id,state,updated FROM runtime_history WHERE session=?", (session,)).fetchone()
             return dict(row) if row else {}
+    def request_memory_scope(self, session: str, request: str) -> str:
+        """Exact host-written scope marker; never infer it from message content."""
+        with self._db() as db:
+            row = db.execute("SELECT payload FROM task_events WHERE session=? AND request_id=? "
+                "AND event='project_memory_scope' ORDER BY id DESC LIMIT 1", (session, request)).fetchone()
+        if row is None:
+            return 'global'  # Legacy history is never automatically adopted by a project.
+        try:
+            value = json.loads(row[0])['scope']
+            return value if isinstance(value, str) and value else 'unavailable'
+        except (ValueError, KeyError, TypeError):
+            return 'unavailable'
     def save_history(self, session, history, *, request_id="", state="complete"):
         if state not in ("active", "complete", "failed", "cancelled", "interrupted", "limited"):
             raise ValueError("Invalid runtime history state")

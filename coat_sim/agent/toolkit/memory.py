@@ -7,6 +7,7 @@ Credential rejection is deliberately best effort, not a secret-scanning guarante
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from dataclasses import replace
 import json
 from pathlib import Path
 import re
@@ -72,13 +73,25 @@ def _no_secrets(value):
         raise ToolkitError('sensitive_data', 'Do not store credentials or secrets in memory')
 
 
+def project_scope_available(ctx):
+    """Trusted provider only; absence of a live callback preserves embedded hosts."""
+    if not ctx.providers.get('memory_project_id'):
+        return False
+    callback = ctx.providers.get('memory_project_live')
+    try:
+        return callback is None or callback() is True
+    except Exception:
+        return False
+
+
 def _scope(args, ctx=None):
     scope = {'scope': args['scope']}
     if args['scope'] == 'project':
         project_id = args.get('project_id', '')
         if not project_id or project_id != project_id.strip():
             raise ToolkitError('invalid_arguments', 'Project memory requires an explicit stable project_id')
-        if ctx is not None and project_id != ctx.providers.get('memory_project_id'):
+        if ctx is not None and (project_id != ctx.providers.get('memory_project_id')
+                                or not project_scope_available(ctx)):
             raise ToolkitError('scope_denied', 'Project memory requires the matching host-bound project identity')
         _no_secrets(project_id)
         scope['project_id'] = project_id
@@ -194,9 +207,12 @@ def memory_summary(ctx):
         return ''
     check_cancelled(ctx)
     state = _load(ctx)
-    project_id = ctx.providers.get('memory_project_id')
+    project_id = ctx.providers.get('memory_project_id') if project_scope_available(ctx) else None
     entries = [entry for entry in state['data']['entries'] if entry['scope'] == 'global'
                or (project_id and entry.get('project_id') == project_id)]
+    check_cancelled(ctx)
+    if project_id and not project_scope_available(ctx):
+        entries = [entry for entry in entries if entry['scope'] == 'global']
     return _render(entries)
 
 
@@ -213,7 +229,10 @@ def _result(state, scope, *, include_forgotten=False):
 
 def memory_list(ctx, args):
     scope = _scope(args, ctx)
-    return _result(_load(ctx), scope, include_forgotten=args.get('include_forgotten', False))
+    state = _load(ctx)
+    _scope(args, ctx)  # Withhold in-flight project reads after close/switch/revocation.
+    check_cancelled(ctx)
+    return _result(state, scope, include_forgotten=args.get('include_forgotten', False))
 
 
 def memory_read(ctx, args):
@@ -228,6 +247,11 @@ def memory_read(ctx, args):
 
 
 def _mutate(ctx, args, update):
+    if args.get('scope') == 'project':
+        previous = ctx
+        # Existing atomic persistence checks cancellation immediately before
+        # replacement, including after slow preparation and lock acquisition.
+        ctx = replace(ctx, cancelled=lambda: previous.cancelled() or not project_scope_available(previous))
     storage = _storage_args(ctx)
     storage['expected_revision'] = args['expected_revision']
     def checked(previous):

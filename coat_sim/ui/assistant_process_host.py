@@ -271,6 +271,9 @@ class AssistantProcessHost(QObject):
 
 
 def run_assistant(runtime_root: Path) -> int:
+    # The UI and its worker must discover this exact authenticated service,
+    # including launches made directly with --runtime-root.
+    os.environ["COAT_ASSISTANT_RUNTIME_ROOT"] = str(runtime_root.resolve())
     configure_qt_dpi_scale()
     existing = QApplication.instance()
     if existing is not None and not isinstance(existing, QApplication):

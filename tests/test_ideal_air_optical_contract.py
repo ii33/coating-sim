@@ -35,7 +35,7 @@ class IdealAirOpticalContractTests(unittest.TestCase):
         air = builtin_air()
 
         self.assertEqual(row["category"], "other")
-        self.assertEqual(catalog["datasets"][-1], "project_ideal_air_20261012_v1")
+        self.assertIn("project_ideal_air_20261012_v1", catalog["datasets"])
         self.assertIn("project-defined mathematical engineering model", catalog["provenance_contract"])
         self.assertEqual(air["roles"], ["medium"])
         self.assertTrue(air["optical_only"])

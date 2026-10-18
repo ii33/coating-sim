@@ -83,7 +83,7 @@ def test_packaged_catalog_itself_satisfies_importer_mapping_contract():
     root = Path(__file__).resolve().parents[1]
     catalog = json.loads((root / "data/optical_catalog.json").read_text(encoding="utf-8"))
     summary = validate_package_catalog(catalog)
-    assert summary["material_count"] == 16
+    assert summary["material_count"] == 17
     assert summary["groups_by_category"]["other"] == 1
     assert summary["materials"]["builtin_ideal_air"]["category"] == "other"
 

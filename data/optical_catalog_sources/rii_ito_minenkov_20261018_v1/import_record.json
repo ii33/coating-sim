@@ -1,0 +1,23 @@
+{
+  "dataset_id": "rii_ito_minenkov_20261018_v1",
+  "material_count": 1,
+  "group_count": 1,
+  "groups_by_category": {
+    "film": 1
+  },
+  "added_material_count": 1,
+  "added_group_count": 1,
+  "raw_source_sha256": "2861e8774e0d8a95f485ea56721a70d239bf43ff7e11f48c1f60b12a551fad78",
+  "append_only_verified": true,
+  "existing_material_rows_preserved": true,
+  "existing_root_metadata_preserved": true,
+  "numeric_sample_count": 706,
+  "raw_point_equivalence_verified": true,
+  "catalog_material_count_before": 16,
+  "catalog_material_count_after": 17,
+  "catalog_group_count_before": 28,
+  "catalog_group_count_after": 29,
+  "baseline_commit": "296fe33",
+  "preserved_material_rows_sha256": "6f688e9255bc9e5a5692251695ab79b98e5d54e81a9dad43d0c22003cc2e6a08",
+  "preserved_root_metadata_sha256": "3bfb82e86d646ccfb0c99fddbe69b3252a47274e849161e77a4de63d6b176cfc"
+}

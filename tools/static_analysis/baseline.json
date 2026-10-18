@@ -11590,16 +11590,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/agent/runtime.py",
-      "code": "misc",
-      "message": "Cannot infer type of lambda",
-      "scope": "run_task",
-      "anchor": "tools=[read_archived_tool_result], toolsets=[mcp.filtered(lambda ctx, tool, allowed=tools: tool.name in allowed)],",
-      "fingerprint": "2d7e9dd81ace76cab0a372699c8cb7d629980a29e6bb7f72c59161f757f7d1b6",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_main_compact_sidebar_ui.py",
       "code": "misc",
       "message": "Cannot infer type of lambda",
@@ -27456,16 +27446,6 @@
       "scope": "MaskViewportTests.test_early_pan_survives_staged_initial_read",
       "anchor": "self.window.close()",
       "fingerprint": "6d7cdfe59c90bd74620b3b4fd8dc92e99780e9a8d1d397ac5077fbefedf07221",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/agent/runtime.py",
-      "code": "call-overload",
-      "message": "No overload variant of \"Agent\" matches argument types \"MediaChatModel\", \"str\", \"Any\", \"list[Callable[[str, str, int, int, str], Coroutine[Any, Any, dict[str, Any]]]]\", \"list[FilteredToolset[object]]\", \"int\", \"dict[str, bool]\", \"list[AbstractCapability[object]]\"",
-      "scope": "run_task",
-      "anchor": "child = Agent(model, name=name, instructions=(",
-      "fingerprint": "6d8d6b811ac7a3dbf303fa8618ee4faf86c5e24d83190df48d971c14fdc8def5",
       "count": 1
     },
     {
@@ -63989,6 +63969,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "Remove only resolved queue isolation fixture typing diagnostics after asynchronous admission test repair",
+  "last_prune_reason": "Remove only resolved runtime typing diagnostics after scoped knowledge and memory integration",
   "configuration_review_reason": "2026-10-17: add only BSD-3-Clause pypdf 6.21.0 for isolated research PDF extraction; all previous dependency/tool versions, analyzer rules and diagnostic entries remain unchanged. The lock-file digest changes only for this reviewed runtime dependency."
 }

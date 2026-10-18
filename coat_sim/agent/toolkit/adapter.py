@@ -122,6 +122,14 @@ class ToolkitAdapter:
     def _authorize(self, spec, args):
         if spec.capability not in self.capabilities or not self.enabled or not self.content_allowed or not self.roots or not self.result_allowed():
             return False
+        if spec.capability in {'tasks', 'preset'}:
+            scope = self.task_scope()
+            if any(args.get(key) != scope[key] for key in ('project_id', 'scope', 'session_id')):
+                return False
+            if self.providers.get('memory_project_id'):
+                from .memory import project_scope_available
+                if not project_scope_available(self.context):
+                    return False
         if spec.effect == 'read':
             return True
         if self.read_only or self.role != 'main' or self.mode not in ('operate', 'research'):
@@ -158,6 +166,7 @@ class ToolkitAdapter:
         return 'ready'
 
     def status(self):
+        from .memory import project_scope_available
         rows = []
         for capability in CAPABILITIES:
             if capability == 'guard':
@@ -172,13 +181,16 @@ class ToolkitAdapter:
                       'workspace_unavailable' if not self.roots else self._provider_status(capability))
             rows.append({'capability': capability, 'available': reason == 'ready', 'status': reason,
                          'kind': 'policy' if capability == 'guard' else 'tools'})
+        memory_ready = any(row['capability'] == 'memory' and row['available'] for row in rows)
+        project_ready = memory_ready and project_scope_available(self.context)
         return {'ok': True, 'data': {'enabled': self.enabled, 'configuration_error': self.configuration_error,
                 'capabilities': rows, 'scope': self.task_scope(), 'backend': backend_probe(),
                 'workspace': self.workspace_status(),
-                'memory_scope': {'global': 'memory' in self.capabilities,
-                    'project_id': self.providers.get('memory_project_id') or '',
-                    'project_available': bool(self.providers.get('memory_project_id')) and 'memory' in self.capabilities,
-                    'policy': 'global important facts only unless the host binds a stable project identity'},
+                'memory_scope': {'global': memory_ready,
+                    'project_id': self.providers.get('memory_project_id') if project_ready else '',
+                    'project_available': project_ready,
+                    'bound_project': self.providers.get('memory_project_target') if project_ready else None,
+                    'policy': 'Use this internal project_id only for memory tools; bound_project identifies the user-selected engineering project. Never infer binding from model arguments. Moves/descriptor renames require a new namespace.'},
                 'ocr': 'ready' if 'doc' in self.capabilities and self.content_allowed and self.roots and callable(self.providers.get('ocr')) else 'unavailable',
                 'active_profile': self.active_profile, 'profile_status': self.profile_state,
                 'profile_policy': 'active capabilities only narrow this request; eject restores scope on next new request',
@@ -208,7 +220,8 @@ class ToolkitAdapter:
 
     def task_scope(self):
         return {'state_root': '.' if self.roots else '',
-                'project_id': 'workspace', 'scope': 'session', 'session_id': self.session_id}
+                'project_id': self.providers.get('memory_project_id') or 'workspace',
+                'scope': 'session', 'session_id': self.session_id}
 
     def catalog(self, capability='', tool_names=None):
         if capability and capability not in CAPABILITIES:
@@ -230,7 +243,7 @@ class ToolkitAdapter:
             spec = next((s for s in self.registry.specs() if s.name == tool_name), None)
             # Mutating handlers recheck live UI mode/epoch at every cancellation
             # boundary, including atomic replacement after slow preparation.
-            initially_authorized = spec is not None and self._authorize(spec, arguments)
+            initially_authorized = spec is not None and await asyncio.to_thread(self._authorize, spec, arguments)
             context = replace(self.context, cancelled=lambda: not self.result_allowed() or (
                 initially_authorized and spec is not None and spec.effect != 'read' and not self._authorize(spec, arguments)))
             def authorize_and_prepare(tool, args):
@@ -258,6 +271,10 @@ class ToolkitAdapter:
             result = await asyncio.to_thread(invoke)
             if not self.result_allowed():
                 return failure('authorization_denied', 'Workspace permission changed; result withheld. Check state before retrying.')
+            if spec is not None and spec.capability == 'memory' and isinstance(arguments, Mapping) and arguments.get('scope') == 'project':
+                from .memory import project_scope_available
+                if not await asyncio.to_thread(project_scope_available, self.context):
+                    return failure('scope_denied', 'Project binding changed; result withheld. Start a new request in the selected project.')
             return result
         except asyncio.CancelledError:
             self.cancel_event.set()
@@ -275,6 +292,11 @@ class ToolkitAdapter:
         if 'preset' not in self.configured_capabilities or not self.content_allowed or not self.roots or not self.result_allowed():
             self.profile_state = 'disabled'
             return
+        if self.providers.get('memory_project_id'):
+            from .memory import project_scope_available
+            if not await asyncio.to_thread(project_scope_available, self.context):
+                self.profile_state, self.profile_persona = 'scope_revoked', ''
+                return
         if self.private_workspace and not self.roots[0].exists():
             self.profile_state = 'none'
             self.profile_persona = ''

@@ -164,7 +164,8 @@ def test_busy_manual_compaction_uses_active_request_config(real_bridge, monkeypa
     monkeypatch.setattr(bridge, "_worker_config", lambda: pytest.fail("busy compact must use active config"))
     assert bridge.compactContext()
     run, compact = worker.stdin.commands()
-    assert compact == {"op": "compact", "request_id": run["request_id"], "session_id": bridge._session}
+    assert compact == {"op": "compact", "request_id": run["request_id"], "session_id": bridge._session,
+                       "assistant_project_target": None}
 
 
 def test_runtime_context_budget_and_estimate_survive_ui_read(real_bridge):

@@ -94,6 +94,8 @@ def stage_source_snapshot(destination: Path) -> list[dict[str, object]]:
         # help entry; these are distinct from the portable-runtime ZIP itself.
         Path("docs") / "portable-bundle.md", Path("docs") / "portable-assets.md",
         Path("docs") / "installation.md",
+        Path("docs") / "assistant-knowledge-contract.md",
+        Path("docs") / "assistant-memory-research-contract.md",
     ):
         source = ROOT / relative
         _validate_path(source)
@@ -224,6 +226,8 @@ def add_qt_and_source_data_arguments(command: list[str], data_stage: Path, sourc
         (source_root / "docs" / "portable-bundle.md", "docs"),
         (source_root / "docs" / "portable-assets.md", "docs"),
         (source_root / "docs" / "installation.md", "docs"),
+        (source_root / "docs" / "assistant-knowledge-contract.md", "docs"),
+        (source_root / "docs" / "assistant-memory-research-contract.md", "docs"),
         # launch_desktop.pyw is run through runpy in frozen_entry.pyw, so its
         # dynamic import of the top-level launcher is invisible to PyInstaller.
         # Ship the exact frozen launcher source at the app root for PathFinder.

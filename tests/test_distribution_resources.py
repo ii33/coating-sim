@@ -13,6 +13,8 @@ _DOCUMENTS = (
     "portable-bundle.md",
     "portable-assets.md",
     "installation.md",
+    "assistant-knowledge-contract.md",
+    "assistant-memory-research-contract.md",
 )
 
 

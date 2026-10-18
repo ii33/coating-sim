@@ -147,6 +147,7 @@ Window {
     onInkChanged: { contextRing.requestPaint(); assistant.refreshAppearance(ink.toString()) }
     onVisibleChanged: {
         if (visible) {
+            assistant.refreshProjectContexts()
             assistant.refreshAppearance(ink.toString())
             for (const surface of selectionSurfaces.slice(0))
                 scheduleSelectionRestore(surface)
@@ -2017,6 +2018,41 @@ Window {
                         }
                     }
                 }
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.snapshot.spaceSm
+            ThemeControls.ThemeLabel { text: "工程上下文" }
+            ThemeControls.ThemeComboBox {
+                objectName: "assistantProjectContextSelector"
+                Layout.preferredWidth: 190
+                Layout.maximumWidth: 240
+                model: assistant.projectContexts
+                textRole: "text"
+                currentIndex: assistant.projectContextIndex
+                onActivated: assistant.selectProjectContext(index)
+                Accessible.name: "工程上下文"
+                ToolTip.visible: hovered
+                ToolTip.text: "明确选择工程后才使用其工程记忆；切换会撤销原工程任务的记忆权限。"
+            }
+            ThemeControls.ThemeButton {
+                objectName: "assistantProjectContextRefresh"
+                flat: true
+                text: assistant.projectContextLoading ? "刷新中…" : "刷新"
+                enabled: !assistant.projectContextLoading
+                onClicked: assistant.refreshProjectContexts()
+                Accessible.name: "刷新已打开工程"
+            }
+            ThemeControls.ThemeLabel {
+                Layout.fillWidth: true
+                text: assistant.projectContextStatus
+                elide: Text.ElideRight
+                color: chatWindow.quietInk
+                HoverHandler { id: projectContextHover }
+                ToolTip.visible: projectContextHover.hovered
+                ToolTip.text: assistant.projectContextStatus
             }
         }
 

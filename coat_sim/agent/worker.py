@@ -7,7 +7,9 @@ never command line arguments, environment variables, or persisted settings.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+import os
 import re
 import stat
 import sys
@@ -29,6 +31,84 @@ _TOOLKIT_SETTING_KEYS = (
     "assistant_toolkit_allow_model_context",
 )
 
+_PROJECT_TARGET_FIELDS = frozenset({"client_id", "client_generation", "project_id",
+                                    "session_generation", "root", "project_file"})
+
+
+def validated_project_target(value: Any) -> dict[str, str] | None:
+    """Validate only host protocol data; never discover or choose a project."""
+    if value is None:
+        return None
+    if not isinstance(value, dict) or set(value) != _PROJECT_TARGET_FIELDS:
+        raise ValueError("工程绑定须为宿主明确选择的完整六字段 target。")
+    if any(not isinstance(item, str) or not item or item != item.strip()
+           or len(item) > (4096 if key in {"root", "project_file"} else 128)
+           or any(ord(char) < 32 for char in item) for key, item in value.items()):
+        raise ValueError("工程绑定字段无效。")
+    if (not Path(value['root']).is_absolute() or not Path(value['project_file']).is_absolute()
+            or Path(value['project_file']).suffix.lower() != '.coatproj'):
+        raise ValueError("工程绑定须包含绝对目录与明确 .coatproj 文件。")
+    return dict(value)
+
+
+class ProjectMemoryBinding:
+    """A fixed, revocable host selection, never a model-selected project ID.
+
+    Authentication is deliberately performed in the runtime's worker threads.
+    A failed observation latches this request closed, including close/reopen.
+    """
+    def __init__(self, target: dict[str, str] | None, current: Any, clients: Any = None):
+        self._target = validated_project_target(target)
+        self._current = current
+        self._clients = clients
+        self._revoked = threading.Event()
+        self.project_id = self._target['project_id'] if self._target else ''
+        identity = ({key: (os.path.normcase(str(Path(self._target[key]).resolve()))
+                           if key in {'root', 'project_file'} else self._target[key])
+                     for key in ('project_id', 'root', 'project_file')} if self._target else None)
+        self.memory_project_id = ('project:' + hashlib.sha256(json.dumps(
+            identity, sort_keys=True, ensure_ascii=False).encode()).hexdigest()) if identity else ''
+
+    @property
+    def target(self) -> dict[str, str] | None:
+        return dict(self._target) if self._target else None
+
+    def current(self) -> bool:
+        try:
+            valid = not self._revoked.is_set() and self._current() is True
+        except Exception:
+            valid = False
+        if not valid:
+            self._revoked.set()
+        return valid
+
+    def verify(self) -> bool:
+        if not self.current():
+            return False
+        if self._target is None:
+            return True
+        try:
+            from coat_sim.assistant_process import AssistantProcessClient
+            from coat_sim.project_activation import activation_target
+            clients = self._clients() if self._clients is not None else AssistantProcessClient().list_clients()
+            matches = [activation_target(client, project) for client in clients
+                       if client.get('state') == 'alive' for project in client.get('project_sessions', [])
+                       if project.get('project_id') == self.project_id
+                       and activation_target(client, project) == self._target]
+            valid = len(matches) == 1 and self.current()
+        except Exception:
+            valid = False
+        if not valid:
+            self._revoked.set()
+        return valid
+
+    def providers(self) -> dict[str, Any]:
+        if self._target is None:
+            return {}
+        return {'memory_project_id': self.memory_project_id,
+                'memory_project_live': self.verify,
+                'memory_project_target': self.target}
+
 
 class ProtocolWriter:
     def __init__(self, stream: TextIO) -> None:
@@ -40,6 +120,11 @@ class ProtocolWriter:
         self._toolkit_config = normalized_toolkit_settings({})
         self._toolkit_generation = 0
         self._toolkit_lock = threading.Lock()
+        self._project_target: dict[str, str] | None = None
+        self._project_generation = 0
+        self._project_lock = threading.Lock()
+        self._research_root: Any = ''
+        self._research_generation = 0
         self.sessions: dict[str, str] = {}
         self.event_store: Any = None
         self._steering: dict[str, list[dict[str, Any]]] = {}
@@ -316,6 +401,46 @@ class ProtocolWriter:
         with self._toolkit_lock:
             return type(generation) is int and generation == self._toolkit_generation
 
+    def configure_project_target(self, target: Any) -> bool:
+        selected = validated_project_target(target)
+        with self._project_lock:
+            if selected == self._project_target:
+                return False
+            self._project_target = selected
+            self._project_generation += 1
+            return True
+
+    def project_binding_snapshot(self, target: Any) -> ProjectMemoryBinding:
+        selected = validated_project_target(target)
+        with self._project_lock:
+            if selected != self._project_target:
+                raise ValueError('stale_project_binding: 工程选择已变化，请在当前工程下重新发送任务。')
+            generation = self._project_generation
+        def current():
+            with self._project_lock:
+                return generation == self._project_generation and selected == self._project_target
+        return ProjectMemoryBinding(selected, current)
+
+    def configure_research(self, config: Mapping[str, Any], *, replace: bool = False) -> bool:
+        if not replace and 'assistant_research_library_root' not in config:
+            return False
+        raw = config.get('assistant_research_library_root', '')
+        root = raw.strip() if isinstance(raw, str) else None
+        with self._toolkit_lock:
+            if root == self._research_root:
+                return False
+            self._research_root = root
+            self._research_generation += 1
+            return True
+
+    def research_grant_snapshot(self) -> int:
+        with self._toolkit_lock:
+            return self._research_generation
+
+    def research_generation_is_current(self, generation: object) -> bool:
+        with self._toolkit_lock:
+            return type(generation) is int and generation == self._research_generation
+
     def redact(self, text: str) -> str:
         return text.replace(self.secret, "[凭据已隐藏]") if self.secret else text
 
@@ -514,7 +639,8 @@ async def _run_task_with_research_library(command: dict[str, Any], writer: Any,
                 research_library_status=state, research_library_metadata=metadata, text=message)
     await run_task(command, writer, research_library=provider,
                    allow_research_library_context=provider is not None,
-                   research_library_readiness={"status": state, "message": message, "metadata": metadata})
+                   research_library_readiness={"status": state, "message": message, "metadata": metadata},
+                   project_memory_binding=command.get('_project_memory_binding'))
 
 
 async def serve(writer: ProtocolWriter) -> None:
@@ -562,7 +688,8 @@ async def serve(writer: ProtocolWriter) -> None:
             # Optional dependencies are imported only when a task is submitted.
             from coat_sim.agent.runtime import run_task, compact_context
             if compacting:
-                await compact_context(dict(command), writer)
+                await compact_context(dict(command), writer,
+                                      project_memory_binding=command.get('_project_memory_binding'))
             else:
                 await _run_task_with_research_library(dict(command), writer, run_task)
         except asyncio.CancelledError:
@@ -625,11 +752,23 @@ async def serve(writer: ProtocolWriter) -> None:
         op = command.get("op")
         request_id = command.get("request_id", "")
         if op == "configure":
+            project_changed = False
+            if 'assistant_project_target' in command:
+                try:
+                    project_changed = writer.configure_project_target(command['assistant_project_target'])
+                except ValueError as exc:
+                    # Invalid replacement is a revocation, never retain the old scope.
+                    writer.configure_project_target(None)
+                    writer.emit('error', str(request_id)[:128], text=str(exc))
+                    continue
             if isinstance(command.get("config"), dict):
                 writer.configure_quota(command["config"])
                 toolkit_changed = writer.configure_toolkit(command["config"])
+                research_changed = writer.configure_research(command['config'])
                 if active is not None and not active.done():
                     writer.emit("status", active_id, text=(
+                        "工程选择已变化，本轮旧工程上下文已失效；请在当前工程重新发送任务。" if project_changed else
+                        "研究库设置已变化，本轮旧研究库访问已失效；新连接从下一轮生效。" if research_changed else
                         "工具集设置已更新，本轮旧授权已失效；新的工具集授权从下一轮生效。"
                         if toolkit_changed else "额度设置已更新，将用于下一次模型请求。"))
             continue
@@ -656,6 +795,11 @@ async def serve(writer: ProtocolWriter) -> None:
             if not isinstance(command.get("config"), dict):
                 writer.emit("context_compaction", request_id, state="failed", source="main", reason="manual",
                             text="上下文整理缺少模型配置。")
+                continue
+            try:
+                command['_project_memory_binding'] = writer.project_binding_snapshot(command.get('assistant_project_target'))
+            except ValueError as exc:
+                writer.emit('context_compaction', request_id, state='failed', source='main', reason='manual', text=str(exc))
                 continue
             active_id, active_kind = request_id, "compact"
             writer.configure_toolkit(command["config"], replace=True)
@@ -726,12 +870,19 @@ async def serve(writer: ProtocolWriter) -> None:
                        for item in command.get("attachments", []))):
             writer.emit("error", str(request_id)[:128], text="任务参数无效。")
             continue
+        try:
+            command['_project_memory_binding'] = writer.project_binding_snapshot(command.get('assistant_project_target'))
+        except ValueError as exc:
+            writer.emit('error', request_id, text=str(exc))
+            continue
         active_id, active_kind = request_id, "run"
         # Bind before scheduling: a queued configure may run before execute or
         # while runtime initialization awaits an external provider. Never let
         # that newer generation authorize this request's older settings.
         writer.configure_toolkit(config, replace=True)
         command["_toolkit_grant_generation"] = writer.toolkit_grant_snapshot()
+        writer.configure_research(config, replace=True)
+        command['_research_grant_generation'] = writer.research_grant_snapshot()
         active = asyncio.create_task(execute(command), name=f"assistant-{request_id}")
 
 

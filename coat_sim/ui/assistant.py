@@ -7,6 +7,7 @@ import csv
 import io
 import json
 from concurrent.futures import ThreadPoolExecutor
+from threading import Thread
 from collections.abc import Callable
 from pathlib import Path
 from typing import cast
@@ -243,6 +244,8 @@ class AssistantBridge(QObject):
     historyProjectionChanged = Signal()
     historyProjectionBatchAboutToInsert = Signal(int)
     historyProjectionBatchInserted = Signal()
+    projectContextsChanged = Signal()
+    projectContextsReady = Signal(object)
 
     @property
     def _worker(self):
@@ -296,6 +299,17 @@ class AssistantBridge(QObject):
         self._run_coordinator.transportFailed.connect(self._worker_transport_failed)
         self._run_coordinator.cancelTimedOut.connect(self._cancel_timeout)
         self._closed = False
+        self._project_context_rows: list[dict] = []
+        self._project_context_target: dict | None = None
+        self._project_context_generation = 0
+        self._active_project_context_generation = 0
+        self._project_context_loading = False
+        self._project_context_status = "未选择工程，使用全局记忆。"
+        self.projectContextsReady.connect(self._project_contexts_ready)
+        self._project_context_timer = QTimer(self)
+        self._project_context_timer.setInterval(2000)
+        self._project_context_timer.timeout.connect(self._poll_project_context)
+        self._project_context_timer.start()
         self._busy = False
         self._status = "准备就绪。"
         self._attachments = []
@@ -352,6 +366,120 @@ class AssistantBridge(QObject):
         # Keep the shared settings probe owner alive even when Settings is closed.
         # ModelDiscoveryBus deduplicates it against visible Settings windows.
         self._prefs = SettingsBridge(self)
+
+    @Property(list, notify=projectContextsChanged)
+    def projectContexts(self) -> list[dict]:
+        # QML receives presentation only; authority stays in the bridge's rows.
+        return [{"text": "全局"}] + [{"text": row["text"]} for row in self._project_context_rows]
+
+    @Property(int, notify=projectContextsChanged)
+    def projectContextIndex(self) -> int:
+        return next((index + 1 for index, row in enumerate(self._project_context_rows)
+                     if row["target"] == self._project_context_target), 0)
+
+    @Property(bool, notify=projectContextsChanged)
+    def projectContextLoading(self) -> bool:
+        return self._project_context_loading
+
+    @Property(str, notify=projectContextsChanged)
+    def projectContextStatus(self) -> str:
+        return self._project_context_status
+
+    def _project_message_context(self) -> dict:
+        target = self._project_context_target
+        return {"assistant_project_target": dict(target) if target is not None else None,
+                "project_context_generation": self._project_context_generation}
+
+    def _project_message_is_current(self, row: dict) -> bool:
+        return (row.get("project_context_generation", 0) == self._project_context_generation
+                and row.get("assistant_project_target") == self._project_context_target)
+
+    def _set_project_context(self, target: dict | None, status: str) -> None:
+        if target != self._project_context_target:
+            self._project_context_target = dict(target) if target is not None else None
+            self._project_context_generation += 1
+            # Never rebind queued or returned steering messages, including A -> B -> A.
+            for row in self._pending_messages:
+                row["paused"] = True
+            self.queueChanged.emit()
+            if self._worker is not None and not self._configure_worker():
+                # A failed revocation must not leave the old worker authoritative.
+                self._stop_worker()
+        self._project_context_status = status
+        self.projectContextsChanged.emit()
+        if not self.busy:
+            QTimer.singleShot(0, self._drain_queue)
+
+    @Slot(int, result=bool)
+    def selectProjectContext(self, index: int) -> bool:
+        if self._closed or getattr(self, "_application_exit_frozen", False):
+            return False
+        if not 0 <= index <= len(self._project_context_rows):
+            return False
+        target = self._project_context_rows[index - 1]["target"] if index else None
+        label = self._project_context_rows[index - 1]["text"] if index else "全局"
+        self._set_project_context(target, "当前记忆上下文：" + label + "。")
+        return True
+
+    def _poll_project_context(self) -> None:
+        if self._project_context_target is not None:
+            self.refreshProjectContexts()
+
+    @Slot()
+    def refreshProjectContexts(self) -> None:
+        if self._closed or self._project_context_loading:
+            return
+        self._project_context_loading = True
+        self.projectContextsChanged.emit()
+
+        def fetch() -> None:
+            from coat_sim.assistant_process import AssistantProcessClient
+            from coat_sim.project_activation import activation_target
+            try:
+                rows = []
+                for client in AssistantProcessClient(timeout=3.0).list_clients():
+                    if client.get("state") != "alive":
+                        continue
+                    for project in client.get("project_sessions", []):
+                        target = activation_target(client, project)
+                        if any(not isinstance(value, str) or not value.strip()
+                               for value in target.values()):
+                            continue
+                        rows.append({"text": str(project.get("name") or Path(target["root"]).name),
+                                     "target": target})
+                result = {"rows": rows, "error": ""}
+            except Exception:
+                result = {"rows": [], "error": "无法核验已打开工程；已切回全局记忆，请刷新后重新选择。"}
+            if not self._closed:
+                try:
+                    self.projectContextsReady.emit(result)
+                except RuntimeError:
+                    pass  # The QObject may have been deleted while IPC completed.
+
+        Thread(target=fetch, name="assistant-project-context", daemon=True).start()
+
+    @Slot(object)
+    def _project_contexts_ready(self, result: dict) -> None:
+        if self._closed:
+            return
+        self._project_context_loading = False
+        self._project_context_rows = result["rows"]
+        error = result["error"]
+        if error:
+            self._set_project_context(None, error)
+        elif self._project_context_target is not None and not any(
+                row["target"] == self._project_context_target for row in self._project_context_rows):
+            self._set_project_context(None, "原工程会话已关闭或更新；已切回全局记忆，请重新选择。")
+        elif self._project_context_target is None:
+            self._project_context_status = ("请选择工程以使用工程记忆；未选择时仅用全局记忆。"
+                                            if self._project_context_rows else "暂无已打开工程，使用全局记忆。")
+            self.projectContextsChanged.emit()
+        else:
+            self.projectContextsChanged.emit()
+
+    def _configure_worker(self) -> bool:
+        return self._write_worker({"op": "configure", "config": self._worker_config(),
+                                   "assistant_project_target": self._project_message_context()["assistant_project_target"]})
 
     @Property(QObject, constant=True)
     def turnModel(self) -> QObject:
@@ -981,7 +1109,7 @@ class AssistantBridge(QObject):
         self.contextChanged.emit()
         self.usageChanged.emit()
         if self.enabled:
-            self._write_worker({"op": "configure", "config": self._worker_config()})
+            self._configure_worker()
         else:
             self._stop_worker()
 
@@ -1168,6 +1296,7 @@ class AssistantBridge(QObject):
     def shutdown(self) -> None:
         self._closed = True
         self._storage_generation += 1
+        self._project_context_timer.stop()
         self._cancel_history_projection()
         self._stop_worker()
         self._run_coordinator.close()
@@ -1197,7 +1326,10 @@ class AssistantBridge(QObject):
         self._emit_task_settled("error", "助手后台连接已断开。", request_id=request_id)
 
     def _ensure_worker(self) -> None:
+        previous = self._worker
         self._run_coordinator.ensure_worker(self.workerEvent)
+        if self._worker is not previous and not self._configure_worker():
+            raise OSError("助手后台未接收工程上下文，请重试。")
 
     @Slot(object)
     def _on_worker_event(self, envelope: dict) -> None:
@@ -1548,7 +1680,15 @@ class AssistantBridge(QObject):
             return
         if not self.enabled:
             return
+        from coat_sim.agent.worker import ProjectMemoryBinding
+        # This comparison does not select a project. A matching notification
+        # may only use the target the user has already explicitly selected.
+        memory_scope = (ProjectMemoryBinding(self._project_context_target, lambda: True).memory_project_id
+                        or "global")
         for notification in self._store.pending_background_notifications(self._session):
+            origin_scope = self._store.request_memory_scope(self._session, notification["request_id"])
+            if origin_scope != memory_scope:
+                continue  # Keep pending until the user selects the original scope.
             payload = notification["payload"]
             job_id = notification["job_id"]
             if self._store.request_was_stopped(self._session, notification["request_id"]):
@@ -1562,6 +1702,7 @@ class AssistantBridge(QObject):
                    "prompt": "请简洁汇报这条后台计算的真实结果，并引用已有图像与资产。",
                    "attachments": [], "paused": False, "output_audio": False,
                    "background_notification": payload,
+                   **self._project_message_context(),
                    "config_overrides": {"task_mode": "chat", "reasoning_strength": "auto"}}
             if self._start_message(row):
                 self._store.settle_background_notification(job_id, "started")
@@ -1599,7 +1740,8 @@ class AssistantBridge(QObject):
             return None, False
         return {"id": uuid4().hex, "session_id": self._session, "prompt": text,
                 "attachments": [dict(row) for row in self._attachments],
-                "output_audio": bool(self._output_audio), "paused": False}, False
+                "output_audio": bool(self._output_audio), "paused": False,
+                **self._project_message_context()}, False
 
     def _consume_draft(self) -> None:
         self._attachments = []
@@ -1640,9 +1782,13 @@ class AssistantBridge(QObject):
             self._set_status(f"补充内容须为 1–{MAX_PROMPT_LENGTH} 个字符。")
             return False
         row = {"id": uuid4().hex, "session_id": self._session, "prompt": text,
-               "attachments": [], "output_audio": False, "paused": False}
+               "attachments": [], "output_audio": False, "paused": False,
+               **self._project_message_context()}
         if not self.busy:
             return self._start_message(row)
+        if self._active_project_context_generation != self._project_context_generation:
+            self._set_status("工程上下文已改变；请等待当前任务结束后重新发送补充内容。")
+            return False
         if self._stop_pending:
             self._set_status("当前任务正在停止，补充内容尚未发送；请稍后重试。")
             return False
@@ -1670,6 +1816,9 @@ class AssistantBridge(QObject):
             return False
         if not self.busy:
             return self.sendMessage(prompt)
+        if self._active_project_context_generation != self._project_context_generation:
+            self._set_status("工程上下文已改变；请将消息排队，不能插入原工程任务。")
+            return False
         if self._stop_pending:
             self._set_status("当前任务正在停止；请发送为待处理消息。")
             return False
@@ -1722,6 +1871,9 @@ class AssistantBridge(QObject):
             return False
         if self.busy or self._closed or row["session_id"] != self._session:
             return False
+        if not self._project_message_is_current(row):
+            self._set_status("工程上下文已改变；原消息未发送，请撤回输入框后重新发送。")
+            return False
         text = row["prompt"]
         try:
             validate_assistant_url(str(self._config.get("assistant_api_url", "")))
@@ -1734,6 +1886,7 @@ class AssistantBridge(QObject):
             self._set_status(str(exc))
             return False
         request_id = self._run_coordinator.begin_run()
+        self._active_project_context_generation = self._project_context_generation
         run_config = {**self._worker_config(), **row.get("config_overrides", {}),
                       "output_audio": row.get("output_audio", False)}
         run_mode = str(run_config.get("task_mode", "chat"))
@@ -1772,6 +1925,7 @@ class AssistantBridge(QObject):
                                   "session_id": self._session, "prompt": text,
                                   "attachments": selected_attachments,
                                   "background_notification": background,
+                                  "assistant_project_target": row.get("assistant_project_target"),
                                   "config": run_config}):
             if (self._run_coordinator.request_id != request_id
                     or not self._run_coordinator.run_active):
@@ -2473,8 +2627,12 @@ class AssistantBridge(QObject):
     def compactContext(self) -> bool:
         if self.compacting:
             return False
+        if self.busy and self._active_project_context_generation != self._project_context_generation:
+            self._set_status("工程上下文已改变；请等待原任务结束后再整理当前上下文。")
+            return False
         request = self._request_id if self.busy else uuid4().hex
-        payload = {"op": "compact", "request_id": request, "session_id": self._session}
+        payload = {"op": "compact", "request_id": request, "session_id": self._session,
+                   "assistant_project_target": self._project_message_context()["assistant_project_target"]}
         if not self.busy:
             payload.update(config=self._worker_config())
         self._compaction_request = request

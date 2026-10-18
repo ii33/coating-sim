@@ -177,7 +177,10 @@ figcaption{font-size:14px;line-height:1.7;margin:6px 9px}footer{max-width:1320px
 <p>结果显示基片局部XY膜厚图、带数值刻度的标尺、平均/最小/最大/峰谷差/CV，以及实际设备、用时、各层信息。CV=标准差/均值；数据精度以实际数组和采样为准。</p>
 <p>每次仿真尝试（成功、失败或取消）都会在<code>data/simulation_history.sqlite3</code>记录一条摘要；失败或取消项只记录请求、状态和错误，不生成厚度指标。成功时自动暂存标准热图、NPZ、实际配置和摘要于<code>data/tmp/simulations/&lt;run_id&gt;</code>。PDF默认包括heatmap、thickness、uniformity，可选computation、settings、machine、process、layers。优先复用结果返回的<code>files[].heatmap</code>，不重复生成标准热图；仅在需要contour或radial等额外视图时调用可视化工具。正式保存仿真资产前须确认名称，保存为<code>.coatasset</code>；仿真界面可从<code>data/assets</code>打开资产包，也可用<code>read_simulation_asset</code>读取summary/configuration/layers/images/full视图。预计时间按对应设备历史估计，不保证运行时长；算法、采样和回退会影响预测。</p>
 <p>对话新生成的设计先暂存于<code>data/tmp</code>；正式保存时向用户确认名称，再通过<code>save_generated_design</code>复制完整依赖图到kind正式目录。<code>prepare_temporary_design</code>只准备暂存设计。</p><p>结果requested_settings保留原请求，settings记录实际生效机器/基片；多源总结果源参数取第一层并由settings_scope说明，各层step_results.effective_settings保存逐层参数。不能用原请求默认值替代实际结果追溯。</p><p>工具：read_calculation_result默认摘要；仿真资产用save_simulation_asset/read_simulation_asset。不要凭热图颜色逆推出精确膜厚。</p></section>
-<section id="assistant"><h2>看板娘与权限</h2><figure>
+<section id="assistant"><h2>看板娘与权限</h2><p>知识查询按需展开：看板娘可检索固定随仓算法文档并按章节、版次分页读取；在明确工程内统一发现 BBS 和研究证据，再按引用读取原文。检索有预算与版本检查，不能以一次未命中断言完整资料库不存在。</p>
+<p>材料数据检查区分 n/k 的各自有效波段、来源、显式无损假设与工艺标定声明。数据齐全不等于生产验证；未知 k 不等于零，不自动用晶体数据代替薄膜或猜补缺少的材料数据。</p>
+<p>在看板娘输入区显式选择工程上下文，未选择时为“全局”。切换或关闭工程使旧请求的工程记忆权限失效；可见聊天保留，发送给模型的历史按工程隔离。精简记忆只保存重要事实，BBS 保存持久日志和研究报告；讨论模式可以追加评论和回复。</p>
+<p>本地研究库必须显式配置，随后可在当前任务内按需检索，委派助手只有受控只读访问。外部文献 MCP 是独立来源，不自动启用；不得将查阅许可扩展为任意外发工程或私人资料。相关边界见<a href="assistant-knowledge-contract.md">知识检索契约</a>与<a href="assistant-memory-research-contract.md">工程记忆和研究访问契约</a>。</p><figure>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 850 310" role="img" aria-label="看板娘数据权限与受控脚本执行边界">
 <defs><marker id="s" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 8 4 0 8" fill="#315b83"/></marker></defs>
 <rect x="22" y="47" width="186" height="212" rx="15" fill="#edf5fd" stroke="#6688ab"/>

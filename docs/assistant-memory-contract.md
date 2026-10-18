@@ -22,3 +22,14 @@
 `memory_list`、`memory_read` 为 read；`memory_upsert`、`memory_forget`、`memory_restore` 为 write。Discussion/只读/非主助手和实时授权检查沿用宿主工具效果门禁。暂停、取消或权限撤回后不得提交写入。
 
 每次请求只注入当前绑定项目和全局的有效条目。摘要含明确的不可信数据标记和来源标识，总计最多 1200 字符，按重要性、项目优先和稳定 id 排序，超额只省略整条事实。记忆不能授予权限、改变政策或执行任何命令。没有活动记忆时不注入上下文；损坏账本保留并由工具返回错误，不影响无关工具能力。
+
+## 桌面工程上下文与 worker 接线
+
+- 唯一状态所有者为 `AssistantBridge`。现有聊天输入区用 `ThemeComboBox` 显示“全局”及已打开工程名称；不创建工程管理器，不自动选择唯一工程，不从模型参数、最近工具调用或窗口焦点推断工程。选择不写入持久配置，重启默认为全局。
+- 工程候选来自 `AssistantProcessClient.list_clients()` 的认证结果，只接受 alive owner。通过现有 `activation_target` 构造 `client_id`、`client_generation`、`project_id`、`session_generation`、`root`、`project_file` 六字段目标，UI只提交候选索引，不能提交任意路径。列表为空仍可使用全局记忆。
+- 选择变化立即发送 `configure` 顶层 `assistant_project_target`（完整六字段对象或 null），运行中也如此；worker 启动/重启后先同步当前选择再发请求。字段不属于持久 config 或模型工具参数。每条消息在用户发送/排队时捕获 detached target 与 UI generation，`run` 顶层携带原快照。手动 `compact` 同样携带顶层 target，切换后的旧在途请求不可继续压缩。
+- 已选择工程时定期异步复核列表，窗口打开及用户刷新时也更新。刷新保留精确目标，不按名称/ID猜测替代 owner；关闭工程、owner 失联、generation/路径改变或认证查询失败会撤销选择并提示，恢复连接不会自动恢复绑定。worker 每次实际访问仍再次核验完整认证绑定，UI轮询不是授权门禁。
+- 切换/撤销立即递增 generation。旧队列暂停，不重基到新选择；即使 A→B→A，旧消息也须撤回输入框并由用户重新发送。输入框文字、附件和历史不被清除。旧请求的插话入口拒绝新 scope 内容；原请求记忆授权由 worker generation 检查撤销。
+- 异步发现单次在途、有限超时；关闭 bridge 后丢弃迟到结果。加载时显示刷新状态，失败显示明确状态并保留全局功能。后台结果通知只按原请求的宿主 scope 标记与当前用户明确选择的工程比较；相符才捕获当前 target，不相符保留 pending，等用户选回原工程。标记不赋予选择权限，旧无标记通知仅属于全局。
+
+接口真值还包括 `AssistantBridge.projectContexts` / `projectContextIndex` / `projectContextLoading` / `projectContextStatus`、`refreshProjectContexts()` / `selectProjectContext(index)` 以及 UI/worker 接线回归。
