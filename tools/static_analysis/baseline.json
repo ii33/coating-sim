@@ -590,16 +590,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.test_optimization_observer_start_errors_preserve_admitted_job",
-      "anchor": "prior_ids = {row['job_id'] for row in self.store.snapshot()['jobs']}",
-      "fingerprint": "0259f0c2ebe33c28bd0dd0b49e590e8e474547a9c52470a91aace9e67e754d36",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_scheduler_main_integration.py",
       "code": "arg-type",
       "message": "Argument 1 to \"dispatch\" of \"WindowRegistry\" has incompatible type \"SimpleNamespace\"; expected \"WindowRegistry\"",
@@ -1099,16 +1089,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "misc",
-      "message": "Invalid self argument \"ComputeStartFailureTests\" to attribute function \"spin\" with type \"Callable[[QueueTests, Any, Any], Any]\"",
-      "scope": "ComputeStartFailureTests.test_main_failed_new_observer_preserves_running_submission_identity",
-      "anchor": "self.spin(lambda: not bridge.busy)",
-      "fingerprint": "04d6e0dbf6a3b67fa5adac48efb70ef6fd34a303423d064c302869d17eda6a10",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "tests/fixtures/external_mcp_http_server.py",
       "code": "F401",
@@ -1236,16 +1216,6 @@
       "scope": "_settings_pass",
       "anchor": "engine._qa_bridge = bridge",
       "fingerprint": "0562e9b9e6ee55bb77b914bf0394d6c202432e8dc4ae7ea653fad580c0e44b29",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.run_main_successor",
-      "anchor": "rows = self.store.snapshot()['jobs']",
-      "fingerprint": "0567c5087256fc2923f851a0f4570264bdceea6c2ab2780b2f06003b63bdd8d3",
       "count": 1
     },
     {
@@ -1546,16 +1516,6 @@
       "scope": "_attest_completed_device",
       "anchor": "elif (result.get('backend') == 'gpu_cuda'",
       "fingerprint": "069f51bb4bd274fbb3ee6bd05babeebe4b491bfff65ac1e51de054d041f0dec7",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.test_scheduler_terminal_write_failure_preserves_original_launch_error",
-      "anchor": "with self.store.connection() as db:",
-      "fingerprint": "06adfd52fa9ba511d52dbcd515dfe042abd4a4f25a6f3fc3f029bb3b6a12efbc",
       "count": 1
     },
     {
@@ -2430,16 +2390,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "misc",
-      "message": "Invalid self argument \"ComputeStartFailureTests\" to attribute function \"spin\" with type \"Callable[[QueueTests, Any, Any], Any]\"",
-      "scope": "ComputeStartFailureTests.run_main_successor",
-      "anchor": "self.spin(lambda: not bridge.busy)",
-      "fingerprint": "0a0b61989537ba65b5d960605e33bbc562678572a3af74c848ad2f079356961b",
-      "count": 2
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_process_environment_ui.py",
       "code": "index",
       "message": "Value of type \"Property\" is not indexable",
@@ -2486,16 +2436,6 @@
       "scope": "MachineProcessPreviewTests.test_process_renders_metadata_monitors_and_editable_busy_parameters",
       "anchor": "window.resize(width, height)",
       "fingerprint": "0a44657ab6d75246ab8ea7467b69577bdf82f684a009c6fdc98c995bd5168937",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.test_scheduler_launch_metadata_failure_reaps_child_and_releases_slot",
-      "anchor": "row = self.store.read_job(job['job_id'])",
-      "fingerprint": "0a45f49f849428db46307c1612f9972125ad1394f38068bcd192cc9399782c36",
       "count": 1
     },
     {
@@ -2706,16 +2646,6 @@
       "scope": "FilmDesignGeneratorQtTests.setUp",
       "anchor": "self.temp_path, service=self.service, geometry_settings=self.settings)",
       "fingerprint": "0b242577c2e7193270af8462fc8f07c2db6b1dfa45206a318188d9a531a141f1",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.test_optimization_admission_metadata_failure_rolls_back",
-      "anchor": "self.assertEqual(self.store.snapshot()['events'], [])",
-      "fingerprint": "0b2c5c644398fd1686170f1ce4eb4a1fba162de2f0ba462973285e93aafb062f",
       "count": 1
     },
     {
@@ -3956,16 +3886,6 @@
       "scope": "",
       "anchor": "onAccepted: controller.loadSpectrum(selectedFile.toString(), workspace.spectrumTarget)",
       "fingerprint": "111755beac5e4a73c38e2ea2157407689f37c69f247a2f39e9e93c65c45b4454",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.test_unknown_memory_headroom_still_submits_large_request",
-      "anchor": "row = self.store.snapshot()['jobs'][0]",
-      "fingerprint": "111e7c171996bb4f35aa8426a1cc51910451a40922c8feac18b5bdf795023ece",
       "count": 1
     },
     {
@@ -5276,16 +5196,6 @@
       "scope": "FilmDesignGeneratorQtTests.setUp",
       "anchor": "self.root.setWidth(1100)",
       "fingerprint": "1573b8bcaac5cf0d4bc8c7670adaa076405b70f5fb06211c3e994b35a5523152",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.run_optimization_successor",
-      "anchor": "rows = self.store.snapshot()['jobs']",
-      "fingerprint": "1590ba6be3d1314ab686a7ce65c2c83e073e0e7f2d3cb72662565712f03c3be9",
       "count": 1
     },
     {
@@ -8150,16 +8060,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.test_main_failed_new_observer_preserves_running_submission_identity",
-      "anchor": "self.assertEqual([row['state'] for row in self.store.snapshot()['jobs']], ['succeeded', 'succeeded'])",
-      "fingerprint": "20ca16cbb88a8232350621a0cec2c91e141a1cbb7286ff608d4664b4fa1fe571",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/core/film_optimization_forward_cache.py",
       "code": "operator",
       "message": "No overload variant of \"__add__\" of \"list\" matches argument type \"float\"",
@@ -8246,16 +8146,6 @@
       "scope": "OpticalCoreTests.test_legacy_profile_and_evidence_survive_new_fields",
       "anchor": "edited=deepcopy(row);edited['optical_constants']=[model()]",
       "fingerprint": "20fccfa0929be7fea184acd7c0c027fde2e950173afc85f37aef16c8d6def162",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "misc",
-      "message": "Invalid self argument \"ComputeStartFailureTests\" to attribute function \"bridge\" with type \"Callable[[QueueTests], Any]\"",
-      "scope": "ComputeStartFailureTests.test_main_observer_start_errors_preserve_admitted_job_and_allow_retry",
-      "anchor": "bridge = self.bridge()",
-      "fingerprint": "210f25365b62b68249a2c41378b5ece50a5a1404f2efa6321edaa3d0ba6eb7df",
       "count": 1
     },
     {
@@ -9450,16 +9340,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.test_optimization_memory_warning_retained_without_blocking_submission",
-      "anchor": "row = self.store.snapshot()['jobs'][0]",
-      "fingerprint": "250fad1472fc5cf55d38dd56cbaba7b42a721179bd56db326f8c848f238ea76a",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/core/film_optimization_needle.py",
       "code": "arg-type",
       "message": "Argument \"state\" to \"replace\" of \"FilmOptimizationResult\" has incompatible type \"str\"; expected \"Literal['completed', 'cancelled', 'failed']\"",
@@ -9467,16 +9347,6 @@
       "anchor": "state=state,",
       "fingerprint": "25118a51d26003254991eb352580810d19e6f0fd0bb60c3b47bbe3a6a8bb318a",
       "count": 2
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.test_main_observer_start_errors_preserve_admitted_job_and_allow_retry",
-      "anchor": "row = next(row for row in self.store.snapshot()['jobs'] if row['job_id'] not in prior_ids)",
-      "fingerprint": "2519b920ecc0911856c908d43dea440f9afa45afe0d175290cfdc18ba5a19698",
-      "count": 1
     },
     {
       "tool": "qmllint",
@@ -9939,16 +9809,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "misc",
-      "message": "Invalid self argument \"ComputeStartFailureTests\" to attribute function \"spin\" with type \"Callable[[QueueTests, Any, Any], Any]\"",
-      "scope": "ComputeStartFailureTests.test_optimization_memory_warning_retained_without_blocking_submission",
-      "anchor": "self.spin(lambda: not bridge.optimization['busy'])",
-      "fingerprint": "269639e498d34c83c3c583bce010efa76c291be87e0e01bd9256329f45b847f8",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "tests/test_external_mcp_http_contract.py",
       "code": "F401",
@@ -10359,16 +10219,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.test_main_failed_new_observer_preserves_running_submission_identity",
-      "anchor": "self.assertFalse(any(row['cancel_requested'] for row in self.store.snapshot()['jobs']))",
-      "fingerprint": "2814856b1db3392838400edc6debca141295f9ca237b03a420f962879b1b8ad4",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/scheduler/client.py",
       "code": "E701",
@@ -10386,16 +10236,6 @@
       "scope": "MaskViewportTests.test_floating_toolbar_has_no_panel_and_blank_area_passes_pan_in_both_themes",
       "anchor": "f\"chosen blank-area point overlaps {button.objectName()}\",",
       "fingerprint": "28175d5c89b1a729c80cdc08026226d81294ba8e2cc8bd95fafcd96c9022b7db",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.test_main_failed_new_observer_preserves_running_submission_identity",
-      "anchor": "self.spin(lambda: all(row['state'] in ('succeeded', 'failed') for row in self.store.snapshot()['jobs']))",
-      "fingerprint": "281768fdb7f2ba339f533c727bff3ecfa2ac72c2c8f0cbe91b8daecc165a7630",
       "count": 1
     },
     {
@@ -11320,16 +11160,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.test_optimization_observer_start_errors_preserve_admitted_job",
-      "anchor": "self.spin(lambda: self.store.read_job(row['job_id'])['state'] in ('succeeded', 'failed'))",
-      "fingerprint": "2bb749bb52b56d81baea445a5a1d3fc805b076291b9f693c92e9c122049eb7d2",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_film_optimization_target_sampling.py",
       "code": "index",
       "message": "Value of type \"Property\" is not indexable",
@@ -11649,16 +11479,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "misc",
-      "message": "Invalid self argument \"ComputeStartFailureTests\" to attribute function \"bridge\" with type \"Callable[[QueueTests], Any]\"",
-      "scope": "ComputeStartFailureTests.test_unknown_memory_headroom_still_submits_large_request",
-      "anchor": "bridge = self.bridge()",
-      "fingerprint": "2d045d31c69b431b0d15aae15b0847bc5e40aa245776e1ee77bfdc85e9cda21e",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/scheduler/worker.py",
       "code": "E701",
@@ -11846,16 +11666,6 @@
       "scope": "optimize_correction_boards",
       "anchor": "verified_quality[\"score\"] < original_verified_quality[\"score\"] - 1e-12,",
       "fingerprint": "2d955efa48a29068a87a6d66536675622413edee56e5a3ed24ff79049180f015",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"scheduler\"",
-      "scope": "ComputeStartFailureTests.test_scheduler_terminal_write_failure_preserves_original_launch_error",
-      "anchor": "scheduler = self.scheduler.scheduler",
-      "fingerprint": "2d9dbe301dd528ddf87923dd9af8051d817f79c5968d5bd0b7dc251ba334a6fe",
       "count": 1
     },
     {
@@ -12270,16 +12080,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "misc",
-      "message": "Invalid self argument \"ComputeStartFailureTests\" to attribute function \"spin\" with type \"Callable[[QueueTests, Any, Any], Any]\"",
-      "scope": "ComputeStartFailureTests.test_main_observer_start_errors_preserve_admitted_job_and_allow_retry",
-      "anchor": "self.spin(lambda: self.store.read_job(row['job_id'])['state'] in ('succeeded', 'failed'))",
-      "fingerprint": "2f4829da7f3102025ba0dabe2151ea1ede1d64329ca4fe649e2de40da62102fc",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_utility_windows_compact_chrome_ui.py",
       "code": "union-attr",
       "message": "Item \"_QueueFixture\" of \"_DecisionFixture | _QueueFixture | None\" has no attribute \"submitted\"",
@@ -12500,16 +12300,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"root\"",
-      "scope": "ComputeStartFailureTests.test_optimization_memory_warning_retained_without_blocking_submission",
-      "anchor": "gate = self.root / 'gate'; gate.mkdir()",
-      "fingerprint": "2fcc040357fdbc8ff0ff79e4542eea654ab650fc08d315105e878328a2d10273",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_mask_viewport.py",
       "code": "union-attr",
       "message": "Item \"None\" of \"QQuickItem | None\" has no attribute \"childItems\"",
@@ -12626,16 +12416,6 @@
       "scope": "FilmDesignWindow.__init__",
       "anchor": "self.note_edit.setPlaceholderText(\"设计说明（可选）\"); self.note_edit.textEdited.connect(self._changed)",
       "fingerprint": "3032e3bc78c07595e124dc3f577884bdfe9cf189e53e7332237e0ce2f063b24b",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "misc",
-      "message": "Invalid self argument \"ComputeStartFailureTests\" to attribute function \"bridge\" with type \"Callable[[QueueTests], Any]\"",
-      "scope": "ComputeStartFailureTests.test_main_failed_new_observer_preserves_running_submission_identity",
-      "anchor": "bridge = self.bridge()",
-      "fingerprint": "30351d15de82138008c509fb6a3b880cc0f8868ac79864e6c1dbf77214484516",
       "count": 1
     },
     {
@@ -15519,16 +15299,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"scheduler\"",
-      "scope": "ComputeStartFailureTests.test_scheduler_terminal_write_failure_preserves_original_launch_error",
-      "anchor": "job = self.scheduler.client().submit(job_spec())",
-      "fingerprint": "3ba22fec3421068f2d745fed6c03733a9b513d06cfdbd36b88f157e9acf22601",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/ui/film_simulation_settings.py",
       "code": "E701",
@@ -16896,16 +16666,6 @@
       "scope": "",
       "anchor": "if (hostWindow.visibility === Window.Maximized ||",
       "fingerprint": "41f6aa1ebad83cc85d3855e311bb703b349b04622a7061ab8346d0826dc9de02",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.test_scheduler_launch_metadata_failure_reaps_child_and_releases_slot",
-      "anchor": "self.spin(lambda: self.store.read_job(next_job['job_id'])['state'] in ('succeeded', 'failed'))",
-      "fingerprint": "41f88676d5f1aace2f8eef7c542685cff5d31c64e954f11187364acd347241cc",
       "count": 1
     },
     {
@@ -18699,16 +18459,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "misc",
-      "message": "Invalid self argument \"ComputeStartFailureTests\" to attribute function \"spin\" with type \"Callable[[QueueTests, Any, Any], Any]\"",
-      "scope": "ComputeStartFailureTests.test_main_failed_new_observer_preserves_running_submission_identity",
-      "anchor": "self.spin(lambda: (gate / 'started-21').exists())",
-      "fingerprint": "491d12f9b0f79dd59a31bb4aeea1223fa1355adb2bf5854efce745cfd1962dfa",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/AppearanceWorkspace.qml",
       "code": "unqualified",
@@ -18810,16 +18560,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "misc",
-      "message": "Invalid self argument \"ComputeStartFailureTests\" to attribute function \"spin\" with type \"Callable[[QueueTests, Any, Any], Any]\"",
-      "scope": "ComputeStartFailureTests.test_optimization_observer_start_errors_preserve_admitted_job",
-      "anchor": "self.spin(lambda: self.store.read_job(row['job_id'])['state'] in ('succeeded', 'failed'))",
-      "fingerprint": "494930551b5863abf921042fad4b928780f0eed6814a45caf8979f0f5033c507",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_utility_windows_compact_chrome_ui.py",
       "code": "union-attr",
       "message": "Item \"None\" of \"QQuickItem | None\" has no attribute \"isVisible\"",
@@ -18906,16 +18646,6 @@
       "scope": "test_client_explicit_http_mode_requires_valid_token_and_has_no_conflicting_flags",
       "anchor": "remote_client.RemoteTransport(url, **options)",
       "fingerprint": "497608aa123f536b30528fe81692e469ecbc573139d7c4cbf82153c7c700dcce",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"scheduler\"",
-      "scope": "ComputeStartFailureTests.test_scheduler_failed_child_cleanup_keeps_owned_slot_and_original_error",
-      "anchor": "scheduler = self.scheduler.scheduler",
-      "fingerprint": "49817dc3517f8a180fe4e19b1b5ddd059ec59fb1fbfaa28c6888f71819279938",
       "count": 1
     },
     {
@@ -22720,16 +22450,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"scheduler\"",
-      "scope": "ComputeStartFailureTests.test_scheduler_launch_metadata_failure_reaps_child_and_releases_slot",
-      "anchor": "scheduler = self.scheduler.scheduler",
-      "fingerprint": "598ea0181fd4906be5308dd16e0d266283f06a18061482357e4d196598c3b28e",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/core/source_profiles.py",
       "code": "arg-type",
       "message": "Argument 1 to \"update\" of \"MutableMapping\" has incompatible type \"dict[str, object]\"; expected \"SupportsKeysAndGetItem[str, float | None]\"",
@@ -25549,16 +25269,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.run_optimization_successor",
-      "anchor": "prior_ids = {row['job_id'] for row in self.store.snapshot()['jobs']}",
-      "fingerprint": "64cadd64cd984783aaa1dabf6d0f21c47482e17d3a07c5594c1e2989fe60d683",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "tests/test_film_structure_benchmarks.py",
       "code": "E402",
@@ -27286,16 +26996,6 @@
       "scope": "",
       "anchor": "from coat_sim.scheduler.result_capability import is_film_optimization_result",
       "fingerprint": "6b4665d425a7eee0a8a2139654a124843e484dac3ffe083fc706c97a9721243d",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.test_scheduler_failed_child_cleanup_keeps_owned_slot_and_original_error",
-      "anchor": "self.assertEqual(self.store.read_job(job['job_id'])['state'], 'running')",
-      "fingerprint": "6b595ebb39b5699f70d7613ad97cd5e7f1898e726aa13572083d5b438fe83ca6",
       "count": 1
     },
     {
@@ -30740,16 +30440,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.test_main_admission_metadata_failure_rolls_back_before_observer_launch",
-      "anchor": "self.assertEqual(self.store.snapshot()['events'], [])",
-      "fingerprint": "78ea8d5e957fd0b30573695228c47875212da1ce290e4f189cad71334a513b9d",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_film_design_generator_qt.py",
       "code": "attr-defined",
       "message": "\"QObject\" has no attribute \"contentItem\"",
@@ -31940,16 +31630,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"root\"",
-      "scope": "ComputeStartFailureTests.test_main_failed_new_observer_preserves_running_submission_identity",
-      "anchor": "gate = self.root / 'gate'; gate.mkdir()",
-      "fingerprint": "7e5c7f194f3a0673df33724a59e1791637e69bb41645b6707a9bcfedde4129e4",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_process_optimization_modes.py",
       "code": "attr-defined",
       "message": "\"ProcessEditingTests\" has no attribute \"app\"",
@@ -32380,16 +32060,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"scheduler\"",
-      "scope": "ComputeStartFailureTests.test_main_failed_new_observer_preserves_running_submission_identity",
-      "anchor": "with self.scheduler.gated_workers(gate):",
-      "fingerprint": "7f90796a0cf700d1ab99371d0cf9dc8d1582bf5ffd3433c41887e866edadb86b",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/core/film_optimization_needle.py",
       "code": "arg-type",
       "message": "Argument 1 to \"float\" has incompatible type \"object\"; expected \"str | Buffer | SupportsFloat | SupportsIndex\"",
@@ -32609,16 +32279,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.run_main_successor",
-      "anchor": "prior_ids = {row['job_id'] for row in self.store.snapshot()['jobs']}",
-      "fingerprint": "807e36b9db05e98950092c8b22967ca7db7d8dfca8f93a826dec28d06e7f35f9",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "legacy/machine_designer.py",
       "code": "F401",
@@ -32806,16 +32466,6 @@
       "scope": "SettingsBridge.deleteComputeServerToken",
       "anchor": "delete_compute_token(self.computeServerUrl)",
       "fingerprint": "81364a2ad73b9ce41acf28f79ed9aae50d24e13b2069668a7e66227ae132f5a2",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"scheduler\"",
-      "scope": "ComputeStartFailureTests.test_scheduler_terminal_write_failure_preserves_original_launch_error",
-      "anchor": "self.scheduler.tick()",
-      "fingerprint": "813c69c12a0fe544081b932185b62751f41e1cf3e8f6b12777fac4db476b9364",
       "count": 1
     },
     {
@@ -33730,16 +33380,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"service\"",
-      "scope": "ComputeStartFailureTests.optimization_bridge",
-      "anchor": "service = self.service",
-      "fingerprint": "845f019edb58493ce960fe6b1005cb1bcbfede415ae21e94850d25a38109bc72",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_material_optical_editor.py",
       "code": "arg-type",
       "message": "Argument 1 to \"invokeMethod\" of \"QMetaObject\" has incompatible type \"QObject | None\"; expected \"QObject\"",
@@ -33816,16 +33456,6 @@
       "scope": "FilmDesignReferenceBridgeTests.test_real_qoq_mapping_is_private_until_apply_then_undo_restores_owner",
       "anchor": "self.assertEqual(self.controller.session.snapshot().design_revision, before.design_revision)",
       "fingerprint": "84988dc5f444ce8c3af3dd7be6cc9621cfd3bbb4add12e2ed04ac53959901b36",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.test_optimization_admission_metadata_failure_rolls_back",
-      "anchor": "self.assertEqual(self.store.snapshot()['jobs'], [])",
-      "fingerprint": "849a674c21a0adf6f28790da181ab5e28fcfc070affce64163e4f5645909fc7c",
       "count": 1
     },
     {
@@ -34456,16 +34086,6 @@
       "scope": "",
       "anchor": "onRejected: controller.resolveClose(false)",
       "fingerprint": "875602d8a8ac10baa79e064b46ec72cd4c9e7bb36805cc5fddb2c18e3e8523b3",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "misc",
-      "message": "Invalid self argument \"ComputeStartFailureTests\" to attribute function \"spin\" with type \"Callable[[QueueTests, Any, Any], Any]\"",
-      "scope": "ComputeStartFailureTests.test_optimization_memory_warning_retained_without_blocking_submission",
-      "anchor": "self.spin(lambda: (gate / 'started-21').exists())",
-      "fingerprint": "876b40cfb12814206aa02a8bf0195b24ef1461604751390dad6daf60c7185bf0",
       "count": 1
     },
     {
@@ -36606,16 +36226,6 @@
       "scope": "FilmFloatingUiTests.test_floating_plot_diagnostics_sidebar_and_session_lifecycle",
       "anchor": "available = APP.primaryScreen().availableGeometry()",
       "fingerprint": "8fe334e543f0be8c0f098642a5ad27e11b33c5af60f8758fb51c5203acd66065",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.test_main_admission_metadata_failure_rolls_back_before_observer_launch",
-      "anchor": "self.assertEqual(self.store.snapshot()['jobs'], [])",
-      "fingerprint": "8ff26519e631e75b69ead2928341f499810b15166838db014ae5b8f95a5fc2e4",
       "count": 1
     },
     {
@@ -39330,16 +38940,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"scheduler\"",
-      "scope": "ComputeStartFailureTests.test_scheduler_launch_metadata_failure_reaps_child_and_releases_slot",
-      "anchor": "client = self.scheduler.client()",
-      "fingerprint": "9b387bd192819c24e9b3d7ba18c47cf5e20356af554ca2f10a62884de7963dc7",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tools/verify_workflows.py",
       "code": "dict-item",
       "message": "Dict entry 3 has incompatible type \"str\": \"str | None\"; expected \"str\": \"str\"",
@@ -39456,16 +39056,6 @@
       "scope": "_settings_pass",
       "anchor": "assert scroll.x() >= 0 and scroll.x() + scroll.width() <= window.width() + 1",
       "fingerprint": "9b708fe99ae0b5f4202392e706a79e16bc644d738bffe9e364a1147de3015390",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.test_scheduler_launch_metadata_failure_reaps_child_and_releases_slot",
-      "anchor": "self.assertEqual(self.store.read_job(job['job_id']), row)",
-      "fingerprint": "9b80fa77f8e6147fd84d4d40c252a29470d516028f9c192454e2afd0e561e6bc",
       "count": 1
     },
     {
@@ -40417,16 +40007,6 @@
       "anchor": "ThemeControls.ThemeField { objectName: \"environmentGasPressure\" + index; numericDisplayValue: partialText; placeholderText: \"未知留空\"; Layout.fillWidth: true; onTextEdited: gasRows.setProperty(index, \"partialText\", text) }",
       "fingerprint": "9fd6b1f68b233a98c354d7a05bbb79230e80c95dfc58772579b4365d54fbd4a3",
       "count": 4
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"scheduler\"",
-      "scope": "ComputeStartFailureTests.fail_next_admission_event",
-      "anchor": "return patch.object(self.scheduler.scheduler.store.queue, '_event', side_effect=fail_once)",
-      "fingerprint": "9fe627dc894097f623e546e013584934a9f5e0e6479d1fa297634a2ffff4fa2e",
-      "count": 1
     },
     {
       "tool": "ruff",
@@ -44490,16 +44070,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "misc",
-      "message": "Invalid self argument \"ComputeStartFailureTests\" to attribute function \"spin\" with type \"Callable[[QueueTests, Any, Any], Any]\"",
-      "scope": "ComputeStartFailureTests.test_scheduler_launch_metadata_failure_reaps_child_and_releases_slot",
-      "anchor": "self.spin(lambda: self.store.read_job(next_job['job_id'])['state'] in ('succeeded', 'failed'))",
-      "fingerprint": "af3d508823e405b5c8c3faa9374da5e7e882464b13effb48d88e83e70cb2ee7d",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/ui/theme_service.py",
       "code": "attr-defined",
       "message": "\"QObject\" has no attribute \"toScriptValue\"",
@@ -45600,16 +45170,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"scheduler\"",
-      "scope": "ComputeStartFailureTests.fail_next_admission_event",
-      "anchor": "original = self.scheduler.scheduler.store.queue._event",
-      "fingerprint": "b494071c8cb2b5b4be8ca8dc3edc4814c8e8745b7817c37013adad7238118495",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/core/api.py",
       "code": "arg-type",
       "message": "Argument 2 to \"save\" of \"CoatService\" has incompatible type \"object\"; expected \"str | PathLike[str]\"",
@@ -46269,16 +45829,6 @@
       "count": 2
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.test_scheduler_launch_metadata_failure_reaps_child_and_releases_slot",
-      "anchor": "with self.store.connection() as db:",
-      "fingerprint": "b6a5ea6285cda671f3a4b6d91aa4cac2b29019b06c039b910cdeff948eedfc64",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/MaterialLibraryDialog.qml",
       "code": "unqualified",
@@ -46576,16 +46126,6 @@
       "scope": "FilmDesignGuiTests.test_both_faces_show_qw_and_nm_without_mutating_thickness",
       "anchor": "self.assertEqual(front.item(0,6).text(),'200')",
       "fingerprint": "b7c4e4aa65063879483f3d4ea7f93382aa2d1e92b029f6aecaf4a61f0a0503f7",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"scheduler\"",
-      "scope": "ComputeStartFailureTests.test_optimization_memory_warning_retained_without_blocking_submission",
-      "anchor": "with patch('coat_sim.core.compute_resources.available_memory_bytes', return_value=1), self.scheduler.gated_workers(gate):",
-      "fingerprint": "b7c52845ba699d2590bd0fc8f0de6ca189307cba6c3d8caee230e8e2e9c54715",
       "count": 1
     },
     {
@@ -47629,16 +47169,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.run_main_successor",
-      "anchor": "row = next(row for row in self.store.snapshot()['jobs'] if row['job_id'] not in prior_ids)",
-      "fingerprint": "bbdd0420838b3d7dc45822a65a0ad149d195c182962c77f05077d3628a7c5dd4",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/ui/film_design.py",
       "code": "E701",
@@ -48599,16 +48129,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.test_optimization_observer_start_errors_preserve_admitted_job",
-      "anchor": "row = next(row for row in self.store.snapshot()['jobs'] if row['job_id'] not in prior_ids)",
-      "fingerprint": "c01ac49316cb8be9e2cb93e24278a82bc36aff38d0d5c0fcc74c08c6fef376b3",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/core/film_optimization_structure.py",
       "code": "B007",
@@ -49100,16 +48620,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"scheduler\"",
-      "scope": "ComputeStartFailureTests.test_main_observer_start_errors_preserve_admitted_job_and_allow_retry",
-      "anchor": "self.assertEqual(self.scheduler.client().status(row['job_id'])['state'], 'succeeded')",
-      "fingerprint": "c225de007d3e20e0388bb0826469478265ae16b9252f4de4e7a2083d2777f136",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_film_simulation_quick.py",
       "code": "arg-type",
       "message": "Argument 1 to \"loads\" has incompatible type \"Property\"; expected \"str | bytes | bytearray\"",
@@ -49566,16 +49076,6 @@
       "scope": "",
       "anchor": "const index = [\"serious\", \"standard\", \"lively\", \"intimate\"].indexOf(bridge.assistantTone)",
       "fingerprint": "c3dd57f62ad2a3513b0b0b0517eec002f80863ec4e7d2fb7298001a245f22691",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.test_main_observer_start_errors_preserve_admitted_job_and_allow_retry",
-      "anchor": "self.spin(lambda: self.store.read_job(row['job_id'])['state'] in ('succeeded', 'failed'))",
-      "fingerprint": "c4094f92b0b97fb48881dfed820c889930d5df52118263da1c7542e94f2d67a0",
       "count": 1
     },
     {
@@ -51399,16 +50899,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"scheduler\"",
-      "scope": "ComputeStartFailureTests.test_scheduler_launch_metadata_failure_reaps_child_and_releases_slot",
-      "anchor": "self.scheduler.tick()",
-      "fingerprint": "cb90e4628317aa5e2c3c1d213a47e33c5a7dc51afaf6f66868c4926f35d3a0fe",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/SettingsWindow.qml",
       "code": "unqualified",
@@ -51756,16 +51246,6 @@
       "scope": "test_mask_worker_writes_best_candidate_checkpoint_with_real_capability_import",
       "anchor": "service.prepare_simulation_asset = lambda **kwargs: {",
       "fingerprint": "ccb1a743456f24199d7b5effa87ed0c5fae28d3818b16ea487fd1d00d3b77be4",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "misc",
-      "message": "Invalid self argument \"ComputeStartFailureTests\" to attribute function \"spin\" with type \"Callable[[QueueTests, Any, Any], Any]\"",
-      "scope": "ComputeStartFailureTests.run_optimization_successor",
-      "anchor": "self.spin(lambda: not bridge.optimization['busy'])",
-      "fingerprint": "ccb5e0de8143ec3601d3a51e1fdc249beeef06b5129801c4c32152ae6c6d9dc8",
       "count": 1
     },
     {
@@ -52329,16 +51809,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"scheduler\"",
-      "scope": "ComputeStartFailureTests.run_main_successor",
-      "anchor": "self.assertIsNone(self.scheduler.scheduler.active)",
-      "fingerprint": "cf2647be0930a08dabc3f01891c3504ba1cd31c92b541a543c35b4c8438a7152",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/MaterialLibraryDialog.qml",
       "code": "unqualified",
@@ -52850,16 +52320,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.test_scheduler_terminal_write_failure_preserves_original_launch_error",
-      "anchor": "row = self.store.read_job(job['job_id'])",
-      "fingerprint": "d0cedb9f3dc3d398f3c66db29162a087b2cb9124d2df2ba71fd004080d90b7d2",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_main_compact_sidebar_ui.py",
       "code": "arg-type",
       "message": "Argument 1 to \"float\" has incompatible type \"Property\"; expected \"str | Buffer | SupportsFloat | SupportsIndex\"",
@@ -53326,16 +52786,6 @@
       "scope": "QueuedPendingMaskTests.test_pending_mask_without_fake_machine_substrate_files",
       "anchor": "while bridge.optimization['busy'] and time.monotonic() < deadline:",
       "fingerprint": "d21e0bfa4c8b983b3dca01fc2c771c4733486da40738af84ae7de287a05add00",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"scheduler\"",
-      "scope": "ComputeStartFailureTests.run_main_successor",
-      "anchor": "self.scheduler.scheduler._commit('transition', row['job_id'],",
-      "fingerprint": "d21ee8df304c9d744312d628e8dd01120db5548061a95dae16641afe04198515",
       "count": 1
     },
     {
@@ -54086,16 +53536,6 @@
       "scope": "FilmSimulationQuickController.setParameter",
       "anchor": "candidate[\"step_nm\"] = ((candidate[\"wavelength_max_nm\"] - candidate[\"wavelength_min_nm\"])",
       "fingerprint": "d57f72c4ed7ee9ddeaf2bf6be3c8d6f26a25a65f327d72b833971c8bb496ef31",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"store\"",
-      "scope": "ComputeStartFailureTests.test_main_observer_start_errors_preserve_admitted_job_and_allow_retry",
-      "anchor": "prior_ids = {row['job_id'] for row in self.store.snapshot()['jobs']}",
-      "fingerprint": "d58f7cbfa49162c9f233cbe00b8b43b4d3519ad6ae3da4837b1e6856a613fb53",
       "count": 1
     },
     {
@@ -55900,16 +55340,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"scheduler\"",
-      "scope": "ComputeStartFailureTests.test_scheduler_failed_child_cleanup_keeps_owned_slot_and_original_error",
-      "anchor": "self.scheduler.tick()",
-      "fingerprint": "dcf86f47e64bb470c7ca8a0e4c92769ab7da9f3314839bafcdd6f54bc5daf3ef",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/ui/process.py",
       "code": "operator",
       "message": "Unsupported operand types for - (\"Property\" and \"int\")",
@@ -57630,16 +57060,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "misc",
-      "message": "Invalid self argument \"ComputeStartFailureTests\" to attribute function \"bridge\" with type \"Callable[[QueueTests], Any]\"",
-      "scope": "ComputeStartFailureTests.test_main_admission_metadata_failure_rolls_back_before_observer_launch",
-      "anchor": "bridge = self.bridge()",
-      "fingerprint": "e388f8899c93d597f466fb091c0eac56a7879f4b5234a43f7b20ba8a8af2613f",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_assistant_window_list.py",
       "code": "arg-type",
       "message": "Argument 1 to \"len\" has incompatible type \"Property\"; expected \"Sized\"",
@@ -58289,16 +57709,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "E702",
-      "message": "Multiple statements on one line (semicolon)",
-      "scope": "ComputeStartFailureTests.test_main_failed_new_observer_preserves_running_submission_identity",
-      "anchor": "gate = self.root / 'gate'; gate.mkdir()",
-      "fingerprint": "e63517a96a59ddfcd729115034d8736e34b0e73dd016e839d822184ee9fd64f9",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_queue_submission_isolation.py",
       "code": "attr-defined",
@@ -58886,16 +58296,6 @@
       "scope": "OpticalLibraryUiTests.test_async_latest_selection_cancel_and_thread_isolation",
       "anchor": "before=self.lib.draftData();gate.clear()",
       "fingerprint": "e88f0d424b7bbb2a4f8247257f3e71a0ca4157a7f020fedcc8140b633a0d1e9c",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"root\"",
-      "scope": "ComputeStartFailureTests.optimization_bridge",
-      "anchor": "path = self.root / 'process.cproc'",
-      "fingerprint": "e89273c6446738f9ce67a6f7937809c2893dd258a29f2ed27656e434ddc91e02",
       "count": 1
     },
     {
@@ -59580,16 +58980,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "misc",
-      "message": "Invalid self argument \"ComputeStartFailureTests\" to attribute function \"spin\" with type \"Callable[[QueueTests, Any, Any], Any]\"",
-      "scope": "ComputeStartFailureTests.test_main_failed_new_observer_preserves_running_submission_identity",
-      "anchor": "self.spin(lambda: all(row['state'] in ('succeeded', 'failed') for row in self.store.snapshot()['jobs']))",
-      "fingerprint": "eb1d249c8ca613c16e6822f120839ad3ad27e704d9bc508827e63a08b7ee2aba",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_film_batch_de.py",
       "code": "arg-type",
       "message": "Argument 3 to \"run_batch_de\" has incompatible type \"ndarray[tuple[Any, ...], dtype[Any]]\"; expected \"Sequence[float]\"",
@@ -60246,16 +59636,6 @@
       "scope": "_test_theme_and_status",
       "anchor": "for child in status.childItems()),",
       "fingerprint": "ed8fcb488b02048499d356323390ad611ab42c5410a0d85dbfbf60023e666799",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "B023",
-      "message": "Function definition does not bind loop variable `row`",
-      "scope": "ComputeStartFailureTests.test_main_observer_start_errors_preserve_admitted_job_and_allow_retry",
-      "anchor": "self.spin(lambda: self.store.read_job(row['job_id'])['state'] in ('succeeded', 'failed'))",
-      "fingerprint": "ed90525a86569c98f929d6d39fccddf7e7ae2fc8367194cab6bee31e6171ae5e",
       "count": 1
     },
     {
@@ -62060,16 +61440,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"root\"",
-      "scope": "ComputeStartFailureTests.optimization_bridge",
-      "anchor": "service, path = fixture(self.root, mask_count=0, source_count=1)",
-      "fingerprint": "f501c92665b5139d0b53582405f0b2e09fc3aca9c3d9b3b900f3267741aaf996",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tools/build_desktop_host.py",
       "code": "return-value",
       "message": "Incompatible return value type (got \"dict[tuple[int, int, int], bytes]\", expected \"dict[tuple[int, int | str, int], bytes]\")",
@@ -63420,16 +62790,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"scheduler\"",
-      "scope": "ComputeStartFailureTests.test_optimization_observer_start_errors_preserve_admitted_job",
-      "anchor": "self.assertEqual(self.scheduler.client().status(row['job_id'])['state'], 'succeeded')",
-      "fingerprint": "f9d04d7953b07aadcf970b1004d770d6de0afdb1a19fa14d5e55912758e9acbe",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_film_automatic_substrate.py",
       "code": "attr-defined",
       "message": "\"AutomaticSubstrateTests\" has no attribute \"design\"",
@@ -63476,16 +62836,6 @@
       "scope": "",
       "anchor": "onEditingFinished: bridge.setField(\"name\", text)",
       "fingerprint": "f9e9059f9d7d26f6d906c2bbb3fcd6e30aa174e58e25b491e21e9d2e5512d782",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_compute_start_failures.py",
-      "code": "attr-defined",
-      "message": "\"ComputeStartFailureTests\" has no attribute \"scheduler\"",
-      "scope": "ComputeStartFailureTests.test_scheduler_failed_child_cleanup_keeps_owned_slot_and_original_error",
-      "anchor": "job = self.scheduler.client().submit(job_spec())",
-      "fingerprint": "f9f3c6f5089c417cc1d1570bc2460d5c5936c5abd838f573c4370c26854ba03e",
       "count": 1
     },
     {
@@ -64999,6 +64349,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "2026-10-18 toolkit/audit integration: zero-new/fatal full scan; remove six obsolete compute-target capability, migrated appearance adapter, typed async factory, and replaced queue-test allowances. Evidence artifacts/static-analysis/toolkit-audit-20261018/resolution-review.json; no allowances added or increased.",
+  "last_prune_reason": "Remove only resolved async admission test fixture diagnostics after typed adapters and updated async boundaries; no added allowances.",
   "configuration_review_reason": "2026-10-17: add only BSD-3-Clause pypdf 6.21.0 for isolated research PDF extraction; all previous dependency/tool versions, analyzer rules and diagnostic entries remain unchanged. The lock-file digest changes only for this reviewed runtime dependency."
 }

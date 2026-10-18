@@ -3,20 +3,59 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import unittest
+from contextlib import contextmanager
+from pathlib import Path
+import threading
+import time
+from typing import cast
 from unittest.mock import patch
 import numpy as np
 
+from coat_sim.core.api import CoatService
+from coat_sim.core.compute_tasks import ComputeTaskStore
 from coat_sim.ui.process import ProcessBridge, _OptimizationWorker
 from tests import test_desktop_compute_queue as support
+from tests.scheduler_queue_support import SchedulerHarness
 from tests.test_process_optimization_modes import fixture, options
 from tests.test_scheduler_service import job_spec
 
 
 class ComputeStartFailureTests(unittest.TestCase):
+    root: Path
+    service: CoatService
+    store: ComputeTaskStore
+    scheduler: SchedulerHarness
+
     setUp = support.QueueTests.setUp
     tearDown = support.QueueTests.tearDown
-    spin = support.QueueTests.spin
-    bridge = support.QueueTests.bridge
+
+    def spin(self, predicate, timeout=12):
+        support.QueueTests.spin(cast(support.QueueTests, self), predicate, timeout)
+
+    def bridge(self):
+        return support.QueueTests.bridge(cast(support.QueueTests, self))
+
+    def spin_ui(self, predicate, timeout=12):
+        """Deliver async admission results without launching scheduler workers."""
+        deadline = time.monotonic() + timeout
+        while not predicate() and time.monotonic() < deadline:
+            support.APP.processEvents()
+            time.sleep(.01)
+        support.APP.processEvents()
+        self.assertTrue(predicate())
+
+    @contextmanager
+    def fail_main_admission_worker_start(self, error):
+        original_start = threading.Thread.start
+        def start(thread, *args, **kwargs):
+            if thread.name == 'scheduler-result-observer':
+                raise error
+            return original_start(thread, *args, **kwargs)
+        # This thread now owns admission as well as observation. Leave other
+        # background probes alone instead of failing every Python thread.
+        with patch('coat_sim.ui.main.threading.Thread.start', autospec=True,
+                   side_effect=start) as launch:
+            yield launch
 
     def run_main_successor(self, bridge, *, bounded_result=False):
         prior_ids = {row['job_id'] for row in self.store.snapshot()['jobs']}
@@ -28,6 +67,8 @@ class ComputeStartFailureTests(unittest.TestCase):
                       '_asset': {'run_id': 'f' * 32}}
             with patch('coat_sim.scheduler.worker.load_result', return_value=result):
                 bridge.calculate()
+                self.spin_ui(lambda: any(row['job_id'] not in prior_ids
+                                        for row in self.store.snapshot()['jobs']))
                 row = next(row for row in self.store.snapshot()['jobs'] if row['job_id'] not in prior_ids)
                 self.scheduler.scheduler._commit('transition', row['job_id'],
                     state='succeeded', result={'asset': {'run_id': 'f' * 32}},
@@ -43,73 +84,120 @@ class ComputeStartFailureTests(unittest.TestCase):
         row = next(row for row in rows if row['job_id'] not in prior_ids)
         self.assertEqual(row['state'], 'succeeded', row)
 
-    def fail_next_admission_event(self, message):
+    def fail_next_admission_event(self, message, error_type=OSError):
         original = self.scheduler.scheduler.store.queue._event
         calls = 0
         def fail_once(*args, **kwargs):
             nonlocal calls
             calls += 1
             if calls == 1:
-                raise OSError(message)
+                raise error_type(message)
             return original(*args, **kwargs)
         return patch.object(self.scheduler.scheduler.store.queue, '_event', side_effect=fail_once)
 
-    def test_main_observer_start_errors_preserve_admitted_job_and_allow_retry(self):
+    def test_main_admission_thread_start_errors_leave_no_job_and_allow_retry(self):
         for error_type in (OSError, MemoryError):
             with self.subTest(error=error_type.__name__):
                 bridge = self.bridge()
-                prior_ids = {row['job_id'] for row in self.store.snapshot()['jobs']}
-                message = 'bounded main observer ' + error_type.__name__
-                with patch('coat_sim.ui.main.threading.Thread.start', side_effect=error_type(message)):
+                before = self.store.snapshot()
+                message = 'bounded main admission worker ' + error_type.__name__
+                with self.fail_main_admission_worker_start(error_type(message)):
                     bridge.calculate()
                 self.assertFalse(bridge.busy, bridge.status)
                 self.assertEqual(bridge._queued_keys, {})
                 self.assertEqual(bridge._job_cancel_events, {})
                 self.assertIsNone(bridge._cancel_event)
                 self.assertIn(message, bridge.status)
-                self.assertIn('独立队列已接收任务', bridge.status)
+                self.assertNotIn('独立队列已接收任务', bridge.status)
+                self.assertEqual(self.store.snapshot(), before)
+                self.assertFalse(bridge.hasResult)
+                self.run_main_successor(bridge)
+
+    def test_main_observer_errors_preserve_admitted_job_and_allow_retry(self):
+        for error_type in (OSError, MemoryError):
+            with self.subTest(error=error_type.__name__):
+                bridge = self.bridge()
+                prior_ids = {row['job_id'] for row in self.store.snapshot()['jobs']}
+                message = 'bounded admitted main observer ' + error_type.__name__
+                with patch('coat_sim.ui.main.observe_job', side_effect=error_type(message)) as observe:
+                    bridge.calculate()
+                    self.spin_ui(lambda bridge=bridge: not bridge.busy)
+                self.assertEqual(bridge._queued_keys, {})
+                self.assertEqual(bridge._job_cancel_events, {})
+                self.assertIsNone(bridge._cancel_event)
+                self.assertIn(message, bridge.status)
+                self.assertNotIn('提交状态未知', bridge.status)
                 row = next(row for row in self.store.snapshot()['jobs'] if row['job_id'] not in prior_ids)
+                self.assertEqual(len(self.store.snapshot()['jobs']), len(prior_ids) + 1)
+                observe.assert_called_once()
+                self.assertEqual(observe.call_args.args[1], row['job_id'])
                 self.assertEqual(row['state'], 'queued')
                 self.assertFalse(row['cancel_requested'])
-                self.spin(lambda: self.store.read_job(row['job_id'])['state'] in ('succeeded', 'failed'))
+                self.spin(lambda row=row: self.store.read_job(row['job_id'])['state'] in ('succeeded', 'failed'))
                 self.assertEqual(self.scheduler.client().status(row['job_id'])['state'], 'succeeded')
                 self.assertFalse(bridge.hasResult)
                 self.run_main_successor(bridge)
 
-    def test_main_admission_metadata_failure_rolls_back_before_observer_launch(self):
-        bridge = self.bridge()
-        message = 'bounded queue metadata allocation'
-        with self.fail_next_admission_event(message), patch('coat_sim.ui.main.threading.Thread.start') as launch:
-            bridge.calculate()
-        launch.assert_not_called()
-        self.assertFalse(bridge.busy)
-        self.assertIn(message, bridge.status)
-        self.assertEqual(self.store.snapshot()['jobs'], [])
-        self.assertEqual(self.store.snapshot()['events'], [])
-        self.run_main_successor(bridge)
+    def test_main_admission_metadata_failure_rolls_back_before_observation(self):
+        for error_type in (OSError, MemoryError):
+            with self.subTest(error=error_type.__name__):
+                bridge = self.bridge()
+                before = self.store.snapshot()
+                message = 'bounded queue metadata allocation ' + error_type.__name__
+                request = self.scheduler.request
+                rejections: list[tuple[str, type[Exception], str]] = []
+                def rpc_request(action, arguments, request=request, rejections=rejections):
+                    try:
+                        return request(action, arguments)
+                    except Exception as exc:
+                        # The real daemon returns {ok: false, error: ...} and
+                        # SchedulerClient._call raises ValueError. A raw OS
+                        # exception from this in-process harness would instead
+                        # simulate a lost transport ACK, not a known rejection.
+                        rejections.append((action, type(exc), str(exc)))
+                        raise ValueError(f'{type(exc).__name__}: {exc}') from None
+                with self.fail_next_admission_event(message, error_type), \
+                        patch.object(self.scheduler, 'request', side_effect=rpc_request), \
+                        patch('coat_sim.ui.main.observe_job') as observe:
+                    bridge.calculate()
+                    self.spin_ui(lambda bridge=bridge: not bridge.busy)
+                observe.assert_not_called()
+                self.assertEqual(rejections, [('submit', error_type, message)])
+                self.assertIn(message, bridge.status)
+                self.assertNotIn('提交状态未知', bridge.status)
+                self.assertEqual(bridge._queued_keys, {})
+                self.assertEqual(bridge._job_cancel_events, {})
+                self.assertEqual(self.store.snapshot(), before)
+                self.run_main_successor(bridge)
 
-    def test_main_failed_new_observer_preserves_running_submission_identity(self):
+    def test_main_failed_new_admission_thread_preserves_running_submission_identity(self):
         bridge = self.bridge()
-        gate = self.root / 'gate'; gate.mkdir()
+        gate = self.root / 'gate'
+        gate.mkdir()
         with self.scheduler.gated_workers(gate):
             try:
                 bridge.calculate()
                 self.spin(lambda: (gate / 'started-21').exists())
                 old_id = bridge._job_id
                 old_inputs = bridge._pending_export_inputs
+                old_queue_id = bridge._job_cancel_events[old_id].job_id
                 bridge._values['grid_size'] = '23'
-                with patch('coat_sim.ui.main.threading.Thread.start', side_effect=OSError('new observer failed')):
+                with self.fail_main_admission_worker_start(OSError('new admission worker failed')):
                     bridge.calculate()
                 self.assertTrue(bridge.busy)
                 self.assertEqual(bridge._job_id, old_id)
                 self.assertIs(bridge._pending_export_inputs, old_inputs)
                 self.assertEqual(list(bridge._job_cancel_events), [old_id])
+                self.assertEqual([row['job_id'] for row in self.store.snapshot()['jobs']], [old_queue_id])
             finally:
                 (gate / 'release').touch()
                 self.spin(lambda: not bridge.busy)
                 self.spin(lambda: all(row['state'] in ('succeeded', 'failed') for row in self.store.snapshot()['jobs']))
         self.assertTrue(bridge.hasResult, bridge.status)
         self.assertEqual(bridge._export_inputs['settings'].grid_size, 21)
+        self.assertEqual([row['state'] for row in self.store.snapshot()['jobs']], ['succeeded'])
+        self.run_main_successor(bridge)
+        self.assertEqual(bridge._export_inputs['settings'].grid_size, 23)
         self.assertEqual([row['state'] for row in self.store.snapshot()['jobs']], ['succeeded', 'succeeded'])
         self.assertFalse(any(row['cancel_requested'] for row in self.store.snapshot()['jobs']))
 
@@ -279,6 +367,7 @@ class ComputeStartFailureTests(unittest.TestCase):
                     self.scheduler.tick()
             self.assertIs(caught.exception, original_error)
             self.assertIn('bounded cleanup failure', '\n'.join(original_error.__notes__))
+            assert scheduler.active is not None
             self.assertEqual(scheduler.active[0], job['job_id'])
             self.assertIs(scheduler.active[1], spawned[0])
             self.assertTrue(scheduler.recovery_error)

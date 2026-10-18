@@ -3,6 +3,7 @@ import os
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 os.environ.setdefault('QT_QUICK_BACKEND', 'software')
 from copy import deepcopy
+from contextlib import contextmanager
 import json
 from pathlib import Path
 import shutil
@@ -290,11 +291,44 @@ class ReloadTests(unittest.TestCase):
             def __getattr__(self, name):
                 return getattr(self.client, name)
 
-        threads = Mock()
-        with (patch('coat_sim.ui.main.SchedulerClient', CapturingClient),
+        observer_entered = [threading.Event(), threading.Event()]
+        observer_release = threading.Event()
+        created_threads = []
+
+        def create_thread(*args, **kwargs):
+            thread = threading.Thread(*args, **kwargs)
+            created_threads.append(thread)
+            return thread
+
+        def hold_observation(client, job_id, *args, **kwargs):
+            index = next(i for i, (_, receipt) in enumerate(submissions)
+                         if receipt['job_id'] == job_id)
+            observer_entered[index].set()
+            if not observer_release.wait(12):
+                raise TimeoutError('test observer gate expired')
+            raise RuntimeError('test observer detached; admitted job continues')
+
+        @contextmanager
+        def observers():
+            try:
+                yield
+            finally:
+                # Finish every real admission/observer thread before Qt object
+                # destruction and before the owned scheduler peer is closed.
+                b.detach_observers()
+                observer_release.set()
+                for thread in created_threads:
+                    thread.join(timeout=5)
+                    self.assertFalse(thread.is_alive())
+
+        threads = Mock(side_effect=create_thread)
+        with (observers(),
+              patch('coat_sim.ui.main.SchedulerClient', CapturingClient),
+              patch('coat_sim.ui.main.observe_job', side_effect=hold_observation),
               patch('coat_sim.ui.main.threading', SimpleNamespace(Thread=threads, Event=threading.Event))):
             b.calculate()
             self.assertTrue(b.busy, b.status)
+            self.assertTrue(observer_entered[0].wait(5), b.status)
             self.assertEqual(len(submissions), 1)
             first_spec, first_receipt = submissions[0]
             first_snapshot = deepcopy(first_spec['inputs']['snapshot'])
@@ -327,6 +361,7 @@ class ReloadTests(unittest.TestCase):
             self.assertFalse(first_event.is_set())
             self.assertFalse(harness.client().status(first_receipt['job_id'])['cancel_requested'])
             b.calculate()
+            self.assertTrue(observer_entered[1].wait(5), b.status)
             self.assertEqual(threads.call_count, 2, b.status)
             self.assertEqual(len(submissions), 2)
             second_spec, second_receipt = submissions[1]

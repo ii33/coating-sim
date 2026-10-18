@@ -19,6 +19,20 @@ from tools.measure_assistant_context import capture_configuration, configuration
 
 
 ROOT = Path(__file__).resolve().parents[1]
+TOOLKIT_ENTRYPOINTS = frozenset({"toolkit_status", "toolkit_catalog", "toolkit_action"})
+COMMON_TOP_LEVEL_TOOLS = TOOLKIT_ENTRYPOINTS | {
+    "read_software_manual", "project_tools", "project_action", "read_archived_tool_result",
+    "ask_user_question", "research_library_status",
+}
+MODE_TOP_LEVEL_TOOLS = {
+    "chat": frozenset(),
+    "operate": frozenset({"delegate_task"}),
+    "research": frozenset({
+        "delegate_task", "load_capability", "write_plan", "read_plan", "add_task",
+        "update_task_status", "update_task_statuses", "remove_task", "add_subtask",
+        "set_dependency", "get_available_tasks",
+    }),
+}
 
 
 def test_algorithm_references_are_complete_bounded_and_only_loaded_on_demand():
@@ -63,17 +77,14 @@ def test_selection_reference_preserves_distinct_capabilities_and_permissions():
     assert "project_editor_snapshot" in EXECUTION_TOOLS["windows"]
 
 
-@pytest.mark.parametrize(("mode", "count"), [("chat", 6), ("operate", 7), ("research", 17)])
-def test_real_prepared_runtime_tool_surface_includes_capability_injection(mode, count):
+@pytest.mark.parametrize("mode", MODE_TOP_LEVEL_TOOLS)
+def test_real_prepared_runtime_tool_surface_includes_capability_injection(mode):
     captured = asyncio.run(capture_configuration(mode))
     report = configuration_report(captured)
     names = set(report["tool_names"])
-    assert report["tool_count"] == count
-    assert {"read_software_manual", "project_tools", "project_action",
-            "read_archived_tool_result", "ask_user_question"} <= names
-    assert ("delegate_task" in names) is (mode != "chat")
-    assert ("load_capability" in names) is (mode == "research")
-    assert ("write_plan" in names) is (mode == "research")
+    # Compare names, not just counts: a privileged replacement is also a regression.
+    assert names == COMMON_TOP_LEVEL_TOOLS | MODE_TOP_LEVEL_TOOLS[mode]
+    assert report["tool_count"] == len(names), "Top-level tools must not be duplicated"
     assert "algorithm_selection" in captured["instructions"]
     assert "不能泛用此顺序" in captured["instructions"]
     assert "不使用草稿等内部编辑状态术语" in captured["instructions"]
@@ -83,15 +94,40 @@ def test_real_prepared_runtime_tool_surface_includes_capability_injection(mode, 
     assert "多起点 Powell" not in captured["instructions"]
     ask = next(tool for tool in captured["parameters"].function_tools if tool.name == "ask_user_question")
     assert ask.parameters_json_schema["properties"]["options"]["items"]["properties"] == {}, "Production OpenAI schema customization must be included"
+    schemas = {tool.name: tool.parameters_json_schema
+               for tool in captured["parameters"].function_tools if tool.name in TOOLKIT_ENTRYPOINTS}
+    assert set(schemas) == TOOLKIT_ENTRYPOINTS
+    assert schemas["toolkit_status"]["properties"] == {}
+    assert set(schemas["toolkit_catalog"]["properties"]) == {"capability", "tool_names"}
+    assert schemas["toolkit_catalog"]["properties"]["capability"]["type"] == "string"
+    assert schemas["toolkit_catalog"]["properties"]["tool_names"]["anyOf"] == [
+        {"items": {"type": "string"}, "type": "array"}, {"type": "null"},
+    ]
+    action = schemas["toolkit_action"]
+    # The compact entry point cannot accept host authority, roles or workspace overrides.
+    assert set(action["properties"]) == set(action["required"]) == {"tool_name", "arguments"}
+    assert action["properties"]["tool_name"]["type"] == "string"
+    assert action["properties"]["arguments"]["type"] == "object"
+    assert action["properties"]["arguments"]["additionalProperties"] is True
+    assert all(schema["type"] == "object" and schema["additionalProperties"] is False
+               for schema in schemas.values())
 
 
-def test_enabled_optional_sources_change_actual_top_level_tools_only():
-    external = configuration_report(asyncio.run(capture_configuration(external_enabled=True)))
-    library = configuration_report(asyncio.run(capture_configuration(library_enabled=True)))
-    assert external["tool_count"] == 7 and library["tool_count"] == 8
-    assert "external_tools" in external["tool_names"]
-    assert "external_action" not in external["tool_names"]
-    assert {"research_library_search", "research_library_read"} <= set(library["tool_names"])
+@pytest.mark.parametrize("mode", MODE_TOP_LEVEL_TOOLS)
+@pytest.mark.parametrize(("external_enabled", "library_enabled"), [
+    (True, False), (False, True), (True, True),
+])
+def test_enabled_optional_sources_change_actual_top_level_tools_only(mode, external_enabled, library_enabled):
+    captured = asyncio.run(capture_configuration(
+        mode, external_enabled=external_enabled, library_enabled=library_enabled))
+    report = configuration_report(captured)
+    expected = COMMON_TOP_LEVEL_TOOLS | MODE_TOP_LEVEL_TOOLS[mode]
+    if external_enabled:
+        expected |= {"external_tools"} if mode == "chat" else {"external_tools", "external_action"}
+    if library_enabled:
+        expected |= {"research_library_search", "research_library_read"}
+    assert set(report["tool_names"]) == expected
+    assert report["tool_count"] == len(expected)
 
 
 def test_depth_two_allows_parent_delegation_but_hides_it_inside_child():

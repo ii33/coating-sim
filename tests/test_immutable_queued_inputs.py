@@ -21,6 +21,9 @@ class ImmutableQueueTests(queue_tests.QueueTests):
             path.write_text(json.dumps(recipe))
             bridge.setField('carrier_phase_deg', '17')
             bridge.calculate()
+            latest_queue_id = bridge._job_cancel_events[bridge._job_id].job_id
+            self.spin(lambda: any(row['job_id'] == latest_queue_id
+                                  for row in self.store.snapshot()['jobs']))
             rows = self.store.snapshot()['jobs']
             self.assertEqual(len(rows), 2)
             self.assertEqual(len(set(row['input_summary']['snapshot_sha256'] for row in rows)), 2)
@@ -76,6 +79,8 @@ class ImmutableQueueTests(queue_tests.QueueTests):
                 bridge.calculate()
                 latest_id = bridge._job_id
                 latest = bridge._job_cancel_events[latest_id]
+                self.spin(lambda: any(row['job_id'] == latest.job_id
+                                      for row in self.store.snapshot()['jobs']))
                 latest.set()  # Queue cancellation of only newest job.
                 self.spin(lambda: self.store.read_job(latest.job_id)['state'] == 'cancelled')
                 self.spin(terminal_observed.is_set)
@@ -115,6 +120,8 @@ class ImmutableQueueTests(queue_tests.QueueTests):
             bridge.calculate()
             latest_id = bridge._job_id
             latest = bridge._job_cancel_events[latest_id]
+            self.spin(lambda: any(row['job_id'] == latest.job_id
+                                  for row in self.store.snapshot()['jobs']))
             latest.set()
             self.spin(lambda: latest_id not in bridge._job_cancel_events)
             self.assertEqual(self.store.read_job(latest.job_id)['state'], 'cancelled')
