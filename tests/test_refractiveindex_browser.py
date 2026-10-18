@@ -415,7 +415,7 @@ def test_pagination_and_filters_use_core_index(global_browser, snapshot):
 
 
 @pytest.mark.parametrize("theme_name,width,font_scale", [("light", 1100, 1.0), ("dark", 680, 1.0), ("light", 680, 1.6)])
-def test_actual_qml_browser_layout_preview_close_and_reopen(global_browser, theme_name, width, font_scale):
+def test_actual_qml_browser_layout_preview_close_and_reopen(global_browser, theme_name, width, font_scale, tmp_path):
     owner, browser, _root = global_browser
     engine = QQmlEngine()
     theme = ThemeEngineBridge(build_theme_snapshot(theme_name, font_scale=font_scale), 0, theme_name, theme_name,
@@ -448,7 +448,7 @@ def test_actual_qml_browser_layout_preview_close_and_reopen(global_browser, them
         assert popup.property("visible") and browser.importSummary["rows"]
         image = window.grabWindow()
         assert not image.isNull()
-        assert image.save(f"/tmp/rii-browser-{theme_name}-{width}-{font_scale}.png")
+        assert image.save(str(tmp_path / f"rii-browser-{theme_name}-{width}-{font_scale}.png"))
         assert browser.close()
         QTest.qWait(40)
         assert not popup.property("visible")
@@ -576,7 +576,7 @@ def test_merck_metadata_reference_is_separate_from_installed_sources(global_brow
 
 
 @pytest.mark.parametrize("mode,width,font_scale", [("vendor", 1100, 1.0), ("vendor", 680, 1.6), ("n2", 1100, 1.0)])
-def test_actual_vendor_and_nonlinear_qml_are_truthful(global_browser, vendor_file, mode, width, font_scale):
+def test_actual_vendor_and_nonlinear_qml_are_truthful(global_browser, vendor_file, mode, width, font_scale, tmp_path):
     from PySide6.QtCore import Qt
     owner, browser, _root = global_browser
     engine = QQmlEngine()
@@ -635,7 +635,7 @@ def test_actual_vendor_and_nonlinear_qml_are_truthful(global_browser, vendor_fil
         flickable = scroll.property("contentItem")
         flickable.setProperty("contentY", max(0, flickable.property("contentHeight") - flickable.property("height")))
         QTest.qWait(80)
-        assert window.grabWindow().save(f"/tmp/optical-browser-{mode}-{width}-{font_scale}.png")
+        assert window.grabWindow().save(str(tmp_path / f"optical-browser-{mode}-{width}-{font_scale}.png"))
         if mode == "vendor" and width == 1100:
             assert browser.loadReferences()
             idle(browser)
