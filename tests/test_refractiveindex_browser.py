@@ -9,6 +9,7 @@ from typing import Any, cast
 
 import pytest
 from PySide6.QtCore import QObject, QUrl
+from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication, QRawFont
 from PySide6.QtQml import QQmlComponent, QQmlEngine
 from PySide6.QtQuick import QQuickItem
 from PySide6.QtTest import QTest
@@ -16,6 +17,7 @@ from PySide6.QtTest import QTest
 from coat_sim.core.material_business import MaterialLibrary
 from coat_sim.core.refractiveindex_local import RefractiveIndexLocalStore, build_from_directory
 from coat_sim.ui.global_resources import GlobalResourcesBridge
+from coat_sim.ui.settings import apply_font_settings
 from coat_sim.ui.theme_service import ThemeEngineBridge
 from coat_sim.ui.theme_tokens import build_theme_snapshot
 from tests.test_launcher_information_global_resources import global_root as global_root
@@ -24,6 +26,24 @@ from tests.test_scoped_resource_libraries import open_library, qml, settled
 
 pytestmark = [pytest.mark.contract, pytest.mark.qt]
 yaml = importlib.import_module("yaml")
+
+
+@pytest.fixture(autouse=True)
+def browser_fonts():
+    application = cast(QGuiApplication, QGuiApplication.instance() or QGuiApplication([]))
+    previous_font = QFont(application.font())
+    try:
+        # Match launcher startup before constructing any QML engines. Offscreen
+        # Windows can start with no system fonts despite Theme naming Noto.
+        apply_font_settings({}, app=application)
+        family = str(build_theme_snapshot("light")["fontFamily"])
+        assert family in QFontDatabase.families()
+        font = QRawFont.fromFont(QFont(family))
+        assert font.isValid() and font.familyName() == family
+        assert all(font.supportsCharacter(ord(character)) for character in "材料折射率")
+        yield
+    finally:
+        application.setFont(previous_font)
 
 
 @pytest.fixture
