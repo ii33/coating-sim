@@ -388,6 +388,9 @@ def _business_server() -> tuple[Client, MCPToolset]:
     if _BUSINESS_SERVER is None:
         child_environment = {key: os.environ[key] for key in (
             "PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "USERPROFILE", "HOME", "CONDA_PREFIX", "COAT_UI_PID", "COAT_ASSISTANT_RUNTIME_ROOT",
+            # Preserve the host's reference-data location without inheriting
+            # unrelated environment variables (especially provider secrets).
+            "LOCALAPPDATA", "XDG_DATA_HOME", "COAT_SIM_REFRACTIVEINDEX_STORE",
             "OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "COAT_DEVELOPMENT", "COAT_RELEASE_BUILD") if key in os.environ}
         from coat_sim.process_entry import module_command
         command = module_command("coat_sim.mcp.server")
