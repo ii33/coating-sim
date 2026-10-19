@@ -49,8 +49,38 @@ def _information(kind: str, data: dict) -> dict[str, str]:
         return {"summary": material.get("description", ""), "notes": material.get("notes", "")}
     if kind == "binary_asset":
         return {"summary": "", "notes": ""}
+    if kind == "project_bbs_post":
+        return {"summary": "BBS 工程记录；在 BBS 中查看正文、历史或编辑。", "notes": ""}
     information = resource_information(kind, data)
     return {"summary": information["summary"], "notes": information["notes"]}
+
+
+def _saved_material_uses(snapshot: dict) -> dict[str, set[str]]:
+    """Actual saved bindings, not inferred physical suitability or global roles."""
+    uses: dict[str, set[str]] = {}
+
+    def bind(role, reference):
+        identity = reference.get("material_id")
+        if identity:
+            uses.setdefault(identity, set()).add(role)
+
+    for row in snapshot["manifest"]["documents"]:
+        document = snapshot["documents"][row["id"]]
+        if row["kind"] == "film":
+            bind("substrate", document["substrate"])
+            for key in ("incident_medium", "exit_medium"):
+                if document[key]["kind"] == "material":
+                    bind("medium", document[key])
+            references = [*document["front_layers"], *document["back_layers"],
+                          *document["expression"]["symbols"].values()]
+            references.extend(document.get("workflow_settings", {}).get(
+                "optimization", {}).get("structure_materials", []))
+            for reference in references:
+                bind("film", reference)
+        elif row["kind"] == "expression_template":
+            for reference in document["expression"]["symbols"].values():
+                bind("film", reference)
+    return uses
 
 
 def _index(snapshot: dict) -> dict[str, dict]:
@@ -670,11 +700,33 @@ class ProjectResourceExchange:
         for row in rows:
             if row["kind"] in {"material_profile", "optical_material"}:
                 row["material_id"] = snapshot["documents"][row["id"]]["material"]["id"]
-        # Usage metadata is presentation-only and preserves the existing material
-        # library's role/legacy-category rules. Optical-only records have no
-        # declared role in this format, so do not infer a film/substrate use.
-        from .materials import material_category, material_categories
         for row in rows:
+            if row["kind"] != "binary_asset":
+                continue
+            metadata = snapshot["documents"][row["id"]]
+            owners = [owner["id"] for owner in rows if row["id"] in owner["dependencies"]]
+            row.update(asset_role=metadata["role"], asset_name=metadata.get("name", ""),
+                       asset_mime=metadata.get("mime", ""), asset_size=metadata["size"],
+                       asset_sha256=metadata["sha256"], asset_payload_path=metadata["payload_path"],
+                       referenced_by=owners)
+            if metadata["role"] == "bbs_attachment":
+                row["summary"] = "BBS 附件；仅查看信息，不作为设计资源打开。"
+                row["notes"] = ("该附件已保存在工程中；附件导入先于帖子保存，取消编辑不会自动删除附件。"
+                                if not owners else "随 BBS 帖子保留的附件；可在 BBS 中预览或导出。")
+        # Explicit profiles own classification. A frozen optical record has no
+        # stored roles; only actual saved bindings may project its current use.
+        from .materials import material_category, material_categories
+        saved_uses = _saved_material_uses(snapshot)
+        for row in rows:
+            if row["kind"] == "optical_material":
+                material_id = snapshot["documents"][row["id"]]["material"]["id"]
+                optical_uses = [role for role in ("film", "substrate", "medium")
+                        if role in saved_uses.get(material_id, set())]
+                categories = [role for role in optical_uses if role in {"film", "substrate"}]
+                row.update(material_uses=optical_uses, material_categories=categories,
+                           material_category=categories[0] if categories else None,
+                           material_classification_source="saved_design_reference" if optical_uses else "unknown")
+                continue
             if row["kind"] != "material_profile":
                 continue
             material = snapshot["documents"][row["id"]]["material"]
@@ -741,6 +793,11 @@ class ProjectResourceExchange:
             snapshot = captured.snapshot_saved_inputs()
             target_fingerprint = captured._fingerprint
         elif target == "global":
+            source_rows = _index(catalog.snapshot)
+            if any(source_rows[key]["kind"] == "project_bbs_post" or
+                   (source_rows[key]["kind"] == "binary_asset" and
+                    catalog.snapshot["documents"][key]["role"] == "bbs_attachment") for key in closure):
+                raise ProjectError("unsupported_transfer", "BBS 帖子与附件属于工程；请导出工程资源包或在 BBS 中保存附件副本。")
             from .project_global_resources import read_global_resources
             target_type, target_path = "global", "global"
             if len({_index(catalog.snapshot)[key]["kind"] for key in selected}) != 1:

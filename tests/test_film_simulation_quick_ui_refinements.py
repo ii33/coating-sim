@@ -117,6 +117,17 @@ class FilmSimulationQuickUiRefinementTests(unittest.TestCase):
                 missing_tokens = component.createWithInitialProperties({"controller": controller})
                 self.assertIsNone(missing_tokens)
                 self.assertIn("Required property themeColors", component.errorString())
+                controller._render_plot = lambda: None
+                controller._stale = False
+                controller._result = {
+                    "wavelength_nm": [400.0, 500.0, 600.0, 700.0],
+                    "R": [0.1, 0.5, 0.2, 0.8],
+                }
+                controller._refresh_plot_data()
+                controller.plotDataChanged.emit()
+                controller.plotViewChanged.emit()
+                controller.stateChanged.emit()
+                window.show()
                 plot = window.findChild(QQuickItem, "filmSpectrumPlot")
                 footer = window.findChild(QQuickItem, "filmSpectrumFloatingResultSummary")
                 summary = window.findChild(QQuickItem, "filmSpectrumFloatingResultSummaryText")
@@ -124,6 +135,18 @@ class FilmSimulationQuickUiRefinementTests(unittest.TestCase):
                 # may leave light selected; start from a distinct baseline so
                 # every asserted switch must really replace the engine tokens.
                 theme.set_theme("high-contrast-dark")
+                minor_x = next((item for item in self.visual_items(plot)
+                                if item.objectName() == "filmSpectrumMinorGridXLine"), None)
+                major_x = next((item for item in self.visual_items(plot)
+                                if item.objectName() == "filmSpectrumMajorGridXLine"), None)
+                self.assertIsNotNone(minor_x)
+                self.assertIsNotNone(major_x)
+                assert isinstance(minor_x, QQuickItem)
+                assert isinstance(major_x, QQuickItem)
+                self.assertNotEqual(controller.plotView["x_minor_ticks"], [])
+                self.assertNotEqual(controller.plotView["y_minor_ticks"], [])
+                self.assertFalse(set(controller.plotView["x_ticks"])
+                                 & set(controller.plotView["x_minor_ticks"]))
                 for mode in ("light", "dark", "light"):
                     revision = theme.current_revision
                     self.assertTrue(theme.set_theme(mode))
@@ -137,6 +160,14 @@ class FilmSimulationQuickUiRefinementTests(unittest.TestCase):
                                      str(expected["colorSurfaceRaised"]).lower())
                     self.assertEqual(summary.property("color").name().lower(),
                                      str(expected["colorTextMuted"]).lower())
+                    self.assertTrue(minor_x.isVisible())
+                    self.assertTrue(major_x.isVisible())
+                    self.assertEqual(minor_x.property("color").name().lower(),
+                                     str(expected["colorBorder"]).lower())
+                    self.assertEqual(major_x.property("color").name().lower(),
+                                     str(expected["colorBorder"]).lower())
+                    self.assertLess(float(minor_x.property("opacity")),
+                                    float(major_x.property("opacity")))
             finally:
                 theme.set_theme(previous_mode)
                 controller.close()
@@ -340,6 +371,29 @@ class FilmSimulationQuickUiRefinementTests(unittest.TestCase):
                 self.assertEqual(before, controller.plotView)
                 QTest.mouseRelease(window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, outside.toPoint())
                 controller.resetPlotView()
+
+                plot_settings_dialog = window.findChild(
+                    QObject, "filmSimulationParametersDialog")
+                settings_tabs = window.findChild(QObject, "filmSimulationSettingsTabs")
+                self.assertIsNotNone(plot_settings_dialog)
+                self.assertIsNotNone(settings_tabs)
+                opened = QSignalSpy(plot_settings_dialog.opened)
+                before_double_click = controller.plotView
+                center = viewport.mapToScene(
+                    QPointF(viewport.width() / 2, viewport.height() / 2))
+                QTest.mouseDClick(window, Qt.MouseButton.LeftButton,
+                                  Qt.KeyboardModifier.NoModifier, center.toPoint())
+                self.assertTrue(self.wait_until(
+                    lambda: bool(plot_settings_dialog.property("visible"))))
+                self.assertEqual(opened.count(), 1)
+                self.assertEqual(settings_tabs.property("currentIndex"), 1)
+                self.assertEqual(len(window.findChildren(
+                    QObject, "filmSimulationParametersDialog")), 1)
+                self.assertEqual(controller.plotView, before_double_click,
+                                 "a double click must open settings without panning")
+                plot_settings_dialog.reject()
+                self.assertTrue(self.wait_until(
+                    lambda: not plot_settings_dialog.property("visible")))
 
                 # Force one missing sample into a plotted result to confirm the
                 # UI creates two independent vector paths for that single series.

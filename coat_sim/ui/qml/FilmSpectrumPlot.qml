@@ -15,6 +15,7 @@ Rectangle {
     property real floatingControlsRightEdge: width
     property var plotSnapshot: controller.plotData
     property var plotView: controller.plotView
+    signal openPlotSettingsRequested()
     readonly property bool softwareRendererActive:
         GraphicsInfo.api === GraphicsInfo.Software
     readonly property bool plotVectorReady: controller.hasResult && plotSnapshot.series.length > 0
@@ -207,8 +208,39 @@ Rectangle {
             }
 
             Repeater {
+                model: root.plotView.grid ? root.plotView.x_minor_ticks : []
+                delegate: Rectangle {
+                    objectName: "filmSpectrumMinorGridXLine"
+                    required property real modelData
+                    x: (modelData - root.plotView.x_min)
+                       / (root.plotView.x_max - root.plotView.x_min)
+                       * plotViewport.width
+                    y: 0
+                    width: 1
+                    height: plotViewport.height
+                    color: root.themeColors.colorBorder
+                    opacity: 0.22
+                }
+            }
+            Repeater {
+                model: root.plotView.grid ? root.plotView.y_minor_ticks : []
+                delegate: Rectangle {
+                    objectName: "filmSpectrumMinorGridYLine"
+                    required property real modelData
+                    x: 0
+                    y: (root.plotView.y_max - modelData)
+                       / (root.plotView.y_max - root.plotView.y_min)
+                       * plotViewport.height
+                    width: plotViewport.width
+                    height: 1
+                    color: root.themeColors.colorBorder
+                    opacity: 0.22
+                }
+            }
+            Repeater {
                 model: root.plotView.grid ? root.plotView.x_ticks : []
                 delegate: Rectangle {
+                    objectName: "filmSpectrumMajorGridXLine"
                     required property real modelData
                     x: (modelData - root.plotView.x_min)
                        / (root.plotView.x_max - root.plotView.x_min)
@@ -223,6 +255,7 @@ Rectangle {
             Repeater {
                 model: root.plotView.grid ? root.plotView.y_ticks : []
                 delegate: Rectangle {
+                    objectName: "filmSpectrumMajorGridYLine"
                     required property real modelData
                     x: 0
                     y: (root.plotView.y_max - modelData)
@@ -564,9 +597,13 @@ Rectangle {
         acceptedButtons: Qt.LeftButton
         property bool cursorVisible: false
         property bool dragging: false
+        property bool dragMoved: false
         property real cursorFraction: 0
+        property real pressX: 0
+        property real pressY: 0
         property real lastX: 0
         property real lastY: 0
+        readonly property real panDragThreshold: Math.max(4, root.themeColors.spaceXs)
 
         onEnabledChanged: {
             if (!enabled) {
@@ -597,15 +634,23 @@ Rectangle {
                 return
             }
             dragging = true
+            dragMoved = false
+            pressX = mouse.x
+            pressY = mouse.y
             lastX = mouse.x
             lastY = mouse.y
             updateCursor(mouse.x, mouse.y)
         }
         onPositionChanged: function(mouse) {
-            if (dragging && (mouse.buttons & Qt.LeftButton) && insidePlot(mouse.x, mouse.y)) {
-                root.controller.panPlot(
-                    (mouse.x - lastX) / plotViewport.width,
-                    (mouse.y - lastY) / plotViewport.height)
+            if (dragging && (mouse.buttons & Qt.LeftButton)) {
+                if (!dragMoved
+                        && Math.hypot(mouse.x - pressX, mouse.y - pressY) >= panDragThreshold)
+                    dragMoved = true
+                if (dragMoved && insidePlot(mouse.x, mouse.y)) {
+                    root.controller.panPlot(
+                        (mouse.x - lastX) / plotViewport.width,
+                        (mouse.y - lastY) / plotViewport.height)
+                }
             }
             // Leaving the axes stops movement. Re-entry resumes from the
             // nearest boundary, without replaying the outside pointer delta.
@@ -619,8 +664,17 @@ Rectangle {
         }
         onCanceled: {
             dragging = false
+            dragMoved = false
             cursorVisible = false
             root.controller.clearPlotCursor()
+        }
+        onDoubleClicked: function(mouse) {
+            if (dragMoved)
+                return
+            dragging = false
+            cursorVisible = false
+            root.controller.clearPlotCursor()
+            root.openPlotSettingsRequested()
         }
         onExited: {
             if (!dragging) {

@@ -31,6 +31,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <p class="source">公开光学数据追加更新：2026-10-06；固定源SHA256、跨批去重、Siefke保守域与仅光学材料，见14b。</p>
 <p class="source">膜系本批更新：2026-10-06——自动基底含吸收、相位采样诊断、单次数据准备与缓存、QW/nm双列、百分比显示与折叠说明。</p>
 <p class="source">Qt Quick 膜系光谱补充：2026-10-07——显示预览按波长桶保留曲线端点与极值，导出继续使用完整采样结果。</p>
+<p class="source">Qt Quick 光谱次网格更新：2026-10-19——主刻度与数字标签保持独立，显示主间隔的五等分次网格；规则与限额为本项目约定，见14i-11b。</p>
 <p class="source">Qt Quick 光谱平移更新：2026-10-14——拖动仅在有效坐标绘图区响应，缩放视窗按可见曲线原始有限采样域限制平移；显式轴范围与复位语义保留，见14i-11a。</p>
 <p class="source">修正板设计器补充：2026-10-10——恢复直线/曲线草稿与闭合、按选中轮廓旋转，并按视图变换显示真实机架 mm 刻度；补充 Qt 可识别 TouchPad 设备的双轴/角度回退平移、反向滚动、原生/多触点缩放锚点及可选事件诊断。</p>
 <p class="source">助手设置补充：2026-10-08——本地供应商目录按精确端点区分协议与用途；22 个兼容预设及一个协议说明项持久化，目录模型不冒充账号验证结果，选择预设只填入未保存地址草稿。</p>
@@ -79,6 +80,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#film-target-sampling-20261013">14i-10 波长/角度采样联动与全膜堆约束</a>
 <a href="#film-workflow-display-20261013">14i-11 膜系工作流文件与显示统计</a>
 <a href="#film-spectrum-bounded-pan-20261014">14i-11a 光谱有效绘图区与有界平移</a>
+<a href="#film-spectrum-minor-grid-20261019">14i-11b 光谱主次刻度与无标签网格</a>
 <a href="#deposition-uniformity-display-20261013">14i-12 沉积均匀性展示</a>
 <a href="#hr44-1100-appearance-check">16i HR44/1100 外观预览案例</a>
 <a href="#hr44-corrected-mask-12mm">16j HR44 同侧板与12 mm复算</a>
@@ -2236,6 +2238,23 @@ CIE λair ──► n_air ──► n,k at λvac ──► thickness ──► n
 <p><b>实现位置与依据：</b><code>coat_sim/ui/film_simulation_quick_controller.py:_finite_plot_domain / _bounded_pan_axis / panPlot</code>、<code>coat_sim/ui/qml/FilmSpectrumPlot.qml:filmSpectrumInteractions</code>。验证入口：<code>tests/test_film_spectrum_plot_bounds.py</code>、<code>tests/test_film_simulation_quick_ui_refinements.py</code>和<code>tests/test_film_floating_ui.py</code>。有界平移、退化轴锁定和区域判定未找到外部依据，仅为本项目实现；这些显示规则不是光学精度或硬件DPI验收声明。</p>
 <p><b>渲染验收边界：</b>曲线继续使用直接矢量<code>Shape/PathPolyline</code>与原有逻辑坐标变换；不将DPR再次乘入轴布局或曲线坐标。本轮Qt/PySide6 6.12软件后端的真实截图发现既有离屏curve layer在1.5 DPR的纵向偏移；移除多余离屏层，保留两级viewport裁剪。软件验收在1/1.5/2 DPR核对已知25%水平线的真实像素位置、缩放/平移后的已知交点及区域外曲线像素为零；这些结果不声称GPU、多显示器或旧Qt版本全部通过。<a href="https://doc.qt.io/qt-6/qml-qtquick-item.html">Qt官方Item Layers</a>说明离屏层的纹理语义；偏移是本轮实际观测，不宣称该文档确认了上游缺陷。</p>
 </section>
+<section id="film-spectrum-minor-grid-20261019">
+<h2>14i-11b 光谱主次刻度与无标签网格（2026-10-19）</h2>
+<p><strong>用途和输入输出：</strong>为当前光谱视窗生成有限的主刻度及次网格位置。输入是轴边界 [a,b]、自动/手动主刻度设置和显示限额；输出为主刻度列表与独立的无标签次刻度列表。只更新场景图的显示派生值，不增加仿真波长采样、不参与带宽统计，也不改变 CSV/JSON/PNG 曲线使用的完整计算结果。</p>
+<p><strong>坐标与单位：</strong>X 轴为波长 nm，Y 轴为无量纲比例 q；数字标签把 Y 显示为 100q%。生成的数值位置由既有视窗映射为 Qt Quick 逻辑像素。缩放和平移后，使用当前视窗边界重建网格；次网格没有额外数值标签。</p>
+<div class="formula">自动主步长：r=(b−a)/6，p=10<sup>floor(log10 r)</sup>，h=p·min{u∈{1,2,2.5,5,10}:u≥r/p}；手动时 h 取已验证输入。<br>i₀=ceil(a/h−10⁻¹²)，i₁=floor(b/h+10⁻¹²)，N=max(0,i₁−i₀+1)，s=max(1,ceil(N/80))。<br>主刻度为 (i₀+ks)h；次刻度原点 o=i₀h，间距 d=hs/5，位置为 o+jd，排除 j mod 5=0 的主线位置。</div>
+<pre>j0 = ceil((a-o)/d - 1e-12); j1 = floor((b-o)/d + 1e-12)
+M = max(0, j1-j0+1); thinning = max(1, ceil(M/400))
+for j in j0, j0+thinning, ... &lt;= j1:
+    if j mod 5 != 0 and position lies inside the tolerant viewport:
+        append o+j*d to minor_ticks
+render major ticks with labels; render minor_ticks as faint lines only</pre>
+<figure class="figure"><svg viewBox="0 0 850 180" role="img" aria-label="主刻度与无标签五等分次网格"><rect x="65" y="20" width="720" height="105" fill="#fafbf8"/><g stroke="#c9d7d3"><path d="M101 20V125M137 20V125M173 20V125M209 20V125M281 20V125M317 20V125M353 20V125M389 20V125M461 20V125M497 20V125M533 20V125M569 20V125M641 20V125M677 20V125M713 20V125M749 20V125"/></g><g stroke="#52796f" stroke-width="2"><path d="M65 20V125M245 20V125M425 20V125M605 20V125M785 20V125"/></g><g font-size="16" fill="#17303b"><text x="57" y="150">400</text><text x="237" y="150">450</text><text x="417" y="150">500</text><text x="597" y="150">550</text><text x="767" y="150">600 nm</text><text x="215" y="175">每个主间隔四条浅色次线；次线不增加数字标签</text></g></svg><figcaption>示意采用手动主间隔 50 nm：五等分产生 10 nm 次间隔，只有主刻度显示波长数字。图中线色仅用于说明；实际颜色来自当前 Theme。</figcaption></figure>
+<p><strong>实现和默认参数：</strong><code>coat_sim/ui/film_simulation_quick_controller.py::_axis_tick_plan</code>、<code>_axis_ticks</code>、<code>_axis_minor_ticks</code> 与 <code>plotViewport</code>；<code>FilmSpectrumPlot.qml</code> 消费 <code>x_minor_ticks/y_minor_ticks</code>。默认目标主间隔数 6，主刻度上限 80，主间隔五等分，次刻度候选限额 400。关闭网格同时隐藏主/次网格，主坐标标签继续独立显示。</p>
+<p><strong>适用条件与近似：</strong>轴边界和步长须可用有限浮点表示，跨度与步长为正；无效/退化跨度返回空计划。边界计算使用 10⁻¹² 容差。极密刻度会按固定步幅抽稀，因而不保证视窗两端恰好落在线上，也不保证每个主间隔在限额触发后仍保留全部四条次线。这些显示限额不代表物理分辨率或结果精度。</p>
+<p class="source"><strong>参考来源：</strong>五等分、nice-step 序列、80/400 限额和容差均为<strong>本项目约定；未找到外部依据，仅为本项目实现</strong>。其验证是显示位置/标签分离、缩放平移、手动范围和 DPI 回归；不将其视为光学数值方法的外部验证。原物理求值与采样依据仍见光谱计算章节。</p>
+</section>
+
 
 <section id="film-spectrum-extrema-passband">
 <h2>14j · Qt Quick 光谱极值与波长通带（2026-10-10）</h2>

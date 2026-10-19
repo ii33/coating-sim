@@ -139,3 +139,11 @@ design. A job without a verified candidate has no result-open action.
 - `FilmSimulationQuickController` 保存来源同步错误。来源 owner 的 snapshot.error 非空、表达式正在处理、无效来源设计或来源工作流配置会取消旧代次、清除旧结果并阻止启动，不能由当前窗口旧快照的普通校验把同步错误消除后继续计算。来源 error 没有错误类型，故本轮也保守阻止仍有保存错误的来源，明确提示先修正或清除当前设计错误，不自行清错。修正来源或完成表达式工作后，下次刷新/手算重新验证并清除仿真侧同步错误。异步结果仍按 active token、generation 和 project operation 身份提交。
 - 控制器是已提交配置、来源绑定、计算代次和结果的唯一所有者；QML 只持有参数弹窗草稿。新回归在 `tests/test_film_manual_draft_sync.py`：每次手算读取最新未保存值、关闭设计 presentation 后 retained draft、失败不回退旧设计、真实 session 拒绝非法编辑/表达式处理中不回退保留的合法快照、同 ID 显式隔离预览、显式构造器输入不夺取 owner 和其他工程 owner 拒绝。执行器使用 held future，不跑高负载计算。
 - 小窗弹窗测试以 Qt Quick `ensurePolished()` 和真实 `grabWindow()` 的首个渲染帧为几何观察边界，随后核对原 cancel/apply 边界断言；不通过固定延时、扩大容差或等待直到越界消失来放行。Qt 的 `processEvents()` 单独不能证明布局 polish 已完成。
+
+
+## 2026-10-19 次网格与绘图范围草稿
+
+- `FilmSimulationQuickController.plotViewport` 是主/次刻度位置的唯一数值所有者；QML 只绘制接收到的列表。次网格不带数值标签，网格开关同时控制主/次线，主标签独立保留。生成规则、坐标单位和限额见 [算法文档14i-11b](algorithms.html#film-spectrum-minor-grid-20261019)。
+- 统一参数弹窗中的 `FilmPlotSettingsForm` 持有未应用草稿。最小/最大范围在自动模式下也可编辑；有效值实际改变时，该轴草稿切换为手动。失焦、完成编辑和应用前都提交原始编辑文本到字段自己的数值源，避免格式化显示回退覆盖输入。错误仍由既有参数验证阻止应用，不能部分提交计算或绘图配置。取消/关闭后重新打开读取已提交值。
+- 在有效绘图区双击请求同一个参数弹窗的绘图页签；曲线控制器不直接持有窗口状态，`FilmSimulationQuick.qml` 消费信号并在打开后清除一次性页签标志。其他入口仍从默认参数页签打开。窗口尺寸、应用/取消、焦点恢复、异步计算代次与取消边界沿用已有契约。
+- 绘图显示和字段草稿变化不修改已计算的 R/T/A 样本。只有应用到 controller/session 的计算输入改变时，才沿用原有结果失效与取消行为。

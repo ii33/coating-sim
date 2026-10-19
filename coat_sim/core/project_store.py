@@ -759,16 +759,33 @@ class ProjectStore:
 
     @_store_operation
     def _publish(self, records, data, *, default=None, change_default=False, assets=None,
-                 expected_fingerprint: str | None = None) -> dict[str, str]:
+                 expected_fingerprint: str | None = None, discussion_only: bool = False) -> dict[str, str]:
         result = self._publish_transaction(records, data, default=default, change_default=change_default,
-            assets=assets, expected_fingerprint=expected_fingerprint)
+            assets=assets, expected_fingerprint=expected_fingerprint, discussion_only=discussion_only)
         self._notify_changes()
         return result
 
     @_store_operation
     def _publish_transaction(self, records, data, *, default=None, change_default=False, assets=None,
-                             expected_fingerprint: str | None = None) -> dict[str, str]:
-        if len(records) > MAX_PROJECT_DOCUMENTS:
+                             expected_fingerprint: str | None = None,
+                             discussion_only: bool = False) -> dict[str, str]:
+        retained = {}
+        if discussion_only:
+            if change_default or set(records) != set(data):
+                raise ProjectError("bbs_invalid_arguments", "BBS publication cannot change the project default or omit data")
+            self._current()
+            previous = self._index()
+            for key, row in records.items():
+                kind = row["kind"]
+                if (kind not in {"project_bbs_post", "binary_asset"} or
+                        (kind == "binary_asset" and data[key].get("role") != "bbs_attachment")):
+                    raise ProjectError("bbs_invalid_arguments", "BBS publication accepts only posts and BBS attachments")
+                if key in previous and previous[key] != row:
+                    raise ProjectError("stale_document", "BBS captured document differs from its saved manifest row")
+                if normalize_document(kind, data[key]) != data[key]:
+                    raise ProjectError("invalid_document", "BBS publication requires normalized documents")
+            retained = {key: deepcopy(row) for key, row in previous.items() if key not in records}
+        if len(records) + len(retained) > MAX_PROJECT_DOCUMENTS:
             raise ProjectError("capacity_exceeded", "Project has too many managed input documents")
         captured_fingerprint = getattr(records, "fingerprint", self._fingerprint)
         if captured_fingerprint != self._fingerprint:
@@ -813,13 +830,22 @@ class ProjectStore:
         content = {key: json_bytes(document) for key, document in changed_data.items()}
         if any(len(encoded) > MAX_FILE_BYTES for encoded in content.values()):
             raise ProjectError("capacity_exceeded", "Managed project JSON document exceeds size limit")
-        if sum(map(len, content.values())) > MAX_PROJECT_BYTES:
+        retained_size = 0
+        for row in retained.values():
+            # Capacity/path checks do not parse or normalize unrelated designs.
+            path = self.root / managed_document_path(row["path"], row["kind"], row["id"])
+            reject_links(path)
+            size = path.stat().st_size
+            if size > MAX_FILE_BYTES:
+                raise ProjectError("capacity_exceeded", "Managed project JSON document exceeds size limit")
+            retained_size += size
+        if sum(map(len, content.values())) + retained_size > MAX_PROJECT_BYTES:
             raise ProjectError("capacity_exceeded", "Managed project input JSON exceeds the safety capacity limit")
         for key, row in changed_records.items():
             row["sha256"] = _digest(content[key])
         proposed = deepcopy(self._manifest)
         proposed["revision"] += 1
-        proposed["documents"] = list(changed_records.values())
+        proposed["documents"] = [*retained.values(), *changed_records.values()]
         if change_default:
             proposed["default_configuration_id"] = default
         proposed = _manifest(proposed)
@@ -830,6 +856,12 @@ class ProjectStore:
             if row["kind"] in ("process", "deposition_configuration"):
                 preview.resolve_document(identity)
         asset_sources = self.asset_sources(changed_records, changed_data, overrides=assets)
+        if discussion_only:
+            # Keep the aggregate binary I/O quota across preserved resources.
+            retained_asset_bytes = sum(self._read_record(row)["size"] for row in retained.values()
+                                       if row["kind"] == "binary_asset")
+            self.asset_limits.check_total(retained_asset_bytes + sum(
+                changed_data[key]["size"] for key in asset_sources))
         stage = self.root / "objects" / generation
         stage_created = False
         published_assets: list[Path] = []

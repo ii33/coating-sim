@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -47,6 +49,13 @@ Rectangle {
         if (!options || index < 0 || index >= options.length) return ""
         return String(options[index].id || "")
     }
+    function wrapTooltipText(value) {
+        const characters = Array.from(String(value || ""))
+        const lines = []
+        for (let offset = 0; offset < characters.length; offset += 32)
+            lines.push(characters.slice(offset, offset + 32).join(""))
+        return lines.join("\n")
+    }
     function datasetTooltip(option) {
         const parts = []
         if (option.wavelength_min !== undefined && option.wavelength_max !== undefined)
@@ -55,8 +64,10 @@ Rectangle {
         if (option.value_range_text)
             parts.push("值范围：" + option.value_range_text)
         const note = String(option.notes || "").replace(/\s+/g, " ").trim()
-        if (note)
-            parts.push(note.length > 120 ? note.slice(0, 117) + "…" : note)
+        if (note) {
+            const conciseNote = note.length > 120 ? note.slice(0, 117) + "…" : note
+            parts.push(wrapTooltipText(conciseNote))
+        }
         return parts.join("\n")
     }
     function focusColumnField(columnName) {
@@ -202,20 +213,61 @@ Rectangle {
                 required property var modelData
                 required property int index
                 objectName: "filmOpticalSetOption_" + String(modelData.id || "empty")
+                readonly property string tooltipText: row.datasetTooltip(modelData)
                 width: setBox.width
                 text: modelData.name || modelData.id || ""
                 hoverEnabled: true
                 highlighted: index === setBox.highlightedIndex
+                readonly property bool currentSelection: index === setBox.currentIndex
+                readonly property bool accentState: datasetOption.enabled
+                                                    && (datasetOption.highlighted
+                                                        || datasetOption.hovered)
+                contentItem: Text {
+                    text: datasetOption.text
+                    textFormat: Text.PlainText
+                    font: datasetOption.font
+                    color: !datasetOption.enabled ? setBox.themeTokens.colorDisabledText
+                           : datasetOption.accentState ? setBox.themeTokens.colorTextOnAccent
+                                                       : setBox.themeTokens.colorText
+                    verticalAlignment: Text.AlignVCenter
+                    elide: Text.ElideRight
+                }
                 background: Rectangle {
                     radius: Theme.snapshot.radiusSm
-                    color: datasetOption.highlighted || datasetOption.hovered
-                           ? Theme.snapshot.colorSurfaceRaised : Theme.snapshot.colorSurface
+                    color: !datasetOption.enabled
+                           ? setBox.themeTokens.colorDisabledSurface
+                           : datasetOption.accentState ? setBox.themeTokens.colorAccent
+                           : datasetOption.currentSelection ? setBox.themeTokens.colorSelection
+                           : setBox.themeTokens.colorSurface
                     border.width: datasetOption.visualFocus ? Theme.snapshot.borderWidth : 0
                     border.color: datasetOption.visualFocus
                                   ? Theme.snapshot.colorFocusRing : "transparent"
                 }
-                ToolTip.visible: hovered && !!row.datasetTooltip(modelData)
-                ToolTip.text: row.datasetTooltip(modelData)
+                ToolTip {
+                    id: datasetTooltipPopup
+                    objectName: "filmOpticalSetTooltip_"
+                                 + String(datasetOption.modelData.id || datasetOption.index)
+                    parent: datasetOption
+                    width: Math.min(360, Math.max(220, setBox.width))
+                    delay: 650
+                    timeout: 3500
+                    visible: datasetOption.hovered && !datasetOption.pressed
+                             && !!datasetOption.tooltipText
+                    text: datasetOption.tooltipText
+                    contentItem: Text {
+                        text: datasetTooltipPopup.text
+                        textFormat: Text.PlainText
+                        font: setBox.font
+                        color: setBox.themeTokens.colorText
+                        wrapMode: Text.Wrap
+                    }
+                    background: Rectangle {
+                        color: setBox.themeTokens.colorSurfaceRaised
+                        radius: setBox.themeTokens.radiusSm
+                        border.width: setBox.themeTokens.borderWidth
+                        border.color: setBox.themeTokens.colorBorderStrong
+                    }
+                }
             }
         }
         ThemeControls.ThemeField {

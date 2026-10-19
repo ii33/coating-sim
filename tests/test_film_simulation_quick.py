@@ -551,6 +551,10 @@ class FilmSimulationQuickControllerTests(unittest.TestCase):
                 x_auto = window.findChild(QObject, "filmPlotSettingsXAuto")
                 x_min = window.findChild(QObject, "filmPlotSettingsXMin")
                 x_max = window.findChild(QObject, "filmPlotSettingsXMax")
+                y_auto = window.findChild(QObject, "filmPlotSettingsYAuto")
+                y_min = window.findChild(QObject, "filmPlotSettingsYMin")
+                y_max = window.findChild(QObject, "filmPlotSettingsYMax")
+                grid_check = window.findChild(QObject, "filmPlotSettingsShowGrid")
                 polarization_s = window.findChild(QObject, "filmPlotSettingsPolarizationS")
                 polarization_p = window.findChild(QObject, "filmPlotSettingsPolarizationP")
                 self.assertIsNotNone(plot_button)
@@ -560,6 +564,10 @@ class FilmSimulationQuickControllerTests(unittest.TestCase):
                 self.assertIsNotNone(x_auto)
                 self.assertIsNotNone(x_min)
                 self.assertIsNotNone(x_max)
+                self.assertIsNotNone(y_auto)
+                self.assertIsNotNone(y_min)
+                self.assertIsNotNone(y_max)
+                self.assertIsNotNone(grid_check)
                 self.assertIsNotNone(polarization_s)
                 self.assertIsNotNone(polarization_p)
                 before_plot = json.loads(json.dumps(controller.plotSettings))
@@ -587,6 +595,73 @@ class FilmSimulationQuickControllerTests(unittest.TestCase):
                 plot_cancel, plot_apply = self._assert_dialog_action_row(
                     window, "filmSimulationParametersActionRow",
                     "filmSimulationParametersCancelButton", "filmSimulationParametersApplyButton")
+
+                self.assertTrue(x_auto.property("checked"))
+                self.assertTrue(x_min.property("enabled"))
+                self.assertTrue(y_auto.property("checked"))
+                self.assertTrue(y_min.property("enabled"))
+                self.assertTrue(y_max.property("enabled"))
+                self._click_quick_item(window, x_min)
+                QTest.keyClick(window, Qt.Key.Key_Tab)
+                _APP.processEvents()
+                self.assertTrue(x_auto.property("checked"),
+                                "focus alone must not disable the automatic X range")
+                self._click_quick_item(window, grid_check)
+                self.assertTrue(x_auto.property("checked"),
+                                "changing the grid must not disable the automatic X range")
+                self.assertTrue(y_auto.property("checked"),
+                                "changing the grid must not disable the automatic Y range")
+                self._click_quick_item(window, plot_cancel)
+                self.assertTrue(self._wait_until(lambda: not plot_dialog.property("visible")))
+
+                open_plot_dialog()
+                self.assertTrue(x_auto.property("checked"))
+                edit_numeric(x_min, "400")
+                controller.stateChanged.emit()
+                _APP.processEvents()
+                self.assertEqual(x_min.property("text"), "400",
+                                 "controller notifications must leave the focused draft visible")
+                QTest.keyClick(window, Qt.Key.Key_Enter)
+                _APP.processEvents()
+                self.assertTrue(x_auto.property("checked"),
+                                "re-entering the existing range must leave auto enabled")
+                self.assertEqual(x_min.property("text"), "400")
+
+                edit_numeric(x_min, "420")
+                controller.stateChanged.emit()
+                _APP.processEvents()
+                self.assertEqual(x_min.property("text"), "420",
+                                 "controller notifications must not overwrite current input")
+                self.assertTrue(x_auto.property("checked"),
+                                "the range changes only when an edited value is committed")
+                self._click_quick_item(window, x_max)
+                self.assertFalse(x_auto.property("checked"),
+                                 "a changed X range must switch that axis to manual")
+                self.assertEqual(x_min.property("text"), "420",
+                                 "the unfocused field must keep its edited value visible")
+                self._click_quick_item(window, plot_cancel)
+                self.assertTrue(self._wait_until(lambda: not plot_dialog.property("visible")))
+
+                open_plot_dialog()
+                self.assertTrue(x_auto.property("checked"),
+                                "reopening after cancel must reload the controller setting")
+                self.assertEqual(x_min.property("text"), "400",
+                                 "reopening after cancel must discard the local range draft")
+                edit_numeric(y_min, "10")
+                self._click_quick_item(window, y_max)
+                self.assertFalse(y_auto.property("checked"),
+                                 "a changed Y range must switch that axis to manual")
+                self.assertEqual(y_min.property("text"), "10")
+                self._click_quick_item(window, plot_cancel)
+                self.assertTrue(self._wait_until(lambda: not plot_dialog.property("visible")))
+
+                open_plot_dialog()
+                self.assertTrue(y_auto.property("checked"))
+                self.assertEqual(y_min.property("text"), "0")
+                self._click_quick_item(window, plot_cancel)
+                self.assertTrue(self._wait_until(lambda: not plot_dialog.property("visible")))
+
+                open_plot_dialog()
                 self._click_quick_item(window, x_auto)
                 edit_numeric(x_min, "420")
                 edit_numeric(x_max, "680")
@@ -616,13 +691,24 @@ class FilmSimulationQuickControllerTests(unittest.TestCase):
                 self.assertTrue(self._wait_until(lambda: not plot_dialog.property("visible")))
 
                 open_plot_dialog()
-                self._click_quick_item(window, x_auto)
                 edit_numeric(x_min, "420")
                 edit_numeric(x_max, "680")
+                self.assertFalse(x_auto.property("checked"),
+                                 "range edits should disable auto without clicking its checkbox")
+                self.assertEqual(x_min.property("text"), "420")
                 self._click_quick_item(window, plot_apply)
                 self.assertTrue(self._wait_until(lambda: not plot_dialog.property("visible")))
                 self.assertAlmostEqual(controller.plotSettings["x"]["min"], 420.0)
                 self.assertAlmostEqual(controller.plotSettings["x"]["max"], 680.0)
+                self.assertFalse(controller.plotSettings["x"]["auto"])
+                self.assertTrue(controller.plotSettings["y"]["auto"])
+
+                open_plot_dialog()
+                self.assertFalse(x_auto.property("checked"))
+                self.assertEqual(x_min.property("text"), "420")
+                self.assertEqual(x_max.property("text"), "680")
+                self._click_quick_item(window, plot_cancel)
+                self.assertTrue(self._wait_until(lambda: not plot_dialog.property("visible")))
 
                 open_plot_dialog()
                 polarization_s.setProperty("checked", True)

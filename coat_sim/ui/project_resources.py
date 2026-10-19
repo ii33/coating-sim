@@ -61,6 +61,9 @@ class ProjectResourcesBridge(ResourceLibraryBridge):
             material = self.service.load_document(identity).data["material"]
             profile = default_material_profile(material["name"], id=material["id"], optical_only=True)
             profile.update(notes=material.get("notes", ""), optical_constants=material["optical_sets"])
+            uses = row.get("material_uses", [])
+            if uses:
+                profile["roles"] = list(uses)
             return bool(self._material_bridge.loadAssetOpticalProjection(profile, identity))
         return super()._select_material_asset(identity)
 

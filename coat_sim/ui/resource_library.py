@@ -407,6 +407,12 @@ class ResourceLibraryBridge(AssetLibraryActions):
                 self.libraryChanged.emit()
         super()._on_transfer_result(generation, kind, result, error, elapsed)
         if (generation == self._transfer_generation and kind == "inspect" and not error
+                and (result or {}).get("warnings")):
+            # The library message owns detailed diagnostics; the generic transfer
+            # controller still retains them for designer dialogs without that pane.
+            self._transfer_status = self._transfer_status.split("\n", 1)[0]
+            self.transferChanged.emit()
+        if (generation == self._transfer_generation and kind == "inspect" and not error
                 and self._transfer_catalog.get("source_path") == self._library_path
                 and not self._catalog_refresh_pending):
             self._open_pending_material_section()

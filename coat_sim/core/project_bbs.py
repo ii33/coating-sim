@@ -12,8 +12,8 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 import uuid
 
-from .project_dependencies import ProjectError, identifier
-from .project_store import ProjectStore
+from .project_dependencies import MAX_PROJECT_BYTES, ProjectError, identifier, json_bytes
+from .project_store import ProjectStore, _CapturedRecords
 
 BBS_KIND = "project_bbs_post"
 BBS_TYPES = frozenset({"journal", "progress", "research_report", "work_report", "comment"})
@@ -142,10 +142,48 @@ class ProjectBbsService:
         if self.read_only and not (comment_only and self.permit_comment):
             raise ProjectError("discussion_read_only", "This BBS service is read-only")
 
-    def _load(self):
-        records, data = self.store._read_all()
+    def _load(self, *, attachments=()):
+        """Validate the discussion graph without parsing unrelated designs.
+
+        All BBS posts are checked, including archived posts and their historical
+        attachment references. A broken post/attachment is an error, never an
+        empty or silently truncated discussion. Writes publish only this scope.
+        """
+        self.store._current()
+        fingerprint = self.store._fingerprint
+        index = self.store._index()
+        pending = [key for key, row in index.items() if row["kind"] == BBS_KIND]
+        for attachment in attachments:
+            identity = attachment["asset_id"]
+            if identity not in index or index[identity]["kind"] != "binary_asset":
+                raise ProjectError("missing_dependency", "Attachment is absent from this project")
+            pending.append(identity)
+        records, data, total = {}, {}, 0
+        while pending:
+            identity = pending.pop()
+            if identity in data:
+                continue
+            row = index[identity]
+            if row["kind"] not in {BBS_KIND, "binary_asset"}:
+                raise ProjectError("dependency_conflict", "BBS dependency is not a post or attachment: "
+                                   + str(self.store.root / row["path"]))
+            try:
+                document = self.store._read_record(row)
+            except (OSError, ValueError, TypeError, KeyError) as exc:
+                raise ProjectError(getattr(exc, "code", "invalid_document"),
+                                   f"{self.store.root / row['path']}: {exc}") from exc
+            records[identity], data[identity] = row, document
+            total += len(json_bytes(document))
+            if total > MAX_PROJECT_BYTES:
+                raise ProjectError("capacity_exceeded", "BBS JSON exceeds the project capacity limit")
+            pending.extend(row["dependencies"])
+        self.store._validate_graph(records, data)
+        self.store._current()
         posts = {key: data[key] for key, row in records.items() if row["kind"] == BBS_KIND}
-        return records, data, posts
+        return _CapturedRecords(deepcopy(records), fingerprint), data, posts
+
+    def _load_posts(self):
+        return self._load()[2]
 
     @staticmethod
     def _get(posts: dict, post_id: str) -> dict:
@@ -181,7 +219,7 @@ class ProjectBbsService:
         if type(include_archived) is not bool or not isinstance(query, str) or len(query) > 200:
             raise ProjectError("bbs_invalid_arguments", "Invalid BBS filters")
         with self.store._operation_scope():
-            _records, _data, posts = self._load()
+            posts = self._load_posts()
             if parent_id is not None:
                 parent = self._get(posts, parent_id)
                 if parent["parent_id"] is not None:
@@ -197,13 +235,13 @@ class ProjectBbsService:
 
     def read_post(self, post_id: str) -> dict:
         with self.store._operation_scope():
-            _records, _data, posts = self._load()
+            posts = self._load_posts()
             return self._view(self._get(posts, post_id), posts)
 
     def history(self, post_id: str, *, offset: int = 0, limit: int = 20) -> dict:
         _page(offset, limit, 20)
         with self.store._operation_scope():
-            _records, _data, posts = self._load()
+            posts = self._load_posts()
             post = self._get(posts, post_id)
             revisions = deepcopy(post["history"][offset:offset + limit])
             for row in revisions:
@@ -220,7 +258,7 @@ class ProjectBbsService:
         _text(body, "body")
         options = _content_options(body_format, [] if attachments is None else attachments)
         with self.store._operation_scope():
-            records, data, posts = self._load()
+            records, data, posts = self._load(attachments=options["attachments"])
             if parent_id is not None:
                 parent = self._get(posts, parent_id)
                 self._expected(parent, expected_post_revision)
@@ -230,7 +268,7 @@ class ProjectBbsService:
                     raise ProjectError("bbs_archived", "Restore this topic before replying")
                 post_type = parent["post_type"]
             identity, now = uuid.uuid4().hex, datetime.now(timezone.utc).isoformat()
-            if identity in records:
+            if identity in self.store._index():
                 raise ProjectError("dependency_conflict", "Generated BBS post identity collided")
             post = normalize_bbs_post({"kind": "coat_sim.project_bbs_post", "version": 1,
                 "post_id": identity, "post_type": post_type, "parent_id": parent_id,
@@ -238,7 +276,7 @@ class ProjectBbsService:
                     "body": body, "archived": False, "edited_at": now, "editor": self.actor, **options}]})
             records[identity] = {"id": identity, "kind": BBS_KIND, "dependencies": [], "path": "", "sha256": ""}
             data[identity] = post
-            self.store._publish(records, data)
+            self.store._publish(records, data, discussion_only=True)
             posts[identity] = post
             return self._view(post, posts)
 
@@ -269,8 +307,9 @@ class ProjectBbsService:
                 title: str | None = None, body: str | None = None, archived: bool | None = None,
                 body_format: str | None = None, attachments: list[dict[str, Any]] | None = None) -> dict:
         self._writable()
+        selected_attachments = [] if attachments is None else _content_options("plain", attachments)["attachments"]
         with self.store._operation_scope():
-            records, data, posts = self._load()
+            records, data, posts = self._load(attachments=selected_attachments)
             post = self._get(posts, post_id)
             self._expected(post, expected_post_revision)
             current = post["history"][-1]
@@ -297,7 +336,7 @@ class ProjectBbsService:
             revision.update(revision=current["revision"] + 1, edited_at=now.isoformat(), editor=self.actor)
             post["history"].append(revision)
             data[post_id] = normalize_bbs_post(post)
-            self.store._publish(records, data)
+            self.store._publish(records, data, discussion_only=True)
             return self._view(post, posts)
 
     def update_post(self, post_id: str, title: str, body: str, *, expected_post_revision: int,

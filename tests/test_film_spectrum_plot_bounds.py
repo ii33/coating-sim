@@ -5,7 +5,8 @@ import unittest
 from unittest.mock import patch
 
 from coat_sim.ui.film_simulation_quick_controller import (
-    FilmSimulationQuickController, _bounded_pan_axis, _finite_plot_domain,
+    FilmSimulationQuickController, _axis_minor_ticks, _axis_ticks,
+    _bounded_pan_axis, _finite_plot_domain,
 )
 
 
@@ -79,6 +80,47 @@ class FilmSpectrumPanBoundsTests(unittest.TestCase):
         before = self.controller.property("plotView")
         self.controller.panPlot(0.2, 0.2)
         self.assertEqual(before, self.controller.property("plotView"))
+
+    def test_minor_grid_subdivides_major_spacing_without_adding_label_ticks(self):
+        option = {"major_tick_auto": False, "major_tick": 50.0}
+        major = _axis_ticks(400.0, 600.0, option)
+        minor = _axis_minor_ticks(400.0, 600.0, option)
+        self.assertEqual(major, [400.0, 450.0, 500.0, 550.0, 600.0])
+        self.assertEqual(minor, [float(value) for value in range(410, 600, 10)
+                                 if value % 50 != 0])
+        self.assertFalse(set(major) & set(minor))
+
+    def test_minor_grid_tracks_zoom_and_pan_while_major_labels_stay_separate(self):
+        self.result([0.0, 0.2, 0.4, 0.6, 1.0])
+        self.assertTrue(self.controller.setPlotSettings({
+            "curves": ["R"],
+            "x": {"auto": False, "min": 400.0, "max": 600.0,
+                  "major_tick_auto": False, "major_tick": 50.0},
+            "y": {"unit": "fraction", "auto": False, "min": 0.0, "max": 1.0,
+                  "major_tick_auto": False, "major_tick": 0.25},
+            "grid": True,
+        }))
+        initial = self.controller.property("plotView")
+        self.assertNotEqual(initial["x_minor_ticks"], [])
+        self.assertNotEqual(initial["y_minor_ticks"], [])
+        self.assertEqual(set(initial["x_ticks"]) & set(initial["x_minor_ticks"]), set())
+        self.assertEqual(set(initial["y_ticks"]) & set(initial["y_minor_ticks"]), set())
+
+        self.controller.zoomPlot(0.5, 0.5, 0.5)
+        zoomed = self.controller.property("plotView")
+        self.assertNotEqual(initial["x_minor_ticks"], zoomed["x_minor_ticks"])
+        self.assertNotEqual(initial["y_minor_ticks"], zoomed["y_minor_ticks"])
+        self.controller.panPlot(0.1, 0.1)
+        panned = self.controller.property("plotView")
+        self.assertNotEqual(zoomed["x_minor_ticks"], panned["x_minor_ticks"])
+        self.assertNotEqual(zoomed["y_minor_ticks"], panned["y_minor_ticks"])
+        for view in (zoomed, panned):
+            self.assertTrue(all(view["x_min"] <= value <= view["x_max"]
+                                for value in view["x_minor_ticks"]))
+            self.assertTrue(all(view["y_min"] <= value <= view["y_max"]
+                                for value in view["y_minor_ticks"]))
+            self.assertFalse(set(view["x_ticks"]) & set(view["x_minor_ticks"]))
+            self.assertFalse(set(view["y_ticks"]) & set(view["y_minor_ticks"]))
 
     def test_flat_curve_preserves_manual_percent_axis_and_reset(self):
         self.result([0.95] * 5)

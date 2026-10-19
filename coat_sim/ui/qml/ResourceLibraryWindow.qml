@@ -81,10 +81,10 @@ LocalComponents.AppWindow {
         const result = []
         const order = ["material_profile", "optical_material", "film", "process", "machine",
             "source", "substrate", "mask", "deposition_configuration", "raytrace_request",
-            "appearance_configuration", "expression_template", "binary_asset"]
+            "appearance_configuration", "expression_template", "project_bbs_post", "binary_asset"]
         const actualKinds = []
-        for (const value of catalog.categories || []) {
-            const kind = browserKind(value)
+        for (const row of allRows) {
+            const kind = browserKind(row.kind)
             if (actualKinds.indexOf(kind) < 0) actualKinds.push(kind)
         }
         if (librarySource && actualKinds.indexOf("material_profile") < 0)
@@ -125,6 +125,9 @@ LocalComponents.AppWindow {
         {key: "film", label: "膜料"},
         {key: "substrate", label: "基片材料"}
     ]
+    readonly property var unclassifiedMaterials: allRows.filter(function(row) {
+        return browserKind(row.kind) === "material_profile" && browserMaterialCategories(row).length === 0
+    })
     readonly property var visibleRows: {
         const kind = categoryKey
         const query = searchField.text.trim().toLowerCase()
@@ -151,7 +154,7 @@ LocalComponents.AppWindow {
             process: "工艺", film: "膜系设计", expression_template: "表达式模板",
             material_profile: "材料", optical_material: "材料",
             deposition_configuration: "膜厚计算配置", raytrace_request: "光追配置",
-            appearance_configuration: "外观配置", binary_asset: "依赖输入"}
+            appearance_configuration: "外观配置", project_bbs_post: "BBS 记录", binary_asset: "依赖文件与附件"}
         return labels[kind] || kind
     }
     function selectMaterialUse(use) {
@@ -494,7 +497,7 @@ LocalComponents.AppWindow {
                     ThemeControls.ThemeButton {
                         objectName: "assetLibraryNewMaterialButton"
                         text: "新建"
-                        visible: window.librarySource && window.materialCategory
+                        visible: window.librarySource && window.categoryKey === "material_profile"
                         enabled: !window.operationBusy && window.librarySource
                         onClicked: {
                             window.materialSectionRequested = true
@@ -616,6 +619,17 @@ LocalComponents.AppWindow {
                         Layout.fillWidth: true
                     }
                     ThemeControls.ThemeLabel {
+                        objectName: "assetUnclassifiedMaterialNotice"
+                        visible: window.projectScoped && window.materialCategory && window.unclassifiedMaterials.length > 0
+                        text: "未归入膜料/基片的材料已保留：" + window.unclassifiedMaterials.map(function(row) {
+                            const uses = row.material_uses || []
+                            return String(row.name) + (uses.indexOf("medium") >= 0 ? "（当前用于介质）" : "（用途未明确）")
+                        }).join("、") + "。用途不会自动指定。"
+                        muted: true
+                        wrapMode: Text.Wrap
+                        Layout.fillWidth: true
+                    }
+                    ThemeControls.ThemeLabel {
                         text: "显示 " + window.visibleRows.length + " / " + window.allRows.length + " 项"
                         muted: true
                         Layout.fillWidth: true
@@ -660,7 +674,8 @@ LocalComponents.AppWindow {
                                     }
                                     ThemeControls.ThemeLabel {
                                         width: parent.width
-                                        text: window.kindLabel(String(resourceRow.modelData.kind))
+                                        text: resourceRow.modelData.asset_role === "bbs_attachment" ? "BBS 附件"
+                                            : window.kindLabel(String(resourceRow.modelData.kind))
                                         muted: true
                                         wrapMode: Text.Wrap
                                     }
@@ -723,6 +738,18 @@ LocalComponents.AppWindow {
                         ThemeControls.ThemeLabel {
                             text: "备注：" + String(window.information && window.information.notes || "未填写")
                             wrapMode: Text.Wrap
+                            Layout.fillWidth: true
+                        }
+                        ThemeControls.ThemeLabel {
+                            objectName: "assetBinaryMetadata"
+                            visible: !!window.information && window.information.kind === "binary_asset"
+                            text: !visible ? "" : "用途：" + (window.information.asset_role === "bbs_attachment" ? "BBS 附件" : String(window.information.asset_role))
+                                + "\n类型：" + String(window.information.asset_mime || "未标注")
+                                + "\n大小：" + String(window.information.asset_size) + " 字节"
+                                + "\n工程内路径：" + String(window.information.asset_payload_path)
+                                + "\n已保存引用：" + String((window.information.referenced_by || []).length)
+                                + "\nSHA-256：" + String(window.information.asset_sha256)
+                            wrapMode: Text.WrapAnywhere
                             Layout.fillWidth: true
                         }
                         ThemeControls.ThemeLabel {

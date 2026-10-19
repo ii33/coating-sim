@@ -35,7 +35,22 @@ ColumnLayout {
         yTick.setNumericSourceValue(value.y.major_tick * 100)
         showGrid.checked = value.grid
     }
+    function commitRangeEdit(field, automaticCheck) {
+        if (!field.numericValueEdited)
+            return
+        var rawText = field.numericEditText
+        var nextValue = Number(rawText)
+        var currentValue = Number(field.numericDisplayValue)
+        if (Number.isFinite(nextValue) && Number.isFinite(currentValue)
+                && nextValue !== currentValue)
+            automaticCheck.checked = false
+        field.setNumericSourceValue(rawText)
+    }
     function settingsPayload() {
+        root.commitRangeEdit(xMin, xAuto)
+        root.commitRangeEdit(xMax, xAuto)
+        root.commitRangeEdit(yMin, yAuto)
+        root.commitRangeEdit(yMax, yAuto)
         var selected = []
         if (curveR.checked) selected.push("R")
         if (curveT.checked) selected.push("T")
@@ -99,14 +114,14 @@ ColumnLayout {
                     Label { text: "最小值" }
                     ThemeControls.ThemeField {
                         id: xMin; objectName: "filmPlotSettingsXMin"
-                        Layout.fillWidth: true; enabled: !xAuto.checked
+                        Layout.fillWidth: true
                         accessibleLabel: "X 轴最小值（nm）"; numericDisplayDecimals: 3
                         validator: DoubleValidator {}
                     }
                     Label { text: "最大值" }
                     ThemeControls.ThemeField {
                         id: xMax; objectName: "filmPlotSettingsXMax"
-                        Layout.fillWidth: true; enabled: !xAuto.checked
+                        Layout.fillWidth: true
                         accessibleLabel: "X 轴最大值（nm）"; numericDisplayDecimals: 3
                         validator: DoubleValidator {}
                     }
@@ -128,18 +143,18 @@ ColumnLayout {
             title: "Y 轴 — 百分比"
             ColumnLayout {
                 anchors.fill: parent
-                CheckBox { id: yAuto; text: "自动范围" }
+                CheckBox { id: yAuto; objectName: "filmPlotSettingsYAuto"; text: "自动范围" }
                 RowLayout {
                     Layout.fillWidth: true
                     Label { text: "最小值" }
                     ThemeControls.ThemeField {
-                        id: yMin; Layout.fillWidth: true; enabled: !yAuto.checked
+                        id: yMin; objectName: "filmPlotSettingsYMin"; Layout.fillWidth: true
                         accessibleLabel: "Y 轴最小值（%）"; numericDisplayDecimals: 3
                         validator: DoubleValidator {}
                     }
                     Label { text: "最大值" }
                     ThemeControls.ThemeField {
-                        id: yMax; Layout.fillWidth: true; enabled: !yAuto.checked
+                        id: yMax; objectName: "filmPlotSettingsYMax"; Layout.fillWidth: true
                         accessibleLabel: "Y 轴最大值（%）"; numericDisplayDecimals: 3
                         validator: DoubleValidator {}
                     }
@@ -156,6 +171,34 @@ ColumnLayout {
                 }
             }
         }
+    }
+    Connections {
+        target: xMin
+        function onActiveFocusChanged() {
+            if (!xMin.activeFocus) root.commitRangeEdit(xMin, xAuto)
+        }
+        function onEditingFinished() { root.commitRangeEdit(xMin, xAuto) }
+    }
+    Connections {
+        target: xMax
+        function onActiveFocusChanged() {
+            if (!xMax.activeFocus) root.commitRangeEdit(xMax, xAuto)
+        }
+        function onEditingFinished() { root.commitRangeEdit(xMax, xAuto) }
+    }
+    Connections {
+        target: yMin
+        function onActiveFocusChanged() {
+            if (!yMin.activeFocus) root.commitRangeEdit(yMin, yAuto)
+        }
+        function onEditingFinished() { root.commitRangeEdit(yMin, yAuto) }
+    }
+    Connections {
+        target: yMax
+        function onActiveFocusChanged() {
+            if (!yMax.activeFocus) root.commitRangeEdit(yMax, yAuto)
+        }
+        function onEditingFinished() { root.commitRangeEdit(yMax, yAuto) }
     }
     CheckBox {
         id: showGrid

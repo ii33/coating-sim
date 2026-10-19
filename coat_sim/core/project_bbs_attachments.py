@@ -135,22 +135,26 @@ def import_attachment(store, authorized_path: str | Path) -> dict:
         "size": attachment["size"], "sha256": attachment["sha256"],
         "name": attachment["name"], "mime": attachment["mime"]})
     with store._operation_scope():
-        records, data = store._read_all()
-        if identity in records:
+        from .project_store import _CapturedRecords
+        store._current()
+        records, data = _CapturedRecords({}, store._fingerprint), {}
+        if identity in store._index():
             raise ProjectError("dependency_conflict", "Generated attachment identity collided")
         records[identity] = {"id": identity, "kind": "binary_asset", "dependencies": [], "path": "", "sha256": ""}
         data[identity] = metadata
         # Publication re-hashes the external source, so replacing it after sniffing
         # cannot publish different bytes under the verified preview MIME.
-        store._publish(records, data, assets={identity: {"path": str(path)}})
+        store._publish(records, data, assets={identity: {"path": str(path)}}, discussion_only=True)
     return attachment
 
 
 def read_attachment(store, attachment: Any) -> tuple[dict, bytes]:
     """Resolve and hash owned bytes; path, URL, and other-project input are rejected."""
     with store._operation_scope():
-        records, data = store._read_all()
         value = normalize_attachment(attachment)
+        graph = store.resolve_document(value["asset_id"])
+        records = {row["id"]: row for row in graph["documents"]}
+        data = {row["id"]: row["data"] for row in graph["documents"]}
         metadata = validate_attachment_asset(value, records, data)
         source = store.asset_sources(records, data)[value["asset_id"]]
         output = io.BytesIO()

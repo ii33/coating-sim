@@ -139,3 +139,30 @@ external-research-root field. Legacy private configuration and user research are
 retained with their original authorization; the public provider never scans them.
 Source-specific availability, rights, hashes, units and errors are defined in
 [the unified offline contract](unified-offline-library-contract.md).
+
+
+## 光学数据、依赖文件与附件（2026-10-19）
+
+资产库只有“材料”入口，不显示第二个“光学数据”分类。带 profile 的光学投影按相同
+material ID 去重；profile 的明确角色/分类仍为真值。无 profile 的 `optical_material` schema
+本身没有 roles/category，目录只根据有效已保存膜系和表达式模板的实际绑定投影“当前工程用途”：
+膜层/表达式/结构优化材料映射 film，基片绑定映射 substrate，入射/出射材料映射 medium。
+这不宣称材料物性适合该用途，不参考名字、ID 后缀、全局库或旧版本猜测分类，不改写原光学记录。
+`material_classification_source=saved_design_reference|unknown` 标明该展示依据。
+只有 medium 或无依据的材料不进入膜料/基片池，页面明确提示原记录保留且用途未自动指定，
+不另建分类。现有按资产 ID 打开的材料编辑入口仍可查看其精确投影；已知角色随投影进入原编辑器，
+未知角色保持缺失。首次显式保存及源光学修订 CAS 不变。传输沿用同一材料入口的类型边界。
+
+`binary_asset` 的展示类别为“依赖文件与附件”（原“依赖输入”）。目录提供 `asset_role`、
+`asset_name`、`asset_mime`、`asset_size`、`asset_sha256`、`asset_payload_path` 和 `referenced_by`；
+这只是所选目录快照的展示数据，不改变保存格式或打开权限。`role=bbs_attachment` 显示为
+“BBS 附件”，点击仅显示信息；预览/保存副本走 BBS 附件能力，不交给设计编辑器。
+附件导入会先发布独立二进制资产，取消未保存帖子不自动删除该资产；没有保存引用并不能
+证明用户从未使用它。资产页不得猜测导入者、导入时间、原外部路径或把附件视作测试污染。
+当前工程包含该条目时可以随 `.cproject` 保存/传输，二进制摘要和容量校验继续适用；
+独立附件不复制到全局设计库。读取诊断只展示一次，坏条目及依赖隔离，原文件保留。
+
+
+已保存 `project_bbs_post` 的目录元数据为只读“BBS 记录”说明，不调用设计信息编辑接口，
+也不将 BBS 正文当设计摘要执行或解析。帖子与附件复制到全局设计库在预览阶段明确拒绝，
+工程/资源包仍可按原依赖闭包保留它们。

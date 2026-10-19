@@ -52,6 +52,15 @@ AppWindow {
         }
     }
 
+    function openPlotSettings() {
+        if (parametersDialog.visible) {
+            settingsTabs.currentIndex = 1
+            return
+        }
+        parametersDialog.openPlotTabOnNextOpen = true
+        parametersDialog.open()
+    }
+
     function recalculateFromShortcut() {
         calculateButton.forceActiveFocus()
         Qt.callLater(function() {
@@ -319,6 +328,7 @@ AppWindow {
                     controller: FilmSimulation
                     themeColors: window.themeColors
                     floatingControlsRightEdge: spectrumPlot.width
+                    onOpenPlotSettingsRequested: window.openPlotSettings()
                 }
 
                 RowLayout {
@@ -588,6 +598,7 @@ AppWindow {
                 : 700
         anchors.centerIn: Overlay.overlay
         property string localError: ""
+        property bool openPlotTabOnNextOpen: false
         function applySettings() {
             var simulationDraft = parametersForm.draftPayload()
             if (!simulationDraft) {
@@ -603,7 +614,8 @@ AppWindow {
         }
         onOpened: {
             localError = ""
-            settingsTabs.currentIndex = 0
+            settingsTabs.currentIndex = openPlotTabOnNextOpen ? 1 : 0
+            openPlotTabOnNextOpen = false
             parametersForm.loadDraft()
             plotParametersForm.loadFromController()
         }

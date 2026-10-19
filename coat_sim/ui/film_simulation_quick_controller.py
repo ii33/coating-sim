@@ -155,29 +155,81 @@ def _display_indices(values: list[float], limit: int = 1800) -> list[int]:
     return sorted(result)
 
 
-def _axis_ticks(minimum: float, maximum: float, option: dict[str, Any],
-                *, target_count: int = 6, hard_limit: int = 80) -> list[float]:
-    """Build a bounded tick list for the scenegraph preview."""
+_MINOR_TICK_SUBDIVISIONS = 5
+_MINOR_TICK_LIMIT = 400
+
+
+def _axis_tick_plan(minimum: float, maximum: float, option: dict[str, Any],
+                    *, target_count: int = 6,
+                    hard_limit: int = 80) -> tuple[float, int, int, int] | None:
+    """Return the base spacing, first aligned index, and display stride."""
     span = maximum - minimum
     if not math.isfinite(span) or span <= 0:
-        return []
+        return None
     if not option.get("major_tick_auto", True):
         step = float(option.get("major_tick", 1.0))
     else:
         rough = span / max(1, target_count)
+        if not math.isfinite(rough) or rough <= 0:
+            return None
         power = 10.0 ** math.floor(math.log10(rough))
         normalized = rough / power
         nice = next((unit for unit in (1.0, 2.0, 2.5, 5.0, 10.0)
                      if normalized <= unit), 10.0)
         step = nice * power
     if not math.isfinite(step) or step <= 0:
-        return []
+        return None
     first_index = math.ceil(minimum / step - 1e-12)
     last_index = math.floor(maximum / step + 1e-12)
     count = max(0, last_index - first_index + 1)
     stride = max(1, math.ceil(count / hard_limit))
+    return step, first_index, count, stride
+
+
+def _axis_ticks(minimum: float, maximum: float, option: dict[str, Any],
+                *, target_count: int = 6, hard_limit: int = 80) -> list[float]:
+    """Build a bounded, labelled major-tick list for the scenegraph preview."""
+    plan = _axis_tick_plan(
+        minimum, maximum, option, target_count=target_count, hard_limit=hard_limit)
+    if plan is None:
+        return []
+    step, first_index, count, stride = plan
     return [float((first_index + offset * stride) * step)
             for offset in range(math.ceil(count / stride))]
+
+
+def _axis_minor_ticks(minimum: float, maximum: float, option: dict[str, Any],
+                      *, target_count: int = 6, hard_limit: int = 80,
+                      subdivisions: int = _MINOR_TICK_SUBDIVISIONS,
+                      minor_limit: int = _MINOR_TICK_LIMIT) -> list[float]:
+    """Build faint, unlabelled grid positions between the displayed major ticks."""
+    if subdivisions < 2:
+        return []
+    plan = _axis_tick_plan(
+        minimum, maximum, option, target_count=target_count, hard_limit=hard_limit)
+    if plan is None:
+        return []
+    step, first_index, _count, stride = plan
+    major_spacing = step * stride
+    minor_spacing = major_spacing / subdivisions
+    if not math.isfinite(minor_spacing) or minor_spacing <= 0:
+        return []
+    origin = first_index * step
+    first_minor = math.ceil((minimum - origin) / minor_spacing - 1e-12)
+    last_minor = math.floor((maximum - origin) / minor_spacing + 1e-12)
+    count = max(0, last_minor - first_minor + 1)
+    if count == 0:
+        return []
+    thinning = max(1, math.ceil(count / minor_limit))
+    result: list[float] = []
+    for offset in range(math.ceil(count / thinning)):
+        index = first_minor + offset * thinning
+        if index % subdivisions == 0:
+            continue
+        value = float(origin + index * minor_spacing)
+        if minimum - abs(minimum) * 1e-12 <= value <= maximum + abs(maximum) * 1e-12:
+            result.append(value)
+    return result
 
 
 def _calculate_band_statistics(result: dict[str, Any] | None,
@@ -747,7 +799,7 @@ class FilmSimulationQuickController(QObject):
         self._design = validate_design(design) if design is not None else self.service.new_design()
         self._design_path = str(source_snapshot.path or "") if self._source_session is not None else ""
         self._params = copy.deepcopy(_DEFAULT_PARAMS)
-        self._plot_settings = copy.deepcopy(_DEFAULT_PLOT_SETTINGS)
+        self._plot_settings: dict[str, Any] = copy.deepcopy(_DEFAULT_PLOT_SETTINGS)
         self._calculation_bands = [{
             "minimum_nm": self._params["wavelength_min_nm"],
             "maximum_nm": self._params["wavelength_max_nm"],
@@ -1082,6 +1134,10 @@ class FilmSimulationQuickController(QObject):
             "x_ticks": _axis_ticks(
                 bounds["x_min"], bounds["x_max"], settings["x"]),
             "y_ticks": _axis_ticks(
+                bounds["y_min"], bounds["y_max"], settings["y"]),
+            "x_minor_ticks": _axis_minor_ticks(
+                bounds["x_min"], bounds["x_max"], settings["x"]),
+            "y_minor_ticks": _axis_minor_ticks(
                 bounds["y_min"], bounds["y_max"], settings["y"]),
             "grid": bool(settings.get("grid", True)),
         }
