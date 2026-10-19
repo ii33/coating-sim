@@ -4010,16 +4010,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_settings_model_features.py",
-      "code": "index",
-      "message": "Value of type \"object\" is not indexable",
-      "scope": "test_one_million_context_uses_eighty_percent_auto_threshold_on_init_and_reset",
-      "anchor": "assert initial[\"profile\"][\"context_window_tokens\"] == 1_000_000",
-      "fingerprint": "11f208683dc9d792f1cc27863bc2d0be138d9b3e75f62ac41204aa66e1834c02",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_assistant_bubble.py",
       "code": "attr-defined",
       "message": "\"Property\" has no attribute \"__iter__\" (not iterable)",
@@ -7520,16 +7510,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/provider_catalog.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"Any | dict[Any, Any] | None\" has no attribute \"get\"",
-      "scope": "context_capacity_profile_for",
-      "anchor": "\"max_input_tokens\": _catalog_token_limit(raw.get(\"max_input_tokens\")),",
-      "fingerprint": "1faa8ac8cd5702c526d45fc096d1b3ac0080a4b533920ba3abd3c24769c38705",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/ui/film_design.py",
       "code": "attr-defined",
       "message": "\"type[QHeaderView]\" has no attribute \"Stretch\"",
@@ -10346,16 +10326,6 @@
       "scope": "AssistantBridge._restore_history_session_cache",
       "anchor": "+ self._history_projection[\"tail_model_rows\"])",
       "fingerprint": "299fb08792cff04cb1c18c1100e9b1a8f1b30cb55639aa08e19ddded32d19710",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/provider_catalog.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"Any | dict[Any, Any] | None\" has no attribute \"get\"",
-      "scope": "context_capacity_profile_for",
-      "anchor": "\"notes\": str(raw.get(\"notes\", \"\")),",
-      "fingerprint": "29a6e5263631d4958ae9c3a1e3e7e6a574d95554c3387928c4227bc846480247",
       "count": 1
     },
     {
@@ -14389,16 +14359,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/ui/provider_catalog.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"Any | dict[Any, Any] | None\" has no attribute \"get\"",
-      "scope": "context_capacity_profile_for",
-      "anchor": "\"source\": tuple(str(item) for item in raw.get(\"sources\", ()) if isinstance(item, str)),",
-      "fingerprint": "396e23630ceb9ac577fd364230f94e9c57d3315daca827baca45a0e677545401",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/theme_controls/ThemeButton.qml",
       "code": "unqualified",
@@ -15336,16 +15296,6 @@
       "scope": "test_rejects_unsafe_or_ambiguous_base_urls",
       "anchor": "RemoteTransport(url, **options)",
       "fingerprint": "3dd838bfa6eb34b295bb517b34734d3256da039c87943cdba06ab1e2fa280905",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/settings.py",
-      "code": "assignment",
-      "message": "Incompatible types in assignment (expression has type \"str | None\", variable has type \"None\")",
-      "scope": "SettingsBridge.saveAssistantApiKey",
-      "anchor": "self._assistant_credential_fingerprint = ModelDiscoveryBus.credential_fingerprint(",
-      "fingerprint": "3dd90a504147273193c8e51b24e0f55bcee386f661c34a33535a67f71f923f4a",
       "count": 1
     },
     {
@@ -28370,16 +28320,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/settings.py",
-      "code": "attr-defined",
-      "message": "\"object\" has no attribute \"__iter__\"; maybe \"__dir__\" or \"__str__\"? (not iterable)",
-      "scope": "SettingsBridge._on_shared_discovery",
-      "anchor": "self._probe_coordinator._available_models = [dict(row) for row in models if isinstance(row, dict)]",
-      "fingerprint": "73d6107bb321d826a05517cd7d8c256a0ffda49c100dc4c255774cc267d8bc38",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_process_editor_navigation_qt.py",
       "code": "index",
       "message": "Value of type \"Property\" is not indexable",
@@ -30079,16 +30019,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/ui/settings.py",
-      "code": "assignment",
-      "message": "Incompatible types in assignment (expression has type \"Property\", variable has type \"None\")",
-      "scope": "SettingsBridge.clearAssistantApiKey",
-      "anchor": "self._assistant_credential_api_url = self.assistantApiUrl",
-      "fingerprint": "7b3ef5952338cfbf863478ed137509b2519610f90df5412b5dd7c18ddd6a2885",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/MaterialLibraryDialog.qml",
       "code": "missing-property",
@@ -30636,16 +30566,6 @@
       "scope": "FilmSimulationQuickControllerTests.test_parameter_and_plot_dialog_buttons_keyboard_cancel_and_validation.edit_numeric",
       "anchor": "QTest.keyClick(window, Qt.Key_A, Qt.ControlModifier)",
       "fingerprint": "7dd91f3c4d941edf4708a28772a86c08ff8c07e12fa2de624571cf44f2a46e9f",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "coat_sim/ui/settings.py",
-      "code": "F401",
-      "message": "`coat_sim.ui.provider_catalog.models_endpoint_for_url` imported but unused",
-      "scope": "",
-      "anchor": "models_endpoint_for_url,",
-      "fingerprint": "7df9889854c7272aee4fc28ba547cd9ee5acb2e6f3511b29bdf5ba5783fbb78f",
       "count": 1
     },
     {
@@ -33959,16 +33879,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/ui/settings.py",
-      "code": "arg-type",
-      "message": "Argument 1 to \"invalidate\" of \"ModelDiscoveryBus\" has incompatible type \"Property\"; expected \"str\"",
-      "scope": "SettingsBridge.clearAssistantApiKey",
-      "anchor": "self._discovery_bus_value.invalidate(self.assistantApiUrl)",
-      "fingerprint": "8b19dc1ca4e3ae23bcbed516e093a8c1b766036d2cef5cc806b84dfbbb8be284",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/ui/film_design.py",
       "code": "E702",
@@ -35706,16 +35616,6 @@
       "scope": "AssistantBridge",
       "anchor": "@Property(\"QVariantList\", notify=sessionsChanged)",
       "fingerprint": "9256075848cd0a3bc015e59c49e8e353702934201cac9a547d7e04f2b60828fd",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/settings.py",
-      "code": "assignment",
-      "message": "Incompatible types in assignment (expression has type \"str | None\", variable has type \"None\")",
-      "scope": "SettingsBridge.clearAssistantApiKey",
-      "anchor": "self._assistant_credential_fingerprint = ModelDiscoveryBus.credential_fingerprint(",
-      "fingerprint": "925d8bb0ac27c6e61b68fd26c0e8d254d422000e6306fab04965daba848f4eb0",
       "count": 1
     },
     {
@@ -39656,16 +39556,6 @@
       "scope": "SourceMaterialEditorTests.test_qml_loads_and_invokes_real_material_controls_at_minimum_size",
       "anchor": "window.setProperty(\"allowClose\", True); window.close()",
       "fingerprint": "a2a84fcecf8f49909ce866c31a413c00450de8ee2c198e2ebcf2e65f2bf040b3",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/settings.py",
-      "code": "arg-type",
-      "message": "Argument 2 to \"context_budget_for_model\" has incompatible type \"Property\"; expected \"str\"",
-      "scope": "SettingsBridge._selected_context_budget",
-      "anchor": "return context_budget_for_model(self._settings, self.assistantApiUrl, self.assistantModel)",
-      "fingerprint": "a2aa04a1df64af6afa8075bca60a097c1046507c137718b20c1e8044fc135223",
       "count": 1
     },
     {
@@ -45740,16 +45630,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/settings.py",
-      "code": "arg-type",
-      "message": "Argument 1 to \"invalidate\" of \"ModelDiscoveryBus\" has incompatible type \"Property\"; expected \"str\"",
-      "scope": "SettingsBridge.saveAssistantApiKey",
-      "anchor": "self._discovery_bus_value.invalidate(self.assistantApiUrl)",
-      "fingerprint": "bb9d5a5dd9622858dccce6c235e9d2a13274f9285471e29c97a3d43c7047d0d6",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_process_environment_ui.py",
       "code": "attr-defined",
       "message": "\"ProcessEnvironmentUiTests\" has no attribute \"app\"",
@@ -50797,16 +50677,6 @@
       "anchor": "window.showNormal(); window.resize(780, 540); APP.processEvents()",
       "fingerprint": "d0c3cad4527c44a62c64642c7ea8f8c351383834bdd4c8d473a46c3dee487c4f",
       "count": 2
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/settings.py",
-      "code": "assignment",
-      "message": "Incompatible types in assignment (expression has type \"Property\", variable has type \"None\")",
-      "scope": "SettingsBridge._refresh_bound_key",
-      "anchor": "self._assistant_credential_api_url = api_url",
-      "fingerprint": "d0c58dfe8027208f666026b255c213b3b96c56514af4cf60666bf3b35b4d3f5c",
-      "count": 1
     },
     {
       "tool": "qmllint",
@@ -55940,16 +55810,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/settings.py",
-      "code": "arg-type",
-      "message": "Argument 2 to \"model_token_limits\" has incompatible type \"Property\"; expected \"str\"",
-      "scope": "SettingsBridge._selected_model_limits",
-      "anchor": "return model_token_limits(self._settings, self.assistantApiUrl, self.assistantModel)",
-      "fingerprint": "e5d1f0c5ac1361d3696cc5e8595f068add8ceedce5879896132a0aa637619eda",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/ui/film_optimization_quick_controller.py",
       "code": "arg-type",
       "message": "Argument 1 to \"enumerate\" has incompatible type \"Property\"; expected \"Iterable[Never]\"",
@@ -57746,16 +57606,6 @@
       "scope": "FilmDesignGuiTests.test_long_multiset_reports_keep_the_chart_visible_after_recalculation",
       "anchor": "QTest.mouseClick(self.simulation.calculate_button, Qt.LeftButton)",
       "fingerprint": "ecbc84eff40c6dae4c974e4809c967880ac597b057a25ac8a1442c6f78de0aa9",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/settings.py",
-      "code": "assignment",
-      "message": "Incompatible types in assignment (expression has type \"Property\", variable has type \"None\")",
-      "scope": "SettingsBridge.saveAssistantApiKey",
-      "anchor": "self._assistant_credential_api_url = self.assistantApiUrl",
-      "fingerprint": "ecd28100bdfbe1020c3958aa7c25fbcf2b62244626e0e8dd41bcb802d7d82a9d",
       "count": 1
     },
     {
@@ -60010,16 +59860,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/settings.py",
-      "code": "arg-type",
-      "message": "Argument 3 to \"model_token_limits\" has incompatible type \"Property\"; expected \"str\"",
-      "scope": "SettingsBridge._selected_model_limits",
-      "anchor": "return model_token_limits(self._settings, self.assistantApiUrl, self.assistantModel)",
-      "fingerprint": "f61b50c410bf12b7de6ab88bb919f560e808b11498e773020b6fc4205ad0bf76",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/core/material_physics.py",
       "code": "union-attr",
       "message": "Item \"str\" of \"list[Any] | str | None\" has no attribute \"append\"",
@@ -60336,16 +60176,6 @@
       "scope": "test_original_job_entry_keeps_cache_opt_in_and_results_equivalent",
       "anchor": "regular_checkpoints, cached_checkpoints, performance = [], [], []",
       "fingerprint": "f78031e47a00beccc501e45f9d0e44860d87929c7b345652eca64b5608ed4f52",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/provider_catalog.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"Any | dict[Any, Any] | None\" has no attribute \"get\"",
-      "scope": "context_capacity_profile_for",
-      "anchor": "\"context_window_tokens\": _catalog_token_limit(raw.get(\"context_window_tokens\")),",
-      "fingerprint": "f787b00952d1bd6de99913186d54f49cf0493c709f8d69ebbda2abe632c4cdcb",
       "count": 1
     },
     {
@@ -61860,16 +61690,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/settings.py",
-      "code": "assignment",
-      "message": "Incompatible types in assignment (expression has type \"tuple[int, Property]\", variable has type \"tuple[int, str] | None\")",
-      "scope": "SettingsBridge._refresh_bound_key",
-      "anchor": "self._credential_pending = (self._credential_generation, api_url)",
-      "fingerprint": "fd229040dbff6188058272eff271bc46f6d046adcb355746b950637b7c148daa",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/ui/film_quick_controller.py",
       "code": "has-type",
       "message": "Cannot determine type of \"snapshot\"",
@@ -61926,16 +61746,6 @@
       "scope": "",
       "anchor": "from .optical_constants import (evaluate_optical_set, evaluate_optical_set_with_details,",
       "fingerprint": "fd68d9507ee5fa6467dd390e5beafd7f5c75f63f4e13257de90ab078d4e3ae89",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/provider_catalog.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"Any | dict[Any, Any] | None\" has no attribute \"get\"",
-      "scope": "context_capacity_profile_for",
-      "anchor": "\"max_output_tokens\": _catalog_token_limit(raw.get(\"max_output_tokens\")),",
-      "fingerprint": "fd89b855c21bd73dc7ca5f13e8f095c5592addb068404ee3ce8127ae02200efd",
       "count": 1
     },
     {
@@ -62047,16 +61857,6 @@
       "anchor": "self.app.processEvents()",
       "fingerprint": "fdf489c6bdde68a823727847f43691ebd8ec9406f90367913a2262a71cf827e8",
       "count": 2
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/settings.py",
-      "code": "arg-type",
-      "message": "Argument 3 to \"context_budget_for_model\" has incompatible type \"Property\"; expected \"str\"",
-      "scope": "SettingsBridge._selected_context_budget",
-      "anchor": "return context_budget_for_model(self._settings, self.assistantApiUrl, self.assistantModel)",
-      "fingerprint": "fdf857dc96418067ad7e74d0067fb9a87842e44386eb455130eb4570ade77482",
-      "count": 1
     },
     {
       "tool": "mypy",
@@ -62539,6 +62339,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "Reviewed complete 3171c68 Linux CI report (run39269203979): remove23 resolved occurrences in22 fingerprint groups; no added or increased allowance.",
+  "last_prune_reason": "2026-10-19 approved model presets and user guidance batch: remove exactly 20 resolved occurrences reviewed in model-style-resolved-debt-review.json; no additions or count increases.",
   "configuration_review_reason": "2026-10-17: add only BSD-3-Clause pypdf 6.21.0 for isolated research PDF extraction; all previous dependency/tool versions, analyzer rules and diagnostic entries remain unchanged. The lock-file digest changes only for this reviewed runtime dependency."
 }

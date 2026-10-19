@@ -14,7 +14,7 @@
 - **结果与自动化**：管理计算队列和结果资产，使用几何光追与外观渲染工具；部分功能提供 CLI、MCP 和可选 AI 助手入口。不同入口的能力与权限并不相同，见[入口能力矩阵](docs/entrypoint-capabilities.md)。
 - **安装入口**：[独立安装器](https://github.com/ii33/coating-sim-installer)维护源码及依赖部署，应用提供声明性依赖合同。
 
-模型、单位、采样、近似与参考来源集中在[算法图解](docs/algorithms.html)。该单文件 HTML 可下载后离线打开；GitHub 文件预览不等同于渲染页面。[软件说明书](docs/software_manual.html)提供更完整的操作说明。
+第一次使用可先看[软件说明书的操作流程](docs/software_manual.html#workflow)、[助手设置](docs/software_manual.html#settings)和[按目标选择算法](docs/software_manual.html#algorithm_selection)。公式、单位、采样、近似与参考来源见[算法图解](docs/algorithms.html)。两份 HTML 都可下载后离线打开；GitHub 文件预览不等同于渲染页面。
 
 ## 快速开始
 

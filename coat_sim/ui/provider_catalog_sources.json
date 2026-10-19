@@ -14,8 +14,8 @@
   },
   "profiles": {
     "https://api.deepseek.com/v1": {
-      "deepseek-flash": {"context_window_tokens": 1000000, "max_input_tokens": 0, "max_output_tokens": 384000, "sources": ["https://api-docs.deepseek.com/quick_start/pricing/"]},
-      "deepseek-v4-pro": {"context_window_tokens": 1000000, "max_input_tokens": 0, "max_output_tokens": 384000, "sources": ["https://api-docs.deepseek.com/quick_start/pricing/"]}
+      "deepseek-flash": {"context_window_tokens": 1048576, "max_input_tokens": 0, "max_output_tokens": 393216, "verified_at": "2026-10-19", "sources": ["https://api-docs.deepseek.com/quick_start/pricing/", "https://api-docs.deepseek.com/api/list-models/"]},
+      "deepseek-v4-pro": {"context_window_tokens": 1048576, "max_input_tokens": 0, "max_output_tokens": 393216, "verified_at": "2026-10-19", "sources": ["https://api-docs.deepseek.com/quick_start/pricing/", "https://api-docs.deepseek.com/api/list-models/"]}
     },
     "https://api.openai.com/v1": {
       "gpt-6-astra": {"context_window_tokens": 1050000, "max_input_tokens": 0, "max_output_tokens": 128000, "sources": ["https://developers.openai.com/api/docs/models/gpt-6-astra"]},
@@ -130,12 +130,47 @@
       "display_hint": "OpenAI 兼容 Chat Completions；模型权限按账户开通情况决定，按服务商规则计费。",
       "url": "https://api.deepseek.com",
       "protocol": "openai_chat_completions",
-      "models": ["deepseek-flash", "deepseek-v4-pro"],
+      "models": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ],
       "additional": [],
       "preview": [],
       "selectable": true,
       "notes": "Both models support thinking/non-thinking modes. deepseek-flash is the current API ID for DeepSeek V4.1 Flash; do not construct deepseek-v4.1 or deepseek4.1 as API IDs.",
-      "sources": ["https://api-docs.deepseek.com/en/", "https://api-docs.deepseek.com/api/list-models/", "https://api-docs.deepseek.com/quick_start/pricing/", "https://api-docs.deepseek.com/updates/"]
+      "sources": [
+        "https://api-docs.deepseek.com/en/",
+        "https://api-docs.deepseek.com/api/list-models/",
+        "https://api-docs.deepseek.com/quick_start/pricing/",
+        "https://api-docs.deepseek.com/updates/"
+      ],
+      "verified_at": "2026-10-19",
+      "model_details": {
+        "deepseek-flash": {
+          "capabilities": {
+            "tool_use": "supported",
+            "image_input": "supported"
+          },
+          "sources": [
+            "https://api-docs.deepseek.com/quick_start/pricing/",
+            "https://api-docs.deepseek.com/api/list-models/"
+          ],
+          "verified_at": "2026-10-19",
+          "notes": ""
+        },
+        "deepseek-v4-pro": {
+          "capabilities": {
+            "tool_use": "supported",
+            "image_input": "unsupported"
+          },
+          "sources": [
+            "https://api-docs.deepseek.com/quick_start/pricing/",
+            "https://api-docs.deepseek.com/api/list-models/"
+          ],
+          "verified_at": "2026-10-19",
+          "notes": ""
+        }
+      }
     },
     {
       "id": "dashscope_cn",
@@ -195,12 +230,45 @@
       "display_hint": "中国区标准 API；与 GLM Coding Plan 使用不同端点和额度。",
       "url": "https://open.bigmodel.cn/api/paas/v4",
       "protocol": "openai_chat_completions",
-      "models": ["glm-5.3", "glm-5.3-flash", "glm-5.2"],
+      "models": [
+        "glm-5.3",
+        "glm-5.3-flash",
+        "glm-5.2"
+      ],
       "additional": [],
       "preview": [],
       "selectable": true,
       "notes": "Mainland BigModel standard API. Do not confuse with international Z.ai, Coding Plan endpoint or Coding Plan allowance. Shared Anthropic endpoint is documented; billing/eligibility depends on key and context, so default OpenAI path keeps standard-vs-Coding distinction explicit.",
-      "sources": ["https://docs.bigmodel.cn/cn/guide/develop/openai/introduction", "https://docs.bigmodel.cn/cn/guide/start/model-overview", "https://docs.bigmodel.cn/cn/guide/develop/claude/introduction.md", "https://docs.bigmodel.cn/llms.txt"]
+      "sources": [
+        "https://docs.bigmodel.cn/cn/guide/develop/openai/introduction",
+        "https://docs.bigmodel.cn/cn/guide/start/model-overview",
+        "https://docs.bigmodel.cn/cn/guide/develop/claude/introduction.md",
+        "https://docs.bigmodel.cn/llms.txt"
+      ],
+      "model_details": {
+        "glm-5.3": {
+          "capabilities": {
+            "tool_use": "supported"
+          },
+          "sources": [
+            "https://docs.bigmodel.cn/cn/guide/start/model-overview",
+            "https://docs.bigmodel.cn/cn/guide/develop/openai/introduction"
+          ],
+          "verified_at": "2026-10-19",
+          "notes": ""
+        },
+        "glm-5.3-flash": {
+          "capabilities": {
+            "tool_use": "supported"
+          },
+          "sources": [
+            "https://docs.bigmodel.cn/cn/guide/start/model-overview",
+            "https://docs.bigmodel.cn/cn/guide/develop/openai/introduction"
+          ],
+          "verified_at": "2026-10-19",
+          "notes": ""
+        }
+      }
     },
     {
       "id": "zhipu_coding_plan_cn",
@@ -260,12 +328,35 @@
       "display_hint": "国际 API，需国际区平台账户；地区和密钥不与中国区互通。",
       "url": "https://api.minimax.io/v1",
       "protocol": "openai_chat_completions",
-      "models": ["MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.7-highspeed", "MiniMax-M2.5"],
+      "models": [
+        "MiniMax-M3",
+        "MiniMax-M2.7",
+        "MiniMax-M2.7-highspeed",
+        "MiniMax-M2.5"
+      ],
       "additional": [],
       "preview": [],
       "selectable": true,
       "notes": "International platform.minimax.io account; Chinese and international preset hosts are separate. Both OpenAI and Anthropic-compatible API formats are officially documented.",
-      "sources": ["https://platform.minimax.io/docs/api-reference/text-openai-api", "https://platform.minimax.io/docs/api-reference/models/openai/list-models", "https://platform.minimax.io/docs/api-reference/text-anthropic-api"]
+      "sources": [
+        "https://platform.minimax.io/docs/api-reference/text-openai-api",
+        "https://platform.minimax.io/docs/api-reference/models/openai/list-models",
+        "https://platform.minimax.io/docs/api-reference/text-anthropic-api"
+      ],
+      "model_details": {
+        "MiniMax-M3": {
+          "capabilities": {
+            "tool_use": "supported",
+            "image_input": "supported",
+            "video_input": "supported"
+          },
+          "sources": [
+            "https://platform.minimax.io/docs/api-reference/text-openai-api"
+          ],
+          "verified_at": "2026-10-19",
+          "notes": "供应商支持视频不代表本客户端已实现视频输入；不将国际站资料转用于中国站。"
+        }
+      }
     },
     {
       "id": "siliconflow_cn",
@@ -286,10 +377,68 @@
       "display_hint": "GPT-6 Astra / 6.1 Sol 工具调用需 Responses；GPT-6 Luna 仅关闭推理时可用 Chat 函数工具。",
       "url": "https://api.openai.com/v1",
       "protocol": "openai_chat_completions",
-      "models": ["gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna"],
-      "statuses": {"gpt-6-astra": "current_official_catalog", "gpt-6.1-sol": "current_official_catalog", "gpt-6-luna": "current_official_catalog"},
+      "models": [
+        "gpt-6-astra",
+        "gpt-6.1-sol",
+        "gpt-6-luna"
+      ],
+      "statuses": {
+        "gpt-6-astra": "current_official_catalog",
+        "gpt-6.1-sol": "current_official_catalog",
+        "gpt-6-luna": "current_official_catalog"
+      },
       "notes": "协议说明核验日期：2026-10-12。仅针对此官方端点与精确模型 ID：GPT-6 Astra 和 GPT-6.1 Sol 可用 Chat Completions 做无工具请求，函数工具调用需 Responses；GPT-6 Luna 的 Chat 函数工具仅 reasoning_effort=none，推理加工具需 Responses。供应商内建工具另有 Responses 要求，不能据此推断其他模型、聚合器或兼容服务的普通函数工具也需 Responses。推理非 none 时不能照搬 temperature/top_p/logprobs 参数。目录能力不代表账号权限或真实端点验收；本应用实际支持范围以助手协议契约和请求前检查为准。",
-      "sources": ["https://developers.openai.com/api/docs/models", "https://developers.openai.com/api/docs/models/gpt-6-astra", "https://developers.openai.com/api/docs/models/gpt-6.1-sol", "https://developers.openai.com/api/docs/models/gpt-6-luna", "https://developers.openai.com/api/docs/guides/latest-model", "https://developers.openai.com/api/reference/resources/models/methods/list"]
+      "sources": [
+        "https://developers.openai.com/api/docs/models",
+        "https://developers.openai.com/api/docs/models/gpt-6-astra",
+        "https://developers.openai.com/api/docs/models/gpt-6.1-sol",
+        "https://developers.openai.com/api/docs/models/gpt-6-luna",
+        "https://developers.openai.com/api/docs/guides/latest-model",
+        "https://developers.openai.com/api/reference/resources/models/methods/list"
+      ],
+      "default_model": "gpt-6-luna",
+      "default_reasoning_strength": "none",
+      "model_details": {
+        "gpt-6-luna": {
+          "capabilities": {
+            "tool_use": "none_only",
+            "image_input": "supported",
+            "audio_input": "unsupported",
+            "video_input": "unsupported"
+          },
+          "sources": [
+            "https://developers.openai.com/api/docs/models/gpt-6-luna"
+          ],
+          "verified_at": "2026-10-19",
+          "notes": "当前客户端使用 Chat Completions；新选此服务商且推理强度为自动时，默认使用 Luna + none 以兼容函数工具。已有显式推理选择不覆盖。"
+        },
+        "gpt-6-astra": {
+          "capabilities": {
+            "tool_use": "responses_only",
+            "image_input": "supported",
+            "audio_input": "unsupported",
+            "video_input": "unsupported"
+          },
+          "sources": [
+            "https://developers.openai.com/api/docs/models/gpt-6-astra"
+          ],
+          "verified_at": "2026-10-19",
+          "notes": "当前客户端尚未实现 Responses 工具协议。"
+        },
+        "gpt-6.1-sol": {
+          "capabilities": {
+            "tool_use": "responses_only",
+            "image_input": "supported",
+            "audio_input": "unsupported",
+            "video_input": "unsupported"
+          },
+          "sources": [
+            "https://developers.openai.com/api/docs/models/gpt-6.1-sol"
+          ],
+          "verified_at": "2026-10-19",
+          "notes": "当前客户端尚未实现 Responses 工具协议。"
+        }
+      }
     },
     {
       "id": "anthropic",
@@ -308,10 +457,43 @@
       "display_hint": "Gemini Developer API 兼容入口（非 Vertex AI）；预览模型与原生接口能力有差异。",
       "url": "https://generativelanguage.googleapis.com/v1beta/openai/",
       "protocol": "openai_chat_completions",
-      "models": ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview", "gemini-3-flash-preview"],
-      "statuses": {"gemini-3.8-flash": "stable", "gemini-3.7-flash": "stable_previous_generation", "gemini-3.5-flash-lite": "stable", "gemini-3.1-pro-preview": "preview", "gemini-3-flash-preview": "preview"},
+      "models": [
+        "gemini-3.8-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-pro-preview",
+        "gemini-3-flash-preview"
+      ],
+      "statuses": {
+        "gemini-3.8-flash": "stable",
+        "gemini-3.7-flash": "deprecated_routed_to_gemini_3_8_flash",
+        "gemini-3.5-flash-lite": "stable",
+        "gemini-3.1-pro-preview": "preview",
+        "gemini-3-flash-preview": "preview"
+      },
       "notes": "本项是 Gemini Developer API，不是 Vertex AI。; 官方兼容入口支持 models.list，但并非原生 generateContent 的请求体。; 2.5 系列官方当前限制为此前活跃使用者；不应作为新用户通用默认。Preview 需标注。",
-      "sources": ["https://ai.google.dev/gemini-api/docs/models", "https://ai.google.dev/gemini-api/docs/openai", "https://ai.google.dev/api/models", "https://ai.google.dev/api/generate-content"]
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/models",
+        "https://ai.google.dev/gemini-api/docs/openai",
+        "https://ai.google.dev/api/models",
+        "https://ai.google.dev/api/generate-content",
+        "https://ai.google.dev/gemini-api/docs/models/gemini-3.7-flash"
+      ],
+      "deprecated": [
+        "gemini-3.7-flash"
+      ],
+      "model_details": {
+        "gemini-3.8-flash": {
+          "capabilities": {
+            "tool_use": "supported"
+          },
+          "sources": [
+            "https://ai.google.dev/gemini-api/docs/openai",
+            "https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash"
+          ],
+          "verified_at": "2026-10-19",
+          "notes": ""
+        }
+      }
     },
     {
       "id": "xai",
@@ -319,10 +501,37 @@
       "display_hint": "全球默认区域 Chat Completions；区域模型不同，新功能优先 Responses。",
       "url": "https://api.x.ai/v1",
       "protocol": "openai_chat_completions",
-      "models": ["grok-4.7", "grok-4.6", "grok-4.3"],
-      "statuses": {"grok-4.7": "current_flagship", "grok-4.6": "documented_previous_generation", "grok-4.3": "documented_previous_generation"},
+      "models": [
+        "grok-4.7",
+        "grok-4.6",
+        "grok-4.3"
+      ],
+      "statuses": {
+        "grok-4.7": "current_flagship",
+        "grok-4.6": "documented_previous_generation",
+        "grok-4.3": "documented_previous_generation"
+      },
       "notes": "OpenAI SDK 的 Chat Completions / Responses 均有官方入口；新集成优先 Responses。; 全球默认地址与 US 区域地址分开；区域模型集合不同，本项不切换到 US 区域。; grok-3、grok-4-0709、grok-4-1-fast-* 等旧 slug 已发生退休重定向，不作为当前独立模型种子。",
-      "sources": ["https://docs.x.ai/developers/models", "https://docs.x.ai/developers/models/grok-4.3", "https://docs.x.ai/developers/advanced-api-usage/regions", "https://docs.x.ai/developers/model-capabilities/legacy/chat-completions", "https://docs.x.ai/developers/rest-api-reference/inference/models", "https://docs.x.ai/developers/migration/may-15-retirement"]
+      "sources": [
+        "https://docs.x.ai/developers/models",
+        "https://docs.x.ai/developers/models/grok-4.3",
+        "https://docs.x.ai/developers/advanced-api-usage/regions",
+        "https://docs.x.ai/developers/model-capabilities/legacy/chat-completions",
+        "https://docs.x.ai/developers/rest-api-reference/inference/models",
+        "https://docs.x.ai/developers/migration/may-15-retirement"
+      ],
+      "model_details": {
+        "grok-4.7": {
+          "capabilities": {
+            "tool_use": "supported"
+          },
+          "sources": [
+            "https://docs.x.ai/developers/models/grok-4.7"
+          ],
+          "verified_at": "2026-10-19",
+          "notes": ""
+        }
+      }
     },
     {
       "id": "mistral",
@@ -330,10 +539,48 @@
       "display_hint": "OpenAI 兼容 Chat Completions；Large 4 为公开预览，Small 4 的 API ID 为 mistral-small-2603。",
       "url": "https://api.mistral.ai/v1",
       "protocol": "openai_chat_completions",
-      "models": ["mistral-medium-3-5", "mistral-small-2603", "mistral-large-4"],
-      "statuses": {"mistral-medium-3-5": "ga", "mistral-small-2603": "ga", "mistral-large-4": "public_preview"},
+      "models": [
+        "mistral-medium-3-5",
+        "mistral-small-2603",
+        "mistral-large-4"
+      ],
+      "statuses": {
+        "mistral-medium-3-5": "ga",
+        "mistral-small-2603": "ga",
+        "mistral-large-4": "public_preview"
+      },
       "notes": "官方迁移指南明确支持 OpenAI-compatible client。; Small 4 的 ID 是 mistral-small-2603，不是照展示名推断出的 mistral-small-4。; Large 4 于官方页标 Public Preview；不将它标成 GA。",
-      "sources": ["https://docs.mistral.ai/resources/migration-guides", "https://docs.mistral.ai/api/endpoint/models", "https://docs.mistral.ai/models/mistral-medium-3-5-26-04", "https://docs.mistral.ai/models/mistral-small-4-0-26-03", "https://docs.mistral.ai/models/mistral-large-4-0"]
+      "sources": [
+        "https://docs.mistral.ai/resources/migration-guides",
+        "https://docs.mistral.ai/api/endpoint/models",
+        "https://docs.mistral.ai/models/mistral-medium-3-5-26-04",
+        "https://docs.mistral.ai/models/mistral-small-4-0-26-03",
+        "https://docs.mistral.ai/models/mistral-large-4-0"
+      ],
+      "model_details": {
+        "mistral-medium-3-5": {
+          "capabilities": {
+            "tool_use": "supported"
+          },
+          "sources": [
+            "https://docs.mistral.ai/models/mistral-medium-3-5-26-04",
+            "https://docs.mistral.ai/models/mistral-small-4-0-26-03"
+          ],
+          "verified_at": "2026-10-19",
+          "notes": ""
+        },
+        "mistral-small-2603": {
+          "capabilities": {
+            "tool_use": "supported"
+          },
+          "sources": [
+            "https://docs.mistral.ai/models/mistral-medium-3-5-26-04",
+            "https://docs.mistral.ai/models/mistral-small-4-0-26-03"
+          ],
+          "verified_at": "2026-10-19",
+          "notes": ""
+        }
+      }
     },
     {
       "id": "groq",

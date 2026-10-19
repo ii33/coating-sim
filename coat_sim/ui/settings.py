@@ -22,7 +22,7 @@ from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event, Lock
 from pathlib import Path
-from typing import Mapping, cast
+from typing import Literal, Mapping, cast
 from urllib.parse import urlsplit
 
 from PySide6.QtCore import QObject, Property, QTimer, QUrl, Signal, Slot, QLockFile, QProcess, QProcessEnvironment
@@ -49,7 +49,7 @@ from coat_sim.ui.model_probe import (
     MODEL_REQUEST_LIMIT, PROBE_OUTPUT_TOKENS, normalize_api_url,
 )
 from coat_sim.ui.provider_catalog import (
-    models_endpoint_for_url,
+    model_configuration_for, normalize_catalog_endpoint, model_metadata_capacity,
     model_suggestions as provider_model_suggestions,
     profile_for_url as provider_profile_for_url,
     provider_presets,
@@ -136,10 +136,12 @@ class ModelDiscoveryBus(QObject):
     modelsChanged = Signal(str, object)
     reasoningChanged = Signal(str, str, object)
     probeFinished = Signal(str)
+    snapshotChanged = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._entries = {}
+        self._snapshot_fingerprints: dict[str, str | None] = {}
         self._transient_models = {}
         self._transient_reasoning = {}
         self._active = {}
@@ -212,7 +214,7 @@ class ModelDiscoveryBus(QObject):
                     if isinstance(row, dict) and isinstance(row.get("id"), str) and 0 < len(row["id"]) <= 120:
                         rows.append({"id": row["id"], "metadata": row.get("metadata", {}) if isinstance(row.get("metadata"), dict) else {},
                                      **({"output_parameter": row["output_parameter"]} if row.get("output_parameter") in ("max_tokens", "max_completion_tokens") else {}),
-                                     **({"evidence": "completion_request"} if row.get("evidence") == "completion_request" else {})})
+                                     **({"evidence": row["evidence"]} if row.get("evidence") in ("completion_request", "models_endpoint") else {})})
                     if len(rows) >= 500:
                         break
                 reasoning = {}
@@ -283,7 +285,11 @@ class ModelDiscoveryBus(QObject):
         # credential store on the GUI thread.
         fingerprint = (expected_fingerprint if expected_fingerprint is not None
                        else self.credential_fingerprint(endpoint))
+        previous_fingerprint = self._snapshot_fingerprints.get(key)
+        self._snapshot_fingerprints[key] = fingerprint
         if fingerprint is None or (expected_fingerprint is not None and fingerprint != expected_fingerprint):
+            if fingerprint != previous_fingerprint:
+                self.snapshotChanged.emit(endpoint)
             return None
         if reload_cache:
             self._reload_cache()
@@ -296,6 +302,8 @@ class ModelDiscoveryBus(QObject):
             for pair in list(self._transient_reasoning):
                 if pair[0] == key:
                     self._transient_reasoning.pop(pair, None)
+        if fingerprint != previous_fingerprint:
+            self.snapshotChanged.emit(endpoint)
         return key, entry
 
     def _persist(self, key: str) -> None:
@@ -389,8 +397,15 @@ class ModelDiscoveryBus(QObject):
         rows = [deepcopy(row) for row in models if isinstance(row, dict) and isinstance(row.get("id"), str)][:500]
         if completed:
             self._transient_models.pop(key, None)
+            if cancelled:
+                # A failed refresh is not evidence that earlier models vanished.
+                retained = {row["id"]: row for row in entry.get("models", [])}
+                for row in rows:
+                    retained.setdefault(row["id"], row)
+                rows = list(retained.values())[:500]
             entry["models"] = rows
-            entry["models_updated_at"] = time.time() if rows and not cancelled else 0
+            if not cancelled:
+                entry["models_updated_at"] = time.time() if rows else 0
             entry["models_retry_after"] = time.time() + MODEL_CACHE_RETRY_SECONDS if cancelled or not rows else 0
             self._persist(key)
         else:
@@ -400,6 +415,13 @@ class ModelDiscoveryBus(QObject):
     def invalidate(self, api_url: str) -> None:
         endpoint = self.api_key(api_url)
         key = self.cache_key(endpoint)
+        active = self._active.get(key)
+        owner = active[0]() if active else None
+        if isinstance(owner, SettingsProbeCoordinator):
+            # Cancel another window's captured old-key run before removing its
+            # cache; a late reply must not republish the invalidated identity.
+            owner.cancel_model_probe()
+        self._snapshot_fingerprints.pop(key, None)
         self._entries.pop(key, None)
         self._transient_models.pop(key, None)
         for pair in list(self._transient_reasoning):
@@ -416,17 +438,50 @@ class ModelDiscoveryBus(QObject):
         key, entry = found
         pair = (key, model.strip())
         record = entry.get("reasoning", {}).get(pair[1], {})
-        return deepcopy(self._transient_reasoning.get(pair, record.get("result")))
+        return self._with_capacity_metadata(api_url, model, entry,
+                                            self._transient_reasoning.get(pair, record.get("result")))
+
+    def reasoning_snapshot_for(self, api_url: str, model: str) -> dict | None:
+        """Read the active in-memory entry without key-store or cache-file I/O.
+
+        Entry adoption checks credential identity; key save/delete invalidates it.
+        Presentation may use this snapshot, while request submission still calls
+        reasoning_for to check the current credential before building its packet.
+        """
+        return self.reasoning_for_fingerprint(
+            api_url, model, self._snapshot_fingerprints.get(self.cache_key(api_url)),
+            reload_cache=False)
 
     def reasoning_for_fingerprint(self, api_url: str, model: str,
-                                  fingerprint: str | None) -> dict | None:
-        found = self._entry_for_fingerprint(api_url, fingerprint)
+                                  fingerprint: str | None, *, reload_cache: bool = True) -> dict | None:
+        found = self._entry_for_fingerprint(api_url, fingerprint, reload_cache=reload_cache)
         if found is None:
             return None
         key, entry = found
         pair = (key, model.strip())
         record = entry.get("reasoning", {}).get(pair[1], {})
-        return deepcopy(self._transient_reasoning.get(pair, record.get("result")))
+        return self._with_capacity_metadata(api_url, model, entry,
+                                            self._transient_reasoning.get(pair, record.get("result")))
+
+    @staticmethod
+    def _with_capacity_metadata(api_url: str, model: str, entry: dict, probe: object) -> dict | None:
+        """Expose caps only through the same credential-checked discovery entry.
+
+        The original model-list timestamp is retained, so reads never renew TTL.
+        The existing worker configuration already carries this probe packet.
+        """
+        result = deepcopy(probe) if isinstance(probe, dict) else None
+        observed_at = entry.get("models_updated_at", 0)
+        if not isinstance(observed_at, (int, float)) or isinstance(observed_at, bool):
+            return result
+        for row in entry.get("models", []):
+            if not isinstance(row, dict) or row.get("id") != model or row.get("evidence") != "models_endpoint":
+                continue
+            metadata = model_metadata_capacity(api_url, model, row.get("metadata"), observed_at=observed_at)
+            if metadata:
+                return {**(result or {"api_url": api_url, "model": model, "evidence": "server_capacity_only"}),
+                        "capacity_metadata": metadata}
+        return result
 
     def reasoning_fresh(self, api_url: str, model: str) -> bool:
         found = self._entry(api_url)
@@ -840,8 +895,8 @@ class SettingsBridge(QObject):
         self._assistant_key_status_ready = False
         self._assistant_key_message = ""
         self._assistant_settings_requested = False
-        self._assistant_credential_fingerprint = None
-        self._assistant_credential_api_url = None
+        self._assistant_credential_fingerprint: str | None = None
+        self._assistant_credential_api_url: str | None = None
         self._assistant_credential_secret = ""
         self._compute_server_has_token = False
         self._compute_server_token_status = "令牌状态待检查。"
@@ -1080,6 +1135,113 @@ class SettingsBridge(QObject):
         return next((index for index, row in enumerate(provider_presets())
                      if row["id"] == profile["id"]), -1)
 
+    @Slot(str, result=bool)
+    def applyAssistantProviderPreset(self, preset_id: str) -> bool:
+        """Apply an offline preset to this window's draft, preserving overrides."""
+        preset = next((row for row in provider_presets() if row["id"] == preset_id), None)
+        if preset is None or not preset.get("selectable"):
+            return False
+        same_endpoint = (normalize_catalog_endpoint(cast(str, self.assistantApiUrl))
+                         == normalize_catalog_endpoint(str(preset["base_url"])))
+        model = cast(str, self.assistantModel) if same_endpoint and self.assistantModel else str(preset["default_model"])
+        strength = self._settings.get("assistant_reasoning_strength", "auto")
+        self.setAssistantConfig(cast(bool, self.assistantEnabled), str(preset["base_url"]), model)
+        if not same_endpoint and strength == "auto":
+            self.setAssistantReasoningStrength(str(preset["default_reasoning_strength"]))
+        return True
+
+    @Slot(str, str, result=str)
+    def providerModelInfo(self, api_url: str, model: str) -> str:
+        info = model_configuration_for(api_url, model)
+        resolved = context_budget_for_model(self._model_budget_config(api_url, model), api_url, model)["profile"]
+        assert isinstance(resolved, dict)
+        declared = resolved.get("evidence") == "server_declared_metadata"
+        if declared:
+            info["context_window_tokens"] = resolved["context_window_tokens"]
+            info["max_input_tokens"] = resolved["max_input_tokens"]
+            info["max_output_tokens"] = resolved["max_output_tokens"]
+            info["notes"] = str(resolved["notes"])
+            info["verified_date"] = str(resolved["date"])
+            sources = resolved["source"]
+            if isinstance(sources, (list, tuple)):
+                info["sources"] = list(dict.fromkeys([str(source) for source in sources] + info["sources"]))
+        def tokens(field: Literal["context_window_tokens", "max_input_tokens", "max_output_tokens"]) -> str:
+            value = info[field]
+            return f"{value:,} Token" if value else "未知"
+        capability_names = {"tool_use": "工具", "image_input": "图像输入", "audio_input": "音频输入", "video_input": "视频输入"}
+        values = {"supported": "支持", "unsupported": "不支持", "unknown": "未知",
+                  "none_only": "仅 reasoning_effort=none", "responses_only": "需 Responses（当前未实现）"}
+        capabilities = "；".join(f"{label}：{values.get(info['capabilities'][field], info['capabilities'][field])}"
+                                  for field, label in capability_names.items())
+        return (f"{'服务端声明容量' if declared else '离线文档预置'} · {info['protocol']} · 日期 {info['verified_date'] or '未记录'}\n"
+                f"上下文：{tokens('context_window_tokens')}；输入硬限：{tokens('max_input_tokens')}；输出硬限：{tokens('max_output_tokens')}\n"
+                f"{capabilities}。账号可用性与能力请求均未验证。"
+                + ("\n" + info["notes"] if info["notes"] else "")
+                + ("\n来源：" + " · ".join(info["sources"]) if info["sources"] else ""))
+
+    def _apply_discovered_model_metadata(self, api_url: str, models: list[dict]) -> int:
+        """Publish valid Models metadata to the existing credential-bound cache.
+
+        No provider capacity is stored among user budget overrides. Deleting or
+        replacing a key already invalidates this cache for every settings window.
+        """
+        coordinator = self._probe_coordinator
+        fingerprint = self._assistant_credential_fingerprint
+        if coordinator._model_discovery_busy:
+            if (coordinator._probe_original_url != self.assistantApiUrl
+                    or coordinator._probe_credential_generation != self._credential_generation):
+                return 0
+            fingerprint = coordinator._probe_fingerprint
+        elif self._assistant_credential_api_url != self.assistantApiUrl:
+            return 0
+        if not fingerprint or normalize_catalog_endpoint(api_url) != normalize_catalog_endpoint(cast(str, self.assistantApiUrl)):
+            return 0
+        records = [{**row, "evidence": row.get("evidence", "models_endpoint")} for row in models]
+        changed = sum(row.get("evidence") == "models_endpoint"
+                      and bool(model_metadata_capacity(api_url, row.get("id", ""), row.get("metadata")))
+                      for row in records)
+        if changed:
+            self._discovery_bus.publish(api_url, records, expected_fingerprint=fingerprint)
+            self.assistantStateChanged.emit()
+        return changed
+
+    def _adopt_probe_credentials(self, api_url: str, secret: str, fingerprint: str | None) -> None:
+        """Adopt an explicit manual key-store read before every probe kind."""
+        if normalize_catalog_endpoint(api_url) != normalize_catalog_endpoint(cast(str, self.assistantApiUrl)):
+            return
+        previous = self._assistant_credential_fingerprint
+        self._credential_generation += 1
+        self._credential_pending = None
+        self._assistant_credential_api_url = api_url
+        self._assistant_credential_fingerprint = fingerprint
+        self._assistant_credential_secret = secret
+        self._has_assistant_key = bool(secret)
+        self._assistant_key_status_ready = True
+        bus = self._discovery_bus_value
+        if bus is not None and previous is not None and previous != fingerprint:
+            bus.invalidate(api_url)
+        self.assistantStateChanged.emit()
+
+    def _model_budget_config(self, api_url: str, model: str) -> dict:
+        """Attach only this window's current credential-bound metadata snapshot."""
+        config = dict(self._settings)
+        config.pop("assistant_reasoning_probe", None)
+        bus = self._discovery_bus_value
+        if bus is None:
+            return config
+        fingerprint = self._assistant_credential_fingerprint
+        coordinator = self._probe_coordinator
+        if (coordinator._model_discovery_busy
+                and coordinator._probe_original_url == self.assistantApiUrl
+                and coordinator._probe_credential_generation == self._credential_generation):
+            fingerprint = coordinator._probe_fingerprint
+        config["assistant_reasoning_probe"] = bus.reasoning_for_fingerprint(api_url, model, fingerprint)
+        return config
+
+    @Property(str, notify=assistantStateChanged)
+    def assistantModelConfigurationInfo(self) -> str:
+        return self.providerModelInfo(cast(str, self.assistantApiUrl), cast(str, self.assistantModel))
+
     @Slot(str, result="QVariantList")
     def providerModelSuggestions(self, api_url: str) -> list[dict[str, str]]:
         return provider_model_suggestions(api_url)
@@ -1142,7 +1304,7 @@ class SettingsBridge(QObject):
             self._refresh_bound_key()
 
     def _refresh_bound_key(self, *, force: bool = False, reason: str = "bootstrap") -> None:
-        api_url = self.assistantApiUrl
+        api_url = cast(str, self.assistantApiUrl)
         if (not force and self._assistant_key_status_ready
                 and self._assistant_credential_api_url == api_url):
             return
@@ -1257,7 +1419,7 @@ class SettingsBridge(QObject):
             return
         if self._assistant_credential_fingerprint:
             self._probe_coordinator._available_models = bus.models_for_fingerprint(
-                self.assistantApiUrl, self._assistant_credential_fingerprint, reload_cache=False)
+                cast(str, self.assistantApiUrl), self._assistant_credential_fingerprint, reload_cache=False)
             self.modelDiscoveryChanged.emit()
         elif self._assistant_settings_requested:
             self._refresh_bound_key()
@@ -1320,8 +1482,24 @@ class SettingsBridge(QObject):
     @Slot(str, object)
     def _on_shared_discovery(self, api_url: str, models: object) -> None:
         if api_url == self._discovery_bus.api_key(self.assistantApiUrl):
-            self._probe_coordinator._available_models = [dict(row) for row in models if isinstance(row, dict)]
+            coordinator = self._probe_coordinator
+            fingerprint = self._assistant_credential_fingerprint
+            if (coordinator._model_discovery_busy
+                    and coordinator._probe_original_url == self.assistantApiUrl
+                    and coordinator._probe_credential_generation == self._credential_generation):
+                fingerprint = coordinator._probe_fingerprint
+            # A shared signal has no credential identity. Re-read only the in-memory
+            # snapshot for this window's bound key; never trust its row payload.
+            if self._discovery_bus._entry_for_fingerprint(api_url, fingerprint, reload_cache=False) is None:
+                if isinstance(models, list) and not models:
+                    coordinator._available_models = []
+                    self.modelDiscoveryChanged.emit()
+                self.assistantStateChanged.emit()
+                return
+            coordinator._available_models = self._discovery_bus.models_for_fingerprint(
+                api_url, fingerprint, reload_cache=False)
             self.modelDiscoveryChanged.emit()
+            self.assistantStateChanged.emit()
 
     @Slot(str, str, object)
     def _on_shared_reasoning(self, api_url: str, model: str, result: object) -> None:
@@ -1559,10 +1737,12 @@ class SettingsBridge(QObject):
         return list(ASSISTANT_TONES)
 
     def _selected_model_limits(self) -> dict[str, object]:
-        return model_token_limits(self._settings, self.assistantApiUrl, self.assistantModel)
+        return model_token_limits(self._model_budget_config(cast(str, self.assistantApiUrl), cast(str, self.assistantModel)),
+                                  cast(str, self.assistantApiUrl), cast(str, self.assistantModel))
 
     def _selected_context_budget(self) -> dict[str, object]:
-        return context_budget_for_model(self._settings, self.assistantApiUrl, self.assistantModel)
+        return context_budget_for_model(self._model_budget_config(cast(str, self.assistantApiUrl), cast(str, self.assistantModel)),
+                                        cast(str, self.assistantApiUrl), cast(str, self.assistantModel))
 
     def _context_profile_record(self, *, create: bool = False) -> tuple[str, str, dict] | None:
         model = self.assistantModel.strip()
@@ -1707,7 +1887,7 @@ class SettingsBridge(QObject):
         if endpoint and model:
             pairs.add((endpoint, model))
         for api_url, model_id in sorted(pairs):
-            candidate = deepcopy(self._settings)
+            candidate = self._model_budget_config(api_url, model_id)
             candidate["assistant_api_url"] = api_url
             candidate["assistant_model"] = model_id
             budget = context_budget_for_model(candidate, api_url, model_id)
@@ -2021,15 +2201,14 @@ class SettingsBridge(QObject):
             return False
         self._credential_generation += 1
         self._credential_pending = None
-        self._assistant_credential_api_url = self.assistantApiUrl
+        self._assistant_credential_api_url = cast(str, self.assistantApiUrl)
         self._assistant_credential_secret = secret
         self._assistant_credential_fingerprint = ModelDiscoveryBus.credential_fingerprint(
             self.assistantApiUrl, secret=secret)
         self._has_assistant_key = True
         self._assistant_key_status_ready = True
         self._reset_model_discovery()
-        if self._discovery_bus_value is not None:
-            self._discovery_bus_value.invalidate(self.assistantApiUrl)
+        self._discovery_bus.invalidate(cast(str, self.assistantApiUrl))
         self._probe_coordinator._probe_closed = False
         self._probe_coordinator._auto_paused_until = 0.0
         self._schedule_auto_probe()
@@ -2050,15 +2229,14 @@ class SettingsBridge(QObject):
             return False
         self._credential_generation += 1
         self._credential_pending = None
-        self._assistant_credential_api_url = self.assistantApiUrl
+        self._assistant_credential_api_url = cast(str, self.assistantApiUrl)
         self._assistant_credential_secret = ""
         self._assistant_credential_fingerprint = ModelDiscoveryBus.credential_fingerprint(
             self.assistantApiUrl, secret="")
         self._has_assistant_key = False
         self._assistant_key_status_ready = True
         self._reset_model_discovery()
-        if self._discovery_bus_value is not None:
-            self._discovery_bus_value.invalidate(self.assistantApiUrl)
+        self._discovery_bus.invalidate(cast(str, self.assistantApiUrl))
         self._probe_coordinator._probe_closed = False
         self._probe_coordinator._auto_paused_until = 0.0
         self._schedule_auto_probe()

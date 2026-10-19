@@ -52,6 +52,8 @@ class SettingsProbeCoordinator(QObject):
         self._bridge = bridge
         self._dependencies = dependencies
         self._available_models = []
+        self._probe_model_records: list[dict] = []
+        self._probe_models_received = False
         self._model_discovery_busy = False
         self._model_discovery_timed_out = False
         self._model_discovery_oversized = False
@@ -230,6 +232,9 @@ class SettingsProbeCoordinator(QObject):
                 self._set_model_discovery_message("请求未发送：无法读取系统安全凭据库；请检查凭据服务。")
                 return False
             secret = None
+        if not automatic:
+            fingerprint = self._discovery_bus.credential_fingerprint(base, secret or "")
+            self._bridge._adopt_probe_credentials(self.assistantApiUrl, secret or "", fingerprint)
         if not secret and not self._dependencies.local_anonymous_endpoint(base):
             self._set_key_message("当前地址未保存密钥；请先保存密钥。")
             self._set_model_discovery_message("请求未发送：当前远程地址没有可用密钥；不自动使用匿名请求。")
@@ -275,9 +280,9 @@ class SettingsProbeCoordinator(QObject):
     def _begin_models_probe(self, automatic: bool = False) -> None:
         if not self._start_probe("models", automatic):
             return
-        self._available_models = []
-        self._discovery_bus.publish(self._probe_original_url, [], completed=False,
-                                    expected_fingerprint=self._probe_fingerprint)
+        # Keep the last usable snapshot visible until a replacement succeeds.
+        self._probe_model_records = []
+        self._probe_models_received = False
         metadata_url = models_endpoint_for_url(self._probe_original_url, self._probe_base)
         self._probe_queue = [{"kind": "metadata", "url": metadata_url}]
         self._next_probe_request()
@@ -567,8 +572,10 @@ class SettingsProbeCoordinator(QObject):
                 if reservation:
                     self._submit_probe_budget(self._settle_probe_budget, reservation, task["_session"],
                                               task.get("model", self._probe_model), usage, status)
+            network_failed = (reply.error() != QNetworkReply.NetworkError.NoError
+                              or self._model_discovery_oversized)
             category = classify_reply(status, payload, timeout=self._model_discovery_timed_out,
-                                      network_error=reply.error() != QNetworkReply.NetworkError.NoError)
+                                      network_error=network_failed)
             if status in (401, 403, 429) or category in ("auth", "rate_limit"):
                 self._probe_failed = True
                 self._record_probe(task.get("model", self._probe_model) or "模型列表", category, status)
@@ -584,16 +591,25 @@ class SettingsProbeCoordinator(QObject):
                 self._record_probe(self._probe_model, category, status)
                 self._finish_probe("当前模型、聊天接口或服务器不可用，已停止后续档位探测。")
                 return
-            if status is None or self._model_discovery_timed_out or (status is not None and status >= 500):
+            if network_failed or status is None or self._model_discovery_timed_out or (status is not None and status >= 500):
                 self._probe_failed = True
             if kind == "metadata":
-                records = model_records(payload) if status is not None and 200 <= status < 300 else []
+                records = (model_records(payload) if status is not None and 200 <= status < 300
+                           and not network_failed and not self._model_discovery_timed_out else [])
                 if records:
+                    if not self._probe_credentials_unchanged():
+                        self._probe_failed = True
+                        self._finish_probe("端点或凭据已变化；丢弃过期刷新结果。", cancelled=True)
+                        return
+                    updated = self._bridge._apply_discovered_model_metadata(self._probe_original_url, records)
+                    self._probe_model_records = records
+                    self._probe_models_received = True
                     self._available_models = records
-                    self._discovery_bus.publish(self._probe_original_url, records, completed=False, expected_fingerprint=self._probe_fingerprint)
-                    self._finish_probe(f"服务器返回 {len(records)} 个模型；点击选择。")
+                    detail = (f"已更新 {updated} 个模型的服务端声明容量；能力仍未验证。" if updated else
+                              "未返回已接入的明确容量字段，保留文档预置；能力仍未验证。")
+                    self._finish_probe(f"服务器返回 {len(records)} 个模型；点击选择。" + detail)
                     return
-                if status is None or status >= 500 or self._model_discovery_timed_out:
+                if network_failed or status is None or status >= 500 or self._model_discovery_timed_out:
                     self._record_probe("模型列表接口", "timeout" if self._model_discovery_timed_out else "unknown", status)
                     self._finish_probe("模型列表服务连接失败；未继续发送枚举请求。")
                     return
@@ -611,9 +627,10 @@ class SettingsProbeCoordinator(QObject):
                     self._record_probe("输出上限兼容", "unknown", status, "使用另一种输出上限字段重试一次")
                 elif kind == "model":
                     if category == "ok":
-                        self._available_models.append({"id": task["model"], "metadata": {},
+                        self._probe_model_records.append({"id": task["model"], "metadata": {},
                                                        "output_parameter": parameter, "evidence": "completion_request"})
-                        self._discovery_bus.publish(self._probe_original_url, self._available_models, completed=False, expected_fingerprint=self._probe_fingerprint)
+                        self._available_models = list(self._probe_model_records)
+                        self._discovery_bus.publish(self._probe_original_url, self._probe_model_records, completed=False, expected_fingerprint=self._probe_fingerprint)
                         prior = self._discovery_bus.reasoning_for(self._probe_original_url, task["model"])
                         if not isinstance(prior, dict) or prior.get("verified") is not True:
                             self._discovery_bus.publish_reasoning(self._probe_original_url, task["model"], {
@@ -678,8 +695,12 @@ class SettingsProbeCoordinator(QObject):
             else:
                 message += " 固定思考档位未确认，保留自动。"
         elif self._probe_kind == "models":
-            self._discovery_bus.publish(self._probe_original_url, self._available_models, cancelled=incomplete,
+            received = self._probe_models_received or bool(self._probe_model_records)
+            self._discovery_bus.publish(self._probe_original_url, self._probe_model_records,
+                                        cancelled=incomplete or not received,
                                         expected_fingerprint=self._probe_fingerprint)
+            if not received:
+                message += " 本次刷新未获得可用结果；保留离线预置与上次列表，手动配置未更改。"
             if self._probe_candidate_fallback:
                 confirmed = sum(row.get("evidence") == "completion_request" for row in self._available_models)
                 sent = self._probe_usage["requests"]

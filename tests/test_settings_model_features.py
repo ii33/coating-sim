@@ -318,7 +318,8 @@ def test_one_million_context_uses_eighty_percent_auto_threshold_on_init_and_rese
 
     initial = context_budget_for_model(
         {"assistant_api_url": endpoint, "assistant_model": model}, endpoint, model)
-    assert initial["profile"]["context_window_tokens"] == 1_000_000
+    assert isinstance(initial["profile"], dict)
+    assert initial["profile"]["context_window_tokens"] == 1_048_576
     assert initial["overrides"]["compaction_threshold_percent"] == 0
     assert initial["defaults"]["compaction_threshold_percent"] == 80
     assert initial["limits"]["compaction_threshold_percent"] == 80
@@ -580,11 +581,11 @@ def test_reasoning_combobox_keeps_value_role_and_save_binding():
     assert "列表刷新不会发送聊天请求" not in qml
     provider_combo = qml.split("id: providerPresetCombo", 1)[1].split("\n                        }", 1)[0]
     assert "bridge.providerPresets" in provider_combo
-    assert "assistantUrlField.editText = preset.base_url" in provider_combo
+    assert "window.settingsBridge.applyAssistantProviderPreset(preset.id)" in provider_combo
     assert "bridge.setAssistantConfig" not in provider_combo
     assert "bridge.discoverModels" not in provider_combo
     assert 'id: providerModelCatalog' in qml
-    assert 'bridge.providerModelSuggestions(assistantUrlField.text)' in qml
+    assert 'window.settingsBridge.providerModelSuggestions(assistantUrlField.text)' in qml
     for object_name in ("settingsScroll", "assistantModelField", "refreshModelsButton",
                         "discoveredModelList", "discoveredModelDelegate", "reasoningCombo",
                         "saveSettingsButton"):

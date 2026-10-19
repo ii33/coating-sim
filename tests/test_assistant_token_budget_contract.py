@@ -307,7 +307,7 @@ def test_worker_budget_preserves_output_and_auto_compaction_semantics(real_bridg
 
 def test_million_default_and_unknown_scheduler_budget_are_unchanged():
     known = context_compaction_limits({}, "https://api.deepseek.com/v1", "deepseek-flash")
-    assert known["context_budget"]["limits"]["context_window_tokens"] == 1_000_000
+    assert known["context_budget"]["limits"]["context_window_tokens"] == 1_048_576
     assert known["threshold_percent"] == 80
     assert known["trigger"] == known["available_input"] * 80 // 100
     unknown = context_budget_for_model({}, API_URL, MODEL)
@@ -365,3 +365,118 @@ def test_context_usage_tooltip_distinguishes_budget_from_capacity():
     assert "分项是请求前估算；服务器实际值可能不同，不以分项相加冒充实际消耗。" in source
     assert "上下文上限来自设置或当前模型探测。" not in source
     assert "当前服务没有提供上下文上限；可在设置中填写。" not in source
+
+
+@pytest.mark.parametrize("action", ["delete", "replace"])
+@pytest.mark.parametrize("manual_capacity", [0, 100_000])
+def test_context_getter_uses_memory_only_and_key_actions_invalidate(
+        real_bridge, tmp_path, monkeypatch, action, manual_capacity):
+    from unittest.mock import Mock
+
+    bridge, _worker = real_bridge
+    api_url, model = "https://api.deepseek.com/v1", "deepseek-flash"
+    config = budget_config()
+    overrides = config["assistant_model_limits"][API_URL][MODEL]
+    config.update(assistant_enabled=False, assistant_api_url=api_url, assistant_model=model,
+                  assistant_model_limits={api_url: {model: overrides}} if manual_capacity else {})
+    bridge._config = config
+    bridge._prefs._settings = deepcopy(config)
+    monkeypatch.setattr(settings, "MODEL_CACHE_PATH", tmp_path / "models.json")
+    monkeypatch.setattr(settings, "save_api_key", Mock())
+    monkeypatch.setattr(settings, "delete_api_key", Mock())
+    bus = settings.ModelDiscoveryBus()
+    bridge._discovery_bus = bus
+    bridge._prefs._discovery_bus_value = bus
+    bus.modelsChanged.connect(bridge.receiveDiscoveredModels)
+    changed = []
+    bridge.contextChanged.connect(lambda: changed.append(True))
+    assert bridge._prefs.saveAssistantApiKey("display-memory-fixture-a")
+    bus.publish(api_url, [{"id": model, "evidence": "models_endpoint",
+                          "metadata": {"context_window": 262_144}}],
+                expected_fingerprint=bridge._prefs._assistant_credential_fingerprint)
+
+    # This is the real Qt getter on the GUI thread, with both possible I/O
+    # routes forbidden after seeding a credential-bound in-memory snapshot.
+    no_io = Mock(side_effect=AssertionError("context getter must not perform credential/cache I/O"))
+    monkeypatch.setattr(settings, "read_api_key", no_io)
+    monkeypatch.setattr(bus, "_reload_cache", no_io)
+    monkeypatch.setattr(bridge, "_reasoning_probe", no_io)
+    for _ in range(3):
+        assert bridge.contextUsage["capacity"] == (manual_capacity or 262_144)
+    no_io.assert_not_called()
+
+    changed.clear()
+    if action == "delete":
+        assert bridge._prefs.clearAssistantApiKey()
+    else:
+        assert bridge._prefs.saveAssistantApiKey("display-memory-fixture-b")
+    assert changed
+    assert bridge.contextUsage["capacity"] == (manual_capacity or 1_048_576)
+    assert bus.reasoning_snapshot_for(api_url, model) is None
+    no_io.assert_not_called()
+
+
+@pytest.mark.parametrize("secret", [None, "display-memory-replacement-key"])
+def test_fresh_worker_packet_revokes_external_key_change_from_display(
+        real_bridge, tmp_path, monkeypatch, secret):
+    bridge, _worker = real_bridge
+    api_url, model = "https://api.deepseek.com/v1", "deepseek-flash"
+    bridge._config.update(assistant_api_url=api_url, assistant_model=model, assistant_model_limits={})
+    monkeypatch.setattr(settings, "MODEL_CACHE_PATH", tmp_path / "models.json")
+    bus = settings.ModelDiscoveryBus()
+    bridge._discovery_bus = bus
+    bus.snapshotChanged.connect(bridge.receiveDiscoverySnapshot)
+    bus.publish(api_url, [{"id": model, "evidence": "models_endpoint",
+                          "metadata": {"context_window": 262_144}}],
+                expected_fingerprint=bus.credential_fingerprint(api_url, "display-memory-original-key"))
+    assert bridge.contextUsage["capacity"] == 262_144
+    changed = []
+    bridge.contextChanged.connect(lambda: changed.append(True))
+    monkeypatch.setattr(settings, "read_api_key", lambda *_args, **_kwargs: secret)
+    worker = bridge._worker_config()
+    assert worker["assistant_context_tokens"] == 1_048_576
+    assert worker["assistant_reasoning_probe"] is None
+    assert changed
+    assert bridge.contextUsage["capacity"] == 1_048_576
+
+
+def test_disk_entry_alone_and_unbound_model_fields_do_not_validate_display(real_bridge, tmp_path, monkeypatch):
+    bridge, _worker = real_bridge
+    api_url, model = "https://api.deepseek.com/v1", "deepseek-flash"
+    bridge._config.update(assistant_api_url=api_url, assistant_model=model, assistant_model_limits={})
+    monkeypatch.setattr(settings, "MODEL_CACHE_PATH", tmp_path / "models.json")
+    bus = settings.ModelDiscoveryBus()
+    fingerprint = bus.credential_fingerprint(api_url, "display-disk-fixture-key")
+    bus.publish(api_url, [{"id": model, "evidence": "models_endpoint",
+                          "metadata": {"context_window": 262_144}}], expected_fingerprint=fingerprint)
+    restored = settings.ModelDiscoveryBus()
+    restored.install_cache_snapshot(deepcopy(bus._entries), None)
+    bridge._discovery_bus = restored
+    assert bridge.contextUsage["capacity"] == 1_048_576
+    monkeypatch.setattr(settings, "read_api_key", lambda *_args, **_kwargs: "display-disk-fixture-key")
+    assert restored.reasoning_for(api_url, model) is not None
+    assert bridge.contextUsage["capacity"] == 262_144
+    bridge._config.update(assistant_api_url=API_URL, assistant_model=MODEL)
+    bridge._discovered_models = [{"id": MODEL, "context_length": 123_456}]
+    assert bridge.contextUsage["capacity"] == 0
+
+
+def test_snapshot_notification_observes_completed_entry_adoption(real_bridge, tmp_path, monkeypatch):
+    bridge, _worker = real_bridge
+    api_url, model = "https://api.deepseek.com/v1", "deepseek-flash"
+    bridge._config.update(assistant_api_url=api_url, assistant_model=model, assistant_model_limits={})
+    monkeypatch.setattr(settings, "MODEL_CACHE_PATH", tmp_path / "models.json")
+    bus = settings.ModelDiscoveryBus()
+    bridge._discovery_bus = bus
+    bus.publish(api_url, [{"id": model, "evidence": "models_endpoint",
+                          "metadata": {"context_window": 262_144}}],
+                expected_fingerprint=bus.credential_fingerprint(api_url, "snapshot-order-old-key"))
+    replacement = deepcopy(bus._entries[bus.cache_key(api_url)])
+    replacement["credential_fingerprint"] = bus.credential_fingerprint(api_url, "snapshot-order-new-key")
+    replacement["models"][0]["metadata"]["context_window"] = 524_288
+    monkeypatch.setattr(settings, "read_api_key", lambda *_args, **_kwargs: "snapshot-order-new-key")
+    monkeypatch.setattr(bus, "_reload_cache", lambda: bus._entries.update({bus.cache_key(api_url): replacement}))
+    seen = []
+    bus.snapshotChanged.connect(lambda _url: seen.append(bridge.contextUsage["capacity"]))
+    assert bus.reasoning_for(api_url, model) is not None
+    assert seen == [524_288]

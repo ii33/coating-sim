@@ -268,6 +268,9 @@ class AssistantBridge(QObject):
             str(self._config.get("assistant_api_url", "")))
         self._discovery_bus.modelsChanged.connect(self.receiveDiscoveredModels)
         self._discovery_bus.reasoningChanged.connect(self.receiveReasoningProbe)
+        snapshot_changed = getattr(self._discovery_bus, "snapshotChanged", None)
+        if snapshot_changed is not None:
+            snapshot_changed.connect(self.receiveDiscoverySnapshot)
         self._capabilities = reasoning_capabilities(
             str(self._config.get("assistant_api_url", "")),
             str(self._config.get("assistant_model", "")), self._reasoning_probe())
@@ -891,6 +894,11 @@ class AssistantBridge(QObject):
         self.configurationChanged.emit()
         self.contextChanged.emit()
 
+    @Slot(str)
+    def receiveDiscoverySnapshot(self, api_url: str) -> None:
+        if api_url == self._discovery_bus.api_key(str(self._config.get("assistant_api_url", ""))):
+            self.contextChanged.emit()
+
     def _reasoning_probe(self) -> dict | None:
         return self._discovery_bus.reasoning_for(
             str(self._config.get("assistant_api_url", "")), self.activeModel)
@@ -902,6 +910,7 @@ class AssistantBridge(QObject):
                 and model == self.activeModel):
             self._refresh_capabilities()
             self.configurationChanged.emit()
+            self.contextChanged.emit()
 
     def _refresh_capabilities(self) -> None:
         self._capabilities = reasoning_capabilities(
@@ -938,11 +947,16 @@ class AssistantBridge(QObject):
         return True
 
     def _worker_config(self) -> dict:
+        probe = self._reasoning_probe()
+        budget_config = {**self._config, "assistant_reasoning_probe": probe}
+        capacity = model_token_limits(budget_config,
+                                      str(self._config.get("assistant_api_url", "")),
+                                      cast(str, self.activeModel))["context_window_tokens"]
         return {**self._config, "task_mode": self.taskMode,
                 "reasoning_strength": self.reasoningStrength,
                 "assistant_system_language": QLocale.system().bcp47Name(),
-                "assistant_context_tokens": self._context_capacity(),
-                "assistant_reasoning_probe": self._reasoning_probe(),
+                "assistant_context_tokens": capacity,
+                "assistant_reasoning_probe": probe,
                 "output_audio": bool(self._output_audio)}
 
     def _clear_stream(self) -> None:
@@ -2537,18 +2551,15 @@ class AssistantBridge(QObject):
         self._stable_turns = None
 
     def _context_capacity(self) -> int:
-        configured = cast(int, model_token_limits(self._config,
+        # QML reads this during layout: only an already adopted memory snapshot
+        # belongs here. Request submission checks credentials independently.
+        snapshot = getattr(self._discovery_bus, "reasoning_snapshot_for", None)
+        probe = snapshot(str(self._config.get("assistant_api_url", "")), self.activeModel) if snapshot else None
+        budget_config = {**self._config, "assistant_reasoning_probe": probe}
+        configured = cast(int, model_token_limits(budget_config,
                                                   str(self._config.get("assistant_api_url", "")),
                                                   cast(str, self.activeModel))["context_window_tokens"])
-        if configured > 0:
-            return configured
-        for row in self._discovered_models:
-            if str(row.get("id", "")) == self.activeModel:
-                for key in ("context_length", "context_window", "max_context_tokens"):
-                    value = row.get(key)
-                    if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
-                        return int(value)
-        return 0
+        return configured
 
     @Property(str, notify=configurationChanged)
     def userName(self) -> str:

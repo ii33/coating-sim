@@ -163,7 +163,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#assistant-context">13a 模型有效输入预算与安全上下文压缩</a>
 <a href="#assistant-task-feedback">13a-1 模式与任务反馈</a>
 <a href="#assistant-stream-lifetime">13a-2 活动模型请求、续约与空闲超时</a>
-<a href="#assistant-model-probing">13a-3 服务商目录、原生档位与凭据绑定缓存</a>
+<a href="#assistant-model-probing">13a-3 离线模型默认配置、原生档位与凭据绑定缓存</a>
 <a href="#assistant-model-token-limits">13a-4 上下文预算字段、模型硬限与 K/M 单位</a>
 <a href="#assistant-token-cache">13a-5 缓存统计与模型用量折叠</a>
 <a href="#assistant-rich-render">13a-6 富文本公式与 SVG</a>
@@ -943,11 +943,11 @@ keep ordinary main/child output reservation O; a smaller summary output does not
 
 <section id="assistant-model-probing">
 <h2>13a-3 · 服务商目录、模型能力探测、原生推理档位与凭据绑定缓存</h2>
-<p>更新：2026-10-08。本节说明当前实现；没有物理空间坐标系，时间单位为秒/毫秒，用量单位为 Token。650 毫秒防抖、7 天 TTL、30 分钟失败/取消重试间隔、12 个候选上限和预算桶均为<strong>本项目约定</strong>，未找到外部依据，仅为本项目实现，不代表已验证的最优成本或质量策略。</p>
+<p>更新：2026-10-19（离线默认配置、精确容量来源与失败刷新保留）。本节说明当前实现；没有物理空间坐标系，时间单位为秒/毫秒，用量单位为 Token。650 毫秒防抖、7 天 TTL、30 分钟失败/取消重试间隔、12 个候选上限和预算桶均为<strong>本项目约定</strong>，未找到外部依据，仅为本项目实现，不代表已验证的最优成本或质量策略。</p>
 <h3>用途与输入输出</h3>
 <p>输入：当前 HTTP(S) Chat Completions 兼容地址、选定模型、本地供应商目录、该地址在系统钥匙串中的密钥、已有缓存、每日/时段 Token 配额及手动刷新/取消动作。输出：当前地址的模型记录、与探测列表分开的目录建议、每个模型已确认的原生推理档位、单字段请求配置、输出上限字段、证据详情和实报用量。目录只记录官方公开模型 ID 和端点用途，不证明账号权限或实际可用性；当前客户端没有 Anthropic Messages 与 OpenAI Responses API 适配。</p>
 <p>服务地址统一去掉尾部斜杠和 <code>/chat/completions</code>，无路径时补 <code>/v1</code>，保留供应商的 <code>/api/plan/v3</code> 路径。拒绝嵌入账户、查询参数及远程明文 HTTP；本机开发地址可使用 HTTP。地址历史最多保存 30 项，不含密钥。</p>
-<p>服务商预设按完整规范化端点匹配，不按主机名推断套餐。选择预设只改 URL 草稿，不立即写配置、迁移密钥或发送 HTTP；点击保存或手动刷新后才应用地址。Coding Plan 限定编程工具的项目显示为禁用信息项；协议尚未适配的原生 Anthropic 地址也不可选、不可探测。目录候选只给出主要、其他和预览类别；深度求索的旧模型保留在过时列表，不进入默认候选。</p>
+<p>服务商预设按完整规范化端点匹配，不按主机名推断套餐。选择预设会在设置窗口草稿中填入端点、适合当前 Chat Completions 协议的默认模型，并更新已有上下文预算与能力展示；只有保存才写入应用设置。同端点的手填模型、各端点/模型的显式预算覆盖均保留，不迁移密钥。新端点的自动推理选择可采用预置默认，显式选择保留。OpenAI 默认 Luna + none，避免默认工具请求落到尚未实现的 Responses。默认选择属于本项目约定，不证明账号权限。Coding Plan 限定编程工具的项目显示为禁用信息项；协议尚未适配的原生 Anthropic 地址也不可选、不可探测。目录候选只给出主要、其他和预览类别；深度求索的旧模型保留在过时列表，不进入默认候选。</p>
 <h3>自动触发与缓存</h3>
 <pre>on launch / saved configuration reload / URL or model change:
     restart single-shot debounce timer (650 ms)
@@ -957,13 +957,14 @@ when timer fires:
     if exact catalog profile forbids probing: return
     else: try shared endpoint lock; GET the confirmed profile URL,
           or /models for an unconfirmed/custom endpoint
-    if the list is missing (including 404), use the same bounded candidates
-        for automatic and manual refresh, with cost accounting and warning
+    if the list is missing: automatic discovery stops after GET;
+        only explicit manual refresh may try bounded candidates with cost accounting
     only non-empty choices confirms a candidate; do not infer model behavior
  manual list refresh: bypass cache freshness; GET the list endpoint, then use
      the same exact-profile candidate fallback on a missing list (max 12)
  unknown custom endpoint: no built-in IDs; only the hand-entered model may be tested
- preset selection: fill URL draft only; no config write, secret change, or request
+ preset selection: fill endpoint/model/configuration draft; no persisted write or secret migration
+ refresh: keep last good snapshot; replace only on success, retain old results on failure/cancel
 manual reasoning test: user explicitly starts up to 14 quota-consuming completion requests
 before every send and publication: require the captured credential fingerprint still matches
 loopback HTTP endpoints may be probed anonymously</pre>
@@ -1008,10 +1009,15 @@ do not combine two fields from separately accepted requests
 <h2>13a-4 · 上下文预算字段、模型硬限与 K/M 单位</h2>
 <p><strong>用途与输入输出：</strong>把用户预算配置按规范化 API 地址和区分大小写的完整模型 ID 隔离，并与离线容量证据结合，避免跨端点或相似模型误用上限。输入为完整设置对象、API 地址、模型 ID 与已组装请求估算；输出为精确模型能力、有效输入预算、压缩参数、请求前校验结果及统计显示值。无几何坐标。存储单位为整数 Token；界面预算用 K，统计按 K/M 自动显示。</p>
 <p><strong>五个唯一可编辑字段：</strong><code>C=context_window_tokens</code>（总上下文窗口）、<code>O=reserved_output_tokens</code>（普通请求输出预留）、<code>R=compression_reserve_tokens</code>（压缩预留）、<code>H=history_keep_tokens</code>（压缩后原始历史目标）、<code>p=compaction_threshold_percent</code>（自动压缩阈值百分比）。前四项界面使用 K（1 K = 1000 Token），<code>p</code> 使用百分比；内部和持久化均为整数 Token/整数百分比。空白或 0 表示自动。I（独立最大输入）取已核验官方模型记录与保留的旧版本地最大输入限中更严格者；Omax（独立最大输出）只来自已核验官方模型容量记录。旧版最大输出已迁移为用户预留 O，不是 Omax。两者都不是新的用户可编辑字段。</p>
+<p><strong>容量证据更新（2026-10-19）：</strong>DeepSeek 官方 <a href="https://api-docs.deepseek.com/api/list-models/">Models API 文档</a>明确给出 deepseek-flash / deepseek-v4-pro 的 context_window=1,048,576、max_output_tokens=393,216 Token，取代此前按未定义 K/M 保守换算的 1,000,000 / 384,000；独立输入硬限仍未知。该数字是离线文档证据，不冒称本次账号探测。JSON 支持逐条核验日期，未更新条目保留旧日期。选择模型按精确端点/ID 自动解析容量；用户非零覆盖保留并继续受官方硬限约束，0 保持自动。服务端模型列表的 ID 或短请求成功不能推断上下文、输出、工具或模态能力；具有已接入官方 schema 的明确容量字段仅标记为服务端声明，可刷新自动容量而不覆盖手动值；未找到对应字段外部依据时明确未知。见<a href="settings-coordination-contract.md">设置状态、刷新失败与取消边界</a>。</p>
+<figure><svg viewBox="0 0 760 108" role="img" aria-label="离线预置与刷新结果独立"><rect x="5" y="12" width="200" height="70" rx="8" fill="#e0f2fe"/><text x="18" y="40" fill="#123">离线端点 / 模型 / 容量证据</text><text x="18" y="65" fill="#123">无网络也能填写默认草稿</text><path d="M210 47 H280" stroke="#346" stroke-width="2"/><rect x="285" y="12" width="205" height="70" rx="8" fill="#dcfce7"/><text x="299" y="40" fill="#123">当前模型配置 + 显式覆盖</text><text x="299" y="65" fill="#123">保存后应用；未知不伪造</text><path d="M565 47 H495" stroke="#346" stroke-width="2"/><rect x="570" y="12" width="185" height="70" rx="8" fill="#fef3c7"/><text x="582" y="40" fill="#123">GET 列表 / 独立能力测试</text><text x="582" y="65" fill="#123">失败保留预置与历史结果</text></svg><figcaption>目录参数、手动覆盖和账号探测各自保留来源；列表成功不等同能力验证。默认选择与失败保留策略为本项目约定。</figcaption></figure>
 <p><strong>百万档默认（2026-10-13）：</strong>已确定总上下文 C 为 1,000,000、1,048,576 或 1,050,000 Token 时，自动压缩百分比默认 80%；其他档仍为 70%。用户显式非零值保留，初始化和重置存储 0（自动）并共同解析此规则。只有独立输入上限而总上下文未知时，不据输入上限虚构总上下文或改判百万档。触发 Token 数仍按下式由预留输出及压缩预留后的有效输入预算计算，并非无条件等于总上下文的 80%。这是项目默认策略，不是服务商硬限。</p>
 <pre>endpoint = normalize_catalog_endpoint(api_url)
 model_id = str(model).strip()  # preserve case; do not infer similar IDs
-profile = context_capacity_profile_for(api_url, model_id)  # exact endpoint and model ID
+profile = context_capacity_profile_for(api_url, model_id)  # exact offline endpoint/model
+profile = capacity_profile_with_metadata(profile, api_url, model_id, config.assistant_reasoning_probe.capacity_metadata)
+# Probe metadata comes only from the current credential-bound discovery cache; saved model overrides contain no server snapshot.
+# Only documented schema fields, exact binding, integer limits 1..2,000,000, age &lt; 7 days; otherwise offline.
 C = user_context_window or profile.context_window_tokens
 I = min_known(profile.max_input_tokens, preserved_legacy_max_input_tokens)
 Omax = profile.max_output_tokens  # absent remains unknown
@@ -1040,7 +1046,7 @@ if H ≥ target or H ≥ T or (known(B) and H ≥ B) or summary_output_tokens �
 <p><strong>状态迁移与保存：</strong><code>SettingsBridge</code> 持有设置对象并作为预算状态唯一所有者；QML 只维护未保存草稿。覆盖按规范化完整 API 地址和区分大小写模型 ID 保存。模型列表静态刷新不写入预算。旧最大输入保留为隐藏附加硬限；旧最大输出、上下文容量和阈值迁移到 <code>O</code>、<code>C</code>、<code>p</code>。迁移保留原始旧值和版本标记，标记存在时不重复迁移；超过已知硬限的旧值保留并标错，运行时拒绝使用而不静默钳位。重置只删除当前地址/模型的新版五项覆盖，不删除有效旧最大输入约束；只有当旧版独立 <code>max_input</code> 不是 0–2,000,000 范围内的整数（布尔值除外）时，显式重置才会把原始值及 <code>migration_error</code> 归档到 <code>legacy_values</code>、将活动 <code>max_input</code> 置为 0 并清除活动迁移错误。首次迁移或 v2 迁移未完成、且 `assistant_model_limits_legacy` 尚不存在时，迁移器将原始 `assistant_model_limits` 整张映射深拷贝保存到该备份；因键规范化而跳过的空白、非法或过长模型键仍可从整张映射恢复，既有备份不覆盖。`legacy_collisions` 保留冲突并继续触发预检拒绝，须人工恢复或移除；五字段 reset 不清除这些冲突。</p>
 <p><strong>默认参数与换算：</strong>Token 字段允许 0 到 2,000,000，阈值为 0（自动）或 1–100；自动阈值为 <code>p=70</code>。<code>O</code>、<code>R</code>、<code>H</code> 的完整默认公式见第 <a href="#assistant-context">13a 节</a>。预算函数在未知 <code>B</code> 时返回 <code>budget_known=false</code>；调度值先从 64,000 Token 基准扣除 <code>R</code>，所以默认 <code>R=1280</code> 时触发 <code>T=43,904</code>，这不代表输入硬限。未知的 <code>Omax</code> 不充当硬限；未知 <code>C</code> 不从 <code>I+Omax</code> 推导。超过 1,000,000 Token 的统计使用 M，否则用 K；K 显示最多 3 位小数、M 最多 2 位并去掉尾零，未知值保持“未提供”。1 K=1000、1 M=1000000 和格式精度是本项目约定。</p>
 <p><strong>实现位置：</strong><a href="../coat_sim/agent/modelclient.py"><code>context_budget_for_model(config: Mapping, api_url: str, model: str, *, fallback_input_tokens: int = 64000)</code></a> 与 <code>migrate_model_context_overrides(values: object, *, endpoint: str = "", model: str = "")</code>；<a href="../coat_sim/ui/provider_catalog_sources.json"><code>provider_catalog_sources.json</code></a> 顶层的 <code>context_capacity_catalog</code> 保存离线容量证据，<a href="../coat_sim/ui/provider_catalog.py"><code>context_capacity_profile_for(api_url: str, model: str)</code></a> 提供规范化端点和精确模型匹配；<a href="../coat_sim/ui/settings.py"><code>SettingsBridge.assistantContextBudget / assistantContextProfileOverrides</code></a> 持有预算与来源覆盖状态；<a href="../coat_sim/ui/qml/SettingsWindow.qml"><code>SettingsWindow.qml</code></a> 的“模型上下文与压缩”折叠区显示五个预算字段和只读预览；<a href="../coat_sim/ui/token_format.py"><code>token_format.py::format_tokens</code></a> 格式化统计。</p>
-<p><strong>适用条件与近似：</strong>只有精确容量记录可设已知硬限；其他端点/模型保持未知，模型列表或探测结果不推断硬限。请求输入估算不保证等于服务端 tokenizer 实际计数；64 K 未知容量回退仅控制压缩调度，不拒绝超大请求。阈值、默认参数、K/M显示及设置隔离规则均为<span class="tag local">本项目约定</span>。</p>
+<p><strong>适用条件与近似：</strong>只有精确容量记录或官方 Models schema 明确的服务端容量字段可设已知硬限；其他端点/模型保持未知，不从模型列表 ID 或短聊天成功推断硬限。当前仅接入 DeepSeek 的 context_window 与 max_output_tokens：整数 1–2,000,000、精确端点/模型绑定、schema 来源匹配且观测时间有限、非未来、未满 7 天，才覆盖对应自动容量字段；缺字段逐项回退到离线证据。声明复用 ModelDiscoveryBus 现有凭据绑定缓存，通过已有 assistant_reasoning_probe 快照传给设置预览与运行时；沿用模型列表成功时间，不因读取续期。普通设置仅保存用户显式覆盖，不写入服务端容量、密钥或指纹。成功删除/替换密钥即使尚未打开探测也使共享缓存同步失效，并取消其它窗口捕获旧凭据的探测，迟到响应不能恢复旧证据；手动模型列表、候选回退及推理测试在开始前共同采用本次凭据读取快照并使旧引导结果过期。多窗口按自身绑定身份读取，助手容量显示与后续运行时快照使用相同模型证据并重新核对实际密钥；凭据库操作失败保留现有缓存。旧 provider_metadata 设置字段不再参与容量解析，规范化时丢弃。7 天 TTL 和安全数值界限为本项目约定，声明不代表压力测试成功。失败、取消和仅返回 ID 保留已有配置。请求输入估算不保证等于服务端 tokenizer 实际计数；64 K 未知容量回退仅控制压缩调度，不拒绝超大请求。阈值、默认参数、K/M显示及设置隔离规则均为<span class="tag local">本项目约定</span>。</p>
 <p><strong>参考来源：</strong>容量数据在<a href="../coat_sim/ui/provider_catalog_sources.json">离线 <code>context_capacity_catalog</code></a> 中逐条附有对应供应商官方来源链接；Gemini OpenAI 兼容端点遵循<a href="https://ai.google.dev/gemini-api/docs/openai">Google 官方兼容 API 文档</a>。摘要式压缩机制参照<a href="https://pydantic.dev/docs/ai/capabilities/compaction/">Pydantic AI 官方 Compaction 文档</a>，但它不验证本项目的 B/T/target 公式和默认参数。预算公式、缺省行为和兼容适用范围未找到外部依据，仅为本项目实现。</p>
 </section>
 

@@ -944,11 +944,13 @@ AppWindow {
                                         if (!preset || !preset.selectable)
                                             return
                                         assistantUrlField.applyingProviderPreset = true
-                                        assistantUrlField.editText = preset.base_url
+                                        window.settingsBridge.applyAssistantProviderPreset(preset.id)
+                                        assistantUrlField.editText = Qt.binding(function() { return window.settingsBridge.assistantApiUrl })
+                                        assistantModelField.text = Qt.binding(function() { return window.settingsBridge.assistantModel })
                                         assistantUrlField.applyingProviderPreset = false
                                         assistantKeyField.text = ""
                                     }
-                                    Accessible.name: "从本地服务商目录选择 API 地址；选择只更改尚未保存的地址"
+                                    Accessible.name: "离线服务商目录；选择后自动填充地址、默认模型和配置草稿，保存后生效"
                                 }
                             }
                             ThemeControls.ThemeLabel {
@@ -1021,7 +1023,7 @@ AppWindow {
                                     Layout.maximumWidth: 530
                                     text: bridge.assistantModel
                                     enabled: !bridge.modelDiscoveryBusy
-                                    placeholderText: "填写模型名，或选择探测结果"
+                                    placeholderText: "选择离线预置，手动填写模型名，或刷新模型"
                                     selectByMouse: true
                                     onTextEdited: bridge.setAssistantConfig(settingsPage.assistantSwitchControl.checked,
                                                                            assistantUrlField.text, text)
@@ -1069,15 +1071,32 @@ AppWindow {
                                         width: providerModelCatalog.width
                                         text: modelData.id + ({primary: " · 主要", additional: " · 其他", preview: " · 预览"})[modelData.category]
                                     }
-                                    onActivated: assistantModelField.text = currentValue
+                                    currentIndex: {
+                                        const rows = window.settingsBridge.providerModelSuggestions(assistantUrlField.text)
+                                        return rows.findIndex(function(row) { return row.id === window.settingsBridge.assistantModel })
+                                    }
+                                    onActivated: {
+                                        window.settingsBridge.setAssistantConfig(advancedSettingsForm.settingsPage.assistantSwitchControl.checked,
+                                                                  assistantUrlField.text, currentValue)
+                                        assistantModelField.text = Qt.binding(function() { return window.settingsBridge.assistantModel })
+                                    }
                                     Accessible.name: "官方目录中的模型 ID 建议；选择后仍未验证账号可用性"
                                 }
                                 ThemeControls.ThemeLabel {
-                                    text: "目录 ID 未验证账号权限；选择后请手动保存或刷新验证。"
+                                    text: "离线可用；选模型后自动显示文档参数，手动覆盖按地址和模型保留。列表返回不代表能力已验证。"
                                     Layout.fillWidth: true
                                     wrapMode: Text.WordWrap
                                     color: settingsPage && settingsPage.settingsWindow.themeColors ? settingsPage.settingsWindow.themeColors.colorTextMuted : Theme.snapshot.colorTextMuted
                                 }
+                            }
+
+                            ThemeControls.ThemeLabel {
+                                objectName: "providerModelConfigurationInfo"
+                                text: window.settingsBridge.assistantModelConfigurationInfo
+                                textFormat: Text.PlainText
+                                Layout.fillWidth: true
+                                wrapMode: Text.WrapAnywhere
+                                color: window.themeColors ? window.themeColors.colorTextMuted : window.palette.placeholderText
                             }
 
                             GridLayout {
@@ -1420,7 +1439,7 @@ AppWindow {
                                 visible: probeDetailsToggle.checked
                                 spacing: 6
                                 ThemeControls.ThemeLabel {
-                                    text: "模型缓存按服务商、地址和凭据区分，最长 7 天；密钥变化后失效。自动探测和手动刷新先读取 /models；没有可用列表时会依次用至多 12 个候选模型发送短聊天请求，单次输出上限 32 Token，并消耗额度、可能计费。远程服务需密钥，本机回环服务可匿名探测。推理强度测试仅由上方按钮手动发起，最多 14 次请求；单次输出上限 32 Token、单次超时 15 秒，总时限 120 秒。参数被接受不代表内部推理效果。"
+                                    text: "模型缓存按服务商、地址和凭据区分，最长 7 天；密钥变化后失效。自动探测只读取 /models；手动刷新先读取 /models，没有可用列表时会依次用至多 12 个候选模型发送短聊天请求，单次输出上限 32 Token，并消耗额度、可能计费。远程服务需密钥，本机回环服务可匿名探测。推理强度测试仅由上方按钮手动发起，最多 14 次请求；单次输出上限 32 Token、单次超时 15 秒，总时限 120 秒。参数被接受不代表内部推理效果。"
                                     Layout.fillWidth: true
                                     wrapMode: Text.WordWrap
                                 }

@@ -16,7 +16,7 @@ A desktop tool for optical thin-film research and engineering development, bring
 - **Results and automation:** manage calculation queues and result assets; use geometric ray tracing and appearance rendering. Some operations also have CLI, MCP, and optional AI-assistant entry points. Their capabilities and permissions differ; see the [entry-point matrix](docs/entrypoint-capabilities.md).
 - **Installation:** the [independent installer](https://github.com/ii33/coating-sim-installer) owns deployment; the application supplies declarative dependencies.
 
-Models, units, sampling rules, approximations, and sources are documented in the [algorithm atlas](docs/algorithms.html). Download this self-contained HTML file and open it locally for offline reading; GitHub's source preview is not a rendered documentation site. The [software manual](docs/software_manual.html) provides fuller usage guidance. Most detailed documentation and UI text are currently in Chinese.
+For everyday setup, start with the [software manual workflow](docs/software_manual.html#workflow), [assistant settings](docs/software_manual.html#settings), and [algorithm selection guide](docs/software_manual.html#algorithm_selection). The [algorithm atlas](docs/algorithms.html) explains formulas, units, sampling, approximations, and sources. Both HTML files can be downloaded for offline reading; GitHub source preview does not render them.
 
 ## Quick start
 

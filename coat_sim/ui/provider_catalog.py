@@ -9,7 +9,10 @@ from __future__ import annotations
 from copy import deepcopy
 from html import unescape
 import json
+import math
+import time
 from pathlib import Path
+from typing import TypedDict
 from urllib.parse import urlsplit, urlunsplit
 
 
@@ -54,13 +57,13 @@ def context_capacity_profile_for(api_url: str, model: str) -> dict[str, object]:
     model_id = model.strip() if isinstance(model, str) else ""
     raw = catalog.get("profiles", {}).get(endpoint, {}).get(model_id) if endpoint and model_id else None
     matched = isinstance(raw, dict)
-    raw = raw if matched else {}
+    raw = raw if isinstance(raw, dict) else {}
     return {
         "context_window_tokens": _catalog_token_limit(raw.get("context_window_tokens")),
         "max_input_tokens": _catalog_token_limit(raw.get("max_input_tokens")),
         "max_output_tokens": _catalog_token_limit(raw.get("max_output_tokens")),
         "source": tuple(str(item) for item in raw.get("sources", ()) if isinstance(item, str)),
-        "date": str(catalog.get("verified_at", "")),
+        "date": str(raw.get("verified_at", catalog.get("verified_at", ""))),
         "version": CONTEXT_CAPACITY_CATALOG_VERSION,
         "match": {
             "endpoint": endpoint,
@@ -165,12 +168,15 @@ def _to_profile(record: dict[str, object]) -> dict[str, object]:
             "native_protocol": False,
         },
         "sources": sources,
-        "verified_date": CATALOG_VERIFIED_DATE,
+        "verified_date": str(record.get("verified_at", CATALOG_VERIFIED_DATE)),
+        "default_model": str(record.get("default_model") or next(iter(probe_ids), "")) if selectable else "",
+        "default_reasoning_strength": str(record.get("default_reasoning_strength", "auto")),
+        "model_details": deepcopy(record.get("model_details", {})),
         "selectable": selectable,
         "probe_allowed": selectable,
         # Preserve the settings page's existing automatic read / bounded
         # candidate fallback after a URL or saved-key change. Selecting a
-        # preset itself does not call setAssistantConfig or initiate a probe.
+        # preset updates the settings draft; all probes retain the existing gates.
         "default_auto_probe": selectable,
     }
 
@@ -237,6 +243,115 @@ def model_suggestions(api_url: str) -> list[dict[str, str]]:
             display_category = "preview" if "preview" in status.lower() else category
             result.append({"id": str(model_id), "category": display_category, "status": status})
     return result
+
+
+MODEL_METADATA_TTL_SECONDS = 7 * 24 * 3600
+DEEPSEEK_MODELS_SCHEMA = "https://api-docs.deepseek.com/api/list-models/"
+
+
+def model_metadata_capacity(api_url: str, model: str, metadata: object,
+                            *, observed_at: float | None = None) -> dict[str, object]:
+    """Read only documented fields from an exact provider's Models schema.
+
+    These are server-declared limits, not a successful inference/capability test.
+    Other providers' similarly named fields are deliberately not guessed.
+    """
+    profile = profile_for_url(api_url)
+    if not profile or profile["id"] != "deepseek_official" or not isinstance(metadata, dict):
+        return {}
+    values = {}
+    for field, key in (("context_window_tokens", "context_window"), ("max_output_tokens", "max_output_tokens")):
+        value = metadata.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and 0 < value <= 2_000_000:
+            values[field] = value
+    if not values:
+        return {}
+    return {"api_url": normalize_catalog_endpoint(api_url), "model": model,
+            "observed_at": time.time() if observed_at is None else observed_at, "limits": values,
+            "schema_source": DEEPSEEK_MODELS_SCHEMA, "evidence": "server_declared_metadata"}
+
+
+def capacity_profile_with_metadata(profile: dict[str, object], api_url: str, model: str,
+                                   metadata: object) -> dict[str, object]:
+    """Overlay fresh, endpoint/model-bound server declarations onto auto caps."""
+    if not isinstance(metadata, dict) or metadata.get("evidence") != "server_declared_metadata":
+        return profile
+    if (metadata.get("api_url") != normalize_catalog_endpoint(api_url)
+            or metadata.get("model") != model or metadata.get("schema_source") != DEEPSEEK_MODELS_SCHEMA):
+        return profile
+    timestamp = metadata.get("observed_at")
+    if (not isinstance(timestamp, (int, float)) or isinstance(timestamp, bool)
+            or not math.isfinite(timestamp) or not 0 <= time.time() - timestamp < MODEL_METADATA_TTL_SECONDS):
+        return profile
+    raw = metadata.get("limits")
+    if not isinstance(raw, dict):
+        return profile
+    checked = model_metadata_capacity(api_url, model, {
+        "context_window": raw.get("context_window_tokens"),
+        "max_output_tokens": raw.get("max_output_tokens"),
+    })
+    if not checked:
+        return profile
+    result = dict(profile)
+    limits = checked["limits"]
+    assert isinstance(limits, dict)
+    result.update(limits)
+    result["source"] = (models_endpoint_for_url(api_url, normalize_catalog_endpoint(api_url)), DEEPSEEK_MODELS_SCHEMA)
+    result["date"] = time.strftime("%Y-%m-%d", time.gmtime(timestamp))
+    result["evidence"] = "server_declared_metadata"
+    result["unknown_reason"] = ""
+    result["match"] = {"endpoint": normalize_catalog_endpoint(api_url), "model": model,
+                       "matched": True, "rule": "exact endpoint/model and documented Models metadata schema"}
+    result["notes"] = "服务端按官方 Models schema 声明的容量；不是推理、工具或账号权限验证。7 天后回到离线文档预置。"
+    return result
+
+
+class ModelConfiguration(TypedDict):
+    model: str
+    protocol: str
+    context_window_tokens: int
+    max_input_tokens: int
+    max_output_tokens: int
+    capabilities: dict[str, str]
+    notes: str
+    sources: list[str]
+    verified_date: str
+    availability_verified: bool
+    capabilities_verified: bool
+
+
+def _source_urls(value: object) -> list[str]:
+    return [item for item in value if isinstance(item, str)] if isinstance(value, (list, tuple)) else []
+
+
+def model_configuration_for(api_url: str, model: str) -> ModelConfiguration:
+    """Documented defaults independent of account discovery; zero caps are unknown."""
+    profile = profile_for_url(api_url) or {}
+    capacity = context_capacity_profile_for(api_url, model)
+    all_details = profile.get("model_details", {})
+    raw_details = all_details.get(model, {}) if isinstance(all_details, dict) else {}
+    details = raw_details if isinstance(raw_details, dict) else {}
+    capabilities = {field: "unknown" for field in ("tool_use", "image_input", "audio_input", "video_input")}
+    raw_capabilities = details.get("capabilities", {})
+    if isinstance(raw_capabilities, dict):
+        capabilities.update({key: value for key, value in raw_capabilities.items()
+                             if isinstance(key, str) and isinstance(value, str)})
+    match = capacity["match"]
+    matched = isinstance(match, dict) and match.get("matched") is True
+    return {
+        "model": model,
+        "protocol": str(profile.get("protocol", "openai_chat_completions")),
+        "context_window_tokens": _catalog_token_limit(capacity["context_window_tokens"]),
+        "max_input_tokens": _catalog_token_limit(capacity["max_input_tokens"]),
+        "max_output_tokens": _catalog_token_limit(capacity["max_output_tokens"]),
+        "capabilities": capabilities,
+        "notes": str(details.get("notes", capacity.get("notes", ""))),
+        "sources": list(dict.fromkeys(_source_urls(capacity["source"]) + _source_urls(details.get("sources"))
+                                     + _source_urls(profile.get("sources")))),
+        "verified_date": str(details.get("verified_at", capacity["date"] if matched else profile.get("verified_date", ""))),
+        "availability_verified": False,
+        "capabilities_verified": False,
+    }
 
 
 def models_endpoint_for_url(api_url: str, normalized_base: str) -> str:

@@ -4,7 +4,7 @@ from __future__ import annotations
 from urllib.parse import urlsplit, urlunsplit
 from collections.abc import Mapping
 
-from coat_sim.ui.provider_catalog import context_capacity_profile_for
+from coat_sim.ui.provider_catalog import context_capacity_profile_for, capacity_profile_with_metadata
 
 TASK_MODES = ("chat", "operate", "research")
 NATIVE_EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra")
@@ -219,7 +219,7 @@ def migrate_model_context_overrides(values: object, *, endpoint: str = "",
                 for field in CONTEXT_BUDGET_FIELDS:
                     migrated[field] = record.get(field, 0)
                 for key, value in record.items():
-                    if key not in (*CONTEXT_BUDGET_FIELDS, "max_input_tokens", "legacy_values"):
+                    if key not in (*CONTEXT_BUDGET_FIELDS, "max_input_tokens", "legacy_values", "provider_metadata"):
                         migrated[key] = value
                 if model_key != name:
                     migrated["legacy_record_name"] = name
@@ -296,6 +296,9 @@ def context_budget_for_model(config: Mapping, api_url: str, model: str,
     record = migrated.get(endpoint, {}).get(model_id, {})
     if not isinstance(record, Mapping):
         record = {}
+    probe = config.get("assistant_reasoning_probe")
+    metadata = probe.get("capacity_metadata") if isinstance(probe, Mapping) else None
+    profile = capacity_profile_with_metadata(profile, api_url, model_id, metadata)
 
     overrides = {field: _field_value(record, field) for field in CONTEXT_BUDGET_FIELDS}
     errors: list[str] = []
@@ -428,7 +431,7 @@ def model_token_limits(config: Mapping, api_url: str, model: str) -> dict[str, o
 
 def _validated_probe(api_url: str, model: str, probe: object) -> dict | None:
     """Only endpoint/model-bound results and one verified request field pass."""
-    if not isinstance(probe, dict):
+    if not isinstance(probe, dict) or probe.get("evidence") == "server_capacity_only":
         return None
     try:
         if (_normalized_url(str(probe.get("api_url", ""))) != _normalized_url(api_url)
