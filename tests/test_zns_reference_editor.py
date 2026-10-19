@@ -124,7 +124,8 @@ class ZnSReferenceEditorTests(MaterialQtCase):
         self.lib.reload()
         self.settle_materials()
         self.assertEqual(len(self.lib.entries), len(builtin_material_profiles()) + 1)
-        self.use_builtin()
+        builtin = self.use_builtin()
+        identifier = builtin["id"]
         reference = deepcopy(self.lib.referenceData)
         self.assertGreater(len(self.lib.referenceSections), 15)
         text = json.dumps(self.lib.referenceSections, ensure_ascii=False)
@@ -140,8 +141,6 @@ class ZnSReferenceEditorTests(MaterialQtCase):
         self.assertTrue(self.lib.builtinOverridden)
         self.assertEqual(self.lib.fields["name"], "Edited ZnS preset")
         self.assertEqual(self.lib.referenceData, reference)
-        self.assertFalse(self.lib.confirmDelete(True))
-        self.settle_materials()
         self.assertTrue(self.lib.copyMaterial())
         self.settle_materials()
         self.assertFalse(self.lib.builtin)
@@ -155,6 +154,27 @@ class ZnSReferenceEditorTests(MaterialQtCase):
         self.assertEqual(self.source.documentData()["material"]["reference_data"], reference)
         self.assertEqual((folder / "existing.json").read_bytes(), before)
         self.assertNotEqual(self.lib.currentId, builtin_material_profiles()[0]["id"])
+
+        # A builtin override is now removed through the durable tombstone and
+        # can be restored, without disturbing the copy/portability guarantees
+        # above or the unrelated user material already on disk.
+        self.assertTrue(self.lib.selectMaterial("builtin:" + identifier))
+        self.settle_materials()
+        self.assertTrue(self.lib.builtin)
+        self.assertTrue(self.lib.builtinOverridden)
+        self.assertEqual(self.lib.currentId, identifier)
+        self.assertTrue(self.lib.confirmDelete(True))
+        self.settle_materials()
+        self.assertFalse(self.lib.builtin)
+        self.assertNotIn(identifier, [row["id"] for row in self.lib.entries])
+        self.assertIn(identifier, [row["id"] for row in self.lib.deletedBuiltins])
+        self.assertTrue(self.lib.restoreDeletedBuiltin(identifier))
+        self.settle_materials()
+        self.assertTrue(self.lib.builtin)
+        self.assertFalse(self.lib.builtinOverridden)
+        self.assertEqual(self.lib.currentId, identifier)
+        self.assertNotIn(identifier, [row["id"] for row in self.lib.deletedBuiltins])
+        self.assertEqual((folder / "existing.json").read_bytes(), before)
 
     def test_builtin_and_user_id_collision_are_distinct_no_overwrite(self):
         identity = builtin_material_profiles()[0]["id"]

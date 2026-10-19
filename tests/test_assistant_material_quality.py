@@ -57,7 +57,7 @@ def test_missing_source_range_and_conditions():
     except ValueError:
         pass
     else:
-        assert False, "missing wavelength unit must fail schema validation"
+        raise AssertionError("missing wavelength unit must fail schema validation")
     record = table()
     del record["wavelength_max"]
     try:
@@ -65,7 +65,7 @@ def test_missing_source_range_and_conditions():
     except ValueError:
         pass
     else:
-        assert False, "missing validity range must fail schema validation"
+        raise AssertionError("missing validity range must fail schema validation")
 
 
 def test_unknown_k_cannot_be_written_as_zero():
@@ -93,4 +93,4 @@ def test_incomplete_formula_coefficients_fail():
     except ValueError:
         pass
     else:
-        assert False, "incomplete dispersion coefficients must fail"
+        raise AssertionError("incomplete dispersion coefficients must fail")

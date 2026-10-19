@@ -773,7 +773,7 @@ def optimize_film_design_with_needle(
                             break
                         continue
                     total_evaluations += 1
-                    trial = {
+                    trial: dict[str, Any] = {
                         "score": score,
                         "design": trial_design,
                         "layer_id": layer_id,
@@ -796,7 +796,7 @@ def optimize_film_design_with_needle(
             rolled_back += len(trials)
             break
 
-        improving = []
+        improving: list[dict[str, Any]] = []
         for trial in trials:
             score_key = trial["score"]["key"]
             if score_key < _score_key(incumbent):

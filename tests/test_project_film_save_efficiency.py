@@ -94,7 +94,9 @@ def test_generation_replaces_contents_retains_managed_identity_and_saves_once(tm
     assert editor.save_current(), editor.snapshot().error
     persisted = service.load_document(saved.document_id)
     assert persisted.design == editor.snapshot().design
-    assert persisted.design["front_layers"][0]["thickness"]["value"] == 73.12345678901234
+    # Direct user thickness edits persist at the explicit 3-decimal contract.
+    assert persisted.design["front_layers"][0]["thickness"]["value"] == 73.123
+    assert editor.snapshot().design["front_layers"][0]["thickness"]["value"] == 73.123
     assert len(service.list_saved_designs()) == 1
     assert editor.save_copy_current(), editor.snapshot().error
     assert len(service.list_saved_designs()) == 2

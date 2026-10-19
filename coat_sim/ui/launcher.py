@@ -28,6 +28,7 @@ from coat_sim.version import BUILD_IDENTITY, format_startup_line
 
 
 if TYPE_CHECKING:
+    from coat_sim.ui.film_optimization_quick_controller import FilmOptimizationQuickController
     from coat_sim.ui.global_resources import GlobalResourcesBridge
     from coat_sim.ui.project_application_client import ProjectApplicationClient
     from coat_sim.ui.project_application_lifecycle import ProjectApplicationLifecycle
@@ -1429,7 +1430,7 @@ class LauncherBridge(QObject):
             window.show()
         self._activate_window(window)
         if pending.spec.key == "film_optimization":
-            pending.bridge.startLoading()
+            cast("FilmOptimizationQuickController", pending.bridge).startLoading()
         if animate:
             self._start_window_transition(str(instance_id), window)
 

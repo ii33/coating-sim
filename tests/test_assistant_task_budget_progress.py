@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
 from coat_sim.agent import runtime
+from coat_sim.agent.storage import AssistantStore
 from coat_sim.agent.tool_results import TaskLimitReached, task_limits
 from coat_sim.ui import settings
 
@@ -58,7 +59,7 @@ class Store:
 def meter(monkeypatch: pytest.MonkeyPatch, config: dict[str, Any], *, mode: str = "chat") -> tuple[runtime.BudgetAndTools, Store, Writer]:
     store, writer = Store(), Writer()
     result = object.__new__(runtime.BudgetAndTools)
-    result.store, result.writer = store, writer
+    result.store, result.writer = cast(AssistantStore, store), writer
     result.config = {"assistant_api_url": "http://localhost:12345/v1", **config}
     result.session, result.request, result.model = "session", "request", "local-model"
     result.role, result.mode, result.strength = "main", mode, "auto"

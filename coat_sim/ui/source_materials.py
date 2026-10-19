@@ -605,7 +605,7 @@ class MaterialLibraryBridge(QObject):
         self._builtin = False
         self._builtin_overridden = False
         self._overridden_ids = set()
-        self._deleted_builtins = []
+        self._deleted_builtins: list[dict[str, Any]] = []
         self._selected_key = ""
         self._reference_data = None
         self._research_data = None
@@ -725,15 +725,15 @@ class MaterialLibraryBridge(QObject):
             self._valid, self._error = True, ""
         self.changed.emit()
 
-    @Property("QVariantList", notify=changed)
+    @Property(list, notify=changed)
     def entries(self):
         return [dict(row, roles=list(row["roles"])) for row in self._entry_cache]
 
-    @Property("QVariantList", notify=changed)
+    @Property(list, notify=changed)
     def filmEntries(self):
         return [dict(row, roles=list(row["roles"])) for row in self._entry_cache if row["sourceBindable"]]
 
-    @Property("QVariantList", notify=changed)
+    @Property(list, notify=changed)
     def substrateEntries(self):
         return [dict(row, roles=list(row["roles"])) for row in self._entry_cache if row["substrateBindable"]]
 
@@ -768,7 +768,7 @@ class MaterialLibraryBridge(QObject):
     def operationBusy(self):
         return self._operation_busy
 
-    @Property("QVariantList", notify=changed)
+    @Property(list, notify=changed)
     def importPreview(self):
         return deepcopy(self._import_preview_rows)
 
@@ -827,7 +827,7 @@ class MaterialLibraryBridge(QObject):
         entry = self._optical_preview_entry(record)
         return [] if entry[2] is None else deepcopy(entry[2])
 
-    @Property("QVariantList", notify=changed)
+    @Property(list, notify=changed)
     def opticalSets(self):
         catalog = optical_constants.optical_model_catalog()
         result = []
@@ -894,7 +894,7 @@ class MaterialLibraryBridge(QObject):
             self._timer.stop()
         return True
 
-    @Property("QVariantList", notify=changed)
+    @Property(list, notify=changed)
     def opticalModelCatalog(self):
         return [dict(row) for row in optical_constants.optical_model_catalog()]
 
@@ -1110,7 +1110,7 @@ class MaterialLibraryBridge(QObject):
             self._validate()
             self.changed.emit()
 
-    @Property("QVariantList", notify=changed)
+    @Property(list, notify=changed)
     def filteredEntries(self):
         terms = self._search_text.casefold().split()
         return [dict(row, roles=list(row["roles"])) for row in self._entry_cache
@@ -1138,7 +1138,7 @@ class MaterialLibraryBridge(QObject):
             self._role_filter = value
             self.changed.emit()
 
-    @Property("QVariantList", notify=changed)
+    @Property(list, notify=changed)
     def roles(self):
         return deepcopy(self._roles or [])
 
@@ -1197,7 +1197,7 @@ class MaterialLibraryBridge(QObject):
         return (not self.loading and
                 (self._saved_id is not None or self._builtin))
 
-    @Property("QVariantList", notify=changed)
+    @Property(list, notify=changed)
     def deletedBuiltins(self):
         return deepcopy(self._deleted_builtins)
 
@@ -1221,7 +1221,7 @@ class MaterialLibraryBridge(QObject):
     def researchData(self):
         return deepcopy(self._research_data or {})
 
-    @Property("QVariantList", notify=changed)
+    @Property(list, notify=changed)
     def referenceSections(self):
         return self._reference_sections_with_optics()
 

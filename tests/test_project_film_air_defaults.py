@@ -2,6 +2,7 @@
 from copy import deepcopy
 import os
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -183,11 +184,14 @@ def test_native_project_medium_controls_match_model_and_missing_ids(tmp_path):
     session, _ = make_session(tmp_path)
     controller = FilmDesignQuickController(tmp_path, service=session.service, edit_session=session)
     # Ideal Air is an ordinary entry in the medium picker (usage, not category).
-    assert any(row["id"] == AIR_MATERIAL_ID for row in controller.mediumOptions)
+    assert any(row["id"] == AIR_MATERIAL_ID
+               for row in cast(list[dict[str, Any]], controller.mediumOptions))
     assert AIR_OPTICAL_SET_ID in {row["id"]
                                   for row in controller.opticalSetsFor(AIR_MATERIAL_ID)}
-    assert all(row["id"] != AIR_MATERIAL_ID for row in controller.substrateOptions)
-    assert all(row["id"] != AIR_MATERIAL_ID for row in controller.filmOptions)
+    assert all(row["id"] != AIR_MATERIAL_ID
+               for row in cast(list[dict[str, Any]], controller.substrateOptions))
+    assert all(row["id"] != AIR_MATERIAL_ID
+               for row in cast(list[dict[str, Any]], controller.filmOptions))
 
     engine = QQmlApplicationEngine()
     ThemeService.instance().attach_engine(engine, "Theme")

@@ -4,11 +4,12 @@ from __future__ import annotations
 import os
 import threading
 import time
+from typing import cast
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PySide6.QtCore import QThreadPool
+from PySide6.QtCore import QCoreApplication, QThreadPool
 from PySide6.QtGui import QGuiApplication
 import shiboken6
 
@@ -22,7 +23,7 @@ from tests.test_film_optimization_target_sampling import _snapshot
 pytestmark = pytest.mark.qt
 
 
-def _wait(app: QGuiApplication, predicate, timeout: float = 3.0) -> None:
+def _wait(app: QCoreApplication, predicate, timeout: float = 3.0) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         app.processEvents()
@@ -59,7 +60,7 @@ def test_slow_probe_does_not_block_open_and_catalog_is_read_once(tmp_path, monke
         assert time.perf_counter() - started < 0.5
         assert controller.loading
         assert not controller.canStart
-        assert "加载" in controller.statusText
+        assert "加载" in cast(str, controller.statusText)
         controller.startLoading()
         controller.startLoading()
         assert entered.wait(2)
@@ -184,7 +185,7 @@ def test_material_failure_is_visible_and_blocks_start(tmp_path, monkeypatch):
     try:
         controller.startLoading()
         _wait(app, lambda: not controller.loading)
-        assert "injected catalog failure" in controller.statusText
+        assert "injected catalog failure" in cast(str, controller.statusText)
         assert not controller.canStart
         assert not controller.startOptimization()
     finally:
@@ -202,11 +203,11 @@ def test_configuration_failure_finishes_loading_and_can_reopen(tmp_path, monkeyp
     def fail_restore(*, reset_missing):
         raise OSError("injected configuration failure")
 
-    first._restore_session_configuration = fail_restore
+    monkeypatch.setattr(first, "_restore_session_configuration", fail_restore)
     try:
         first.startLoading()
         _wait(app, lambda: not first.loading)
-        assert "injected configuration failure" in first.statusText
+        assert "injected configuration failure" in cast(str, first.statusText)
         assert not first.canStart
     finally:
         first.shutdown(1000)

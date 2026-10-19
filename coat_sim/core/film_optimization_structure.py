@@ -283,7 +283,8 @@ def _request_design(request: FilmStructureOptimizationRequest) -> dict[str, Any]
             raise ValueError("initial design exceeds max_total_thickness_nm")
         for variable in base.variables:
             low = max(float(variable.lower_nm), minimum)
-            high = min(float(variable.upper_nm), maximum)
+            high = (maximum if variable.upper_nm is None
+                    else min(float(variable.upper_nm), maximum))
             current = physical_by_id[variable.layer_id]
             if low > high:
                 raise ValueError(f"selected layer has no feasible structure bounds: {variable.layer_id}")
@@ -870,7 +871,8 @@ def _variable_groups(
         if any(identifier not in by_id for identifier in identifiers):
             continue
         lower = max(float(variable.lower_nm), request.min_thickness_nm)
-        upper = min(float(variable.upper_nm), request.max_thickness_nm)
+        upper = (request.max_thickness_nm if variable.upper_nm is None
+                 else min(float(variable.upper_nm), request.max_thickness_nm))
         for identifier, fraction in zip(identifiers, fractions):
             lower = max(lower, request.min_thickness_nm / fraction)
             upper = min(upper, request.max_thickness_nm / fraction)

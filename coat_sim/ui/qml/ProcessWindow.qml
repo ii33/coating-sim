@@ -113,7 +113,7 @@ LocalComponents.AppWindow {
         if (window.projectNavigation)
             window.projectNavigation.openProjectModule("main")
         else
-            window.moduleLauncher.openWindow("main", bridge.currentPath)
+            window.moduleLauncher.openWindow("main", window.editorBridge.currentPath)
     }
     function saveAndSendToSimulation() {
         if (!bridge.currentPath || bridge.currentPath.toLowerCase().endsWith(".coatasset"))
@@ -123,7 +123,7 @@ LocalComponents.AppWindow {
             if (window.projectNavigation)
                 window.projectNavigation.openProjectModule("main")
             else
-                window.moduleLauncher.openWindow("main", bridge.currentPath)
+                window.moduleLauncher.openWindow("main", window.editorBridge.currentPath)
     }
     Component.onCompleted: { refreshMetadata(); refreshEnvironmentSummary() }
     Connections {

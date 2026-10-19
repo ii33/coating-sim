@@ -1,5 +1,11 @@
 # 更新日志
 
+## dev.20261019.02 - 2026-10-19
+
+- Repair project-material, optimizer, and assistant CI regressions with focused Qt, type, and behavior checks.
+- Preserve the three-decimal direct thickness edit and zero-thickness contracts in updated tests; add a real UI regression for a selected-layer lower bound of 0 nm.
+- Document the finite structural cap when an existing variable has no explicit upper bound. No application Release is published.
+
 ## dev.20261019.01 - 2026-10-19
 
 - Project material editing, optical dataset validation, reversible builtin deletion, and project-owned ideal Air.

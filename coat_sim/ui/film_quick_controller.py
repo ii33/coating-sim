@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from collections.abc import Mapping
+from typing import Any, cast
 from coat_sim.core.film_design_service import FilmDesignService
 from coat_sim.core.project_paths import project_default_directory
 from coat_sim.core.film_design_templates import template_catalog, template_roles
@@ -66,7 +67,7 @@ def _finite_nonnegative(value: object, label: str) -> float:
     if isinstance(value, bool):
         raise ValueError(f"{label} must be a finite nonnegative number")
     try:
-        number = float(value)
+        number = float(cast(Any, value))
     except (TypeError, ValueError, OverflowError) as exc:
         raise ValueError(f"{label} must be a finite nonnegative number") from exc
     if not math.isfinite(number) or number < 0:

@@ -299,6 +299,10 @@ def _items(window):
     seen = {id(item) for item in result}
     while stack:
         item = stack.pop()
+        # Descend only into real QQuickItems: some Qt builds surface
+        # non-item handles (for example QMetaObject) in the child graph.
+        if not isinstance(item, QQuickItem):
+            continue
         if id(item) not in seen:
             seen.add(id(item))
             result.append(item)

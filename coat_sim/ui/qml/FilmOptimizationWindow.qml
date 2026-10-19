@@ -788,7 +788,7 @@ AppWindow {
                                                     text: modelData.enabled ? "已选择" : "选择"
                                                     checkable: true
                                                     checked: modelData.enabled
-                                                    enabled: modelData.available || modelData.enabled
+                                                    enabled: variableDelegate.modelData.available || variableDelegate.modelData.enabled
                                                     onClicked: window.controller.setVariableEnabled(modelData.side, modelData.layer_id, !modelData.enabled)
                                                 }
                                                 ColumnLayout {

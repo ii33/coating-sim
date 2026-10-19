@@ -803,6 +803,7 @@ def optimize_film_design(
                     chunk_best, chunk_best_index = current, index
             # Only a chunk's best can replace the global best after atomic
             # batch acceptance. Do not retain full condition objects for losers.
+            assert chunk_best is not None and chunk_best_index is not None
             results[chunk_best_index] = BatchEvaluation(
                 chunk_best["key"], search_scalar(
                     chunk_best["max_error"], chunk_best["weighted_rms_error"], acceptable), {

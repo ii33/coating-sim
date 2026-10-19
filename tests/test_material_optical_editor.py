@@ -10,12 +10,13 @@ from copy import deepcopy
 import tempfile
 import time
 import unittest
+from typing import Any, cast
 from unittest.mock import patch
 
 from PySide6.QtCore import Q_ARG, QCoreApplication, QEvent, QMetaObject, QObject, QPoint, QPointF, Property, Qt, QUrl, Signal
 from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication, QWheelEvent
 from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent, QQmlEngine, QQmlExpression
-from PySide6.QtQuick import QQuickWindow
+from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
@@ -71,6 +72,15 @@ def _find_visual_item(root, object_name):
     return None
 
 
+def _qml_object(parent: QObject, object_name: str, detail: object = None) -> QObject:
+    """The named QObject child, or AssertionError carrying the load diagnostics."""
+    child = parent.findChild(QObject, object_name)
+    if child is None:
+        message = f"missing QML object {object_name}"
+        raise AssertionError(f"{message}: {detail}" if detail else message)
+    return child
+
+
 def _to_variant(value):
     return value.toVariant() if hasattr(value, "toVariant") else value
 
@@ -79,7 +89,7 @@ def _type_ascii(window, text):
     """Send real key events so Quick TextField emits textEdited."""
     for char in text:
         if char == " ":
-            QTest.keyClick(window, Qt.Key_Space)
+            QTest.keyClick(window, Qt.Key.Key_Space)
         elif char.isalpha():
             QTest.keyClick(window, getattr(Qt, "Key_" + char.upper()))
         else:
@@ -1567,7 +1577,7 @@ Window {
                                if row["kind"] == "tabulated")
 
         engine = QQmlApplicationEngine()
-        warnings = []
+        warnings: list[str] = []
         engine.warnings.connect(lambda messages: warnings.extend(message.toString() for message in messages))
         engine.rootContext().setContextProperty("bridge", self.source)
         theme = ThemeService.instance()
@@ -1575,7 +1585,7 @@ Window {
         theme.attach_engine(engine, "Theme")
         engine.load(QUrl.fromLocalFile(str(ROOT / "coat_sim/ui/qml/SourceWindow.qml")))
         self.assertTrue(engine.rootObjects(), warnings)
-        window = engine.rootObjects()[0]
+        window = cast(QQuickWindow, engine.rootObjects()[0])
         dialog = None
         try:
             window.showNormal()
@@ -1584,8 +1594,7 @@ Window {
             QTest.qWait(80)
 
             # The new-material name field is visibly editable before saving.
-            name_field = window.findChild(QObject, "materialNameField")
-            self.assertIsNotNone(name_field)
+            name_field = _qml_object(window, "materialNameField")
             self.assertTrue(name_field.property("visible"))
 
             # A builtin material is an ordinary editable record for optical data.
@@ -1595,19 +1604,17 @@ Window {
 
             self.assertTrue(QMetaObject.invokeMethod(dialog, "newOpticalSet"))
             QTest.qWait(80)
-            editor = window.findChild(QObject, "materialEditor")
-            self.assertIsNotNone(editor, warnings)
+            editor = _qml_object(window, "materialEditor", warnings)
             self.assertTrue(editor.property("visible"))
-            window.findChild(QObject, "opticalEditorModel").setProperty("currentIndex", tabulated_index)
+            _qml_object(window, "opticalEditorModel").setProperty("currentIndex", tabulated_index)
             self.assertTrue(QMetaObject.invokeMethod(
                 editor, "loadImportedNTable", Q_ARG("QVariant", "400\t1.50\n550\t1.51\n700\t1.52")))
-            window.findChild(QObject, "opticalEditorName").setProperty("text", "GUI builtin dataset")
-            window.findChild(QObject, "opticalEditorUnit").setProperty("currentIndex", 1)
-            window.findChild(QObject, "opticalEditorRangeMin").setProperty("text", "400")
-            window.findChild(QObject, "opticalEditorRangeMax").setProperty("text", "700")
+            _qml_object(window, "opticalEditorName").setProperty("text", "GUI builtin dataset")
+            _qml_object(window, "opticalEditorUnit").setProperty("currentIndex", 1)
+            _qml_object(window, "opticalEditorRangeMin").setProperty("text", "400")
+            _qml_object(window, "opticalEditorRangeMax").setProperty("text", "700")
             QTest.qWait(40)
-            save_button = window.findChild(QObject, "opticalEditorSaveButton")
-            self.assertIsNotNone(save_button)
+            save_button = _qml_object(window, "opticalEditorSaveButton")
             self.assertTrue(QMetaObject.invokeMethod(save_button, "click"))
             QTest.qWait(60)
 
@@ -1620,13 +1627,13 @@ Window {
             bad_before = len(self.lib.opticalSets)
             self.assertTrue(QMetaObject.invokeMethod(dialog, "newOpticalSet"))
             QTest.qWait(80)
-            window.findChild(QObject, "opticalEditorModel").setProperty("currentIndex", tabulated_index)
+            _qml_object(window, "opticalEditorModel").setProperty("currentIndex", tabulated_index)
             QMetaObject.invokeMethod(editor, "loadImportedNTable",
                                      Q_ARG("QVariant", "400\t1.50\n400\t1.51"))
-            window.findChild(QObject, "opticalEditorName").setProperty("text", "GUI invalid dataset")
-            window.findChild(QObject, "opticalEditorUnit").setProperty("currentIndex", 1)
-            window.findChild(QObject, "opticalEditorRangeMin").setProperty("text", "400")
-            window.findChild(QObject, "opticalEditorRangeMax").setProperty("text", "700")
+            _qml_object(window, "opticalEditorName").setProperty("text", "GUI invalid dataset")
+            _qml_object(window, "opticalEditorUnit").setProperty("currentIndex", 1)
+            _qml_object(window, "opticalEditorRangeMin").setProperty("text", "400")
+            _qml_object(window, "opticalEditorRangeMax").setProperty("text", "700")
             QTest.qWait(40)
             self.assertTrue(QMetaObject.invokeMethod(save_button, "click"))
             QTest.qWait(50)
@@ -1634,12 +1641,11 @@ Window {
             # and shows the reason instead of silently closing.
             self.assertTrue(editor.property("visible"))
             self.assertEqual(len(self.lib.opticalSets), bad_before)
-            status_label = window.findChild(QObject, "opticalEditorStatus")
-            self.assertIsNotNone(status_label)
+            status_label = _qml_object(window, "opticalEditorStatus")
             self.assertTrue(status_label.property("visible"))
             self.assertIn("波长重复", str(status_label.property("text")))
             self.assertTrue(QMetaObject.invokeMethod(
-                window.findChild(QObject, "opticalEditorCancelButton"), "click"))
+                _qml_object(window, "opticalEditorCancelButton"), "click"))
             QTest.qWait(40)
 
             # Persist the builtin override and reopen it from the library.
@@ -1657,8 +1663,7 @@ Window {
             self.assertIn("GUI builtin dataset", [row["name"] for row in self.lib.opticalSets])
 
             # Empty and same-scope duplicate names surface visibly and block a save.
-            validation = window.findChild(QObject, "materialNameValidationLabel")
-            self.assertIsNotNone(validation)
+            validation = _qml_object(window, "materialNameValidationLabel")
             self.assertTrue(self.lib.newMaterial())
             self.settle_materials()
             self.lib.setField("name", "")
@@ -1692,12 +1697,12 @@ Window {
         bridge = ProjectMaterialLibraryBridge(service, global_library=global_library)
         self.addCleanup(bridge.waitForBackgroundTasks)
         self.addCleanup(bridge.deleteLater)
-        tabulated_index = next(index for index, row in enumerate(bridge.opticalModelCatalog)
-                               if row["kind"] == "tabulated")
+        catalog = cast(list[dict[str, Any]], bridge.opticalModelCatalog)
+        tabulated_index = next(index for index, row in enumerate(catalog) if row["kind"] == "tabulated")
 
         engine = QQmlEngine()
         engine.setNetworkAccessManagerFactory(NoNetworkAccessManagerFactory())
-        warnings = []
+        warnings: list[str] = []
         engine.warnings.connect(lambda messages: warnings.extend(message.toString() for message in messages))
         engine.rootContext().setContextProperty("materialLibrary", bridge)
         theme = ThemeService.instance()
@@ -1721,7 +1726,7 @@ Window {
 ''', QUrl.fromLocalFile(str(ROOT / "tests" / "project_material_library_host.qml")))
         self.assertEqual(component.status(), QQmlComponent.Status.Ready,
                          [message.toString() for message in component.errors()])
-        window = component.create()
+        window = cast(QQuickWindow, component.create())
         self.assertIsNotNone(window, [message.toString() for message in component.errors()])
         dialog = None
         saved_id = ""
@@ -1729,21 +1734,18 @@ Window {
         try:
             window.show()
             QTest.qWait(80)
-            dialog = window.findChild(QObject, "materialLibraryDialog")
-            self.assertIsNotNone(dialog, warnings)
+            dialog = _qml_object(window, "materialLibraryDialog", warnings)
 
             # Create a new project material through the real toolbar button.
-            new_button = window.findChild(QObject, "newMaterialButton")
-            self.assertIsNotNone(new_button, warnings)
+            new_button = _qml_object(window, "newMaterialButton", warnings)
             self.assertTrue(QMetaObject.invokeMethod(new_button, "click"))
             QTest.qWait(60)
 
             # The name field is visible and editable; typing updates the draft.
-            name_field = window.findChild(QObject, "materialNameField")
-            self.assertIsNotNone(name_field)
+            name_field = _qml_object(window, "materialNameField")
             self.assertTrue(name_field.property("visible"))
             self.assertTrue(name_field.property("enabled"))
-            name_field.forceActiveFocus(Qt.MouseFocusReason)
+            cast(QQuickItem, name_field).forceActiveFocus(Qt.FocusReason.MouseFocusReason)
             QTest.qWait(20)
             QMetaObject.invokeMethod(name_field, "selectAll")
             _type_ascii(qml_item_window(name_field), "gui project material")
@@ -1755,32 +1757,30 @@ Window {
 
             # Apply a valid optical dataset to the current draft via the editor.
             self.assertTrue(QMetaObject.invokeMethod(
-                window.findChild(QObject, "addOpticalSetButton"), "click"))
+                _qml_object(window, "addOpticalSetButton"), "click"))
             QTest.qWait(80)
-            editor = window.findChild(QObject, "materialEditor")
-            self.assertIsNotNone(editor, warnings)
+            editor = _qml_object(window, "materialEditor", warnings)
             self.assertTrue(editor.property("visible"))
-            window.findChild(QObject, "opticalEditorModel").setProperty("currentIndex", tabulated_index)
+            _qml_object(window, "opticalEditorModel").setProperty("currentIndex", tabulated_index)
             self.assertTrue(QMetaObject.invokeMethod(
                 editor, "loadImportedNTable", Q_ARG("QVariant", "400\t1.50\n550\t1.51\n700\t1.52")))
-            window.findChild(QObject, "opticalEditorName").setProperty("text", "Project HD visible")
-            window.findChild(QObject, "opticalEditorUnit").setProperty("currentIndex", 1)
-            window.findChild(QObject, "opticalEditorRangeMin").setProperty("text", "400")
-            window.findChild(QObject, "opticalEditorRangeMax").setProperty("text", "700")
+            _qml_object(window, "opticalEditorName").setProperty("text", "Project HD visible")
+            _qml_object(window, "opticalEditorUnit").setProperty("currentIndex", 1)
+            _qml_object(window, "opticalEditorRangeMin").setProperty("text", "400")
+            _qml_object(window, "opticalEditorRangeMax").setProperty("text", "700")
             QTest.qWait(40)
-            apply_button = window.findChild(QObject, "opticalEditorSaveButton")
-            self.assertIsNotNone(apply_button)
+            apply_button = _qml_object(window, "opticalEditorSaveButton")
             self.assertTrue(QMetaObject.invokeMethod(apply_button, "click"))
             QTest.qWait(60)
             self.assertFalse(editor.property("visible"), bridge.status)
-            self.assertIn("Project HD visible", [row["name"] for row in bridge.opticalSets])
+            self.assertIn("Project HD visible",
+                          [row["name"] for row in cast(list[dict[str, Any]], bridge.opticalSets)])
 
             # Save the material into the project store.
-            save_button = window.findChild(QObject, "saveMaterialButton")
-            self.assertIsNotNone(save_button)
+            save_button = _qml_object(window, "saveMaterialButton")
             self.assertTrue(QMetaObject.invokeMethod(save_button, "click"))
             QTest.qWait(80)
-            saved_id = bridge.currentId
+            saved_id = cast(str, bridge.currentId)
             self.assertEqual(saved_id, generated_id)
             profile_rows = [row for row in store.manifest["documents"]
                             if row["kind"] == "material_profile"]
@@ -1795,28 +1795,27 @@ Window {
 
             # An illegal dataset keeps the editor open with a reason and leaves
             # the previously applied set untouched.
-            before_sets = len(bridge.opticalSets)
+            before_sets = len(cast(list[dict[str, Any]], bridge.opticalSets))
             self.assertTrue(QMetaObject.invokeMethod(
-                window.findChild(QObject, "addOpticalSetButton"), "click"))
+                _qml_object(window, "addOpticalSetButton"), "click"))
             QTest.qWait(80)
-            window.findChild(QObject, "opticalEditorModel").setProperty("currentIndex", tabulated_index)
+            _qml_object(window, "opticalEditorModel").setProperty("currentIndex", tabulated_index)
             QMetaObject.invokeMethod(editor, "loadImportedNTable",
                                      Q_ARG("QVariant", "400\t1.50\n400\t1.51"))
-            window.findChild(QObject, "opticalEditorName").setProperty("text", "Project invalid")
-            window.findChild(QObject, "opticalEditorUnit").setProperty("currentIndex", 1)
-            window.findChild(QObject, "opticalEditorRangeMin").setProperty("text", "400")
-            window.findChild(QObject, "opticalEditorRangeMax").setProperty("text", "700")
+            _qml_object(window, "opticalEditorName").setProperty("text", "Project invalid")
+            _qml_object(window, "opticalEditorUnit").setProperty("currentIndex", 1)
+            _qml_object(window, "opticalEditorRangeMin").setProperty("text", "400")
+            _qml_object(window, "opticalEditorRangeMax").setProperty("text", "700")
             QTest.qWait(40)
             self.assertTrue(QMetaObject.invokeMethod(apply_button, "click"))
             QTest.qWait(50)
             self.assertTrue(editor.property("visible"))
-            self.assertEqual(len(bridge.opticalSets), before_sets)
-            status_label = window.findChild(QObject, "opticalEditorStatus")
-            self.assertIsNotNone(status_label)
+            self.assertEqual(len(cast(list[dict[str, Any]], bridge.opticalSets)), before_sets)
+            status_label = _qml_object(window, "opticalEditorStatus")
             self.assertTrue(status_label.property("visible"))
             self.assertIn("波长重复", str(status_label.property("text")))
             self.assertTrue(QMetaObject.invokeMethod(
-                window.findChild(QObject, "opticalEditorCancelButton"), "click"))
+                _qml_object(window, "opticalEditorCancelButton"), "click"))
             QTest.qWait(40)
         finally:
             _close_qml_test_window(engine, window, dialog)

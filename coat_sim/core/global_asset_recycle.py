@@ -430,6 +430,7 @@ def apply_global_deletion(snapshot, selection):
                     receipt["archive"] = _relative(archive_folder / "payload")
                 _write_receipt(receipt)
                 if source is not None:
+                    assert archive_folder is not None
                     archive_folder.mkdir(mode=0o700, parents=True)
                     _fsync_directory(archive_folder.parent)
                     _fsync_directory(source.parent)

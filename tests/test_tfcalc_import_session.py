@@ -68,7 +68,7 @@ def test_stale_invalid_duplicate_and_cancel_pending_preserve_document():
     before = session.snapshot()
     value = candidate(session)
     invalid = deepcopy(value)
-    invalid["front_layers"][0]["thickness"]["value"] = 0
+    invalid["front_layers"][0]["thickness"]["value"] = -1.0
     assert not session.request_imported_design(invalid, before.design_revision)
     assert not session.request_imported_design(value, before.design_revision + 1)
     assert session.request_imported_design(value, before.design_revision)

@@ -82,6 +82,12 @@ def test_cpu_default_explicit_batch_identity_confirmation_and_context_changes(ap
         assert controller.setDeferredBatchEnabled(True)
         assert controller.setFilmCpuWorkers(min(2, controller.filmCpuWorkerLimit))
         assert controller.setFilmCpuAxis("wavelengths")
+        # Finite-domain differential evolution has no implicit thickness upper;
+        # give every selected layer an explicit finite bound before building it.
+        for row in cast(list[dict[str, Any]], controller.variables):
+            if row["enabled"]:
+                assert controller.setVariableBound(
+                    row["side"], row["layer_id"], "upper_nm", 400.0)
         request = controller._build_request()
         assert request.execution_device["cpu_parallel_axis"] == "wavelengths"
         deliver(target)

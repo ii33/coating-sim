@@ -2119,6 +2119,7 @@ class FilmDesignQuickControllerTests(unittest.TestCase):
         precise_nm = 123.123456789
         self.assertTrue(self.controller.setLayerValue("front", layer_id, "thickness.nm", precise_nm))
         row = self.controller.front_layers.record_for_id(layer_id)
+        assert row is not None
         self.assertEqual(row["physicalNmText"], format(precise_nm, ".3f"))
         self.assertEqual(row["physicalNmValue"], 123.123)
 
@@ -2129,6 +2130,7 @@ class FilmDesignQuickControllerTests(unittest.TestCase):
         thickness = reopened.currentDesign()["front_layers"][0]["thickness"]
         self.assertEqual(thickness, {"value": 123.123, "unit": "nm"})
         saved_row = reopened.front_layers.record_for_id(layer_id)
+        assert saved_row is not None
         self.assertEqual(saved_row["physicalNmText"], format(precise_nm, ".3f"))
         self.assertEqual(saved_row["physicalNmValue"], 123.123)
 

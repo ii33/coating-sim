@@ -1,5 +1,6 @@
 """Committed film thickness precision and zero-layer physics contracts."""
 from copy import deepcopy
+from typing import Any, cast
 
 import numpy as np
 import pytest
@@ -14,6 +15,11 @@ from coat_sim.core.film_optimization import (
 from coat_sim.ui.film_optimization_quick_controller import FilmOptimizationQuickController
 from tests.film_structure_fixtures import fixture
 from tests.test_film_optimization_target_sampling import _snapshot
+
+
+def _variable_rows(controller: FilmOptimizationQuickController) -> list[dict[str, Any]]:
+    """The optimizer variable rows, re-read from the live Qt Property each call."""
+    return cast(list[dict[str, Any]], controller.variables)
 
 
 def test_zero_layer_matches_absent_layer_and_survives_save(tmp_path):
@@ -90,23 +96,23 @@ def test_optimization_defaults_select_all_without_invented_upper_and_preserve_bo
     design["front_layers"].append(second)
     controller = FilmOptimizationQuickController(_snapshot(service, design))
     try:
-        rows = controller.variables
+        rows = _variable_rows(controller)
         assert len(rows) == 2 and all(row["enabled"] and row["available"] for row in rows)
         assert all(row["lower_nm"] == 0 and row["upper_nm"] is None for row in rows)
         assert controller.canStart
         assert controller._build_request().variables[0].upper_nm is None
         assert controller.setSolver("powell")
-        assert not controller.canStart and "上界" in controller.statusText
+        assert not controller.canStart and "上界" in cast(str, controller.statusText)
         assert controller.setSolver("baseline")
         assert controller.canStart
         configuration = controller.exportOptimizationConfiguration()
         configuration["variables"][0].update(lower_nm=12.5, upper_nm=180.0)
         assert controller.loadOptimizationConfiguration(configuration)
-        assert controller.variables[0]["lower_nm"] == 12.5
-        assert controller.variables[0]["upper_nm"] == 180.0
-        assert controller.variables[1]["upper_nm"] is None
+        assert _variable_rows(controller)[0]["lower_nm"] == 12.5
+        assert _variable_rows(controller)[0]["upper_nm"] == 180.0
+        assert _variable_rows(controller)[1]["upper_nm"] is None
         assert controller.setVariableBound("front", "second-layer", "upper_nm", "200.1236")
-        assert controller.variables[1]["upper_nm"] == 200.124
+        assert _variable_rows(controller)[1]["upper_nm"] == 200.124
         assert not controller.setVariableBound("front", "second-layer", "upper_nm", "1e100")
         assert controller.setVariableBound("front", "second-layer", "upper_nm", "200.124")
         assert controller._build_request().variables == (
@@ -168,7 +174,7 @@ def test_zero_initial_layer_runs_default_half_unbounded_solver(tmp_path):
     from coat_sim.core.film_optimization_job import (
         execute_film_optimization_job, freeze_job_payload, validate_checkpoint,
     )
-    checkpoints = []
+    checkpoints: list[dict[str, Any]] = []
     queued = execute_film_optimization_job(
         service, freeze_job_payload(service, request), cancel_event=Event(),
         checkpoint_callback=checkpoints.append)
@@ -185,10 +191,10 @@ def test_default_selected_unavailable_layer_can_be_deselected(tmp_path):
     source.layers_by_side["front"][0]["physicalNmValue"] = None
     controller = FilmOptimizationQuickController(source)
     try:
-        row = controller.variables[0]
+        row = _variable_rows(controller)[0]
         assert row["enabled"] and not row["available"]
-        assert "不可用" in controller.statusText
+        assert "不可用" in cast(str, controller.statusText)
         controller.setVariableEnabled("front", row["layer_id"], False)
-        assert not controller.variables[0]["enabled"]
+        assert not _variable_rows(controller)[0]["enabled"]
     finally:
         controller.shutdown(1000)

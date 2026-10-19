@@ -349,4 +349,4 @@ class FilmWorkflowDocumentTests(unittest.TestCase):
         self.design.setLayerValue("front", row["id"], "thickness.unit", "nm")
         self.design.setLayerValue("front", row["id"], "thickness.value", 12.123456789)
         self.assertIn("12.123 nm", self.design.thicknessSummaryText)
-        self.assertEqual(self.design.currentDesign()["front_layers"][0]["thickness"]["value"], 12.123456789)
+        self.assertEqual(self.design.currentDesign()["front_layers"][0]["thickness"]["value"], 12.123)

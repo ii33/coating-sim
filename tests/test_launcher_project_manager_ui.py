@@ -157,9 +157,14 @@ class LauncherProjectManagerUiTests(unittest.TestCase):
     def _item(self, object_name):
         item = cast(QQuickItem | None, self.window.findChild(QQuickItem, object_name))
         if item is None:
-            pending = [self.window.contentItem()]
+            root = self.window.contentItem()
+            pending = [] if root is None else [root]
             while pending:
                 current = pending.pop()
+                # Some Qt builds surface non-item handles in the QML child
+                # graph; only real QQuickItems expose objectName()/childItems().
+                if not isinstance(current, QQuickItem):
+                    continue
                 if current.objectName() == object_name:
                     return current
                 pending.extend(current.childItems())

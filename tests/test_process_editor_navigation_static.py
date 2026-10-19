@@ -73,11 +73,13 @@ def test_dirty_process_send_requires_explicit_save_and_then_uses_saved_path():
 
     assert "if (bridge.dirty)" in request
     assert "saveBeforeSendDialog.open()" in request
-    assert 'launcher.openWindow("main", bridge.currentPath)' in request
+    assert 'window.projectNavigation.openProjectModule("main")' in request
+    assert 'window.moduleLauncher.openWindow("main", window.editorBridge.currentPath)' in request
     assert "saveBeforeSendAsDialog.open()" in request
     assert "bridge.save()" in save
     assert "if (!bridge.dirty && bridge.currentPath)" in save
-    assert 'launcher.openWindow("main", bridge.currentPath)' in save
+    assert 'window.projectNavigation.openProjectModule("main")' in save
+    assert 'window.moduleLauncher.openWindow("main", window.editorBridge.currentPath)' in save
     assert "当前工艺有未保存修改" in process
     assert "保存完成后再点“发送至仿真”" in process
 

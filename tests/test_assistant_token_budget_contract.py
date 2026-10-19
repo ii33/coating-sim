@@ -4,7 +4,7 @@ from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
 import sqlite3
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -344,7 +344,7 @@ def test_completed_turn_omits_automatic_budget_footer_but_keeps_usage(real_bridg
     bridge, _worker = real_bridge
     usage = {"input_tokens": 123, "output_tokens": 45,
              "cached_input_tokens": 12, "estimated_requests": 0}
-    message = {"id": "synthetic-round", "role": "assistant", "content": "已完成用户任务。",
+    message: dict[str, Any] = {"id": "synthetic-round", "role": "assistant", "content": "已完成用户任务。",
                "request_id": "synthetic-request", "metadata": {
                    "status": "completed", "elapsed_s": 2.5, "usage": usage}}
     bridge._messages.append(message)
