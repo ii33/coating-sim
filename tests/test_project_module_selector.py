@@ -274,8 +274,14 @@ def test_theme_and_narrow_window_keep_the_same_navigation(runtime: SelectorRunti
         runtime.click(runtime.category_item(top, 2))
         submenu = runtime.menu(root, "projectModuleSimulationMenu")
         assert submenu.property("visible")
-        submenu.setProperty("currentIndex", 2)
+        # Move the pointer clear of the narrow popup before keyboard navigation.
+        # An enabled hover can otherwise select the row under the pointer.
+        QTest.mouseMove(runtime.window, QPointF(1, 1).toPoint())
         events()
+        runtime.key(Qt.Key.Key_Home)
+        runtime.key(Qt.Key.Key_Down)
+        runtime.key(Qt.Key.Key_Down)
+        assert submenu.property("currentIndex") == 2
         current = runtime.item(root, "projectModuleAction_ray_trace")
         assert current.property("highlighted")
         label = current.property("contentItem")

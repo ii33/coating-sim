@@ -58,6 +58,11 @@ def optimizer(workspace, source):
 
 def test_optimizer_settings_and_candidate_writeback_stay_in_own_film(owners):
     _host, rows = owners
+    workspace, source, saved = rows[0]
+    assert source.session.add_layer("front")
+    layer_id = source.currentDesign()["front_layers"][0]["id"]
+    assert source.session.set_layer_value("front", layer_id, "material_id", "shared")
+    assert source.session.save_current()
     left, right = [optimizer(workspace, source) for workspace, source, _saved in rows]
     try:
         right_configuration = rows[1][0].editor.workflow_configuration("optimization")
@@ -67,17 +72,25 @@ def test_optimizer_settings_and_candidate_writeback_stay_in_own_film(owners):
         workspace, source, saved = rows[0]
         original = source.session.snapshot()
         design = deepcopy(original.design)
+        other_before = deepcopy(rows[1][1].currentDesign())
         design["name"] = "First optimized"
+        design["front_layers"][0]["thickness"]["value"] = 125.0
         result = _completed_result(SimpleNamespace(design_revision=original.design_revision,
                                                   design_snapshot=design))
         left._project_operation = left._project_compute.capture("optimization-test")
         left._operation_serial = 1
         left._operation_edit_epoch = source.pendingEditEpoch
         left._on_finished(1, result, [], None)
-        assert source.currentDesign()["name"] == "First optimized"
-        assert rows[1][1].currentDesign()["name"] == "Bound project film"
+        applied = source.currentDesign()
+        assert applied["name"] == original.design["name"]
+        assert applied["substrate"] == original.design["substrate"]
+        assert applied["front_layers"][0]["id"] == layer_id
+        assert applied["front_layers"][0]["thickness"]["value"] == 125.0
+        assert rows[1][1].currentDesign() == other_before
         assert workspace.editor.save_current()
-        assert workspace.service.load_document(saved.document_id).design["name"] == "First optimized"
+        persisted = workspace.service.load_document(saved.document_id).design
+        assert persisted["name"] == original.design["name"]
+        assert persisted["front_layers"][0]["thickness"]["value"] == 125.0
         assert left.saveCandidateToProject()
         assert len(workspace.service.list_saved_designs()) == 2
         assert len(rows[1][0].service.list_saved_designs()) == 1

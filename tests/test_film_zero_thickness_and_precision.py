@@ -133,21 +133,25 @@ def test_zero_initial_layer_runs_default_half_unbounded_solver(tmp_path):
         assert controller.canStart
         controller._objectives[0].update(
             wavelength_min_nm=550.0, wavelength_max_nm=550.0,
-            wavelength_samples=1, mode="value", target_value_percent=0.0)
+            wavelength_samples=1, lower_bound_percent=0.0, upper_bound_percent=0.0)
         controller._max_iterations = 8
         controller._max_evaluations = 20
         request = controller._build_request()
     finally:
         controller.shutdown(1000)
     assert request.solver == "baseline"
+    assert request.objectives[0].mode == "value"
+    assert request.objectives[0].target_value == 0.0
     assert request.variables == (FilmThicknessVariable("front", layer_id, 0.0, None),)
     from coat_sim.core.film_optimization_job import _validate_replay_request
     _validate_replay_request(request)
+    settings = {"wavelength_min_nm": 550, "wavelength_max_nm": 550, "samples": 1}
+    baseline_r = float(service.simulate(design, settings)["R"][0])
+    assert baseline_r > request.acceptable_normalized_error
     result = optimize_film_design(service, request)
     assert result.state == "completed"
     assert result.evaluations > 1
     assert result.best_design["front_layers"][0]["thickness"]["value"] > 0
-    baseline_r = float(service.simulate(design, {"wavelength_min_nm": 550, "wavelength_max_nm": 550, "samples": 1})["R"][0])
     assert result.max_normalized_error < baseline_r
     from dataclasses import replace
     with pytest.raises(ValueError, match="explicit upper_nm"):
@@ -182,6 +186,34 @@ def test_zero_initial_layer_runs_default_half_unbounded_solver(tmp_path):
     assert queued["candidate"]["design"]["front_layers"][0]["thickness"]["value"] > 0
     assert checkpoints
     validate_checkpoint(service, checkpoints[-1])
+
+
+def test_feasible_zero_initial_layer_completes_once_without_changing_optics(tmp_path):
+    QGuiApplication.instance() or QGuiApplication([])
+    service, _library, design = fixture(tmp_path)
+    design["front_layers"][0]["thickness"]["value"] = 0.0
+    layer_id = design["front_layers"][0]["id"]
+    controller = FilmOptimizationQuickController(_snapshot(service, design))
+    try:
+        controller._objectives[0].update(
+            wavelength_min_nm=550.0, wavelength_max_nm=550.0, wavelength_samples=1)
+        request = controller._build_request()
+    finally:
+        controller.shutdown(1000)
+    objective = request.objectives[0]
+    assert objective.mode == "range"
+    assert (objective.lower_bound, objective.upper_bound) == (0.0, 0.05)
+    settings = {"wavelength_min_nm": 550, "wavelength_max_nm": 550, "samples": 1}
+    before = service.simulate(design, settings)
+    assert 0.0 <= float(before["R"][0]) <= 0.05
+    result = optimize_film_design(service, request)
+    assert result.state == "completed" and result.evaluations == 1
+    assert result.max_normalized_error <= request.acceptable_normalized_error
+    assert result.best_thickness_nm[layer_id] == 0.0
+    assert result.best_design["front_layers"][0]["id"] == layer_id
+    after = service.simulate(result.best_design, settings)
+    for metric in ("R", "T", "A"):
+        np.testing.assert_allclose(after[metric], before[metric], rtol=0, atol=1e-12)
 
 
 def test_default_selected_unavailable_layer_can_be_deselected(tmp_path):
