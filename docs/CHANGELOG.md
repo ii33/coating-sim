@@ -1,5 +1,9 @@
 # 更新日志
 
+## dev.20261019.04 - 2026-10-19
+
+- Make film GUI test teardown destroy only its owned Qt roots, retaining lifetime assertions while avoiding process-wide deferred deletion during QML cleanup.
+
 ## dev.20261019.03 - 2026-10-19
 
 - Prune only 35 resolved static-analysis baseline diagnostics verified by Linux CI for 4355608; no new diagnostics are suppressed.

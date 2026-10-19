@@ -22,6 +22,7 @@ from coat_sim.core import materials, optical_constants
 from coat_sim.core.film_design_service import FilmDesignService
 from coat_sim.ui.film_design import FilmDesignWindow, FilmSimulationWindow, FilmWindowAdapter
 from coat_sim.ui import film_design as film_ui
+import shiboken6
 from shiboken6 import isValid
 
 
@@ -114,14 +115,15 @@ class FilmDesignGuiTests(unittest.TestCase):
         for name, value in objects.items():
             # The receipt captures only a label, never the QObject being watched.
             value.destroyed.connect(lambda *_args, label=name: destroyed.add(label))
+        # Destroy only the test-owned roots synchronously. Qt deletes each
+        # parent-owned child (chrome host, Quick widget, and its QML engine)
+        # exactly once; deleting those wrappers again would double-delete.
+        # A global DeferredDelete dispatch can crash while a QQuickWidget
+        # engine is being torn down, so do not rely on deleteLater here.
         for root in roots:
-            root.deleteLater()
-        deadline = time.monotonic() + 2
-        while destroyed != expected and time.monotonic() < deadline:
-            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-            _APP.processEvents()
-            if destroyed != expected:
-                QTest.qWait(1)
+            if isValid(root):
+                shiboken6.delete(root)
+        _APP.processEvents()
         self.assertEqual(destroyed, expected, "test-owned Qt graph was not destroyed")
         still_alive: list[str] = []
         for name, reference in references.items():
