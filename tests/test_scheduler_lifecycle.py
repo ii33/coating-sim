@@ -55,7 +55,7 @@ def service(root, *, idle_seconds=60, lease_seconds=45):
     process = subprocess.Popen([sys.executable, '-B', '-c', code, str(root),
                                 str(idle_seconds), str(lease_seconds)], cwd=str(ROOT), stdin=subprocess.DEVNULL,
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                  creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
+                                  creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == 'nt' else 0,
                                   start_new_session=os.name != 'nt')
     from coat_sim.agent.processes import ProcessTree
     tree = ProcessTree(process)
@@ -351,7 +351,7 @@ def test_delayed_pre_exit_child_cannot_publish_after_fence_released(tmp_path, co
     child = subprocess.Popen([sys.executable, '-B', '-c', code, str(target), old_epoch,
                               str(ready), str(release)], cwd=str(ROOT), stdin=subprocess.DEVNULL,
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                  creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
+                                  creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == 'nt' else 0,
                                   start_new_session=os.name != 'nt')
     tree = ProcessTree(child)
     group = SchedulerExitGroup()

@@ -102,7 +102,7 @@ def test_native_global_exit_preserves_cancel_then_closes_exact_owned_processes(
         process = subprocess.Popen([sys.executable, "-B", *args], cwd=source,
                                    env=environment, stdin=subprocess.DEVNULL,
                                    stdout=stream, stderr=subprocess.STDOUT,
-                                   creationflags=subprocess.CREATE_NO_WINDOW)
+                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         owned.append(process)
         return process
 
