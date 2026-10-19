@@ -1,5 +1,9 @@
 # 更新日志
 
+## dev.20261019.03 - 2026-10-19
+
+- Prune only 35 resolved static-analysis baseline diagnostics verified by Linux CI for 4355608; no new diagnostics are suppressed.
+
 ## dev.20261019.02 - 2026-10-19
 
 - Repair project-material, optimizer, and assistant CI regressions with focused Qt, type, and behavior checks.

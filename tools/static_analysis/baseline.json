@@ -2090,16 +2090,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_needle.py",
-      "code": "index",
-      "message": "Value of type \"object\" is not indexable",
-      "scope": "optimize_film_design_with_needle",
-      "anchor": "float(trial[\"score\"][\"weighted_rms_error\"]),",
-      "fingerprint": "09144544974f257ce8428bdbc650881c685ca399e6e0e5b95942115cbae21152",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_main_compact_sidebar_ui.py",
       "code": "attr-defined",
       "message": "\"object\" has no attribute \"append\"",
@@ -3856,16 +3846,6 @@
       "scope": "",
       "anchor": "onAccepted: controller.loadSpectrum(selectedFile.toString(), workspace.spectrumTarget)",
       "fingerprint": "111755beac5e4a73c38e2ea2157407689f37c69f247a2f39e9e93c65c45b4454",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_needle.py",
-      "code": "arg-type",
-      "message": "Argument 1 to \"append\" of \"list\" has incompatible type \"object\"; expected \"str\"",
-      "scope": "optimize_film_design_with_needle",
-      "anchor": "accepted_ids.append(best_trial[\"layer_id\"])",
-      "fingerprint": "112101dfe7d9fc576ac6d2075e805746c044ad8a3bea77fa8d2eb0258d9bfdf5",
       "count": 1
     },
     {
@@ -5866,16 +5846,6 @@
       "scope": "_FilmWindow.__init__",
       "anchor": "self.setAttribute(Qt.WA_DeleteOnClose, False)",
       "fingerprint": "17dcb171a777552f8d5f65edd7222b87453770b6a8a628c78f2de76777087e96",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization.py",
-      "code": "index",
-      "message": "Invalid index type \"int | None\" for \"list[BatchEvaluation]\"; expected type \"SupportsIndex\"",
-      "scope": "optimize_film_design.batch_evaluate",
-      "anchor": "results[chunk_best_index] = BatchEvaluation(",
-      "fingerprint": "180631afa38403c4a7cf0e0909b7a0aa80b6e6d6412e6303dd239cd6772a1b77",
       "count": 1
     },
     {
@@ -8639,16 +8609,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_film_quick_controller.py",
-      "code": "index",
-      "message": "Value of type \"dict[Any, Any] | None\" is not indexable",
-      "scope": "FilmDesignQuickControllerTests.test_physical_nm_rounds_for_display_and_keeps_cfilm_precision",
-      "anchor": "self.assertEqual(row[\"physicalNmText\"], format(precise_nm, \".3f\"))",
-      "fingerprint": "2313858918f07bcadac8e15e1aa9b02b67d9602d0abc646f322e9cd0da904036",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/FilmSimulationParameters.qml",
       "code": "unqualified",
@@ -9410,16 +9370,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/source_materials.py",
-      "code": "arg-type",
-      "message": "Argument 1 to \"Property\" has incompatible type \"str\"; expected \"type\"",
-      "scope": "MaterialLibraryBridge",
-      "anchor": "@Property(\"QVariantList\", notify=changed)",
-      "fingerprint": "25a89fa5bdd3252b64ccd99a116dcdd3f15d757f4f601646a5bc8c4473db30f8",
-      "count": 9
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/ui/film_optimization_quick_controller.py",
       "code": "attr-defined",
       "message": "\"object\" has no attribute \"__iter__\"; maybe \"__dir__\" or \"__str__\"? (not iterable)",
@@ -9516,16 +9466,6 @@
       "scope": "OpticalCoreTests.test_tabulated_import_strict_validation",
       "anchor": "with self.assertRaises(ValueError):optics.evaluate_optical_set(table,399,\"nm\")",
       "fingerprint": "25f75702f1a10eaa458aad253140bd044875560acb88019a95254257ba0dee3b",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization.py",
-      "code": "index",
-      "message": "Value of type \"dict[str, Any] | None\" is not indexable",
-      "scope": "optimize_film_design.batch_evaluate",
-      "anchor": "chunk_best[\"key\"], chunk_best[\"max_error\"], {",
-      "fingerprint": "2606bf51c158ac3a044ffb9bec85c54725811b9e25b259ba6cc97c22dcf1ad76",
       "count": 1
     },
     {
@@ -10826,16 +10766,6 @@
       "scope": "",
       "anchor": "from tools.validation.gpu_appearance_preview import (",
       "fingerprint": "2a7d99d5f35eaf700e4fd9be6e8de21f805d1143a9c2503e2bc3d4b36ef389e1",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_needle.py",
-      "code": "arg-type",
-      "message": "Argument 1 to \"deepcopy\" has incompatible type \"object\"; expected \"Mapping[str, Any]\"",
-      "scope": "optimize_film_design_with_needle",
-      "anchor": "design_snapshot=deepcopy(best_trial[\"design\"]),",
-      "fingerprint": "2a8d4fdf83a502ca80e1977538d21cb7e7d6a9e8be1ec58001ce763470a242a5",
       "count": 1
     },
     {
@@ -12376,16 +12306,6 @@
       "scope": "",
       "anchor": "const selectedMode = bridge.themeMode",
       "fingerprint": "3066629f854ab81444982ccc719c275c4a4aa88f14a7edf0322d60d946b59efd",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "coat_sim/agent/tool_results.py",
-      "code": "B905",
-      "message": "`zip()` without an explicit `strict=` parameter",
-      "scope": "task_limits",
-      "anchor": "for (key, setting, maximum), default in zip(fields, defaults):",
-      "fingerprint": "30769aebb3ea2d0a669427a1aabd0c2a6e112fa35d1fe2e8c01c57b7dbb1b7f2",
       "count": 1
     },
     {
@@ -17119,16 +17039,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_needle.py",
-      "code": "index",
-      "message": "Value of type \"object\" is not indexable",
-      "scope": "optimize_film_design_with_needle",
-      "anchor": "next_round_probes = (len(best_trial[\"design\"][\"front_layers\"]) + 1) * candidate_count * trial_count",
-      "fingerprint": "442b9097633c497941e2b0282f1f599daf66e7e76d28e929617d419eb1346e40",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "tests/test_appearance_circle.py",
       "code": "B905",
@@ -17736,16 +17646,6 @@
       "scope": "FilmFloatingUiTests.test_floating_plot_diagnostics_sidebar_and_session_lifecycle",
       "anchor": "for row, index in zip(rows, range(3)):",
       "fingerprint": "469d621bc1de869221dbc095e28d2fe850b3a0c05129260a9cb535fe7d0d940e",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_needle.py",
-      "code": "dict-item",
-      "message": "Dict entry 1 has incompatible type \"object\": \"float\"; expected \"str\": \"float\"",
-      "scope": "optimize_film_design_with_needle",
-      "anchor": "thicknesses={**dict(incumbent.best_thickness_nm), best_trial[\"layer_id\"]:",
-      "fingerprint": "46a5fde6130785b58ffd928b1839dd0fb72b2a81a7452b038b44f2863ad32800",
       "count": 1
     },
     {
@@ -19589,16 +19489,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_needle.py",
-      "code": "index",
-      "message": "Value of type \"object\" is not indexable",
-      "scope": "optimize_film_design_with_needle",
-      "anchor": "float(trial[\"score\"][\"weighted_rms_error\"]))",
-      "fingerprint": "4e62e0be5057c84e7e344a2c6327de8fa09ed36ef340d91efd9d5dd677b2c8cc",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/ui/film_simulation_quick_controller.py",
       "code": "B905",
@@ -20136,16 +20026,6 @@
       "scope": "SettingsBridge.setAssistantIconSize",
       "anchor": "value, 48, 256, self.assistantIconSize)",
       "fingerprint": "5068ddf199cf4d014dfdcca8bb9f9d1417b30ea2d490701418e51546ac4206ed",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_needle.py",
-      "code": "arg-type",
-      "message": "Argument 1 to \"_result_from_score\" has incompatible type \"object\"; expected \"Mapping[str, Any]\"",
-      "scope": "optimize_film_design_with_needle",
-      "anchor": "best_trial[\"score\"], base_request,",
-      "fingerprint": "5078f95f96e2ec99984dd44d0b444bf5ca92c2560b334274e2420cde27082274",
       "count": 1
     },
     {
@@ -22350,16 +22230,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_film_quick_controller.py",
-      "code": "index",
-      "message": "Value of type \"dict[Any, Any] | None\" is not indexable",
-      "scope": "FilmDesignQuickControllerTests.test_physical_nm_rounds_for_display_and_keeps_cfilm_precision",
-      "anchor": "self.assertEqual(saved_row[\"physicalNmText\"], format(precise_nm, \".3f\"))",
-      "fingerprint": "59a74175e452b4ef312aac6bce994d056e7d0c110c0a65abc833e5688014790a",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/core/film_optimization_structure.py",
       "code": "arg-type",
       "message": "Argument 1 to \"_physical_layers\" has incompatible type \"Collection[str]\"; expected \"Mapping[str, Any]\"",
@@ -22466,16 +22336,6 @@
       "scope": "",
       "anchor": "editorBridge.preparePreview()",
       "fingerprint": "5a0c6f00e3b6ed4b40b295e717ea2ae599abc8b278d6c9646f223cf0af34ebd3",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_film_quick_controller.py",
-      "code": "index",
-      "message": "Value of type \"dict[Any, Any] | None\" is not indexable",
-      "scope": "FilmDesignQuickControllerTests.test_physical_nm_rounds_for_display_and_keeps_cfilm_precision",
-      "anchor": "self.assertEqual(saved_row[\"physicalNmValue\"], precise_nm)",
-      "fingerprint": "5a176e14a43013be1e851cf40ab98480686eb95b08143f10a4c16d9e5c5c4a97",
       "count": 1
     },
     {
@@ -25056,16 +24916,6 @@
       "scope": "",
       "anchor": "target: Theme",
       "fingerprint": "64b634d7d49122de47c6ed3de3335ca9f0d0f763efd8fa66e41d0a100396a2fb",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_needle.py",
-      "code": "index",
-      "message": "Value of type \"object\" is not indexable",
-      "scope": "optimize_film_design_with_needle",
-      "anchor": "score_key = (float(trial[\"score\"][\"max_error\"]),",
-      "fingerprint": "64beb1c1b3fab813974629c3477c10fa9cce3799da321662fa62858cb5cb9ef1",
       "count": 1
     },
     {
@@ -30779,16 +30629,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "coat_sim/agent/development.py",
-      "code": "F401",
-      "message": "`json` imported but unused",
-      "scope": "",
-      "anchor": "import json",
-      "fingerprint": "7b6f23fa99b5e8749d869ab09057e3d1eeb76c36edc73f98d49082c7e8823022",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_film_design_reference_bridge.py",
       "code": "attr-defined",
@@ -31816,16 +31656,6 @@
       "scope": "_validate_layer_manifest",
       "anchor": "for index, (row, step_result) in enumerate(zip(rows, step_results), 1):",
       "fingerprint": "7f883c522966ef724c8e373ef4f570e93d4f4d1f0c735e66a078140ff3f841ab",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_needle.py",
-      "code": "arg-type",
-      "message": "Argument 1 to \"float\" has incompatible type \"object\"; expected \"str | Buffer | SupportsFloat | SupportsIndex\"",
-      "scope": "optimize_film_design_with_needle",
-      "anchor": "float(best_trial[\"thickness_nm\"])},",
-      "fingerprint": "7f9a93471bc04bcab059be5c8aa0d20ef431fe55c96fbe7c17580e173a130ff7",
       "count": 1
     },
     {
@@ -32917,16 +32747,6 @@
       "anchor": "from coat_sim.core.data_files import data_path",
       "fingerprint": "83c878f94feac352a34e81a2335188e1a7f3cfa059cd93fca3b7e480b45eee5e",
       "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/ProcessWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "launcher.openWindow(\"main\", bridge.currentPath)",
-      "fingerprint": "83caedae8c58ef0dcda5170050d4c412513c3c31b83dc511ec10f4718508bd2c",
-      "count": 4
     },
     {
       "tool": "mypy",
@@ -36549,16 +36369,6 @@
       "count": 2
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/ui/film_quick_controller.py",
-      "code": "arg-type",
-      "message": "Argument 1 to \"float\" has incompatible type \"object\"; expected \"str | Buffer | SupportsFloat | SupportsIndex\"",
-      "scope": "_finite_positive",
-      "anchor": "number = float(value)",
-      "fingerprint": "92c56296774eccbf044b662aa5f1dbff9ae098c33a09b3917fbd6717fdd67571",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/SubstrateWindow.qml",
       "code": "unqualified",
@@ -37136,7 +36946,7 @@
       "scope": "",
       "anchor": "enabled: modelData.available",
       "fingerprint": "94d805a80c2e54f234dfdaf644aec688d0e71c7a199aa4298b028853e0a4b85d",
-      "count": 3
+      "count": 2
     },
     {
       "tool": "qmllint",
@@ -40256,16 +40066,6 @@
       "scope": "ComputeQueueView._fetch_page.finished",
       "anchor": "if not self._closed: self.received.emit(value, error)",
       "fingerprint": "a1cb8d45c4c19444f1a0763b5eff78404cef280a3a325a4aca7bfaed125212a8",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_needle.py",
-      "code": "index",
-      "message": "Value of type \"object\" is not indexable",
-      "scope": "optimize_film_design_with_needle",
-      "anchor": "float(trial[\"score\"][\"max_error\"]),",
-      "fingerprint": "a1d5b988f08485da818929eb6ef155f573790e30a9a29a55b8e1ee5583dad4f5",
       "count": 1
     },
     {
@@ -53670,16 +53470,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_film_quick_controller.py",
-      "code": "index",
-      "message": "Value of type \"dict[Any, Any] | None\" is not indexable",
-      "scope": "FilmDesignQuickControllerTests.test_physical_nm_rounds_for_display_and_keeps_cfilm_precision",
-      "anchor": "self.assertEqual(row[\"physicalNmValue\"], precise_nm)",
-      "fingerprint": "d7ac267538009519b1498e158b69dba690d76747acee91f24da5eac4b41a0416",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_film_batch_de.py",
       "code": "arg-type",
       "message": "Argument 4 to \"run_batch_de\" has incompatible type \"ndarray[tuple[Any, ...], dtype[Any]]\"; expected \"Sequence[float]\"",
@@ -54546,16 +54336,6 @@
       "scope": "_HeldWorker",
       "anchor": "instances = []",
       "fingerprint": "db532bc351ffb2d04703cf99ec32c2eb5b691baf0240b0e314aea7c0208aa31f",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_needle.py",
-      "code": "arg-type",
-      "message": "Argument 2 to \"FilmThicknessVariable\" has incompatible type \"object\"; expected \"str\"",
-      "scope": "optimize_film_design_with_needle",
-      "anchor": "FilmThicknessVariable(\"front\", identifier,",
-      "fingerprint": "db68a319e8a866b58b8d0176872b7ae402c73cb9fc759794b439de3b4cfe9ec4",
       "count": 1
     },
     {
@@ -58696,16 +58476,6 @@
       "scope": "Scheduler.tick",
       "anchor": "if process.poll() is None: process.terminate()",
       "fingerprint": "ebc811cac6761dfbc9bccd07f1e77cc3d44c943391fae72a41ccaf1d6de86dac",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_needle.py",
-      "code": "arg-type",
-      "message": "Argument 2 to \"_retarget_frozen_snapshot\" has incompatible type \"object\"; expected \"Mapping[str, Any]\"",
-      "scope": "optimize_film_design_with_needle",
-      "anchor": "frozen, best_trial[\"design\"]),",
-      "fingerprint": "ebca01e2ca09e6fc50aebd9c98d08a70535deab57087e5826ecf5fa14da68d64",
       "count": 1
     },
     {
@@ -63909,6 +63679,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "Terminal request lifecycle refactor: reviewed and corrected six old runtime diagnostics (four E701 blocks and two SDK/tool-list typing boundaries); remove resolved entries only, no new debt.",
+  "last_prune_reason": "Reviewed Linux GitHub Actions static-analysis report for 435560892e0a2442156755ebf5e91ea046316476: 0 new, 35 resolved; removed only resolved fingerprints and reduced one existing count.",
   "configuration_review_reason": "2026-10-17: add only BSD-3-Clause pypdf 6.21.0 for isolated research PDF extraction; all previous dependency/tool versions, analyzer rules and diagnostic entries remain unchanged. The lock-file digest changes only for this reviewed runtime dependency."
 }
