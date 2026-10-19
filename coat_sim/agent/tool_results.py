@@ -22,18 +22,19 @@ class TaskLimitReached(RuntimeError):
     """A recoverable agent boundary; submitted domain jobs keep running."""
 
 
-def task_limits(config: dict[str, Any], mode: str) -> dict[str, int]:
-    defaults = {"chat": (16, 150000, 200000, 64),
-                "operate": (40, 500000, 650000, 128),
-                "research": (64, 800000, 1000000, 192)}[mode]
+def task_limits(config: dict[str, Any], mode: str) -> dict[str, int | None]:
+    """Optional user task ceilings; None means no per-task cumulative cap."""
+    if mode not in {"chat", "operate", "research"}:
+        raise ValueError("Unknown assistant task mode")
     fields = (("requests", "assistant_task_max_requests", 256),
               ("input_tokens", "assistant_task_max_input_tokens", 8000000),
               ("total_tokens", "assistant_task_max_total_tokens", 10000000),
-              ("tool_calls", "assistant_task_max_tool_calls", 1024))
+              ("tool_calls", "assistant_task_max_tool_calls", 1024),
+              ("delegations", "assistant_task_max_delegations", 256))
     result = {}
-    for (key, setting, maximum), default in zip(fields, defaults):
-        value = config.get(setting, default)
-        result[key] = min(maximum, max(1, value)) if isinstance(value, int) and not isinstance(value, bool) else default
+    for key, setting, maximum in fields:
+        value = config.get(setting)
+        result[key] = min(maximum, value) if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
     return result
 
 

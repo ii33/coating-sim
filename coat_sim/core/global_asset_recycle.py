@@ -20,7 +20,7 @@ import stat
 import uuid
 
 from . import data_files
-from .material_business import MaterialLibrary
+from .material_business import MaterialLibrary, deleted_builtin_marker_sha256
 from .materials import material_library_lock
 from .project_dependencies import EXTENSIONS, MAX_FILE_BYTES, MAX_PROJECT_BYTES, ProjectError, json_bytes, normalize_document, reject_links
 from . import project_global_resources as resources
@@ -234,19 +234,29 @@ def prepare_global_deletion(snapshot, selected_ids):
         if item is None:
             raise ProjectError("stale_source", "Material no longer exists")
         plan["business_id"] = business_id
-        if item["builtin"] and not item["overridden"]:
-            plan["blockers"].append({"code": "protected_builtin", "id": first})
-        else:
-            if item["builtin"]:
+        if item["builtin"]:
+            # A builtin is user-deletable: the seed file stays intact and a
+            # durable tombstone makes the id stay absent. Any existing override
+            # is archived so restore returns exactly the prior state.
+            plan["action"] = "delete_builtin"
+            plan["backend"] = "material_tombstone"
+            plan["tombstone"] = "materials/.deleted/" + business_id + ".json"
+            # The tombstone payload is deterministic, so the prepared receipt can
+            # carry the expected fingerprint before the marker exists. A process
+            # interruption between the prepared write and delete_builtin then
+            # stays readable and recoverable instead of failing validation.
+            plan["tombstone_sha256"] = deleted_builtin_marker_sha256(business_id)
+            if item["overridden"]:
                 source = library.override_directory / (business_id + ".json")
-                plan["action"] = "revert_builtin_override"
-            else:
-                matches = [path for path in library.directory.glob("*.json")
-                           if library._read_record_file(path)["id"] == business_id]
-                if len(matches) != 1:
-                    raise ProjectError("stale_source", "Custom material file is not uniquely owned")
-                source = matches[0]
-            plan.update(backend="material_file", source=_relative(source), fingerprint=_capture(source))
+                plan.update(source=_relative(source), fingerprint=_capture(source))
+        else:
+            matches = [path for path in library.directory.glob("*.json")
+                       if library._read_record_file(path)["id"] == business_id]
+            if len(matches) != 1:
+                raise ProjectError("stale_source", "Custom material file is not uniquely owned")
+            source = matches[0]
+            plan.update(backend="material_file", action="delete_asset",
+                        source=_relative(source), fingerprint=_capture(source))
     elif len(selected) != 1:
         raise ProjectError("invalid_selection", "Choose exactly one physical global asset")
     elif kind in _SQL:
@@ -357,7 +367,8 @@ def _new_receipt(snapshot, plan, expected):
             "before_rows": [records[key] for key in sorted(affected)],
             "dependency_rows": [records[key] for key in sorted(dependencies)],
             "after_rows": [row for row in expected["manifest"]["documents"] if row["id"] in affected],
-            **{key: deepcopy(plan[key]) for key in ("source", "fingerprint", "business_id", "row") if key in plan}}
+            **{key: deepcopy(plan[key]) for key in ("source", "fingerprint", "business_id", "row",
+                                                    "tombstone", "tombstone_sha256") if key in plan}}
 
 
 def _insert_row(connection, receipt):
@@ -393,7 +404,7 @@ def apply_global_deletion(snapshot, selection):
     _fsync_directory(_index().parent)
     with ExitStack() as stack:
         stack.enter_context(material_library_lock(_index()))
-        if selection.get("backend") == "material_file":
+        if selection.get("backend") in ("material_file", "material_tombstone"):
             stack.enter_context(material_library_lock(data_files.data_path("materials")))
         plan = prepare_global_deletion(snapshot, selection.get("selected_ids"))
         if plan != selection:
@@ -403,9 +414,46 @@ def apply_global_deletion(snapshot, selection):
         expected = _expected_after(snapshot, plan)
         receipt = _new_receipt(snapshot, plan, expected)
         moved = False
+        tombstoned = False
         committed = False
         try:
-            if plan["backend"] in ("typed_file", "material_file"):
+            if plan["backend"] == "material_tombstone":
+                library = MaterialLibrary(directory=data_files.data_path("materials"))
+                # Record the intended archive path in the durable prepared
+                # receipt before any mutation, so a crash at any point leaves a
+                # receipt that can resolve the override's location.
+                source = archive_folder = None
+                if plan.get("source"):
+                    source = _path(plan["source"])
+                    archive_folder = source.parent / ".asset-recycle" / receipt["receipt_id"]
+                    reject_links(archive_folder)
+                    receipt["archive"] = _relative(archive_folder / "payload")
+                _write_receipt(receipt)
+                if source is not None:
+                    archive_folder.mkdir(mode=0o700, parents=True)
+                    _fsync_directory(archive_folder.parent)
+                    _fsync_directory(source.parent)
+                    if _capture(source) != plan["fingerprint"]:
+                        raise ProjectError("stale_source", "Builtin override changed after deletion preview")
+                    _check_before(snapshot)
+                    _rename_directory_no_replace(source, _path(receipt["archive"]))
+                    moved = True
+                    _fsync_directory(source.parent)
+                    _fsync_directory(archive_folder)
+                    if not _same_archived(_capture(_path(receipt["archive"])), plan["fingerprint"]):
+                        raise ProjectError("stale_source", "Builtin override changed during archival")
+                library.delete_builtin(plan["business_id"])
+                tombstoned = True
+                marker = _path(plan["tombstone"])
+                if not marker.exists():
+                    raise ProjectError("global_library_error", "Builtin deletion marker was not written")
+                if _capture(marker)["sha256"] != receipt["tombstone_sha256"]:
+                    raise ProjectError("integrity_error", "Builtin deletion marker differs from its expected payload")
+                if resources.read_global_resources() != expected:
+                    raise ProjectError("stale_source", "Global library changed during deletion")
+                receipt["state"] = "active"
+                _write_receipt(receipt)
+            elif plan["backend"] in ("typed_file", "material_file"):
                 source = _path(plan["source"])
                 archive_folder = source.parent / ".asset-recycle" / receipt["receipt_id"]
                 reject_links(archive_folder)
@@ -454,6 +502,11 @@ def apply_global_deletion(snapshot, selection):
             return _public(receipt)
         except Exception as exc:
             try:
+                if tombstoned:
+                    marker = _path(receipt["tombstone"])
+                    if marker.exists():
+                        marker.unlink()
+                        _fsync_directory(marker.parent)
                 if moved:
                     source, archive = _path(receipt["source"]), _path(receipt["archive"])
                     if not _same_archived(_capture(archive), receipt["fingerprint"]):
@@ -501,8 +554,8 @@ def _validate_receipt(receipt, identity):
             or receipt.get("kind") != _RECEIPT_KIND or receipt.get("version") != 1
             or receipt.get("scope") != "global" or receipt.get("owner_root") != str(_root())
             or receipt.get("receipt_id") != identity or receipt.get("recovery_path") != str(_index() / identity)
-            or receipt.get("backend") not in {"typed_file", "material_file", "sqlite"}
-            or receipt.get("action") not in {"delete_asset", "revert_builtin_override"}
+            or receipt.get("backend") not in {"typed_file", "material_file", "sqlite", "material_tombstone"}
+            or receipt.get("action") not in {"delete_asset", "revert_builtin_override", "delete_builtin"}
             or receipt.get("state") not in {"prepared", "active", "uncertain", "restoring", "restored", "rolled_back"}
             or not isinstance(receipt.get("created_at"), str)):
         raise ProjectError("invalid_receipt", "Recycle receipt is not owned by this global library")
@@ -540,6 +593,33 @@ def _validate_receipt(receipt, identity):
                 or not isinstance(row["values"], list) or len(row["values"]) != len(row["columns"])
                 or row["values"][0] != business_id):
             raise ProjectError("invalid_receipt", "Invalid SQL archive row")
+    elif receipt["backend"] == "material_tombstone":
+        if receipt["action"] != "delete_builtin":
+            raise ProjectError("invalid_receipt", "Invalid builtin tombstone action")
+        material_id = receipt.get("business_id")
+        if not isinstance(material_id, str) or set(affected) != {
+                resources._identity("material_profile:" + material_id),
+                resources._identity("optical_material:" + material_id)}:
+            raise ProjectError("invalid_receipt", "Invalid paired material archive identity")
+        library = MaterialLibrary(directory=data_files.data_path("materials"))
+        if receipt.get("tombstone") != "materials/.deleted/" + material_id + ".json":
+            raise ProjectError("unsafe_path", "Builtin tombstone path is outside its owned location")
+        if (not isinstance(receipt.get("tombstone_sha256"), str)
+                or not re.fullmatch(r"[0-9a-f]{64}", receipt["tombstone_sha256"])):
+            raise ProjectError("invalid_receipt", "Invalid builtin tombstone fingerprint")
+        if "archive" in receipt or "source" in receipt:
+            source = _path(receipt.get("source"))
+            archive = _path(receipt.get("archive"))
+            if source != library.override_directory / (material_id + ".json"):
+                raise ProjectError("unsafe_path", "Builtin override archive is outside its owned path")
+            if archive != source.parent / ".asset-recycle" / identity / "payload" or ".asset-recycle" in source.parts:
+                raise ProjectError("unsafe_path", "Recycle payload path is outside its owned location")
+            fingerprint = receipt.get("fingerprint")
+            if (not isinstance(fingerprint, dict) or set(fingerprint) != {"signature", "sha256"}
+                    or not isinstance(fingerprint["signature"], list) or len(fingerprint["signature"]) != 6
+                    or any(type(item) is not int for item in fingerprint["signature"])
+                    or not isinstance(fingerprint["sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", fingerprint["sha256"])):
+                raise ProjectError("invalid_receipt", "Invalid archive byte fingerprint")
     else:
         source = _path(receipt.get("source"))
         archive = _path(receipt.get("archive"))
@@ -690,9 +770,77 @@ def _expected_restore(current, receipt):
     return [rows[key] for key in sorted(rows)]
 
 
+def _prepared_before_state(receipt):
+    """Confirm the live resources still equal the pre-deletion receipt rows."""
+    current = resources.read_global_resources()
+    records = {row["id"]: row for row in current["manifest"]["documents"]}
+    for row in receipt["before_rows"] + receipt["dependency_rows"]:
+        if records.get(row["id"]) != row:
+            raise ProjectError("restore_conflict",
+                               "Interrupted deletion has changed resources or dependencies")
+    return current
+
+
+def _recover_prepared_tombstone(receipt):
+    """Finalize a builtin tombstone receipt that never became active.
+
+    A crash can stop after the durable ``prepared`` receipt is written but
+    before the tombstone marker or the override archive is finalised. Nothing
+    was acknowledged as deleted, so move any archived override back to a free
+    original path, confirm the pre-deletion resources, and mark the operation
+    ``rolled_back``. An existing marker means the deletion is present and is
+    left to the normal restore path; an occupied source or a changed archive
+    stays visible instead of being overwritten.
+    """
+    marker = _path(receipt["tombstone"])
+    if marker.exists():
+        return False
+    if "archive" not in receipt:
+        _prepared_before_state(receipt)
+        receipt["state"] = "rolled_back"
+        _write_receipt(receipt)
+        return True
+    source, archive = _path(receipt["source"]), _path(receipt["archive"])
+    if archive.exists():
+        if source.exists():
+            raise ProjectError("restore_conflict", "The original override path is occupied")
+        if not _same_archived(_capture(archive), receipt["fingerprint"]):
+            raise ProjectError("integrity_error", "Archived override changed; preserve it for manual recovery")
+        _rename_directory_no_replace(archive, source)
+        _fsync_directory(source.parent)
+        _fsync_directory(archive.parent)
+        if not _same_archived(_capture(source), receipt["fingerprint"]):
+            raise ProjectError("integrity_error", "Restored override changed; retain all recovery paths")
+    else:
+        if not source.exists():
+            raise ProjectError("restore_conflict", "Archived override is missing; preserve the receipt")
+        if not _same_archived(_capture(source), receipt["fingerprint"]):
+            raise ProjectError("integrity_error", "Original override changed; preserve it for manual recovery")
+    _prepared_before_state(receipt)
+    receipt["state"] = "rolled_back"
+    _write_receipt(receipt)
+    return True
+
+
 def _finish_interrupted_file_restore(receipt):
     if receipt["backend"] == "sqlite":
         return False
+    if receipt["backend"] == "material_tombstone":
+        marker = _path(receipt["tombstone"])
+        if marker.exists():
+            return False
+        if "archive" in receipt:
+            source = _path(receipt["source"])
+            if not source.exists() or not _same_archived(_capture(source), receipt["fingerprint"]):
+                return False
+        current = resources.read_global_resources()
+        records = {row["id"]: row for row in current["manifest"]["documents"]}
+        for row in receipt["before_rows"] + receipt["dependency_rows"]:
+            if records.get(row["id"]) != row:
+                raise ProjectError("restore_conflict", "Interrupted restore has changed resources or dependencies")
+        receipt["state"] = "restored"
+        _write_receipt(receipt)
+        return True
     source, archive = _path(receipt["source"]), _path(receipt["archive"])
     if archive.exists() or not source.exists() or not _same_archived(_capture(source), receipt["fingerprint"]):
         return False
@@ -716,17 +864,21 @@ def restore_global_deletion(receipt_id):
         raise ProjectError("already_restored", "Global deletion is no longer active")
     with ExitStack() as stack:
         stack.enter_context(material_library_lock(_index()))
-        if receipt["backend"] == "material_file":
+        if receipt["backend"] in ("material_file", "material_tombstone"):
             stack.enter_context(material_library_lock(data_files.data_path("materials")))
         receipt = _load_receipt(receipt_id)
         if receipt["state"] in {"restored", "rolled_back"}:
             raise ProjectError("already_restored", "Global deletion is no longer active")
+        if receipt["state"] == "prepared" and receipt["backend"] == "material_tombstone":
+            if _recover_prepared_tombstone(receipt):
+                return _public(receipt)
         if _finish_interrupted_file_restore(receipt):
             return _public(receipt)
         current = _restore_preflight(receipt)
         expected_rows = _expected_restore(current, receipt)
         moved = False
         committed = False
+        marker_removed = False
         previous_state = receipt["state"]
         try:
             if receipt["backend"] == "sqlite":
@@ -743,6 +895,30 @@ def restore_global_deletion(receipt_id):
                     except BaseException:
                         connection.rollback()
                         raise
+            elif receipt["backend"] == "material_tombstone":
+                marker = _path(receipt["tombstone"])
+                if not marker.exists():
+                    raise ProjectError("restore_conflict", "Builtin deletion marker is missing")
+                if _capture(marker)["sha256"] != receipt["tombstone_sha256"]:
+                    raise ProjectError("integrity_error", "Builtin deletion marker changed; preserve it for manual recovery")
+                if "archive" in receipt:
+                    source, archive = _path(receipt["source"]), _path(receipt["archive"])
+                    if source.exists():
+                        raise ProjectError("restore_conflict", "The original override path is occupied")
+                    if not _same_archived(_capture(archive), receipt["fingerprint"]):
+                        raise ProjectError("integrity_error", "Archived override changed; preserve it for manual recovery")
+                receipt["state"] = "restoring"
+                _write_receipt(receipt)
+                if resources.read_global_resources() != current:
+                    raise ProjectError("stale_source", "Global resources changed during restore")
+                marker.unlink()
+                marker_removed = True
+                _fsync_directory(marker.parent)
+                if "archive" in receipt:
+                    _rename_directory_no_replace(archive, source)
+                    moved = True
+                    _fsync_directory(source.parent)
+                    _fsync_directory(archive.parent)
             else:
                 source, archive = _path(receipt["source"]), _path(receipt["archive"])
                 if source.exists():
@@ -777,6 +953,11 @@ def restore_global_deletion(receipt_id):
                     _rename_directory_no_replace(_path(receipt["source"]), _path(receipt["archive"]))
                     _fsync_directory(_path(receipt["source"]).parent)
                     _fsync_directory(_path(receipt["archive"]).parent)
+                if marker_removed:
+                    marker = _path(receipt["tombstone"])
+                    if not marker.exists():
+                        MaterialLibrary(directory=data_files.data_path("materials")).delete_builtin(receipt["business_id"])
+                        _fsync_directory(marker.parent)
                 if committed:
                     with closing(_connect_sql(writable=True)) as connection:
                         with connection:

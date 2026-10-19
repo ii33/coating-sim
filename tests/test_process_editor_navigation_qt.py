@@ -55,6 +55,12 @@ class _ProjectNavigation(QObject):
     def __init__(self, name):
         super().__init__()
         self._project_name = name
+        self.opened = []
+
+    @Slot(str, result=str)
+    def openProjectModule(self, module_key):
+        self.opened.append(module_key)
+        return "same-project-window"
 
     @Property(str, notify=projectNameChanged)
     def projectName(self):
@@ -319,6 +325,26 @@ class ProcessEditorNavigationQtTests(unittest.TestCase):
         root = Path(configured) if configured else self.root / "screenshots"
         root.mkdir(parents=True, exist_ok=True)
         return root
+
+    def test_project_toolbar_routes_through_own_navigation(self):
+        main = self._load_window(MainBridge(self.service), "MainWindow.qml")
+        main_navigation = _ProjectNavigation("First")
+        main.setProperty("projectNavigation", main_navigation)
+        self._click(main, "processEditorActionButton")
+        self._click(main, "processEditorActionButton")
+        self.assertEqual(main_navigation.opened, ["process", "process"])
+        self.assertEqual(self.launcher.calls, [])
+
+        process_bridge = ProcessBridge(self.service, str(self.paths["process"]))
+        self.assertTrue(process_bridge.valid, process_bridge.errors)
+        process = self._load_window(process_bridge, "ProcessWindow.qml")
+        process_navigation = _ProjectNavigation("Second")
+        process.setProperty("projectNavigation", process_navigation)
+        self._click(process, "sendToSimulationButton")
+        self._click(process, "sendToSimulationButton")
+        self.assertEqual(process_navigation.opened, ["main", "main"])
+        self.assertEqual(main_navigation.opened, ["process", "process"])
+        self.assertEqual(self.launcher.calls, [])
 
     def test_main_window_process_create_edit_and_uniformity_sidebar(self):
         bridge = MainBridge(self.service)

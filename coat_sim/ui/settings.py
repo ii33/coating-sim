@@ -690,6 +690,18 @@ def normalized_ui_settings(values: Mapping[str, object] | None = None) -> dict[s
         "assistant_model_limits_legacy": legacy_model_limits,
         "assistant_task_mode": _choice(
             source.get("assistant_task_mode"), ASSISTANT_TASK_MODES, "chat"),
+        # A null task ceiling means no per-task request/token/tool/delegation cap.
+        # Explicit positive ceilings survive load/save and worker handoff.
+        "assistant_task_max_requests": _bounded_integer(
+            source.get("assistant_task_max_requests"), 0, 256, 0) or None,
+        "assistant_task_max_input_tokens": _bounded_integer(
+            source.get("assistant_task_max_input_tokens"), 0, 8_000_000, 0) or None,
+        "assistant_task_max_total_tokens": _bounded_integer(
+            source.get("assistant_task_max_total_tokens"), 0, 10_000_000, 0) or None,
+        "assistant_task_max_tool_calls": _bounded_integer(
+            source.get("assistant_task_max_tool_calls"), 0, 1024, 0) or None,
+        "assistant_task_max_delegations": _bounded_integer(
+            source.get("assistant_task_max_delegations"), 0, 256, 0) or None,
         "assistant_reasoning_strength": _choice(
             source.get("assistant_reasoning_strength"), ASSISTANT_REASONING_STRENGTHS, "auto"),
         "assistant_daily_token_limit": _bounded_integer(

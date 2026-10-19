@@ -84,18 +84,35 @@ LocalComponents.AppWindow {
             result.push({key: String(kinds[i]), label: kindLabel(String(kinds[i]))})
         return result
     }
+    // "medium" is an incident/exit medium picker usage, not a browser category:
+    // medium-only records (for example ideal Air) browse as ordinary "其他材料".
+    // A record that is also film/substrate keeps those browser uses as well.
+    // The backend material_uses value and the medium picker role are unchanged.
+    function browserMaterialUse(use) {
+        return use === "medium" ? "other" : use
+    }
+    function browserMaterialUses(row) {
+        const uses = row.material_uses || ["other"]
+        const result = []
+        for (const use of uses) {
+            const browserUse = browserMaterialUse(use)
+            if (result.indexOf(browserUse) < 0)
+                result.push(browserUse)
+        }
+        return result
+    }
     readonly property var materialUses: {
         const existing = []
         for (const row of allRows) {
             if (row.kind === "material_profile") {
-                for (const use of row.material_uses || ["other"]) {
+                for (const use of browserMaterialUses(row)) {
                     if (existing.indexOf(use) < 0)
                         existing.push(use)
                 }
             }
         }
-        const labels = {film: "膜料", substrate: "基片材料", medium: "介质", other: "其他材料", unspecified: "用途未标注"}
-        return ["film", "substrate", "medium", "other", "unspecified"].filter(function(use) {
+        const labels = {film: "膜料", substrate: "基片材料", other: "其他材料", unspecified: "用途未标注"}
+        return ["film", "substrate", "other", "unspecified"].filter(function(use) {
             return existing.indexOf(use) >= 0
         }).map(function(use) { return {key: use, label: labels[use]} })
     }
@@ -104,7 +121,8 @@ LocalComponents.AppWindow {
         const query = searchField.text.trim().toLowerCase()
         return allRows.filter(function(row) {
             return row.kind === kind
-                && (kind !== "material_profile" || (row.material_uses || ["other"]).indexOf(materialUse) >= 0)
+                && (kind !== "material_profile"
+                    || browserMaterialUses(row).indexOf(browserMaterialUse(materialUse)) >= 0)
                 && (!query || String(row.name || "").toLowerCase().indexOf(query) >= 0
                     || String(row.summary || "").toLowerCase().indexOf(query) >= 0)
         })
@@ -205,7 +223,8 @@ LocalComponents.AppWindow {
                     return window.allRows.some(function(row) {
                         return row.id === value && row.kind === window.categoryKey
                             && (row.kind !== "material_profile"
-                                || (row.material_uses || ["other"]).indexOf(window.materialUse) >= 0)
+                                || window.browserMaterialUses(row).indexOf(
+                                    window.browserMaterialUse(window.materialUse)) >= 0)
                     })
                 })
             }
@@ -381,6 +400,8 @@ LocalComponents.AppWindow {
                 LocalComponents.ResponsiveOperationBar {
                     objectName: "resourceLibraryOperationBar"
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: headerColumn.width
                     Layout.preferredHeight: implicitHeight
                     themeTokens: window.tokens
                     LocalComponents.ProjectModuleSelector {

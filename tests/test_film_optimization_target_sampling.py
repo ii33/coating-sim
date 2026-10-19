@@ -36,6 +36,7 @@ from tests.test_film_optimization_run_contract import _Session, _Source
 
 ROOT = Path(__file__).resolve().parents[1]
 
+
 def _text_property(owner: QObject, name: str) -> str:
     value = owner.property(name)
     assert isinstance(value, str), (name, value)
@@ -103,10 +104,16 @@ def test_endpoint_inclusive_sampling_preserves_requested_basis_and_actual_step()
     row = module._objective_default(0)
     assert row["wavelength_min_nm"] == 400
     assert row["wavelength_max_nm"] == 700
-    assert row["wavelength_samples"] == 31
+    assert row["sampling_basis"] == "step"
+    assert row["wavelength_step_nm"] == 1
+    assert row["wavelength_samples"] == 301
     resolved = module._resolve_objective_sampling(row)
-    assert resolved["wavelength_samples"] == 31
-    assert resolved["actual_wavelength_step_nm"] == pytest.approx(10)
+    assert resolved["wavelength_samples"] == 301
+    assert resolved["actual_wavelength_step_nm"] == pytest.approx(1)
+    assert module._resolve_angle_sampling(row)["angle_sample_count"] == 1
+    expanded_angles = module._resolve_angle_sampling({**row, "angle_max_deg": 3.0})
+    assert expanded_angles["angle_sample_count"] == 4
+    assert expanded_angles["actual_angle_step_deg"] == pytest.approx(1)
 
     step_requested = deepcopy(row)
     step_requested.update(wavelength_step_nm=7, sampling_basis="step")
@@ -139,6 +146,33 @@ def test_range_angles_use_ceil_and_endpoint_inclusive_grid():
     assert angles == pytest.approx(tuple(np.linspace(2.0, 50.0, 8)))
     assert angles[0] == 2.0
     assert angles[-1] == 50.0
+
+
+def test_new_targets_use_one_nm_step_and_saved_point_count_stays_intact(tmp_path):
+    service, _library, design = fixture(tmp_path)
+    controller = FilmOptimizationQuickController(_snapshot(service, design))
+    try:
+        first = controller._objectives[0]
+        assert (first["wavelength_samples"], first["wavelength_step_nm"],
+                first["sampling_basis"]) == (301, 1.0, "step")
+        assert (first["angle_sample_count"], first["angle_step_deg"]) == (1, 1.0)
+        controller.addObjective()
+        second = controller._objectives[1]
+        assert (second["wavelength_samples"], second["sampling_basis"]) == (301, "step")
+        assert second["id"] != first["id"]
+
+        saved = controller.exportOptimizationConfiguration()
+        saved["objectives"][0]["wavelength_samples"] = 31
+        saved["objectives"][0].pop("sampling_basis")
+        saved["objectives"][0].pop("wavelength_step_nm")
+        assert controller.loadOptimizationConfiguration(saved)
+        restored = controller._objectives[0]
+        assert restored["sampling_basis"] == "samples"
+        assert restored["wavelength_samples"] == 31
+        assert restored["actual_wavelength_step_nm"] == pytest.approx(10)
+        assert controller._objectives[1]["wavelength_samples"] == 301
+    finally:
+        _dispose(controller)
 
 
 def test_adjacent_float_grid_points_remain_valid_across_power_of_two_boundary():
@@ -931,7 +965,7 @@ def test_invalid_sampling_edit_preserves_last_legal_row_and_blocks_start(
     controller = FilmOptimizationQuickController(_snapshot(service, design))
     try:
         original = deepcopy(controller._objectives[0])
-        assert original["wavelength_samples"] == 31
+        assert original["wavelength_samples"] == 301
         assert not controller.setObjectiveField(field, value)
         assert controller._objectives[0] == original
         assert controller._pending_edit_error
@@ -996,6 +1030,7 @@ def test_duplicate_objective_has_independent_identity_and_editable_copy(tmp_path
     controller = FilmOptimizationQuickController(_snapshot(service, design))
     try:
         for field, value in (("angles_text", "0, 30, 45"),
+                             ("wavelength_step_nm", 7),
                              ("polarization", "p"), ("weight", 2.75),
                              ("lower_bound_percent", 1.5),
                              ("upper_bound_percent", 9.0)):
@@ -1005,7 +1040,8 @@ def test_duplicate_objective_has_independent_identity_and_editable_copy(tmp_path
         copied = controller._objectives[1]
         assert copied["id"] != original["id"]
         assert copied["name"] == original["name"] + " 副本"
-        for field in ("angles_text", "polarization", "weight",
+        for field in ("angles_text", "sampling_basis", "wavelength_step_nm",
+                      "wavelength_samples", "polarization", "weight",
                       "lower_bound_percent", "upper_bound_percent"):
             assert copied[field] == original[field]
         assert controller.setObjectiveField("angles_text", "12")

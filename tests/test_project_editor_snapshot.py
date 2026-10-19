@@ -130,6 +130,28 @@ def test_optimization_reads_actual_controller_changes_and_invalidates_pages(live
     assert read(live, module_key="film_optimization")["available"]
 
 
+def test_optimization_summary_exports_exact_window_request_without_editing(live, monkeypatch):
+    from coat_sim.core.film_optimization_job import serialize_request
+
+    optimization = FilmOptimizationQuickController(live.source, project_context=live.workspace)
+    live.mount("film_optimization", optimization)
+    request = optimization._build_request(require_variables=False)
+    before = optimization.exportOptimizationConfiguration()
+    monkeypatch.setattr(optimization, "_build_request", lambda: request)
+    state = read(live, module_key="film_optimization")
+    submission = state["optimization"]["submission"]
+    assert state["available"] and submission["available"]
+    assert submission["source"] == "current_window"
+    assert submission["request"] == serialize_request(request)
+    assert optimization.exportOptimizationConfiguration() == before
+    assert live.store.manifest["revision"] == 0
+    optimization._search_mode = "structure"
+    changed = read(live, module_key="film_optimization")
+    assert changed["optimization"]["submission"] == {
+        "available": False, "reason": "structure_mode_not_supported_by_film_tool"}
+    assert changed["snapshot_id"] != state["snapshot_id"]
+
+
 def test_layer_material_projection_uses_captured_not_new_picker_and_bounds_all_pages(live):
     with live.editor._lock:
         live.editor._design["front_layers"] = [

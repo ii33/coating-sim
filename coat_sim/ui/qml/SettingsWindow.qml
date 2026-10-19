@@ -1498,7 +1498,7 @@ AppWindow {
                                 }
                             }
                             ThemeControls.ThemeLabel {
-                                text: "限额按输入与输出总量计，0 表示不限；统计自动使用 K / M，未返回用量时标明估算。"
+                                text: "每日和时段限额按输入与输出总量计，0 表示不限；每任务请求、累计 Token、工具调用及子助手委派默认不设次数上限，云模型调用可能继续计费。统计自动使用 K / M，未返回用量时标明估算。"
                                 Layout.fillWidth: true
                                 wrapMode: Text.WordWrap
                                 color: settingsPage && settingsPage.settingsWindow.themeColors ? settingsPage.settingsWindow.themeColors.colorTextMuted : Theme.snapshot.colorTextMuted

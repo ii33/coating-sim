@@ -1239,7 +1239,7 @@ class LauncherBridge(QObject):
         elif spec.key == "film_optimization":
             if request.payload is None:
                 raise ValueError("膜系优化需要来自膜系设计窗口的会话载荷")
-            controller = controller_type(payload, parent=self)
+            controller = controller_type(payload, parent=self, defer_expensive_load=True)
         elif paired_simulation_source:
             controller = controller_type(
                 root=PROJECT_ROOT, parent=self,
@@ -1428,6 +1428,8 @@ class LauncherBridge(QObject):
         elif not window.isVisible():
             window.show()
         self._activate_window(window)
+        if pending.spec.key == "film_optimization":
+            pending.bridge.startLoading()
         if animate:
             self._start_window_transition(str(instance_id), window)
 

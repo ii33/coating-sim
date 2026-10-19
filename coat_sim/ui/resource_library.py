@@ -171,6 +171,9 @@ class ResourceLibraryBridge(AssetLibraryActions):
             identity, self._material_pending_id = self._material_pending_id, ""
             if self._select_material_asset(identity):
                 self._present_material_asset(identity)
+            else:
+                self._asset_action_error(
+                    "未能打开所选材料：材料库已变化或该材料已被删除，请刷新后重试。")
         current = str(library.currentId or library._draft.get("id", ""))
         row = next((row for row in self._transfer_catalog.get("rows", [])
                     if row.get("material_id") == current and row["kind"] == "material_profile"), None)
@@ -293,11 +296,22 @@ class ResourceLibraryBridge(AssetLibraryActions):
             self._material_pending_id = identity
             self.libraryChanged.emit()
             return True
-        result = self._select_material_asset(identity)
-        if result:
+        if self._select_material_asset(identity):
             self._present_material_asset(identity)
+            self.libraryChanged.emit()
+            return True
+        # The editor's own cached catalog can predate an out-of-process write,
+        # for example an assistant create_material, while the asset list was
+        # already refreshed. Force one fresh read and resolve the click when it
+        # lands instead of silently returning False.
+        if not self._material_bridge.hasMaterial(row.get("material_id")):
+            self._material_pending_id = identity
+            self._material_bridge.reload()
+            self.libraryChanged.emit()
+            return True
         self.libraryChanged.emit()
-        return result
+        return self._asset_action_error(
+            "未能打开所选材料：材料库已变化或该材料已被删除，请刷新后重试。")
 
     @Slot(result=bool)
     def openMaterialSection(self):

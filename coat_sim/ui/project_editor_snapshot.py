@@ -213,6 +213,23 @@ def _optimizer_state(controller: Any, editor: Any, snapshot: Any,
     return export(), None
 
 
+def _optimization_submission(controller: Any) -> dict:
+    """Serialize the loaded window's exact fixed-topology request without editing it."""
+    if getattr(controller, "_search_mode", None) != "fixed_topology":
+        return {"available": False, "reason": "structure_mode_not_supported_by_film_tool"}
+    if controller._requires_async_angle_preparation():
+        return {"available": False, "reason": "angle_preparation_required"}
+    try:
+        from coat_sim.core.film_optimization_job import serialize_request
+        request = serialize_request(controller._build_request())
+    except (TypeError, ValueError, OverflowError, KeyError) as exc:
+        return {"available": False, "reason": "window_configuration_invalid",
+                "message": str(exc)[:MAX_TEXT]}
+    if len(_json(request)) > MAX_RESPONSE_BYTES - 32 * 1024:
+        return {"available": False, "reason": "request_response_budget_exceeded"}
+    return {"available": True, "source": "current_window", "request": request}
+
+
 def _simulation_state(controller: Any, editor: Any, snapshot: Any) -> tuple[dict | None, str | None]:
     if controller is None:
         return None, "window_closed"
@@ -479,6 +496,11 @@ def project_editor_snapshot(launcher: Any, session: Any, module: str, arguments:
                     [window for window in windows.values() if window is not None])
                 if module == "film_optimization" and optimizer_reason:
                     return _unavailable(identity, optimizer_reason)
+                optimization_submission = (_optimization_submission(optimization)
+                                           if module == "film_optimization" else None)
+                optimizer_target = getattr(optimization, "_compute_target", None)
+                optimizer_selection = (optimizer_target.selection_identity()
+                                       if optimizer_target is not None else None)
                 simulation = lookup(workspace, "film_simulation") if (
                     callable(lookup) and windows.get("film_simulation") is not None) else None
                 simulation_configuration, simulation_reason = _simulation_state(simulation, editor, snapshot)
@@ -501,6 +523,7 @@ def project_editor_snapshot(launcher: Any, session: Any, module: str, arguments:
                  "path": snapshot.path, "design": snapshot.design,
                  "materials": materials, "configuration": configuration,
                  "optimizer_reason": optimizer_reason,
+                 "optimizer_selection": optimizer_selection,
                  "simulation_configuration": simulation_configuration,
                  "simulation_reason": simulation_reason, "simulation_ui_state": simulation_ui_state,
                  "related_instances": {key: route.route_id for key, route in routes.items()}}
@@ -537,6 +560,8 @@ def project_editor_snapshot(launcher: Any, session: Any, module: str, arguments:
         result["optimization"] = {"available": optimizer_reason is None,
                                    "source": "current_controller" if optimizer_reason is None else None,
                                    "reason": optimizer_reason}
+        if optimization_submission is not None:
+            result["optimization"]["submission"] = optimization_submission
         if optimizer_reason is None:
             result["optimization"].update(
                 objective_count=len(configuration.get("objectives", [])),

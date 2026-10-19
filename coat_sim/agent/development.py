@@ -6,7 +6,6 @@ import base64
 from datetime import datetime, timezone
 import hashlib
 from importlib import metadata
-import json
 from itertools import islice
 import mimetypes
 import os
@@ -27,6 +26,36 @@ MAX_READ_BYTES = 65_536
 MAX_DIRECTORY_ENTRIES = 200
 _ACCESS_LOCK = threading.RLock()
 _READ_ACCESS_UNTIL = 0.0
+_SOURCE_DIRS = {"coat_sim": {".py", ".qml", ".md"},
+                "tests": {".py"}, "tools": {".py"}, "docs": {".md"}}
+_ROOT_SOURCE_FILES = {"launcher.py", "pyproject.toml", "README.md", "AGENTS.md"}
+_SENSITIVE_PARTS = {".git", ".venv", ".aws", ".ssh", ".codex", ".env",
+                    "credentials", "credential", "secrets", "secret", "tokens", "keys"}
+
+
+def _project_read_scope(target: Path) -> tuple[bool, bool]:
+    """Return (safe project path, available without an explicit grant)."""
+    root = ROOT.resolve()
+    if not target.is_relative_to(root):
+        return False, False
+    parts = target.relative_to(root).parts
+    if any(part.lower() in _SENSITIVE_PARTS or part.lower().startswith(".env.")
+           for part in parts):
+        return False, False
+    if not parts:
+        return True, True
+    if len(parts) == 1 and parts[0] in _ROOT_SOURCE_FILES:
+        return True, True
+    if parts[0] in _SOURCE_DIRS:
+        if len(parts) == 1:
+            return True, True
+        return True, target.is_dir() or target.suffix.lower() in _SOURCE_DIRS[parts[0]]
+    if parts[:2] == ("artifacts", "logs"):
+        return True, (len(parts) == 2 or
+                      (len(parts) == 3 and re.fullmatch(r"[\w-]+\.log(?:\.[0-9]+)?", parts[2]) is not None))
+    if len(parts) == 1 and parts[0] == "artifacts":
+        return True, True
+    return True, False
 
 
 def development_available() -> bool:
@@ -66,15 +95,16 @@ def developer_status() -> dict[str, Any]:
             "checks": ["environment", "syntax", "unit-tests"],
             "persona_editable": development_enabled(),
             "file_access": {"granted": development_enabled() and time.monotonic() < _READ_ACCESS_UNTIL,
+                            "project_source_and_logs_default": development_enabled(),
                             "read_only": True, "administrator": False},
-            "scope": "固定项目检查和 agent.md 人设；developer_access 可申请临时本机只读文件访问，不能写入或执行任意命令。"}
+            "scope": "Project source and logs are readable by default; a grant permits other safe project files. No arbitrary command execution."}
 
 
 def developer_access(action: Literal["status", "grant", "revoke"] = "status",
                      duration_s: int = 900) -> dict[str, Any]:
-    """Grant/revoke this development process's temporary read-only access.
+    """Grant/revoke temporary read-only access to other safe files in this project.
 
-    The local Settings gate is mandatory and cannot be opened by a model.
+    The source-build launch gate is mandatory and cannot be opened by a model.
     Grant only when the user's debugging request authorizes the required read.
     This is an application permission, not OS administrator elevation.
     """
@@ -91,17 +121,14 @@ def developer_access(action: Literal["status", "grant", "revoke"] = "status",
             _READ_ACCESS_UNTIL = 0.0
         remaining = max(0.0, _READ_ACCESS_UNTIL - time.monotonic())
     return {"granted": remaining > 0, "remaining_s": round(remaining, 1),
-            "scope": "当前操作系统用户可读的文件与目录", "read_only": True,
+            "scope": "本项目内非敏感文件与目录", "read_only": True,
             "administrator": False, "sandbox_permissions_changed": False}
 
 
 def developer_files(path: str, action: Literal["stat", "list", "read"] = "stat",
                     offset: int = 0, limit: int = 32768) -> dict[str, Any]:
-    """Read any OS-readable path after a local development grant; paginate results."""
+    """Read project source/logs by default; grant covers other safe project files."""
     require_development()
-    with _ACCESS_LOCK:
-        if time.monotonic() >= _READ_ACCESS_UNTIL:
-            raise PermissionError("本机只读访问未授权或已过期；先调用 developer_access grant。")
     if not isinstance(path, str) or not path.strip() or len(path) > 4096:
         raise ValueError("请输入有效本机路径。")
     if action not in ("stat", "list", "read"):
@@ -114,6 +141,11 @@ def developer_files(path: str, action: Literal["stat", "list", "read"] = "stat",
     if not target.is_absolute():
         target = ROOT / target
     target = target.resolve(strict=True)
+    in_project, default_readable = _project_read_scope(target)
+    with _ACCESS_LOCK:
+        granted = time.monotonic() < _READ_ACCESS_UNTIL
+    if not in_project or not (default_readable or granted):
+        raise PermissionError('Only project source/logs are readable by default; other safe project files require grant')
     info = target.stat()
     result = {"path": str(target), "size": info.st_size, "modified_s": info.st_mtime,
               "directory": target.is_dir(), "read_only": True}
@@ -123,7 +155,10 @@ def developer_files(path: str, action: Literal["stat", "list", "read"] = "stat",
         if not target.is_dir():
             raise ValueError("list 只接受目录。")
         count = min(limit, MAX_DIRECTORY_ENTRIES)
-        entries = list(islice(target.iterdir(), offset, offset + count + 1))
+        visible = (entry for entry in target.iterdir()
+                   if not entry.is_symlink() and (scope := _project_read_scope(entry.resolve()))[0]
+                   and (scope[1] or granted))
+        entries = list(islice(visible, offset, offset + count + 1))
         result.update(offset=offset, entries=[{"name": entry.name, "path": str(entry)}
                                               for entry in entries[:count]],
                       more=len(entries) > count, next_offset=offset + min(count, len(entries)))
@@ -187,18 +222,23 @@ def developer_checks(check: Literal["environment", "syntax", "unit-tests"] = "en
     environment["COAT_RELEASE_BUILD"] = "1"
     environment["PYTHONUTF8"] = "1"
     environment["PYTHONIOENCODING"] = "utf-8"
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
     options = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
     try:
-        result = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", str(directory),
-                                 "-p", "test*.py"], cwd=ROOT, env=environment,
-                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT, timeout=60, **options)
+        with tempfile.TemporaryDirectory(prefix="coat-developer-check-") as scratch:
+            result = subprocess.run(
+                [sys.executable, "-m", "pytest", "-q", "--basetemp", scratch,
+                 str(directory / "test_development_project_scope.py"),
+                 str(directory / "test_assistant_discussion_mode.py")],
+                cwd=ROOT, env=environment, stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                timeout=60, check=False, **options)
         output = result.stdout.decode("utf-8", errors="replace")
-        count = re.search(r"\bRan\s+(\d+)\s+tests?\b", output)
-        tests_run = int(count.group(1)) if count else None
+        counts = re.findall(r"\b(\d+) (?:passed|failed|error|errors)\b", output)
+        tests_run = sum(map(int, counts)) if counts else 0
         return {"check": check, "exit_code": result.returncode,
-                "tests_run": tests_run, "passed": result.returncode == 0 and tests_run is not None and tests_run > 0,
-                "reason": "没有发现 unittest 测试。" if tests_run == 0 else None,
+                "tests_run": tests_run, "passed": result.returncode == 0 and tests_run > 0,
+                "reason": "No pytest tests completed" if tests_run == 0 else None,
                 "output": output[-16_000:], "truncated": len(output) > 16_000}
     except subprocess.TimeoutExpired:
         return {"check": check, "passed": False, "timed_out": True, "timeout_s": 60}

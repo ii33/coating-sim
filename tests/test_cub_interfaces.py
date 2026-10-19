@@ -139,7 +139,8 @@ class CubMCPContracts(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(copied["record"].get("roles"), original["record"].get("roles"))
         profile = default_material_profile("cub custom", "cub_custom")
         profile.update(roles=["film"], optical_constants=[optics(), optics("second", "um")])
-        await self.call("create_material", {"profile": profile})
+        await self.call("create_material", {"profile": profile, "origin": "user_measurement",
+            "evidence": {"sample": {"k_status": "unknown"}, "second": {"k_status": "unknown"}}})
         path = self.root / "data/materials/cub_custom.json"
         before = path.read_bytes()
         bad = deepcopy(profile)
@@ -228,7 +229,8 @@ class CubMCPContracts(unittest.IsolatedAsyncioTestCase):
         from coat_sim.core.simulation_assets import save_simulation_input_asset
         profile = default_material_profile("snapshot original", "cub_snapshot")
         profile.update(roles=["film"], optical_constants=[optics()])
-        await self.call("create_material", {"profile": profile})
+        await self.call("create_material", {"profile": profile, "origin": "user_measurement",
+            "evidence": {"sample": {"k_status": "unknown"}}})
         source = self.service.load("source", self.root / "source.csrc").data
         source["material"] = profile
         self.service.save("source", self.root / "source.csrc", source, overwrite=True)

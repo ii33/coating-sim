@@ -177,11 +177,11 @@ print(client.request("transcript", after_id=0, limit=20))
 
 推理档位应使用当前服务已确认的原生值。调试预算由主助手、子代理与整理代理共用，默认单次最多 4096 输出 Token、12 次请求、累计 60 K Token；实报用量在请求结束结算，估算不足时可能先超出累计预算，再阻止下一次请求。相同 `client_message_id`、相同参数在同一调试服务进程中返回原调用回执；变更参数报冲突。进程重启后须先查询会话、文件与作业，不能依赖内存回执防重复。见 [MCP 与本地调试](mcp.md)。
 
-源码运行可直接在设置中启用“开发模式”，默认关闭；保存后下一轮生效，无需额外命令行开关。launcher.pyw --development 和 COAT_DEVELOPMENT=1 保留为源码兼容入口。COAT_RELEASE_BUILD=1、冻结打包或 Nuitka 构建强制关闭开发能力，不能由助手或设置页绕过。
+源码版启动默认启用受限开发工具；`--no-development` 可关闭，`--development` 保留兼容。`COAT_RELEASE_BUILD=1`、冻结打包或 Nuitka 构建始终关闭。设置页显示实际后端状态。
 
 开发诊断提供固定环境检查、Python 语法检查和既有 tests 的 unittest 测试（60 秒上限）；没有通用终端、任意检查参数或任意脚本执行入口。运行实际测试仍应符合用户当前授权。修改人设只允许固定 agent.md：先读取 SHA256，更新时核对相同指纹并备份，下一轮任务生效。
 
-developer_access 提供会话内只读路径授权的 grant / revoke / status；developer_files 对已授权且操作系统允许读取的路径提供分页 read / list / stat。它们用于开发排障，不获得管理员权限、不写入或执行外部文件；授权不扩展 Python 沙箱输入范围。未开启开发诊断的运行及发行版不开放这些接口，人设和语气也不能绕过后端权限。
+`developer_files` 在源码开发模式下默认只读本项目源码、测试、文档及 `artifacts/logs`。其他本项目非敏感文件需 `developer_access grant`；其他项目、凭据目录和 `.env` 始终拒绝。`developer_checks` 仅运行固定环境、语法和单元测试检查，不开放任意命令；讨论模式不开放这些工具。
 
 ## 桌面窗口图标
 
@@ -206,7 +206,7 @@ Windows 适配位于 coat_sim/ui/taskbar.py：启动时设置 AppUserModelID=com
 四分之一波长厚度仅按法向、透明材料和实数折射率n形成候选，不验证反射率/带宽或光学指标。处理口述目标前确认波长、材料n、层序与控制假设。现有计算结果用 `visualize_calculation_result` 生成固定PNG/CSV；默认仅读标量摘要，按需指定结果detail与分页，避免完整网格进入对话。`export_charts=true` 可将图表纳入固定设计工作流导出。技能分流见 `coat_sim/agent/skills/film-stack/SKILL.md` 与 `coat_sim/agent/skills/result-visualization/SKILL.md`。
 
 
-运行时对讨论、操作、攻关模式按每任务请求数与累计输入量限额，并提供恢复流程；限额不取消已经提交的后台作业。当前文档不据此声称已经实测性能。
+讨论、操作、攻关模式默认不设置整轮模型请求数、累计输入 Token、累计输入与输出 Token、工具调用次数或子助手委派次数上限。用户显式设置的正数上限仍在下一次请求、工具调用或委派前检查；配置中的 `null`（或 `0`）表示不设置该项整轮上限。每日/时段 Token 额度、单次模型真实上下文与输出上限、取消、无响应及重复无进展保护独立生效；达到显式整轮上限不会取消已经提交的后台作业。子助手递归深度保护仍生效。当前文档不据此声称已经实测性能。
 
 
 

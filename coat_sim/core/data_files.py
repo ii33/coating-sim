@@ -126,6 +126,30 @@ def _validate_design_payload(kind: str, payload) -> None:
         from .schemas import design_data
         design_data(kind, payload)
 
+
+def _material_record_destination(path: Path) -> bool:
+    """True for a material record JSON the material library will read back.
+
+    The generic data writer may still create material JSON, but it must satisfy
+    the same schema the library enforces on read. Otherwise an unsupported or
+    extra field (for example a non film/substrate/other ``category``) would be
+    published with success and then make the whole library unreadable.
+    """
+    if path.suffix.lower() != ".json":
+        return False
+    try:
+        parts = [part.lower() for part in path.relative_to(DATA_ROOT.resolve()).parts]
+    except (ValueError, OSError):
+        return False
+    if not parts or parts[0] != "materials":
+        return False
+    return len(parts) == 2 or (len(parts) == 3 and parts[1] == ".overrides")
+
+
+def _validate_material_payload(payload) -> None:
+    from .materials import validate_material_profile
+    validate_material_profile(payload)
+
 def list_data_files(path: str = "data", *, recursive: bool = False, limit: int = 200) -> dict:
     folder = data_path(path)
     DATA_ROOT.mkdir(parents=True, exist_ok=True)
@@ -180,6 +204,8 @@ def write_data_file(path: str, content: str, *, overwrite: bool = False, encodin
         _validate_design_payload(kind, json.loads(payload.decode("utf-8-sig")))
         if target.exists():
             _validate_design_payload(kind, json.loads(target.read_text(encoding="utf-8-sig")))
+    elif _material_record_destination(target):
+        _validate_material_payload(json.loads(payload.decode("utf-8-sig")))
     target.parent.mkdir(parents=True, exist_ok=True)
     temp = target.with_name("." + uuid.uuid4().hex + ".tmp")
     try:
@@ -200,6 +226,8 @@ def move_data_path(source: str, destination: str) -> dict:
         if src.stat().st_size > MAX_FILE_BYTES:
             raise ValueError("设计文件超过容量限制")
         _validate_design_payload(kind, json.loads(src.read_text(encoding="utf-8-sig")))
+    elif src.is_file() and _material_record_destination(dst):
+        _validate_material_payload(json.loads(src.read_text(encoding="utf-8-sig")))
     dst.parent.mkdir(parents=True, exist_ok=True)
     src.rename(dst)
     return file_info(dst)

@@ -2713,20 +2713,13 @@ class AssistantBridge(QObject):
             unique = {}
             for view in views:
                 unique.setdefault(view.get("artifact_id") or view.get("path") or view.get("name"), view)
-            usage = metadata.get("usage") or {}
             elapsed = float(metadata.get("elapsed_s", 0) or 0)
-            estimated = bool(usage.get("estimated_requests"))
-            total = int(usage.get("input_tokens", 0)) + int(usage.get("output_tokens", 0))
             footer = ""
             if role == "assistant" and metadata.get("status") not in (None, "running"):
                 status = {"completed": "完成", "cancelled": "已停止", "error": "失败",
                           "limited": "已暂停", "incomplete": "未完整",
                           "interrupted": "中断"}.get(metadata.get("status"), "")
-                footer = (f"{status} · {elapsed:.1f} 秒 · 本轮 {format_tokens(total)} Token"
-                          f"（输入 {format_tokens(usage.get('input_tokens', 0))} / "
-                          f"输出 {format_tokens(usage.get('output_tokens', 0))}）"
-                          + (" · 含估算" if estimated else "")
-                          + "\n" + _cache_summary(usage))
+                footer = f"{status} · {elapsed:.1f} 秒"
             message_key = (self._session + ":round:" + str(message["request_id"])
                            if role == "assistant" and message.get("request_id")
                            else self._session + ":message:" + str(message.get("id", len(rows))))
@@ -2929,19 +2922,13 @@ class AssistantBridge(QObject):
         text_parts = [text] + [str(item.get("output", "")) for item in steps]
         files = list(metadata.get("files") or metadata.get("attachments") or [])
         files.extend(referenced_artifacts("\n\n".join(text_parts)))
-        usage = metadata.get("usage") or {}
         elapsed = float(metadata.get("elapsed_s", 0) or 0)
-        total = int(usage.get("input_tokens", 0)) + int(usage.get("output_tokens", 0))
         footer = ""
         if role == "assistant" and metadata.get("status") not in (None, "running"):
             status = {"completed": "完成", "cancelled": "已停止", "error": "失败",
                       "limited": "已暂停", "incomplete": "未完整",
                       "interrupted": "中断"}.get(metadata.get("status"), "")
-            footer = (f"{status} · {elapsed:.1f} 秒 · 本轮 {format_tokens(total)} Token"
-                      f"（输入 {format_tokens(usage.get('input_tokens', 0))} / "
-                      f"输出 {format_tokens(usage.get('output_tokens', 0))}）"
-                      + (" · 含估算" if usage.get("estimated_requests") else "")
-                      + "\n" + _cache_summary(usage))
+            footer = f"{status} · {elapsed:.1f} 秒"
         labels = {"sent": "已发送", "received": "已收到，等待下一次决策", "applied": "已纳入本轮请求",
                   "queued": "转为下一轮待发送", "paused": "待发送已暂停",
                   "withdrawing": "撤回中", "withdrawn": "已撤回"}

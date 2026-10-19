@@ -1,6 +1,6 @@
 # 理想 Air 光学数据契约
 
-更新：2026-10-12  
+更新：2026-10-19
 范围：内置光学占位数据集 `builtin_ideal_air` / `ideal_air_n1_k0`
 
 ## 用途与身份
@@ -8,6 +8,17 @@
 `builtin_ideal_air` 是材料库中的内置光学介质占位记录，`roles` 为 `["medium"]`，`optical_only` 为 `true`。它不是研究材料目录中的材料条目，不含 `research_data`，也没有电阻舟或电子束蒸发源模型；代码把两个工艺源模型保留为 `null`。因此该记录只表达 Film Design 所需的光学边界近似，不提供实体基片、蒸发源或工艺性能参数。
 
 其光学数据集稳定 ID 为 `ideal_air_n1_k0`，类型为 `tabulated`，材料目录分类为 `other`。Film Quick 在内置 Air 记录和该数据集均存在时，将它作为新设计入射与出射介质的默认绑定；picker 及参考配方继续按材料 ID 与其所属数据集 ID 解析，不通过材料名或特殊合成数据绕过归属检查。相关行为见 [`film-design-quick-migration.md`](film-design-quick-migration.md) 与 `coat_sim/core/film_design_session.py`、`coat_sim/core/film_design_reference_recipes.py`。
+
+### 项目起始默认与全局 Air 的关系
+
+新建项目膜系草稿的入射/出射介质默认绑定来自**项目起始默认（packaged project starter）**，而不是用户可变的全局材料库。该默认由 `coat_sim/core/project_material_defaults.py` 从只读打包种子（`builtin_material_profiles` 生成的 `builtin_ideal_air` / `ideal_air_n1_k0`）读取，与全局库无关：
+
+- 全局库为空、被覆盖或被墓碑删除时，新项目/新膜系仍绑定 n=1、k=0 的打包种子 Air，不会因此缺失或改变数值。
+- 项目默认优先于全局库；全局被修改的 Air 不会降低项目默认的 n/k。
+- 该起始默认只存在于项目内存视图；它**不写入全局材料库**，因此不会复活被全局删除的 Air，也不会覆盖用户对全局 Air 的编辑。
+- 首次保存膜系时，Air 作为被测设计显式引用的材料被捕获进项目自身的 `optical_material` 文档；此后项目在全局库不可用时仍能读取自己的闭包。
+
+全局材料库中的 `builtin_ideal_air` 仍是可编辑/可恢复的普通内置记录（见下文“实现与数据边界”）；上述起始默认只改变新项目草稿的取值来源，不改变该内置记录本身的身份或分类。
 
 ## 模型、单位与求值域
 
@@ -33,10 +44,11 @@ N(\lambda)=n(\lambda)+i k(\lambda)=1+0i
 - `coat_sim/core/materials.py::builtin_material_profiles` 将其作为 `builtin_ideal_air` 的一个普通光学常数集接入；`_optical_catalog_by_builtin_id` 校验内置材料 ID、角色分类与数据集。
 - `coat_sim/core/optical_constants.py::validate_optical_set`、`evaluate_optical_set` 和 `prepare_optical_set` 使用通用表格验证、线性插值和有效域检查。
 - `coat_sim/core/film_materials.py::FilmMaterialLibrary.evaluate` 从所选材料自身的 `optical_sets` 中查找所选数据集，再按 nm 求值；未知或不属于该材料的数据集 ID 会报错。
+- `coat_sim/core/project_material_defaults.py` 从打包只读种子向每个项目提供起始默认（理想 Air），`coat_sim/core/project_film_service.py::ProjectFilmService` 以“项目记录 > 打包起始默认 > 全局目录”的优先级合成，并在保存膜系时把被引用材料捕获为项目 `optical_material`。该路径不写全局库。
 - `coat_sim/core/material_business.py::MaterialLibrary` 的复制、内置覆盖与恢复仍使用通用材料 schema。复制会生成用户记录并保留其数据快照；覆盖写入 `.overrides/<material-id>.json`；恢复移除对应覆盖并返回打包的内置原件。没有为 Air 增加 picker、导入或存储豁免。
 
 以上是软件数据契约，不是对实际空气光学性质的验证。算法文档中的对应条目及示意图见 [`algorithms.html` 的 14-1 节](algorithms.html#film-ideal-air-model)。
 
 ## 定向验证
 
-`tests/test_ideal_air_optical_contract.py` 对内置记录身份、模型字段、来源边界、端点/域外求值、材料与数据集归属，以及普通复制/覆盖/恢复路径做离线契约检查。该测试验证目录和通用代码路径，不构成真实空气的实验校准。
+`tests/test_ideal_air_optical_contract.py` 对内置记录身份、模型字段、来源边界、端点/域外求值、材料与数据集归属，以及普通复制/覆盖/恢复路径做离线契约检查。`tests/test_project_film_air_defaults.py` 覆盖项目起始默认：空/被编辑/被删除的全局 Air 下新项目仍绑定打包 Air、全局不被复活、保存后项目自持 n=[1,1]/k=[0,0] 闭包、无全局目录下重开可读。该测试验证目录和通用代码路径，不构成真实空气的实验校准。

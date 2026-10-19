@@ -507,9 +507,14 @@ def _validate_replay_request(request: FilmOptimizationRequest) -> None:
             raise ValueError("each layer id may be optimized only once")
         seen_ids.add(variable.layer_id)
         low = finite(variable.lower_nm, "lower_nm")
-        high = finite(variable.upper_nm, "upper_nm")
-        if low <= 0 or high <= low:
-            raise ValueError("thickness bounds must be positive and strictly increasing")
+        if variable.upper_nm is None:
+            if request.solver != "baseline":
+                raise ValueError("this finite-domain optimizer requires an explicit upper_nm for each selected layer; no upper bound was assumed")
+            high = None
+        else:
+            high = finite(variable.upper_nm, "upper_nm")
+        if low < 0 or (high is not None and high <= low):
+            raise ValueError("thickness bounds must be nonnegative and strictly increasing")
 
     for objective in request.objectives:
         if not isinstance(objective, FilmOptimizationObjective):
@@ -740,7 +745,8 @@ def validate_checkpoint(service: Any, checkpoint: Mapping[str, Any]) -> dict[str
                 or not math.isfinite(float(value))
                 or not math.isclose(float(layer["thickness"]["value"]), float(value),
                                     rel_tol=1e-12, abs_tol=1e-12)
-                or not variable.lower_nm <= float(value) <= variable.upper_nm):
+                or float(value) < variable.lower_nm
+                or (variable.upper_nm is not None and float(value) > variable.upper_nm)):
             raise ValueError("checkpoint candidate thickness is invalid")
 
     # Candidate results produced by optimization have expression text detached

@@ -166,6 +166,21 @@ class ProjectMaterialLibraryBridge(MaterialLibraryBridge):
         # Project edits never create, restore, or write global builtin overrides.
         return False
 
+    @Slot(str, result=bool)
+    def restoreDeletedBuiltin(self, identifier):
+        # Restoring a globally deleted builtin is a global-library action; a
+        # project view must not resurrect or edit global builtins.
+        return False
+
+    def _scope_rows(self):
+        """Only project-owned records share a project draft's writable scope.
+
+        Global read-only sources keep their own names; saving one as a project
+        copy must not be rejected as a cross-scope duplicate.
+        """
+        return [row for row in self._entries
+                if str(row.get("id", "")) in self._project_material_ids]
+
     @Slot(str, str)
     def setField(self, key, value):
         if not self._editing_frozen:
@@ -208,7 +223,13 @@ class ProjectMaterialLibraryBridge(MaterialLibraryBridge):
         if self._editing_frozen or self.loading:
             return False
         try:
-            result = self.project_library.write(self.draftData(), update=self._saved_id is not None,
+            draft = self.draftData()
+            conflict = self._name_conflict_error(draft)
+            if conflict:
+                self._status = conflict
+                self.changed.emit()
+                return False
+            result = self.project_library.write(draft, update=self._saved_id is not None,
                                                 expected_revisions=self._selected_revisions)
             record = result["record"]
             self._saved_id, self._selected_key = record["id"], "user:" + record["id"]

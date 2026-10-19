@@ -3,6 +3,9 @@
 The global material catalog is an optional read-only picker input. The project
 store owns every persisted film/template and its complete optical closure;
 global records are captured only when a document explicitly references them.
+
+Every project additionally owns immutable packaged-seed starters (ideal Air)
+that take precedence over the global catalog; see ``project_material_defaults``.
 """
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ from .optical_constants import evaluate_optical_set
 from .plugins import PluginRegistry
 from .project_dependencies import ProjectError, normalize_optical_material, reject_links
 from .project_dependencies import document_material_references, external_document
+from .project_material_defaults import project_starter_materials, project_starter_usage
 from .project_paths import legacy_document_handle, project_document_handle
 from .tfcalc_import import (build_tfcalc_design, read_tfcalc_file,
                             register_tfcalc_plugin)
@@ -177,6 +181,12 @@ class ProjectFilmService:
         self.plugins = PluginRegistry()
         register_tfcalc_plugin(self.plugins)
         self._draft_materials: ProjectOpticalSnapshot | None = None
+        # Packaged-seed starters (currently ideal Air) are owned by every
+        # project and take precedence over the mutable global library so a
+        # new draft never depends on, and never rewrites, global Air.
+        starter_records = project_starter_materials()
+        self._starter_materials = ProjectOpticalSnapshot(
+            starter_records, usage=project_starter_usage(starter_records))
         self._project_materials = ProjectOpticalSnapshot(())
         self._global_materials = ProjectOpticalSnapshot(())
         self.materials = ProjectOpticalSnapshot(())
@@ -278,7 +288,12 @@ class ProjectFilmService:
                     self._global_materials = ProjectOpticalSnapshot(())
                     self.global_catalog_error = str(exc)
             project = ProjectOpticalSnapshot(records, usage=usage)
-            candidate = ProjectOpticalSnapshot._combine(project, self._global_materials)
+            # Precedence: project-owned records > packaged starter seed > mutable
+            # global catalog. The starter holds ideal Air so a new project stays
+            # stable even when the global Air is edited or tombstoned, and the
+            # project never rewrites the global library to restore it.
+            owned = ProjectOpticalSnapshot._combine(project, self._starter_materials)
+            candidate = ProjectOpticalSnapshot._combine(owned, self._global_materials)
             # Preserve provider identity for no-op refreshes. Sessions can then
             # avoid rebuilding full picker datasets and derived rows on Save.
             if not candidate._same_values(self._project_materials):

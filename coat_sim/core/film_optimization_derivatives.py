@@ -196,13 +196,10 @@ def simulate_with_thickness_jacobian(
         The same simulation-settings mapping accepted by
         ``FilmDesignService.simulate``.
     zero_thickness_layer_ids:
-        Private structure-probing escape hatch. Every listed ID must name one
-        front layer stored in nm with an actual numeric thickness of exactly
-        zero. Such rows are temporarily given a schema-valid placeholder only
-        while the design is validated; the optical stack and derivative are
-        then evaluated with a physical thickness of exactly 0 nm. The normal
-        public design validator is unchanged, and callers must not persist a
-        zero-thickness probe as a design.
+        Legacy structure-probing compatibility path. Every listed ID must name
+        one front layer stored in nm with an exact numeric zero. The public
+        design validator now accepts zero-thickness films directly; the
+        temporary placeholder in this path does not change optical evaluation.
 
     Returns a mapping with wavelength_nm, R, T, jacobian_R and jacobian_T.
     The Jacobians have shape [wavelength, variable] and units fraction/nm.
@@ -223,9 +220,8 @@ def simulate_with_thickness_jacobian(
     if zero_ids:
         if not isinstance(design, Mapping):
             raise ValueError("design must be a mapping")
-        # The regular schema requires positive persisted thicknesses. Validate
-        # a deep copy with legal placeholders, then overwrite only the
-        # numerical thickness array below. No caller-owned mapping is changed.
+        # Preserve the legacy structure-probe path without changing its caller
+        # input. The public validator also accepts these exact zero values.
         from copy import deepcopy
         probe_design = deepcopy(dict(design))
         front = probe_design.get("front_layers")

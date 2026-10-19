@@ -1,4 +1,6 @@
-# 膜系求解器扩展契约（2026-10-14）
+# 膜系求解器扩展契约（2026-10-19）
+
+默认 `baseline` 新增半无界物理 nm 坐标路径，允许选中变量 `upper_nm=None` 与下界 0；此路径不用本文件下述归一化 `[0,1]` 有限跨度 adapter。其余固定层序方法仍使用有限跨度 adapter，缺少上界时明确拒绝。队列冻结请求保留 `None`，checkpoint 复核有限下界和可选上界。实现、采样尺度与限制见 [算法文档 14i-0](algorithms.html#film-thickness-edit-domain-20261019)。
 
 本轮仅算法 core、新测试和文档；不改窗口、会话、调度器。旧请求字段及默认行为保持兼容。输入快照和稳定层 ID 的状态所有者仍为调用方；求解器只返回候选，不直接写回会话。
 
@@ -10,7 +12,7 @@
 - `FilmOptimizationRequest` 追加 `solver: str = "baseline"`、`seed: int = 0`、`multistart_count: int = 4`、`population_size: int = 12`、`validation_samples_multiplier: int = 2`。既有 max_iterations/max_evaluations 是整次搜索共享上限。
 - 方法 ID：`baseline`（原17点+坐标搜索）、`powell`（SciPy有边界方向集）、`nelder_mead`（SciPy有边界单纯形）、`multistart`（seed随机起点+Powell）、`differential_evolution`、`simulated_annealing`（有边界Metropolis）、`trf`、`lbfgsb`。实际可用性随解析导数能力和SciPy依赖明确报错，不静默换方法。
 - 原始验收键是 `(max_normalized_error, weighted_rms_error)`；每次完整光学计算才可更新最佳候选和checkpoint。搜索可用代理，但结果始终保留原始键更佳者。
-- 导数求解器仅使用残差平方和：TRF最小二乘，L-BFGS-B平方和及解析梯度。原始不光滑字典序键不传给梯度法。
+- 导数求解器仅使用逐波长×角度点的带权残差平方和：TRF最小二乘，L-BFGS-B平方和及解析梯度。可行性优先的加权 RMS 排序键不传给梯度法；未加权最坏误差单独判定达标。
 - 搜索预算包括初始候选、失效候选、所有起点及导数/函数请求对应的完整候选光学计算；不计缓存命中。取消仅在完整候选计算边界生效，初始候选仍保证可返回。错误候选被记录，初始候选失效则抛错。
 - 重型残差/Jacobian/条件误差缓存须有固定容量；函数和Jacobian同点可复用，淘汰后重新计算须计入实际预算。最佳档案只有一个，不为所有历史候选保留完整误差表。当前实现采用容量2的LRU，成功/失败共用容量；初始普通谱值和首次Jacobian分别计次，预算1时不重算Jacobian。
 - 搜索结束保留原指标最佳候选；另以 `(N-1)*multiplier+1` 波长点（单波长仍1点），相同角度和偏振进行加密验证。验证不参与选优、不修改搜索计数；训练、验证结果分别报告。验证取消则标记未完成，不能宣称留出通过。

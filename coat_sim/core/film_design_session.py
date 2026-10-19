@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
+from decimal import Decimal, ROUND_HALF_UP
 import math
 from pathlib import Path
 import threading
@@ -73,6 +74,25 @@ def _finite_positive(value: object, label: str) -> float:
     if not math.isfinite(number) or number <= 0:
         raise ValueError(f"{label} must be a finite positive number")
     return number
+
+
+def _edited_layer_thickness(value: object, label: str) -> float:
+    """Commit a user-edited film thickness to three decimal places only."""
+    if isinstance(value, bool):
+        raise ValueError(f"{label} must be a finite nonnegative number")
+    try:
+        number = Decimal(str(value))
+    except (ValueError, ArithmeticError) as exc:
+        raise ValueError(f"{label} must be a finite nonnegative number") from exc
+    if not number.is_finite() or number < 0:
+        raise ValueError(f"{label} must be a finite nonnegative number")
+    try:
+        result = float(number.quantize(Decimal("0.001"), rounding=ROUND_HALF_UP))
+    except (ArithmeticError, OverflowError, ValueError) as exc:
+        raise ValueError(f"{label} must be a finite nonnegative number") from exc
+    if not math.isfinite(result):
+        raise ValueError(f"{label} must be a finite nonnegative number")
+    return result
 
 
 def _range_text(values: object) -> str:
@@ -829,7 +849,7 @@ class FilmDesignEditSession:
                 elif key == "optical_set_id":
                     record["optical_set_id"] = str(value or "")
                 elif key == "thickness.value":
-                    record["thickness"]["value"] = _finite_positive(value, "thickness")
+                    record["thickness"]["value"] = _edited_layer_thickness(value, "thickness")
                 elif key == "thickness.unit":
                     if value not in ("nm", "um", "qw"):
                         raise ValueError("layer thickness unit must be nm, um, or qw")
@@ -853,14 +873,14 @@ class FilmDesignEditSession:
         n = self._reference_index(str(record.get("material_id", "")),
                                   str(record.get("optical_set_id", "")), reference)
         if key == "thickness.qw":
-            source = _finite_positive(value, "optical thickness QW")
+            source = _edited_layer_thickness(value, "optical thickness QW")
             physical = film_design.physical_thickness_nm(
                 {"thickness": {"value": source, "unit": "qw"}}, reference, n)
-            if not math.isfinite(physical) or physical <= 0:
+            if not math.isfinite(physical) or physical < 0:
                 raise ValueError("QW 换算得到的物理厚度不能用于示意图。")
             unit = "qw"
         else:
-            source = _finite_positive(value, "physical thickness nm")
+            source = _edited_layer_thickness(value, "physical thickness nm")
             unit = "nm"
         record["thickness"] = {"value": source, "unit": unit}
 

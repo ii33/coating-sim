@@ -73,6 +73,35 @@ def score_condition(
     return normalized, weighted
 
 
+def candidate_key(max_normalized_error: float, weighted_rms: float,
+                  acceptable_normalized_error: float) -> tuple[float, float]:
+    """Rank feasibility first, then the per-condition weighted RMS objective.
+
+    The raw maximum remains an independent all-conditions acceptance check;
+    weighting cannot turn a violated condition into a passing one.
+    """
+    maximum = _finite_float(max_normalized_error, "max normalized error")
+    rms = _finite_float(weighted_rms, "weighted RMS error")
+    acceptable = _finite_float(acceptable_normalized_error, "acceptable error")
+    if maximum < 0 or rms < 0 or acceptable < 0:
+        raise ValueError("score and acceptable error must be nonnegative")
+    return (0.0 if maximum <= acceptable else 1.0, rms)
+
+
+def search_scalar(max_normalized_error: float, weighted_rms: float,
+                  acceptable_normalized_error: float) -> float:
+    """Continuous weighted-RMS search with a separate feasibility barrier."""
+    feasible, rms = candidate_key(max_normalized_error, weighted_rms,
+                                  acceptable_normalized_error)
+    if feasible == 0.0:
+        return rms
+    penalty = _finite_float(acceptable_normalized_error, "acceptable error") + 1.0
+    result = rms + penalty
+    if not math.isfinite(result):
+        raise ValueError("search scalar is not finite")
+    return result
+
+
 def weighted_rms_error(
     normalized_errors: Iterable[float],
     weights: Iterable[float],

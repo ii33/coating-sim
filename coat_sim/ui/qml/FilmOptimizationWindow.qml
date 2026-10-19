@@ -19,7 +19,7 @@ AppWindow {
     captionBase: titleBase
     projectNameForTitle: projectNavigation ? projectNavigation.projectName : ""
     statusText: controller.statusText
-    statusSeverity: controller.busy ? "busy"
+    statusSeverity: controller.loading || controller.busy ? "busy"
                      : controller.error.length > 0 ? "error"
                      : controller.hasCandidate
                        ? (controller.targetsMet ? "success" : "warning")
@@ -788,7 +788,7 @@ AppWindow {
                                                     text: modelData.enabled ? "已选择" : "选择"
                                                     checkable: true
                                                     checked: modelData.enabled
-                                                    enabled: modelData.available
+                                                    enabled: modelData.available || modelData.enabled
                                                     onClicked: window.controller.setVariableEnabled(modelData.side, modelData.layer_id, !modelData.enabled)
                                                 }
                                                 ColumnLayout {
@@ -820,7 +820,8 @@ AppWindow {
                                                             Layout.fillWidth: true
                                                             enabled: modelData.available
                                                             numericDisplayValue: modelData.lower_nm
-                                                            validator: DoubleValidator { bottom: 0.000001; decimals: 6 }
+                                                            numericEditDecimals: 3
+                                                            validator: DoubleValidator { bottom: 0; decimals: 3 }
                                                             function commitDraft() {
                                                                 if (!numericValueEdited) return
                                                                 window.controller.setVariableBound(modelData.side, modelData.layer_id, "lower_nm", numericEditText)
@@ -834,7 +835,9 @@ AppWindow {
                                                             Layout.fillWidth: true
                                                             enabled: modelData.available
                                                             numericDisplayValue: modelData.upper_nm
-                                                            validator: DoubleValidator { bottom: 0.000001; decimals: 6 }
+                                                            numericEditDecimals: 3
+                                                            placeholderText: "未设上限"
+                                                            validator: DoubleValidator { bottom: 0; decimals: 3 }
                                                             function commitDraft() {
                                                                 if (!numericValueEdited) return
                                                                 window.controller.setVariableBound(modelData.side, modelData.layer_id, "upper_nm", numericEditText)
@@ -1637,7 +1640,7 @@ AppWindow {
                 Layout.fillWidth: true
                 text: window.controller.statusText
                 color: window.controller.error.length > 0 ? window.themeTokens.colorError
-                      : window.controller.busy ? window.themeTokens.colorInfo
+                      : window.controller.loading || window.controller.busy ? window.themeTokens.colorInfo
                       : window.themeTokens.colorText
                 wrapMode: Text.WordWrap
                 Accessible.name: text

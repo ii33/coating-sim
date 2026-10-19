@@ -58,8 +58,10 @@ def test_empty_project_session_uses_no_global_catalog_or_sqlite(tmp_path):
          patch("coat_sim.core.film_design_service.FilmMaterialLibrary", side_effect=AssertionError("catalog")):
         service = service_at(tmp_path / "project")
         session = FilmDesignEditSession(service)
-        assert service.material_options_many(("film", "substrate", "medium")) == {
-            "film": [], "substrate": [], "medium": []}
+        options = service.material_options_many(("film", "substrate", "medium"))
+        assert options["film"] == [] and options["substrate"] == []
+        # The only standing project default is the packaged ideal Air starter.
+        assert [row["id"] for row in options["medium"]] == ["builtin_ideal_air"]
         assert session.snapshot().design["substrate"]["material_id"] == ""
         assert session.save_to_library("First empty film")
         assert len(service.list_saved_designs()) == 1
@@ -232,7 +234,8 @@ def test_symbol_and_candidate_resources_are_local_and_picker_usage_is_explicit(t
     assert {row["id"] for row in graph["materials"]} == {"shared", "symbol", "candidate"}
     assert {row["id"] for row in service.material_options("substrate")} == {"shared"}
     assert {row["id"] for row in service.material_options("film")} == {"symbol", "candidate"}
-    assert service.material_options("medium") == []
+    # Medium usage always exposes the packaged starter Air, never a global record.
+    assert [row["id"] for row in service.material_options("medium")] == ["builtin_ideal_air"]
     frozen = service.freeze_design(created.design)
     from coat_sim.core.film_optimization_needle import (
         FilmNeedleMaterialReference, _candidate_payload_from_materials)

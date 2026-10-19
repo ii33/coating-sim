@@ -580,7 +580,7 @@ LocalComponents.ThemePageDialog {
                     ThemeControls.ThemeComboBox {
                         objectName: "materialRoleFilter"
                         Layout.fillWidth: true
-                        model: [{text: "膜料", value: "film"}, {text: "基片 / 光学介质", value: "substrate"}, {text: "其他", value: "other"}]
+                        model: [{text: "膜料", value: "film"}, {text: "基片", value: "substrate"}, {text: "其他", value: "other"}]
                         textRole: "text"; valueRole: "value"
                         currentIndex: Math.max(0, ["film", "substrate", "other"].indexOf(dialog.library.roleFilter))
                         onActivated: dialog.library.setRoleFilter(currentValue)
@@ -615,7 +615,7 @@ LocalComponents.ThemePageDialog {
                         contentItem: Column {
                             spacing: 3
                             ThemeControls.ThemeLabel { width: parent.width; text: modelData.name; wrapMode: Text.Wrap; font.bold: modelData.key === dialog.library.currentKey }
-                ThemeControls.ThemeLabel { objectName: "materialEntryRoleLabel"; width: parent.width; text: materialEntryDelegate.modelData.globalReadOnly ? "全局材料 · 只读来源" : (materialEntryDelegate.modelData.roles && materialEntryDelegate.modelData.roles.indexOf("medium") >= 0 ? "内置 · 光学介质" : (materialEntryDelegate.modelData.opticalOnly ? "\u7528\u6237 \u00b7 \u4ec5\u5149\u5b66\u8d44\u6599\uff08\u5de5\u827a\u6a21\u578b\u672a\u63d0\u4f9b\uff09" : (materialEntryDelegate.modelData.builtin ? "内置 · " : "用户 · ") + ({film:"膜料", substrate:"基片", other:"其他"}[materialEntryDelegate.modelData.category]))); muted: true; wrapMode: Text.Wrap; opacity: 0.8 }
+                ThemeControls.ThemeLabel { objectName: "materialEntryRoleLabel"; width: parent.width; text: materialEntryDelegate.modelData.globalReadOnly ? "全局材料 · 只读来源" : (materialEntryDelegate.modelData.roles && materialEntryDelegate.modelData.roles.indexOf("medium") >= 0 ? "内置 · 用途：光学介质" : (materialEntryDelegate.modelData.opticalOnly ? "\u7528\u6237 \u00b7 \u4ec5\u5149\u5b66\u8d44\u6599\uff08\u5de5\u827a\u6a21\u578b\u672a\u63d0\u4f9b\uff09" : (materialEntryDelegate.modelData.builtin ? "内置 · " : "用户 · ") + ({film:"膜料", substrate:"基片", other:"其他"}[materialEntryDelegate.modelData.category]))); muted: true; wrapMode: Text.Wrap; opacity: 0.8 }
 
                         }
                         highlighted: modelData.key === dialog.library.currentKey
@@ -653,8 +653,8 @@ LocalComponents.ThemePageDialog {
                             enabled: !dialog.library.readOnly && !dialog.library.loading
                             Layout.fillWidth: true
                             Layout.minimumWidth: 160
-                            visible: false
-                            label: "材料名称"
+                            visible: true
+                            label: "材料名称（保存前可编辑）"
                             fieldName: "materialNameField"
                             value: dialog.field("name")
                             numeric: false
@@ -681,6 +681,14 @@ LocalComponents.ThemePageDialog {
                         }
                     }
                     LocalComponents.SourceValueField { visible: false; enabled: !dialog.library.readOnly && !dialog.library.loading; width: parent.width; label: "说明"; value: dialog.field("description"); numeric: false; onEdited: value => dialog.library.setField("description", value) }
+                    ThemeControls.ThemeLabel {
+                        objectName: "materialNameValidationLabel"
+                        visible: dialog.library.nameValidationError.length > 0
+                        width: parent.width
+                        wrapMode: Text.Wrap
+                        text: dialog.library.nameValidationError
+                        color: dialog.themeColor("colorError", "#b03030")
+                    }
                     Column {
                         visible: false
                         width: parent.width

@@ -578,7 +578,7 @@ if development_available():
     @mcp.tool()
     def developer_files(path: str, action: Literal["stat", "list", "read"] = "stat",
                         offset: int = 0, limit: int = 32768) -> dict[str, Any]:
-        """Development only: stat/list/read any OS-readable path after developer_access grant; paginated, no writes or execution."""
+        """Development only: stat/list/read authorized files within this project. Source, tests, docs, artifacts and logs are available by default; a temporary developer_access grant covers other non-sensitive project files. External projects and credentials remain unavailable. Paginated; no writes or execution."""
         from coat_sim.agent.development import developer_files as files
         try:
             return files(path, action, offset, limit)
@@ -1630,27 +1630,71 @@ def material_data_readiness(
 
 
 @mcp.tool()
-def create_material(profile: dict[str, Any]) -> dict:
+def create_material(
+        profile: dict[str, Any],
+        origin: Literal["assistant_reference", "user_measurement"] = "assistant_reference",
+        evidence: dict[str, Any] | None = None) -> dict:
     """Validate and atomically create a custom material; existing/builtin IDs cannot be overwritten.
 
     Preserve explicit roles and wavelength units. Unknown k stays null, never assumed zero.
-    Multiple independently sourced optical datasets are allowed. No deletion operation.
+    For assistant-authored optical data, use a cited complete dispersion formula
+    with all coefficients and validity range, or the complete cited reference table.
+    Record material state/measurement conditions. Do not pass a few interpolated
+    points off as the complete source. If trustworthy data are unavailable,
+    report the gap instead of inventing coefficients. Explicit user-supplied
+    sparse measurements remain valid and must be labeled as such. Multiple
+    independently sourced optical datasets are allowed. No deletion operation.
+
+    ``origin`` is ``assistant_reference`` by default. Pass ``user_measurement``
+    only for explicit user-supplied measurements, and ``evidence`` keyed by
+    optical set ID with ``k_status`` (``measured``/``unknown``) plus, for a
+    reference, the source ``conditions`` and the original table
+    ``reference_row_count``. A failed quality check blocks persistence and
+    returns the reasons; it does not claim independent source verification.
     """
+    from coat_sim.core.assistant_material_quality import validate_assistant_material_quality
     try:
-        return service.material_library().write(profile)
+        report = None
+        if profile.get("optical_constants"):
+            report = validate_assistant_material_quality(profile, origin=origin, evidence=evidence)
+            if not report["valid"]:
+                raise ToolError(
+                    "assistant_material_quality_rejected: 光学数据未通过准入校验，未写入材料库。"
+                    + "；".join(report["errors"]))
+        result = service.material_library().write(profile)
+        return {**result, "quality": report} if report is not None else result
+    except ToolError:
+        raise
     except (ServiceError, OSError, ValueError, TypeError) as exc:
         raise _error(exc) from exc
 
 
 @mcp.tool()
-def update_material(profile: dict[str, Any]) -> dict:
+def update_material(
+        profile: dict[str, Any],
+        origin: Literal["assistant_reference", "user_measurement"] | None = None,
+        evidence: dict[str, Any] | None = None) -> dict:
     """Validate then atomically replace one existing custom record; builtins stay read-only.
 
     Read first and send the complete record, retaining roles/provenance/optical sets.
-    Already embedded source or asset snapshots are unchanged.
+    Already embedded source or asset snapshots are unchanged. Pass ``origin`` with
+    ``evidence`` only when this update replaces optical data with a new reference
+    claim; otherwise the existing evidence is preserved and the quality gate is
+    not re-run.
     """
+    from coat_sim.core.assistant_material_quality import validate_assistant_material_quality
     try:
-        return service.material_library().write(profile, update=True)
+        report = None
+        if origin is not None and profile.get("optical_constants"):
+            report = validate_assistant_material_quality(profile, origin=origin, evidence=evidence)
+            if not report["valid"]:
+                raise ToolError(
+                    "assistant_material_quality_rejected: 光学数据未通过准入校验，未替换材料记录。"
+                    + "；".join(report["errors"]))
+        result = service.material_library().write(profile, update=True)
+        return {**result, "quality": report} if report is not None else result
+    except ToolError:
+        raise
     except (ServiceError, OSError, ValueError, TypeError) as exc:
         raise _error(exc) from exc
 
@@ -1660,6 +1704,62 @@ def copy_material(identifier: str, new_identifier: str, name: str) -> dict:
     """Copy a builtin or custom material to a new custom ID, preserving all evidence and datasets."""
     try:
         return service.material_library().copy(identifier, new_identifier, name)
+    except (ServiceError, OSError, ValueError, TypeError) as exc:
+        raise _error(exc) from exc
+
+
+@mcp.tool()
+def edit_builtin_material(profile: dict[str, Any]) -> dict:
+    """Directly edit one global builtin through its reversible override layer.
+
+    This never rewrites the packaged seed and never mutates material copies already
+    embedded in projects. Send the complete record read via read_material. Existing
+    project film stacks keep their saved copies. A builtin deleted by
+    delete_builtin_material must be restored first. No deletion operation here.
+    """
+    try:
+        return service.material_library().save_builtin_override(profile)
+    except (ServiceError, OSError, ValueError, TypeError) as exc:
+        raise _error(exc) from exc
+
+
+@mcp.tool()
+def delete_builtin_material(identifier: str) -> dict:
+    """Durably delete one global builtin by writing a tombstone for its ID.
+
+    The packaged seed file is left intact, so seed reload, restart and upgrade
+    cannot resurrect the builtin; only restore_builtin_material brings it back.
+    Material copies already embedded in existing project film stacks are untouched
+    and never block this global deletion. Use restore_builtin_material to reverse it.
+    """
+    try:
+        return service.material_library().delete_builtin(identifier)
+    except (ServiceError, OSError, ValueError, TypeError) as exc:
+        raise _error(exc) from exc
+
+
+@mcp.tool()
+def restore_builtin_material(identifier: str) -> dict:
+    """Restore a builtin removed by delete_builtin_material back to its packaged original.
+
+    Also clears any builtin override so the id returns to the shipped definition.
+    Embedded project copies are unchanged. No side effect on custom records.
+    """
+    try:
+        record = service.material_library().restore_builtin(identifier)
+        return {"record": record, "restored": True}
+    except (ServiceError, OSError, ValueError, TypeError) as exc:
+        raise _error(exc) from exc
+
+
+@mcp.tool()
+def list_deleted_builtin_materials() -> dict:
+    """List builtin IDs currently hidden by a durable deletion tombstone.
+
+    Read-only; each row has id and name. Restore one with restore_builtin_material.
+    """
+    try:
+        return {"items": service.material_library().deleted_builtins()}
     except (ServiceError, OSError, ValueError, TypeError) as exc:
         raise _error(exc) from exc
 

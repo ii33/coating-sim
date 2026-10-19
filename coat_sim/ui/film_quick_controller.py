@@ -62,15 +62,15 @@ _AIR_MATERIAL_ID = "builtin_ideal_air"
 _AIR_OPTICAL_SET_ID = "ideal_air_n1_k0"
 
 
-def _finite_positive(value: object, label: str) -> float:
+def _finite_nonnegative(value: object, label: str) -> float:
     if isinstance(value, bool):
-        raise ValueError(f"{label} must be a finite positive number")
+        raise ValueError(f"{label} must be a finite nonnegative number")
     try:
         number = float(value)
     except (TypeError, ValueError, OverflowError) as exc:
-        raise ValueError(f"{label} must be a finite positive number") from exc
-    if not math.isfinite(number) or number <= 0:
-        raise ValueError(f"{label} must be a finite positive number")
+        raise ValueError(f"{label} must be a finite nonnegative number") from exc
+    if not math.isfinite(number) or number < 0:
+        raise ValueError(f"{label} must be a finite nonnegative number")
     return number
 
 
@@ -176,7 +176,7 @@ class FilmDesignRowsModel(QAbstractListModel):
             row["opticalSetId"] = str(value or "")
             roles = [_ROLE_ID_BY_NAME["opticalSetId"]]
         elif field == "thickness.value":
-            number = _finite_positive(value, "thickness")
+            number = _finite_nonnegative(value, "thickness")
             row["thicknessValue"] = number
             row["thicknessText"] = format(number, ".12g")
             roles = [_ROLE_ID_BY_NAME["thicknessValue"], _ROLE_ID_BY_NAME["thicknessText"]]

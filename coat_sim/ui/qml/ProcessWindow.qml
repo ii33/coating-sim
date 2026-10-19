@@ -110,14 +110,20 @@ LocalComponents.AppWindow {
             saveBeforeSendDialog.open()
             return
         }
-        launcher.openWindow("main", bridge.currentPath)
+        if (window.projectNavigation)
+            window.projectNavigation.openProjectModule("main")
+        else
+            window.moduleLauncher.openWindow("main", bridge.currentPath)
     }
     function saveAndSendToSimulation() {
         if (!bridge.currentPath || bridge.currentPath.toLowerCase().endsWith(".coatasset"))
             return
         bridge.save()
         if (!bridge.dirty && bridge.currentPath)
-            launcher.openWindow("main", bridge.currentPath)
+            if (window.projectNavigation)
+                window.projectNavigation.openProjectModule("main")
+            else
+                window.moduleLauncher.openWindow("main", bridge.currentPath)
     }
     Component.onCompleted: { refreshMetadata(); refreshEnvironmentSummary() }
     Connections {

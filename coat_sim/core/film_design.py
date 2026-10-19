@@ -48,13 +48,16 @@ def _text(value, label, *, maximum=20000, allow_empty=True):
     return value
 
 
-def _thickness(value, *, units, label):
+def _thickness(value, *, units, label, allow_zero=False):
     if not isinstance(value, Mapping) or set(value) != {"value", "unit"}:
         raise ValueError(f"{label} thickness must contain value and unit")
     unit = value["unit"]
     if not isinstance(unit, str) or unit not in units:
         raise ValueError(f"{label} thickness unit must be one of {', '.join(sorted(units))}")
-    return {"value": _number(value["value"], f"{label} thickness", positive=True), "unit": unit}
+    number = _number(value["value"], f"{label} thickness")
+    if number < 0 or (number == 0 and not allow_zero):
+        raise ValueError(f"{label} thickness must be {'nonnegative' if allow_zero else 'positive'}")
+    return {"value": number, "unit": unit}
 
 
 def _id(value, label, *, empty=True):
@@ -71,7 +74,7 @@ def _validate_layer(layer, label="layer"):
         "id": _id(layer.get("id", uuid.uuid4().hex), f"{label} id", empty=False),
         "material_id": _id(layer.get("material_id", ""), f"{label} material_id"),
         "optical_set_id": _id(layer.get("optical_set_id", ""), f"{label} optical_set_id"),
-        "thickness": _thickness(layer.get("thickness"), units={"nm", "um", "qw"}, label=label),
+        "thickness": _thickness(layer.get("thickness"), units={"nm", "um", "qw"}, label=label, allow_zero=True),
         "note": _text(layer.get("note", ""), f"{label} note", maximum=20000),
     }
     if "symbol" in layer:
@@ -407,9 +410,12 @@ class _ExpressionParser:
                 _, symbol, multiplier = node
                 layer = deepcopy(self.symbols[symbol])
                 layer["id"] = uuid.uuid4().hex
-                layer["thickness"]["value"] = _number(
+                expanded_thickness = _number(
                     layer["thickness"]["value"] * scale * multiplier,
-                    "expanded layer thickness", positive=True)
+                    "expanded layer thickness")
+                if expanded_thickness < 0:
+                    raise ValueError("expanded layer thickness must be nonnegative")
+                layer["thickness"]["value"] = expanded_thickness
                 layer["symbol"] = symbol
                 layer["group"] = group
                 output.append(layer)
@@ -457,7 +463,7 @@ def physical_thickness_nm(layer, reference_wavelength_nm, n_reference):
     real index. The caller must supply the selected data-set's index and handle
     its provenance and validity range.
     """
-    thickness = _thickness(layer.get("thickness"), units={"nm", "um", "qw"}, label="layer")
+    thickness = _thickness(layer.get("thickness"), units={"nm", "um", "qw"}, label="layer", allow_zero=True)
     value = thickness["value"]
     if thickness["unit"] == "nm":
         return value
@@ -466,6 +472,6 @@ def physical_thickness_nm(layer, reference_wavelength_nm, n_reference):
     wavelength = _number(reference_wavelength_nm, "reference_wavelength_nm", positive=True)
     index = _number(n_reference, "n_reference", positive=True)
     result = value * wavelength / (4.0 * index)
-    if not math.isfinite(result) or result <= 0:
-        raise ValueError("converted physical thickness is not finite and positive")
+    if not math.isfinite(result) or result < 0:
+        raise ValueError("converted physical thickness is not finite and nonnegative")
     return result

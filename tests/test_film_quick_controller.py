@@ -2110,7 +2110,7 @@ class FilmDesignQuickControllerTests(unittest.TestCase):
         finally:
             self.dispose_quick_window(engine, root)
 
-    def test_physical_nm_rounds_for_display_and_keeps_cfilm_precision(self):
+    def test_physical_nm_edit_commits_three_decimal_precision(self):
         self.install_film_fixtures()
         self.assertTrue(self.controller.addLayer("front"))
         layer_id = self.controller.front_layers.ids()[0]
@@ -2120,17 +2120,17 @@ class FilmDesignQuickControllerTests(unittest.TestCase):
         self.assertTrue(self.controller.setLayerValue("front", layer_id, "thickness.nm", precise_nm))
         row = self.controller.front_layers.record_for_id(layer_id)
         self.assertEqual(row["physicalNmText"], format(precise_nm, ".3f"))
-        self.assertEqual(row["physicalNmValue"], precise_nm)
+        self.assertEqual(row["physicalNmValue"], 123.123)
 
         path = self.root / "physical-precision.cfilm"
         self.assertTrue(self.controller.saveFilePath(str(path), False))
         reopened = FilmDesignQuickController(self.root, service=self.service)
         reopened.requestOpenFile(QUrl.fromLocalFile(str(path)))
         thickness = reopened.currentDesign()["front_layers"][0]["thickness"]
-        self.assertEqual(thickness, {"value": precise_nm, "unit": "nm"})
+        self.assertEqual(thickness, {"value": 123.123, "unit": "nm"})
         saved_row = reopened.front_layers.record_for_id(layer_id)
         self.assertEqual(saved_row["physicalNmText"], format(precise_nm, ".3f"))
-        self.assertEqual(saved_row["physicalNmValue"], precise_nm)
+        self.assertEqual(saved_row["physicalNmValue"], 123.123)
 
 
 if __name__ == "__main__":

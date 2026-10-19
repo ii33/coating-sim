@@ -85,6 +85,9 @@ def test_real_prepared_runtime_tool_surface_includes_capability_injection(mode):
     # Compare names, not just counts: a privileged replacement is also a regression.
     assert names == COMMON_TOP_LEVEL_TOOLS | MODE_TOP_LEVEL_TOOLS[mode]
     assert report["tool_count"] == len(names), "Top-level tools must not be duplicated"
+    if mode == "operate":
+        assert "optimization.submission.request" in captured["instructions"]
+        assert "不委派子代理重新设计" in captured["instructions"]
     assert "algorithm_selection" in captured["instructions"]
     assert "不能泛用此顺序" in captured["instructions"]
     assert "不使用草稿等内部编辑状态术语" in captured["instructions"]

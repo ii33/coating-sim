@@ -109,7 +109,7 @@ def test_document_restore_retains_only_exact_side_and_layer_matches(app, tmp_pat
         replacement, surviving = controller.variables
         assert (surviving["lower_nm"], surviving["upper_nm"], surviving["enabled"]) == (65, 135, True)
         assert replacement["enabled"] is False
-        assert (replacement["lower_nm"], replacement["upper_nm"]) == (50, 150)
+        assert (replacement["lower_nm"], replacement["upper_nm"]) == (0, None)
         assert removed["layer_id"] in controller.configurationRestoreNotice
         assert "未转移" in controller.configurationRestoreNotice
         assert controller.canStart

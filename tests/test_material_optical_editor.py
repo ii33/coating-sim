@@ -75,6 +75,18 @@ def _to_variant(value):
     return value.toVariant() if hasattr(value, "toVariant") else value
 
 
+def _type_ascii(window, text):
+    """Send real key events so Quick TextField emits textEdited."""
+    for char in text:
+        if char == " ":
+            QTest.keyClick(window, Qt.Key_Space)
+        elif char.isalpha():
+            QTest.keyClick(window, getattr(Qt, "Key_" + char.upper()))
+        else:
+            raise ValueError("unsupported test character: " + char)
+        APP.processEvents()
+
+
 def _close_qml_test_window(engine, window, dialog=None):
     try:
         if dialog is not None and dialog.property("visible"):
@@ -1539,6 +1551,288 @@ Window {
             assert_isolated_wheel(k_table, "opticalEditorKCell", 12, k_model)
         finally:
             _close_qml_test_window(engine, window, dialog)
+
+    def test_qml_builtin_apply_dataset_visible_name_field_and_scoped_duplicate(self):
+        # Occupy one user name so the same-scope duplicate check has a real target.
+        self.assertTrue(self.lib.newMaterial())
+        self.lib.setField("name", "占位材料")
+        self.assertTrue(self.lib.save(), self.lib.status)
+        self.settle_materials()
+
+        builtins = [row for row in self.lib.entries if row["builtin"]]
+        self.assertTrue(builtins)
+        target = next((row for row in builtins if row["category"] == "film"), builtins[0])
+        builtin_id = target["id"]
+        tabulated_index = next(index for index, row in enumerate(self.lib.opticalModelCatalog)
+                               if row["kind"] == "tabulated")
+
+        engine = QQmlApplicationEngine()
+        warnings = []
+        engine.warnings.connect(lambda messages: warnings.extend(message.toString() for message in messages))
+        engine.rootContext().setContextProperty("bridge", self.source)
+        theme = ThemeService.instance()
+        theme.set_theme("light")
+        theme.attach_engine(engine, "Theme")
+        engine.load(QUrl.fromLocalFile(str(ROOT / "coat_sim/ui/qml/SourceWindow.qml")))
+        self.assertTrue(engine.rootObjects(), warnings)
+        window = engine.rootObjects()[0]
+        dialog = None
+        try:
+            window.showNormal()
+            window.resize(1180, 860)
+            dialog = self.open_material_library(window, engine)
+            QTest.qWait(80)
+
+            # The new-material name field is visibly editable before saving.
+            name_field = window.findChild(QObject, "materialNameField")
+            self.assertIsNotNone(name_field)
+            self.assertTrue(name_field.property("visible"))
+
+            # A builtin material is an ordinary editable record for optical data.
+            self.assertTrue(self.lib.selectMaterial("builtin:" + builtin_id))
+            self.settle_materials()
+            before_sets = len(self.lib.opticalSets)
+
+            self.assertTrue(QMetaObject.invokeMethod(dialog, "newOpticalSet"))
+            QTest.qWait(80)
+            editor = window.findChild(QObject, "materialEditor")
+            self.assertIsNotNone(editor, warnings)
+            self.assertTrue(editor.property("visible"))
+            window.findChild(QObject, "opticalEditorModel").setProperty("currentIndex", tabulated_index)
+            self.assertTrue(QMetaObject.invokeMethod(
+                editor, "loadImportedNTable", Q_ARG("QVariant", "400\t1.50\n550\t1.51\n700\t1.52")))
+            window.findChild(QObject, "opticalEditorName").setProperty("text", "GUI builtin dataset")
+            window.findChild(QObject, "opticalEditorUnit").setProperty("currentIndex", 1)
+            window.findChild(QObject, "opticalEditorRangeMin").setProperty("text", "400")
+            window.findChild(QObject, "opticalEditorRangeMax").setProperty("text", "700")
+            QTest.qWait(40)
+            save_button = window.findChild(QObject, "opticalEditorSaveButton")
+            self.assertIsNotNone(save_button)
+            self.assertTrue(QMetaObject.invokeMethod(save_button, "click"))
+            QTest.qWait(60)
+
+            # Legal input applies immediately to the current builtin material.
+            self.assertFalse(editor.property("visible"), self.lib.status)
+            self.assertEqual(len(self.lib.opticalSets), before_sets + 1)
+            self.assertIn("GUI builtin dataset", [row["name"] for row in self.lib.opticalSets])
+
+            # Illegal input keeps the material unchanged and shows the reason.
+            bad_before = len(self.lib.opticalSets)
+            self.assertTrue(QMetaObject.invokeMethod(dialog, "newOpticalSet"))
+            QTest.qWait(80)
+            window.findChild(QObject, "opticalEditorModel").setProperty("currentIndex", tabulated_index)
+            QMetaObject.invokeMethod(editor, "loadImportedNTable",
+                                     Q_ARG("QVariant", "400\t1.50\n400\t1.51"))
+            window.findChild(QObject, "opticalEditorName").setProperty("text", "GUI invalid dataset")
+            window.findChild(QObject, "opticalEditorUnit").setProperty("currentIndex", 1)
+            window.findChild(QObject, "opticalEditorRangeMin").setProperty("text", "400")
+            window.findChild(QObject, "opticalEditorRangeMax").setProperty("text", "700")
+            QTest.qWait(40)
+            self.assertTrue(QMetaObject.invokeMethod(save_button, "click"))
+            QTest.qWait(50)
+            # Illegal input keeps the editor open, leaves the material unchanged,
+            # and shows the reason instead of silently closing.
+            self.assertTrue(editor.property("visible"))
+            self.assertEqual(len(self.lib.opticalSets), bad_before)
+            status_label = window.findChild(QObject, "opticalEditorStatus")
+            self.assertIsNotNone(status_label)
+            self.assertTrue(status_label.property("visible"))
+            self.assertIn("波长重复", str(status_label.property("text")))
+            self.assertTrue(QMetaObject.invokeMethod(
+                window.findChild(QObject, "opticalEditorCancelButton"), "click"))
+            QTest.qWait(40)
+
+            # Persist the builtin override and reopen it from the library.
+            self.assertTrue(self.lib.save(), self.lib.status)
+            self.settle_materials()
+            override = self.root / "data" / "materials" / ".overrides" / (builtin_id + ".json")
+            self.assertTrue(override.is_file(), self.lib.status)
+            persisted = read_material_profile(override)
+            self.assertIn("GUI builtin dataset", [row["name"] for row in persisted["optical_constants"]])
+
+            self.lib.reload()
+            self.settle_materials()
+            self.assertTrue(self.lib.selectMaterial("builtin:" + builtin_id))
+            self.settle_materials()
+            self.assertIn("GUI builtin dataset", [row["name"] for row in self.lib.opticalSets])
+
+            # Empty and same-scope duplicate names surface visibly and block a save.
+            validation = window.findChild(QObject, "materialNameValidationLabel")
+            self.assertIsNotNone(validation)
+            self.assertTrue(self.lib.newMaterial())
+            self.settle_materials()
+            self.lib.setField("name", "")
+            self.assertTrue(self.lib.nameValidationError)
+            self.assertTrue(validation.property("visible"))
+            self.lib.setField("name", "占位材料")
+            self.assertIn("同名", self.lib.nameValidationError)
+            self.assertTrue(validation.property("visible"))
+            self.assertFalse(self.lib.save())
+            self.lib.setField("name", "GUI 新用户材料")
+            self.assertFalse(self.lib.nameValidationError)
+            self.assertTrue(self.lib.save(), self.lib.status)
+        finally:
+            _close_qml_test_window(engine, window, dialog)
+
+    def test_qml_project_material_create_apply_dataset_save_reopen(self):
+        """Project-owned material: new -> name -> apply -> save -> reopen.
+
+        This is the project path (ProjectMaterialLibraryBridge), independent of
+        the global builtin override path covered above. It drives the real
+        MaterialLibraryDialog/MaterialEditor buttons.
+        """
+        from coat_sim.core.material_business import MaterialLibrary
+        from coat_sim.core.project_resource_service import ProjectResourceService
+        from coat_sim.core.project_store import ProjectStore
+        from coat_sim.ui.project_material_library import ProjectMaterialLibraryBridge
+
+        store = ProjectStore.create(self.root / "project", "Project material GUI")
+        service = ProjectResourceService(store)
+        global_library = MaterialLibrary(directory=self.root / "global-materials")
+        bridge = ProjectMaterialLibraryBridge(service, global_library=global_library)
+        self.addCleanup(bridge.waitForBackgroundTasks)
+        self.addCleanup(bridge.deleteLater)
+        tabulated_index = next(index for index, row in enumerate(bridge.opticalModelCatalog)
+                               if row["kind"] == "tabulated")
+
+        engine = QQmlEngine()
+        engine.setNetworkAccessManagerFactory(NoNetworkAccessManagerFactory())
+        warnings = []
+        engine.warnings.connect(lambda messages: warnings.extend(message.toString() for message in messages))
+        engine.rootContext().setContextProperty("materialLibrary", bridge)
+        theme = ThemeService.instance()
+        theme.set_theme("light")
+        theme.attach_engine(engine, "Theme")
+        component = QQmlComponent(engine)
+        component.setData(b'''\
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Window
+import "../coat_sim/ui/qml" as CoatUi
+Window {
+    width: 1180; height: 860; visible: true
+    CoatUi.MaterialLibraryDialog {
+        id: materialDialog
+        objectName: "materialLibraryDialog"
+        library: materialLibrary
+        visible: true
+    }
+}
+''', QUrl.fromLocalFile(str(ROOT / "tests" / "project_material_library_host.qml")))
+        self.assertEqual(component.status(), QQmlComponent.Status.Ready,
+                         [message.toString() for message in component.errors()])
+        window = component.create()
+        self.assertIsNotNone(window, [message.toString() for message in component.errors()])
+        dialog = None
+        saved_id = ""
+        generated_id = ""
+        try:
+            window.show()
+            QTest.qWait(80)
+            dialog = window.findChild(QObject, "materialLibraryDialog")
+            self.assertIsNotNone(dialog, warnings)
+
+            # Create a new project material through the real toolbar button.
+            new_button = window.findChild(QObject, "newMaterialButton")
+            self.assertIsNotNone(new_button, warnings)
+            self.assertTrue(QMetaObject.invokeMethod(new_button, "click"))
+            QTest.qWait(60)
+
+            # The name field is visible and editable; typing updates the draft.
+            name_field = window.findChild(QObject, "materialNameField")
+            self.assertIsNotNone(name_field)
+            self.assertTrue(name_field.property("visible"))
+            self.assertTrue(name_field.property("enabled"))
+            name_field.forceActiveFocus(Qt.MouseFocusReason)
+            QTest.qWait(20)
+            QMetaObject.invokeMethod(name_field, "selectAll")
+            _type_ascii(qml_item_window(name_field), "gui project material")
+            QTest.qWait(40)
+            draft = bridge.draftData()
+            self.assertEqual(draft["name"], "gui project material")
+            generated_id = draft["id"]
+            self.assertTrue(generated_id)
+
+            # Apply a valid optical dataset to the current draft via the editor.
+            self.assertTrue(QMetaObject.invokeMethod(
+                window.findChild(QObject, "addOpticalSetButton"), "click"))
+            QTest.qWait(80)
+            editor = window.findChild(QObject, "materialEditor")
+            self.assertIsNotNone(editor, warnings)
+            self.assertTrue(editor.property("visible"))
+            window.findChild(QObject, "opticalEditorModel").setProperty("currentIndex", tabulated_index)
+            self.assertTrue(QMetaObject.invokeMethod(
+                editor, "loadImportedNTable", Q_ARG("QVariant", "400\t1.50\n550\t1.51\n700\t1.52")))
+            window.findChild(QObject, "opticalEditorName").setProperty("text", "Project HD visible")
+            window.findChild(QObject, "opticalEditorUnit").setProperty("currentIndex", 1)
+            window.findChild(QObject, "opticalEditorRangeMin").setProperty("text", "400")
+            window.findChild(QObject, "opticalEditorRangeMax").setProperty("text", "700")
+            QTest.qWait(40)
+            apply_button = window.findChild(QObject, "opticalEditorSaveButton")
+            self.assertIsNotNone(apply_button)
+            self.assertTrue(QMetaObject.invokeMethod(apply_button, "click"))
+            QTest.qWait(60)
+            self.assertFalse(editor.property("visible"), bridge.status)
+            self.assertIn("Project HD visible", [row["name"] for row in bridge.opticalSets])
+
+            # Save the material into the project store.
+            save_button = window.findChild(QObject, "saveMaterialButton")
+            self.assertIsNotNone(save_button)
+            self.assertTrue(QMetaObject.invokeMethod(save_button, "click"))
+            QTest.qWait(80)
+            saved_id = bridge.currentId
+            self.assertEqual(saved_id, generated_id)
+            profile_rows = [row for row in store.manifest["documents"]
+                            if row["kind"] == "material_profile"]
+            self.assertEqual(len(profile_rows), 1)
+            graph = store.resolve_document(profile_rows[0]["id"])
+            persisted = next(row for row in graph["documents"]
+                             if row["id"] == profile_rows[0]["id"])
+            self.assertEqual(persisted["data"]["material"]["id"], saved_id)
+            stored = bridge.project_library.read(saved_id)["record"]
+            self.assertEqual(stored["name"], "gui project material")
+            self.assertEqual([row["name"] for row in stored["optical_constants"]], ["Project HD visible"])
+
+            # An illegal dataset keeps the editor open with a reason and leaves
+            # the previously applied set untouched.
+            before_sets = len(bridge.opticalSets)
+            self.assertTrue(QMetaObject.invokeMethod(
+                window.findChild(QObject, "addOpticalSetButton"), "click"))
+            QTest.qWait(80)
+            window.findChild(QObject, "opticalEditorModel").setProperty("currentIndex", tabulated_index)
+            QMetaObject.invokeMethod(editor, "loadImportedNTable",
+                                     Q_ARG("QVariant", "400\t1.50\n400\t1.51"))
+            window.findChild(QObject, "opticalEditorName").setProperty("text", "Project invalid")
+            window.findChild(QObject, "opticalEditorUnit").setProperty("currentIndex", 1)
+            window.findChild(QObject, "opticalEditorRangeMin").setProperty("text", "400")
+            window.findChild(QObject, "opticalEditorRangeMax").setProperty("text", "700")
+            QTest.qWait(40)
+            self.assertTrue(QMetaObject.invokeMethod(apply_button, "click"))
+            QTest.qWait(50)
+            self.assertTrue(editor.property("visible"))
+            self.assertEqual(len(bridge.opticalSets), before_sets)
+            status_label = window.findChild(QObject, "opticalEditorStatus")
+            self.assertIsNotNone(status_label)
+            self.assertTrue(status_label.property("visible"))
+            self.assertIn("波长重复", str(status_label.property("text")))
+            self.assertTrue(QMetaObject.invokeMethod(
+                window.findChild(QObject, "opticalEditorCancelButton"), "click"))
+            QTest.qWait(40)
+        finally:
+            _close_qml_test_window(engine, window, dialog)
+
+        # Reopen the same project with a fresh bridge/service and read it back.
+        reopened = ProjectMaterialLibraryBridge(
+            ProjectResourceService(ProjectStore.open(store.project_file)),
+            global_library=global_library)
+        self.addCleanup(reopened.waitForBackgroundTasks)
+        self.addCleanup(reopened.deleteLater)
+        self.assertIn(saved_id, reopened._project_material_ids)
+        reopened_record = reopened.project_library.read(saved_id)["record"]
+        self.assertEqual(reopened_record["id"], saved_id)
+        self.assertEqual(reopened_record["name"], "gui project material")
+        self.assertEqual([row["name"] for row in reopened_record["optical_constants"]],
+                         ["Project HD visible"])
 
 
 if __name__ == "__main__":

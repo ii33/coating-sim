@@ -119,7 +119,8 @@ class ResearchedMaterialUiTests(MaterialQtCase):
                 reference = self.lib.researchData
                 self.assertTrue(self.lib.copyMaterial())
                 self.settle_materials()
-                self.lib.setField("name", "ZnS")
+                # Same-scope user names are unique, so each copy gets its own name.
+                self.lib.setField("name", f"ZnS copy {identity}")
                 self.assertTrue(self.lib.save(), self.lib.status)
                 self.settle_materials()
                 self.assertEqual(self.lib.roles, roles)

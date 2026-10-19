@@ -14,6 +14,9 @@ TextField {
     // Presentation source for numeric fields. The editing buffer remains text.
     property var numericDisplayValue: undefined
     property int numericDisplayDecimals: 3
+    // Opt-in for editable quantities whose committed precision is bounded.
+    // Scientific constants keep their full source value while editing.
+    property int numericEditDecimals: -1
     property bool numericValueEdited: false
     property string numericEditText: ""
     // Replace the value on each new focus session; repeated clicks while
@@ -90,7 +93,10 @@ TextField {
     Component.onCompleted: displayTimer.restart()
     onActiveFocusChanged: {
         if (activeFocus && numericDisplayValue !== undefined)
-            text = numericDisplayValue === null ? "" : String(numericDisplayValue)
+            text = numericDisplayValue === null ? ""
+                : numericEditDecimals >= 0
+                  ? NumericFormat.format(numericDisplayValue, Qt.locale(), numericEditDecimals)
+                  : String(numericDisplayValue)
         else if (!activeFocus)
             displayTimer.restart()
     }

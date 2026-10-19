@@ -466,11 +466,14 @@ def _read_catalog(folder, previous_entries):
     issues = []
     try:
         from coat_sim.core.material_business import MaterialLibrary
-        catalogue = MaterialLibrary(directory=folder).catalog_records()
+        service = MaterialLibrary(directory=folder)
+        catalogue = service.catalog_records()
         builtins = [item["record"] for item in catalogue if item["builtin"]]
         entries = [item["record"] for item in catalogue if not item["builtin"]]
         overridden_ids = {item["record"]["id"] for item in catalogue if item["overridden"]}
-        return builtins, entries, _entry_rows(builtins, entries, overridden_ids), issues, overridden_ids
+        deleted_rows = service.deleted_builtins()
+        return (builtins, entries, _entry_rows(builtins, entries, overridden_ids),
+                issues, overridden_ids, deleted_rows)
     except (OSError, ValueError, TypeError) as exc:
         issues.append(f"material library could not be read: {exc}")
     try:
@@ -520,6 +523,10 @@ def _apply_library_import(folder, plan, decisions):
 
 def _delete_library_material(folder, identifier):
     return materials.delete_material(folder, identifier)
+
+
+def _delete_library_builtin(folder, identifier):
+    return _library_service(folder).delete_builtin(identifier)
 
 
 class MaterialLibraryBridge(QObject):
@@ -598,6 +605,7 @@ class MaterialLibraryBridge(QObject):
         self._builtin = False
         self._builtin_overridden = False
         self._overridden_ids = set()
+        self._deleted_builtins = []
         self._selected_key = ""
         self._reference_data = None
         self._research_data = None
@@ -743,6 +751,18 @@ class MaterialLibraryBridge(QObject):
     @Property(bool, notify=changed)
     def loading(self):
         return self._loading or self._catalog_future is not None or self._operation_busy
+
+    def hasMaterial(self, identifier):
+        """True when this bridge's cached catalog already knows the material id.
+
+        The lookup ignores case because the core library treats material ids as
+        case-insensitive.
+        """
+        key = str(identifier or "").casefold()
+        if not key:
+            return False
+        return any(str(row.get("id", "")).casefold() == key
+                   for row in (*self._builtins, *self._entries))
 
     @Property(bool, notify=changed)
     def operationBusy(self):
@@ -955,8 +975,15 @@ class MaterialLibraryBridge(QObject):
                     "body": k_data["source"], "source": k_data["source"], "url": "", "warning": False})
         return sections
 
+    def _optical_edit_blocked(self):
+        if self._loading:
+            self._status = "材料仍在载入；载入完成后再编辑光学数据集，当前材料未改变"
+            self.changed.emit()
+            return True
+        return False
+
     def _add_optical(self, record):
-        if self._builtin or self._loading:
+        if self._optical_edit_blocked():
             return False
         try:
             self._optical_sets = optical_constants.validate_optical_sets(self._optical_sets + [record])
@@ -972,7 +999,7 @@ class MaterialLibraryBridge(QObject):
 
     @Slot(str, str, str, str, result=bool)
     def importOpticalFile(self, path, name, unit, notes):
-        if self._builtin or self._loading:
+        if self._optical_edit_blocked():
             return False
         try:
             url = QUrl(path)
@@ -985,7 +1012,7 @@ class MaterialLibraryBridge(QObject):
 
     @Slot(str, str, str, str, str, str, str, result=bool)
     def addDispersionModel(self, name, kind, unit, low, high, parameters, notes):
-        if self._builtin or self._loading:
+        if self._optical_edit_blocked():
             return False
         try:
             p = json.loads(parameters)
@@ -1027,7 +1054,7 @@ class MaterialLibraryBridge(QObject):
 
     @Slot(str, result=bool)
     def addOpticalSet(self, form_json):
-        if self._builtin or self._loading:
+        if self._optical_edit_blocked():
             return False
         try:
             form = json.loads(form_json)
@@ -1048,7 +1075,7 @@ class MaterialLibraryBridge(QObject):
 
     @Slot(str, str, result=bool)
     def updateOpticalSet(self, identity, form_json):
-        if self._builtin or self._loading:
+        if self._optical_edit_blocked():
             return False
         try:
             old = next(row for row in self._optical_sets if row["id"] == identity)
@@ -1072,7 +1099,7 @@ class MaterialLibraryBridge(QObject):
 
     @Slot(str)
     def removeOpticalSet(self, identity):
-        if self._builtin or self._loading:
+        if self._optical_edit_blocked():
             return
         rows = [row for row in self._optical_sets if row["id"] != identity]
         if len(rows) != len(self._optical_sets):
@@ -1165,7 +1192,14 @@ class MaterialLibraryBridge(QObject):
 
     @Property(bool, notify=changed)
     def canDelete(self):
-        return self._saved_id is not None and not self._builtin and not self.loading
+        # A custom record is deleted from the local library; a builtin is
+        # deleted through a durable tombstone so upgrades cannot resurrect it.
+        return (not self.loading and
+                (self._saved_id is not None or self._builtin))
+
+    @Property("QVariantList", notify=changed)
+    def deletedBuiltins(self):
+        return deepcopy(self._deleted_builtins)
 
     @Property(str, notify=changed)
     def currentKey(self):
@@ -1206,6 +1240,16 @@ class MaterialLibraryBridge(QObject):
     @Property(str, notify=changed)
     def error(self):
         return self._error
+
+    @Property(str, notify=changed)
+    def nameValidationError(self):
+        """Visible, scoped name validation for the material name editor."""
+        if not self._valid:
+            return self._error
+        conflict = self._same_scope_name_conflict(self._draft.get("name", ""))
+        if conflict:
+            return f"同一材料库已存在同名材料“{conflict}”；请使用不同名称后再保存"
+        return ""
 
     @Property(str, notify=changed)
     def status(self):
@@ -1278,6 +1322,7 @@ class MaterialLibraryBridge(QObject):
             "preview_import": "Reading and validating package…",
             "apply_import": "Applying import decisions…",
             "delete": "Deleting material…",
+            "delete_builtin": "Deleting builtin material…",
         }.get(kind, "Working…")
         self._timer.start()
         self.changed.emit()
@@ -1376,6 +1421,16 @@ class MaterialLibraryBridge(QObject):
             self._dirty = True
             self.reload()
             self._status = "Material deleted from the local library; the current draft and saved source/film snapshots are unchanged"
+        elif kind == "delete_builtin":
+            self._overridden_ids.discard(self.currentId)
+            self._saved_id = None
+            self._selected_key = ""
+            self._builtin = False
+            self._builtin_overridden = False
+            self._dirty = True
+            self.reload()
+            self._status = ("Builtin material deleted from the library (durably, until restored); "
+                            "existing sources and film snapshots keep their saved copies")
         elif kind == "preview_import":
             self._import_preview_plan = result["plan"]
             self._import_preview_rows = result["rows"]
@@ -1403,7 +1458,7 @@ class MaterialLibraryBridge(QObject):
             self._dirty = True
             self._status = "Material deleted from the local library; existing snapshots are unchanged"
             self.reload()
-        if kind in {"save", "restore_builtin", "apply_import", "delete"}:
+        if kind in {"save", "restore_builtin", "apply_import", "delete", "delete_builtin"}:
             self.catalogCommitted.emit()
         self.changed.emit()
 
@@ -1415,6 +1470,7 @@ class MaterialLibraryBridge(QObject):
                 catalog_result = future.result()
                 self._builtins, self._entries, self._entry_cache, issues = catalog_result[:4]
                 self._overridden_ids = set(catalog_result[4]) if len(catalog_result) > 4 else set()
+                self._deleted_builtins = list(catalog_result[5]) if len(catalog_result) > 5 else []
                 self._status = "；".join(issues) if issues else "材料库已刷新"
             except Exception as exc:
                 self._status = f"读取材料库失败：{exc}"
@@ -1529,10 +1585,11 @@ class MaterialLibraryBridge(QObject):
         if not separator:
             identity = value
         rows = self._builtins if prefix == "builtin" else self._entries
-        row = next((row for row in rows if row["id"] == identity), None)
+        key = identity.casefold()
+        row = next((row for row in rows if str(row["id"]).casefold() == key), None)
         builtin = prefix == "builtin"
         if row is None and not separator:
-            row = next((row for row in self._builtins if row["id"] == identity), None)
+            row = next((row for row in self._builtins if str(row["id"]).casefold() == key), None)
             builtin = row is not None
         if row is None:
             self._status = "未找到材料；当前内容已保留"
@@ -1616,6 +1673,11 @@ class MaterialLibraryBridge(QObject):
         was_builtin = self._builtin
         try:
             record = self.draftData()
+            conflict = self._name_conflict_error(record)
+            if conflict:
+                self._status = conflict
+                self.changed.emit()
+                return False
             normalized = (
                 _library_service(self._folder()).save_builtin_override(record)["record"]
                 if was_builtin else
@@ -1644,6 +1706,35 @@ class MaterialLibraryBridge(QObject):
         self.changed.emit()
         return True
 
+    def _scope_rows(self):
+        """Records that share this draft's writable scope.
+
+        Ordinary user records are compared only against other user records in
+        the same library folder. Builtin overrides keep the seeded names, which
+        legitimately repeat across builtin film/substrate variants, so they are
+        never treated as duplicates.
+        """
+        return [] if self._builtin else self._entries
+
+    def _same_scope_name_conflict(self, name):
+        key = str(name or "").strip().casefold()
+        if not key:
+            return ""
+        own = (str(self._draft.get("id", "")) if self._builtin
+               else (self._saved_id or "")).casefold()
+        for row in self._scope_rows():
+            if str(row.get("id", "")).casefold() == own:
+                continue
+            if str(row.get("name", "")).strip().casefold() == key:
+                return str(row.get("name", ""))
+        return ""
+
+    def _name_conflict_error(self, record):
+        conflict = self._same_scope_name_conflict(record.get("name", ""))
+        if conflict:
+            return f"同一材料库已存在同名材料“{conflict}”；请使用不同名称后再保存"
+        return ""
+
     def _begin_save(self, discard_pending=False):
         if self.loading or not self._valid:
             return False
@@ -1651,6 +1742,11 @@ class MaterialLibraryBridge(QObject):
             record = self.draftData()
         except (ValueError, TypeError, KeyError) as exc:
             self._status = str(exc)
+            self.changed.emit()
+            return False
+        conflict = self._name_conflict_error(record)
+        if conflict:
+            self._status = conflict
             self.changed.emit()
             return False
         return self._start_library_operation(
@@ -1717,9 +1813,40 @@ class MaterialLibraryBridge(QObject):
     def deleteInBackground(self):
         if not self.canDelete:
             return False
+        if self._builtin:
+            return self._start_library_operation(
+                "delete_builtin", _delete_library_builtin,
+                self._folder(), self.currentId)
         return self._start_library_operation(
             "delete", _delete_library_material,
             self._folder(), self._saved_id)
+
+    @Slot(str, result=bool)
+    def restoreDeletedBuiltin(self, identifier):
+        """Restore one tombstoned builtin to its packaged original definition."""
+        if self.loading or self._operation_busy or not identifier:
+            return False
+        try:
+            record, sections = _restore_library_builtin(self._folder(), identifier)
+        except (ValueError, TypeError, OSError) as exc:
+            self._status = "恢复内置材料失败：" + str(exc)
+            self.changed.emit()
+            return False
+        identity = record["id"]
+        self._deleted_builtins = [row for row in self._deleted_builtins
+                                  if row.get("id") != identity]
+        self._overridden_ids.discard(identity)
+        self._builtin = True
+        self._builtin_overridden = False
+        self._saved_id = None
+        self._selected_key = "builtin:" + identity
+        self._load_draft(record, sections, prepared=True)
+        self._dirty = False
+        self._status = "已恢复内置材料原始定义；已有源和膜系快照不变"
+        self.reload()
+        self.catalogCommitted.emit()
+        self.changed.emit()
+        return True
 
     @Slot()
     def requestDelete(self):
@@ -1731,16 +1858,23 @@ class MaterialLibraryBridge(QObject):
         if not confirmed or not self.canDelete:
             return False
         try:
-            materials.delete_material(self._folder(), self._saved_id)
+            if self._builtin:
+                _delete_library_builtin(self._folder(), self.currentId)
+            else:
+                materials.delete_material(self._folder(), self._saved_id)
         except (OSError, ValueError) as exc:
             self._status = f"删除失败：{exc}；当前编辑内容和已有源快照不变"
             self.changed.emit()
             return False
+        was_builtin = self._builtin
         self._saved_id = None
         self._selected_key = ""
+        self._builtin = False
+        self._builtin_overridden = False
         self._dirty = True
         self.reload()
-        self._status = "已从材料库删除；当前编辑内容保留，可重新保存。已有源中的快照不受影响"
+        self._status = ("已删除内置材料（可恢复）；已有源和膜系快照不变" if was_builtin
+                        else "已从材料库删除；当前编辑内容保留，可重新保存。已有源中的快照不受影响")
         self.changed.emit()
         return True
 

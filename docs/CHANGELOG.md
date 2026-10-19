@@ -1,5 +1,12 @@
 # 更新日志
 
+## dev.20261019.01 - 2026-10-19
+
+- Project material editing, optical dataset validation, reversible builtin deletion, and project-owned ideal Air.
+- Responsive optimizer opening; precise and zero thickness, half-unbounded baseline search, weighted multiobjective scoring, and 1 nm / 1 degree new-target defaults.
+- Single-instance project windows, exact assistant handoff of the open optimizer request, and optional task ceilings with cleaner chat output.
+- Focused Qt, compute, numerical, and cross-module regressions passed; this source snapshot does not publish an application Release.
+
 ## dev.20261018.02 · 2026-10-18
 
 - 修复 Windows 回收删除中跨 `fstat/stat` 时间语义不一致导致的假冲突；保留内容哈希、文件替换、权限和取消检查，原文件不因冲突而丢失。实机根因记录为 CPython 3.13.16 / Windows 11 build 26340。

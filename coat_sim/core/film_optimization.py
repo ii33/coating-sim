@@ -16,7 +16,8 @@ import numpy as np
 
 from .film_design import physical_thickness_nm
 from .optical_constants import prepare_optical_set
-from .film_optimization_scoring import score_condition, weighted_rms_error, weighted_scaled_value
+from .film_optimization_scoring import (candidate_key, score_condition, search_scalar,
+                                        weighted_rms_error, weighted_scaled_value)
 
 
 Polarization = Literal["s", "p", "unpolarized"]
@@ -32,7 +33,7 @@ class FilmThicknessVariable:
     side: Literal["front", "back"]
     layer_id: str
     lower_nm: float
-    upper_nm: float
+    upper_nm: float | None
 
 
 @dataclass(frozen=True)
@@ -382,9 +383,14 @@ def optimize_film_design(
         if variable.side == "back" and base_design["substrate"]["sides"] != "double":
             raise ValueError("back-layer variables require a double-sided substrate design")
         low = finite(variable.lower_nm, "lower_nm")
-        high = finite(variable.upper_nm, "upper_nm")
-        if low <= 0 or high <= low:
-            raise ValueError("thickness bounds must be positive and strictly increasing")
+        if variable.upper_nm is None:
+            if solver != "baseline":
+                raise ValueError("this finite-domain optimizer requires an explicit upper_nm for each selected layer; no upper bound was assumed")
+            high = math.inf
+        else:
+            high = finite(variable.upper_nm, "upper_nm")
+        if low < 0 or high <= low:
+            raise ValueError("thickness bounds must be nonnegative and strictly increasing")
         variable_rows.append((variable.side, variable.layer_id, low, high, 0.0))
     objectives: list[FilmOptimizationObjective] = []
     for objective in request.objectives:
@@ -481,7 +487,7 @@ def optimize_film_design(
         else:
             original_nm = physical_thickness_nm(
                 row, base_design["reference_wavelength_nm"], 1.0)
-        if not math.isfinite(original_nm) or original_nm <= 0:
+        if not math.isfinite(original_nm) or original_nm < 0:
             raise ValueError(f"selected layer has invalid physical thickness: {layer_id}")
         normalized_variables.append((side, layer_id, low, high, original_nm))
 
@@ -586,8 +592,7 @@ def optimize_film_design(
             "errors": tuple(errors), "max_error": max_error,
             "weighted_max_error": weighted_max_error,
             "weighted_rms_error": weighted_rms,
-            # Raw worst-condition violation leads; weighted RMS breaks ties.
-            "key": (max_error, weighted_rms),
+            "key": candidate_key(max_error, weighted_rms, acceptable),
         }
 
     initial = np.asarray([
@@ -595,7 +600,10 @@ def optimize_film_design(
     ], dtype=float)
     lows = np.asarray([item[2] for item in normalized_variables], dtype=float)
     highs = np.asarray([item[3] for item in normalized_variables], dtype=float)
-    spans = highs - lows
+    # Only finite-domain solvers normalize by spans. The baseline's half-unbounded
+    # path below works in physical nm and never sends infinity to a candidate.
+    has_unbounded_axis = bool(np.any(np.isinf(highs)))
+    spans = np.where(np.isfinite(highs), highs - lows, 0.0)
     best: dict[str, Any] | None = None
     evaluations = 0
     failed_evaluations = 0
@@ -671,7 +679,8 @@ def optimize_film_design(
     consider(initial)
     assert best is not None
     termination_reason = "target_met" if best["max_error"] <= acceptable else ""
-    if solver == "baseline" and best["max_error"] > acceptable and not cancel_after_evaluation:
+    if (solver == "baseline" and not has_unbounded_axis and
+            best["max_error"] > acceptable and not cancel_after_evaluation):
         # Deterministic coarse bounded sweep: sample each variable across its
         # inclusive range while holding the others at the best known point.
         # This is useful for oscillatory thin-film objectives but is not a
@@ -690,7 +699,46 @@ def optimize_film_design(
             if best["max_error"] <= acceptable or evaluations >= max_evaluations or cancel_after_evaluation:
                 break
 
-    if solver == "baseline":
+    if solver == "baseline" and has_unbounded_axis:
+        # A local coordinate search in nm permits d >= low without imposing a
+        # fabricated high bound. The reference wavelength sets an initial trial
+        # scale, not a domain limit; successful directions expand their step.
+        reference_scale = float(base_design["reference_wavelength_nm"]) / 4.0
+        physical_spans = np.where(np.isfinite(highs), spans,
+                                  np.maximum(initial - lows, reference_scale))
+        step_nm = physical_spans * initial_step
+        minimum_step_nm = physical_spans * min_step
+        while (best["max_error"] > acceptable and iteration < max_iterations and
+               evaluations < max_evaluations and not cancel_after_evaluation and
+               np.any(step_nm > minimum_step_nm)):
+            iteration += 1
+            for axis in range(len(normalized_variables)):
+                if evaluations >= max_evaluations or cancel_after_evaluation:
+                    break
+                improved = False
+                for direction in (-1.0, 1.0):
+                    if evaluations >= max_evaluations or cancel_after_evaluation:
+                        break
+                    probe = best["values"].copy()
+                    trial = float(probe[axis]) + direction * float(step_nm[axis])
+                    if not math.isfinite(trial):
+                        continue
+                    probe[axis] = min(highs[axis], max(lows[axis], trial))
+                    if np.isclose(probe[axis], best["values"][axis], rtol=0, atol=1e-12):
+                        continue
+                    previous = best["key"]
+                    consider(probe)
+                    improved = best["key"] < previous
+                    if improved or best["max_error"] <= acceptable:
+                        break
+                if improved:
+                    step_nm[axis] *= 2.0
+                else:
+                    step_nm[axis] *= 0.5
+                if best["max_error"] <= acceptable:
+                    break
+
+    elif solver == "baseline":
         step = np.full(len(normalized_variables), initial_step, dtype=float)
         while (best["max_error"] > acceptable and iteration < max_iterations and
                evaluations < max_evaluations and not cancel_after_evaluation and
@@ -738,7 +786,8 @@ def optimize_film_design(
             if baseline_pending:
                 baseline_pending = False
                 # run_batch_de owns counting this already-complete baseline.
-                return [BatchEvaluation(baseline["key"], baseline["max_error"], baseline)]
+                return [BatchEvaluation(baseline["key"], search_scalar(
+                    baseline["max_error"], baseline["weighted_rms_error"], acceptable), baseline)]
             responses = forward.responses(points, cancel=cancel_event)
             results = []
             chunk_best = None
@@ -748,13 +797,15 @@ def optimize_film_design(
                     raise InterruptedError("optimization batch cancelled during scoring")
                 current = evaluate(point, supplied_responses=forward.candidate_responses(responses, index),
                                    include_details=False)
-                results.append(BatchEvaluation(current["key"], current["max_error"], None))
+                results.append(BatchEvaluation(current["key"], search_scalar(
+                    current["max_error"], current["weighted_rms_error"], acceptable), None))
                 if chunk_best is None or current["key"] < chunk_best["key"]:
                     chunk_best, chunk_best_index = current, index
             # Only a chunk's best can replace the global best after atomic
             # batch acceptance. Do not retain full condition objects for losers.
             results[chunk_best_index] = BatchEvaluation(
-                chunk_best["key"], chunk_best["max_error"], {
+                chunk_best["key"], search_scalar(
+                    chunk_best["max_error"], chunk_best["weighted_rms_error"], acceptable), {
                     "values": np.array(points[chunk_best_index], copy=True),
                     "responses": tuple(forward.candidate_responses(responses, chunk_best_index)),
                 })
@@ -890,7 +941,7 @@ def optimize_film_design(
                     "errors": tuple(errors), "max_error": max_error,
                     "weighted_max_error": weighted_max_error,
                     "weighted_rms_error": weighted_rms,
-                    "key": (max_error, weighted_rms),
+                    "key": candidate_key(max_error, weighted_rms, acceptable),
                 }
                 residual_vector = np.asarray(residuals, dtype=float)
                 jacobian_matrix = np.asarray(jacobian_rows, dtype=float)
@@ -1073,7 +1124,8 @@ def optimize_film_design(
 
             initial_fraction = (initial - lows) / spans
             scalar_cache: dict[tuple[float, ...], float] = {
-                tuple(float(value) for value in initial_fraction): float(best["max_error"])
+                tuple(float(value) for value in initial_fraction): search_scalar(
+                    best["max_error"], best["weighted_rms_error"], acceptable)
             }
 
             def scalar_objective(point: np.ndarray) -> float:
@@ -1088,12 +1140,14 @@ def optimize_film_design(
                 physical_values = lows + point * spans
                 current = consider(physical_values)
                 if current is None:
-                    failed_score = max(1e6, float(best["max_error"]) + 1.0)
+                    failed_score = max(1e6, scalar_cache.get(
+                        tuple(float(value) for value in initial_fraction), 0.0) + 1.0)
                     scalar_cache[key] = failed_score
                     if cancel_after_evaluation:
                         raise SolverStop("cancelled")
                     return failed_score
-                scalar_cache[key] = float(current["max_error"])
+                scalar_cache[key] = search_scalar(
+                    current["max_error"], current["weighted_rms_error"], acceptable)
                 if cancel_after_evaluation:
                     raise SolverStop("cancelled")
                 return scalar_cache[key]
@@ -1178,7 +1232,9 @@ def optimize_film_design(
         message = "maximum iteration count reached; target attainment is not guaranteed"
     else:
         termination_reason = termination_reason or "converged"
-        message = "bounded local search converged; target attainment is not guaranteed"
+        message = ("half-unbounded local coordinate search converged; target attainment is not guaranteed"
+                   if has_unbounded_axis else
+                   "bounded local search converged; target attainment is not guaranteed")
     if not termination_reason:
         termination_reason = "target_met" if best["max_error"] <= acceptable else "converged"
     emit(state, 1.0, iteration, evaluations, float(best["max_error"]), message)

@@ -3,10 +3,10 @@
 
 def _configure_development_mode(argv, environ, *, release_build=False,
                                 frozen=False, compiled=False):
-    """Make this launch's explicit CLI flag the only development-mode opt-in."""
-    requested = "--development" in argv
-    argv[:] = [argument for argument in argv if argument != "--development"]
-    enabled = requested and not release_build and not frozen and not compiled
+    """Enable bounded developer tools by default for source launches only."""
+    disabled = "--no-development" in argv
+    argv[:] = [argument for argument in argv if argument not in ("--development", "--no-development")]
+    enabled = not disabled and not release_build and not frozen and not compiled
     environ["COAT_DEVELOPMENT"] = "1" if enabled else "0"
     return enabled
 
@@ -23,8 +23,8 @@ def main():
     import os
     import sys
     # Frozen/compiled releases retain the immutable backend gate even when the
-    # source-only option is supplied. Also clear inherited opt-ins on ordinary
-    # launches so saved settings or parent environment cannot enable tools.
+    # source-only option is supplied. An explicit --no-development switches off
+    # developer tools without changing the release/build security boundary.
     _configure_development_mode(
         sys.argv, os.environ,
         release_build=os.environ.get("COAT_RELEASE_BUILD") == "1",

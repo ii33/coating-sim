@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from copy import copy, deepcopy
 from dataclasses import dataclass, replace
+from decimal import Decimal, ROUND_HALF_UP
 import inspect
 import json
 from importlib import import_module
@@ -10,12 +11,15 @@ import math
 from pathlib import Path
 import re
 import threading
+import time
 from uuid import uuid4
 from typing import Any, cast
 import weakref
 from coat_sim.project_session import OperationBinding
 
-from PySide6.QtCore import Property, QObject, QRunnable, QUrl, Signal, Slot
+from PySide6.QtCore import Property, QObject, QRunnable, QThreadPool, Qt, QTimer, QUrl, Signal, Slot
+
+from coat_sim.assistant_diagnostics import trace
 
 from coat_sim.core.film_optimization import (
     FilmConditionError,
@@ -78,16 +82,27 @@ def _number(value, label: str) -> float:
     return number
 
 
+def _edited_thickness_bound(value, label: str) -> float:
+    number = _number(value, label)
+    try:
+        result = float(Decimal(str(number)).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP))
+    except (ArithmeticError, OverflowError, ValueError) as exc:
+        raise ValueError(f"{label} must be nonnegative and finite") from exc
+    if not math.isfinite(result) or result < 0:
+        raise ValueError(f"{label} must be nonnegative and finite")
+    return result
+
+
 def _objective_default(index: int) -> dict:
     return {
         "id": uuid4().hex,
         "name": f"目标 {index + 1}",
         "wavelength_min_nm": 400.0,
         "wavelength_max_nm": 700.0,
-        "wavelength_samples": 31,
-        "sampling_basis": "samples",
-        "wavelength_step_nm": 10.0,
-        "actual_wavelength_step_nm": 10.0,
+        "wavelength_samples": 301,
+        "sampling_basis": "step",
+        "wavelength_step_nm": 1.0,
+        "actual_wavelength_step_nm": 1.0,
         "angle_sampling_mode": "range",
         "angle_min_deg": 0.0,
         "angle_max_deg": 0.0,
@@ -135,6 +150,40 @@ def _scipy_runtime_availability() -> tuple[str, bool]:
     except (TypeError, ValueError):
         trf_callback_available = False
     return "", trf_callback_available
+
+
+class _InitialLoadSignals(QObject):
+    finished = Signal(object, object, object)
+
+
+class _InitialLoadWorker(QRunnable):
+    """Read Python-only dependencies; never touch the window or controller."""
+
+    def __init__(self, catalog: object, signals: _InitialLoadSignals) -> None:
+        super().__init__()
+        self.catalog = catalog
+        self.signals = signals
+
+    def run(self) -> None:
+        started = time.perf_counter()
+        scipy_result = _scipy_runtime_availability()
+        trace("film_optimization_scipy_checked", elapsed_s=time.perf_counter() - started,
+              state="available" if not scipy_result[0] else "unavailable")
+        started = time.perf_counter()
+        try:
+            reader = getattr(self.catalog, "_records", None)
+            if not callable(reader):
+                raise ValueError("material catalog does not support enumeration")
+            records, material_error = reader(), ""
+        except Exception as exc:
+            records, material_error = [], f"{type(exc).__name__}: {exc}"
+        trace("film_optimization_materials_read", elapsed_s=time.perf_counter() - started,
+              state="ready" if not material_error else "failed")
+        try:
+            self.signals.finished.emit(scipy_result, records, material_error)
+        except RuntimeError:
+            # The window may have been destroyed while the read was running.
+            pass
 
 
 def _integer(value: Any, label: str, minimum: int = 1,
@@ -811,8 +860,9 @@ class FilmOptimizationQuickController(QObject):
         self._run_coordinator._shutting_down = bool(value)
 
     def __init__(self, source_controller, parent: QObject | None = None, *,
-                 project_context=None) -> None:
+                 project_context=None, defer_expensive_load: bool = False) -> None:
         super().__init__(parent)
+        self._open_started_at = time.perf_counter()
         project_context = (project_context if project_context is not None
                            else getattr(source_controller, "project_context", None))
         self._run_coordinator = FilmOptimizationRunCoordinator(
@@ -891,6 +941,12 @@ class FilmOptimizationQuickController(QObject):
         self._structure_mode = "combined"
         self._structure_material_options: list[dict] = []
         self._structure_material_error = ""
+        self._initial_loading = bool(defer_expensive_load)
+        self._initial_load_started = False
+        self._initial_load_closed = False
+        self._initial_load_failed = False
+        self._pending_shortcut_start = False
+        self._initial_load_signals: _InitialLoadSignals | None = None
         self._structure_options = {
             "max_total_thickness_nm": 2000.0,
             "min_thickness_nm": 0.5,
@@ -916,8 +972,11 @@ class FilmOptimizationQuickController(QObject):
         self._population_size = 12
         self._pending_edit_error = False
         self._pending_edit_error_key: str | None = None
-        self._scipy_import_error, self._trf_callback_available = (
-            _scipy_runtime_availability())
+        if self._initial_loading:
+            self._scipy_import_error, self._trf_callback_available = "", False
+        else:
+            self._scipy_import_error, self._trf_callback_available = (
+                _scipy_runtime_availability())
         self._objectives = [_objective_default(0)]
         self._inspection_objectives: list[dict] | None = None
         self._selected_objective = 0
@@ -930,14 +989,77 @@ class FilmOptimizationQuickController(QObject):
         self._path = ""
         self._variables: list[dict] = []
         self._load_source(preserve_variables=False)
-        self._refresh_structure_material_options(preserve_selection=False)
         self._configuration_defaults = self.exportOptimizationConfiguration()
-        self._configuration_loading = False
-        self._restore_session_configuration(reset_missing=False)
+        if not self._initial_loading:
+            self._configuration_loading = False
+            self._restore_session_configuration(reset_missing=False)
 
         self._attach_source_observers()
         self._compute_target.changed.connect(self.changed.emit)
         self._sync_film_execution_target()
+        if self._initial_loading:
+            trace("film_optimization_controller_constructed",
+                  elapsed_s=time.perf_counter() - self._open_started_at)
+
+    @Property(bool, notify=changed)
+    def loading(self) -> bool:
+        return self._initial_loading
+
+    @Slot()
+    def startLoading(self) -> None:
+        """Called once after the visible window exists; never waits for the worker."""
+        if not self._initial_loading or self._initial_load_started or self._initial_load_closed:
+            return
+        self._initial_load_started = True
+        trace("film_optimization_window_show_called",
+              elapsed_s=time.perf_counter() - self._open_started_at)
+        signals = _InitialLoadSignals(self)
+        signals.finished.connect(self._finish_initial_load, Qt.ConnectionType.QueuedConnection)
+        self._initial_load_signals = signals
+        catalog = getattr(self.service, "materials", None)
+        QThreadPool.globalInstance().start(_InitialLoadWorker(catalog, signals))
+
+    @Slot(object, object, object)
+    def _finish_initial_load(self, scipy_result: tuple[str, bool],
+                             records: list[dict], material_error: str) -> None:
+        if not self._initial_loading or self._initial_load_closed:
+            return
+        self._scipy_import_error, self._trf_callback_available = scipy_result
+        try:
+            # Source edits may have arrived while the worker ran. The usual
+            # unchanged case keeps the initial schematic and avoids a second
+            # material-backed source read on the GUI thread.
+            if not self._source_closed and self.session is not None:
+                snapshot = self.session.snapshot()
+                if (snapshot.design_revision != self._source_revision
+                        or snapshot.design.get("id") != self._design.get("id")
+                        or str(snapshot.path or "") != self._path):
+                    self._load_source(preserve_variables=False)
+            if material_error:
+                self._structure_material_options = []
+                self._structure_material_error = material_error
+            else:
+                self._refresh_structure_material_options(
+                    preserve_selection=False, records=records)
+            self._configuration_loading = False
+            if not self._source_closed:
+                self._restore_session_configuration(reset_missing=False)
+        except Exception as exc:
+            self._initial_load_failed = True
+            self._error = f"优化配置加载失败：{type(exc).__name__}: {exc}"
+            trace("film_optimization_initial_load_failed", error=exc)
+        finally:
+            self._initial_loading = False
+            self._configuration_loading = False
+            self._initial_load_signals = None
+            self.changed.emit()
+            trace("film_optimization_initial_load_finished",
+                  elapsed_s=time.perf_counter() - self._open_started_at,
+                  state="failed" if self._initial_load_failed or material_error else "ready")
+        pending_shortcut = self._pending_shortcut_start
+        self._pending_shortcut_start = False
+        if pending_shortcut and not material_error and not self._error and not self._source_closed:
+            QTimer.singleShot(0, self.startOptimizationFromShortcut)
 
     def _batch_execution_enabled(self) -> bool:
         return bool(self._deferred_batch_enabled and self._solver_id == "differential_evolution"
@@ -1139,6 +1261,12 @@ class FilmOptimizationQuickController(QObject):
                 if not isinstance(raw, dict) or set(raw) - target_fields:
                     raise ValueError(f"目标 {index + 1} 字段无效")
                 row = {**_objective_default(index), **deepcopy(raw)}
+                # Older saved rows had a point count but no sampling basis.
+                # Keep that explicit count instead of applying the new 1 nm default.
+                if "sampling_basis" not in raw and "wavelength_samples" in raw:
+                    row["sampling_basis"] = "samples"
+                elif "sampling_basis" not in raw and "wavelength_step_nm" in raw:
+                    row["sampling_basis"] = "step"
                 # Configuration schema v1 originally stored a free-form angle
                 # list. Preserve it exactly, including nonuniform legacy lists.
                 if "angle_sampling_mode" not in raw:
@@ -1192,8 +1320,9 @@ class FilmOptimizationQuickController(QObject):
                 if type(raw["enabled"]) is not bool:
                     raise ValueError("变量启用状态必须是布尔值")
                 lower = _number(raw["lower_nm"], "厚度下界")
-                upper = _number(raw["upper_nm"], "厚度上界")
-                if raw["enabled"] and (lower <= 0 or upper <= lower):
+                upper = (None if raw["upper_nm"] is None
+                         else _number(raw["upper_nm"], "厚度上界"))
+                if lower < 0 or (upper is not None and upper <= lower):
                     raise ValueError(f"所选膜层 {raw['layer_id']} 的厚度边界必须为正且递增")
                 if key not in by_id:
                     if not reconcile_layers:
@@ -1579,7 +1708,7 @@ class FilmOptimizationQuickController(QObject):
                 physical_nm = display.get("physicalNmValue")
                 try:
                     physical_nm = _number(physical_nm, "physical thickness")
-                    if physical_nm <= 0:
+                    if physical_nm < 0:
                         physical_nm = None
                 except (TypeError, ValueError):
                     physical_nm = None
@@ -1587,12 +1716,8 @@ class FilmOptimizationQuickController(QObject):
                     low = old["lower_nm"]
                     high = old["upper_nm"]
                     enabled = bool(old["enabled"])
-                elif physical_nm is not None:
-                    low = max(0.001, physical_nm * 0.5)
-                    high = max(physical_nm * 1.5, low + 0.001)
-                    enabled = not preserve_variables
                 else:
-                    low, high, enabled = 0.0, 0.0, False
+                    low, high, enabled = 0.0, None, not preserve_variables
                 variables.append({
                     "side": side,
                     "side_label": "正面" if side == "front" else "背面",
@@ -1603,7 +1728,7 @@ class FilmOptimizationQuickController(QObject):
                     "physical_nm": physical_nm,
                     "enabled": enabled,
                     "lower_nm": float(low),
-                    "upper_nm": float(high),
+                    "upper_nm": None if high is None else float(high),
                     "available": physical_nm is not None,
                 })
         if preserve_variables:
@@ -1621,11 +1746,13 @@ class FilmOptimizationQuickController(QObject):
         self._variables = variables
         self._source_document_replaced = False
         self._source_stale = False
-        self._refresh_structure_material_options(preserve_selection=preserve_variables)
+        if not self._initial_loading:
+            self._refresh_structure_material_options(preserve_selection=preserve_variables)
         self.changed.emit()
         self.plotDataChanged.emit()
 
-    def _refresh_structure_material_options(self, *, preserve_selection: bool) -> None:
+    def _refresh_structure_material_options(self, *, preserve_selection: bool,
+                                            records: list[dict] | None = None) -> None:
         previous = {(row["material_id"], row["optical_set_id"])
                     for row in self._structure_material_options if row.get("selected")}
         current = {
@@ -1641,7 +1768,8 @@ class FilmOptimizationQuickController(QObject):
             catalog = getattr(self.service, "materials", None)
             if catalog is None:
                 raise ValueError("膜材目录不可用")
-            records = catalog._records() if callable(getattr(catalog, "_records", None)) else None
+            if records is None:
+                records = catalog._records() if callable(getattr(catalog, "_records", None)) else None
             if records is None:
                 raise ValueError("膜材目录不支持枚举")
             for material in records:
@@ -1930,6 +2058,10 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(str, notify=changed)
     def statusText(self) -> str:
+        if self._initial_loading:
+            return "正在加载膜系优化组件与材料，请稍候…"
+        if self._structure_material_error:
+            return "材料读取失败：" + self._structure_material_error
         if self._result_terminal_state in {"已取消", "失败"}:
             if self._result is not None:
                 status = (f"优化{self._result_terminal_state}；已保留队列验证的最佳候选，"
@@ -1973,14 +2105,18 @@ class FilmOptimizationQuickController(QObject):
             if self._search_mode == "fixed_topology"
             else (self._structure_mode == "growth_only"
                   or any(row.get("selected") for row in self._structure_material_options)))
-        return (not self._busy and not self._source_closed and not self._source_stale
+        return (not self._initial_loading and not self._initial_load_failed
+                and not self._structure_material_error
+                and not self._busy and not self._source_closed and not self._source_stale
                 and bool(self._objectives) and has_search_inputs
                 and not self._pending_edit_error
                 and not self._active_configuration_error())
 
     @Property(bool, notify=changed)
     def canStartFromShortcut(self) -> bool:
-        return (not self._busy and not self._source_closed
+        return (not self._initial_loading and not self._initial_load_failed
+                and not self._structure_material_error
+                and not self._busy and not self._source_closed
                 and (self.session is not None or self._detached_source))
 
     def _record_pending_edit_error(self, key: str, message: str) -> None:
@@ -2192,6 +2328,8 @@ class FilmOptimizationQuickController(QObject):
     def _solver_unavailable_reason(self, solver_id: str) -> str:
         if solver_id not in _SOLVER_UI_INDEX:
             return "未知的膜系优化方法"
+        if solver_id in _SCIPY_SOLVERS and self._initial_loading:
+            return "正在检查 SciPy，请稍候"
         if solver_id in _SCIPY_SOLVERS and self._scipy_import_error:
             return self._scipy_import_error
         if solver_id == "trf" and not self._trf_callback_available:
@@ -2211,9 +2349,21 @@ class FilmOptimizationQuickController(QObject):
                 return "解析梯度方法仅支持 front 面厚度变量"
         return ""
 
-    def _active_configuration_error(self) -> str:
+    def _active_configuration_error(self, *, require_thickness_bounds: bool = True) -> str:
         if self._configuration_load_error:
             return self._configuration_load_error
+        if self._search_mode == "fixed_topology" and require_thickness_bounds:
+            for row in self._variables:
+                if not row["enabled"]:
+                    continue
+                if not row["available"]:
+                    return f"膜层 {row['layer_id']} 的厚度或光学数据不可用；可取消选择该层。"
+                if row["upper_nm"] is None and self._solver_id != "baseline":
+                    return ("当前有限域厚度优化算法需要为已选膜层设置明确的厚度上界；"
+                            "默认未设置人为上界，也不会自动补上限。")
+                if (row["lower_nm"] < 0 or
+                        (row["upper_nm"] is not None and row["upper_nm"] <= row["lower_nm"])):
+                    return "已选膜层的厚度边界必须非负且上界大于下界。"
         try:
             training = sum(row["wavelength_samples"] * _angle_sample_count(row)
                            for row in self._objectives)
@@ -2765,7 +2915,7 @@ class FilmOptimizationQuickController(QObject):
         if self._busy or self._shutting_down or self._pending_edit_error:
             return
         row = self._find_variable(side, layer_id)
-        if row is None or not row["available"]:
+        if row is None or (enabled and not row["available"]):
             return
         row["enabled"] = bool(enabled)
         self._error = ""
@@ -2782,7 +2932,13 @@ class FilmOptimizationQuickController(QObject):
         if row is None or field not in ("lower_nm", "upper_nm"):
             return False
         try:
-            row[field] = _number(value, "厚度下限（nm）" if field == "lower_nm" else "厚度上限（nm）")
+            if field == "upper_nm" and (value is None or str(value).strip() == ""):
+                row[field] = None
+            elif field == "lower_nm" and (value is None or str(value).strip() == ""):
+                row[field] = 0.0
+            else:
+                row[field] = _edited_thickness_bound(
+                    value, "厚度下限（nm）" if field == "lower_nm" else "厚度上限（nm）")
         except ValueError as exc:
             self._record_pending_edit_error(error_key, str(exc))
             return False
@@ -2858,7 +3014,8 @@ class FilmOptimizationQuickController(QObject):
                        fixed_topology: bool = True,
                        prepared_angles: tuple[tuple[float, ...], ...] | None = None
                        ) -> FilmOptimizationRequest:
-        configuration_error = self._active_configuration_error()
+        configuration_error = self._active_configuration_error(
+            require_thickness_bounds=require_variables)
         if configuration_error:
             raise ValueError(configuration_error)
         snapshot = self.session.snapshot() if self.session is not None else None
@@ -2870,12 +3027,16 @@ class FilmOptimizationQuickController(QObject):
         for row in self._variables:
             if not row["enabled"]:
                 continue
+            if not require_variables and row["upper_nm"] is None:
+                continue
             if not row["available"]:
                 raise ValueError(f"膜层 {row['layer_id']} 的厚度或光学数据不可用")
+            if row["upper_nm"] is None and (fixed_topology and self._solver_id != "baseline"):
+                raise ValueError("当前有限域厚度优化算法需要明确的厚度上界；不会自动添加人为上限")
             variables.append(FilmThicknessVariable(
                 row["side"], row["layer_id"],
                 _number(row["lower_nm"], "下限 nm"),
-                _number(row["upper_nm"], "上限 nm"),
+                (None if row["upper_nm"] is None else _number(row["upper_nm"], "上限 nm")),
             ))
         objectives = []
         for index, row in enumerate(self._objectives):
@@ -3029,6 +3190,8 @@ class FilmOptimizationQuickController(QObject):
 
     def _start_optimization(self, *, prepared_start: _PreparedAngleGrid | None = None
                             ) -> bool:
+        if self._initial_loading or self._initial_load_failed or self._structure_material_error:
+            return False
         if self._result_terminal_state == "提交状态未知" and self._queue_job_id:
             self._error = f"请先核对作业 {self._queue_job_id} 的提交状态；未重复提交。"
             self.changed.emit()
@@ -3299,6 +3462,9 @@ class FilmOptimizationQuickController(QObject):
     @Slot(result=bool)
     def startOptimizationFromShortcut(self) -> bool:
         """Start from the latest owning design when invoked by F6 or routing."""
+        if self._initial_loading:
+            self._pending_shortcut_start = True
+            return True
         if self._pending_reuse_source is not None:
             self._pending_reuse_start = True
             return True
@@ -3373,6 +3539,13 @@ class FilmOptimizationQuickController(QObject):
                 row.update(wavelength_min_nm=objective.wavelength_min_nm,
                            wavelength_max_nm=objective.wavelength_max_nm,
                            wavelength_samples=objective.wavelength_samples,
+                           sampling_basis="samples",
+                           wavelength_step_nm=(0.0 if objective.wavelength_samples == 1 else
+                               (objective.wavelength_max_nm - objective.wavelength_min_nm) /
+                               (objective.wavelength_samples - 1)),
+                           actual_wavelength_step_nm=(0.0 if objective.wavelength_samples == 1 else
+                               (objective.wavelength_max_nm - objective.wavelength_min_nm) /
+                               (objective.wavelength_samples - 1)),
                            angle_sampling_mode="points",
                            angles_text=", ".join(str(value) for value in objective.angles_deg),
                            polarization=objective.polarization, metric=objective.metric,
@@ -3833,6 +4006,12 @@ class FilmOptimizationQuickController(QObject):
 
     @Slot()
     def requestClose(self) -> None:
+        if self._initial_loading:
+            self._initial_load_closed = True
+            self._pending_shortcut_start = False
+            self.detach_observers()
+            self.closeConfirmed.emit()
+            return
         if self.project_context is not None and self._busy:
             if self._pending_angle_preparation is not None:
                 # A local pre-submission preparation has no project-owned job

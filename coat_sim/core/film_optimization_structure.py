@@ -36,7 +36,7 @@ from .film_optimization_needle import (
     _physical_layer_thickness,
     _result_from_score,
 )
-from .film_optimization_scoring import score_condition, weighted_rms_error
+from .film_optimization_scoring import candidate_key, score_condition, weighted_rms_error
 from .optical_constants import prepare_optical_set
 
 
@@ -502,7 +502,7 @@ def evaluate_frozen_structure_candidate(
     orchestrator remains the only owner of cancellation and archive decisions.
     ``gradient_by_layer_id`` is the exact chain derivative of the smooth
     weighted sum of squared signed residuals. It is not a derivative of the
-    original lexicographic worst-error/RMS archive metric.
+    feasibility-first weighted-RMS archive metric.
     """
     if not isinstance(request, FilmStructureOptimizationRequest):
         raise ValueError("request must be a FilmStructureOptimizationRequest")
@@ -687,7 +687,8 @@ def evaluate_frozen_structure_candidate(
         "max_error": float(maximum),
         "weighted_max_error": float(weighted_maximum),
         "weighted_rms_error": float(rms),
-        "key": (float(maximum), float(rms)),
+        "key": candidate_key(maximum, rms,
+                             request.base_request.acceptable_normalized_error),
     }
     return {
         "design": deepcopy(candidate),
@@ -1393,7 +1394,7 @@ def optimize_film_design_with_structure(
             "max_error": float(np.finfo(float).max),
             "weighted_max_error": float(np.finfo(float).max),
             "weighted_rms_error": float(np.finfo(float).max),
-            "key": (float(np.finfo(float).max), float(np.finfo(float).max)),
+            "key": (1.0, float(np.finfo(float).max)),
         }
         best = {"design": base_design, "evaluation": {"score": empty_score},
                 "validation": None, "split_groups": {}, "active_layer_ids": (),

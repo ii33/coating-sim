@@ -235,14 +235,77 @@ def test_material_usage_keeps_film_substrate_medium_and_unknown_reachable(global
         settled(bridge)
         assert window.property("categoryKey") == "material_profile", (bridge.transferStatus, bridge.transferCatalog)
         assert window.property("materialUse") == "film"
-        assert qml(engine, window, "materialUses.map(row => row.label)") == ["膜料", "基片材料", "介质", "其他材料", "用途未标注"]
+        # "medium" is a picker usage, not a browser category: no medium filter
+        # exposes, and medium-only rows (Air) browse as ordinary "其他材料".
+        assert qml(engine, window, "materialUses.map(row => row.label)") == ["膜料", "基片材料", "其他材料", "用途未标注"]
+        assert qml(engine, window, "materialUses.map(row => row.key)") == ["film", "substrate", "other", "unspecified"]
         assert set(qml(engine, window, "visibleRows.map(row => row.name)")) == {"film", "both", "Legacy"}
         selector = cast(Any, window.findChild(QQuickItem, "resourceLibraryMaterialUse"))
-        for index, names in ((1, {"glass", "both"}), (2, {"air"}), (3, {"boat"}), (4, {"Optical only"})):
+        for index, names in ((1, {"glass", "both"}), (2, {"air", "boat"}), (3, {"Optical only"})):
             selector.setProperty("currentIndex", index)
             selector.activated.emit(index)
             assert set(qml(engine, window, "visibleRows.map(row => row.name)")) == names
         assert qml(engine, window, "categories.map(row => row.label)") == ["材料", "光学材料数据"]
+    finally:
+        bridge.dispose()
+        window.deleteLater()
+        engine.deleteLater()
+        drain_events()
+
+
+def test_material_browser_folds_medium_air_into_other_without_medium_filter_at_narrow_width(global_root):
+    """Air is an ordinary material: medium-only rows browse under 其他材料."""
+    from coat_sim.core.material_business import MaterialLibrary
+    from tests.test_project_global_resources import profile
+
+    library = MaterialLibrary(directory=global_root / "data/materials")
+    air = profile("air")
+    air["name"] = "air"
+    air["roles"] = ["medium"]
+    library.write(air)
+    boat = profile("boat")
+    boat["name"] = "boat"
+    boat["roles"] = ["boat"]
+    library.write(boat)
+
+    engine = QQmlEngine()
+    theme = ThemeEngineBridge(build_theme_snapshot("light"), 0, "light", "light", "qa", "QA", {}, parent=engine)
+    engine.rootContext().setContextProperty("Theme", theme)
+    bridge = cast(Any, GlobalResourcesBridge())
+    engine.rootContext().setContextProperty("bridge", bridge)
+    component = QQmlComponent(engine, QUrl.fromLocalFile(
+        str(Path(__file__).parents[1] / "coat_sim/ui/qml/ResourceLibraryWindow.qml")))
+    window = cast(Any, component.create())
+    try:
+        assert window is not None, component.errorString()
+        window.show()
+        settled(bridge)
+
+        # The backend catalogue still declares the medium picker usage for Air.
+        air_row = next(row for row in bridge.transferCatalog["rows"]
+                       if row["kind"] == "material_profile" and row["name"] == "air")
+        assert air_row["material_uses"] == ["medium"]
+
+        # No visible medium category anywhere in the browser filter.
+        assert "medium" not in qml(engine, window, "materialUses.map(row => row.key)")
+        assert "介质" not in qml(engine, window, "materialUses.map(row => row.label)")
+
+        for width in (680, 1100):
+            window.resize(width, 760)
+            QTest.qWait(60)
+            selector = cast(Any, window.findChild(QQuickItem, "resourceLibraryMaterialUse"))
+            other_index = next(index for index, row in
+                               enumerate(qml(engine, window, "materialUses")) if row["key"] == "other")
+            selector.setProperty("currentIndex", other_index)
+            selector.activated.emit(other_index)
+            names = set(qml(engine, window, "visibleRows.map(row => row.name)"))
+            assert {"air", "boat"} <= names
+            assert "medium" not in qml(engine, window, "materialUses.map(row => row.key)")
+
+        # A stale backend-driven medium selection must not blank the list: it is
+        # normalized onto the ordinary "其他材料" filter.
+        window.setProperty("materialUse", "medium")
+        assert "air" in set(qml(engine, window, "visibleRows.map(row => row.name)"))
     finally:
         bridge.dispose()
         window.deleteLater()

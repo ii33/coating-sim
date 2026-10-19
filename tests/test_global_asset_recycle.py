@@ -182,32 +182,151 @@ def test_custom_material_paired_projection_exact_noncanonical_filename(isolated)
     assert resources.read_global_resources() == snapshot
 
 
-def test_builtin_original_is_protected_override_reverts_and_restores(isolated, monkeypatch):
+def test_builtin_seed_is_tombstoned_and_restores(isolated, monkeypatch):
     original = profile("builtin_test")
     monkeypatch.setattr(material_business, "builtin_material_profiles", lambda: [deepcopy(original)])
     library = MaterialLibrary(directory=isolated / "data/materials")
     snapshot = resources.read_global_resources()
     selected = id_for(snapshot, "material_profile")
     plan = recycle.prepare_global_deletion(snapshot, [selected])
-    assert plan["blockers"][0]["code"] == "protected_builtin"
-    with pytest.raises(ProjectError) as error:
-        recycle.apply_global_deletion(snapshot, plan)
-    assert error.value.code == "deletion_blocked"
+    assert plan["action"] == "delete_builtin"
+    assert plan["backend"] == "material_tombstone"
+    assert plan["blockers"] == []
+    assert len(plan["affected_ids"]) == 2
+    receipt = recycle.apply_global_deletion(snapshot, plan)
+    marker = library.deleted_directory / "builtin_test.json"
+    assert marker.exists()
+    assert resources.read_global_resources()["documents"] == {}
+    # A seed reload (new process / upgraded catalogue) still honours the marker.
+    reloaded = MaterialLibrary(directory=isolated / "data/materials")
+    with pytest.raises(ValueError, match="builtin_material_deleted"):
+        reloaded.read("builtin_test")
+    assert reloaded.read_builtin_original("builtin_test")["name"] == original["name"]
+    restored = recycle.restore_global_deletion(receipt["receipt_id"])
+    assert restored["state"] == "restored"
+    assert not marker.exists()
+    assert resources.read_global_resources() == snapshot
+
+
+def test_builtin_override_is_tombstoned_with_the_override_archived(isolated, monkeypatch):
+    original = profile("builtin_test")
+    monkeypatch.setattr(material_business, "builtin_material_profiles", lambda: [deepcopy(original)])
+    library = MaterialLibrary(directory=isolated / "data/materials")
     override = deepcopy(original)
     override["name"] = "User-edited synthetic builtin"
     library.save_builtin_override(override)
     path = library.override_directory / "builtin_test.json"
     exact = path.read_bytes()
     snapshot = resources.read_global_resources()
+    selected = id_for(snapshot, "material_profile")
     plan = recycle.prepare_global_deletion(snapshot, [selected])
-    assert plan["action"] == "revert_builtin_override"
+    assert plan["action"] == "delete_builtin"
+    assert plan["backend"] == "material_tombstone"
     assert plan["blockers"] == []
-    assert len(plan["affected_ids"]) == 2
     receipt = recycle.apply_global_deletion(snapshot, plan)
     assert not path.exists()
-    effective = resources.read_global_resources()
-    assert effective["documents"][selected]["material"]["name"] == original["name"]
+    assert (library.deleted_directory / "builtin_test.json").exists()
+    assert resources.read_global_resources()["documents"] == {}
+    # An edit to the deleted builtin is refused until it is explicitly restored.
+    with pytest.raises(ValueError, match="builtin_material_deleted"):
+        library.save_builtin_override(override)
     recycle.restore_global_deletion(receipt["receipt_id"])
+    assert path.read_bytes() == exact
+    assert resources.read_global_resources() == snapshot
+
+
+def test_prepared_tombstone_without_override_rolls_back_after_interruption(isolated, monkeypatch):
+    """A crash before delete_builtin leaves a readable, recoverable receipt."""
+    original = profile("builtin_test")
+    monkeypatch.setattr(material_business, "builtin_material_profiles", lambda: [deepcopy(original)])
+    library = MaterialLibrary(directory=isolated / "data/materials")
+    snapshot = resources.read_global_resources()
+    plan = recycle.prepare_global_deletion(snapshot, [id_for(snapshot, "material_profile")])
+    assert plan["tombstone_sha256"] == material_business.deleted_builtin_marker_sha256("builtin_test")
+
+    def die_before_tombstone(_self, _identifier):
+        raise KeyboardInterrupt("simulated process death before delete_builtin")
+
+    with monkeypatch.context() as crash:
+        crash.setattr(MaterialLibrary, "delete_builtin", die_before_tombstone)
+        with pytest.raises(KeyboardInterrupt):
+            recycle.apply_global_deletion(snapshot, plan)
+    assert not (library.deleted_directory / "builtin_test.json").exists()
+    importlib.reload(recycle)
+    summary = recycle.list_global_deletions()
+    assert summary[0]["state"] == "prepared"
+    assert resources.read_global_resources() == snapshot
+    result = recycle.restore_global_deletion(summary[0]["receipt_id"])
+    assert result["state"] == "rolled_back"
+    assert recycle.list_global_deletions()[0]["state"] == "rolled_back"
+    assert resources.read_global_resources() == snapshot
+    assert library.read("builtin_test")["record"]["name"] == original["name"]
+    with pytest.raises(ProjectError, match="no longer active"):
+        recycle.restore_global_deletion(summary[0]["receipt_id"])
+
+
+def test_prepared_tombstone_with_archived_override_rolls_back_after_interruption(isolated, monkeypatch):
+    """A crash after the override move but before delete_builtin is recovered."""
+    original = profile("builtin_test")
+    monkeypatch.setattr(material_business, "builtin_material_profiles", lambda: [deepcopy(original)])
+    library = MaterialLibrary(directory=isolated / "data/materials")
+    override = deepcopy(original)
+    override["name"] = "User-edited synthetic builtin"
+    library.save_builtin_override(override)
+    path = library.override_directory / "builtin_test.json"
+    exact = path.read_bytes()
+    snapshot = resources.read_global_resources()
+    plan = recycle.prepare_global_deletion(snapshot, [id_for(snapshot, "material_profile")])
+
+    def die_before_tombstone(_self, _identifier):
+        raise KeyboardInterrupt("simulated process death after the override move")
+
+    with monkeypatch.context() as crash:
+        crash.setattr(MaterialLibrary, "delete_builtin", die_before_tombstone)
+        with pytest.raises(KeyboardInterrupt):
+            recycle.apply_global_deletion(snapshot, plan)
+    assert not path.exists()
+    assert not (library.deleted_directory / "builtin_test.json").exists()
+    importlib.reload(recycle)
+    summary = recycle.list_global_deletions()
+    assert summary[0]["state"] == "prepared"
+    # The override sits in the archive, so the live library still shows the seed.
+    assert resources.read_global_resources() != snapshot
+    result = recycle.restore_global_deletion(summary[0]["receipt_id"])
+    assert result["state"] == "rolled_back"
+    assert path.read_bytes() == exact
+    assert resources.read_global_resources() == snapshot
+    assert recycle.list_global_deletions()[0]["state"] == "rolled_back"
+
+
+def test_prepared_tombstone_before_override_move_rolls_back_after_interruption(isolated, monkeypatch):
+    """A crash after the prepared write but before the rename never overwrites."""
+    original = profile("builtin_test")
+    monkeypatch.setattr(material_business, "builtin_material_profiles", lambda: [deepcopy(original)])
+    library = MaterialLibrary(directory=isolated / "data/materials")
+    override = deepcopy(original)
+    override["name"] = "User-edited synthetic builtin"
+    library.save_builtin_override(override)
+    path = library.override_directory / "builtin_test.json"
+    exact = path.read_bytes()
+    snapshot = resources.read_global_resources()
+    plan = recycle.prepare_global_deletion(snapshot, [id_for(snapshot, "material_profile")])
+
+    def die_before_rename(_original, _archive):
+        raise KeyboardInterrupt("simulated process death before the override rename")
+
+    with monkeypatch.context() as crash:
+        crash.setattr(recycle, "_rename_directory_no_replace", die_before_rename)
+        with pytest.raises(KeyboardInterrupt):
+            recycle.apply_global_deletion(snapshot, plan)
+    assert path.read_bytes() == exact
+    assert not (library.deleted_directory / "builtin_test.json").exists()
+    importlib.reload(recycle)
+    summary = recycle.list_global_deletions()
+    assert summary[0]["state"] == "prepared"
+    assert resources.read_global_resources() == snapshot
+    result = recycle.restore_global_deletion(summary[0]["receipt_id"])
+    assert result["state"] == "rolled_back"
     assert path.read_bytes() == exact
     assert resources.read_global_resources() == snapshot
 

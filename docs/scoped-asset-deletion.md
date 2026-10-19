@@ -85,6 +85,14 @@ in the exact validated global catalog. It never accepts a destination path.
   SQLite libraries with custom triggers are rejected as unsupported schemas:
   their side effects cannot be bounded to the confirmed asset. The check is
   repeated inside the write transaction before any row or archive mutation.
+- A builtin tombstone's prepared receipt carries the expected marker
+  fingerprint, computed from the exact marker serialization before the marker
+  exists. An interruption before `delete_builtin` therefore leaves a readable
+  receipt instead of an unvalidatable one. Explicit restoration of such a
+  prepared receipt moves any archived override back to a free original path and
+  confirms the pre-deletion resources before marking it `rolled_back`; an
+  existing marker is restored normally, and an occupied source or changed
+  archive stays visible rather than being overwritten.
 
 Private `.asset-recycle` trees are reserved history, excluded from typed
 catalog scans and their entry budget; links are rejected before exclusion.

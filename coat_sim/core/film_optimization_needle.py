@@ -30,7 +30,7 @@ from .film_optimization import (
     optimize_film_design,
 )
 from .optical_constants import prepare_optical_set
-from .film_optimization_scoring import score_condition, weighted_rms_error
+from .film_optimization_scoring import candidate_key, score_condition, weighted_rms_error
 
 
 @dataclass(frozen=True)
@@ -420,6 +420,7 @@ def _score_design(
     design: dict[str, Any],
     objectives: tuple[FilmOptimizationObjective, ...],
     *,
+    acceptable: float = 1e-3,
     cancel_event: Any = None,
 ) -> dict[str, Any]:
     errors: list[FilmConditionError] = []
@@ -485,7 +486,7 @@ def _score_design(
         "max_error": max_error,
         "weighted_max_error": weighted_max_error,
         "weighted_rms_error": weighted_rms,
-        "key": (max_error, weighted_rms),
+        "key": candidate_key(max_error, weighted_rms, acceptable),
     }
 
 
@@ -523,7 +524,7 @@ def _result_from_score(
 
 
 def _score_key(result: FilmOptimizationResult) -> tuple[float, float]:
-    return (result.max_normalized_error, result.weighted_rms_error)
+    return (0.0 if result.targets_met else 1.0, result.weighted_rms_error)
 
 
 def _deterministic_layer_id(
@@ -701,7 +702,9 @@ def optimize_film_design_with_needle(
             terminal_reason = "cancelled after a complete baseline evaluation; best candidate retained"
     else:
         try:
-            baseline_score = _score_design(worker, design, objectives)
+            baseline_score = _score_design(
+                worker, design, objectives,
+                acceptable=base_request.acceptable_normalized_error)
         except (ValueError, ArithmeticError, FloatingPointError):
             raise
         total_evaluations += 1
@@ -755,7 +758,9 @@ def optimize_film_design_with_needle(
                     trial_design = _insert_trial(
                         current_design, reference, interface, thickness_nm, layer_id)
                     try:
-                        score = _score_design(worker, trial_design, objectives)
+                        score = _score_design(
+                            worker, trial_design, objectives,
+                            acceptable=base_request.acceptable_normalized_error)
                     except (ValueError, ArithmeticError, FloatingPointError):
                         total_evaluations += 1
                         failed_evaluations += 1
@@ -793,8 +798,7 @@ def optimize_film_design_with_needle(
 
         improving = []
         for trial in trials:
-            score_key = (float(trial["score"]["max_error"]),
-                         float(trial["score"]["weighted_rms_error"]))
+            score_key = trial["score"]["key"]
             if score_key < _score_key(incumbent):
                 improving.append(trial)
         if not improving:
@@ -803,8 +807,7 @@ def optimize_film_design_with_needle(
                 terminal_reason = "no finite-thickness insertion improved the exact baseline objective; proposals rolled back"
             break
         best_trial = min(improving, key=lambda trial: (
-            float(trial["score"]["max_error"]),
-            float(trial["score"]["weighted_rms_error"]),
+            *trial["score"]["key"],
             trial["layer_id"],
         ))
         rolled_back += max(0, len(trials) - 1)
@@ -962,6 +965,7 @@ def optimize_film_design_with_needle(
         try:
             validation_score = _score_design(
                 worker, deepcopy(dict(incumbent.best_design)), validation_objectives,
+                acceptable=base_request.acceptable_normalized_error,
                 cancel_event=cancel_event,
             )
         except _NeedleValidationCancelled:

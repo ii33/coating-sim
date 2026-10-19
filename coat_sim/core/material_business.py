@@ -21,6 +21,10 @@ PACKAGE_MAX_BYTES = 64 * 1024 * 1024
 PACKAGE_MAX_RECORDS = 1000
 PACKAGE_SUFFIXES = {MATERIAL_PACKAGE_KIND: ".cmat",
                     LIBRARY_PACKAGE_KIND: ".cmatl"}
+# A deleted builtin writes one tiny marker per id. The marker is the durable
+# user decision: seed reload, restart and upgrade must not resurrect it.
+DELETED_BUILTIN_KIND = "coat_sim.deleted_builtin"
+DELETED_BUILTIN_VERSION = 1
 
 
 def _reject_reparse(path, label):
@@ -71,13 +75,36 @@ def _check_id_set(records, label):
         seen.add(identity)
 
 
+def validate_material_identifier(value):
+    """Validate one material id without requiring a full profile."""
+    return validate_material_profile({"id": value, "name": "检查"})["id"]
+
+
+def deleted_builtin_marker(identifier):
+    """The exact on-disk tombstone payload for one builtin id.
+
+    One serializer owns the marker bytes so a caller can fingerprint the
+    expected tombstone before the file exists (see the recycle receipt).
+    """
+    return _pretty_json_bytes({"kind": DELETED_BUILTIN_KIND,
+                               "version": DELETED_BUILTIN_VERSION,
+                               "id": validate_material_identifier(identifier)})
+
+
+def deleted_builtin_marker_sha256(identifier):
+    return hashlib.sha256(deleted_builtin_marker(identifier)).hexdigest()
+
+
 class MaterialLibrary:
     """Owns user records and builtin overrides without changing saved snapshots.
 
     A project normally uses ``data/materials/*.json`` for custom materials.
     Editable builtin records live under ``data/materials/.overrides/`` so the
-    source catalogue remains available for restore. ``directory`` is exposed
-    for isolated callers and tests that already own a material folder.
+    source catalogue remains available for restore. A deleted builtin writes a
+    marker under ``data/materials/.deleted/``; the seed profile is never
+    modified, yet the id stays absent until it is explicitly restored.
+    ``directory`` is exposed for isolated callers and tests that already own a
+    material folder.
     """
 
     def __init__(self, root=None, *, directory=None):
@@ -88,13 +115,15 @@ class MaterialLibrary:
         else:
             raise TypeError("provide a project root or material directory")
         self.override_directory = self.directory / ".overrides"
+        self.deleted_directory = self.directory / ".deleted"
 
     def _check_directory(self):
         for path in (self.directory.parent, self.directory,
-                     self.override_directory):
+                     self.override_directory, self.deleted_directory):
             info = _reject_reparse(path, "material library path")
             if info is not None and not stat.S_ISDIR(info.st_mode):
                 raise ValueError("material library path must be a directory")
+
 
     def _read_record_file(self, path, label="material record"):
         _reject_reparse(path, label)
@@ -109,11 +138,47 @@ class MaterialLibrary:
             raise ValueError(f"cannot read {label}: {exc}") from exc
         return validate_material_profile(value)
 
-    def _catalog_snapshot(self):
+    def _read_tombstone_file(self, path):
+        label = "deleted builtin marker"
+        _reject_reparse(path, label)
+        info = Path(path).stat()
+        if not stat.S_ISREG(info.st_mode) or info.st_size > PACKAGE_MAX_BYTES:
+            raise ValueError(f"{label} is not a regular file or is too large")
+        try:
+            raw = Path(path).read_bytes()
+            value = json.loads(raw.decode("utf-8"), object_pairs_hook=_unique_object,
+                               parse_constant=_reject_constant)
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"cannot read {label}: {exc}") from exc
+        if (not isinstance(value, dict) or set(value) != {"kind", "version", "id"}
+                or value.get("kind") != DELETED_BUILTIN_KIND
+                or value.get("version") != DELETED_BUILTIN_VERSION):
+            raise ValueError("deleted builtin marker has unknown or missing fields")
+        identifier = validate_material_identifier(value.get("id"))
+        if Path(path).name != identifier + ".json":
+            raise ValueError("deleted builtin marker filename does not match its id")
+        return {"kind": DELETED_BUILTIN_KIND, "version": DELETED_BUILTIN_VERSION,
+                "id": identifier}
+
+    def _read_tombstones(self):
+        """Return casefolded builtin ids with a durable deletion marker."""
+        deleted = {}
+        if self.deleted_directory.exists():
+            for path in sorted(self.deleted_directory.glob("*.json")):
+                record = self._read_tombstone_file(path)
+                key = record["id"].casefold()
+                if key in deleted:
+                    raise ValueError("duplicate deleted builtin marker")
+                deleted[key] = record
+        return deleted
+
+    def _catalog_state(self):
+        """Return (originals, effective builtins, custom, overrides, deleted)."""
         self._check_directory()
         original_builtins = builtin_material_profiles()
         _check_id_set(original_builtins, "builtin catalogue")
         builtin_by_id = {item["id"].casefold(): item for item in original_builtins}
+        deleted = self._read_tombstones()
 
         for path in self.directory.glob("*.json"):
             _reject_reparse(path, "custom material record")
@@ -140,9 +205,16 @@ class MaterialLibrary:
                     raise ValueError("duplicate builtin override id")
                 overrides[key] = record
 
+        # A durable tombstone wins over a leftover override so an interrupted
+        # delete can never resurrect the seed profile.
         effective_builtins = [deepcopy(overrides.get(item["id"].casefold(), item))
-                              for item in original_builtins]
-        return original_builtins, effective_builtins, custom, overrides
+                              for item in original_builtins
+                              if item["id"].casefold() not in deleted]
+        return original_builtins, effective_builtins, custom, overrides, deleted
+
+    def _catalog_snapshot(self):
+        originals, builtins, custom, overrides, _ = self._catalog_state()
+        return originals, builtins, custom, overrides
 
     def _records(self):
         """Return effective builtins and custom records (legacy private shape)."""
@@ -152,7 +224,7 @@ class MaterialLibrary:
     def catalog_records(self):
         """Return detached effective records with origin and restore metadata."""
         with material_library_lock(self.directory):
-            originals, builtins, custom, overrides = self._catalog_snapshot()
+            originals, builtins, custom, overrides, _ = self._catalog_state()
             overridden = set(overrides)
             return ([{"record": deepcopy(item), "builtin": True,
                       "overridden": item["id"].casefold() in overridden,
@@ -162,9 +234,23 @@ class MaterialLibrary:
                       "overridden": False, "readonly": False}
                      for item in custom])
 
+    def deleted_builtins(self):
+        """List tombstoned builtin ids that still exist in the packaged seed."""
+        with material_library_lock(self.directory):
+            originals, _, _, _, deleted = self._catalog_state()
+            rows = []
+            for item in originals:
+                key = item["id"].casefold()
+                if key in deleted:
+                    rows.append({"id": item["id"], "name": item["name"]})
+            return sorted(rows, key=lambda row: (row["name"].casefold(), row["id"]))
+
     def read(self, identifier):
         with material_library_lock(self.directory):
-            _, builtins, custom, overrides = self._catalog_snapshot()
+            _, builtins, custom, overrides, deleted = self._catalog_state()
+            key = identifier.casefold() if isinstance(identifier, str) else None
+            if key is not None and key in deleted:
+                raise ValueError("builtin_material_deleted: " + str(identifier))
             for item in builtins:
                 if item["id"] == identifier:
                     return {"record": deepcopy(item), "readonly": True,
@@ -211,8 +297,10 @@ class MaterialLibrary:
             return self._write_locked(record, update=update)
 
     def _write_locked(self, record, *, update):
-        _, builtins, custom, _ = self._catalog_snapshot()
+        _, builtins, custom, _, deleted = self._catalog_state()
         identifier = record["id"]
+        if identifier.casefold() in deleted:
+            raise ValueError("builtin_material_deleted: restore the builtin before using its id")
         if identifier.lower().startswith("builtin_") or any(
                 item["id"].casefold() == identifier.casefold() for item in builtins):
             raise ValueError("builtin_override_required: use save_builtin_override explicitly")
@@ -229,7 +317,9 @@ class MaterialLibrary:
         record = validate_material_profile(profile)
         self._check_directory()
         with material_library_lock(self.directory):
-            originals, _, _, _ = self._catalog_snapshot()
+            originals, _, _, _, deleted = self._catalog_state()
+            if record["id"].casefold() in deleted:
+                raise ValueError("builtin_material_deleted: restore the builtin before editing it")
             original = next((item for item in originals
                              if item["id"] == record["id"]), None)
             if original is None:
@@ -239,14 +329,44 @@ class MaterialLibrary:
         return {"record": deepcopy(record), "readonly": False,
                 "editable": True, "builtin": True, "overridden": True}
 
+    def delete_builtin(self, identifier):
+        """Tombstone one builtin id so seed reload cannot resurrect it."""
+        normalized = validate_material_identifier(identifier)
+        self._check_directory()
+        with material_library_lock(self.directory):
+            return self._delete_builtin_locked(normalized)
+
+    def _delete_builtin_locked(self, identifier):
+        originals, _, _, overrides, deleted = self._catalog_state()
+        original = next((item for item in originals if item["id"] == identifier), None)
+        if original is None:
+            raise ValueError("builtin_material_not_found: " + identifier)
+        key = identifier.casefold()
+        if key in deleted:
+            raise ValueError("builtin_material_deleted: " + identifier)
+        self._atomic_write(self.deleted_directory / (identifier + ".json"),
+                           deleted_builtin_marker(identifier))
+        had_override = key in overrides
+        if had_override:
+            path = self.override_directory / (identifier + ".json")
+            _reject_reparse(path, "builtin override")
+            path.unlink()
+        return {"id": identifier, "deleted": True, "had_override": had_override,
+                "name": original["name"]}
+
     def restore_builtin(self, identifier):
         self._check_directory()
         with material_library_lock(self.directory):
-            originals, _, _, overrides = self._catalog_snapshot()
+            originals, _, _, overrides, deleted = self._catalog_state()
             original = next((item for item in originals if item["id"] == identifier), None)
             if original is None:
                 raise ValueError("builtin_material_not_found: " + str(identifier))
-            if identifier.casefold() in overrides:
+            key = identifier.casefold()
+            if key in deleted:
+                path = self.deleted_directory / (identifier + ".json")
+                _reject_reparse(path, "deleted builtin marker")
+                path.unlink()
+            if key in overrides:
                 path = self.override_directory / (identifier + ".json")
                 _reject_reparse(path, "builtin override")
                 path.unlink()
@@ -341,7 +461,10 @@ class MaterialLibrary:
         records = [validate_material_profile(item) for item in records]
         _check_id_set(records, "import package")
         with material_library_lock(self.directory):
-            originals, builtins, custom, _ = self._catalog_snapshot()
+            originals, builtins, custom, _, deleted = self._catalog_state()
+            for record in records:
+                if record["id"].casefold() in deleted:
+                    raise ValueError("builtin_material_deleted: restore the builtin before importing its id")
             current = {}
             builtin_ids = {item["id"].casefold() for item in originals}
             for record in builtins + custom:
@@ -389,7 +512,9 @@ class MaterialLibrary:
             raise ValueError("import decisions contain an unknown material id")
 
         with material_library_lock(self.directory):
-            originals, builtins, custom, _ = self._catalog_snapshot()
+            originals, builtins, custom, _, deleted = self._catalog_state()
+            if any(record["id"].casefold() in deleted for record in records):
+                raise ValueError("builtin_material_deleted: restore the builtin before importing its id")
             builtin_ids = {item["id"].casefold() for item in originals}
             current = {item["id"].casefold(): item for item in builtins + custom}
             operations = []

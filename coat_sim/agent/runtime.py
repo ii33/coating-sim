@@ -748,7 +748,10 @@ class BudgetAndTools(AbstractCapability):
         def debug_limit(key: str, maximum: int, default: int) -> int:
             value = debug.get(key, default)
             return max(1, min(maximum, value)) if isinstance(value, int) and not isinstance(value, bool) else default
-        request_limit = min(self.limits["requests"], debug_limit("request_limit", 24, 12)) if debug else self.limits["requests"]
+        request_limit = self.limits["requests"]
+        if debug:
+            development_request_limit = debug_limit("request_limit", 24, 12)
+            request_limit = min(request_limit, development_request_limit) if request_limit is not None else development_request_limit
         if (self.role != "summary" and context.get("effective_input_known")
                 and estimated_input > int(context.get("input_budget", 0))):
             raise RuntimeError(
@@ -756,13 +759,17 @@ class BudgetAndTools(AbstractCapability):
                 f"{int(context['input_budget']) / 1000:.2f} K。较早历史已按安全边界整理；未读消息、附件和工具配对已保留，未发送新请求。"
             )
         cumulative_input = self.shared.get("used_input_tokens", 0) + estimated_input
-        if cumulative_input > self.limits["input_tokens"]:
+        if self.limits["input_tokens"] is not None and cumulative_input > self.limits["input_tokens"]:
             raise self._limit(f"本轮累计输入预算为 {self.limits['input_tokens'] / 1000:.0f} K Token，"
                 f"下一次请求预计使累计输入达到 {cumulative_input / 1000:.1f} K。已暂停模型请求并保留对话、文件和后台作业；可按当前结果明确要求继续。")
-        task_room = self.limits["total_tokens"] - self.shared.get("used_tokens", 0) - estimated_input
-        if task_room < policy["minimum_output"]:
-            raise self._limit("本轮累计输入与输出预算不足，已保留现有结果和后台作业；可明确要求继续。")
-        policy["desired_output"] = min(policy["desired_output"], task_room)
+        if self.limits["total_tokens"] is not None:
+            task_room = self.limits["total_tokens"] - self.shared.get("used_tokens", 0) - estimated_input
+            if task_room < policy["minimum_output"]:
+                raise self._limit(
+                    f"本轮累计输入与输出上限为 {self.limits['total_tokens']} Token；"
+                    f"已用 {self.shared.get('used_tokens', 0)}，下一次请求预估输入 {estimated_input}，"
+                    f"至少需输出 {policy['minimum_output']}。已保留现有结果和后台作业；可明确要求继续。")
+            policy["desired_output"] = min(policy["desired_output"], task_room)
         if debug:
             policy["desired_output"] = min(policy["desired_output"], debug_limit("max_output_tokens", 8192, 4096))
             policy["minimum_output"] = min(policy["minimum_output"], policy["desired_output"])
@@ -784,7 +791,7 @@ class BudgetAndTools(AbstractCapability):
                 policy["desired_output"] = min(policy["desired_output"], room)
             elif room < policy["desired_output"]:
                 raise RuntimeError("输入已占用预留输出空间；已暂停请求并保留完整历史。")
-        if self.shared["requests"] >= request_limit:
+        if request_limit is not None and self.shared["requests"] >= request_limit:
             raise self._limit(f"本轮主对话、执行助手与上下文整理合计已达到 {request_limit} 次模型请求上限。"
                                    "对话、文件和后台作业已保留；可依据当前结果明确要求继续。")
         settings = dict(request_context.model_settings or {})
@@ -999,6 +1006,7 @@ class BudgetAndTools(AbstractCapability):
         self.writer.emit("diagnostic", self.request, phase="task_limit", reason=detail,
                          effective_limits=self.limits, requests=self.shared.get("requests", 0),
                          tool_calls=self.shared.get("tool_calls", 0),
+                         delegations=self.shared.get("delegations", 0),
                          input_tokens=self.shared.get("used_input_tokens", 0), total_tokens=self.shared.get("used_tokens", 0))
         return TaskLimitReached(detail)
 
@@ -1052,7 +1060,7 @@ class BudgetAndTools(AbstractCapability):
     async def wrap_tool_execute(self, ctx: Any, *, call: Any, tool_def: Any, args: Any, handler: Any) -> Any:
         await _check_project_binding(self.shared.get('project_memory_binding'))
         count = self.shared.get("tool_calls", 0)
-        if count >= self.limits["tool_calls"]:
+        if self.limits["tool_calls"] is not None and count >= self.limits["tool_calls"]:
             raise self._limit(f"本轮主对话与执行助手合计已达到 {self.limits['tool_calls']} 次工具调用上限。"
                                    "已保留结果和后台作业，可明确要求继续。")
         self.shared["tool_calls"] = count + 1
@@ -1097,9 +1105,12 @@ class BudgetAndTools(AbstractCapability):
             if not authority.get("allowed"):
                 return self._bounded_result(name, args, dispatch_rejection(name, authority))
         if name == "delegate_task":
-            self.shared["delegations"] += 1
-            if self.shared["delegations"] > 8:
-                raise self._limit("本轮完整子任务委派已达到上限，已保留结果和后台作业；请依据当前结果明确要求继续。")
+            count = self.shared.get("delegations", 0)
+            delegation_limit = self.limits["delegations"]
+            if delegation_limit is not None and count >= delegation_limit:
+                raise self._limit(f"本轮子任务委派已达到显式设置的 {delegation_limit} 次上限。"
+                                  "已保留结果和后台作业；可依据当前结果明确要求继续。")
+            self.shared["delegations"] = count + 1
             self.progress("executing", "执行助手已接收完整子任务。")
             return self._bounded_result(name, args, await handler(args))
         if name not in MAIN_TOOLS and name not in DEVELOPMENT_TOOLS:
@@ -1860,6 +1871,7 @@ async def _run_task(command: dict[str, Any], writer: Any, *,
         "耗时未知时明确标为缺少本机历史，不编造数字；等待确认与入队后都结束本轮等待，可继续聊其他内容。"
         "算法选型先按需读取algorithm_selection；结合当前设计、目标/采样、材料有效域、变量约束与设备判断，必要参数缺失先问，解释参数含义，不自行扩大昂贵搜索。"
         "薄膜厚度优化仅用estimate_film_optimization(request)和submit_film_optimization(request)；"
+        "用户明确要求沿用已打开膜系优化窗口的参数时，主代理直接用project_list和project_editor_snapshot(window_type=film_optimization)取得optimization.submission.request，原样交给estimate_film_optimization和submit_film_optimization；不重建设计或目标，不自行改预算和求解器，不委派子代理重新设计。submission不可用时报告reason；结构模式不能交给厚度优化工具。"
         "request必须是已有v1序列化FilmOptimizationRequest，服务冻结设计修订和材料快照哈希，原样保留预算；"
         "运行时为submit注入稳定client_request_id，并自动调用request_compute_confirmation接入原会话的放行策略。"
         "讨论不发起优化；操作/攻关按真实UI计算策略处理unknown耗时，不能自行批准、改写revision/哈希或把候选应用到设计。"
@@ -1873,7 +1885,7 @@ async def _run_task(command: dict[str, Any], writer: Any, *,
         "取消回执不是终态，只有已验证的succeeded外观结果可读取；失败/取消没有最佳候选，不自动应用或打开窗口。"
         "find_calculation_job、calculation_job_status、calculation_job_result和cancel_calculation_job使用原作业身份；"
         "取消只是请求，需再查调度器终态；调度器succeeded与优化结果completed分开报告，保留候选和targets_met原值。"
-        "不要在日常回复中主动预测Token消耗，也不要求用户确认Token预算；内部额度保护和结束后的真实统计仍保留。"
+        "除非用户明确询问，不在自然语言回复中附加本轮Token、缓存、剩余额度或预算总结，也不要求用户确认Token预算；内部额度保护和专门统计界面仍保留。"
         "外观成功结果的outputs引用直接来自calculation_job_result，可用于结果附件；不得拼接路径或把结果自动应用到设计。"
         "输出要明确已执行动作、结果位置和待解决事项。"
         + "\n[本机计算设备成功记录，仅供当前探测参考]\n" + json.dumps(backend_memory, ensure_ascii=False)
@@ -2099,7 +2111,7 @@ async def _run_task(command: dict[str, Any], writer: Any, *,
                         new_meter(name), StepPersistence(store=steps, agent_name=name, parent_run_id=request,
                             metadata={"session_id": session, "task_id": request, "tool_group": group}), compaction(name)])
                 delegates.append(SubAgent(agent=child, name=name, description=EXECUTION_DESCRIPTIONS[group],
-                    max_calls=8, timeout_seconds=None, usage_limits=UsageLimits(request_limit=None, tool_calls_limit=None)))
+                    timeout_seconds=None, usage_limits=UsageLimits(request_limit=None, tool_calls_limit=None)))
             if mode == "research":
                 analyst = Agent(model, name="engineering_analyst", instructions=(
                     capability_context() + "\n只读取、校验、预览和分析已有数据，不提交作业、保存、覆盖、取消或导出。"
@@ -2110,7 +2122,7 @@ async def _run_task(command: dict[str, Any], writer: Any, *,
                         new_meter("analyst"), StepPersistence(store=steps, agent_name="engineering_analyst",
                             parent_run_id=request, metadata={"session_id": session, "task_id": request}), compaction("analyst")])
                 delegates.append(SubAgent(agent=analyst, name="engineering_analyst", description="独立完成只读工程分析。",
-                    max_calls=8, timeout_seconds=None, usage_limits=UsageLimits(request_limit=None, tool_calls_limit=None)))
+                    timeout_seconds=None, usage_limits=UsageLimits(request_limit=None, tool_calls_limit=None)))
             agent_capabilities.append(SubAgents(agents=delegates, agent_folders=None, inherit_tools=False,
                 max_depth=2, tool_retries=1, event_stream_handler=stream_handler("execution")))
         allowed = allowed_project_tools(mode, development=development_enabled(config),

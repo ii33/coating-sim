@@ -340,6 +340,22 @@ def test_capacity_reads_submission_and_compaction_do_not_rewrite_usage(real_brid
     }
 
 
+def test_completed_turn_omits_automatic_budget_footer_but_keeps_usage(real_bridge):
+    bridge, _worker = real_bridge
+    usage = {"input_tokens": 123, "output_tokens": 45,
+             "cached_input_tokens": 12, "estimated_requests": 0}
+    message = {"id": "synthetic-round", "role": "assistant", "content": "已完成用户任务。",
+               "request_id": "synthetic-request", "metadata": {
+                   "status": "completed", "elapsed_s": 2.5, "usage": usage}}
+    bridge._messages.append(message)
+    bridge._stable_turns = None
+    view = bridge.turns[-1]
+    assert view["footer"] == "完成 · 2.5 秒"
+    assert bridge._copy_message_turn(message)["footer"] == "完成 · 2.5 秒"
+    assert message["metadata"]["usage"] == usage
+    assert "Token" in bridge.tokenSummary
+
+
 def test_context_usage_tooltip_distinguishes_budget_from_capacity():
     qml_path = Path(assistant.__file__).parent / "qml" / "AssistantChatWindow.qml"
     source = qml_path.read_text(encoding="utf-8")

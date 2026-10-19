@@ -94,6 +94,32 @@ def test_real_qml_project_toolbar_and_repeated_navigation_preserve_draft(desktop
     assert len(workspace.service.list_saved_designs()) == 1
 
 
+def test_module_route_reuses_per_project_restores_and_reopens_after_close(desktop):
+    client, stores = desktop
+    first, second = [client.open_project(root) for root in stores]
+    first_id = client.open_project_module(first, "source")
+    second_id = client.open_project_module(second, "source")
+    assert first_id != second_id
+    first_route = next(route for route in client.host.routes(first.binding.project_id)
+                       if route.module_key == "source")
+    first_window = client.host.window_for(first_route)
+    first_window.showMinimized()
+    events()
+    assert first_window.windowState() & Qt.WindowState.WindowMinimized
+    assert client.open_project_module(first, "source") == first_id
+    assert client.open_project_module(first, "source") == first_id
+    assert not first_window.windowState() & Qt.WindowState.WindowMinimized
+    assert len([route for route in client.host.routes(first.binding.project_id)
+                if route.module_key == "source"]) == 1
+    assert client.open_project_module(second, "source") == second_id
+    first_window.setProperty("closeAuthorized", True)
+    assert first_window.close()
+    events()
+    assert first_route not in client.host.routes(first.binding.project_id)
+    reopened = client.open_project_module(first, "source")
+    assert reopened != first_id and reopened != second_id
+
+
 def test_two_projects_simulation_sources_and_materials_never_cross(desktop):
     client, stores = desktop
     workspaces = [client.open_project(root) for root in stores]

@@ -166,9 +166,10 @@ class ProjectFilmDesktop(QObject):
                     refresh = getattr(existing_controller, "refreshProjectAppearanceContext", None)
                     if callable(refresh):
                         refresh()
-                if module_key == "project_bbs" and reservation.window.windowState() & Qt.WindowState.WindowMinimized:
+                if reservation.window.windowState() & Qt.WindowState.WindowMinimized:
                     reservation.window.showNormal()
-                reservation.window.show()
+                elif not reservation.window.isVisible():
+                    reservation.window.show()
                 reservation.window.raise_()
                 reservation.window.requestActivate()
             return route.route_id

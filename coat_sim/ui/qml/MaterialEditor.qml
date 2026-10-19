@@ -926,7 +926,7 @@ ThemePageDialog {
             text: "应用到当前材料"
             enabled: !editor.library.readOnly && !editor.library.loading
                 && !editor.blocksIndependentKLoss
-            DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+            DialogButtonBox.buttonRole: DialogButtonBox.ApplyRole
             onClicked: {
                 let json = editor.formPayload()
                 let ok = editor.editingId.length ? editor.library.updateOpticalSet(editor.editingId, json) : editor.library.addOpticalSet(json)

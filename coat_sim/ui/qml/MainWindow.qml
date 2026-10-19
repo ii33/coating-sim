@@ -290,7 +290,12 @@ AppWindow {
                                 ThemeControls.ThemeButton {
                                     objectName: "processEditorActionButton"
                                     text: bridge.paths.process.length > 0 ? "编辑工艺" : "新建工艺"
-                                    onClicked: launcher.openWindow("process", bridge.paths.process || "")
+                                    onClicked: {
+                                        if (window.projectNavigation)
+                                            window.projectNavigation.openProjectModule("process")
+                                        else
+                                            launcher.openWindow("process", bridge.paths.process || "")
+                                    }
                                 }
                             }
                             ThemeControls.ThemeLabel {
