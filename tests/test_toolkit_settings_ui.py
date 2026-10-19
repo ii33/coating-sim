@@ -2,30 +2,12 @@
 from tests.test_compute_server_category_ui import compute_ui as compute_ui, _find, _settle, _invoke
 from coat_sim.ui import settings
 from coat_sim.agent.toolkit_config import PRIVATE_CAPABILITIES, default_workspace_root
-import re
 import pytest
-from tests import test_compute_server_category_ui as harness_module
 
 
 @pytest.fixture(autouse=True)
-def known_existing_advanced_layout_warnings(monkeypatch):
-    # This test opens the pre-existing advanced sections as well. Ignore only
-    # their exact old anchor warnings, never warnings in the new toolkit body.
-    original = harness_module._unexpected_warnings
-    source = harness_module.QML.read_text(encoding='utf-8')
-    lines = set()
-    for title in ('服务商与连接', '模型与推理', '用量与额度', '外部 MCP 服务', '本软件对外 MCP', '开发选项'):
-        offset = source.index('title: "' + title + '"')
-        offset = source.index('ColumnLayout {', offset)
-        lines.add(source.count('\n', 0, offset) + 1)
-    def filtered(warnings):
-        result = []
-        for warning in original(warnings):
-            match = re.search(r'SettingsWindow.qml:(\d+):\d+: QML ColumnLayout: Detected anchors on an item that is managed by a layout\.', warning)
-            if match is None or int(match.group(1)) not in lines:
-                result.append(warning)
-        return result
-    monkeypatch.setattr(harness_module, '_unexpected_warnings', filtered)
+def known_existing_advanced_layout_warnings():
+    """Compatibility fixture name; the shared harness now rejects every warning."""
 
 
 

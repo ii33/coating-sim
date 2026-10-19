@@ -212,7 +212,7 @@ def test_range_controller_angles_participate_in_core_worst_condition_score(
             wavelength_samples=2, sampling_basis="samples",
             angle_sampling_mode="range", angle_min_deg=0.0,
             angle_max_deg=30.0, angle_step_deg=30.0,
-            mode="value", target_value_percent=40.0,
+            mode="range", lower_bound_percent=40.0, upper_bound_percent=40.0,
         )
         controller._max_evaluations = 1
         request = controller._build_request()
@@ -368,9 +368,10 @@ def test_angle_range_zero_width_and_old_nonuniform_points_round_trip(tmp_path):
         assert controller.setObjectiveField("angle_max_deg", 30)
         assert controller.setObjectiveField("angle_step_deg", 15)
         assert controller.setObjectiveField("angle_sampling_mode", "points")
-        assert controller._build_request(require_variables=False).objectives[0].angles_deg == (
-            0.0, 15.0, 30.0)
-        assert controller.setObjectiveField("angle_sampling_mode", "range")
+        with pytest.raises(ValueError, match="确认"):
+            controller._build_request(require_variables=False)
+        assert controller.confirmObjectiveAngleRange("0", "30", "15")
+        assert controller._build_request(require_variables=False).objectives[0].angles_deg == (0.0, 15.0, 30.0)
         assert controller.setObjectiveField("angle_max_deg", 17.5)
         assert controller.setObjectiveField("angle_min_deg", 17.5)
         assert controller._build_request(require_variables=False).objectives[0].angles_deg == (17.5,)
@@ -387,8 +388,11 @@ def test_angle_range_zero_width_and_old_nonuniform_points_round_trip(tmp_path):
         objective["angles_text"] = "0, 13.5, 47"
         assert controller.loadOptimizationConfiguration(legacy)
         assert controller._objectives[0]["angle_sampling_mode"] == "points"
-        assert controller._build_request(require_variables=False).objectives[0].angles_deg == (
-            0.0, 13.5, 47.0)
+        assert controller.exportOptimizationConfiguration()["objectives"][0]["angles_text"] == "0, 13.5, 47"
+        with pytest.raises(ValueError, match="确认"):
+            controller._build_request(require_variables=False)
+        assert controller.confirmObjectiveAngleRange("17.5", "17.5", "1")
+        assert controller._build_request(require_variables=False).objectives[0].angles_deg == (17.5,)
     finally:
         _dispose(controller)
 
@@ -407,6 +411,7 @@ def test_queue_inspection_restores_explicit_multi_angle_plot_choices(tmp_path, m
         objectives=(FilmOptimizationObjective(
             wavelength_min_nm=500.0, wavelength_max_nm=600.0,
             wavelength_samples=3, angles_deg=(0.0, 13.5, 47.0),
+            mode="value", target_value=.35,
         ),),
     )
     monkeypatch.setattr(module, "_film_result_from_queue", lambda _payload: object())
@@ -417,6 +422,13 @@ def test_queue_inspection_restores_explicit_multi_angle_plot_choices(tmp_path, m
             origin={"project_id": "project-1", "project_root": str(tmp_path)},
         )
         assert [row["value"] for row in _rows_property(controller, "plotAngles")] == [0.0, 13.5, 47.0]
+        assert controller._inspection_objectives is not None
+        historical = controller._inspection_objectives[0]
+        assert historical["mode"] == "range"
+        assert historical["lower_bound_percent"] == historical["upper_bound_percent"] == 35
+        # Historical inspection must not replace the editable source targets.
+        assert controller.property("selectedObjective")["lower_bound_percent"] == 0
+        assert controller.property("selectedObjective")["upper_bound_percent"] == 5
     finally:
         _dispose(controller)
 
@@ -1272,7 +1284,6 @@ def test_optimization_window_loads_sampling_fields_and_duplicate_button(tmp_path
                 "filmOptimizationSamplesField",
                 "filmOptimizationWavelengthStepField",
                 "filmOptimizationSamplingSummary",
-                "filmOptimizationAngleSamplingModeBox",
                 "filmOptimizationAngleMinField",
                 "filmOptimizationAngleMaxField",
                 "filmOptimizationAngleStepField",

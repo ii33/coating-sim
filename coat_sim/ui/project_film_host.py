@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot, Qt
+from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot
 from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent, QQmlContext
 from shiboken6 import isValid
 
@@ -166,12 +166,8 @@ class ProjectFilmDesktop(QObject):
                     refresh = getattr(existing_controller, "refreshProjectAppearanceContext", None)
                     if callable(refresh):
                         refresh()
-                if reservation.window.windowState() & Qt.WindowState.WindowMinimized:
-                    reservation.window.showNormal()
-                elif not reservation.window.isVisible():
-                    reservation.window.show()
-                reservation.window.raise_()
-                reservation.window.requestActivate()
+                from .launcher import LauncherBridge
+                LauncherBridge._activate_window(reservation.window)
             return route.route_id
         controller: Any = None
         window: Any = None
@@ -272,7 +268,8 @@ class ProjectFilmDesktop(QObject):
                     lambda _design, owner=workspace: self.open_project_module(owner, "film_simulation"))
             window.visibleChanged.connect(lambda *_args, owner=route: self._release_hidden(owner))
             window.destroyed.connect(lambda *_args, owner=route: self._release_destroyed(owner))
-            window.show()
+            from .launcher import LauncherBridge
+            LauncherBridge._activate_window(window)
             return route.route_id
         except BaseException as exc:
             self.host.release_window(route)
@@ -392,9 +389,9 @@ class ProjectFilmDesktop(QObject):
         if start:
             target = self.controller_for(workspace, module_key)
             if module_key == "film_optimization":
-                target.startOptimization()
+                target.startOptimizationFromShortcut()
             else:
-                target.startCalculation()
+                target.requestCalculation()
         return identity
 
     @staticmethod

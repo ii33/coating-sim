@@ -1,6 +1,6 @@
 # Independent assistant, project ownership and recovery
 
-Date: 2026-10-14. Implementation contract for this cohort.
+Date: 2026-10-19. Implementation contract for this cohort.
 
 ## State owners and transport
 
@@ -174,3 +174,28 @@ No topmost flag, global foreground policy, or forced process exit is used. Nativ
 coverage must click the real exit menu, check exact foreground HWNDs for normal,
 minimized and covered windows, and exercise sequential distinct client processes
 with real project drafts and cancellation.
+
+## Launcher foreground handoff (2026-10-19)
+
+`activate_shared_project(client, target)` calls the local
+`AssistantProcessClient.prepare_project_activation(target)` before the existing
+`activate_project` IPC. The input is the unchanged six-field activation target.
+There is no new wire operation or registry state. On Windows, the local helper
+reads the authenticated client listing, matches the complete client/session/root/
+descriptor target, rechecks the owner's OS process creation identity, and grants
+foreground eligibility only to that owner's PID with `AllowSetForegroundWindow`.
+The launcher open-request worker runs inside the process receiving the user click;
+the broker does not need to become foreground. Other platforms require no grant.
+
+A stale target, unknown/reused process or denied Windows grant raises the existing
+`UiControlError` path before activation IPC. It never creates another project
+owner, changes system settings or retries by forcing focus. The owner still
+restores/raises the exact registered window through the shared Qt activation
+helper. The owner alone holds the window/session, and the adapter owns only its
+existing pending request. Closing the adapter prevents late UI delivery without
+cancelling an already admitted remote operation; there is no new asynchronous
+lifetime. A later user gesture can supersede foreground eligibility.
+
+The focused identity/denial tests are in
+`tests/test_project_activation_foreground.py`; native desktop foreground checks
+are distinct from mocked/offscreen tests.

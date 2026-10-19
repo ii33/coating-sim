@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -510,7 +512,7 @@ AppWindow {
                         Layout.fillWidth: true
                         Layout.alignment: Qt.AlignTop
                         ColumnLayout {
-                            anchors.fill: parent
+                            Layout.fillWidth: true
                             spacing: 8
                             RowLayout {
                                 Layout.fillWidth: true
@@ -649,7 +651,7 @@ AppWindow {
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignTop
                     ColumnLayout {
-                        anchors.fill: parent
+                        Layout.fillWidth: true
                         spacing: 8
                         RowLayout {
                             Layout.fillWidth: true
@@ -882,7 +884,7 @@ AppWindow {
                         title: "服务商与连接"
                         Layout.fillWidth: true
                         ColumnLayout {
-                            anchors.fill: parent
+                            Layout.fillWidth: true
                             spacing: 8
                             RowLayout {
                                 Layout.fillWidth: true
@@ -891,6 +893,8 @@ AppWindow {
                                     id: assistantUrlField
                                     objectName: "assistantUrlField"
                                     property alias text: assistantUrlField.editText
+                                    // Match SettingsBridge.setAssistantConfig's address normalization.
+                                    readonly property string normalizedText: text.trim().replace(/\/+$/, "")
                                     property bool applyingProviderPreset: false
                                     editable: true
                                     model: bridge.assistantApiUrls
@@ -971,8 +975,10 @@ AppWindow {
                                 }
                                 ThemeControls.ThemeButton {
                                     text: "保存密钥"
+                                    objectName: "assistantSaveKeyButton"
                                     enabled: assistantKeyField.text.length > 0
-                                             && assistantUrlField.text.trim() === bridge.assistantApiUrl
+                                             && window.settingsBridge !== null
+                                             && assistantUrlField.normalizedText === window.settingsBridge.assistantApiUrl
                                     onClicked: {
                                         if (bridge.saveAssistantApiKey(assistantKeyField.text))
                                             assistantKeyField.text = ""
@@ -985,9 +991,10 @@ AppWindow {
                                 }
                             }
                             ThemeControls.ThemeLabel {
-                                text: (assistantUrlField.text.trim() !== bridge.assistantApiUrl
+                                text: (!window.settingsBridge
+                                       || assistantUrlField.normalizedText !== window.settingsBridge.assistantApiUrl
                                        ? "地址更改尚未保存；先保存设置或刷新模型，再按新地址保存密钥。\n"
-                                       : bridge.assistantKeyMessage + "\n")
+                                       : window.settingsBridge.assistantKeyMessage + "\n")
                                       + "密钥按服务商地址绑定并保存在系统安全凭据库，不写入项目文件。"
                                 Layout.fillWidth: true
                                 wrapMode: Text.WordWrap
@@ -1002,7 +1009,7 @@ AppWindow {
                         title: "模型与推理"
                         Layout.fillWidth: true
                         ColumnLayout {
-                            anchors.fill: parent
+                            Layout.fillWidth: true
                             spacing: 8
                             RowLayout {
                                 Layout.fillWidth: true
@@ -1449,7 +1456,7 @@ AppWindow {
                         title: "用量与额度"
                         Layout.fillWidth: true
                         ColumnLayout {
-                            anchors.fill: parent
+                            Layout.fillWidth: true
                             spacing: 8
                             NumericGrid {
                                 id: quotaFields
@@ -1611,7 +1618,7 @@ AppWindow {
                         title: "外部 MCP 服务"
                         Layout.fillWidth: true
                         ColumnLayout {
-                            anchors.fill: parent
+                            Layout.fillWidth: true
                             spacing: 8
                             ThemeControls.ThemeLabel {
                                 text: "为看板娘连接外部工具。新增服务默认停用；服务仅接收调用时的参数，不自动转发历史、附件或项目根目录。服务程序使用当前用户权限运行，请使用可信来源。"
@@ -1868,7 +1875,7 @@ AppWindow {
                         title: "本软件对外 MCP"
                         Layout.fillWidth: true
                         ColumnLayout {
-                            anchors.fill: parent
+                            Layout.fillWidth: true
                             spacing: 8
                             ThemeControls.ThemeLabel {
                                 text: "支持外部 MCP 客户端读取和保存设计、控制项目窗口、提交与查询计算作业、管理 data 文件及生成导出。默认使用 stdio，由客户端启动服务进程，所有路径仍受项目服务的规则限制。"
@@ -1913,7 +1920,7 @@ AppWindow {
                         Layout.fillWidth: true
                         visible: false
                         ColumnLayout {
-                            anchors.fill: parent
+                            Layout.fillWidth: true
                             spacing: 6
                             Switch {
                                 text: "启用开发模式"

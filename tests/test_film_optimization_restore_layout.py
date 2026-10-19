@@ -313,7 +313,7 @@ def test_sidebar_f4_does_not_steal_native_combo_popup(app, tmp_path):
         with window_runtime(app, controller) as (window, warnings):
             window.resize(1100, 760)
             QTest.qWait(40)
-            combo = window.findChild(QQuickItem, "filmOptimizationAngleSamplingModeBox")
+            combo = window.findChild(QQuickItem, "filmOptimizationMetricBox")
             sidebar = window.findChild(QQuickItem, "filmOptimizationDetailsSidebar")
             assert combo is not None
             combo.forceActiveFocus()

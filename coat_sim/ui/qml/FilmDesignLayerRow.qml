@@ -97,7 +97,7 @@ Rectangle {
     function commitOpticalThickness() {
         if (!opticalThicknessInput.edited) return
         const parsed = Number(opticalThicknessInput.text.trim())
-        if (!isFinite(parsed) || parsed < 0) {
+        if (opticalThicknessInput.text.trim().length === 0 || !isFinite(parsed) || parsed < 0) {
             opticalThicknessInput.text = row.qwText
             opticalThicknessInput.edited = false
             return
@@ -109,7 +109,7 @@ Rectangle {
     function commitPhysicalThickness() {
         if (!physicalThicknessInput.edited) return
         const parsed = Number(physicalThicknessInput.text.trim())
-        if (!isFinite(parsed) || parsed < 0) {
+        if (physicalThicknessInput.text.trim().length === 0 || !isFinite(parsed) || parsed < 0) {
             physicalThicknessInput.text = row.physicalNmText
             physicalThicknessInput.edited = false
             return

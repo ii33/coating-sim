@@ -1,5 +1,13 @@
 # 更新日志
 
+## dev.20261019.06 - 2026-10-19
+
+- Remove settings section layout warnings and validate the real settings-bridge key binding.
+- Normalize the provider address before saving keys and hand foreground permission directly to the verified project owner.
+- Commit current editor drafts for F5/F6, refresh same-project simulation and optimization views, and apply successful final thickness results with one guarded undo.
+- Unify material categories and scoped resource exchange, simplify resource actions, and improve dropdown state contrast.
+- Subscribe each GUI process independently to saved theme and font preferences, including after launcher exit.
+
 ## dev.20261019.05 - 2026-10-19
 
 - Remove five source-specific resolved static baseline diagnostics; no new diagnostics or platform differences are suppressed.

@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import weakref
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot
 from PySide6.QtGui import QColor, QFont, QGuiApplication, QPalette
@@ -25,6 +25,9 @@ from coat_sim.ui.theme_tokens import (
     THEME_MODES,
     build_theme_snapshot,
 )
+
+if TYPE_CHECKING:
+    from coat_sim.ui.theme_settings_sync import ThemeSettingsSync
 
 _INSTANCE_KEY = object()
 
@@ -193,6 +196,7 @@ class ThemeService(QObject):
         self._packages: dict[str, ThemePackage] = {}
         self._package_errors: tuple[str, ...] = ()
         self._applying_palette = False
+        self._settings_sync: ThemeSettingsSync | None = None
         self.reload_installed_packages(emit=False)
         app = QGuiApplication.instance()
         if app is not None and not isinstance(app, QGuiApplication):
@@ -565,6 +569,7 @@ def configure_theme_from_settings(settings: dict[str, object] | None = None) -> 
 
     from coat_sim.ui.settings import DEFAULT_FONT_POINT_SIZE, load_ui_settings
 
+    subscribe = settings is None
     if settings is None:
         settings = load_ui_settings()
     configured_point_size = settings.get(
@@ -584,6 +589,26 @@ def configure_theme_from_settings(settings: dict[str, object] | None = None) -> 
         theme_package_id=str(settings.get("theme_package_id", "")),
         font_family=str(settings.get("font_family", "")),
     )
+    if subscribe:
+        from .settings import SETTINGS_PATH
+        from .theme_settings_sync import ThemeSettingsSync
+        sync = getattr(service, "_settings_sync", None)
+        if sync is None or sync.path != SETTINGS_PATH.absolute():
+            if sync is not None:
+                sync.stop()
+                sync.deleteLater()
+            def apply_saved_theme(values):
+                from .settings import apply_font_settings
+                package_id = str(values.get("theme_package_id", ""))
+                if package_id and not service.has_theme(package_id):
+                    service.reload_installed_packages(emit=False)
+                configure_theme_from_settings(values)
+                apply_font_settings(values)
+            sync = ThemeSettingsSync(SETTINGS_PATH, apply_saved_theme, settings, parent=service)
+            service._settings_sync = sync
+            app = QGuiApplication.instance()
+            if app is not None:
+                app.aboutToQuit.connect(sync.stop)
     return service
 
 

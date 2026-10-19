@@ -13,7 +13,7 @@ import re
 import threading
 import time
 from uuid import uuid4
-from typing import Any, cast
+from typing import Any, Literal, cast
 import weakref
 from coat_sim.project_session import OperationBinding
 
@@ -1284,6 +1284,11 @@ class FilmOptimizationQuickController(QObject):
                     row[name] = _number(row[name], name)
                     if not 0 <= row[name] <= 100:
                         raise ValueError(f"目标 {index + 1} R/T 百分比须在 0 到 100 之间")
+                # A value target has an exact bounds representation; keep one
+                # canonical editable form rather than a hidden target mode.
+                if row["mode"] == "value":
+                    row["lower_bound_percent"] = row["upper_bound_percent"] = row["target_value_percent"]
+                row["mode"] = "range"
                 if row["lower_bound_percent"] > row["upper_bound_percent"]:
                     raise ValueError(f"目标 {index + 1} 下界不能大于上界")
                 row["weight"] = _number(row["weight"], "目标权重")
@@ -2352,6 +2357,12 @@ class FilmOptimizationQuickController(QObject):
     def _active_configuration_error(self, *, require_thickness_bounds: bool = True) -> str:
         if self._configuration_load_error:
             return self._configuration_load_error
+        if any(row.get("angle_sampling_mode") != "range" for row in self._objectives):
+            return "目标含显式角度配置；请逐个重新确认角度范围与精度，原角度未自动更改。"
+        for row in self._objectives:
+            low, high = row["lower_bound_percent"], row["upper_bound_percent"]
+            if not (0 <= low <= high <= 100):
+                return "目标上下限须满足 0 ≤ 下限 ≤ 上限 ≤ 100%。"
         if self._search_mode == "fixed_topology" and require_thickness_bounds:
             for row in self._variables:
                 if not row["enabled"]:
@@ -2808,6 +2819,33 @@ class FilmOptimizationQuickController(QObject):
                                    max(0, len(self._objectives) - 1))
         self._invalidate_result()
 
+    @Slot(str, str, str, result=bool)
+    def confirmObjectiveAngleRange(self, minimum: str, maximum: str, precision: str) -> bool:
+        """Explicitly replace a preserved angle list using the visible range form."""
+        if self._busy or self._shutting_down or not 0 <= self._selected_objective < len(self._objectives):
+            return False
+        key = f"objective:{self._selected_objective}:"
+        angle_keys = {key + field for field in ("angle_min_deg", "angle_max_deg", "angle_step_deg")}
+        if self._pending_edit_error and self._pending_edit_error_key not in angle_keys:
+            return False
+        try:
+            updated = _resolve_angle_sampling({
+                **self._objectives[self._selected_objective], "angle_sampling_mode": "range",
+                "angle_min_deg": _number(minimum, "角度下限"),
+                "angle_max_deg": _number(maximum, "角度上限"),
+                "angle_step_deg": _number(precision, "角度精度"),
+            })
+        except (ValueError, TypeError, OverflowError) as exc:
+            self._error = str(exc)
+            self.changed.emit()
+            return False
+        self._objectives[self._selected_objective] = updated
+        if self._pending_edit_error_key:
+            self._clear_pending_edit_error(self._pending_edit_error_key)
+        self._error = ""
+        self._invalidate_result()
+        return True
+
     @Slot(str, "QVariant", result=bool)
     def setObjectiveField(self, field: str, value) -> bool:
         if self._busy or self._shutting_down:
@@ -2859,6 +2897,11 @@ class FilmOptimizationQuickController(QObject):
                     "weight": "目标权重",
                 }.get(field, field))
             updated[field] = str(value).strip() if field in ("name", "angles_text") else value
+            if field == "target_value_percent" or (field == "mode" and value == "value"):
+                updated["lower_bound_percent"] = updated["upper_bound_percent"] = updated["target_value_percent"]
+            updated["mode"] = "range"
+            if not 0 <= updated["lower_bound_percent"] <= updated["upper_bound_percent"] <= 100:
+                raise ValueError("目标上下限须满足 0 ≤ 下限 ≤ 上限 ≤ 100%。")
             if field in {"wavelength_min_nm", "wavelength_max_nm", "wavelength_samples", "wavelength_step_nm"}:
                 updated = _resolve_objective_sampling(updated, edited_field=field)
             if field in {"angle_min_deg", "angle_max_deg", "angle_step_deg", "angle_sampling_mode"}:
@@ -2951,6 +2994,33 @@ class FilmOptimizationQuickController(QObject):
     def _find_variable(self, side: str, layer_id: str) -> dict | None:
         return next((row for row in self._variables
                      if row["side"] == side and row["layer_id"] == layer_id), None)
+
+    @Slot(result=str)
+    def openSimulationAndCalculate(self) -> str:
+        """Simulate the current source session; never publish an optimizer candidate."""
+        try:
+            source = self._source_controller
+            session = self.session
+            if session is None:
+                raise ValueError("没有有效的来源膜系；请从膜系设计重新打开优化窗口。")
+            if (self._shutting_down or self._source_closed or source is None
+                    or getattr(source, "session", None) is not session):
+                raise ValueError("没有有效的来源膜系；请从膜系设计重新打开优化窗口。")
+            if (self.project_context is not None
+                    and getattr(source, "project_context", None) is not self.project_context):
+                raise ValueError("来源膜系与当前优化工程不一致。")
+            snapshot = cast(Any, session).snapshot()
+            if getattr(snapshot, "error", "") or getattr(snapshot, "expression_busy", False):
+                raise ValueError("当前来源膜系尚未就绪；请先修正输入或等待表达式完成。")
+            cast(Any, self.service).validate(deepcopy(dict(snapshot.design)))
+            identity = source.openSimulationAndCalculate()
+            if not identity:
+                raise ValueError("无法打开来源膜系的光谱仿真窗口。")
+            return str(identity)
+        except (ValueError, RuntimeError, TypeError) as exc:
+            self._error = str(exc)
+            self.changed.emit()
+            return ""
 
     @Slot()
     def refreshDesign(self) -> None:
@@ -3055,7 +3125,8 @@ class FilmOptimizationQuickController(QObject):
                 samples = 1
             angles = (self._angles_for_row(row) if prepared_angles is None
                       else tuple(prepared_angles[index]))
-            mode = row["mode"]
+            mode: Literal["value", "range"] = (
+                "value" if row["lower_bound_percent"] == row["upper_bound_percent"] else "range")
             objectives.append(FilmOptimizationObjective(
                 wavelength_min_nm=low,
                 wavelength_max_nm=high,
@@ -3064,7 +3135,7 @@ class FilmOptimizationQuickController(QObject):
                 polarization=row["polarization"],
                 metric=row["metric"],
                 mode=mode,
-                target_value=(float(row["target_value_percent"]) / 100.0
+                target_value=(float(row["lower_bound_percent"]) / 100.0
                               if mode == "value" else None),
                 lower_bound=(float(row["lower_bound_percent"]) / 100.0
                              if mode == "range" and str(row["lower_bound_percent"]).strip() else None),
@@ -3549,11 +3620,13 @@ class FilmOptimizationQuickController(QObject):
                            angle_sampling_mode="points",
                            angles_text=", ".join(str(value) for value in objective.angles_deg),
                            polarization=objective.polarization, metric=objective.metric,
-                           mode=objective.mode,
+                           mode="range",
                            target_value_percent=(objective.target_value or 0.0) * 100,
-                           lower_bound_percent=(objective.lower_bound or 0.0) * 100,
-                           upper_bound_percent=(objective.upper_bound * 100
-                                                if objective.upper_bound is not None else 100.0))
+                           lower_bound_percent=((objective.target_value or 0.0) * 100
+                                                if objective.mode == "value" else (objective.lower_bound or 0.0) * 100),
+                           upper_bound_percent=((objective.target_value or 0.0) * 100
+                                                if objective.mode == "value" else
+                                                objective.upper_bound * 100 if objective.upper_bound is not None else 100.0))
                 row = _resolve_angle_sampling(row)
                 objectives.append(row)
         except Exception as exc:
@@ -3799,7 +3872,28 @@ class FilmOptimizationQuickController(QObject):
             self._error = "来源设计会话已替换；优化候选未自动回写。"
             self.changed.emit()
             return False
+        if self._candidate_applied and self._result is result:
+            return True
         snapshot = session.snapshot()
+        try:
+            normalized_candidate = cast(Any, self.service).validate(deepcopy(dict(result.best_design)))
+            candidate_design = normalized_candidate
+            if self._structure_result is None:
+                candidate_design = deepcopy(dict(snapshot.design))
+                for side in ("front_layers", "back_layers"):
+                    current_ids = [layer.get("id") for layer in snapshot.design.get(side, ())]
+                    candidate_ids = [layer.get("id") for layer in normalized_candidate.get(side, ())]
+                    if (candidate_ids != current_ids or len(set(candidate_ids)) != len(candidate_ids)):
+                        self._error = "优化结果膜层 ID 与来源不一致；未自动覆盖设计。"
+                        self.changed.emit()
+                        return False
+                    for current, candidate in zip(candidate_design.get(side, ()),
+                                                  normalized_candidate.get(side, ()), strict=True):
+                        current["thickness"] = deepcopy(candidate["thickness"])
+        except (ValueError, TypeError, KeyError, AttributeError) as exc:
+            self._error = "优化最终候选无效；未覆盖设计：" + str(exc)
+            self.changed.emit()
+            return False
         if (snapshot.design_revision != result.design_revision
                 or self._source_edit_epoch() != self._operation_edit_epoch):
             self._source_stale = True
@@ -3812,7 +3906,7 @@ class FilmOptimizationQuickController(QObject):
             self.changed.emit()
             return False
         try:
-            accepted = bool(apply(deepcopy(dict(result.best_design)),
+            accepted = bool(apply(candidate_design,
                                   int(result.design_revision),
                                   int(self._operation_edit_epoch or 0)))
         except Exception as exc:
@@ -3839,6 +3933,16 @@ class FilmOptimizationQuickController(QObject):
                                    + " · 采样目标未全部满足；候选已回写，请核对结果。")
         self.changed.emit()
         self.plotDataChanged.emit()
+        # Existing observers refresh an already-open spectrum; this route also
+        # creates/restores the same-project singleton when no spectrum exists.
+        opener = getattr(source, "openSimulationAndCalculate", None)
+        if callable(opener):
+            try:
+                if not opener():
+                    raise ValueError("光谱仿真窗口未确认打开")
+            except (ValueError, RuntimeError, TypeError) as exc:
+                self._error = "优化厚度已应用，但光谱刷新未完成：" + str(exc)
+                self.changed.emit()
         return True
 
     def _open_completed_candidate_preview(self, result: FilmOptimizationResult) -> None:

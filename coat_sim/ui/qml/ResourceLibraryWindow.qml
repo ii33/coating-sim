@@ -24,7 +24,7 @@ LocalComponents.AppWindow {
     property bool projectCloseAuthorized: false
     property bool allowClose: false
     LocalComponents.ProjectPendingEdits { editorWindow: window }
-    readonly property bool materialCategory: categoryKey === "material_profile" || categoryKey === "optical_material"
+    readonly property bool materialCategory: categoryKey === "material_profile"
     readonly property bool materialPaneVisible: librarySource && materialCategory && !!resourceBridge && resourceBridge.materialEditorActive
     function commitPendingEdits() { contentItem.forceActiveFocus(); return true }
     function canLeaveMaterialEditor() {
@@ -51,7 +51,14 @@ LocalComponents.AppWindow {
     readonly property string operationStatus: resourceBridge && resourceBridge.catalogRefreshPending
         ? "资产目录正在更新，请等待…" : resourceBridge ? resourceBridge.transferStatus : ""
     readonly property string resultMessage: resourceBridge ? resourceBridge.libraryMessage : ""
-    readonly property var allRows: catalog.rows || []
+    function browserKind(kind) { return kind === "optical_material" ? "material_profile" : kind }
+    readonly property var allRows: {
+        const rows = catalog.rows || []
+        // A profile and its optical projection share one material identity.
+        // Keep optical-only records that have no editable profile companion.
+        const profiles = rows.filter(row => row.kind === "material_profile").map(row => row.material_id)
+        return rows.filter(row => row.kind !== "optical_material" || profiles.indexOf(row.material_id) < 0)
+    }
     readonly property bool globalSource: catalog.source_type === "global"
     property var selectedIds: []
     property string informationId: ""
@@ -71,7 +78,11 @@ LocalComponents.AppWindow {
         const order = ["material_profile", "optical_material", "film", "process", "machine",
             "source", "substrate", "mask", "deposition_configuration", "raytrace_request",
             "appearance_configuration", "expression_template", "binary_asset"]
-        const actualKinds = (catalog.categories || []).slice()
+        const actualKinds = []
+        for (const value of catalog.categories || []) {
+            const kind = browserKind(value)
+            if (actualKinds.indexOf(kind) < 0) actualKinds.push(kind)
+        }
         if (librarySource && materialSectionRequested && actualKinds.indexOf("material_profile") < 0)
             actualKinds.unshift("material_profile")
         const kinds = actualKinds.sort(function(left, right) {
@@ -92,7 +103,7 @@ LocalComponents.AppWindow {
         return use === "medium" ? "other" : use
     }
     function browserMaterialUses(row) {
-        const uses = row.material_uses || ["other"]
+        const uses = row.material_uses || [row.kind === "optical_material" ? "unspecified" : "other"]
         const result = []
         for (const use of uses) {
             const browserUse = browserMaterialUse(use)
@@ -104,7 +115,7 @@ LocalComponents.AppWindow {
     readonly property var materialUses: {
         const existing = []
         for (const row of allRows) {
-            if (row.kind === "material_profile") {
+            if (browserKind(row.kind) === "material_profile") {
                 for (const use of browserMaterialUses(row)) {
                     if (existing.indexOf(use) < 0)
                         existing.push(use)
@@ -120,7 +131,7 @@ LocalComponents.AppWindow {
         const kind = categoryKey
         const query = searchField.text.trim().toLowerCase()
         return allRows.filter(function(row) {
-            return row.kind === kind
+            return browserKind(row.kind) === kind
                 && (kind !== "material_profile"
                     || browserMaterialUses(row).indexOf(browserMaterialUse(materialUse)) >= 0)
                 && (!query || String(row.name || "").toLowerCase().indexOf(query) >= 0
@@ -140,7 +151,7 @@ LocalComponents.AppWindow {
     function kindLabel(kind) {
         const labels = {source: "蒸发源", substrate: "基片", mask: "修正板", machine: "机器",
             process: "工艺", film: "膜系设计", expression_template: "表达式模板",
-            material_profile: "材料", optical_material: "光学材料数据",
+            material_profile: "材料", optical_material: "材料",
             deposition_configuration: "膜厚计算配置", raytrace_request: "光追配置",
             appearance_configuration: "外观配置", binary_asset: "依赖输入"}
         return labels[kind] || kind
@@ -221,8 +232,8 @@ LocalComponents.AppWindow {
                     window.materialUse = window.materialUses.length ? window.materialUses[0].key : ""
                 window.selectedIds = window.selectedIds.filter(function(value) {
                     return window.allRows.some(function(row) {
-                        return row.id === value && row.kind === window.categoryKey
-                            && (row.kind !== "material_profile"
+                        return row.id === value && window.browserKind(row.kind) === window.categoryKey
+                            && (window.browserKind(row.kind) !== "material_profile"
                                 || window.browserMaterialUses(row).indexOf(
                                     window.browserMaterialUse(window.materialUse)) >= 0)
                     })
@@ -243,12 +254,72 @@ LocalComponents.AppWindow {
                 previewDialog.close()
         }
     }
+    Menu {
+        id: assetImportMenu
+        MenuItem {
+            objectName: "assetImportFileAction"
+            text: "从文件 / 工程导入…"
+            onTriggered: importDialog.open()
+        }
+        MenuItem {
+            objectName: "projectResourcesImportGlobalButton"
+            text: "从全局库导入…"
+            visible: window.projectScoped
+            height: visible ? implicitHeight : 0
+            onTriggered: {
+                window.selectedIds = []
+                window.informationId = ""
+                window.resourceBridge.browseSource("global")
+            }
+        }
+        MenuItem {
+            objectName: "assetImportMaterialFileAction"
+            text: "导入材料文件…"
+            visible: window.materialPaneVisible
+            height: visible ? implicitHeight : 0
+            onTriggered: window.editorInstance.openMaterialImport()
+        }
+    }
+    Menu {
+        id: assetExportMenu
+        MenuItem {
+            objectName: "assetExportPackageAction"
+            text: "导出工程资源包…"
+            onTriggered: exportDialog.open()
+        }
+        MenuItem {
+            objectName: "projectResourcesExportGlobalButton"
+            text: "复制至全局库…"
+            visible: window.projectScoped
+            height: visible ? implicitHeight : 0
+            onTriggered: window.resourceBridge.previewLibraryTransfer(window.selectedIds, "global")
+        }
+        MenuItem {
+            text: "导出当前材料文件…"
+            visible: window.materialPaneVisible
+            height: visible ? implicitHeight : 0
+            enabled: !!window.resourceBridge.materialLibrary && !window.resourceBridge.materialLibrary.dirty
+            onTriggered: window.editorInstance.openSingleExport()
+        }
+        MenuItem {
+            text: "导出材料库文件…"
+            visible: window.materialPaneVisible
+            height: visible ? implicitHeight : 0
+            onTriggered: window.editorInstance.openMaterialLibraryExport()
+        }
+    }
+    LocalComponents.ProjectResourceInformationDialog {
+        id: materialInformation
+        projectResources: window.projectResources || (window.resourceBridge.materialLibrary
+            ? window.resourceBridge.materialLibrary.informationController : null)
+        parent: Overlay.overlay
+    }
     FileDialog {
         id: importDialog
         objectName: "globalResourcesImportDialog"
         title: "选择要导入" + window.libraryLabel + "的资源"
         fileMode: FileDialog.OpenFile
-        nameFilters: ["工程与设计资源 (*.cproject *.coatproj *.csrc *.csub *.cmsk *.cmac *.cproc *.cfilm *.cdep *.cray *.cappearance *.casset *.json)", "所有文件 (*)"]
+        nameFilters: ["工程与设计资源 (*.cproject *.coatproj *.csrc *.csub *.cmsk *.cmac *.cproc *.cfilm *.cmat *.cmatl *.cdep *.cray *.cappearance *.casset *.json)", "所有文件 (*)"]
         onAccepted: {
             window.selectedIds = []
             window.informationId = ""
@@ -409,6 +480,42 @@ LocalComponents.AppWindow {
                         currentModuleKey: "project_resources"
                         themeTokens: window.tokens
                     }
+                    ThemeControls.ThemeComboBox {
+                        id: category
+                        objectName: "globalResourcesCategory"
+                        accessibleLabel: "资产分类"
+                        model: window.categories
+                        textRole: "label"
+                        currentIndex: Math.max(0, window.categories.findIndex(function(row) { return row.key === window.categoryKey }))
+                        enabled: !window.operationBusy
+                        onActivated: window.selectCategory(String(model[currentIndex].key))
+                        property bool operationBarFlexible: true
+                        implicitWidth: 180
+                        width: 180
+                    }
+                    ThemeControls.ThemeButton {
+                        objectName: "assetLibraryInformationButton"
+                        text: "信息"
+                        enabled: !window.operationBusy && !!window.information
+                        onClicked: {
+                            if (window.materialPaneVisible) {
+                                materialInformation.resetForOpen()
+                                materialInformation.open()
+                            } else window.informationId = window.information.id
+                        }
+                    }
+                    ThemeControls.ThemeButton {
+                        objectName: "assetLibrarySaveMaterialButton"
+                        text: "保存材料"
+                        visible: window.materialPaneVisible
+                        enabled: !window.operationBusy && !!window.resourceBridge.materialLibrary
+                            && window.resourceBridge.materialLibrary.valid && !window.resourceBridge.materialLibrary.readOnly
+                        onClicked: {
+                            window.commitPendingEdits()
+                            if (window.projectResources) window.projectResources.saveCurrent()
+                            else window.resourceBridge.materialLibrary.saveInBackground()
+                        }
+                    }
                     ThemeControls.ThemeButton {
                         objectName: "globalResourcesRefreshButton"
                         text: window.librarySource ? "刷新" : "返回" + window.libraryLabel
@@ -428,7 +535,7 @@ LocalComponents.AppWindow {
                         objectName: "globalResourcesImportButton"
                         text: "导入…"
                         enabled: !window.operationBusy
-                        onClicked: { window.focusReturnItem = this; importDialog.open() }
+                        onClicked: { window.focusReturnItem = this; assetImportMenu.popup() }
                     }
                     ThemeControls.ThemeButton {
                         objectName: "globalResourcesExportButton"
@@ -437,28 +544,10 @@ LocalComponents.AppWindow {
                         onClicked: {
                             window.focusReturnItem = this
                             if (window.librarySource)
-                                exportDialog.open()
+                                assetExportMenu.popup()
                             else
                                 window.resourceBridge.previewLibraryTransfer(window.selectedIds, window.projectScoped ? "project" : "global")
                         }
-                    }
-                    ThemeControls.ThemeButton {
-                        objectName: "projectResourcesImportGlobalButton"
-                        text: "从全局库导入…"
-                        visible: window.projectScoped
-                        enabled: !window.operationBusy
-                        onClicked: {
-                            window.selectedIds = []
-                            window.informationId = ""
-                            window.resourceBridge.browseSource("global")
-                        }
-                    }
-                    ThemeControls.ThemeButton {
-                        objectName: "projectResourcesExportGlobalButton"
-                        text: "导出至全局库…"
-                        visible: window.projectScoped
-                        enabled: !window.operationBusy && window.librarySource && window.selectedIds.length > 0
-                        onClicked: window.resourceBridge.previewLibraryTransfer(window.selectedIds, "global")
                     }
                     ThemeControls.ThemeButton {
                         objectName: "assetLibraryDeleteButton"
@@ -556,17 +645,6 @@ LocalComponents.AppWindow {
                         objectName: "globalResourcesSearch"
                         accessibleLabel: "搜索资产名称或摘要"
                         placeholderText: "搜索名称 / 摘要"
-                        Layout.fillWidth: true
-                    }
-                    ThemeControls.ThemeComboBox {
-                        id: category
-                        objectName: "globalResourcesCategory"
-                        accessibleLabel: "资产分类"
-                        model: window.categories
-                        textRole: "label"
-                        currentIndex: Math.max(0, window.categories.findIndex(function(row) { return row.key === window.categoryKey }))
-                        enabled: !window.operationBusy
-                        onActivated: window.selectCategory(String(model[currentIndex].key))
                         Layout.fillWidth: true
                     }
                     ThemeControls.ThemeComboBox {

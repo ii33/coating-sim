@@ -89,6 +89,8 @@ LocalComponents.ThemePageDialog {
         const unit = String(rowData.unit || "").trim()
         return value.length > 0 ? (unit.length > 0 ? value + " " + unit : value) : unit
     }
+    function openMaterialImport() { materialImportPicker.open() }
+    function openMaterialLibraryExport() { exportSelectionDialog.open() }
     function editModel(key, value) { if (!library.opticalOnly) library.setField(modelPrefix + "_" + key, value) }
     function ensureSetEditor() {
         if (setEditorInstance) return setEditorInstance
@@ -488,6 +490,8 @@ LocalComponents.ThemePageDialog {
         LocalComponents.ResponsiveOperationBar {
             id: materialLibraryActionToolbar
             objectName: "materialLibraryActionToolbar"
+            visible: !dialog.embeddedInAssetLibrary
+            Layout.preferredHeight: visible ? implicitHeight : 0
             Accessible.name: "操作栏"
             Layout.fillWidth: true
             Layout.minimumWidth: 0

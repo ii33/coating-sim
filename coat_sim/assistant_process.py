@@ -121,6 +121,29 @@ class AssistantProcessClient:
         transport.target_pid, transport._explicit_pid = status["pid"], True
         return transport.request(operation, **arguments)
 
+    def prepare_project_activation(self, target: dict[str, str]) -> bool:
+        """Pass the launcher's foreground gesture directly to the exact owner.
+
+        The assistant brokers IPC but need not own foreground permission. Its
+        authenticated listing pins both client/session generations and process
+        creation time; never grant to an arbitrary or recycled PID.
+        """
+        if os.name != "nt":
+            return True
+        from coat_sim.project_activation import activation_target
+        owner = next((row for row in self.list_clients()
+                      if row.get("state") == "alive"
+                      and any(activation_target(row, project) == target
+                              for project in row.get("project_sessions", []))), None)
+        if owner is None:
+            raise UiControlError("stale_project", "Project activation owner has changed; refresh and retry.")
+        state, start = _process_identity(owner["pid"])
+        if state != "alive" or start is None or start != owner["process_start"]:
+            raise UiControlError("process_identity_unknown", "Cannot verify project activation process.")
+        if not _allow_foreground_process(owner["pid"]):
+            raise UiControlError("foreground_denied", "Windows did not grant foreground activation; click the project again.")
+        return True
+
     def ensure_running(self, timeout: float = 20.0) -> dict[str, Any]:
         """Blocking startup for a caller's worker thread; never stops a child."""
         try:

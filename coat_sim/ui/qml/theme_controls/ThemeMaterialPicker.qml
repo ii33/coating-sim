@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 
@@ -380,6 +382,7 @@ FocusScope {
                     required property var modelData
                     required property int index
                     readonly property int sourceIndex: Number(modelData.sourceIndex)
+                    readonly property bool currentSelection: option.sourceIndex === control.currentIndex
                     objectName: control.optionObjectNamePrefix
                                 + String(control.valueAt(sourceIndex) || sourceIndex)
                     width: optionList.width
@@ -402,8 +405,10 @@ FocusScope {
                     }
                     background: Rectangle {
                         radius: control.themeTokens.radiusSm
-                        color: option.highlighted || option.hovered
-                               ? control.themeTokens.colorSurfaceRaised : control.themeTokens.colorSurface
+                        color: !option.enabled ? control.themeTokens.colorDisabledSurface
+                               : option.highlighted ? control.themeTokens.colorAccent
+                               : option.currentSelection ? control.themeTokens.colorSelection
+                               : option.hovered ? control.themeTokens.colorSurfaceRaised : control.themeTokens.colorSurface
                         border.width: option.visualFocus ? control.themeTokens.focusRingWidth : 0
                         border.color: control.themeTokens.colorFocusRing
                     }

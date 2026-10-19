@@ -1,6 +1,6 @@
 # Settings model-probe coordination contract
 
-Date: 2026-10-12. Status: implemented and validated in the progressive
+Date: 2026-10-19. Status: implemented and validated in the progressive
 refactor branch.
 
 ## Boundary
@@ -131,3 +131,14 @@ precedence coverage is in `tests/test_font_size_defaults.py`. The real QML
 focused-field save, disk persistence, bridge reload, and compact-window coverage
 is in `tests/test_machine_settings_compact_chrome_ui.py`; the family field uses
 an independent full-width row, without a width-dependent Grid column span.
+
+## API-key save address comparison (2026-10-19)
+
+`SettingsWindow.qml` compares the editable address after the same whitespace and
+trailing-slash normalization used by `SettingsBridge.setAssistantConfig`. A typed
+key enables `assistantSaveKeyButton` only for the currently bound bridge address;
+a different unsaved provider address still blocks saving. The bridge remains the
+sole credential/address state owner, and `saveAssistantApiKey` remains the storage
+boundary. Successful save clears the password buffer; failure keeps it for retry.
+No new credential lookup, storage format, network request or real key is needed by
+the regression test (`tests/test_settings_key_button_ui.py`).

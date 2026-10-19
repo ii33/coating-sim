@@ -89,7 +89,9 @@ Item {
 
     component ProjectMenuItem: MenuItem {
         id: menuItem
+        hoverEnabled: true
         readonly property var tokens: root.themeTokens
+        readonly property bool accented: enabled && (down || highlighted)
         readonly property real leadingAdornmentWidth:
             menuItem.checkable && menuItem.indicator ? menuItem.indicator.width + menuItem.spacing : 0
         readonly property real trailingAdornmentWidth:
@@ -107,7 +109,8 @@ Item {
             font.family: menuItem.tokens.fontFamily
             font.pointSize: menuItem.tokens.fontSizeBody
             font.weight: Font.DemiBold
-            color: menuItem.highlighted ? menuItem.tokens.colorTextOnAccent : menuItem.tokens.colorText
+            color: !menuItem.enabled ? menuItem.tokens.colorDisabledText
+                   : menuItem.accented ? menuItem.tokens.colorTextOnAccent : menuItem.tokens.colorText
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
         }
@@ -120,7 +123,8 @@ Item {
             text: "›"
             font.family: menuItem.tokens.fontFamily
             font.pointSize: menuItem.tokens.fontSizeBody + 2
-            color: menuItem.highlighted ? menuItem.tokens.colorTextOnAccent : menuItem.tokens.colorText
+            color: !menuItem.enabled ? menuItem.tokens.colorDisabledText
+                   : menuItem.accented ? menuItem.tokens.colorTextOnAccent : menuItem.tokens.colorText
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
         }
@@ -138,7 +142,7 @@ Item {
                 text: menuItem.text
                 font: menuItem.font
                 color: !menuItem.enabled ? menuItem.tokens.colorDisabledText
-                      : menuItem.highlighted ? menuItem.tokens.colorTextOnAccent
+                      : menuItem.accented ? menuItem.tokens.colorTextOnAccent
                                              : menuItem.tokens.colorText
                 verticalAlignment: Text.AlignVCenter
                 elide: Text.ElideRight
@@ -146,7 +150,7 @@ Item {
         }
         background: Rectangle {
             color: !menuItem.enabled ? menuItem.tokens.colorDisabledSurface
-                  : menuItem.down || menuItem.highlighted ? menuItem.tokens.colorAccent
+                  : menuItem.accented ? menuItem.tokens.colorAccent
                   : menuItem.hovered ? menuItem.tokens.colorSurfaceRaised : menuItem.tokens.colorSurface
             border.width: menuItem.activeFocus ? menuItem.tokens.focusRingWidth : 0
             border.color: menuItem.tokens.colorFocusRing

@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from typing import cast
 
 import pytest
 from PySide6.QtCore import QUrl
@@ -15,8 +16,14 @@ from coat_sim.project_package import export_project
 from coat_sim.ui.project_resource_adapter import ProjectResourceTransferController
 from tests.test_input_snapshot import fixture
 from tests.test_project_resource_adapter import project as project
+from tests.test_launcher_information_global_resources import global_root as global_root
 
 pytestmark = [pytest.mark.contract, pytest.mark.qt]
+
+
+@pytest.fixture(autouse=True)
+def isolated_catalog(global_root):
+    """Never browse real application materials during transfer tests."""
 
 
 def wait_transfer(controller):
@@ -30,8 +37,8 @@ def wait_transfer(controller):
 @pytest.mark.parametrize("container", ["coatproj", "cproject"])
 def test_selective_import_cancel_and_apply_preserve_active_dirty_draft(project, tmp_path, container):
     _app, stores, _host, _film, resources, view = project
-    _window, controller = view("source")
-    controller.bridge.setMetadata("description", "active unsaved source")
+    _window, controller = view("process")
+    controller.bridge.setMetadata("description", "active unsaved process")
     draft = deepcopy(controller.document_data())
     assert controller.dirty and not controller.currentDocumentId
 
@@ -57,7 +64,7 @@ def test_selective_import_cancel_and_apply_preserve_active_dirty_draft(project, 
     assert controller.inspectTransferSource(QUrl.fromLocalFile(str(donor_path)).toString())
     wait_transfer(controller)
     rows = controller.transferCatalog["rows"]
-    assert {row["kind"] for row in rows} >= {"process", "machine", "source", "substrate", "mask"}
+    assert {row["kind"] for row in rows} == {"process"}
     assert controller.previewTransfer([process_id], "project")
     wait_transfer(controller)
     assert controller.transferPlan["dependency_ids"]
@@ -277,3 +284,76 @@ def test_transfer_terminal_signal_matches_request_and_never_delivers_stale_read(
         release.set()
         controller.cancelTransfer()
         controller.deleteLater()
+
+
+@pytest.mark.parametrize("module", ["source", "substrate", "machine", "mask", "process"])
+@pytest.mark.parametrize("container", ["coatproj", "cproject"])
+def test_actual_designer_qml_and_backend_reject_other_root_types(project, tmp_path, module, container):
+    from PySide6.QtQml import QQmlEngine
+    from tests.test_scoped_resource_libraries import qml
+    from PySide6.QtQuick import QQuickItem
+    _app, stores, _host, _film, _resources, view = project
+    window, controller = view(module)
+    fixture(tmp_path / "inputs")
+    donor = ProjectStore.create(tmp_path / "typed-donor", "Typed donor")
+    donor.import_document(tmp_path / "inputs/recipe.cproc")
+    path = donor.project_file
+    if container == "cproject":
+        path = tmp_path / "typed.cproject"
+        export_project(donor, path)
+    before = deepcopy(stores["First"].manifest)
+    assert controller.beginTransfer("import")
+    wait_transfer(controller)
+    assert controller.inspectTransferSource(str(path))
+    wait_transfer(controller)
+    assert controller.transferKinds == [module]
+    assert controller.transferCatalog["categories"] == [module]
+    assert {row["kind"] for row in controller.transferCatalog["rows"]} == {module}
+    controls = window.findChild(QQuickItem, "projectResourceControls")
+    engine = QQmlEngine.contextForObject(controls).engine()
+    assert qml(engine, controls, "visibleTransferCategories(['source','process','mask','machine','substrate'])") == [module]
+    assert qml(engine, controls, "rowsForCategory([{id:'a',kind:'source'},{id:'b',kind:'process'}], '').map(row => row.kind)") == ([module] if module in {"source", "process"} else [])
+    wrong = next(row["id"] for row in donor.manifest["documents"] if row["kind"] != module)
+    assert not controller.previewTransfer([wrong], "project")
+    assert "类型" in controller.transferStatus
+    assert not controller.applyTransfer({})
+    assert stores["First"].manifest == before
+    own = controller.transferCatalog["rows"][0]["id"]
+    assert controller.previewTransfer([own], "project")
+    wait_transfer(controller)
+    assert controller.transferPlan["selected_ids"] == [own]
+    controller.cancelTransfer()
+
+
+@pytest.mark.parametrize("module,expected", [("materials", ["material_profile", "optical_material"]),
+    ("film", ["film"]), ("deposition_configuration", ["deposition_configuration"]),
+    ("raytrace_request", ["raytrace_request"]), ("appearance_configuration", ["appearance_configuration"])])
+def test_simulation_and_material_scope_rejects_forged_selection(module, expected):
+    controller = ProjectResourceTransferController()
+    controller.module_key = module
+    controller._transfer_active = True
+    controller._transfer_mode = "import"
+    controller._transfer_catalog = {"catalog_id": "synthetic", "rows": [{"id": "wrong", "kind": "source"}]}
+    assert controller.transferKinds == expected
+    assert not controller.previewTransfer(["wrong"], "project")
+    assert "类型" in str(controller.transferStatus)
+    assert not controller.transferPlan
+    controller._transfer_catalog = {}
+    controller.deleteLater()
+
+
+@pytest.mark.parametrize("mode", ["import", "export"])
+def test_wrong_type_rejected_before_any_preview_worker_for_both_directions(mode):
+    controller = ProjectResourceTransferController()
+    controller.module_key = "source"
+    controller._transfer_mode = mode
+    controller._transfer_active = True
+    controller._transfer_catalog = {"catalog_id": "synthetic", "rows": [{"id": "wrong", "kind": "mask"}]}
+    assert not controller.previewTransfer(["wrong"], "project" if mode == "import" else "global")
+    assert not controller.transferBusy and not controller._transfer_tasks and not controller.transferPlan
+    assert "类型" in str(controller.transferStatus)
+    controller._transfer_catalog = {}
+    controller.module_key = "materials"
+    file_filters = cast(list[str], controller.transferFileFilters)
+    assert "*.cmat" in file_filters[0] and "*.cmatl" in file_filters[0]
+    controller.deleteLater()

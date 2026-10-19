@@ -1,4 +1,5 @@
 """Persisted offline send/error/reopen sequences through the real chat bridge."""
+import time
 from pathlib import Path
 
 import pytest
@@ -20,11 +21,26 @@ ERROR = "stale_project_binding: 工程已切换、关闭或者不可核验；请
 
 
 def settle_history(bridge):
-    for _ in range(100):
+    # Real completion fence: the queued persist/read tasks and the Qt-side
+    # projection must all finish, not just a fixed number of qWait cycles.
+    queued = bridge._storage_pool.submit(lambda: None)
+    deadline = time.monotonic() + 10.0
+    while True:
         QTest.qWait(20)
-        if not bridge.historyLoading and not bridge.historyProjectionPending:
+        if (
+            queued.done()
+            and not bridge.historyLoading
+            and not bridge.historyProjectionPending
+        ):
             return
-    raise AssertionError("Offline history reload did not settle")
+        if time.monotonic() >= deadline:
+            raise AssertionError(
+                "Offline history reload did not settle: "
+                f"queue_done={queued.done()} "
+                f"historyLoading={bridge.historyLoading} "
+                f"historyProjectionPending={bridge.historyProjectionPending} "
+                f"historyError={bridge.historyError!r}"
+            )
 
 
 def assert_painted(window, expected):

@@ -92,6 +92,16 @@ AppWindow {
         Accessible.ignored: true
     }
 
+    // Owns guarded dynamic draft commit for editors whose concrete type is not
+    // known at compile time. The parameter is intentionally untyped (var) so the
+    // method lookup stays dynamic instead of assumed on every QQuickItem.
+    function commitEditorDraft(editor) {
+        if (typeof editor.commitDraft === "function")
+            editor.commitDraft()
+        else if (typeof editor.editingFinished === "function")
+            editor.editingFinished()
+    }
+
     function commitActiveEditor() {
         let editor = window.activeFocusItem
         let fallbackEditor = editor
@@ -111,11 +121,7 @@ AppWindow {
         if (editor && editor !== shortcutFocusSink) {
             // Explicitly submit ThemeField drafts before moving focus. Qt may
             // suppress editingFinished for an empty/invalid validator buffer.
-            if (editor.numericValueEdited !== undefined
-                    || editor.commitDraft !== undefined)
-                editor.commitDraft()
-            else if (typeof editor.editingFinished === "function")
-                editor.editingFinished()
+            window.commitEditorDraft(editor)
             editor.focus = false
         }
         shortcutFocusSink.forceActiveFocus()
@@ -129,6 +135,16 @@ AppWindow {
     function startFromButton() {
         commitActiveEditor()
         Qt.callLater(function() { window.controller.startOptimization() })
+    }
+
+    Shortcut {
+        objectName: "filmOptimizationSimulationShortcut"
+        sequence: "F5"
+        context: Qt.WindowShortcut
+        onActivated: {
+            window.commitActiveEditor()
+            Qt.callLater(function() { window.controller.openSimulationAndCalculate() })
+        }
     }
 
     Shortcut {
@@ -408,7 +424,7 @@ AppWindow {
                             }
                             Label {
                                 Layout.fillWidth: true
-                                text: "点数与步长自动换算，波段两端都包含。采样密度不保证光学精度；角度列表逐项检查，不代表连续角度保证。"
+                                text: "点数与采样精度自动换算，范围两端都包含。精度表示采样间距，不保证光学计算精度或连续角度性能。"
                                 color: window.themeTokens.colorTextMuted
                                 wrapMode: Text.WordWrap
                                 font.pointSize: window.themeTokens.fontSizeSmall
@@ -502,7 +518,7 @@ AppWindow {
                                             }
                                             onEditingFinished: commitDraft()
                                         }
-                                        Label { text: "采样步长 (nm)"; color: window.themeTokens.colorText }
+                                        Label { text: "采样精度 (nm)"; color: window.themeTokens.colorText }
                                         ThemeControls.ThemeField {
                                             objectName: "filmOptimizationWavelengthStepField"
                                             Layout.fillWidth: true
@@ -529,24 +545,14 @@ AppWindow {
                                             wrapMode: Text.WordWrap
                                             font.pointSize: window.themeTokens.fontSizeSmall
                                         }
-                                        Label { text: "角度采样"; color: window.themeTokens.colorText }
-                                        ThemeControls.ThemeComboBox {
-                                            objectName: "filmOptimizationAngleSamplingModeBox"
-                                            Layout.fillWidth: true
-                                            model: ["范围 + 步长", "旧点列"]
-                                            currentIndex: window.controller.selectedObjective.angle_sampling_mode === "points" ? 1 : 0
-                                            onActivated: window.controller.setObjectiveField(
-                                                "angle_sampling_mode", currentIndex === 1 ? "points" : "range")
-                                        }
                                         Label {
-                                            visible: window.controller.selectedObjective.angle_sampling_mode !== "points"
                                             text: "角度范围 (°)"; color: window.themeTokens.colorText
                                         }
                                         RowLayout {
-                                            visible: window.controller.selectedObjective.angle_sampling_mode !== "points"
                                             Layout.fillWidth: true
                                             spacing: window.themeTokens.spaceXs
                                             ThemeControls.ThemeField {
+                                                id: objectiveAngleMinField
                                                 objectName: "filmOptimizationAngleMinField"
                                                 Layout.fillWidth: true
                                                 numericDisplayValue: window.controller.selectedObjective.angle_min_deg ?? 0
@@ -560,6 +566,7 @@ AppWindow {
                                             }
                                             Label { text: "-"; color: window.themeTokens.colorTextMuted }
                                             ThemeControls.ThemeField {
+                                                id: objectiveAngleMaxField
                                                 objectName: "filmOptimizationAngleMaxField"
                                                 Layout.fillWidth: true
                                                 numericDisplayValue: window.controller.selectedObjective.angle_max_deg ?? 0
@@ -573,12 +580,11 @@ AppWindow {
                                             }
                                         }
                                         Label {
-                                            visible: window.controller.selectedObjective.angle_sampling_mode !== "points"
-                                            text: "步长 (°)"; color: window.themeTokens.colorText
+                                            text: "精度 (°)"; color: window.themeTokens.colorText
                                         }
                                         ThemeControls.ThemeField {
+                                            id: objectiveAngleStepField
                                             objectName: "filmOptimizationAngleStepField"
-                                            visible: window.controller.selectedObjective.angle_sampling_mode !== "points"
                                             Layout.fillWidth: true
                                             numericDisplayValue: window.controller.selectedObjective.angle_step_deg ?? 1
                                             validator: DoubleValidator {
@@ -594,7 +600,6 @@ AppWindow {
                                         }
                                         Label {
                                             objectName: "filmOptimizationAngleSamplingSummary"
-                                            visible: window.controller.selectedObjective.angle_sampling_mode !== "points"
                                             Layout.columnSpan: 2
                                             Layout.fillWidth: true
                                             text: window.controller.angleSamplingSummary
@@ -603,19 +608,26 @@ AppWindow {
                                             font.pointSize: window.themeTokens.fontSizeSmall
                                         }
                                         Label {
-                                            visible: window.controller.selectedObjective.angle_sampling_mode === "points"
-                                            text: "入射角列 (°)"; color: window.themeTokens.colorText
-                                        }
-                                        ThemeControls.ThemeField {
-                                            objectName: "filmOptimizationAnglesField"
-                                            visible: window.controller.selectedObjective.angle_sampling_mode === "points"
+                                            objectName: "filmOptimizationAngleRangeWarning"
+                                            Layout.columnSpan: 2
                                             Layout.fillWidth: true
-                                            text: String(window.controller.selectedObjective.angles_text ?? "")
-                                            placeholderText: "例如 0, 30, 45"
-                                            function commitDraft() {
-                                                window.controller.setObjectiveField("angles_text", text)
-                                            }
-                                            onEditingFinished: commitDraft()
+                                            visible: window.controller.selectedObjective.angle_sampling_mode === "points"
+                                            text: "此目标保存了显式角度配置："
+                                                  + String(window.controller.selectedObjective.angles_text || "")
+                                                  + "。原角度尚未改变；请确认当前范围与精度后再开始优化。非均匀角度不能自动替换为均匀范围。"
+                                            wrapMode: Text.WordWrap
+                                            color: window.themeTokens.colorWarning
+                                        }
+                                        ThemeControls.ThemeButton {
+                                            objectName: "filmOptimizationConfirmAngleRangeButton"
+                                            Layout.columnSpan: 2
+                                            Layout.fillWidth: true
+                                            visible: window.controller.selectedObjective.angle_sampling_mode === "points"
+                                            text: "确认使用当前角度范围与精度"
+                                            onClicked: window.controller.confirmObjectiveAngleRange(
+                                                objectiveAngleMinField.text,
+                                                objectiveAngleMaxField.text,
+                                                objectiveAngleStepField.text)
                                         }
                                         Label { text: "偏振"; color: window.themeTokens.colorText }
                                         ThemeControls.ThemeComboBox {
@@ -633,67 +645,40 @@ AppWindow {
                                             currentIndex: Math.max(0, model.indexOf(window.controller.selectedObjective.metric))
                                             onActivated: window.controller.setObjectiveField("metric", currentText)
                                         }
-                                        Label { text: "目标类型"; color: window.themeTokens.colorText }
-                                        ThemeControls.ThemeComboBox {
-                                            objectName: "filmOptimizationModeBox"
+                                        Label { text: "目标范围 (%)"; color: window.themeTokens.colorText }
+                                        RowLayout {
+                                            objectName: "filmOptimizationTargetBoundsRow"
                                             Layout.fillWidth: true
-                                            model: ["单值", "上下限"]
-                                            currentIndex: window.controller.selectedObjective.mode === "range" ? 1 : 0
-                                            onActivated: window.controller.setObjectiveField("mode", currentIndex === 0 ? "value" : "range")
-                                        }
-                                        Label {
-                                            visible: window.controller.selectedObjective.mode === "value"
-                                            text: "目标值 (%)"
-                                            color: window.themeTokens.colorText
-                                        }
-                                        ThemeControls.ThemeField {
-                                            objectName: "filmOptimizationTargetValueField"
-                                            visible: window.controller.selectedObjective.mode === "value"
-                                            Layout.fillWidth: true
-                                            numericDisplayValue: window.controller.selectedObjective.target_value_percent ?? ""
-                                            validator: DoubleValidator { bottom: 0; top: 100; decimals: 5 }
-                                            function commitDraft() {
-                                                if (!numericValueEdited) return
-                                                window.controller.setObjectiveField("target_value_percent", numericEditText)
-                                                numericValueEdited = false
+                                            spacing: window.themeTokens.spaceXs
+                                            ThemeControls.ThemeField {
+                                                accessibleLabel: "目标下限（%）"
+                                                objectName: "filmOptimizationLowerBoundField"
+                                                Layout.fillWidth: true
+                                                Layout.minimumWidth: 64
+                                                numericDisplayValue: window.controller.selectedObjective.lower_bound_percent ?? ""
+                                                validator: DoubleValidator { bottom: 0; top: 100; decimals: 5 }
+                                                function commitDraft() {
+                                                    if (!numericValueEdited) return
+                                                    window.controller.setObjectiveField("lower_bound_percent", numericEditText)
+                                                    numericValueEdited = false
+                                                }
+                                                onEditingFinished: commitDraft()
                                             }
-                                            onEditingFinished: commitDraft()
-                                        }
-                                        Label {
-                                            visible: window.controller.selectedObjective.mode === "range"
-                                            text: "下限 (%)"
-                                            color: window.themeTokens.colorText
-                                        }
-                                        ThemeControls.ThemeField {
-                                            objectName: "filmOptimizationLowerBoundField"
-                                            visible: window.controller.selectedObjective.mode === "range"
-                                            Layout.fillWidth: true
-                                            numericDisplayValue: window.controller.selectedObjective.lower_bound_percent ?? ""
-                                            validator: DoubleValidator { bottom: 0; top: 100; decimals: 5 }
-                                            function commitDraft() {
-                                                if (!numericValueEdited) return
-                                                window.controller.setObjectiveField("lower_bound_percent", numericEditText)
-                                                numericValueEdited = false
+                                            Label { text: "–"; color: window.themeTokens.colorTextMuted }
+                                            ThemeControls.ThemeField {
+                                                accessibleLabel: "目标上限（%）"
+                                                objectName: "filmOptimizationUpperBoundField"
+                                                Layout.fillWidth: true
+                                                Layout.minimumWidth: 64
+                                                numericDisplayValue: window.controller.selectedObjective.upper_bound_percent ?? ""
+                                                validator: DoubleValidator { bottom: 0; top: 100; decimals: 5 }
+                                                function commitDraft() {
+                                                    if (!numericValueEdited) return
+                                                    window.controller.setObjectiveField("upper_bound_percent", numericEditText)
+                                                    numericValueEdited = false
+                                                }
+                                                onEditingFinished: commitDraft()
                                             }
-                                            onEditingFinished: commitDraft()
-                                        }
-                                        Label {
-                                            visible: window.controller.selectedObjective.mode === "range"
-                                            text: "上限 (%)"
-                                            color: window.themeTokens.colorText
-                                        }
-                                        ThemeControls.ThemeField {
-                                            objectName: "filmOptimizationUpperBoundField"
-                                            visible: window.controller.selectedObjective.mode === "range"
-                                            Layout.fillWidth: true
-                                            numericDisplayValue: window.controller.selectedObjective.upper_bound_percent ?? ""
-                                            validator: DoubleValidator { bottom: 0; top: 100; decimals: 5 }
-                                            function commitDraft() {
-                                                if (!numericValueEdited) return
-                                                window.controller.setObjectiveField("upper_bound_percent", numericEditText)
-                                                numericValueEdited = false
-                                            }
-                                            onEditingFinished: commitDraft()
                                         }
                                         Label { text: "目标权重"; color: window.themeTokens.colorText }
                                         ThemeControls.ThemeField {

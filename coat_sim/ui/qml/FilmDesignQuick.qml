@@ -93,10 +93,32 @@ AppWindow {
     function commitExpressionDraft(normalize) {
         return expressionPanel.commitDraft(normalize)
     }
+    property string shortcutInputError: ""
     function runDesignShortcut(callback) {
+        shortcutInputError = ""
+        // Commit even intermediate/invalid buffers: native focus loss can
+        // suppress editingFinished when the input is not acceptable.
+        let editor = window.activeFocusItem
+        while (editor && editor !== window && typeof editor.editingFinished !== "function")
+            editor = editor.parent
+        if (editor && (editor.objectName.indexOf("filmLayerNm_") === 0
+                       || editor.objectName.indexOf("filmLayerQw_") === 0)
+                && editor.edited
+                && (editor.text.trim().length === 0 || !isFinite(Number(editor.text))
+                    || Number(editor.text) < 0)) {
+            shortcutInputError = "当前膜厚输入未完成或无效；请填写非负有限数值后重试。"
+            errorDialog.open()
+            return
+        }
+        if (editor && typeof editor.editingFinished === "function")
+            editor.editingFinished()
         pageTabs.forceActiveFocus()
         Qt.callLater(function() {
+            // Do not let expression normalization clear an unrelated input
+            // error and accidentally launch using the previous valid value.
+            if (window.controller.error.length > 0) return
             if (!window.commitExpressionDraft(true)) return
+            if (window.controller.error.length > 0) return
             callback()
         })
     }
@@ -378,19 +400,20 @@ AppWindow {
     }
     ThemeControls.ThemeDialogBase {
         id: errorDialog
+        objectName: "filmDesignErrorDialog"
         title: "膜系设计错误"
         modal: true
         anchors.centerIn: parent
         width: Math.min(600, window.width - Theme.snapshot.spaceXl * 2)
         standardButtons: Dialog.Ok
         contentItem: Label {
-            text: window.controller.uiState.error
+            text: window.shortcutInputError || window.controller.uiState.error
             color: Theme.snapshot.colorError
             wrapMode: Text.WordWrap
             padding: Theme.snapshot.spaceMd
         }
-        onAccepted: window.controller.clearError()
-        onRejected: window.controller.clearError()
+        onAccepted: { window.shortcutInputError = ""; window.controller.clearError() }
+        onRejected: { window.shortcutInputError = ""; window.controller.clearError() }
     }
 
     ThemeControls.ThemeDialogBase {
@@ -744,6 +767,12 @@ AppWindow {
                     text: "厚度优化"
                     Accessible.name: "打开膜系厚度优化窗口"
                     onClicked: if (window.commitExpressionDraft(true)) window.controller.openOptimization()
+                }
+                ThemeControls.ThemeButton {
+                    objectName: "filmUndoOptimizationButton"
+                    text: "撤销优化应用"
+                    visible: window.controller.canUndoOptimizedDesign
+                    onClicked: window.controller.undoOptimizedDesign()
                 }
                 ThemeControls.ThemeButton {
                     id: noteButton

@@ -21,6 +21,7 @@ RowLayout {
     property string transferFileTarget: ""
     property string transferFileKind: ""
     property string categoryFilter: ""
+    readonly property var targetKinds: projectResources ? listValues(projectResources.transferKinds) : []
     property var selectedTransferIds: []
     property var pendingDecisions: ({})
     property string activeReplacementRequestId: ""
@@ -130,6 +131,8 @@ RowLayout {
         const values = listValues(rows)
         const result = []
         for (const row of values) {
+            if (targetKinds.length && targetKinds.indexOf(String(row.kind || "")) < 0)
+                continue
             if (String(row.kind || "") === "binary_asset")
                 continue
             if (!kind) {
@@ -145,7 +148,7 @@ RowLayout {
     function visibleTransferCategories(values) {
         const result = []
         for (const value of listValues(values)) {
-            if (String(value) !== "binary_asset")
+            if (String(value) !== "binary_asset" && (!targetKinds.length || targetKinds.indexOf(String(value)) >= 0))
                 result.push(String(value))
         }
         return result
@@ -629,7 +632,7 @@ RowLayout {
         id: importPackageDialog
         title: "选择资源文件或工程包"
         fileMode: FileDialog.OpenFile
-        nameFilters: ["工程与资源文件 (*.coatproj *.cproject *.csrc *.csub *.cmsk *.cmac *.cproc *.cfilm *.cmat *.cmatl *.cray *.cappearance *.casset *.json)", "所有文件 (*)"]
+        nameFilters: controls.projectResources ? controls.projectResources.transferFileFilters : []
         onAccepted: controls.inspectSource(selectedFile.toString())
     }
 
@@ -793,15 +796,17 @@ RowLayout {
                     model: {
                         const values = controls.projectResources && controls.projectResources.transferCatalog
                                     ? controls.projectResources.transferCatalog.categories || [] : []
-                        return ["", ...controls.visibleTransferCategories(values)]
+                        return controls.targetKinds.length ? controls.visibleTransferCategories(values) : ["", ...controls.visibleTransferCategories(values)]
                     }
-                    displayText: categoryPicker.currentIndex <= 0
+                    displayText: !controls.targetKinds.length && categoryPicker.currentIndex <= 0
                                  ? "全部类别" : controls.categoryName(categoryPicker.currentText)
                     Accessible.name: "工程资源类别筛选"
                     enabled: !controls.transferBusy
                     onActivated: index => {
-                        controls.categoryFilter = index <= 0
+                        controls.categoryFilter = !controls.targetKinds.length && index <= 0
                                 ? "" : String(categoryPicker.model[index])
+                        controls.selectedTransferIds = []
+                        controls.invalidatePreview()
                     }
                 }
                 Item { Layout.fillWidth: true }

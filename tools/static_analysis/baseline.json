@@ -519,16 +519,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/theme_controls/ThemeMaterialPicker.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": ": option.highlighted ? control.themeTokens.colorTextOnAccent",
-      "fingerprint": "0203d15db1a570caac9e199ae87bced70717c5aa7c08046fb8ff5cc336fe2d09",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "coat_sim/agent/runtime.py",
       "code": "union-attr",
@@ -2819,16 +2809,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "+ \" · Omax \" + window.knownKTokenText(limits.max_output_tokens)",
-      "fingerprint": "0c10315dfd5e446597ac0db53a8fdb2bcbdf41840682480fcaeea8198184e2b6",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "tests/test_film_automatic_substrate.py",
       "code": "E702",
@@ -3326,16 +3306,6 @@
       "scope": "_exercise_page",
       "anchor": "_assert(service.submitted == [(\"qa-decision-1\", 0, \"\")],",
       "fingerprint": "0e81a214d93624736d91229d7d5cbf2f3639470d74e3e05e0654c09b3aaa1736",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/theme_controls/ThemeMaterialPicker.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "font.pointSize: control.themeTokens.fontSizeBody",
-      "fingerprint": "0e89f9f8ad7b955bf26f14c0ab21cf4ea22b797e9a73bd2c215e3e677cf962ee",
       "count": 1
     },
     {
@@ -4007,16 +3977,6 @@
       "anchor": "? Qt.rgba(Theme.snapshot.colorAccentPressed.r,",
       "fingerprint": "11ca0741e251ba6e603122e365582a44cc0cfc6833dd27dd2663c61428991371",
       "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "onValueModified: window.saveContextProfile()",
-      "fingerprint": "11d2f29b7423c429f86b13ef0386e73966207b76c3eb39836722526aeac7e183",
-      "count": 5
     },
     {
       "tool": "qmllint",
@@ -5399,16 +5359,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmOptimizationWindow.qml",
-      "code": "missing-property",
-      "message": "Member \"commitDraft\" not found on type \"QQuickItem\"",
-      "scope": "",
-      "anchor": "|| editor.commitDraft !== undefined)",
-      "fingerprint": "16a8ba1ef37100ba58158789299aeac9fbd818ea24e93d19d7da3eb32cc130a2",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "tests/test_appearance_compute_entrypoints.py",
       "code": "F401",
@@ -5549,16 +5499,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "columns: availableContentWidth >= window.numericLabelWidth",
-      "fingerprint": "170d0beb7afdfca7efd377857d9038df544142b946703f9a90cb5aa49bfc4337",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "coat_sim/ui/settings.py",
       "code": "arg-type",
@@ -5676,16 +5616,6 @@
       "scope": "test_popup_header_render_and_keyboard",
       "anchor": "round(float(window.height()) * float(window.devicePixelRatio())),",
       "fingerprint": "1774818f9c07813bc7ba3354f4588dd128e001f41cb54923f7e1104272cf9b24",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/theme_controls/ThemeMaterialPicker.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "height: control.rowHeight",
-      "fingerprint": "17799f44962a356c902ebc9f1249c6f771715c9596846b225887053333cf9b1b",
       "count": 1
     },
     {
@@ -6809,16 +6739,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/theme_controls/ThemeMaterialPicker.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "font.family: control.themeTokens.fontFamily",
-      "fingerprint": "1c372bfbdb43c7689f0b308dc772ef82bc8c4538c16e621721215da17da56230",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "coat_sim/agent/modelclient.py",
       "code": "operator",
@@ -7126,16 +7046,6 @@
       "scope": "MaterialOpticalEditorTests.test_qml_editable_tables_keyboard_paste_cancel_save_and_reload",
       "anchor": "for key in (Qt.Key_1, Qt.Key_Period, Qt.Key_6, Qt.Key_6):",
       "fingerprint": "1d384ec494b849f0d95e8ae5109059b789eeb735d2c415325228f2b5f53c4111",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "onClicked: themePackageDialog.open()",
-      "fingerprint": "1d39993bc46a48848ec40e15e44f753e1e1981bb8b4f96de8b8e1713494e2f0b",
       "count": 1
     },
     {
@@ -9249,16 +9159,6 @@
       "count": 2
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/theme_controls/ThemeMaterialPicker.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "? control.themeTokens.colorSurfaceRaised : control.themeTokens.colorSurface",
-      "fingerprint": "25256ad991e8a59a16c92a6350228bf6fe7e58f81af7e757bdcda34fed469b14",
-      "count": 2
-    },
-    {
       "tool": "mypy",
       "path": "coat_sim/ui/settings.py",
       "code": "arg-type",
@@ -9696,16 +9596,6 @@
       "scope": "",
       "anchor": "from contextlib import contextmanager",
       "fingerprint": "269c7d6db2a961180abdeb94f3d04a6d6af497a4707d3a9b2a05cee119d5ce56",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmOptimizationWindow.qml",
-      "code": "missing-property",
-      "message": "Member \"commitDraft\" not found on type \"QQuickItem\"",
-      "scope": "",
-      "anchor": "editor.commitDraft()",
-      "fingerprint": "269e149bd08f08df6f7fc6d5d51632277dc3d72fe9edef27191172fed2d88a7c",
       "count": 1
     },
     {
@@ -10170,16 +10060,6 @@
     },
     {
       "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "+ \" · R \" + window.knownKTokenText(defaults.compression_reserve_tokens)",
-      "fingerprint": "286014638d611ec1ccbf069a8ba031cd41ab510940fb8d3bb4d09ba5b8a8817f",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
       "path": "coat_sim/ui/qml/AssistantDecisionWindow.qml",
       "code": "unqualified",
       "message": "Unqualified access",
@@ -10556,16 +10436,6 @@
       "scope": "",
       "anchor": "if (bridge.dirty) {",
       "fingerprint": "29d2889cf249b69f6a329cb7e874680fc21da865c20e5af506034f6ee063828b",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/theme_controls/ThemeMaterialPicker.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "visible: field.activeFocus",
-      "fingerprint": "29d4326040d808ff88084bf68e4690c6a903d9c79e7d36fb2341a8b144ed2ae3",
       "count": 1
     },
     {
@@ -12827,16 +12697,6 @@
       "anchor": "QTest.keyClick(root, Qt.Key_F6)",
       "fingerprint": "32a9562635cb2b066f3ea1f3e5bda5b264b838c8b37d8d12f0b38f2afaba6f18",
       "count": 3
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/theme_controls/ThemeMaterialPicker.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "onClicked: control.selectFilteredIndex(index)",
-      "fingerprint": "32b160e905cba412ceb7f65a432117b90bccaefd2403503dc5dc581867be7f91",
-      "count": 1
     },
     {
       "tool": "mypy",
@@ -15239,16 +15099,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "+ \" · O \" + window.knownKTokenText(defaults.reserved_output_tokens)",
-      "fingerprint": "3c293c98d94c2ca58882f8d574fb93f04b9dbcf4e5c3dde987130b8cfd045434",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "coat_sim/ui/source_substrate.py",
       "code": "attr-defined",
@@ -16819,16 +16669,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "&& assistantUrlField.text.trim() === bridge.assistantApiUrl",
-      "fingerprint": "435eb74eed15663e3894da8dabb23d961eecbd497afbabe34be707ea286e0443",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "coat_sim/core/api.py",
       "code": "arg-type",
@@ -17669,16 +17509,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/theme_controls/ThemeMaterialPicker.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": ": control.themeTokens.colorText",
-      "fingerprint": "46c7466768e93fcbc333304ea9b625c70ba9f04beecb21e7128dee77f9769126",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "coat_sim/agent/processes.py",
       "code": "attr-defined",
@@ -17979,16 +17809,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "width: providerPresetCombo.width",
-      "fingerprint": "483fae921a734923c2ae7535f9094ec756cf4680549a9c38cf77771843817b8c",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "coat_sim/core/api.py",
       "code": "assignment",
@@ -18077,16 +17897,6 @@
       "anchor": "checked: modelData.mask_slots === undefined ? bridge.maskCount > 0 : modelData.mask_slots.indexOf(0) >= 0",
       "fingerprint": "48cfd1640e8393e6b1e078121085cf4f01723412ea67bfbf23c5584227b589ab",
       "count": 3
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "anchors.topMargin: window.contentTopMargin",
-      "fingerprint": "48d0b6d54b4592459dfc48b91ad031aebaa5d97b7dfb1613e0d8f87fb9e87390",
-      "count": 1
     },
     {
       "tool": "mypy",
@@ -18626,16 +18436,6 @@
       "scope": "BubbleTests.test_theme_field_selection_and_cursor_follow_light_and_dark_tokens",
       "anchor": "self.assertGreater(cursor.property(\"height\"), 0)",
       "fingerprint": "4a66df697d5dab48b59784d62244288081ba768ff54539442197e49099cc14d6",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "Layout.preferredWidth: window.numericLabelWidth",
-      "fingerprint": "4a8230e562d4d1df47c86053fc5494bc4ce092464ff6d540df51389a3ba98a5d",
       "count": 1
     },
     {
@@ -20539,16 +20339,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "text: (assistantUrlField.text.trim() !== bridge.assistantApiUrl",
-      "fingerprint": "525b2b20937e7cc605162ca8eadeb49d875e42d8e4752ede9a8e8401765dbcc5",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_source_refinements.py",
       "code": "index",
@@ -22169,16 +21959,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmOptimizationWindow.qml",
-      "code": "missing-property",
-      "message": "Member \"editingFinished\" not found on type \"QQuickItem\"",
-      "scope": "",
-      "anchor": "else if (typeof editor.editingFinished === \"function\")",
-      "fingerprint": "59996a6c2c2c4a8ed99662601dc6b8e231f31e74a1242dffaa0c2a7e7bf99882",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tools/verify_film_design_reference_library.py",
       "code": "arg-type",
@@ -22266,16 +22046,6 @@
       "scope": "FilmDesignGuiTests.test_both_faces_show_qw_and_nm_without_mutating_thickness",
       "anchor": "self.assertAlmostEqual(float(front.item(0,5).text()),1.4)",
       "fingerprint": "59e99e5996a075d845fbbcccbf0959c871d9ef06a4be6afa00e62ce290874adc",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/theme_controls/ThemeMaterialPicker.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "border.width: option.visualFocus ? control.themeTokens.focusRingWidth : 0",
-      "fingerprint": "59ec8e2e06f6a22016a64629c93ff4bef8a9289372689b119693ed10df2aa337",
       "count": 1
     },
     {
@@ -22526,16 +22296,6 @@
       "scope": "DocumentBridge.reloadCurrent",
       "anchor": "self._pending_reload = pending",
       "fingerprint": "5b2f8df84cdcc17646c549c9b2018a9e67869135531474da962bba5ccc8438ad",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "const b = window.kTokenText(budget.budget_tokens)",
-      "fingerprint": "5b35af1f69162e1d1bd3a518e4792f2ccf8905b650cadb1b888f85b1daf9fbe1",
       "count": 1
     },
     {
@@ -23609,16 +23369,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "return \"只读硬限：C \" + window.knownKTokenText(defaults.context_window_tokens)",
-      "fingerprint": "5f7890bed1846845c02c1d0c0fe6362b0097e6ba428b05cf95a0d8f69712f80d",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_film_workflow_document.py",
       "code": "union-attr",
@@ -24326,16 +24076,6 @@
       "scope": "SavedSourceProcessBridgeTests.test_source_selection_updates_only_the_selected_process_row",
       "anchor": "self.assertEqual(self.bridge.visibleSteps[1][\"rate_angstrom_s\"], 2.5)",
       "fingerprint": "628f92857275afcd10a63bbe43227d3852fbcab771e25a15d5b2835c0bc797b5",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "assistantModelField.text = modelData.id",
-      "fingerprint": "62a0c72cbca93ac944077f71aab6e1e00caabec33d991f51c7f273a5746e2720",
       "count": 1
     },
     {
@@ -27310,16 +27050,6 @@
     },
     {
       "tool": "qmllint",
-      "path": "coat_sim/ui/qml/theme_controls/ThemeMaterialPicker.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "objectName: control.optionObjectNamePrefix",
-      "fingerprint": "6df9b649fe07234d4e654800d87dae4e9f1b8a1c3375a47ebaf8ee9a32051f00",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
       "path": "coat_sim/ui/qml/SettingsWindow.qml",
       "code": "unqualified",
       "message": "Unqualified access",
@@ -29326,16 +29056,6 @@
       "scope": "test_gpu_policy_is_reported_as_cpu_callable_fallback",
       "anchor": "assert \"vectorized backend\" in batch.fallback_reason",
       "fingerprint": "75e354fdb0819af61bea0241b7ad40d7d632aeefb6dd8201da98948269a2c468",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/theme_controls/ThemeMaterialPicker.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "onHoveredChanged: if (hovered) control.highlightedIndex = index",
-      "fingerprint": "75e53c1e01744a87e12e0702eff665b1b120bdd080921ca1dfe66fa9cf4f2cc9",
       "count": 1
     },
     {
@@ -31489,16 +31209,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "+ \"；当前有效 I：\" + window.knownKTokenText(limits.max_input_tokens) + \"。\"",
-      "fingerprint": "7f313cc99a56933a9fb2799cb422261ea0b5ba90d2c4adae7a7b290dfefa2d3c",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_assistant_bubble.py",
       "code": "attr-defined",
@@ -31866,16 +31576,6 @@
       "scope": "",
       "anchor": "color: Theme.snapshot.colorWarning",
       "fingerprint": "80a8f0b7569360342808b6221e0ab25ec9e70fed3dfbe89f15ee70ad3aed21e7",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "+ \" · I \" + window.knownKTokenText(limits.provider_max_input_tokens)",
-      "fingerprint": "80ae3e8eb535a901d988de9356b1bf04125f5cbff023869cfd7939be5840ff50",
       "count": 1
     },
     {
@@ -32316,16 +32016,6 @@
       "scope": "",
       "anchor": "radius: Theme.snapshot.radiusSm",
       "fingerprint": "827fdabd8c9da22ee3f215f15f3355a7f73682be0d00fb8956a811248642c0e1",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "palette: window.palette",
-      "fingerprint": "8289653f0f5ff42f759f8788b8edc2e8ace5edbdbfb0ee22bc37007493f4e6e9",
       "count": 1
     },
     {
@@ -34059,16 +33749,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "Layout.maximumWidth: window.numericControlWidth",
-      "fingerprint": "89b827b36a4261c0690b4ae9bb941976489183aad401bd1fb1697d9261fbf1c3",
-      "count": 2
-    },
-    {
       "tool": "mypy",
       "path": "legacy/process_designer.py",
       "code": "arg-type",
@@ -34507,16 +34187,6 @@
       "anchor": "self.settings_summary = QLabel(); self.settings_summary.setObjectName(\"simulation_settings_summary\"); self.settings_summary.setWordWrap(True)",
       "fingerprint": "8b3685aa17c95b6c09ec63ef3cfb2b1867880155e145c0abb3607921bd27a966",
       "count": 2
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "Layout.maximumWidth: window.numericLabelWidth",
-      "fingerprint": "8b383898e84ce7908e56507dbc3501902e44dccb2899d50764c6b70f8aacba7d",
-      "count": 1
     },
     {
       "tool": "mypy",
@@ -36896,16 +36566,6 @@
       "scope": "RichRenderService.plain_document",
       "anchor": "document.update_plain(str(text))",
       "fingerprint": "94c74ae2d9a6a64050c84dff8ddbb7092fd70a81b5f8cd98579d3378a7274d3c",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "+ window.knownKTokenText(limits.legacy_max_input_tokens)",
-      "fingerprint": "94d3856a5f5747b76393135fa08cfec4fa55da4955d0dbf2fa432e1fffaa2c3c",
       "count": 1
     },
     {
@@ -39730,16 +39390,6 @@
     },
     {
       "tool": "qmllint",
-      "path": "coat_sim/ui/qml/theme_controls/ThemeMaterialPicker.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "color: control.themeTokens.colorText",
-      "fingerprint": "a0d3ad521f65f93e398585d07f41041ff9cc272c0907987c8f1d7b08df6b56ce",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
       "path": "coat_sim/ui/qml/MachineWindow.qml",
       "code": "unqualified",
       "message": "Unqualified access",
@@ -39836,16 +39486,6 @@
       "scope": "_stitch",
       "anchor": "edges = []",
       "fingerprint": "a11c5365a0ec0ecf8c14d4c6808c5b38b9d202f944936b4f9ef9a86ad1f23da0",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "width: settingsAdvancedLoader.width",
-      "fingerprint": "a11e9e811cb89058d6396ccb626d675041acd9598cfb6c780ff80a16ca05a50d",
       "count": 1
     },
     {
@@ -39947,16 +39587,6 @@
       "anchor": "row = QHBoxLayout(); row.addWidget(self.reference); row.addWidget(QLabel(\"nm（qw参考波长）\")); row.addWidget(self.use_k)",
       "fingerprint": "a184725fd5681510ae5cd92b7cdb78bd6410253b9889f4542c0a632f8431febf",
       "count": 3
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "color: window.themeColors ? window.themeColors.colorTextMuted : window.palette.placeholderText",
-      "fingerprint": "a18d1ab77dca474871c3d67f895a8a81e99fa49f817ac77594190323e0a5a138",
-      "count": 9
     },
     {
       "tool": "qmllint",
@@ -40097,16 +39727,6 @@
       "anchor": "\"field_shape\": list(accumulated.shape),",
       "fingerprint": "a1ffbf6ba5ac894c8fc20f9e5b267ffbb87330021ff3b3c127a591527842bf90",
       "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "readonly property int pairWidth: window.numericLabelWidth + window.numericControlWidth + 10",
-      "fingerprint": "a2027cddc5d5eb5261d57750f95ffe83d51b6533dc14143d1da5d4b8a8e6e33c",
-      "count": 2
     },
     {
       "tool": "ruff",
@@ -41037,16 +40657,6 @@
       "anchor": "Label { text: \"膜层材料与数据集\"; color: Theme.snapshot.colorText; font.weight: Theme.snapshot.fontWeightEmphasis }",
       "fingerprint": "a5679570fc652d23d86ca166c5dcc7eb4e9f49567ba0aca4735efea078fdf019",
       "count": 2
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/theme_controls/ThemeMaterialPicker.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "border.color: control.themeTokens.colorFocusRing",
-      "fingerprint": "a585dcdd4da9b5dc44628b7a345e4906d1bd50747233555664a448ac60ce1ecd",
-      "count": 1
     },
     {
       "tool": "mypy",
@@ -43469,16 +43079,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/theme_controls/ThemeMaterialPicker.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "highlighted: index === control.highlightedIndex",
-      "fingerprint": "af39018b425aa55a1890ca1278e4723d777a0f536451485c50b7fd11b6329d46",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "coat_sim/ui/theme_service.py",
       "code": "attr-defined",
@@ -44406,16 +44006,6 @@
       "scope": "test_assistant_chat_status_clears_from_owner",
       "anchor": "round(float(window.height()) * float(window.devicePixelRatio()))],",
       "fingerprint": "b3b76d1e28742d8bb16be765df05404f7a0c737d3420adad54deb5e33dbf1605",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "Layout.minimumWidth: window.numericLabelWidth",
-      "fingerprint": "b3c626a199b4549aaf910ae2464251cb7985a7c8668f03213e45efe65c15495d",
       "count": 1
     },
     {
@@ -45460,16 +45050,6 @@
     },
     {
       "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "assistantUrlField.text, modelData.id)",
-      "fingerprint": "b798fbf33ac3d7925b4230a0a86b96c66c0f716194ab9495b2cdbc2838740423",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
       "path": "coat_sim/ui/qml/AssistantDecisionWindow.qml",
       "code": "missing-property",
       "message": "Member \"font\" not found on type \"QQmlApplication\"",
@@ -46326,16 +45906,6 @@
       "scope": "main",
       "anchor": "output = args.output.resolve(); output.mkdir(parents=True, exist_ok=True)",
       "fingerprint": "ba9f6ce9817b514e62feb5b96c09befc11ee2e44f6defd5314ec9f082b06d36e",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "return \"当前自动值：C \" + window.knownKTokenText(defaults.context_window_tokens)",
-      "fingerprint": "baa4cb10770cfd33b520c2a75f1b379611267c27fa0b68d2fb527fec5542c686",
       "count": 1
     },
     {
@@ -47749,16 +47319,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/theme_controls/ThemeMaterialPicker.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "radius: control.themeTokens.radiusSm",
-      "fingerprint": "c10fdf2f80e8ec6c39428f87eb121d09717e2e1ca5d472c7cbe0939234090ee6",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "tools/verify_film_titlebar_windows.py",
       "code": "E402",
@@ -48516,16 +48076,6 @@
       "scope": "",
       "anchor": "from tools.validation.gpu_appearance_preview import (",
       "fingerprint": "c40f4b2def56b24e5ef2c788921cd17b0c4555b86d9e8c51765dbe112298f515",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/theme_controls/ThemeMaterialPicker.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "width: Math.max(1, control.themeTokens.borderWidth)",
-      "fingerprint": "c4207c49063d5b0a6392db56987cd402cfe417a8a854c0166e2fa02d2c566658",
       "count": 1
     },
     {
@@ -49779,16 +49329,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "const t = window.kTokenText(budget.trigger_tokens)",
-      "fingerprint": "c90115bf5fb8878720717fbcb78d82fb44124e45d6b95e8ebb7df12cc23eddfa",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "scripts/probe_film_performance.py",
       "code": "assignment",
@@ -50129,16 +49669,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": ": bridge.assistantKeyMessage + \"\\n\")",
-      "fingerprint": "caa850bbd77676c2e1775d1dcf0f7c8b7c8bb32a14e6f840dcd80dce813cc120",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "coat_sim/mcp/server.py",
       "code": "arg-type",
@@ -50296,7 +49826,7 @@
       "scope": "",
       "anchor": "anchors.bottomMargin: saveActionBar.implicitHeight + 2 * Theme.snapshot.spaceMd",
       "fingerprint": "cb9f453e7cf98fbacd456b10d96668d1db8d63d38ab664361bfe83653e4da202",
-      "count": 2
+      "count": 1
     },
     {
       "tool": "mypy",
@@ -50576,16 +50106,6 @@
       "scope": "MaskDesigner.save",
       "anchor": "path = filedialog.asksaveasfilename(**dialog_options)",
       "fingerprint": "cc8f11a3fcf9a8c985c79d4fc38ea29321afb80357c1b613448b83b102ac5a10",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "+ \" · H \" + window.knownKTokenText(defaults.history_keep_tokens)",
-      "fingerprint": "cc97b6d6c2f0b7cec70a72ce82fe29922945180ee99a66ab24dafa682cc9a9a7",
       "count": 1
     },
     {
@@ -51919,16 +51439,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "+ window.numericControlWidth + columnSpacing ? 2 : 1",
-      "fingerprint": "d17508f4d700fea90ab06709db971df1d1e2d6d2f2bb96049e3000543f91aa43",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/scheduler/daemon.py",
       "code": "E702",
@@ -52236,16 +51746,6 @@
       "scope": "FilmDesignQuickControllerTests._assert_layer_insert_click_at_row_count.on_heartbeat",
       "anchor": "heartbeat_last[0] = now",
       "fingerprint": "d2682603e527e9a8dc4e026839041d443983bddb04f4a9fd0c5eacd4748d3384",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/theme_controls/ThemeMaterialPicker.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "+ String(control.valueAt(sourceIndex) || sourceIndex)",
-      "fingerprint": "d26c08ba4178ba3b31eb5b5b56be7b9eb9fc8a798528a123588d2e308092fd2e",
       "count": 1
     },
     {
@@ -52770,16 +52270,6 @@
     },
     {
       "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "Layout.preferredWidth: window.numericControlWidth",
-      "fingerprint": "d4eb3f24cbd166014f130fe0780ea6b04118798f34d633fc83d20f86f8c979c5",
-      "count": 2
-    },
-    {
-      "tool": "qmllint",
       "path": "coat_sim/ui/qml/WindowChrome.qml",
       "code": "unqualified",
       "message": "Unqualified access",
@@ -53056,16 +52546,6 @@
       "scope": "AppearanceWindowController.canStart",
       "anchor": "return (not self.running and not self._validate_draft()",
       "fingerprint": "d60d9229c78efce851f5653a5053a04c732df33919fa117605b8b5eadf71d7e7",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/theme_controls/ThemeMaterialPicker.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "color: !option.enabled ? control.themeTokens.colorDisabledText",
-      "fingerprint": "d6162c43f2e447b6305164c1a6f62a581b586762763938558b12668f70c0b45e",
       "count": 1
     },
     {
@@ -53796,16 +53276,6 @@
       "scope": "FilmDesignRowsModel.rowCount",
       "anchor": "def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:",
       "fingerprint": "d917a9e8c8ae20f4df716f228707e31c7f01d797f3ab5027f6b784a46788035e",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/theme_controls/ThemeMaterialPicker.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "width: optionList.width",
-      "fingerprint": "d91e6c58ef7a0a7315716937c4b77b898e32a93f672bc79fc95c5f51fe189273",
       "count": 1
     },
     {
@@ -55770,16 +55240,6 @@
     },
     {
       "tool": "qmllint",
-      "path": "coat_sim/ui/qml/theme_controls/ThemeMaterialPicker.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "text: control.candidateLabel(sourceIndex)",
-      "fingerprint": "e15c0c0106d723fef5b5a50fb895b478c0748a0d67fcfaa3de8b4bf1806bbe01",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
       "path": "coat_sim/ui/qml/ProcessWindow.qml",
       "code": "unqualified",
       "message": "Unqualified access",
@@ -56259,16 +55719,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "width: providerModelCatalog.width",
-      "fingerprint": "e30f97d3e507b40ab18b05e76ff5972ee13ce55b4a24db90ace5c82d63cba107",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_film_design_reference_bridge.py",
       "code": "union-attr",
@@ -56426,16 +55876,6 @@
       "scope": "MaskViewportTests.test_floating_toolbar_has_no_panel_and_blank_area_passes_pan_in_both_themes",
       "anchor": "button_origin = button.mapToItem(toolbar, QPointF(0, 0))",
       "fingerprint": "e3a5194f9311182637051789c5352ffbd8b4f3e0c58f1f7572383ca1750d6b1e",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmOptimizationWindow.qml",
-      "code": "missing-property",
-      "message": "Member \"editingFinished\" not found on type \"QQuickItem\"",
-      "scope": "",
-      "anchor": "editor.editingFinished()",
-      "fingerprint": "e3a551713e08cccf7282fa02464634caba8c478adf662b7c33e533708731a987",
       "count": 1
     },
     {
@@ -59509,16 +58949,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "property var settingsWindow: window",
-      "fingerprint": "efae231f3f09a640edc8d31ef5321836a8a9e20aee7e0a200738e0359839e9eb",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "coat_sim/ui/launcher.py",
       "code": "attr-defined",
@@ -61526,7 +60956,7 @@
       "scope": "",
       "anchor": "if (editor.numericValueEdited !== undefined",
       "fingerprint": "f80f57b807d743d9e24fb2d2ab48bb010e84d3a7cb85946abb71366c691babf0",
-      "count": 2
+      "count": 1
     },
     {
       "tool": "qmllint",
@@ -62579,16 +62009,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/SettingsWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "Layout.minimumWidth: window.numericControlWidth",
-      "fingerprint": "fbe4f19f9216125719b7e98f032e73ceac212a12b474343fdd0c76f2921e6119",
-      "count": 2
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_film_automatic_substrate.py",
       "code": "attr-defined",
@@ -63629,6 +63049,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "Reviewed exact candidate 68faabeb492f37fafd961054bcecde6bd9596b0b with pinned Mypy 2.4.0 and Ruff 0.17.0: 0 new Python diagnostics; removed only 5 resolved fingerprints from deleted frozen-file compatibility code/tests and the explicitly typed source fixture. No platform diagnostics or configuration changes.",
+  "last_prune_reason": "2026-10-19: reviewed 77 resolved QML occurrences across SettingsWindow, FilmOptimizationWindow and ThemeMaterialPicker after real offline QML tests; removed only, no new allowances; unrelated Windows diagnostics and local legacy deletions excluded.",
   "configuration_review_reason": "2026-10-17: add only BSD-3-Clause pypdf 6.21.0 for isolated research PDF extraction; all previous dependency/tool versions, analyzer rules and diagnostic entries remain unchanged. The lock-file digest changes only for this reviewed runtime dependency."
 }

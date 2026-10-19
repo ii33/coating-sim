@@ -363,6 +363,7 @@ class FilmDesignQuickController(QObject):
     initializationChanged = Signal()
     pendingEditEpochChanged = Signal()
     optimizationApplied = Signal()
+    optimizationUndoChanged = Signal()
     generatorPreviewInvalidated = Signal()
     generatorUndoChanged = Signal()
     tfcalcImportChanged = Signal()
@@ -405,6 +406,8 @@ class FilmDesignQuickController(QObject):
         self._source_closed = False
         self._pending_window_open = None
         self._generator_preview: dict | None = None
+        self._optimization_undo_revision: int | None = None
+        self._optimization_undo_epoch: int | None = None
         self._generator_undo_revision: int | None = None
         self._generator_undo_edit_epoch: int | None = None
         self._tfcalc_document = None
@@ -1028,6 +1031,7 @@ class FilmDesignQuickController(QObject):
         self._generator_undo_edit_epoch = self._pending_edit_epoch
         self.generatorPreviewInvalidated.emit()
         self.generatorUndoChanged.emit()
+        self.optimizationUndoChanged.emit()
         return True
 
     @Slot(result=bool)
@@ -1040,10 +1044,12 @@ class FilmDesignQuickController(QObject):
                 self._generator_undo_revision = None
                 self._generator_undo_edit_epoch = None
             self.generatorUndoChanged.emit()
+            self.optimizationUndoChanged.emit()
             return False
         self._generator_undo_revision = None
         self._generator_undo_edit_epoch = None
         self.generatorUndoChanged.emit()
+        self.optimizationUndoChanged.emit()
         return True
 
     @Property("QVariantList", notify=savedDesignsChanged)
@@ -1168,6 +1174,7 @@ class FilmDesignQuickController(QObject):
                      is not getattr(self.service, "materials", None))):
             self.clearGeneratorPreview()
         self.generatorUndoChanged.emit()
+        self.optimizationUndoChanged.emit()
         categories = set(change.categories)
         if "information_buffer" in categories:
             self.uiStateChanged.emit()
@@ -1365,6 +1372,7 @@ class FilmDesignQuickController(QObject):
         self.pendingEditEpochChanged.emit()
         self.clearGeneratorPreview()
         self.generatorUndoChanged.emit()
+        self.optimizationUndoChanged.emit()
         if self.session is None:
             return None
         self.session.mark_editing_dirty()
@@ -1390,8 +1398,34 @@ class FilmDesignQuickController(QObject):
         except (TypeError, ValueError, OverflowError):
             return False
         if accepted:
+            self._optimization_undo_revision = self.session.snapshot().design_revision
+            self._optimization_undo_epoch = self._pending_edit_epoch
+            self.optimizationUndoChanged.emit()
+            self.changed.emit()
             self.optimizationApplied.emit()
         return accepted
+
+    @Property(bool, notify=optimizationUndoChanged)
+    def canUndoOptimizedDesign(self) -> bool:
+        return bool(not self._source_closed and self.session is not None
+                    and self._optimization_undo_revision is not None
+                    and self._pending_edit_epoch == self._optimization_undo_epoch
+                    and self.session.can_undo_optimized_design(self._optimization_undo_revision))
+
+    @Slot(result=bool)
+    def undoOptimizedDesign(self) -> bool:
+        session = self.session
+        revision = self._optimization_undo_revision
+        if not self.canUndoOptimizedDesign or session is None or revision is None:
+            return False
+        if not session.undo_optimized_design(revision):
+            return False
+        self._optimization_undo_revision = None
+        self._optimization_undo_epoch = None
+        self.optimizationUndoChanged.emit()
+        self.changed.emit()
+        self.optimizationApplied.emit()
+        return True
 
     @Slot(result=bool)
     def normalizeExpressionText(self) -> bool:
@@ -1799,6 +1833,7 @@ class FilmDesignQuickController(QObject):
         self._generator_undo_edit_epoch = None
         self.generatorPreviewInvalidated.emit()
         self.generatorUndoChanged.emit()
+        self.optimizationUndoChanged.emit()
 
     @Slot(str, result="QVariantList")
     def schematicLayers(self, side: str) -> list[dict]:

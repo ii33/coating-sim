@@ -185,12 +185,22 @@ def test_resource_capabilities_are_narrow_and_publish_gui_units():
     assert source["action_schemas"]["set_emission_field"]
     from coat_sim.ui.project_resource_editor_operations import _source_emission_schema
     assert _source_emission_schema()["reference_rate_nm_s"]["unit"].startswith("Å/s")
+    assert "aperture_radius_mm" not in _source_emission_schema()
     materials = resource_editor_capabilities("materials")
     assert "resistance_source_exponent" in materials["editable_fields"]
     assert "resistance_provenance_status" in materials["editable_fields"]
     assert "edit_dataset" in materials["unsupported_actions"]
     assert "lazy" in " ".join(source["implicit_gui_effects"])
     assert resource_editor_capabilities("process")["action_schemas"]["set_step_field"]["value"]["unitWhenField"]["rate_angstrom_s"] == "Å/s"
+
+
+def test_old_single_hole_emission_action_is_rejected_without_editing():
+    editor = FakeEditor()
+    before = deepcopy(editor.calls)
+    with pytest.raises(UiControlError):
+        _run("source", editor, "window_action", action="set_emission_field",
+             arguments={"field": "aperture_radius_mm", "value": "3"})
+    assert editor.calls == before
 
 
 def test_update_is_one_field_and_preserves_raw_invalid_scalar_text():

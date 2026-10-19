@@ -10,7 +10,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from threading import Event
 from time import perf_counter
 from PySide6.QtCore import QObject, Property, QMetaObject, Qt, QUrl, Signal, Slot, QTimer
@@ -157,6 +157,8 @@ class ProjectResourceTransferController(QObject):
     Apply cannot be cancelled after admission and retains its QObject owner.
     """
 
+    module_key: str
+
     changed = Signal()
     transferChanged = Signal()
     transferFinished = Signal(bool)
@@ -179,6 +181,46 @@ class ProjectResourceTransferController(QObject):
         self._transfer_poll = QTimer(self)
         self._transfer_poll.setInterval(10)
         self._transfer_poll.timeout.connect(self._poll_transfer_tasks)
+
+    def _transfer_kinds(self) -> list[str]:
+        """Typed internal view of the ``transferKinds`` QML property."""
+        return cast(list[str], self.transferKinds)
+
+    @Property(list, constant=True)
+    def transferKinds(self) -> list[str]:
+        module = getattr(self, "module_key", "")
+        if not module:
+            return []  # General library/standalone exchange owns no designer type.
+        if module == "materials":
+            return ["material_profile", "optical_material"]
+        return [{"film_design": "film", "film_optimization": "film", "spectrum": "film",
+                 "deposition": "deposition_configuration", "raytrace": "raytrace_request",
+                 "appearance": "appearance_configuration"}.get(module, module)]
+
+    @Property(list, constant=True)
+    def transferFileFilters(self) -> list[str]:
+        from coat_sim.core.project_dependencies import EXTENSIONS
+        kinds = self._transfer_kinds()
+        suffixes = sorted({EXTENSIONS[kind] for kind in kinds if kind in EXTENSIONS})
+        if getattr(self, "module_key", "") == "materials":
+            suffixes = sorted({*suffixes, ".cmat", ".cmatl"})
+        if not kinds:
+            suffixes = sorted(set(EXTENSIONS.values()))
+        return ["工程与目标资源 (*.coatproj *.cproject " + " ".join("*" + value for value in suffixes) + ")"]
+
+    def _scoped_transfer_catalog(self, catalog):
+        kinds = self._transfer_kinds()
+        if not kinds:
+            return catalog
+        rows = [row for row in catalog.get("rows", []) if row["kind"] in kinds]
+        return {**catalog, "rows": rows, "categories": sorted({row["kind"] for row in rows})}
+
+    def _validate_transfer_selection(self, ids):
+        rows = {row["id"]: row for row in self._transfer_catalog.get("rows", [])}
+        kinds = self._transfer_kinds()
+        if any(identity not in rows or (kinds and rows[identity]["kind"] not in kinds)
+               for identity in ids):
+            raise ValueError("所选资源类型不属于当前窗口，或资源已不在当前目录。")
 
     @Property(dict, notify=transferChanged)
     def transferCatalog(self):
@@ -291,9 +333,9 @@ class ProjectResourceTransferController(QObject):
             if kind == "apply":
                 self.transferFinished.emit(False)
         elif kind == "inspect":
-            self._transfer_catalog = result
+            self._transfer_catalog = self._scoped_transfer_catalog(result)
             self._transfer_status = ("请选择要传输的资源；依赖将在预览中自动包含。"
-                if result.get("rows") else "此位置没有可传输资源，请选择其他来源。")
+                if self._transfer_catalog.get("rows") else "此位置没有当前窗口类型的可传输资源，请选择其他来源。")
             self.transferChanged.emit()
         elif kind == "preview":
             self._transfer_plan = result
@@ -365,6 +407,7 @@ class ProjectResourceTransferController(QObject):
             ids = list(selected_ids)
             if not ids or any(not isinstance(value, str) for value in ids):
                 raise ValueError("请至少选择一个资源。")
+            self._validate_transfer_selection(ids)
             target = self._transfer_location(target)
             if self._transfer_mode == "import" and target != "project":
                 raise ValueError("导入的目标必须是当前工程。")

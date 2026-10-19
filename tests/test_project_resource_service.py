@@ -33,8 +33,8 @@ def test_external_load_copies_closure_and_handles_survive_generations(tmp_path):
     api, external = service(tmp_path)
     doc = api.load("process", external / "recipe.cproc")
     assert doc.path.startswith(str(api.root / "data" / "processes"))
-    legacy_handle = api.root / "documents" / (api._identity_for_path(doc.path) + ".cproc")
-    assert api.load("process", legacy_handle).data == doc.data
+    current_handle = api.document_handle(api._identity_for_path(doc.path))
+    assert api.load("process", current_handle).data == doc.data
     assert len(api.store.manifest["documents"]) == 6
     shutil.rmtree(external)
     assert api.load("process", doc.path).runtime["steps"][0]["target_nm"] == 1
@@ -42,6 +42,7 @@ def test_external_load_copies_closure_and_handles_survive_generations(tmp_path):
     changed["name"] = "Changed"
     api.save("process", doc.path, changed, overwrite=True)
     assert api.load("process", doc.path).data["name"] == "Changed"
+    assert api.load("process", current_handle).data["name"] == "Changed"
     snapshot = api.freeze_process(changed)
     assert snapshot["runtime"]["steps"][0]["target_nm"] == 1
 

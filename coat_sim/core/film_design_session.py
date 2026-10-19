@@ -162,6 +162,7 @@ class FilmDesignEditSession:
         self._prepared_optical_cache: dict[tuple[str, str], Any] = {}
         self._reference_index_cache: dict[tuple[str, str, float], float | Exception] = {}
         self._generated_undo_state: dict[str, Any] | None = None
+        self._optimized_undo_state: dict[str, Any] | None = None
         self._generated_preview_source: tuple[dict[str, Any], int, Any] | None = None
 
         material_options_many = getattr(service, "material_options_many", None)
@@ -438,6 +439,7 @@ class FilmDesignEditSession:
             self._error = str(state["error"])
             self._design_revision += 1
             self._generated_undo_state = None
+            self._optimized_undo_state = None
             self._refresh_derived()
             self._notify("design", "ui", "derived", "expression")
             return True
@@ -462,7 +464,8 @@ class FilmDesignEditSession:
         flow remains authoritative.
         """
         with self._lock:
-            if (type(base_design_revision) is not int
+            if (self._pending_confirmation is not None or self._expression_busy
+                    or type(base_design_revision) is not int
                     or base_design_revision != self._design_revision):
                 return False
             if not isinstance(candidate_design, Mapping):
@@ -479,10 +482,13 @@ class FilmDesignEditSession:
 
             # Commit one complete validated value while holding the same lock
             # used by every draft mutation and by snapshot().
+            previous = {"design": deepcopy(self._design), "dirty": self._dirty}
             self._generated_undo_state = None
+            self._optimized_undo_state = None
             self._design = self._preserve_workflow_configuration(normalized)
             self._design_revision += 1
             self._dirty = True
+            self._optimized_undo_state = {"applied_revision": self._design_revision, **previous}
             self._error = ""
             self._refresh_derived()
             categories = {"design", "ui", "derived"}
@@ -490,6 +496,32 @@ class FilmDesignEditSession:
             if expression.get("text"):
                 categories.add("expression")
             self._notify(*categories)
+            return True
+
+    def can_undo_optimized_design(self, expected_revision: int) -> bool:
+        with self._lock:
+            state = self._optimized_undo_state
+            return bool(state is not None and self._dirty and not self._expression_busy
+                        and self._pending_confirmation is None
+                        and type(expected_revision) is int
+                        and self._design_revision == expected_revision == state["applied_revision"])
+
+    def undo_optimized_design(self, expected_revision: int) -> bool:
+        """Undo the latest optimization draft edit once, before another edit/save."""
+        with self._lock:
+            if not self.can_undo_optimized_design(expected_revision):
+                return False
+            state = self._optimized_undo_state
+            assert state is not None
+            configuration_changed = (self._design.get("workflow_settings", {})
+                                     != state["design"].get("workflow_settings", {}))
+            self._design = self._preserve_workflow_configuration(state["design"])
+            self._dirty = bool(state["dirty"]) or configuration_changed
+            self._optimized_undo_state = None
+            self._design_revision += 1
+            self._error = ""
+            self._refresh_derived()
+            self._notify("design", "ui", "derived", "expression")
             return True
 
     def subscribe(self, callback: Callable[[SessionChange], None]) -> Callable[[], None]:
@@ -538,6 +570,7 @@ class FilmDesignEditSession:
     def mark_editing_dirty(self) -> None:
         with self._lock:
             self._generated_undo_state = None
+            self._optimized_undo_state = None
             if self._dirty:
                 return
             self._dirty = True
@@ -545,6 +578,7 @@ class FilmDesignEditSession:
 
     def _mark_dirty(self, *, invalidate_expression: bool = True) -> None:
         self._generated_undo_state = None
+        self._optimized_undo_state = None
         self._dirty = True
         self._design_revision += 1
         self._error = ""
@@ -719,6 +753,7 @@ class FilmDesignEditSession:
     def _mark_dirty_with_categories(self, extra: set[str] | None = None,
                                     *, invalidate_expression: bool = True) -> None:
         self._generated_undo_state = None
+        self._optimized_undo_state = None
         self._dirty = True
         self._design_revision += 1
         self._error = ""
@@ -1261,6 +1296,7 @@ class FilmDesignEditSession:
                 normalized = self.service.validate(candidate)
                 saved = self.service.save_saved_design(normalized)
                 self._generated_undo_state = None
+                self._optimized_undo_state = None
                 self._design = saved
                 self._design_revision += 1
                 self._dirty = False
@@ -1290,6 +1326,7 @@ class FilmDesignEditSession:
     def _replace_design(self, design: dict[str, Any], *, path: str | None,
                         message: str, dirty: bool = False) -> None:
         self._generated_undo_state = None
+        self._optimized_undo_state = None
         self._design = design
         self._design_revision += 1
         self._path = path
@@ -1459,6 +1496,7 @@ class FilmDesignEditSession:
             try:
                 normalized = self.service.save(target, self._design, overwrite=bool(overwrite))
                 self._generated_undo_state = None
+                self._optimized_undo_state = None
                 self._design = dict(normalized)
                 self._path = str(target)
                 self._dirty = False

@@ -1,6 +1,6 @@
 # 膜系设计 Qt Quick 迁移对照
 
-日期：2026-10-11
+日期：2026-10-19
 
 本文记录膜系设计窗口的基线功能、Quick 文件职责和本轮验证边界。迁移采用独立 Quick 控制器与 QML 页面；本轮没有修改旧 Widgets 窗口或共享入口。
 
@@ -92,3 +92,81 @@ Python AST 静态解析通过 controller 与两份 Film controller 测试文件�
 设计、优化、仿真已提交配置通过同一 session 保存到 `.cfilm`；旧文件缺配置时恢复默认，无文件时继续内存同步。保存、覆盖、关闭确认沿用 session，配置独立于物理设计revision。设计显式发送光谱仿真自动请求计算；重复/忙碌意图合并，不以文件路径重建同步。
 
 标题摘要按全部正/背面膜层及材料ID汇总物理nm，不含基片；显示三位小数，完整内部精度保留，无法换算层明确标记。窄侧栏toggle为24逻辑像素；各section保活，切换只恢复最后有效focus意图与各自ScrollView状态。参数化方法的选型提示来自既有模板applicability。
+
+## F5/F6 实时来源与窗口联动（2026-10-19）
+
+设计页 F6 沿用 `runDesignShortcut`，显式提交当前输入的 `editingFinished`，
+再提交表达式草稿；输入错误阻止后续调用。未完成、空或无效的膜厚输入显示
+现有错误对话框，失焦时不将空字符串当成零。有效输入提交到当前内存 session，
+不重新读取磁盘。工程桌面的启动路由调用
+`FilmOptimizationQuickController.startOptimizationFromShortcut()`，刷新当前来源
+设计、层和材料，并按 `(side, layer_id)` 保留仍适用的目标、算法和约束；新增层
+不自动勾选，已删除层约束不转移给其它层。不同工程使用各自 workspace 和窗口
+路由，不以焦点窗口决定来源。
+
+优化页新增窗口级 F5，输入框聚焦时同样可用：先调用实际存在的 `commitDraft`
+或 `editingFinished`，再调用 `openSimulationAndCalculate()`。该方法只使用原
+source controller 的同一 session 当前设计，检查来源有效、未关闭、无输入错误
+且表达式已完成，并使用既有 service 校验。无有效来源时在优化页显示错误。
+未应用的 candidate 仍归优化器所有，F5 不应用或写回它。脱离可编辑来源的快照
+优化器不能隐式建立新的设计来源。
+
+`ProjectFilmDesktop` 使用共享 `LauncherBridge._activate_window` 打开或恢复同一
+工程的仿真/优化单实例（含最小化窗口）。仿真调用既有 `requestCalculation()`
+读取最新来源，已有旧计算时沿用一个 pending recompute；计算及取消仍由原仿真
+controller 所有。F5/F6 没有新增作业所有者、独立取消协议或候选写回通道。
+窗口关闭、旧结果丢弃与来源版本冲突继续遵守原 controller 的边界。
+
+实测入口：`tests/test_optimizer_f5_simulation_ui.py`、
+`tests/test_design_f6_live_ui.py`；覆盖当前焦点、未保存值、已有/新开/最小化窗口、
+层增删、匹配约束保留及不同工程隔离。
+
+
+## 优化最终结果自动应用与仿真刷新（2026-10-19）
+
+正常完成且结果有效的当前优化 attempt，继续通过现有
+`applyOptimizedDesign` / `FilmDesignEditSession.apply_optimized_design` 原子入口
+写回来源同工程 session。提交前比较请求的 design revision 与当前 revision、
+当前未失焦编辑 epoch、固定拓扑的两面层 ID 及顺序；固定拓扑只复制最终膜厚，
+来源名称、材料、基片与其它非厚度字段不被候选元数据替换。结构优化仍须满足原有最终
+审计与验证条件。来源关闭、会话替换、等待确认、表达式处理中、失败、取消、
+无效结果、过期 attempt 或编辑冲突均不覆盖，并显示对应原因。中间进度不写回。
+
+写回成功产生一次 dirty 内存编辑，保留路径及当前 workflow 的目标/约束，不自动
+保存。随后调用来源的 `openSimulationAndCalculate()`，打开/恢复同工程单实例并
+用最新来源刷新曲线；已有仿真沿用 `optimizationApplied` 与单个 pending recompute，
+未开仿真也会建立。仿真打开失败不能撤销已成功的设计应用，优化页明确提示
+“厚度已应用，但光谱刷新未完成”。coordinator 的 active attempt 门禁及 applied
+标志使重复最终信号不二次应用或重复启动窗口。
+
+设计 session 唯一保存一次优化撤销的原设计与 dirty 状态，controller 保存对应
+revision / editing epoch。工具栏“撤销优化应用”调用 `undoOptimizedDesign()`；只有
+尚无后续编辑、保存、文档替换、等待确认或表达式处理时可撤销，撤销保留后来
+workflow 设置，并通知已有仿真重算。成功保存会永久清除本次撤销，随后修改仿真
+参数不能使旧撤销复活。撤销不会保存磁盘，也不提供跨多次编辑的通用历史栈。
+
+测试 `tests/test_optimization_completion_refresh_ui.py` 控制优化 worker 的最终交付，
+其余设计 session、Qt 窗口与光谱计算使用真实实现；覆盖未开/已有/最小化窗口、
+真实曲线变化、未保存与磁盘原值、跨工程、重复完成、撤销以及失败/取消/冲突。
+
+
+## 优化目标编辑简化（2026-10-19）
+
+目标表单仅展示角度范围与采样“精度”（单位 °）；波长对应标签为“采样精度”
+（nm）。这些标签仍表示既有采样间距，不是光学误差、收敛容差或算法内部步长。
+新目标仍默认 1 nm、1°，范围两端同值仍只有一个点。点数、端点包含及不整除时
+均匀缩短间距的计算实现不变。已有显式角度配置继续按现有读取器保留原点列，
+界面显示原值与需要确认的提示，启动校验拒绝未确认点列。用户通过
+`confirmObjectiveAngleRange(minimum, maximum, precision)` 明确采用当前可见范围；
+非均匀点列不会静默转换。此操作不新增文件格式或旧版本兼容分支。
+
+目标类型下拉移除，统一为同一 RowLayout 内的“下限 – 上限”（%），窄窗口也不
+拆开这一对字段。0 ≤ 下限 ≤ 上限 ≤ 100%，相等时构建既有单值 objective，否则
+构建既有区间 objective；请求类型由上下限决定，不受隐藏旧 mode 影响。配置的
+可编辑目标统一记录为 range；已保存 value 目标无损映射为相等上下限，不能表达
+的模式由现有严格加载校验报错，不猜测。指标选择、偏振和权重保留；当前内核
+原本仅支持 R/T，本次没有扩展 A。其它求解器参数与误差容差保持原意。
+
+验证入口为 `tests/test_optimization_target_form_ui.py` 和既有采样契约；覆盖上下限、
+相等目标、错误范围、请求及保存回读、非均匀角度确认，以及真实 QML 的 720/1280
+逻辑宽度布局、标签、指标与偏振控件保留。

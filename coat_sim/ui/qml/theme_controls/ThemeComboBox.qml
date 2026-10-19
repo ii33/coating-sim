@@ -121,6 +121,7 @@ ComboBox {
         required property int index
         width: control.popup.width
         text: control.textAt(index)
+        hoverEnabled: true
         highlighted: control.highlightedIndex === index
         readonly property bool currentSelection: control.currentIndex === index
         font: control.font

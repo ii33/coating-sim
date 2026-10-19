@@ -596,7 +596,7 @@ def test_import_package_category_preview_is_read_only_and_capturable(project, tm
     click_item(category, app)
     popup = category.findChild(QObject, "themeComboBoxPopup")
     assert popup is not None
-    source_index = 1 + controller.transferCatalog["categories"].index("source")
+    source_index = controller.transferCatalog["categories"].index("source")
     assert wait_for(app, lambda: bool(popup.property("visible")))
     assert wait_for(app, lambda: evaluate_qml(
         category, f"popup.contentItem.itemAtIndex({source_index})") is not None)

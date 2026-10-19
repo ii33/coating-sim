@@ -49,6 +49,9 @@ def remote_project_entries(clients: list[dict[str, Any]], own_generation: str) -
 def activate_shared_project(client: Any, target: dict[str, str]) -> dict[str, Any]:
     """Only an explicit successful, identity-matching owner response is success."""
     try:
+        prepare = getattr(client, "prepare_project_activation", None)
+        if callable(prepare):
+            prepare(target)
         result = client.request("activate_project", **target)
     except UiControlError as exc:
         if exc.code in {"invalid_request", "invalid_operation", "unsupported_operation"}:

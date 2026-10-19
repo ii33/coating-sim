@@ -160,6 +160,7 @@ def test_project_import_transfers_selected_dependency_closure_only_to_current_ow
     assert bridge.browseSource(str(external / "recipe.cproc"))
     settled(bridge)
     process = next(row for row in bridge.transferCatalog["rows"] if row["kind"] == "process")
+    window.setProperty("categoryKey", "process")
     state, reason = capture_project_resources_snapshot(bridge, window, "project_resources")
     assert state is None and reason == "external_import_source"
     assert not bridge.previewLibraryTransfer([process["id"]], "global")
@@ -245,7 +246,7 @@ def test_material_usage_keeps_film_substrate_medium_and_unknown_reachable(global
             selector.setProperty("currentIndex", index)
             selector.activated.emit(index)
             assert set(qml(engine, window, "visibleRows.map(row => row.name)")) == names
-        assert qml(engine, window, "categories.map(row => row.label)") == ["材料", "光学材料数据"]
+        assert qml(engine, window, "categories.map(row => row.label)") == ["材料"]
     finally:
         bridge.dispose()
         window.deleteLater()
@@ -368,3 +369,94 @@ def test_exported_optical_only_material_does_not_invent_film_suitability(global_
     finally:
         donor.close_resource_exchange()
         global_library.close()
+
+
+def test_unified_material_category_keeps_optical_only_editable_and_hides_nested_bar(desktop):
+    from tests.test_project_global_resources import optical_material
+    project = desktop.open()
+    store = desktop.adapter.host.store_for(project.session.binding)
+    identity = store.create_document("optical_material", optical_material("standalone-optics"))
+    _id, _route, (window, bridge, engine, *_rest) = open_library(desktop, project)
+    assert qml(engine, window, "categories") == [{"key": "material_profile", "label": "材料"}]
+    assert qml(engine, window, "visibleRows.map(row => row.id)") == [identity]
+    assert bridge.openMaterialAsset(identity)
+    QTest.qWait(100)
+    assert window.property("categoryKey") == "material_profile"
+    assert qml(engine, window, "visibleRows.map(row => row.id)") == [identity]
+    editor = window.property("editorInstance")
+    assert editor is not None
+    toolbar = editor.findChild(QQuickItem, "materialLibraryActionToolbar")
+    assert toolbar is not None and not toolbar.isVisible()
+    assert window.findChild(QQuickItem, "assetLibrarySaveMaterialButton").isVisible()
+    bridge.materialLibrary.setField("notes", "Synthetic optical-only edited")
+    assert bridge.materialLibrary.dirty
+    assert bridge.materialResources.saveCurrent()
+    QTest.qWait(100)
+    assert store.manifest["documents"]  # No asset was removed to merge categories.
+
+
+def test_library_copy_global_project_package_and_classification_checks(desktop, global_root, tmp_path):
+    seed_source(global_root)
+    project = desktop.open()
+    _id, _route, (window, bridge, _engine, *_rest) = open_library(desktop, project)
+    store = desktop.adapter.host.store_for(project.session.binding)
+    assert bridge.browseSource("global")
+    settled(bridge)
+    source = next(row for row in bridge.transferCatalog["rows"] if row["kind"] == "source")
+    window.setProperty("categoryKey", "mask")
+    assert not bridge.previewLibraryTransfer([source["id"]], "project")
+    assert not store.manifest["documents"]
+    window.setProperty("categoryKey", "source")
+    assert not bridge.previewLibraryTransfer([], "project")
+    assert bridge.previewLibraryTransfer([source["id"]], "project")
+    settled(bridge)
+    assert bridge.applyTransfer({})
+    settled(bridge)
+    QTest.qWait(50)
+    settled(bridge)
+    current = next(row for row in bridge.transferCatalog["rows"] if row["kind"] == "source")
+    assert bridge.previewLibraryTransfer([current["id"]], "global")
+    settled(bridge)
+    assert bridge.transferPlan["rows"][0]["conflict"] in {"", "identical"}
+    assert bridge.applyTransfer({})
+    settled(bridge)
+    QTest.qWait(50)
+    settled(bridge)
+    current = next(row for row in bridge.transferCatalog["rows"] if row["kind"] == "source")
+    destination = tmp_path / "selected.cproject"
+    assert bridge.previewLibraryTransfer([current["id"]], str(destination))
+    settled(bridge)
+    assert bridge.applyTransfer({})
+    settled(bridge)
+    assert destination.is_file()
+    assert bridge.browseSource(str(tmp_path / "missing.cproject"))
+    settled(bridge)
+    assert bridge.libraryFailed and bridge.transferStatus
+
+
+def test_library_conflict_requires_choice_and_failed_apply_preserves_owner(desktop, tmp_path):
+    from coat_sim.core.project_store import ProjectStore
+    from tests.test_project_global_resources import optical_material
+    project = desktop.open()
+    store = desktop.adapter.host.store_for(project.session.binding)
+    store.create_document("optical_material", optical_material("shared", n=3.0))
+    donor = ProjectStore.create(tmp_path / "conflict-donor", "Donor")
+    identity = donor.create_document("optical_material", optical_material("shared", n=2.0))
+    _id, _route, (window, bridge, engine, *_rest) = open_library(desktop, project)
+    assert bridge.browseSource(str(donor.project_file))
+    settled(bridge)
+    assert window.property("categoryKey") == "material_profile"
+    assert bridge.previewLibraryTransfer([identity], "project")
+    settled(bridge)
+    assert bridge.transferPlan["rows"][0]["conflict"] == "different"
+    assert not qml(engine, window, "planChoicesResolved")
+    before = store.manifest
+    assert bridge.applyTransfer({})
+    settled(bridge)
+    assert bridge.libraryFailed and bridge.transferStatus
+    assert store.manifest == before
+    assert bridge.previewLibraryTransfer([identity], "project")
+    settled(bridge)
+    assert bridge.applyTransfer({identity: "copy"})
+    settled(bridge)
+    assert len([row for row in store.manifest["documents"] if row["kind"] == "optical_material"]) == 2

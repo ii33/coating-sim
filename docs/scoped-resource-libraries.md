@@ -1,6 +1,6 @@
 # Scoped resource library windows
 
-Date: 2026-10-16. No numerical algorithm or file-format change.
+Date: 2026-10-19. No numerical algorithm or file-format change.
 
 ## Inputs, ownership and navigation
 
@@ -30,8 +30,11 @@ only actual declared film/substrate/medium/other uses, with no mixed all-uses
 entry. Multi-role profiles remain reachable in each applicable use. Legacy
 profiles retain the existing material library's category/default-film convention;
 optical-only profiles lacking declared roles/category use a separate
-unspecified-use filter. The optical-material records themselves retain their
-neutral optical-data category, without inferred suitability.
+unspecified-use filter. The browser maps material profiles and optical projections to one Material
+category. When both represent the same material ID, the editable profile is
+shown once; an optical-only record without a profile remains visible under its
+unspecified usage and opens the existing editable projection. Stored types and
+dependency identities remain unchanged, without inferred suitability.
 
 ## Reads and transfers
 
@@ -87,3 +90,31 @@ already-loaded current-project resource catalog and current category/selection,
 with bounded `resources` pages. It performs no file/catalog I/O, creates no
 owner and never substitutes a global or other external import catalog. Busy,
 unloaded, closed, frozen or external-import views are explicitly unavailable.
+
+
+## Shared action and type boundary (2026-10-19)
+
+| Entry | Browse/selection | Import | Export |
+| --- | --- | --- | --- |
+| Global assets | Own library or external file/package/descriptor, one current category | Preview selected external roots into global library | Selected owned roots to a new package |
+| Project assets | Current project or explicit global/file/package/descriptor, one current category | Selected external roots into this project | Selected owned roots to global library or a new package |
+| Designer | Only its target resource kind(s), including package/descriptor catalog | Same-kind roots into this project | Same-kind roots via existing target choices |
+
+`ResourceLibraryWindow` owns the category and selection; its bridge owns transfer
+catalog/preview lifetime, and the retained material controller owns material drafts.
+One `ResponsiveOperationBar` contains the category selector, adjacent information,
+refresh, import/export menus and remaining actions. It stays on one row and uses
+its existing trailing overflow. Embedded material content hides its own resource
+bar; material save/information and dedicated file actions remain in the main bar.
+The project import/export menus expose global-to-project and project-to-global
+copy without changing either library's ownership. Global assets remain project-free.
+
+`ProjectResourceTransferController.transferKinds` is the designer type contract.
+Its catalog projection and QML category/row/file filters use that contract. Preview
+rejects IDs absent from this projected catalog or of another type, before starting
+a publication worker. General library previews additionally reject mixed categories
+or IDs outside the current category. Empty selection remains an explicit failure.
+Only selected roots are restricted: dependency closure is computed from the original
+backend catalog and may include other kinds. Conflict, cancellation, failure, close
+and isolation behavior remains as specified above. Material/third-party file actions
+remain in their corresponding target editor/menu; they do not expand generic root scope.

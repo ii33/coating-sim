@@ -237,3 +237,14 @@ The offscreen Qt regressions in `tests/test_windows_runtime_regressions.py` cove
 使用相同产品名，内部 applicationName、AppUserModelID、设置和数据路径保持不变。
 Qt applicationDisplayName 延用空值策略，避免自动向普通模块原生标题追加产品后缀；
 普通窗口沿用模块名与工程名组成的现有结构。
+
+
+### 下拉与菜单状态配对（2026-10-19）
+
+共享下拉行和菜单 delegate 的文字与底色必须依据同一状态配对：高亮/按下采用
+`colorTextOnAccent` / `colorAccent`，普通当前选中采用 `colorText` /
+`colorSelection`，仅悬停采用 `colorText` / `colorSurfaceRaised`，禁用采用
+`colorDisabledText` / `colorDisabledSurface` 且优先于其他状态。勾选和子菜单箭头
+遵循同一前景条件。`ThemeMaterialPicker` 不得把 accent 前景放在 raised 底色上；
+`ProjectModuleSelector` 的按下态与键盘高亮采用相同条件。颜色来自 token，不在页面覆盖。
+键盘上下键、鼠标悬停、当前项、禁用项须在浅色和深色真实 QML 渲染中验证。

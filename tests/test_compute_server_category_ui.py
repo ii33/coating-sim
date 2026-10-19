@@ -9,7 +9,6 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 import json
 from pathlib import Path
-import re
 from unittest.mock import Mock
 
 import pytest
@@ -31,22 +30,8 @@ FAKE_TOKEN = "compute-ui-fixture-token-never-a-real-secret"
 
 
 def _unexpected_warnings(warnings: list[str]) -> list[str]:
-    # Existing appearance/identity bodies use anchors inside ThemeSection's
-    # layout. Keep that known warning bounded to those two unchanged bodies;
-    # warnings from the new compute form or any other failure still fail.
-    source = QML.read_text(encoding="utf-8")
-    known_lines = set()
-    for category_id in ("appearanceCategory", "identityCategory"):
-        category_offset = source.index(f"id: {category_id}")
-        layout_offset = source.index("ColumnLayout {", category_offset)
-        known_lines.add(source.count("\n", 0, layout_offset) + 1)
-    unexpected = []
-    for warning in warnings:
-        match = re.search(r"SettingsWindow.qml:(\d+):\d+: QML ColumnLayout: "
-                          r"Detected anchors on an item that is managed by a layout\.", warning)
-        if match is None or int(match.group(1)) not in known_lines:
-            unexpected.append(warning)
-    return unexpected
+    # Settings sections now use Layout sizing: no anchor-warning exemptions.
+    return list(warnings)
 
 
 def _settle() -> None:

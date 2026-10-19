@@ -269,8 +269,8 @@ class ResourceLibraryBridge(AssetLibraryActions):
         if row is None:
             return
         if self.window is not None:
-            self.window.setProperty("categoryKey", row["kind"])
-            uses = row.get("material_uses", [])
+            self.window.setProperty("categoryKey", "material_profile")
+            uses = row.get("material_uses", ["unspecified"] if row["kind"] == "optical_material" else [])
             if uses and self.window.property("materialUse") not in uses:
                 self.window.setProperty("materialUse", uses[0])
         self.materialSelectionChanged.emit(identity)
@@ -433,6 +433,14 @@ class ResourceLibraryBridge(AssetLibraryActions):
             ids = list(selected_ids)
             if not ids or any(not isinstance(value, str) for value in ids):
                 raise ValueError("请至少选择一个资源。")
+            self._validate_transfer_selection(ids)
+            rows = {row["id"]: row for row in self._transfer_catalog.get("rows", [])}
+            kinds = {"material_profile" if rows[value]["kind"] == "optical_material" else rows[value]["kind"]
+                     for value in ids}
+            if len(kinds) != 1:
+                raise ValueError("每次只可传输当前分类的资源。")
+            if self.window is not None and kinds != {self.window.property("categoryKey")}:
+                raise ValueError("所选资源不属于当前分类，请重新选择。")
             service, catalog_id = self.service, self._transfer_catalog["catalog_id"]
             return self._start_transfer_task("preview", lambda: service.preview_resource_transfer(
                 catalog_id, ids, target), catalog_id=catalog_id)
