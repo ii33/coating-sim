@@ -145,7 +145,7 @@ def test_zero_initial_layer_runs_default_half_unbounded_solver(tmp_path):
     assert request.variables == (FilmThicknessVariable("front", layer_id, 0.0, None),)
     from coat_sim.core.film_optimization_job import _validate_replay_request
     _validate_replay_request(request)
-    settings = {"wavelength_min_nm": 550, "wavelength_max_nm": 550, "samples": 1}
+    settings = {"wavelength_min_nm": 550.0, "wavelength_max_nm": 550.0, "samples": 1}
     baseline_r = float(service.simulate(design, settings)["R"][0])
     assert baseline_r > request.acceptable_normalized_error
     result = optimize_film_design(service, request)
