@@ -6,7 +6,11 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description='Independent local calculation scheduler (protocol v1)')
     parser.add_argument('--root', default=str(Path(__file__).resolve().parents[2]))
     sub = parser.add_subparsers(dest='command', required=True)
-    sub.add_parser('serve'); sub.add_parser('start'); sub.add_parser('stop'); sub.add_parser('list')
+    serve_parser = sub.add_parser('serve')
+    serve_parser.add_argument('--launch-epoch')
+    sub.add_parser('start')
+    sub.add_parser('stop')
+    sub.add_parser('list')
     submit = sub.add_parser('submit'); submit.add_argument('spec'); submit.add_argument('--id')
     for action in ('status', 'cancel', 'result'):
         sub.add_parser(action).add_argument('job_id')
@@ -19,7 +23,7 @@ def main(argv=None):
         trace('scheduler_process_start', role=args.command)
     if args.command == 'serve':
         from .daemon import serve
-        return serve(args.root)
+        return serve(args.root, launch_epoch=args.launch_epoch)
     if args.command == 'worker':
         from .worker import run
         return run(args.root, args.job_id, args.owner_pid, args.owner_instance)

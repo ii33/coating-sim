@@ -290,7 +290,7 @@ class ProjectFilmEditSession(FilmDesignEditSession):
             return False
 
     def _refresh_project_materials(self) -> None:
-        options = self.service.picker_material_options_many(("film", "substrate", "medium"))
+        options = self.service.picker_material_options_many(("film", "substrate", "medium"), design=self._design)
         self._catalog_options = options
         self._material_options = self._make_picker_options(options)
         self._prepared_optical_cache.clear()

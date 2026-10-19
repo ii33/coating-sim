@@ -228,6 +228,23 @@ RowLayout {
         transferDialog.open()
     }
 
+    function beginFileImport(source) {
+        if (projectResources === null || operationBusy)
+            return false
+        activeTransferMode = "import"
+        transferSource = "file"
+        transferTarget = "project"
+        transferFileTarget = ""
+        transferFileKind = ""
+        categoryFilter = ""
+        selectedTransferIds = []
+        invalidatePreview()
+        const started = Boolean(projectResources.beginFileImport(String(source)))
+        // Keep the transfer status visible even if the selected file is rejected.
+        transferDialog.open()
+        return started
+    }
+
     function inspectSource(source) {
         if (operationBusy)
             return
@@ -581,7 +598,7 @@ RowLayout {
             MenuItem {
                 objectName: "projectResourceImportMenuItem"
                 text: "导入资源…"
-                onTriggered: controls.beginTransfer("import")
+                onTriggered: importPackageDialog.open()
             }
             MenuItem {
                 objectName: "projectResourceExportMenuItem"
@@ -630,10 +647,11 @@ RowLayout {
 
     FileDialog {
         id: importPackageDialog
+        objectName: "projectResourceImportFileDialog"
         title: "选择资源文件或工程包"
         fileMode: FileDialog.OpenFile
         nameFilters: controls.projectResources ? controls.projectResources.transferFileFilters : []
-        onAccepted: controls.inspectSource(selectedFile.toString())
+        onAccepted: controls.beginFileImport(selectedFile.toString())
     }
 
     FileDialog {

@@ -1,7 +1,6 @@
 """Real QML checks for the shared project resource operation bar."""
 from pathlib import Path
 from copy import deepcopy
-import json
 import pytest
 import time
 from PySide6.QtCore import QCoreApplication, QMetaObject, QObject, QPointF, Qt, QTimer, QUrl
@@ -24,9 +23,9 @@ pytestmark = [pytest.mark.contract, pytest.mark.qt]
 def isolated_transfer_library(tmp_path, monkeypatch):
     """Toolbar fixtures exercise real exchange I/O, not the application library.
 
-    Import initially inspects global resources even when the next user action
-    selects a project file. Bundled research materials are unrelated to this
-    interaction and make its duration dependent on the runner's CPU/library.
+    Package selection is admitted directly without an initial global read.
+    Bundled research materials are unrelated to this interaction and make its
+    duration dependent on the runner's CPU/library.
     """
     root = tmp_path / "application-library"
     root.mkdir()
@@ -579,16 +578,35 @@ def test_import_package_category_preview_is_read_only_and_capturable(project, tm
     destination_before = stores["First"].manifest
 
     bar = window.findChild(QQuickItem, "projectResourceControls")
-    click_item(window.findChild(QQuickItem, "projectResourceTransferMenuButton"), app)
-    complete_transfer(app, controller, "inspect", lambda: click_item(
-        window.findChild(QQuickItem, "projectResourceImportMenuItem"), app))
-    assert controller.transferCatalog["source_type"] == "global"
-    assert controller.transferCatalog["rows"] == []  # The real, private test library is empty.
+    picker = window.findChild(QObject, "projectResourceImportFileDialog")
+    assert picker is not None
+    run_qml(picker, "options = options | FileDialog.DontUseNativeDialog")
+    import_menu = window.findChild(QQuickItem, "projectResourceImportMenuItem")
+    transfer_menu = window.findChild(QQuickItem, "projectResourceTransferMenuButton")
+    operation_before_cancel = controller.transferOperationId
+    catalog_before_cancel = controller.transferCatalog
+    click_item(transfer_menu, app)
+    click_item(import_menu, app)
+    assert wait_for(app, lambda: bool(picker.property("visible")))
+    assert str(bar.property("activeTransferMode")) == ""
+    assert controller.transferOperationId == operation_before_cancel
+    assert controller.transferCatalog == catalog_before_cancel
+    assert QMetaObject.invokeMethod(picker, "reject")
+    assert wait_for(app, lambda: not bool(picker.property("visible")))
+    assert controller.transferOperationId == operation_before_cancel
+    assert controller.transferCatalog == catalog_before_cancel
+
     transfer_dialog = window.findChild(QObject, "projectResourceTransferDialog")
+    assert picker.setProperty("selectedFile", QUrl.fromLocalFile(str(donor_path)))
+    click_item(transfer_menu, app)
+    click_item(import_menu, app)
+    assert wait_for(app, lambda: bool(picker.property("visible")))
+    operation_before_accept = controller.transferOperationId
+    complete_transfer(app, controller, "inspect", lambda: QMetaObject.invokeMethod(picker, "accept"))
+    assert controller.transferOperationId > operation_before_accept
     assert transfer_dialog is not None and transfer_dialog.property("visible")
-    donor_url = QUrl.fromLocalFile(str(donor_path)).toString()
-    complete_transfer(app, controller, "inspect", lambda: run_qml(
-        bar, "inspectSource(" + json.dumps(donor_url) + ")"))
+    assert controller.transferCatalog["source_type"] == "project"
+    assert Path(controller.transferCatalog["source_path"]) == donor_path
     assert controller.transferCatalog.get("rows")
     assert controller.transferCatalog["rows"][0]["id"] == donor_identity
 
@@ -622,12 +640,10 @@ def test_import_package_category_preview_is_read_only_and_capturable(project, tm
     assert str(preview_label.property("text")) == "源 · " + donor_name
     assert evaluate_qml(preview_label, "textFormat") == 0
 
-    review = Path("artifacts/project-resource-toolbar-review")
-    review.mkdir(parents=True, exist_ok=True)
     assert transfer_dialog.property("visible")
     capture = window.grabWindow()
     assert not capture.isNull()
-    screenshot = review / "import-coatproj-category-preview.png"
+    screenshot = tmp_path / "import-coatproj-category-preview.png"
     assert capture.save(str(screenshot)) and screenshot.stat().st_size > 0
 
     click_item(window.findChild(QQuickItem, "projectResourceTransferCancelButton"), app)

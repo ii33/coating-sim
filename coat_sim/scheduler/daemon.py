@@ -1,6 +1,9 @@
 """One headless scheduler per project; workers never use a control pipe for arrays."""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import math
+import secrets
+from contextlib import contextmanager
 import os
 from pathlib import Path
 import subprocess
@@ -16,6 +19,8 @@ from coat_sim.core.process_identity import _process_identity
 from coat_sim.core.compute_tasks import _compact_progress
 from .io import write_json, write_text
 from .store import SchedulerStore, FINAL
+from .lifecycle import (DEFAULT_IDLE_SECONDS, PREPARE_LEASE_SECONDS, acquire_start_gate,
+                        publish_registration, remove_registration, current_start_epoch)
 
 MAX_RPC_BODY_BYTES = 64 * 1024 * 1024
 
@@ -190,8 +195,13 @@ def _interrupted_job_changes(row, message='Previous scheduler exited; computatio
     }
 
 class Scheduler:
-    def __init__(self, root):
+    def __init__(self, root, *, idle_seconds=DEFAULT_IDLE_SECONDS, prepare_lease_seconds=PREPARE_LEASE_SECONDS):
         self.root = Path(root).resolve()
+        self.idle_seconds = float(idle_seconds)
+        self.prepare_lease_seconds = float(prepare_lease_seconds)
+        if (not math.isfinite(self.idle_seconds) or self.idle_seconds <= 0
+                or not math.isfinite(self.prepare_lease_seconds) or self.prepare_lease_seconds <= 0):
+            raise ValueError('invalid_scheduler_lifecycle_timeout')
         self.runtime = self.root / 'artifacts/runtime/scheduler'
         self.lock = InstanceLock(self.runtime / 'instance.lock')
         self.owner = uuid4().hex
@@ -199,6 +209,13 @@ class Scheduler:
         self.stopping = threading.Event()
         self.guard = WorkerGuard()
         self.active = None
+        self._last_activity = time.monotonic()
+        self._requests = 0
+        self._exit_id = ''
+        self._exit_deadline = 0.0
+        self._exit_committed = False
+        self._lifecycle_secret = secrets.token_hex(32)
+        self.process_start = _process_identity(os.getpid())[1]
         self.recovery_error = None
         try:
             for row in self.store.running():
@@ -247,6 +264,7 @@ class Scheduler:
                 # Deduplicated submit does not manufacture duplicate events.
                 if getattr(self.store, 'last_sequence', self.sequence) > previous_sequence:
                     self._publish(record, kind)
+                    self._last_activity = time.monotonic()
             if method == 'cancel' and record and record['state'] not in FINAL:
                 self._notify_cancel(record['job_id'])
             return value
@@ -357,14 +375,98 @@ class Scheduler:
             return outcome
         return self._attach_best_candidate_checkpoint(job_id, outcome)
 
+    def _expire_exit(self):
+        if self._exit_id and not self._exit_committed and time.monotonic() >= self._exit_deadline:
+            self._exit_id = ''
+            self._exit_deadline = 0.0
+            self._last_activity = time.monotonic()
+
+    @contextmanager
+    def request_scope(self, *, activity=False):
+        with self.condition:
+            self._requests += 1
+            if activity:
+                self._last_activity = time.monotonic()
+        try:
+            yield
+        finally:
+            with self.condition:
+                self._requests -= 1
+                if activity:
+                    self._last_activity = time.monotonic()
+
+    def _lifecycle(self, action, arguments):
+        with self.condition:
+            if (arguments.get('instance') != self.owner
+                    or not isinstance(arguments.get('secret'), str)
+                    or not secrets.compare_digest(arguments['secret'], self._lifecycle_secret)):
+                raise ValueError('scheduler_lifecycle_identity_mismatch')
+            exit_id = arguments.get('exit_id')
+            if not isinstance(exit_id, str) or not exit_id or len(exit_id) > 256:
+                raise ValueError('invalid_exit_id')
+            self._expire_exit()
+            result = {'instance': self.owner, 'pid': os.getpid(), 'process_start': self.process_start}
+            if action == 'lifecycle_prepare':
+                if self.stopping.is_set() or self._exit_committed:
+                    raise ValueError('scheduler_stopping')
+                if self._exit_id and self._exit_id != exit_id:
+                    raise ValueError('scheduler_exit_in_progress')
+                self._exit_id = exit_id
+                self._exit_deadline = time.monotonic() + self.prepare_lease_seconds
+                return {**result, 'state': 'ready', 'active_job_count': int(self.active is not None)}
+            if exit_id != self._exit_id:
+                raise ValueError('scheduler_exit_permit_expired')
+            if action == 'lifecycle_cancel':
+                if self._exit_committed:
+                    return {**result, 'cancelled': False}
+                self._exit_id = ''
+                self._exit_deadline = 0.0
+                self._last_activity = time.monotonic()
+                return {**result, 'cancelled': True}
+            if action == 'lifecycle_renew':
+                self._exit_deadline = time.monotonic() + self.prepare_lease_seconds
+                return {**result, 'state': 'ready'}
+            if action == 'lifecycle_commit':
+                self._exit_committed = True
+                if self.active is not None:
+                    self._commit('cancel', self.active[0])
+                else:
+                    self.stopping.set()
+                self.condition.notify_all()
+                return {**result, 'accepted': True}
+            raise ValueError('unknown_scheduler_lifecycle_action')
+
+    def _idle_stop(self):
+        with self.condition:
+            self._expire_exit()
+            if (not self.active and not self.recovery_error and not self._exit_id
+                    and not self._requests and not any(job['state'] not in FINAL for job in self.index.values())
+                    and time.monotonic() - self._last_activity >= self.idle_seconds):
+                self.stopping.set()
+
     def dispatch(self, action, arguments):
-        if action == 'health': return {'protocol_version': 1, 'pid': os.getpid(), 'instance': self.owner,
-                                      'recovery_error': self.recovery_error, 'stopping': self.stopping.is_set()}
+        with self.request_scope(activity=action in {'submit', 'cancel', 'refresh_estimates'}):
+            if action.startswith('lifecycle_'):
+                return self._lifecycle(action, arguments)
+            return self._dispatch(action, arguments)
+
+    def _dispatch(self, action, arguments):
+        if action == 'health':
+            return {'protocol_version': 1, 'pid': os.getpid(), 'instance': self.owner,
+                                      'recovery_error': self.recovery_error, 'stopping': self.stopping.is_set(),
+                                      'process_start': self.process_start, 'lifecycle_protocol': 1}
         if action == 'submit':
-            if self.stopping.is_set(): raise ValueError('scheduler_stopping')
-            return self._commit('submit', **arguments)
-        if action == 'status': return self.memory_status(**arguments)
-        if action == 'cancel': return self._commit('cancel', **arguments)
+            with self.condition:
+                self._expire_exit()
+                if self.stopping.is_set():
+                    raise ValueError('scheduler_stopping')
+                if self._exit_id:
+                    raise ValueError('scheduler_exit_in_progress')
+                return self._commit('submit', **arguments)
+        if action == 'status':
+            return self.memory_status(**arguments)
+        if action == 'cancel':
+            return self._commit('cancel', **arguments)
         if action == 'result':
             value = self.memory_status(**arguments)
             state = value.get('state')
@@ -411,13 +513,17 @@ class Scheduler:
             with self.store.queue.connection() as db:
                 row = db.execute("SELECT payload FROM queue_jobs WHERE state='succeeded' AND json_extract(payload,'$.result.run_id')=?",
                                  (arguments['run_id'],)).fetchone()
-            if not row: raise ValueError('run_not_found')
+            if not row:
+                raise ValueError('run_not_found')
             return json.loads(row['payload'])['result']
-        if action == 'snapshot': return self.memory_snapshot(**arguments)
-        if action == 'events': return self.events(**arguments)
+        if action == 'snapshot':
+            return self.memory_snapshot(**arguments)
+        if action == 'events':
+            return self.events(**arguments)
         if action == 'refresh_estimates':
             value = self.store.queue.snapshot(limit=1)
-            with self.condition: self.confirmations = value['confirmations']
+            with self.condition:
+                self.confirmations = value['confirmations']
             return {'refreshed': True}
         if action == 'page':
             return {**self.store.queue.queue_jobs_page(**arguments), 'source': 'persistent_queue'}
@@ -543,93 +649,155 @@ class Scheduler:
                             outcome['result_unavailable_reason'] = f'Candidate artifact registration failed: {exc}'
                 self._commit('transition', job_id, **outcome)
             self.active = None
+            self._last_activity = time.monotonic()
             if outcome.get('state') == 'cancelled':
                 self._cleanup_cancel_marker(job_id)
-        if self.stopping.is_set() or self.recovery_error: return
-        claimed = self._commit('claim', self.owner)
-        if claimed:
-            value, spec = claimed
-            try: self.start_job(value, spec)
-            except Exception as exc:
-                if self.active is not None:
-                    # Cleanup failed: retain ownership and pause instead of
-                    # releasing a slot while its worker may still be alive.
-                    self.recovery_error = f'worker_start_cleanup_failed: {exc}'
-                    raise
-                try:
-                    self._commit('transition', value['job_id'], state='failed', error_code='worker_start_failed', error=str(exc))
-                except Exception as terminal_error:
-                    exc.add_note(f'worker_start_terminal_persistence_failed: {terminal_error}')
-                    raise exc from terminal_error
-
-    def serve(self):
+        with self.condition:
+            self._expire_exit()
+            if self._exit_committed:
+                self.stopping.set()
+                return
+            if self.stopping.is_set() or self.recovery_error or self._exit_id:
+                return
+            claimed = self._commit('claim', self.owner)
+            if claimed:
+                value, spec = claimed
+                try: self.start_job(value, spec)
+                except Exception as exc:
+                    if self.active is not None:
+                        # Cleanup failed: retain ownership and pause instead of
+                        # releasing a slot while its worker may still be alive.
+                        self.recovery_error = f'worker_start_cleanup_failed: {exc}'
+                        raise
+                    try:
+                        self._commit('transition', value['job_id'], state='failed', error_code='worker_start_failed', error=str(exc))
+                    except Exception as terminal_error:
+                        exc.add_note(f'worker_start_terminal_persistence_failed: {terminal_error}')
+                        raise exc from terminal_error
+    def serve(self, *, start_gate=None):
+        gate = start_gate or acquire_start_gate()
         scheduler = self
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *_): pass
             def do_GET(self):
+                with scheduler.request_scope():
+                    self._download()
+            def _download(self):
                 prefix = '/v1/artifacts/'
                 if not self.path.startswith(prefix) or self.headers.get('Origin'):
-                    self.send_error(403); return
-                try: item = scheduler.resolve_artifact(self.path[len(prefix):])
+                    self.send_error(403)
+                    return
+                try:
+                    item = scheduler.resolve_artifact(self.path[len(prefix):])
                 except ValueError:
-                    self.send_error(404); return
+                    self.send_error(404)
+                    return
                 try:
                     with Path(item['local_path']).open('rb') as stream:
-                        self.send_response(200); self.send_header('Content-Type', 'application/octet-stream')
-                        self.send_header('Content-Length', str(item['bytes'])); self.end_headers()
+                        self.send_response(200)
+                        self.send_header('Content-Type', 'application/octet-stream')
+                        self.send_header('Content-Length', str(item['bytes']))
+                        self.end_headers()
                         import shutil
                         shutil.copyfileobj(stream, self.wfile, length=1024*1024)
-                except (OSError, BrokenPipeError): pass
+                except (OSError, BrokenPipeError):
+                    pass
             def do_POST(self):
+                with scheduler.request_scope():
+                    self._post()
+            def _post(self):
                 # Browser pages cannot submit cross-origin requests to this local control API.
                 if self.path != '/v1/rpc' or self.headers.get('Origin') or self.headers.get('Content-Type') != 'application/json':
-                    self.send_error(403); return
+                    self.send_error(403)
+                    return
                 try:
                     length = int(self.headers.get('Content-Length', '0'))
-                    if length < 1: raise ValueError('empty_request')
-                    if length > MAX_RPC_BODY_BYTES: raise ValueError('request_body_too_large')
+                    if length < 1:
+                        raise ValueError('empty_request')
+                    if length > MAX_RPC_BODY_BYTES:
+                        raise ValueError('request_body_too_large')
                     request = json.loads(self.rfile.read(length))
-                    if request.get('protocol_version') != 1: raise ValueError('unsupported_protocol_version')
+                    if request.get('protocol_version') != 1:
+                        raise ValueError('unsupported_protocol_version')
                     result = scheduler.dispatch(request['action'], request.get('arguments', {}))
                     body = json.dumps({'ok': True, 'protocol_version': 1, 'result': public_payload(result)}, ensure_ascii=False, allow_nan=False).encode('utf-8')
                     self.send_response(200)
                 except Exception as exc:
                     body = json.dumps({'ok': False, 'protocol_version': 1, 'error': f'{type(exc).__name__}: {exc}'}).encode('utf-8')
                     self.send_response(400)
-                self.send_header('Content-Type', 'application/json'); self.send_header('Content-Length', str(len(body)))
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(body)))
                 self.end_headers()
-                try: self.wfile.write(body)
-                except (BrokenPipeError, ConnectionResetError): pass
-        http = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
-        http.daemon_threads = True
-        write_json(self.runtime / 'endpoint.json', {'protocol_version': 1, 'host': '127.0.0.1',
-            'port': http.server_port, 'pid': os.getpid(), 'instance': self.owner})
-        thread = threading.Thread(target=http.serve_forever, kwargs={'poll_interval': .1}, daemon=True)
-        thread.start()
+                try:
+                    self.wfile.write(body)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+        http = None
+        thread = None
         try:
-            while not self.stopping.wait(.1): self.tick()
+            http = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+            http.daemon_threads = True
+            endpoint = {'protocol_version': 1, 'host': '127.0.0.1',
+                        'port': http.server_port, 'pid': os.getpid(), 'instance': self.owner}
+            publish_registration(self.root, endpoint, self._lifecycle_secret)
+            write_json(self.runtime / 'endpoint.json', endpoint)
+            thread = threading.Thread(target=http.serve_forever, kwargs={'poll_interval': .1}, daemon=True)
+            thread.start()
+            gate.close()
+            while not self.stopping.wait(.1):
+                self.tick()
+                self._idle_stop()
         finally:
-            if self.active:
-                job_id, process, _, _ = self.active
-                process.terminate(); process.wait(timeout=10)
-                with self.condition:
-                    current = self.memory_status(job_id)
-                    changes = _interrupted_job_changes(
-                        current, 'Scheduler explicitly stopped while worker was running; no automatic replay')
-                    self._commit('transition', job_id, **changes)
-                if changes['state'] == 'cancelled':
-                    self._cleanup_cancel_marker(job_id)
-            self.guard.close()
-            http.shutdown(); http.server_close(); thread.join(timeout=2)
+            gate.close()
             try:
-                endpoint = json.loads((self.runtime / 'endpoint.json').read_text(encoding='utf-8'))
-                if endpoint.get('instance') == self.owner: (self.runtime / 'endpoint.json').unlink(missing_ok=True)
-            finally: self.lock.close()
+                if self.active:
+                    job_id, process, _, _ = self.active
+                    process.terminate(); process.wait(timeout=10)
+                    with self.condition:
+                        current = self.memory_status(job_id)
+                        changes = _interrupted_job_changes(
+                            current, 'Scheduler explicitly stopped while worker was running; no automatic replay')
+                        self._commit('transition', job_id, **changes)
+                    if changes['state'] == 'cancelled':
+                        self._cleanup_cancel_marker(job_id)
+            finally:
+                self.guard.close()
+                try:
+                    if http is not None:
+                        if thread is not None and thread.ident is not None:
+                            http.shutdown()
+                            thread.join(timeout=2)
+                        http.server_close()
+                    try:
+                        endpoint = json.loads((self.runtime / 'endpoint.json').read_text(encoding='utf-8'))
+                        if endpoint.get('instance') == self.owner:
+                            (self.runtime / 'endpoint.json').unlink(missing_ok=True)
+                    except FileNotFoundError:
+                        pass
+                finally:
+                    try:
+                        remove_registration(self.root, self.owner)
+                    finally: self.lock.close()
 
-def serve(root):
-    try: scheduler = Scheduler(root)
-    except OSError as exc:
-        if getattr(exc, 'errno', None) in (13, 11, 36): return 0
+
+def serve(root, *, launch_epoch=None):
+    try:
+        gate = acquire_start_gate(timeout=3.0)
+    except RuntimeError as exc:
+        if str(exc) == 'scheduler_exit_in_progress':
+            return 0
         raise
-    scheduler.serve()
-    return 0
+    try:
+        # A child may have been delayed importing Python until after a complete
+        # prepare/cancel/exit cycle released the fence. Its old ticket stays
+        # invalid permanently, so it cannot resurrect a service afterwards.
+        if launch_epoch is not None and launch_epoch != current_start_epoch():
+            return 0
+        try: scheduler = Scheduler(root)
+        except OSError as exc:
+            if getattr(exc, 'errno', None) in (13, 11, 36): return 0
+            raise
+        scheduler.serve(start_gate=gate)
+        return 0
+    finally:
+        gate.close()

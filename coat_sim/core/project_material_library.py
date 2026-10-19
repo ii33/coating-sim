@@ -7,7 +7,7 @@ import uuid
 from .material_business import (MaterialLibrary, MATERIAL_PACKAGE_KIND,
                                 LIBRARY_PACKAGE_KIND, PACKAGE_VERSION,
                                 application_material_library)
-from .materials import validate_material_profile, material_completeness
+from .materials import validate_material_profile, material_completeness, check_material_name
 from .project_dependencies import ProjectError, json_bytes
 
 
@@ -111,6 +111,7 @@ class ProjectMaterialLibrary(MaterialLibrary):
     def write(self, profile, *, update=False, expected_revisions=None):
         record = validate_material_profile(profile)
         with self.service._operation(mutate=True):
+            check_material_name(record, [data for _, data in self._rows()])
             matches = [(row, data) for row, data in self._rows() if data["id"].casefold() == record["id"].casefold()]
             if update and (not matches or matches[0][1]["id"] != record["id"]):
                 raise ProjectError("missing_document", "Material update needs an existing exact project ID")
@@ -179,6 +180,7 @@ class ProjectMaterialLibrary(MaterialLibrary):
             revisions: dict[str, str] = {}
             counts = {"created": 0, "copied": 0, "overwritten": 0, "skipped": 0}
             targets = set(current) | set(optics)
+            effective_profiles = {key: value[1] for key, value in current.items()}
             for record, row in zip(records, rows, strict=True):
                 record = validate_material_profile(record)
                 if row.get("id") != record["id"]:
@@ -221,6 +223,8 @@ class ProjectMaterialLibrary(MaterialLibrary):
                     counts["copied"] += 1
                 else:
                     raise ProjectError("invalid_document", "Choose copy, overwrite or skip for a conflict")
+                check_material_name(record, effective_profiles.values())
+                effective_profiles[record["id"].casefold()] = record
                 self._optical_operation(record, new, updates, revisions, allow_existing=allow_existing)
             self.service.store.write_documents(new, updates=updates, expected_revisions=revisions)
             return counts

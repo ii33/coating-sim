@@ -584,9 +584,9 @@ LocalComponents.ThemePageDialog {
                     ThemeControls.ThemeComboBox {
                         objectName: "materialRoleFilter"
                         Layout.fillWidth: true
-                        model: [{text: "膜料", value: "film"}, {text: "基片", value: "substrate"}, {text: "其他", value: "other"}]
+                        model: [{text: "膜料", value: "film"}, {text: "基片", value: "substrate"}]
                         textRole: "text"; valueRole: "value"
-                        currentIndex: Math.max(0, ["film", "substrate", "other"].indexOf(dialog.library.roleFilter))
+                        currentIndex: Math.max(0, ["film", "substrate"].indexOf(dialog.library.roleFilter))
                         onActivated: dialog.library.setRoleFilter(currentValue)
                     }
                     ThemeControls.ThemeButton {
@@ -619,7 +619,7 @@ LocalComponents.ThemePageDialog {
                         contentItem: Column {
                             spacing: 3
                             ThemeControls.ThemeLabel { width: parent.width; text: modelData.name; wrapMode: Text.Wrap; font.bold: modelData.key === dialog.library.currentKey }
-                ThemeControls.ThemeLabel { objectName: "materialEntryRoleLabel"; width: parent.width; text: materialEntryDelegate.modelData.globalReadOnly ? "全局材料 · 只读来源" : (materialEntryDelegate.modelData.roles && materialEntryDelegate.modelData.roles.indexOf("medium") >= 0 ? "内置 · 用途：光学介质" : (materialEntryDelegate.modelData.opticalOnly ? "\u7528\u6237 \u00b7 \u4ec5\u5149\u5b66\u8d44\u6599\uff08\u5de5\u827a\u6a21\u578b\u672a\u63d0\u4f9b\uff09" : (materialEntryDelegate.modelData.builtin ? "内置 · " : "用户 · ") + ({film:"膜料", substrate:"基片", other:"其他"}[materialEntryDelegate.modelData.category]))); muted: true; wrapMode: Text.Wrap; opacity: 0.8 }
+                ThemeControls.ThemeLabel { objectName: "materialEntryRoleLabel"; width: parent.width; text: materialEntryDelegate.modelData.globalReadOnly ? "全局材料 · 只读来源" : (materialEntryDelegate.modelData.roles && materialEntryDelegate.modelData.roles.indexOf("medium") >= 0 ? "内置 · 用途：光学介质" : (materialEntryDelegate.modelData.opticalOnly ? "\u7528\u6237 \u00b7 \u4ec5\u5149\u5b66\u8d44\u6599\uff08\u5de5\u827a\u6a21\u578b\u672a\u63d0\u4f9b\uff09" : (materialEntryDelegate.modelData.builtin ? "内置 · " : "用户 · ") + ({film:"膜料", substrate:"基片"}[materialEntryDelegate.modelData.category]))); muted: true; wrapMode: Text.Wrap; opacity: 0.8 }
 
                         }
                         highlighted: modelData.key === dialog.library.currentKey
@@ -670,9 +670,9 @@ LocalComponents.ThemePageDialog {
                             enabled: !dialog.library.loading
                             Layout.preferredWidth: 118
                             Layout.minimumWidth: 94
-                            model: ["膜料", "基片", "其他"]
-                            currentIndex: ["film", "substrate", "other"].indexOf(dialog.library.category)
-                            onActivated: dialog.library.setCategory(["film", "substrate", "other"][currentIndex])
+                            model: ["膜料", "基片"]
+                            currentIndex: ["film", "substrate"].indexOf(dialog.library.category)
+                            onActivated: dialog.library.setCategory(["film", "substrate"][currentIndex])
                         }
                         ThemeControls.ThemeButton {
                             objectName: "materialReferenceDetailsButton"

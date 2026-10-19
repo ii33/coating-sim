@@ -61,7 +61,7 @@ def typed_graph(root):
 
 def optical_material(identity="glass", n=1.5):
     return {"kind": "coat_sim.project_optical_material", "version": 1, "material": {
-        "id": identity, "name": "Glass", "notes": "fixture", "optical_sets": [{
+        "id": identity, "name": "Glass" if identity == "glass" else identity, "notes": "fixture", "optical_sets": [{
             "id": "set", "name": "Constant", "kind": "tabulated", "wavelength_unit": "nm",
             "wavelength_min": 400, "wavelength_max": 700, "wavelengths": [400, 700],
             "n": [n, n], "k": [0, 0], "source": "Synthetic test", "notes": "fixture"}]}}
@@ -290,9 +290,14 @@ def test_read_refuses_unsafe_or_incomplete_typed_graph(isolated, problem, code):
     else:
         (isolated / "data/sources/link.csrc").symlink_to(isolated / "data/sources/lamp.csrc")
     write(machine_path, machine)
-    with pytest.raises(ProjectError) as error:
-        global_resources.read_global_resources()
-    assert error.value.code == code
+    if problem == "missing":
+        snapshot = global_resources.read_global_resources()
+        assert not by_kind(snapshot, "machine") and not by_kind(snapshot, "process")
+        assert any(str(machine_path) in warning for warning in snapshot["_warnings"])
+    else:
+        with pytest.raises(ProjectError) as error:
+            global_resources.read_global_resources()
+        assert error.value.code == code
 
 
 def test_read_fails_closed_on_scan_limit(isolated, monkeypatch):

@@ -78,7 +78,7 @@ class ResearchedMaterialUiTests(MaterialQtCase):
         self.assertTrue(all(row["category"] == "film" or "film" in row["roles"]
                             for row in self.lib.filteredEntries))
         self.assertIn("substrate", {role for row in self.lib.entries for role in row["roles"]})
-        self.assertIn("boat", {role for row in self.lib.entries for role in row["roles"]})
+        self.assertNotIn("boat", {role for row in self.lib.entries for role in row["roles"]})
         # Proprietary mixtures have a genuinely unknown formula; never join None.
         self.assertTrue(all(isinstance(row["searchText"], str) for row in self.lib.entries))
         self.select_research("ZnS_film")
@@ -107,7 +107,7 @@ class ResearchedMaterialUiTests(MaterialQtCase):
         self.select_research("ZnS_film")
         self.assertTrue(self.lib.useMaterial())
         source_before = deepcopy(self.source.documentData())
-        for identity in ("ZnS_substrate", "W_source_container"):
+        for identity in ("ZnS_substrate", "Ge_substrate"):
             with self.subTest(identity=identity):
                 self.select_research(identity)
                 self.assertFalse(self.lib.sourceBindable)
@@ -150,7 +150,9 @@ class ResearchedMaterialUiTests(MaterialQtCase):
         self.settle_materials()
         self.assertTrue(self.lib.canUseMaterial)
         self.lib.setRoleFilter("element")
-        self.assertEqual([row["id"] for row in self.lib.filteredEntries], ["dual"])
+        self.assertEqual(self.lib.filteredEntries, [])
+        self.lib.setRoleFilter("film")
+        self.assertIn("dual", [row["id"] for row in self.lib.filteredEntries])
         self.assertTrue(self.lib.useMaterial())
 
     def test_research_and_roles_survive_edit_save_reload_source_and_defensive_copies(self):
@@ -269,7 +271,7 @@ class ResearchedMaterialUiTests(MaterialQtCase):
             self.assertEqual(self.lib.searchText, "ZnS")
             self.assertGreaterEqual(len(self.lib.filteredEntries), 1)
             role = dialog.findChild(QObject, "materialRoleFilter")
-            self.assertEqual(role.property("count"), 3)
+            self.assertEqual(role.property("count"), 2)
             self.assertGreaterEqual(role.property("currentIndex"), 0)
             role.setProperty("currentIndex", 1)
             role.activated.emit(1)
@@ -335,6 +337,15 @@ class ResearchedMaterialUiTests(MaterialQtCase):
             if screenshot_dir:
                 self.assertTrue(image.save(str(Path(screenshot_dir) / "research-library-ito.png")))
                 (Path(screenshot_dir) / "ito-render.json").write_text(json.dumps({"select_and_render_seconds": elapsed, "sections": len(self.lib.referenceSections), "snapshot_bytes": len(json.dumps(self.lib.researchData).encode())}, indent=2))
+            self.assertTrue(self.lib.newMaterial())
+            self.settle_materials()
+            category = dialog.findChild(QObject, "materialCategoryEditor")
+            self.assertIsNotNone(category)
+            self.assertTrue(category.property("visible"))
+            self.assertEqual(category.property("count"), 2)
+            category.setProperty("currentIndex", 1)
+            category.activated.emit(1)
+            self.assertEqual(self.lib.category, "substrate")
             self.assertFalse(warnings, "\n".join(warnings))
         finally:
             window.setProperty("allowClose", True)

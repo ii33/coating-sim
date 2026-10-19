@@ -5,8 +5,8 @@ import os
 from pathlib import Path
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
-from typing import Any, cast
+from concurrent.futures import Future, ThreadPoolExecutor
+from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
@@ -25,15 +25,21 @@ from coat_sim.ui.settings import apply_font_settings, configure_qt_dpi_scale
 from coat_sim.ui.theme_service import configure_theme_from_settings
 
 
+if TYPE_CHECKING:
+    from coat_sim.scheduler.lifecycle import SchedulerExitGroup
+
+
 class AssistantProcessHost(QObject):
     exitProgress = Signal(object)
     exitFinished = Signal(object)
+    computeExitConfirmation = Signal(object)
     externalWindowsReady = Signal(object)
     externalWindowActionReady = Signal(str)
 
     def __init__(self, engine: QQmlApplicationEngine, runtime_root: Path):
         super().__init__(engine)
         self.generation = uuid4().hex
+        self._runtime_root = runtime_root
         state, self.process_start = _process_identity(os.getpid())
         if state != "alive" or self.process_start is None:
             raise UiControlError("process_identity_unknown", "Cannot verify assistant process creation identity")
@@ -51,9 +57,11 @@ class AssistantProcessHost(QObject):
         self._closed = False
         self._worker: threading.Thread | None = None
         self._chat_enabled: bool | None = None
+        self._exit_services: SchedulerExitGroup | None = None
         self._cancel_wait = threading.Event()
         self.exitProgress.connect(self._exit_progress)
         self.exitFinished.connect(self._exit_finished)
+        self.computeExitConfirmation.connect(self._confirm_compute_exit)
         self.server = UiControlServer(self.dispatch, root=runtime_root, role="assistant",
                                        operations=ASSISTANT_OPERATIONS, endpoint_prefix="assistant")
         self._debug = None
@@ -183,16 +191,9 @@ class AssistantProcessHost(QObject):
         if "exit_id" not in self._exit or self._exit["state"] != "own_confirmation":
             self._exit = {"state": "own_confirmation", "exit_id": uuid4().hex}
         bridge, desktop = cast(Any, self.controller.bridge), self.controller.desktop
-        active_jobs = any(row.get("state") in {"queued", "waiting_confirmation", "running", "held", "pending"}
-                          for row in desktop._jobs if isinstance(row, dict))
-        if bridge.busy or active_jobs:
-            text = "退出将关闭本应用的窗口和助手。"
-            if bridge.busy:
-                text += "\n助手仍在处理对话，退出会结束当前助手任务。"
-            if active_jobs:
-                text += "\n计算服务持有的任务会继续运行，远程计算服务不会被停止。"
-            text += "\n项目中的未保存内容会分别确认。是否继续退出？"
-            decision = QMessageBox.question(None, "退出应用", text,
+        if bridge.busy:
+            decision = QMessageBox.question(None, "退出应用",
+                "助手正在处理对话。退出将停止当前生成。\n工程中的未保存内容会分别确认。是否继续退出？",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
                 QMessageBox.StandardButton.Cancel)
             if decision != QMessageBox.StandardButton.Yes:
@@ -205,6 +206,7 @@ class AssistantProcessHost(QObject):
             desktop.notify("退出尚未开始：" + str(exc), sound=False)
             return
         cast(Any, self.controller.bridge).set_application_exit_frozen(True)
+        desktop_drained = desktop.set_application_exit_frozen(True)
         if self.controller._chat is not None:
             content = self.controller._chat.contentItem()
             self._chat_enabled = content.isEnabled()
@@ -214,12 +216,57 @@ class AssistantProcessHost(QObject):
         exit_id = self._exit["exit_id"]
 
         def execute() -> None:
-            result = self.registry.request_exit_all(exit_id, on_progress=self.exitProgress.emit, cancel_wait=self._cancel_wait,
-                                                    foreground_client_id=foreground_client_id)
-            self.exitFinished.emit(result)
+            from coat_sim.scheduler.lifecycle import SchedulerExitGroup
+            services = SchedulerExitGroup(self._runtime_root)
+            try:
+                if desktop_drained is not None:
+                    desktop_drained.result()
+                active = services.prepare(exit_id)
+                target = foreground_client_id
+                if active:
+                    decision: Future = Future()
+                    self.computeExitConfirmation.emit((active, decision))
+                    renewal = time.monotonic() + 10.0
+                    while not decision.done():
+                        if time.monotonic() >= renewal:
+                            services.renew()
+                            renewal = time.monotonic() + 10.0
+                        time.sleep(0.05)
+                    accepted, target = decision.result()
+                    if not accepted:
+                        result = {"state": "declined", "code": "compute_close_declined", "committed_clients": []}
+                        return
+                result = self.registry.request_exit_all(exit_id, on_progress=self.exitProgress.emit,
+                    cancel_wait=self._cancel_wait, foreground_client_id=target, services=services,
+                    release_services=False)
+            except Exception as exc:
+                result = {"state": "failed", "code": getattr(exc, "code", "compute_exit_failed"),
+                          "message": str(exc), "committed_clients": []}
+            finally:
+                if result.get("state") == "completed":
+                    # Keep the start fence through our own provider/executor
+                    # shutdown, including the queued GUI completion callback.
+                    self._exit_services = services
+                else:
+                    services.cancel()
+                self.exitFinished.emit(result)
 
         self._worker = threading.Thread(target=execute, name="assistant-graceful-exit", daemon=True)
         self._worker.start()
+
+    @Slot(object)
+    def _confirm_compute_exit(self, request) -> None:
+        active, decision = request
+        try:
+            answer = QMessageBox.question(None, "退出应用",
+                f"本应用仍有 {active} 个本地计算任务。退出将取消正在运行的计算，保留尚未运行的队列记录。\n远程服务器任务保持独立。是否继续？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel)
+            accepted = answer == QMessageBox.StandardButton.Yes
+            target = self.registry.prepare_exit_activation() if accepted else None
+            decision.set_result((accepted, target))
+        except Exception as exc:
+            decision.set_exception(exc)
 
     @Slot(object)
     def _exit_progress(self, value: dict[str, Any]) -> None:
@@ -251,6 +298,7 @@ class AssistantProcessHost(QObject):
             if app is not None:
                 QTimer.singleShot(0, app.quit)
         else:
+            self.controller.desktop.set_application_exit_frozen(False)
             cast(Any, self.controller.bridge).set_application_exit_frozen(False)
             if self.controller._chat is not None and self._chat_enabled is not None:
                 self.controller._chat.contentItem().setEnabled(self._chat_enabled)
@@ -268,6 +316,10 @@ class AssistantProcessHost(QObject):
         if self._debug is not None:
             self._debug.close()
         self.controller.shutdown()
+        services = getattr(self, "_exit_services", None)
+        if services is not None:
+            services.cancel()
+            self._exit_services = None
 
 
 def run_assistant(runtime_root: Path) -> int:

@@ -1,0 +1,192 @@
+{
+  "schema_version": 1,
+  "dataset_id": "verified_substrate_optics_20261019_v1",
+  "sources": {
+    "cdgm_hk9l": {
+      "urls": [
+        "https://www.cdgmgd.com/webapp/pdf/H-K9L.pdf",
+        "https://refractiveindex.info/download/data/2022/CDGM-ZEMAX202206new.AGF",
+        "https://github.com/polyanskiy/refractiveindex.info-database/blob/c5c2f188e848453def5970e347399d653df2ffc2/database/data/specs/cdgm/optical/H-K9L.yml"
+      ],
+      "sha256": {
+        "official_pdf": "76981cce4427b78b3e35bba76674cacc3f7b4678259b2d2e3029f6a33d05e018",
+        "AGF": "f1eefc5c107bea3aa489df4df9552bd48597c56e5b5b73c5bfddff53fec75121",
+        "local_rii_yaml": "6aa5f8c0df87d782de64f7e49a06a6f722a9960829ec27958ddbd5fba6865bdb"
+      },
+      "temperature_C": 20,
+      "index_reference": "source_reported",
+      "k_status": "unknown; n-only preset"
+    },
+    "malitson": {
+      "urls": [
+        "https://doi.org/10.1364/JOSA.55.001205",
+        "https://opg.optica.org/abstract.cfm?URI=josa-55-10-1205",
+        "https://github.com/polyanskiy/refractiveindex.info-database/blob/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/SiO2/nk/Malitson.yml"
+      ],
+      "local_rii_sha256": "c587670f397241ecb93a1af3279d6fe7ed67888e587e399074b0eab729c92b52",
+      "temperature_C": 20,
+      "index_reference": "source_reported",
+      "k_status": "unknown; n-only preset"
+    }
+  },
+  "reference_tables": {
+    "cdgm_hk9l_official_n": {
+      "wavelength_unit": "nm",
+      "rows": [
+        [
+          302.15,
+          1.552035
+        ],
+        [
+          313.18,
+          1.548455
+        ],
+        [
+          365.01,
+          1.536288
+        ],
+        [
+          404.66,
+          1.530251
+        ],
+        [
+          435.83,
+          1.52669
+        ],
+        [
+          479.99,
+          1.52283
+        ],
+        [
+          486.13,
+          1.522376
+        ],
+        [
+          546.07,
+          1.518721
+        ],
+        [
+          587.56,
+          1.5168
+        ],
+        [
+          589.29,
+          1.516728
+        ],
+        [
+          632.8,
+          1.515092
+        ],
+        [
+          643.85,
+          1.514723
+        ],
+        [
+          656.27,
+          1.514326
+        ],
+        [
+          706.52,
+          1.512901
+        ],
+        [
+          852.11,
+          1.509828
+        ],
+        [
+          1013.98,
+          1.507356
+        ],
+        [
+          1060,
+          1.506743
+        ],
+        [
+          1529.58,
+          1.50106
+        ],
+        [
+          1970.09,
+          1.495235
+        ],
+        [
+          2325.42,
+          1.48964
+        ]
+      ],
+      "source": "https://www.cdgmgd.com/webapp/pdf/H-K9L.pdf",
+      "purpose": "Independent source check, not interpolation/extrapolation domain",
+      "max_abs_formula_residual_including_out_of_domain_reference": 6.564768260108877e-07
+    }
+  },
+  "materials": [
+    {
+      "id": "film_substrate_cdgm_hk9l",
+      "name": "CDGM H-K9L（K9）",
+      "roles": [
+        "substrate"
+      ],
+      "category": "substrate",
+      "notes": "实际厂家牌号 CDGM H-K9L，玻璃代码517642；并非任意K9或N-BK7。原厂AGF 2022-06: LD=0.302–2.325 µm，TD参考温度20°C；单页PDF温压口径未明。index_reference=source_reported，未擅自作空气/真空基准转换。三项Sellmeier：B不变，C由µm²乘10^6转为nm²；有效域302–2325 nm。k未知：未导入由10 mm内透过率推算的有效k，不将未知k设为0。原厂20点n表为独立核对资料；2325.42 nm表点不扩大AGF公式2325 nm上限。",
+      "readonly": true,
+      "design_ready": false,
+      "optical_sets": [
+        {
+          "id": "cdgm_hk9l_sellmeier_nm",
+          "name": "CDGM H-K9L · 20°C · n（nm）",
+          "kind": "sellmeier",
+          "wavelength_unit": "nm",
+          "wavelength_min": 302,
+          "wavelength_max": 2325,
+          "parameters": {
+            "B1": 0.614555251,
+            "B2": 0.656775017,
+            "B3": 1.02699346,
+            "C1": 14598.7884,
+            "C2": 2877.6958799999998,
+            "C3": 107653051.0
+          },
+          "source": "CDGM H-K9L official datasheet: https://www.cdgmgd.com/webapp/pdf/H-K9L.pdf ; original CDGM Zemax 2022-06 AGF: https://refractiveindex.info/download/data/2022/CDGM-ZEMAX202206new.AGF",
+          "notes": "实际厂家牌号 CDGM H-K9L，玻璃代码517642；并非任意K9或N-BK7。原厂AGF 2022-06: LD=0.302–2.325 µm，TD参考温度20°C；单页PDF温压口径未明。index_reference=source_reported，未擅自作空气/真空基准转换。三项Sellmeier：B不变，C由µm²乘10^6转为nm²；有效域302–2325 nm。k未知：未导入由10 mm内透过率推算的有效k，不将未知k设为0。原厂20点n表为独立核对资料；2325.42 nm表点不扩大AGF公式2325 nm上限。",
+          "process_parameters": [
+            {
+              "name": "温度",
+              "value": "20",
+              "unit": "°C"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "optical_set_additions": [
+    {
+      "material_id": "film_substrate_malitson_silica",
+      "record": {
+        "id": "malitson_silica_sellmeier_nm",
+        "name": "熔融石英 · Malitson 1965 · 20°C · n（nm）",
+        "kind": "sellmeier",
+        "wavelength_unit": "nm",
+        "wavelength_min": 210,
+        "wavelength_max": 3710,
+        "parameters": {
+          "B1": 0.6961663,
+          "B2": 0.4079426,
+          "B3": 0.8974794,
+          "C1": 4679.14825849,
+          "C2": 13512.06307396,
+          "C3": 97934002.537921
+        },
+        "source": "I. H. Malitson, JOSA 55(10),1205–1209 (1965), DOI:10.1364/JOSA.55.001205; https://doi.org/10.1364/JOSA.55.001205",
+        "notes": "各向同性熔融石英，Malitson 1965，20°C；不是晶体石英的普通/非常光模型。保留原论文210–3710 nm区间，不合并RII/Tan扩展域。原公式C为µm²，乘10^6转为nm²；B不变；index_reference=source_reported。k未知，无k_data，不推断零吸收、OH含量、供应商品级或熔次。原malitson_silica_sellmeier（µm）仍保留，已存引用不改名、不换绑。",
+        "process_parameters": [
+          {
+            "name": "温度",
+            "value": "20",
+            "unit": "°C"
+          }
+        ]
+      }
+    }
+  ]
+}

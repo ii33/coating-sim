@@ -531,12 +531,15 @@ def _configured_research_library(
         if route is None:
             from coat_sim.agent.research_library import BuiltinResearchLibrary
             try:
-                builtin_provider = BuiltinResearchLibrary()
-                metadata = {"source_kind": builtin_provider.source_kind, "version": builtin_provider.version,
+                from coat_sim.core.unified_reference_library import UnifiedReferenceLibrary
+                builtin_provider = UnifiedReferenceLibrary(BuiltinResearchLibrary())
+                version = builtin_provider.version
+                assert isinstance(version, str)
+                metadata = {"source_kind": builtin_provider.source_kind, "version": version,
                             "included_files": builtin_provider.document_count,
                             "coverage_note": builtin_provider.coverage_note}
                 return builtin_provider, "connected_builtin_read_only", (
-                    "内置公开研究资料已就绪（只读精选，版本 " + builtin_provider.version + "）。"
+                    "内置公开研究资料已就绪（只读精选，版本 " + version + "）。"
                     + builtin_provider.coverage_note + " 仅按需检索，不会自动注入整库。"), metadata
             except (OSError, ValueError, TypeError):
                 return None, "builtin_missing", (

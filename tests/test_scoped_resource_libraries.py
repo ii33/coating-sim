@@ -32,6 +32,13 @@ def settled(bridge):
     spin_until(lambda: bridge.transferBusy, lambda value: not value, "resource task")
 
 
+def write_test_material(library, record):
+    """Publish a validated fixture without depending on Windows hard links."""
+    path = library.directory / (record["id"] + ".json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(json_bytes(record))
+
+
 def qml(engine, scope, expression):
     expr = QQmlExpression(engine.rootContext(), scope, expression)
     result = expr.evaluate()
@@ -67,7 +74,11 @@ def test_classification_has_no_all_entry_switches_actual_rows_and_clears_hidden_
         window.show()
         settled(bridge)
         categories = qml(engine, window, "categories")
-        assert categories == [{"key": "source", "label": "蒸发源"}, {"key": "mask", "label": "修正板"}]
+        assert categories == [
+            {"key": "material_profile", "label": "材料"},
+            {"key": "source", "label": "蒸发源"},
+            {"key": "mask", "label": "修正板"},
+        ]
         assert all(row["key"] and "全部" not in row["label"] for row in categories)
         assert qml(engine, window, "kindLabel('material_profile')") == "材料"
         assert qml(engine, window, "visibleRows.map(row => row.kind)") == ["source"]
@@ -75,8 +86,9 @@ def test_classification_has_no_all_entry_switches_actual_rows_and_clears_hidden_
         qml(engine, window, f"choose('{source['id']}', true)")
         assert qml(engine, window, "selectedIds.length") == 1
         category = cast(Any, window.findChild(QQuickItem, "globalResourcesCategory"))
-        category.setProperty("currentIndex", 1)
-        category.activated.emit(1)
+        mask_index = next(index for index, row in enumerate(categories) if row["key"] == "mask")
+        category.setProperty("currentIndex", mask_index)
+        category.activated.emit(mask_index)
         assert qml(engine, window, "visibleRows.map(row => row.kind)") == ["mask"]
         assert qml(engine, window, "selectedIds") == []
         assert window.property("informationId") == ""
@@ -208,21 +220,30 @@ def test_library_last_window_preserves_retained_dirty_editor_and_close_review(de
     assert project.lease._closed
 
 
-def test_material_usage_keeps_film_substrate_medium_and_unknown_reachable(global_root):
+def test_material_browser_uses_explicit_multi_membership_categories(global_root):
     from coat_sim.core.material_business import MaterialLibrary
     from coat_sim.core.materials import default_material_profile
     from tests.test_project_global_resources import profile
+
     library = MaterialLibrary(directory=global_root / "data/materials")
-    for identity, roles in (("film", ["film"]), ("glass", ["substrate"]),
-                            ("air", ["medium"]), ("both", ["film", "substrate"]),
-                            ("boat", ["boat"])):
+    for identity, name, roles in (
+            ("film", "Film", ["film"]),
+            ("bk7", "BK7", ["substrate"]),
+            ("fused_silica", "熔融石英", ["substrate"]),
+            ("air_film", "Air", ["film", "medium"]),
+            ("air_substrate", "Air", ["substrate"]),
+            ("both", "Dual use", ["film", "substrate"]),
+            ("boat", "Boat", ["boat"]),
+            ("component", "Component", ["component"]),
+            ("medium_only", "Medium only", ["medium"])):
         record = profile(identity)
-        record["name"] = identity
+        record["name"] = name
         record["roles"] = roles
-        library.write(record)
-    # A legacy unclassified profile retains the existing library's film default.
-    library.write(default_material_profile("Legacy", id="legacy"))
-    library.write(default_material_profile("Optical only", id="optical_only", optical_only=True))
+        write_test_material(library, record)
+
+    # Neither absent purpose metadata nor optical-only data implies a browser pool.
+    write_test_material(library, default_material_profile("No purpose", id="no_purpose"))
+    write_test_material(library, default_material_profile("Optical only", id="optical_only", optical_only=True))
     engine = QQmlEngine()
     theme = ThemeEngineBridge(build_theme_snapshot("light"), 0, "light", "light", "qa", "QA", {}, parent=engine)
     engine.rootContext().setContextProperty("Theme", theme)
@@ -236,16 +257,33 @@ def test_material_usage_keeps_film_substrate_medium_and_unknown_reachable(global
         settled(bridge)
         assert window.property("categoryKey") == "material_profile", (bridge.transferStatus, bridge.transferCatalog)
         assert window.property("materialUse") == "film"
-        # "medium" is a picker usage, not a browser category: no medium filter
-        # exposes, and medium-only rows (Air) browse as ordinary "其他材料".
-        assert qml(engine, window, "materialUses.map(row => row.label)") == ["膜料", "基片材料", "其他材料", "用途未标注"]
-        assert qml(engine, window, "materialUses.map(row => row.key)") == ["film", "substrate", "other", "unspecified"]
-        assert set(qml(engine, window, "visibleRows.map(row => row.name)")) == {"film", "both", "Legacy"}
+        assert qml(engine, window, "materialUses.map(row => row.label)") == ["膜料", "基片材料"]
+        assert qml(engine, window, "materialUses.map(row => row.key)") == ["film", "substrate"]
+        rows = {row.get("material_id", row["id"]): row for row in bridge.transferCatalog["rows"]
+                if row["kind"] == "material_profile"}
+        assert rows["air_film"]["material_categories"] == ["film"]
+        assert rows["air_substrate"]["material_categories"] == ["substrate"]
+        assert rows["air_film"]["material_uses"] == ["film", "medium"]
+        assert rows["medium_only"]["material_categories"] == []
+        assert rows["medium_only"]["material_uses"] == ["medium"]
+        assert rows["boat"]["material_categories"] == []
+        assert rows["boat"]["material_uses"] == ["other"]
+        assert rows["component"]["material_categories"] == []
+        assert rows["no_purpose"]["material_categories"] == []
+        assert rows["optical_only"]["material_categories"] == []
+        assert rows["both"]["material_categories"] == ["film", "substrate"]
         selector = cast(Any, window.findChild(QQuickItem, "resourceLibraryMaterialUse"))
-        for index, names in ((1, {"glass", "both"}), (2, {"air", "boat"}), (3, {"Optical only"})):
-            selector.setProperty("currentIndex", index)
-            selector.activated.emit(index)
-            assert set(qml(engine, window, "visibleRows.map(row => row.name)")) == names
+        for width in (680, 1100):
+            window.resize(width, 760)
+            QTest.qWait(60)
+            assert set(qml(engine, window, "visibleRows.map(row => row.material_id)")) == {"film", "air_film", "both"}
+            selector.setProperty("currentIndex", 1)
+            selector.activated.emit(1)
+            assert set(qml(engine, window, "visibleRows.map(row => row.material_id)")) == {
+                "bk7", "fused_silica", "air_substrate", "both"
+            }
+            selector.setProperty("currentIndex", 0)
+            selector.activated.emit(0)
         assert qml(engine, window, "categories.map(row => row.label)") == ["材料"]
     finally:
         bridge.dispose()
@@ -254,64 +292,23 @@ def test_material_usage_keeps_film_substrate_medium_and_unknown_reachable(global
         drain_events()
 
 
-def test_material_browser_folds_medium_air_into_other_without_medium_filter_at_narrow_width(global_root):
-    """Air is an ordinary material: medium-only rows browse under 其他材料."""
-    from coat_sim.core.material_business import MaterialLibrary
-    from tests.test_project_global_resources import profile
+def test_medium_picker_deduplicates_air_and_keeps_currently_bound_material():
+    from coat_sim.ui.film_quick_controller import FilmDesignQuickController
 
-    library = MaterialLibrary(directory=global_root / "data/materials")
-    air = profile("air")
-    air["name"] = "air"
-    air["roles"] = ["medium"]
-    library.write(air)
-    boat = profile("boat")
-    boat["name"] = "boat"
-    boat["roles"] = ["boat"]
-    library.write(boat)
+    def medium_record(identity):
+        return {"id": identity, "name": "Air", "optical_sets": [{"id": identity + "_set"}]}
 
-    engine = QQmlEngine()
-    theme = ThemeEngineBridge(build_theme_snapshot("light"), 0, "light", "light", "qa", "QA", {}, parent=engine)
-    engine.rootContext().setContextProperty("Theme", theme)
-    bridge = cast(Any, GlobalResourcesBridge())
-    engine.rootContext().setContextProperty("bridge", bridge)
-    component = QQmlComponent(engine, QUrl.fromLocalFile(
-        str(Path(__file__).parents[1] / "coat_sim/ui/qml/ResourceLibraryWindow.qml")))
-    window = cast(Any, component.create())
-    try:
-        assert window is not None, component.errorString()
-        window.show()
-        settled(bridge)
+    film_air = medium_record("air_film")
+    substrate_air = medium_record("air_substrate")
+    state = FilmDesignQuickController._build_picker_state(
+        {"film": [film_air], "substrate": [substrate_air], "medium": [film_air, film_air]},
+        {"incident_medium": {"kind": "material", "material_id": "air_substrate"},
+         "exit_medium": {"kind": "material", "material_id": "air_substrate"}})
 
-        # The backend catalogue still declares the medium picker usage for Air.
-        air_row = next(row for row in bridge.transferCatalog["rows"]
-                       if row["kind"] == "material_profile" and row["name"] == "air")
-        assert air_row["material_uses"] == ["medium"]
-
-        # No visible medium category anywhere in the browser filter.
-        assert "medium" not in qml(engine, window, "materialUses.map(row => row.key)")
-        assert "介质" not in qml(engine, window, "materialUses.map(row => row.label)")
-
-        for width in (680, 1100):
-            window.resize(width, 760)
-            QTest.qWait(60)
-            selector = cast(Any, window.findChild(QQuickItem, "resourceLibraryMaterialUse"))
-            other_index = next(index for index, row in
-                               enumerate(qml(engine, window, "materialUses")) if row["key"] == "other")
-            selector.setProperty("currentIndex", other_index)
-            selector.activated.emit(other_index)
-            names = set(qml(engine, window, "visibleRows.map(row => row.name)"))
-            assert {"air", "boat"} <= names
-            assert "medium" not in qml(engine, window, "materialUses.map(row => row.key)")
-
-        # A stale backend-driven medium selection must not blank the list: it is
-        # normalized onto the ordinary "其他材料" filter.
-        window.setProperty("materialUse", "medium")
-        assert "air" in set(qml(engine, window, "visibleRows.map(row => row.name)"))
-    finally:
-        bridge.dispose()
-        window.deleteLater()
-        engine.deleteLater()
-        drain_events()
+    medium_ids = [row["id"] for row in state["medium_options"]]
+    assert medium_ids == ["air_film", "air_substrate"]
+    assert len(medium_ids) == len(set(medium_ids))
+    assert {row["id"] for row in state["medium_picker_options"]} == set(medium_ids)
 
 
 def test_resource_library_is_exposed_in_mcp_read_schema_without_write_capabilities():
@@ -371,18 +368,18 @@ def test_exported_optical_only_material_does_not_invent_film_suitability(global_
         global_library.close()
 
 
-def test_unified_material_category_keeps_optical_only_editable_and_hides_nested_bar(desktop):
+def test_unclassified_optical_record_stays_preserved_without_a_film_category(desktop):
     from tests.test_project_global_resources import optical_material
     project = desktop.open()
     store = desktop.adapter.host.store_for(project.session.binding)
     identity = store.create_document("optical_material", optical_material("standalone-optics"))
     _id, _route, (window, bridge, engine, *_rest) = open_library(desktop, project)
     assert qml(engine, window, "categories") == [{"key": "material_profile", "label": "材料"}]
-    assert qml(engine, window, "visibleRows.map(row => row.id)") == [identity]
+    assert qml(engine, window, "visibleRows.map(row => row.id)") == []
     assert bridge.openMaterialAsset(identity)
     QTest.qWait(100)
     assert window.property("categoryKey") == "material_profile"
-    assert qml(engine, window, "visibleRows.map(row => row.id)") == [identity]
+    assert qml(engine, window, "visibleRows.map(row => row.id)") == []
     editor = window.property("editorInstance")
     assert editor is not None
     toolbar = editor.findChild(QQuickItem, "materialLibraryActionToolbar")

@@ -124,12 +124,13 @@ explicit lossless assumption does not rewrite data or authorize simulation,
 material changes, source lookups or external transmission. Bad bands, unknown
 material/dataset IDs and invalid source records fail explicitly.
 
-## Shipped research references
+## Unified offline references
 
-The assistant research provider is independent of project BBS/evidence and the
-fixed algorithm reference. Fresh installations select a manifest-allowlisted,
-read-only public corpus without absolute-path setup. Explicit external roots and
-legacy sidecars retain their own authorization and never silently fall back.
-Source kind, version and limited coverage are reported; neither bundled notes
-nor successful retrieval certify physical correctness. See
-[the provider contract](research-library-provider-contract.md).
+The assistant discovers packaged research text/material data, packaged or
+installed RII and source-registry metadata through `library_status/search/read`.
+No database page or external-library setup is needed. Exact source rights,
+versions, hashes, bands/units and material-candidate handoffs remain traceable;
+reference-only sources are explicitly not built in as full text. Project
+BBS/evidence and legacy private research retain their existing authorization and
+storage owners. See [the unified contract](unified-offline-library-contract.md)
+and [the provider contract](research-library-provider-contract.md).

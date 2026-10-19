@@ -264,18 +264,40 @@ def validate_material_profile(data):
         category = data["category"]
         if category not in ("film", "substrate", "other"):
             raise ValueError("材料分类须为 film、substrate 或 other")
-        if "roles" in result and category != material_category(result):
+        if "roles" in result and category != "other" and category not in material_categories(result):
             raise ValueError("材料分类与原用途角色不一致")
         result["category"] = category
     return result
 
 
-def material_category(material):
-    """Preserve legacy roles while presenting three clear library categories."""
+def material_categories(material):
+    """Return only explicitly supported film/substrate memberships.
+
+    Names, medium usage, component/boat/element roles and missing metadata never
+    imply film or substrate membership. Multiple explicit roles remain visible
+    in each pool. Unclassified source records stay unchanged pending a decision.
+    """
     roles = material.get("roles")
     if roles is not None:
-        return "film" if "film" in roles else "substrate" if "substrate" in roles else "other"
-    return material.get("category", "film")
+        return tuple(role for role in ("film", "substrate") if role in roles)
+    category = material.get("category")
+    return (category,) if category in {"film", "substrate"} else ()
+
+
+def material_category(material):
+    """Primary category for existing callers; None never means film."""
+    categories = material_categories(material)
+    return categories[0] if categories else None
+
+
+def check_material_name(record, records):
+    """Reject another identity's name only within this record's category."""
+    key = record["name"].strip().casefold()
+    for other in records:
+        if (other["id"].casefold() != record["id"].casefold()
+                and set(material_categories(other)).intersection(material_categories(record))
+                and other["name"].strip().casefold() == key):
+            raise ValueError(f"同一材料分类已存在同名材料“{other['name']}”；请使用不同名称")
 
 
 def material_display_name(material):
@@ -288,7 +310,9 @@ def material_display_name(material):
 
 def source_bindable(material):
     """Legacy user assumptions remain usable; researched non-films are browse-only."""
-    return material.get("optical_only", False) is not True and material_category(material) == "film"
+    roles = material.get("roles")
+    return (material.get("optical_only", False) is not True
+            and ("film" in roles if roles is not None else material.get("category", "film") == "film"))
 
 
 def substrate_bindable(material):
@@ -375,9 +399,9 @@ def builtin_material_profiles():
         item["research_data"] = research
         records.append(item)
     air = default_material_profile("Air", id="builtin_ideal_air", optical_only=True)
-    air["description"] = "理想空气光学介质占位模型；medium 用途仅用于介质选择，不代表真实实体基片的物性数据"
+    air["description"] = "理想空气光学占位模型（n=1，k=0）；本项目近似，不提供实体基片或蒸发源物性"
     air["notes"] = "理想非色散、无吸收近似；不描述实际空气的色散或吸收。"
-    air["roles"] = ["medium"]
+    air["roles"] = ["film", "medium"]
     records.append(air)
     optical_catalog = _optical_catalog_by_builtin_id(records)
     for record in records:
@@ -395,6 +419,23 @@ def builtin_material_profiles():
             existing.append(deepcopy(row))
             by_set_id[row["id"]] = row
         record["optical_constants"] = existing
+    # Independent ordinary records: shared numerical values, distinct ownership.
+    substrate_air = deepcopy(air)
+    substrate_air["id"] = "builtin_ideal_air_substrate"
+    substrate_air["roles"] = ["substrate"]
+    records.append(substrate_air)
+    # These records already existed in the film picker. Share those exact
+    # definitions with the unified catalog rather than inventing replacements.
+    from .optical_substrate_presets import builtin_optical_substrates
+    for preset in builtin_optical_substrates():
+        profile = default_material_profile(preset["name"], id=preset["id"], optical_only=True)
+        groups = deepcopy(preset["optical_sets"])
+        # New selections use the requested nm representation. Existing µm set
+        # IDs/data remain available unchanged for saved project references.
+        groups.sort(key=lambda group: group["wavelength_unit"] != "nm")
+        profile.update(category="substrate", roles=list(preset["roles"]),
+            notes=preset["notes"], optical_constants=groups)
+        records.append(profile)
     return [validate_material_profile(item) for item in records]
 
 
@@ -489,6 +530,7 @@ def _save_material_locked(folder, record, overwrite):
         if not stat.S_ISREG(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
             raise ValueError("材料文件必须是普通文件")
         existing = read_material_profile(candidate)
+        check_material_name(record, [existing])
         if existing["id"].casefold() == record["id"].casefold():
             matching.append((candidate, existing["id"]))
     if len(matching) > 1:

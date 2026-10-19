@@ -40,7 +40,9 @@ class SchedulerClient:
         from .daemon import MAX_RPC_BODY_BYTES
         if len(body) > MAX_RPC_BODY_BYTES:
             raise ValueError('request_body_too_large')
-        if start and str(self.root) not in self._endpoints:
+        if start and (action == 'submit' or str(self.root) not in self._endpoints):
+            # A background read may have cached an older live endpoint. Never
+            # enqueue new work in a daemon absent from coordinated shutdown.
             self.ensure_started()
         endpoint = self._endpoint()
         if endpoint.get('protocol_version') != 1 or endpoint.get('host') != '127.0.0.1':
@@ -71,7 +73,9 @@ class SchedulerClient:
         if self.transport is not None: return self.transport.request('health', {})
         try:
             value = self._call('health', start=False)
-            if not value.get('stopping'): return value
+            if not value.get('stopping'):
+                self._require_lifecycle(value)
+                return value
         except (OSError, ValueError, URLError):
             pass
         self._endpoints.pop(str(self.root), None)
@@ -92,20 +96,82 @@ class SchedulerClient:
             if executable.name.casefold() == 'python.exe' and gui_interpreter.is_file():
                 # Same environment and ABI; never search PATH or another install.
                 interpreter = str(gui_interpreter)
-        command = module_command('coat_sim.scheduler', '--root', str(self.root), 'serve', interpreter=interpreter)
-        process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **options)
+        from .lifecycle import acquire_start_gate, current_start_epoch
+        gate = acquire_start_gate(timeout=3.0)
+        try:
+            launch_epoch = current_start_epoch()
+            command = module_command('coat_sim.scheduler', '--root', str(self.root),
+                                     'serve', '--launch-epoch', launch_epoch, interpreter=interpreter)
+            process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **options)
+        finally:
+            gate.close()
         self._processes[str(self.root)] = process
         deadline = time.monotonic() + 90
         while time.monotonic() < deadline:
             try:
                 value = self._call('health', start=False)
-                if not value.get('stopping'): return value
+                if not value.get('stopping'):
+                    self._require_lifecycle(value)
+                    return value
                 self._endpoints.pop(str(self.root), None)
             except (OSError, ValueError, URLError):
+                # A global exit may have fenced publication after this child
+                # was spawned. Do not wait 90s or start another child.
+                # The child itself briefly holds the gate while publishing.
+                # A changed durable epoch, rather than lock contention, is the
+                # authoritative signal that this pending launch was cancelled.
+                if current_start_epoch() != launch_epoch:
+                    raise RuntimeError('scheduler_start_cancelled') from None
                 if process.poll() not in (None, 0):
                     raise RuntimeError(f'scheduler_start_failed: exit={process.returncode}; {log_path("scheduler", self.root)}') from None
                 time.sleep(.1)
         raise RuntimeError('scheduler_start_timeout: inspect ' + str(log_path("scheduler", self.root)))
+
+    @staticmethod
+    def _require_lifecycle(health):
+        if health.get('lifecycle_protocol') != 1:
+            raise RuntimeError('scheduler_lifecycle_upgrade_required: existing scheduler must be closed normally before using this version')
+
+    def snapshot_if_running(self, after_event=0, limit=100, refresh_estimates=False):
+        """Read an existing exact daemon; background polling never starts one."""
+        if self.transport is not None:
+            if refresh_estimates:
+                self._call('refresh_estimates', start=False)
+            return self._call('snapshot', start=False, after_event=after_event, limit=limit)
+        try:
+            endpoint = json.loads(self.endpoint.read_text(encoding='utf-8'))
+        except FileNotFoundError:
+            self._endpoints.pop(str(self.root), None)
+            return None
+        if (not isinstance(endpoint, dict) or endpoint.get('protocol_version') != 1
+                or endpoint.get('host') != '127.0.0.1'
+                or type(endpoint.get('port')) is not int or not 0 < endpoint['port'] < 65536
+                or type(endpoint.get('pid')) is not int or endpoint['pid'] <= 0
+                or not isinstance(endpoint.get('instance'), str) or not endpoint['instance']):
+            raise ValueError('invalid_scheduler_endpoint')
+        from coat_sim.core.process_identity import _process_identity
+        state, start = _process_identity(endpoint['pid'])
+        if state == 'dead':
+            self._endpoints.pop(str(self.root), None)
+            return None
+        if state != 'alive' or not start:
+            raise RuntimeError('scheduler_process_identity_unknown')
+        self._endpoints[str(self.root)] = endpoint
+        try:
+            health = self._call('health', start=False)
+            if (health.get('pid') != endpoint['pid'] or health.get('instance') != endpoint['instance']
+                    or (health.get('process_start') is not None and health['process_start'] != start)):
+                raise RuntimeError('scheduler_process_identity_mismatch')
+            if health.get('stopping'):
+                return None
+            if refresh_estimates:
+                self._call('refresh_estimates', start=False)
+            return self._call('snapshot', start=False, after_event=after_event, limit=limit)
+        except (OSError, URLError):
+            state, current = _process_identity(endpoint['pid'])
+            if state == 'dead' or (current is not None and current != start):
+                return None
+            raise RuntimeError('scheduler_unavailable') from None
 
     def submit(self, spec, job_id=None, metadata=None):
         from uuid import uuid4

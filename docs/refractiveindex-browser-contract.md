@@ -1,8 +1,19 @@
 # Local refractive-index browser
 
-Date: 2026-10-18.
+Date: 2026-10-19. Historical controller contract; browser page removed.
 
-## Entry and state ownership
+## Current entry
+
+The global/project asset library no longer loads or opens the refractive-index
+browser page and has no database toolbar button. Offline references are reached
+through the assistant's [unified library](unified-offline-library-contract.md).
+The previous controller and import tests remain as compatibility implementation;
+they do not expose an independent UI page. Existing user research is retained.
+The already-local CC0 RII snapshot is now a fixed package resource; the historical
+statement below about distribution no longer describes current behavior.
+
+## Historical entry and state ownership (2026-10-18)
+
 
 The existing global and project `ResourceLibraryWindow` operation bar opens one
 lazy, page-owned `RefractiveIndexBrowserDialog`. This is a read-only source

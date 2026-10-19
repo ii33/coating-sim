@@ -590,8 +590,17 @@ class FilmDesignEditSession:
         self._notify(*categories)
 
     def _material_record(self, purpose: str, material_id: str) -> dict[str, Any] | None:
-        return next((row for row in self._catalog_options[purpose]
-                     if str(row.get("id", "")) == str(material_id or "")), None)
+        row = next((row for row in self._catalog_options[purpose]
+                    if str(row.get("id", "")) == str(material_id or "")), None)
+        if row is None and purpose == "medium" and any(
+                self._design.get(endpoint, {}).get("kind") == "material"
+                and self._design[endpoint].get("material_id") == material_id
+                for endpoint in ("incident_medium", "exit_medium")):
+            # Preserve an already chosen immersion medium without offering
+            # every film/substrate as a surrounding-medium candidate.
+            row = next((row for role in ("film", "substrate") for row in self._catalog_options[role]
+                        if str(row.get("id", "")) == str(material_id or "")), None)
+        return row
 
     def update_material_options(self, purpose: str, rows: list[dict[str, Any]]) -> None:
         """Replace one service catalog projection and refresh derived values."""

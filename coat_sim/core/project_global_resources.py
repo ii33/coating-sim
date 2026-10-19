@@ -162,7 +162,16 @@ def read_global_resources() -> dict:
         encoded_sizes: dict[str, int] = {}
         source_paths: dict[Path, str] = {}
         total = 0
-        asset_sources = {}
+        asset_sources: dict[str, dict[str, str]] = {}
+        warnings: list[str] = []
+
+        def exclude(identity, source, exc):
+            nonlocal total
+            warnings.append(f"{source}: {exc}")
+            total -= encoded_sizes.pop(identity, 0)
+            records.pop(identity, None)
+            documents.pop(identity, None)
+            asset_sources.pop(identity, None)
 
         def add(identity, kind, data):
             nonlocal total
@@ -181,9 +190,14 @@ def read_global_resources() -> dict:
 
         for path, kind in _typed_paths(roots):
             identity = _identity("file:" + path.relative_to(boundary).as_posix())
-            data, _ = read_json(path)
-            add(identity, kind, data)
-            source_paths[path] = identity
+            try:
+                data, _ = read_json(path)
+                add(identity, kind, data)
+                source_paths[path] = identity
+            except (OSError, ValueError, TypeError, KeyError) as exc:
+                if isinstance(exc, ProjectError) and exc.code in {"capacity_exceeded", "unsafe_path"}:
+                    raise
+                exclude(identity, path, exc)
         for item in application_material_library().catalog_records():
             profile = validate_material_profile(item["record"])
             add(_identity("material_profile:" + profile["id"]), "material_profile", {
@@ -193,49 +207,66 @@ def read_global_resources() -> dict:
             add(_identity("sqlite:film_design/library.sqlite3:" + kind + ":" + business_id), kind, data)
 
         for path, identity in source_paths.items():
-            rebound = False
-            if records[identity]["kind"] == "binary_asset":
-                from .project_binary_assets import file_signature, ROLE_SUFFIXES
-                metadata = documents[identity]
-                payload_path = path.parent / metadata["payload_path"]
-                if file_signature(payload_path)[3] != metadata["size"]:
-                    raise ProjectError("integrity_error", "Global binary input has the wrong size")
-                asset_sources[identity] = {"path": str(payload_path)}
-                managed_payload = f"assets/{_GENERATION}/{identity}{ROLE_SUFFIXES[metadata['role']]}"
-                if metadata["payload_path"] != managed_payload:
-                    metadata["payload_path"] = managed_payload
-                    rebound = True
-            for owner, field, expected_kind in file_references(records[identity]["kind"], documents[identity]):
-                reference = owner[field]
-                if not isinstance(reference, str) or (os.name != "nt" and PureWindowsPath(reference).drive):
-                    raise ProjectError("unsafe_path", "Global resource reference has an unsupported path")
-                target = Path(reference)
-                target = Path(os.path.abspath(target if target.is_absolute() else path.parent / target))
-                reject_links(target)
-                if not any(target.is_relative_to(root) for root in roots.values()):
-                    raise ProjectError("unsafe_path", "Global resource reference leaves the typed libraries")
-                dependency = source_paths.get(target)
-                if dependency is None:
-                    raise ProjectError("missing_dependency", "Global resource dependency is missing: " + str(target))
-                if records[dependency]["kind"] != expected_kind:
-                    raise ProjectError("dependency_conflict", "Global resource dependency has the wrong type")
-                filename = dependency + EXTENSIONS[expected_kind]
-                if owner[field] != filename:
-                    owner[field] = filename
-                    rebound = True
-            if rebound:
-                # Size and digest share one canonical encoding. Only a row
-                # whose references changed invalidates this call-local value.
-                content = json_bytes(documents[identity])
-                size = len(content)
-                if size > MAX_FILE_BYTES:
-                    raise ProjectError("capacity_exceeded", "Normalized global resource document exceeds its safety capacity")
-                total += size - encoded_sizes[identity]
-                encoded_sizes[identity] = size
-                records[identity]["sha256"] = hashlib.sha256(content).hexdigest()
-        materials = ProjectStore._material_index(records, documents)
-        for identity, row in records.items():
-            row["dependencies"] = ProjectStore._dependencies(identity, records, documents, materials)
+            try:
+                rebound = False
+                if records[identity]["kind"] == "binary_asset":
+                    from .project_binary_assets import file_signature, ROLE_SUFFIXES
+                    metadata = documents[identity]
+                    payload_path = path.parent / metadata["payload_path"]
+                    if file_signature(payload_path)[3] != metadata["size"]:
+                        raise ProjectError("integrity_error", "Global binary input has the wrong size")
+                    asset_sources[identity] = {"path": str(payload_path)}
+                    managed_payload = f"assets/{_GENERATION}/{identity}{ROLE_SUFFIXES[metadata['role']]}"
+                    if metadata["payload_path"] != managed_payload:
+                        metadata["payload_path"] = managed_payload
+                        rebound = True
+                for owner, field, expected_kind in file_references(records[identity]["kind"], documents[identity]):
+                    reference = owner[field]
+                    if not isinstance(reference, str) or (os.name != "nt" and PureWindowsPath(reference).drive):
+                        raise ProjectError("unsafe_path", "Global resource reference has an unsupported path")
+                    target = Path(reference)
+                    target = Path(os.path.abspath(target if target.is_absolute() else path.parent / target))
+                    reject_links(target)
+                    if not any(target.is_relative_to(root) for root in roots.values()):
+                        raise ProjectError("unsafe_path", "Global resource reference leaves the typed libraries")
+                    dependency = source_paths.get(target)
+                    if dependency is None or dependency not in records:
+                        raise ProjectError("missing_dependency", "Global resource dependency is missing: " + str(target))
+                    if records[dependency]["kind"] != expected_kind:
+                        raise ProjectError("dependency_conflict", "Global resource dependency has the wrong type")
+                    filename = dependency + EXTENSIONS[expected_kind]
+                    if owner[field] != filename:
+                        owner[field] = filename
+                        rebound = True
+                if rebound:
+                    # Size and digest share one canonical encoding. Only a row
+                    # whose references changed invalidates this call-local value.
+                    content = json_bytes(documents[identity])
+                    size = len(content)
+                    if size > MAX_FILE_BYTES:
+                        raise ProjectError("capacity_exceeded", "Normalized global resource document exceeds its safety capacity")
+                    total += size - encoded_sizes[identity]
+                    encoded_sizes[identity] = size
+                    records[identity]["sha256"] = hashlib.sha256(content).hexdigest()
+            except (OSError, ValueError, TypeError, KeyError) as exc:
+                if isinstance(exc, ProjectError) and exc.code in {"capacity_exceeded", "unsafe_path"}:
+                    raise
+                exclude(identity, path, exc)
+        # Remove only invalid/dependent rows from this detached read. Original
+        # documents remain untouched and publication still uses strict inputs.
+        origins = {identity: str(path) for path, identity in source_paths.items()}
+        while True:
+            materials = ProjectStore._material_index(records, documents)
+            invalid = []
+            for identity, row in records.items():
+                try:
+                    row["dependencies"] = ProjectStore._dependencies(identity, records, documents, materials)
+                except (OSError, ValueError, TypeError, KeyError) as exc:
+                    invalid.append((identity, exc))
+            if not invalid:
+                break
+            for identity, error in invalid:
+                exclude(identity, origins.get(identity, identity), error)
         ProjectStore._validate_graph(records, documents)
         if total > MAX_PROJECT_BYTES:
             raise ProjectError("capacity_exceeded", "Normalized global resource snapshot exceeds its safety capacity")
@@ -246,6 +277,8 @@ def read_global_resources() -> dict:
                 "documents": {key: documents[key] for key in sorted(documents)}}
         if asset_sources:
             snapshot["assets"] = asset_sources
+        if warnings:
+            snapshot["_warnings"] = warnings
         return snapshot
     except ProjectError:
         raise
@@ -254,7 +287,7 @@ def read_global_resources() -> dict:
 
 
 def _validated(snapshot):
-    if not isinstance(snapshot, dict) or not {"manifest", "documents"}.issubset(snapshot) or set(snapshot) - {"manifest", "documents", "assets"}:
+    if not isinstance(snapshot, dict) or not {"manifest", "documents"}.issubset(snapshot) or set(snapshot) - {"manifest", "documents", "assets", "_warnings"}:
         raise ProjectError("invalid_document", "Invalid global exchange snapshot")
     manifest = _manifest(snapshot["manifest"])
     records = {row["id"]: row for row in manifest["documents"]}

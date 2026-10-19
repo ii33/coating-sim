@@ -144,3 +144,13 @@ Official references:
 - [mypy imports, shipped stubs, and dependency interpreters](https://mypy.readthedocs.io/en/stable/running_mypy.html)
 - [mypy command-line options](https://mypy.readthedocs.io/en/stable/command_line.html)
 - [Qt qmllint JSON, import paths, and warning categories](https://doc.qt.io/qt-6/qtqml-tooling-qmllint.html)
+
+## Pinned third-party reference data
+
+The scanner excludes upstream source files only inside the immutable packaged
+`coat_sim/core/resources/refractiveindex/versions/<commit>-<hash>-v1/source/`
+snapshot. They are retained as provenance data and are never imported or run by
+the application. The manifest identity, canonical file-list hash, individual
+file size and SHA-256 must match; missing, unlisted or changed source fails
+closed. Application/provider code and neighboring project sources remain scanned.
+This boundary adds no diagnostic allowance to the baseline.

@@ -425,7 +425,7 @@ class FilmDesignQuickController(QObject):
             expression_text="", expression_busy=False, expression_operation="",
             pending_confirmation=None, saved_designs=(), expression_templates=(),
         )
-        self._install_picker_state(self._build_picker_state(self._snapshot.material_options))
+        self._install_picker_state(self._build_picker_state(self._snapshot.material_options, self._snapshot.design))
 
         self.front_layers = FilmDesignRowsModel(self)
         self.back_layers = FilmDesignRowsModel(self)
@@ -445,7 +445,7 @@ class FilmDesignQuickController(QObject):
             else:
                 session = edit_session
                 snapshot = session.snapshot()
-                picker_state = self._build_picker_state(snapshot.material_options)
+                picker_state = self._build_picker_state(snapshot.material_options, snapshot.design)
             self._apply_initialized_session(session, snapshot, picker_state)
 
     @Property(bool, constant=True)
@@ -502,20 +502,27 @@ class FilmDesignQuickController(QObject):
         session = FilmDesignEditSession(service)
         snapshot = session.snapshot()
         picker_state = FilmDesignQuickController._build_picker_state(
-            snapshot.material_options)
+            snapshot.material_options, snapshot.design)
         return session, snapshot, picker_state
 
     @classmethod
-    def _build_picker_state(cls, materials: object) -> dict:
+    def _build_picker_state(cls, materials: object, design: Mapping[str, Any] | None = None) -> dict:
         materials = materials if isinstance(materials, dict) else {}
         film_options = list(materials.get("film", []))
         substrate_options = list(materials.get("substrate", []))
         medium_options = list(materials.get("medium", []))
-        by_id = {}
-        for row in (*medium_options, *film_options, *substrate_options):
+        selected = {str((design or {}).get(endpoint, {}).get("material_id", ""))
+                    for endpoint in ("incident_medium", "exit_medium")
+                    if (design or {}).get(endpoint, {}).get("kind") == "material"}
+        by_id: dict[str, dict[str, Any]] = {}
+        for row in medium_options:
             identity = str(row.get("id", ""))
-            if identity and row.get("optical_sets") and identity not in by_id:
-                by_id[identity] = row
+            if identity and row.get("optical_sets"):
+                by_id.setdefault(identity, row)
+        for row in (*film_options, *substrate_options):
+            identity = str(row.get("id", ""))
+            if identity in selected and row.get("optical_sets"):
+                by_id.setdefault(identity, row)
         medium_options = list(by_id.values())
         return {
             "film_options": film_options,
@@ -752,12 +759,9 @@ class FilmDesignQuickController(QObject):
                                    ("medium", "medium_options")):
             if getattr(self, attribute) is not self._picker_option_sources.get(purpose):
                 changed_purposes.add(purpose)
-        by_id = {}
-        for row in (*self.medium_options, *self.film_options, *self.substrate_options):
-            identity = str(row.get("id", ""))
-            if identity and row.get("optical_sets") and identity not in by_id:
-                by_id[identity] = row
-        self.medium_options = list(by_id.values())
+        state = self._build_picker_state({"film": self.film_options,
+            "substrate": self.substrate_options, "medium": self.medium_options}, self._snapshot.design)
+        self.medium_options = state["medium_options"]
         self._film_picker_options = [
             {"id": "", "name": "请选择材料"},
             *[self._picker_material(row) for row in self.film_options],
@@ -778,9 +782,12 @@ class FilmDesignQuickController(QObject):
         self._empty_dataset_picker_model = [{"id": "", "name": "请选择光学数据集"}]
         self._no_dataset_picker_model = []
         if self.session is not None:
-            for purpose in changed_purposes:
-                attribute = f"{purpose}_options"
-                self.session.update_material_options(purpose, getattr(self, attribute))
+            # Session callbacks can reinstall other purpose projections inline.
+            # Capture all pending inputs before notifying the first purpose.
+            pending_options = {purpose: getattr(self, f"{purpose}_options")
+                               for purpose in changed_purposes}
+            for purpose, rows in pending_options.items():
+                self.session.update_material_options(purpose, rows)
         self._picker_option_sources = {
             "film": self.film_options,
             "substrate": self.substrate_options,
@@ -1161,8 +1168,10 @@ class FilmDesignQuickController(QObject):
         current = self.session.snapshot()
         self._snapshot = current
         self._catalog_warning = str(getattr(self.service, "global_catalog_error", ""))
-        if self.projectMode and previous.material_options != current.material_options:
-            self._install_picker_state(self._build_picker_state(current.material_options))
+        endpoint_changed = any(previous.design.get(endpoint) != current.design.get(endpoint)
+                               for endpoint in ("incident_medium", "exit_medium"))
+        if previous.material_options != current.material_options or endpoint_changed:
+            self._install_picker_state(self._build_picker_state(current.material_options, current.design))
             self.initializationChanged.emit()
         if (self._tfcalc_document is not None and self._tfcalc_base_design != current.design):
             self._tfcalc_preview = None

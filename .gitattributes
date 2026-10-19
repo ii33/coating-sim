@@ -46,3 +46,6 @@
 # Preserve the exact reviewed upstream ITO optical-data and license bytes.
 /data/optical_catalog_sources/rii_ito_minenkov_20261018_v1/raw/Minenkov-glass.yml -text
 /data/optical_catalog_sources/rii_ito_minenkov_20261018_v1/refractiveindex_LICENSE -text
+
+# Immutable licensed reference snapshot: preserve source/index/manifest hashes.
+/coat_sim/core/resources/refractiveindex/** -text

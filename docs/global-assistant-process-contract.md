@@ -54,7 +54,7 @@ unsupported activation is reported so its existing owners stay protected.
 
 ## Graceful exit protocol
 
-A launcher/project host exposes lifecycle_status, lifecycle_prepare, lifecycle_commit and lifecycle_cancel. Status echoes a nonce and reports application `coat_sim`, process identity, generation, role and project sessions. Prepare receives an exit ID and exact client generation, freezes admission, and returns pending, ready (with opaque permit ID), or declined. Repeated preparation with the same exit ID polls the same decision. Every client must be ready before any commit. Commit/cancel carry the exact exit, generation and permit identities. Dirty-document and active-job decisions belong to the host. The assistant separately confirms its own active conversation/queue consequences.
+A launcher/project host exposes lifecycle_status, lifecycle_prepare, lifecycle_commit and lifecycle_cancel. Status echoes a nonce and reports application `coat_sim`, process identity, generation, role and project sessions. Prepare receives an exit ID and exact client generation, freezes admission, and returns pending, ready (with opaque permit ID), or declined. Repeated preparation with the same exit ID polls the same decision. Every client must be ready before any commit. Commit/cancel carry the exact exit, generation and permit identities. Dirty-document and active-job decisions belong to the host. The assistant separately confirms its active conversation and local-computation consequences as specified below.
 
 No commit starts after a refused/failed prepare. Uncommitted permits are cancelled on failure. Partial commit and unknown shutdown outcomes are reported explicitly, never hidden by OS termination. The assistant remains available until graceful commits have been requested and registered clients have exited. After15s an unresolved exact process identity produces a visible waiting notice; observation continues. The tray/bubble exposes Stop waiting and keep assistant, with a warning that committed closes may still finish and cannot be restored. This only abandons observation and never kills a process. A crashed/dead exact process is removed; PID reuse cannot remove its successor.
 
@@ -199,3 +199,48 @@ lifetime. A later user gesture can supersede foreground eligibility.
 The focused identity/denial tests are in
 `tests/test_project_activation_foreground.py`; native desktop foreground checks
 are distinct from mocked/offscreen tests.
+
+
+## Local computation and complete exit (2026-10-19)
+
+The assistant coordinates local scheduler services as well as registered GUI
+clients. `SchedulerExitGroup` discovers only per-user registered scheduler
+endpoints in the same assistant runtime scope, verifies the exact OS creation
+identity and instance, and authenticates lifecycle requests. This registry is
+ephemeral service ownership metadata, never project state or recent history.
+Its secret is not returned through assistant status, public queue results or
+diagnostics. It does not enumerate or signal processes by executable name.
+
+The service group's input is one exit ID. Prepare takes the shared start gate,
+freezes new local submissions and obtains renewable service permits. Existing
+calculations continue during review. The assistant asks before cancelling any
+local calculations; every dirty project still owns its existing save/discard/
+cancel decision and foreground activation. No service or GUI close is committed
+until all preparations succeed. Service commit requests durable cancellation
+of running local calculations, waits for owned workers to settle and preserves
+queued records. Remote schedulers remain outside this local-process contract.
+Completion includes observing the exact scheduler process identities exit.
+Failures and partial commits remain visible; there is no process-name kill.
+
+Cancel restores service admission and queued assistant decisions without
+discarding drafts or jobs. The assistant's desktop countdown/manual submission
+paths are frozen during exit review. The desktop executor barrier settles previously admitted queue reads and
+submissions before service discovery. The service start gate stays held through
+GUI exit observation and the assistant provider/executor cleanup, preventing
+late requests from restarting a daemon. Launches carry a start epoch captured
+before process creation; exit advances that epoch, so a delayed pre-exit child
+cannot publish after the fence is released, even when exit was cancelled.
+Prepared service permits expire if their coordinator disappears; explicit
+cancel releases them immediately. Only the assistant owns global exit intent.
+
+Empty schedulers may close after their idle grace, releasing only their own
+endpoint, registration and OS lock. Running or queued work and uncertain worker
+recovery prevent idle disposal. Background assistant queue reads connect only
+to a running service, keeping their last projection when offline; opening the
+queue explicitly can start it again. A lightweight launcher close and ordinary
+project close do not request cancellation of service-owned work. The shared
+assistant continues independently until explicit application exit.
+
+These are lifecycle changes only; project formats, physical algorithms and
+numerical results are unchanged. Interface signatures and lifecycle tests are
+the source of truth for request identity and cancellation boundaries.

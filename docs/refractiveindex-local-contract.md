@@ -4,15 +4,22 @@
 
 ## 状态所有者与目录
 
-`default_store_root()` 只解析路径，不创建目录：
+Current selection (2026-10-19): `default_store_root()` resolves the trusted
+process override first, then an existing user installation, then the fixed
+read-only shipped snapshot at `core/resources/refractiveindex`. No lookup creates
+directories, writes indexes or downloads anything. An explicit missing or damaged
+override does not silently fall back. The original Windows LOCALAPPDATA / POSIX
+XDG_DATA_HOME fallback remains the writable user-store location.
 
-- 可信进程环境 `COAT_SIM_REFRACTIVEINDEX_STORE` 可指定绝对路径；相对覆盖路径报 `INVALID_STORE_PATH`。
-- Windows 使用 `LOCALAPPDATA/CoatSim/reference-databases/refractiveindex`；缺失或为相对路径时使用用户 AppData/Local。
-- POSIX 使用绝对 `XDG_DATA_HOME/CoatSim/reference-databases/refractiveindex`；未设置或为相对路径时使用 `~/.local/share/CoatSim/reference-databases/refractiveindex`。
+`writable_store_root()` keeps explicit CLI build output in the user store;
+`store_root_for_snapshot(snapshot_id)` preserves exact packaged IDs after a later
+user installation. The model has no root argument. Physical snapshot storage is
+internal to the [unified assistant library](unified-offline-library-contract.md),
+with no independent database page or extra path setup. The existing CC0 snapshot
+was copied byte-for-byte, preserving hashes, rights and operator-declared
+upstream identity. Existing user installations and research are retained.
 
-模型只读工具不能覆盖 store 路径。CLI 操作者可以显式指定路径；GUI 使用统一默认路径。工程目录、软件仓库 data 和每次启动的临时目录不承担持久库所有权。
-
-目录结构：
+Internal storage structure:
 
 ```
 <store_root>/CURRENT.json

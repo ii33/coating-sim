@@ -11,7 +11,7 @@ import uuid
 from .atomic_io import replace_with_retry
 from .materials import (builtin_material_profiles, list_materials, save_material,
                         validate_material_profile, material_completeness,
-                        material_library_lock)
+                        material_library_lock, check_material_name)
 
 
 MATERIAL_PACKAGE_KIND = "coat_sim.material"
@@ -309,6 +309,7 @@ class MaterialLibrary:
             raise ValueError("material_not_found: update requires an existing exact custom identifier")
         if not update and matching:
             raise ValueError("material_already_exists: use update_material explicitly")
+        check_material_name(record, builtins + custom)
         saved = save_material(self.directory, record, overwrite=update)
         return {"record": saved, "readonly": False, "editable": True,
                 "builtin": False, "created": not update}
@@ -317,7 +318,8 @@ class MaterialLibrary:
         record = validate_material_profile(profile)
         self._check_directory()
         with material_library_lock(self.directory):
-            originals, _, _, _, deleted = self._catalog_state()
+            originals, builtins, custom, _, deleted = self._catalog_state()
+            check_material_name(record, builtins + custom)
             if record["id"].casefold() in deleted:
                 raise ValueError("builtin_material_deleted: restore the builtin before editing it")
             original = next((item for item in originals
@@ -357,10 +359,11 @@ class MaterialLibrary:
     def restore_builtin(self, identifier):
         self._check_directory()
         with material_library_lock(self.directory):
-            originals, _, _, overrides, deleted = self._catalog_state()
+            originals, builtins, custom, overrides, deleted = self._catalog_state()
             original = next((item for item in originals if item["id"] == identifier), None)
             if original is None:
                 raise ValueError("builtin_material_not_found: " + str(identifier))
+            check_material_name(original, builtins + custom)
             key = identifier.casefold()
             if key in deleted:
                 path = self.deleted_directory / (identifier + ".json")
@@ -572,6 +575,8 @@ class MaterialLibrary:
                 if target_path in used_targets:
                     raise ValueError("multiple import rows resolve to the same material id")
                 used_targets.add(target_path)
+                check_material_name(target, current.values())
+                current[target["id"].casefold()] = target
                 operations.append((target_path, _pretty_json_bytes(target)))
             if operations:
                 self._transactional_replace(operations)

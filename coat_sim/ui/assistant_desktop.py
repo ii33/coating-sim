@@ -7,7 +7,7 @@ simulation progress; queue records are shared across processes by SQLite.
 from __future__ import annotations
 
 from collections import deque
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime
 import json
 from pathlib import Path
@@ -170,6 +170,8 @@ class DesktopAssistantBridge(QObject):
         self._queue_authority_epoch = 0
         self._assistant_mode_seen: str | None = None
         self._closed = False
+        self._application_exit_frozen = False
+        self._queue_demand_pending = False
         self._open_windows = []
         self._window_refs = {}
         self._tracked_window_ids = set()
@@ -368,6 +370,8 @@ class DesktopAssistantBridge(QObject):
 
     @Slot(str, int, str)
     def submitDecision(self, identity, index, text):
+        if getattr(self, "_application_exit_frozen", False):
+            return
         row = self._decisions.get(identity)
         if not row:
             return
@@ -400,6 +404,8 @@ class DesktopAssistantBridge(QObject):
             self.controller.bridge.answerDecision(identity, index, text)
 
     def _tick_decisions(self):
+        if getattr(self, "_application_exit_frozen", False):
+            return
         now = time.time() * 1000
         for identity, row in list(self._decisions.items()):
             deadline = row.get("deadline_ms")
@@ -437,6 +443,8 @@ class DesktopAssistantBridge(QObject):
         future.add_done_callback(done)
 
     def _compute_release_blocked(self, estimate_id):
+        if getattr(self, "_application_exit_frozen", False):
+            return True
         row: dict = next((item for item in self._confirmations if item.get("estimate_id") == estimate_id), {})
         if row.get("release_policy") == "blocked":
             return True
@@ -742,6 +750,18 @@ class DesktopAssistantBridge(QObject):
         if self._application_exit_waiting and callable(self._application_exit_cancel_callback):
             self._application_exit_cancel_callback()
 
+    def set_application_exit_frozen(self, frozen: bool) -> Future[None] | None:
+        """Freeze admission and return a barrier for already admitted work."""
+        self._application_exit_frozen = bool(frozen)
+        if self._closed:
+            return None
+        if frozen:
+            # Every earlier queue read/confirmation finishes before service
+            # discovery. Late GUI replies cannot enqueue while frozen.
+            return self._executor.submit(lambda: None)
+        self.refreshQueue()
+        return None
+
     def set_application_exit_callback(self, callback):
         """Bind the application coordinator; this bridge never kills processes."""
         if not callable(callback):
@@ -820,6 +840,8 @@ class DesktopAssistantBridge(QObject):
 
     @Slot(str)
     def cancelQueueJob(self, job_id):
+        if getattr(self, "_application_exit_frozen", False):
+            return
         from coat_sim.scheduler import SchedulerClient
         try:
             accepted = SchedulerClient(ROOT).request_cancel(job_id)
@@ -831,19 +853,25 @@ class DesktopAssistantBridge(QObject):
 
     @Slot()
     def refreshQueue(self):
-        if self._closed or self._fetching:
+        if self._closed or self._fetching or getattr(self, "_application_exit_frozen", False):
             return
         self._fetching = True
         refresh_estimates = getattr(self, "_refresh_estimates_pending", False)
         self._refresh_estimates_pending = False
         cursor = self._cursor
+        demand = getattr(self, "_queue_demand_pending", False)
+        self._queue_demand_pending = False
         authority_epoch = getattr(self, "_queue_authority_epoch", 0)
         def fetch():
             from coat_sim.scheduler import SchedulerClient
             client = SchedulerClient(ROOT)
-            if refresh_estimates:
-                client.refresh_estimates()
-            return client.snapshot(after_event=cursor, limit=100)
+            if demand:
+                if refresh_estimates:
+                    client.refresh_estimates()
+                return client.snapshot(after_event=cursor, limit=100)
+            snapshot = client.snapshot_if_running(after_event=cursor, limit=100,
+                                                  refresh_estimates=refresh_estimates)
+            return snapshot if snapshot is not None else {"_scheduler_offline": True}
         future = self._executor.submit(fetch)
         def done(item):
             try:
@@ -853,13 +881,19 @@ class DesktopAssistantBridge(QObject):
             if not self._closed:
                 # This tag is owned by the UI request, never the daemon cache.
                 self.snapshotReady.emit({**result, "_assistant_mode_epoch": authority_epoch,
-                    "_assistant_refresh_failed": bool(refresh_estimates and error)}, error)
+                    "_assistant_refresh_failed": bool(refresh_estimates and (error or result.get("_scheduler_offline")))}, error)
         future.add_done_callback(done)
 
     @Slot(object, str)
     def _receive_snapshot(self, snapshot, error):
         self._fetching = False
-        if self._closed:
+        if self._closed or getattr(self, "_application_exit_frozen", False):
+            return
+        if snapshot.get("_scheduler_offline"):
+            self._refresh_estimates_pending = (getattr(self, "_refresh_estimates_pending", False)
+                                                or snapshot.get("_assistant_refresh_failed", False))
+            if getattr(self, "_queue_demand_pending", False):
+                self.refreshQueue()
             return
         if snapshot.get("_assistant_mode_epoch", 0) != getattr(self, "_queue_authority_epoch", 0):
             # A mode change may already have returned to the previous label.
@@ -969,7 +1003,8 @@ class DesktopAssistantBridge(QObject):
 
     @Slot(str, bool)
     def confirm(self, estimate_id, accepted):
-        if estimate_id in self._busy_confirmation or self._closed:
+        if (estimate_id in self._busy_confirmation or self._closed
+                or getattr(self, "_application_exit_frozen", False)):
             return
         if accepted and DesktopAssistantBridge._compute_release_blocked(self, estimate_id):
             self._status = "讨论模式只读；请切换操作模式并重新明确请求计算。"
@@ -1031,7 +1066,8 @@ class DesktopAssistantBridge(QObject):
 
     @Slot()
     def showQueue(self):
-        if self.controller is None or self._closed:
+        if (self.controller is None or self._closed
+                or getattr(self, "_application_exit_frozen", False)):
             return
         if self._queue_window is None:
             self._queue_context = QQmlContext(self.engine.rootContext())
@@ -1048,6 +1084,7 @@ class DesktopAssistantBridge(QObject):
         window.showNormal()
         window.raise_()
         window.requestActivate()
+        self._queue_demand_pending = True
         self.refreshQueue()
 
     def notify(self, text, *, sound=True, action="queue"):

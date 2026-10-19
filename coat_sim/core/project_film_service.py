@@ -227,9 +227,8 @@ class ProjectFilmService:
             for row in self._rows("material_profile"):
                 profile = row["data"]["material"]
                 roles = set(profile.get("roles", [])) & {"film", "substrate", "medium"}
-                if not roles:
-                    from .materials import material_category
-                    category = material_category(profile)
+                if "roles" not in profile:
+                    category = profile.get("category", "film")
                     roles = ({"substrate", "medium"} if category == "substrate" else
                              {"film"} if category == "film" else set())
                 usage.setdefault(profile["id"], set()).update(roles)
@@ -273,9 +272,8 @@ class ProjectFilmService:
                             "optical_sets": optical_sets,
                         })
                         roles = set(profile.get("roles", [])) & {"film", "substrate", "medium"}
-                        if not roles:
-                            from .materials import material_category
-                            category = material_category(profile)
+                        if "roles" not in profile:
+                            category = profile.get("category", "film")
                             roles = ({"substrate", "medium"} if category == "substrate" else
                                      {"film"} if category == "film" else set())
                         global_usage[identity] = roles
@@ -358,7 +356,8 @@ class ProjectFilmService:
         with self._operation():
             return self.materials.options_many(purposes)
 
-    def picker_material_options_many(self, purposes: Iterable[str]) -> dict[str, list[dict[str, Any]]]:
+    def picker_material_options_many(self, purposes: Iterable[str], *,
+                                     design: Mapping[str, Any] | None = None) -> dict[str, list[dict[str, Any]]]:
         """Return the latest catalog for pickers, independent of frozen numerics.
 
         A live film editor may keep an older material value for its current
@@ -373,6 +372,26 @@ class ProjectFilmService:
             # available without normalizing a second copy of the full catalog.
             picker = ProjectOpticalSnapshot._combine(self._project_materials,
                                                     self._draft_materials)
+            # Frozen numerical closures intentionally own complete values, but
+            # their existence alone grants no picker usage. Only catalog roles
+            # and actual positions in this design establish picker membership.
+            usage = {identity: set(roles) for identity, roles in self._project_materials._usage.items()}
+            if design is not None:
+                def bind(role, reference):
+                    identity = reference.get("material_id") if isinstance(reference, Mapping) else None
+                    if identity in picker._by_id:
+                        usage.setdefault(identity, set()).add(role)
+                bind("substrate", design.get("substrate", {}))
+                for reference in [*design.get("front_layers", []), *design.get("back_layers", []),
+                                  *design.get("expression", {}).get("symbols", {}).values(),
+                                  *design.get("workflow_settings", {}).get("optimization", {}).get("structure_materials", [])]:
+                    bind("film", reference)
+                for endpoint in ("incident_medium", "exit_medium"):
+                    reference = design.get(endpoint, {})
+                    if reference.get("kind") == "material":
+                        bind("medium", reference)
+            picker._initialize(picker._values, {identity: roles for identity, roles in usage.items()
+                                                if identity in picker._by_id})
             return picker.options_many(purposes)
 
     def catalog_material(self, material_id: str) -> dict[str, Any]:

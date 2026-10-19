@@ -15,7 +15,7 @@ import secrets
 import subprocess
 from threading import Event, RLock, Thread
 import time
-from typing import Any
+from typing import Any, Protocol
 from uuid import uuid4
 
 from coat_sim.assistant_diagnostics import client_trace, lifecycle_log, source_id, trace
@@ -236,6 +236,15 @@ def _allow_foreground_process(pid: int) -> bool:
     allow.argtypes = [wintypes.DWORD]
     allow.restype = wintypes.BOOL
     return bool(allow(pid))
+
+
+class LocalServiceExitGroup(Protocol):
+    """Headless local-service preparation; only commit may stop owned work."""
+    def prepare(self, exit_id: str) -> int: ...
+    def renew(self) -> None: ...
+    def commit(self) -> None: ...
+    def pending(self) -> list[str]: ...
+    def cancel(self) -> None: ...
 
 
 class ApplicationClientRegistry:
@@ -655,7 +664,8 @@ class ApplicationClientRegistry:
         return self._call(client, operation, **arguments)
 
     def request_exit_all(self, exit_id: str, *, on_progress=None, cancel_wait: Event | None = None,
-                         foreground_client_id: str | None = None) -> dict[str, Any]:
+                         foreground_client_id: str | None = None, services: LocalServiceExitGroup | None = None,
+                         release_services: bool = True) -> dict[str, Any]:
         """Blocking worker operation; pending user decisions have no timeout."""
         with self._lock:
             if self._exiting:
@@ -669,13 +679,18 @@ class ApplicationClientRegistry:
         next_renewal = time.monotonic() + 10.0
 
         def renew_prepared() -> None:
+            if services is not None:
+                services.renew()
             for prepared_client, prepared_permit in prepared:
                 renewed = self._call(prepared_client, "lifecycle_prepare", exit_id=exit_id,
                                      client_generation=prepared_client.generation)
                 if (renewed.get("state") != "ready" or renewed.get("permit_id") != prepared_permit
                         or renewed.get("generation") != prepared_client.generation):
                     raise UiControlError("stale_permit", "A prepared exit permit expired or changed")
+        services_committed = False
         try:
+            if services is not None:
+                services.prepare(exit_id)
             if (foreground_client_id is not None
                     and foreground_client_id != (clients[0].client_id if clients else "")):
                 raise UiControlError("stale_client", "退出前台目标已变化，请重新退出。")
@@ -711,6 +726,9 @@ class ApplicationClientRegistry:
                     break
             # Refresh every ready lease before the first irreversible commit.
             renew_prepared()
+            if services is not None:
+                services_committed = True  # A failed request can have an uncertain outcome.
+                services.commit()
             for client, permit in prepared:
                 reply = self._call(client, "lifecycle_commit", exit_id=exit_id,
                                    client_generation=client.generation, permit_id=permit)
@@ -723,7 +741,7 @@ class ApplicationClientRegistry:
             # A refused/stuck process is reported, never forcibly terminated.
             deadline = time.monotonic() + 15.0
             while True:
-                alive = []
+                alive = services.pending() if services is not None else []
                 for client, _permit in prepared:
                     state, start = _process_identity(client.endpoint["pid"])
                     if state != "dead" and (start is None or start == client.process_start):
@@ -741,7 +759,7 @@ class ApplicationClientRegistry:
                 time.sleep(0.1)
         except Exception as exc:
             return {"state": "failed", "code": getattr(exc, "code", "exit_failed"), "message": str(exc),
-                    "committed_clients": committed, "partial_commit": bool(committed)}
+                    "committed_clients": committed, "partial_commit": bool(committed) or services_committed}
         finally:
             for client, permit in reversed(prepared):
                 if client.client_id in committed:
@@ -757,8 +775,12 @@ class ApplicationClientRegistry:
                                client_generation=pending.generation, permit_id="")
                 except UiControlError:
                     pass
-            with self._lock:
-                self._exiting = False
+            try:
+                if services is not None and release_services:
+                    services.cancel()
+            finally:
+                with self._lock:
+                    self._exiting = False
 
 
 def main(argv: list[str] | None = None) -> int:

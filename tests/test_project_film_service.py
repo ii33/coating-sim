@@ -57,10 +57,12 @@ def test_empty_project_session_uses_no_global_catalog_or_sqlite(tmp_path):
     with patch("coat_sim.core.film_design_service.CoatService", side_effect=AssertionError("global root")), \
          patch("coat_sim.core.film_design_service.FilmMaterialLibrary", side_effect=AssertionError("catalog")):
         service = service_at(tmp_path / "project")
-        session = FilmDesignEditSession(service)
+        from coat_sim.core.project_film_session import ProjectFilmEditSession
+        session = ProjectFilmEditSession(service)
         options = service.material_options_many(("film", "substrate", "medium"))
-        assert options["film"] == [] and options["substrate"] == []
-        # The only standing project default is the packaged ideal Air starter.
+        assert [row["id"] for row in options["film"]] == ["builtin_ideal_air"]
+        assert [row["id"] for row in options["substrate"]] == ["builtin_ideal_air_substrate"]
+        # Each category owns a packaged Air starter; only film Air declares medium usage.
         assert [row["id"] for row in options["medium"]] == ["builtin_ideal_air"]
         assert session.snapshot().design["substrate"]["material_id"] == ""
         assert session.save_to_library("First empty film")
@@ -232,8 +234,8 @@ def test_symbol_and_candidate_resources_are_local_and_picker_usage_is_explicit(t
         "shared": material(), "symbol": material("symbol"), "candidate": material("candidate")})
     graph = service.project_store.resolve_document(created.document_id)
     assert {row["id"] for row in graph["materials"]} == {"shared", "symbol", "candidate"}
-    assert {row["id"] for row in service.material_options("substrate")} == {"shared"}
-    assert {row["id"] for row in service.material_options("film")} == {"symbol", "candidate"}
+    assert {row["id"] for row in service.material_options("substrate")} == {"shared", "builtin_ideal_air_substrate"}
+    assert {row["id"] for row in service.material_options("film")} == {"symbol", "candidate", "builtin_ideal_air"}
     # Medium usage always exposes the packaged starter Air, never a global record.
     assert [row["id"] for row in service.material_options("medium")] == ["builtin_ideal_air"]
     frozen = service.freeze_design(created.design)
@@ -281,8 +283,8 @@ def test_expression_templates_save_as_managed_resources_and_survive_reopen(tmp_p
     reopened = ProjectFilmService(ProjectStore.open(cast(ProjectStore, service.project_store).project_file),
                                   global_material_library=EmptyCatalog())
     assert reopened.load_expression_template(template["template_id"])["note"] == "Edited template"
-    assert reopened.material_options("substrate") == []
-    assert {row["id"] for row in reopened.material_options("film")} == {"symbol"}
+    assert [row["id"] for row in reopened.material_options("substrate")] == ["builtin_ideal_air_substrate"]
+    assert {row["id"] for row in reopened.material_options("film")} == {"symbol", "builtin_ideal_air"}
     assert not list(service.root.rglob("*.sqlite3"))
 
 
@@ -324,4 +326,4 @@ def test_tfcalc_reader_uses_explicit_local_plugin_and_no_material_fallback(tmp_p
     source.write_text("VERSION*1*\nLAYERS*1*\nLAYER*1*H*100*100*\nEOF*\n", encoding="utf-8")
     document = service.read_tfcalc(source)
     assert len(document.layers) == 1
-    assert service.material_options("film") == []
+    assert [row["id"] for row in service.material_options("film")] == ["builtin_ideal_air"]

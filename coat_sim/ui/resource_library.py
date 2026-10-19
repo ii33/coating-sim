@@ -344,8 +344,8 @@ class ResourceLibraryBridge(AssetLibraryActions):
             rows = [row for row in self._transfer_catalog.get("rows", []) if row["kind"] == "optical_material"]
         current = self._material_bridge.currentId
         use = self.window.property("materialUse") if self.window is not None else ""
-        eligible = [row for row in rows if use in row.get("material_uses", [])] or rows
-        row = next((row for row in rows if row.get("material_id") == current), eligible[0] if eligible else None)
+        eligible = [row for row in rows if use in row.get("material_categories", [])]
+        row = next((row for row in eligible if row.get("material_id") == current), eligible[0] if eligible else None)
         self._material_section_pending = False
         if row is not None:
             self.openMaterialAsset(row["id"])
@@ -362,6 +362,8 @@ class ResourceLibraryBridge(AssetLibraryActions):
             return False
         self._material_editor_active = True
         result = bool(self._material_bridge.newMaterial())
+        if result and self.window is not None and self.window.property("materialUse") == "substrate":
+            self._material_bridge.setCategory("substrate")
         self.libraryChanged.emit()
         return result
 
@@ -386,7 +388,9 @@ class ResourceLibraryBridge(AssetLibraryActions):
         return self._failed
 
     def _transfer_failed(self, exc):
+        self._message = "资产库读取失败：" + str(exc)
         self._failed = True
+        self.libraryChanged.emit()
         return super()._transfer_failed(exc)
 
     def _on_transfer_result(self, generation, kind, result, error, elapsed):
@@ -395,6 +399,12 @@ class ResourceLibraryBridge(AssetLibraryActions):
             self.service.release_resource_catalog(previous)
         if generation == self._transfer_generation:
             self._failed = bool(error)
+            if kind == "inspect":
+                warnings = (result or {}).get("warnings", [])
+                self._message = ("资产库读取失败：" + str(error) if error else
+                    "部分条目无法读取，原文件保留：\n" + "\n".join(warnings) if warnings else
+                    f"已读取 {len((result or {}).get('rows', []))} 项资产")
+                self.libraryChanged.emit()
         super()._on_transfer_result(generation, kind, result, error, elapsed)
         if (generation == self._transfer_generation and kind == "inspect" and not error
                 and self._transfer_catalog.get("source_path") == self._library_path
@@ -449,6 +459,10 @@ class ResourceLibraryBridge(AssetLibraryActions):
 
     def _transfer_admitted(self):
         return not (self._disposed or self._deletion_busy or self.assetApplying or self._catalog_refresh_pending)
+
+    @Slot(str, result=bool)
+    def beginFileImport(self, source):
+        return self._transfer_admitted() and super().beginFileImport(source)
 
     @Slot(str, result=bool)
     def beginTransfer(self, mode):

@@ -73473,7 +73473,7 @@
     {
       "material_id": "builtin_ideal_air",
       "builtin_material_id": "builtin_ideal_air",
-      "category": "other",
+      "category": "film",
       "optical_constants": [
         {
           "id": "ideal_air_n1_k0",

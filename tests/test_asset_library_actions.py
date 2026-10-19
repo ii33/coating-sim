@@ -1,6 +1,7 @@
-"""Real temporary-owner UI recycling requires preview, confirmation and recovery."""
+"""Asset deletion stays previewed and recoverable through the owning service."""
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, cast
@@ -22,6 +23,17 @@ from tests.test_scoped_resource_libraries import open_library, settled
 from tests.test_unified_asset_materials import seed_project_material
 
 pytestmark = [pytest.mark.contract, pytest.mark.qt]
+
+
+def seed_global_material(global_root):
+    record = profile()
+    record["id"] = "asset-ui-test-glass"
+    record["name"] = "Asset UI test glass"
+    directory = global_root / "data/materials"
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / (record["id"] + ".json")).write_text(
+        json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return record
 
 
 def action_settled(assets):
@@ -69,43 +81,29 @@ def global_assets(global_root):
     drain_events()
 
 
-def test_global_preview_cancel_confirm_and_explicit_restore_are_recoverable(global_assets, global_root):
+def test_global_delete_preview_requires_confirmation_and_cancel_keeps_asset(global_assets, global_root):
     window, assets, _engine = global_assets
     path = seed_source(global_root)
     original = path.read_bytes()
-    assets.browseLibrary()
+    assert assets.browseLibrary()
     settled(assets)
     identity = next(row["id"] for row in assets.transferCatalog["rows"] if row["kind"] == "source")
     window.setProperty("selectedIds", [identity])
+    assert window.findChild(QQuickItem, "assetLibraryRecycleButton") is None
+    assert window.findChild(QObject, "assetDeletionHistoryDialog") is None
     click(window, "assetLibraryDeleteButton")
     action_settled(assets)
     assert visible(window, "assetDeletionPreviewDialog")
     assert assets.deletionPlan["scope"] == "global" and assets.deletionPlan["can_apply"]
-    assert path.read_bytes() == original  # Preview cannot remove or rewrite.
+    assert path.read_bytes() == original
+    confirm = window.findChild(QQuickItem, "assetDeletionConfirmButton")
+    assert confirm is not None and confirm.isEnabled()
     click(window, "assetDeletionCancelButton")
     assert not assets.deletionPlan and path.read_bytes() == original
     assert not assets.confirmAssetDeletion()
-    click(window, "assetLibraryDeleteButton")
-    action_settled(assets)
-    click(window, "assetDeletionConfirmButton")
-    assert assets.assetApplying and not window.contentItem().isEnabled()
-    assert not window.close()
-    action_settled(assets)
-    assert not path.exists() and window.contentItem().isEnabled()
-    click(window, "assetLibraryRecycleButton")
-    action_settled(assets)
-    record = next(row for row in assets.deletionRecords if identity in row["affected_ids"])
-    assert record["recoverable"] and Path(record["recovery_path"]).exists()
-    assert not path.exists()  # Reading history never restores.
-    click(window, "assetDeletionRestoreEntry_0")
-    assert visible(window, "assetRestoreDialog")
-    assert not path.exists()
-    click(window, "assetRestoreConfirmButton")
-    action_settled(assets)
-    assert path.read_bytes() == original
 
 
-def test_project_ui_recycles_only_current_owner_and_blocks_stale_or_external_sources(desktop, global_root):
+def test_project_ui_delete_remains_owner_scoped_and_blocks_stale_or_external_sources(desktop, global_root):
     first, second = desktop.open("First"), desktop.open("Second")
     first_store = desktop.adapter.host.store_for(first.session.binding)
     second_store = desktop.adapter.host.store_for(second.session.binding)
@@ -178,32 +176,18 @@ def test_clean_embedded_project_material_is_one_paired_asset_and_dirty_input_blo
     plan = assets.deletionPlan
     assert plan["can_apply"], plan
     assert {item["kind"] for item in plan["rows"]} == {"material_profile", "optical_material"}
-    assert library.currentId == original["id"]  # A preview does not clear selection.
+    assert library.currentId == original["id"]
     click(window, "assetDeletionCancelButton")
     assert library.currentId == original["id"] and not library.dirty
-    assert assets.previewAssetDeletion([row["id"]])
-    action_settled(assets)
-    click(window, "assetDeletionConfirmButton")
-    # The original logical materials editor is frozen during commit as well.
-    assert library._editing_frozen
-    library.setField("notes", "must not land during publication")
-    assert library.draftData()["notes"] == "Keep exact unsaved input"
-    action_settled(assets)
-    assert not library._editing_frozen and not assets.materialEditorActive and not library.currentId
-    assert not any(item["kind"] in {"material_profile", "optical_material"}
-                   for item in assets.service.store.manifest["documents"])
-    assert assets.loadAssetDeletions()
-    action_settled(assets)
-    click(window, "assetDeletionRestoreEntry_0")
-    click(window, "assetRestoreConfirmButton")
-    action_settled(assets)
-    assert len([item for item in assets.service.store.manifest["documents"]
-                if item["kind"] in {"material_profile", "optical_material"}]) == 2
+    planned_ids = {item["id"] for item in plan["rows"]}
+    retained = [item for item in assets.service.store.manifest["documents"]
+                if item["kind"] in {"material_profile", "optical_material"}]
+    assert {item["id"] for item in retained} == planned_ids
     assert assets.openMaterialAsset(row["id"])
     assert assets.materialLibrary.draftData()["notes"] == "Keep exact unsaved input"
 
 
-def test_unsaved_embedded_optical_dialog_and_native_buffers_cannot_start_recycle(desktop):
+def test_unsaved_embedded_optical_dialog_and_native_buffers_cannot_start_delete(desktop):
     project = desktop.open()
     row = seed_project_material(desktop, project)
     _instance, _route, (window, assets, *_rest) = open_library(desktop, project)
@@ -221,30 +205,26 @@ def test_unsaved_embedded_optical_dialog_and_native_buffers_cannot_start_recycle
     modal.deleteLater()
 
 
-def test_global_material_full_dataset_survives_paired_recycle_restore(global_assets, global_root):
+def test_global_material_delete_preview_preserves_paired_dataset(global_assets, global_root):
     window, assets, _engine = global_assets
+    record = seed_global_material(global_root)
     library = MaterialLibrary(directory=global_root / "data/materials")
-    library.write(profile())
-    original = library.read("glass")["record"]
+    original = library.read(record["id"])["record"]
     assert assets.browseLibrary()
     settled(assets)
-    identity = next(row["id"] for row in assets.transferCatalog["rows"] if row["kind"] == "material_profile")
+    identity = next(row["id"] for row in assets.transferCatalog["rows"]
+                    if row["kind"] == "material_profile" and row["material_id"] == record["id"])
     assert assets.openMaterialAsset(identity)
     spin_until(lambda: assets.materialLibrary.loading, lambda busy: not busy, "material viewer")
     assert assets.previewAssetDeletion([identity])
     action_settled(assets)
-    assert assets.materialLibrary.currentId == "glass"
+    assert assets.materialLibrary.currentId == record["id"]
     assert len(assets.deletionPlan["rows"]) == 2
-    click(window, "assetDeletionConfirmButton")
-    action_settled(assets)
-    assert not assets.materialLibrary.currentId and not assets.materialEditorActive
-    assert not library.catalog_records()
-    assert assets.loadAssetDeletions()
-    action_settled(assets)
-    click(window, "assetDeletionRestoreEntry_0")
-    click(window, "assetRestoreConfirmButton")
-    action_settled(assets)
-    assert library.read("glass")["record"] == original
+    assert window.findChild(QQuickItem, "assetLibraryRecycleButton") is None
+    click(window, "assetDeletionCancelButton")
+    assert library.read(record["id"])["record"] == original
+    assert assets.materialLibrary.currentId == record["id"]
+    assert len(library.catalog_records()) == 1
 
 
 def test_cancelled_preview_late_result_releases_token_without_removing_asset(global_assets, global_root, monkeypatch):

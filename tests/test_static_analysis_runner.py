@@ -4,6 +4,7 @@ from __future__ import annotations
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
 from dataclasses import replace
 import importlib.metadata
+import hashlib
 import io
 import json
 import os
@@ -303,6 +304,44 @@ class StaticAnalysisRunnerTests(unittest.TestCase):
             ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
             cwd=self.root, text=True, capture_output=True, check=False,
         )
+
+    def packaged_source(self) -> str:
+        content = b"upstream_unknown()\n"
+        files = [{"path": "database/tools/explorer.py", "bytes": len(content),
+                  "sha256": hashlib.sha256(content).hexdigest()}]
+        encoded = json.dumps(files, ensure_ascii=False, sort_keys=True,
+                             separators=(",", ":"), allow_nan=False).encode("utf-8")
+        digest = hashlib.sha256(encoded).hexdigest()
+        commit = "a" * 40
+        snapshot = f"{commit}-{digest[:16]}-v1"
+        folder = f"coat_sim/core/resources/refractiveindex/versions/{snapshot}"
+        manifest = {"schema_version": 1, "snapshot_id": snapshot,
+                    "upstream_commit": commit, "source_content_sha256": digest,
+                    "files": files}
+        self.write(f"{folder}/manifest.json", json.dumps(manifest))
+        name = f"{folder}/source/database/tools/explorer.py"
+        self.write(name).write_bytes(content)
+        return name
+
+    def test_packaged_reference_boundary_preserves_project_sources(self) -> None:
+        vendor = self.packaged_source()
+        own = "coat_sim/core/resources/refractiveindex/own.py"
+        self.write(own)
+        with mock.patch.object(analysis.subprocess, "run",
+                               return_value=completed("\0".join([vendor, own, "sample.py"]))):
+            self.assertEqual(analysis.discover_sources(self.root), sorted([own, "sample.py"]))
+        with self.assertRaises(analysis.AnalysisError):
+            analysis.relative_source(vendor)
+
+    def test_packaged_reference_changed_or_unlisted_source_fails_closed(self) -> None:
+        vendor = self.packaged_source()
+        self.write(vendor, "changed()\n")
+        with self.assertRaises(analysis.AnalysisError):
+            analysis.packaged_reference_source(Path(vendor), self.root)
+        unlisted = str(Path(vendor).with_name("unlisted.py"))
+        self.write(unlisted)
+        with self.assertRaises(analysis.AnalysisError):
+            analysis.packaged_reference_source(Path(unlisted), self.root)
 
     def test_discovery_failure_is_not_an_empty_success(self) -> None:
         with (

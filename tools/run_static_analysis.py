@@ -57,9 +57,43 @@ def confined_path(value: str | Path, root: Path = ROOT) -> Path:
     return candidate
 
 
+def packaged_reference_source(path: Path, root: Path) -> bool:
+    """Exclude only hash-bound upstream snapshot data, never application code."""
+    parts = path.parts
+    prefix = ("coat_sim", "core", "resources", "refractiveindex", "versions")
+    if len(parts) < 8 or parts[:5] != prefix or parts[6] != "source":
+        return False
+    snapshot = parts[5]
+    if not re.fullmatch(r"[0-9a-f]{40}-[0-9a-f]{16}-v1", snapshot):
+        return False
+    manifest_path = root.joinpath(*parts[:6], "manifest.json")
+    try:
+        if manifest_path.is_symlink() or manifest_path.stat().st_size > 8 * 1024 * 1024:
+            raise ValueError("invalid manifest file")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        files = manifest["files"]
+        encoded = json.dumps(files, ensure_ascii=False, sort_keys=True,
+                             separators=(",", ":"), allow_nan=False).encode("utf-8")
+        digest = hashlib.sha256(encoded).hexdigest()
+        if (manifest["schema_version"] != 1 or manifest["snapshot_id"] != snapshot
+                or manifest["upstream_commit"] != snapshot[:40]
+                or manifest["source_content_sha256"] != digest
+                or snapshot[41:57] != digest[:16]):
+            raise ValueError("manifest identity mismatch")
+        rows = [row for row in files if row["path"] == Path(*parts[7:]).as_posix()]
+        content = (root / path).read_bytes()
+        if (len(rows) != 1 or rows[0]["bytes"] != len(content)
+                or rows[0]["sha256"] != hashlib.sha256(content).hexdigest()):
+            raise ValueError("source is unlisted or changed")
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise AnalysisError(f"Invalid packaged reference source: {path}: {exc}") from exc
+    return True
+
+
 def relative_source(value: str, root: Path = ROOT) -> str:
     path = confined_path(value, root).resolve().relative_to(root.resolve())
-    if any(part in EXCLUDED for part in path.parts) or path.suffix not in SUFFIXES:
+    if (any(part in EXCLUDED for part in path.parts) or path.suffix not in SUFFIXES
+            or packaged_reference_source(path, root)):
         raise AnalysisError(f"Analyzer reported an excluded/non-source path: {value}")
     return path.as_posix()
 
@@ -80,7 +114,7 @@ def discover_sources(root: Path = ROOT) -> list[str]:
         if any((root / Path(*path.parts[:index])).is_symlink()
                for index in range(1, len(path.parts) + 1)):
             raise AnalysisError(f"Source symlinks are not accepted: {name}")
-        if absolute.is_file():
+        if absolute.is_file() and not packaged_reference_source(path, root):
             sources.add(path.as_posix())
     return sorted(sources)
 

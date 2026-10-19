@@ -301,6 +301,7 @@ READ_TOOLS = frozenset({
     "project_knowledge_search", "material_data_readiness",
     "refractiveindex_status", "refractiveindex_search", "refractiveindex_detail",
     "refractiveindex_preview", "refractiveindex_convert",
+    "library_status", "library_search", "library_read",
     "reference_sources_catalog", "reference_sources_detail", "ito_electrical_calculate",
     "project_management_catalog", "project_list", "project_inspect", "project_resolve", "project_editor_snapshot",
     "project_research_search", "project_research_read",
@@ -1465,6 +1466,7 @@ _COMMON = frozenset({"project_bbs_list", "project_bbs_read", "project_bbs_histor
                      "project_knowledge_search", "material_data_readiness",
     "refractiveindex_status", "refractiveindex_search", "refractiveindex_detail",
     "refractiveindex_preview", "refractiveindex_convert",
+    "library_status", "library_search", "library_read",
     "reference_sources_catalog", "reference_sources_detail", "ito_electrical_calculate",
                      "list_windows", "read_window", "list_data_files", "read_data_file", "python_sandbox_status",
                      "preview_film_stack_import", "read_process_layers", "film_design_schema",
@@ -1476,6 +1478,7 @@ COORDINATOR_TOOLS = frozenset({"project_bbs_list", "project_bbs_read", "project_
                                "algorithm_reference_catalog", "algorithm_reference_search", "algorithm_reference_read", "project_knowledge_search", "material_data_readiness",
                                "refractiveindex_status", "refractiveindex_search", "refractiveindex_detail",
                                "refractiveindex_preview", "refractiveindex_convert",
+    "library_status", "library_search", "library_read",
     "reference_sources_catalog", "reference_sources_detail", "ito_electrical_calculate",
                                "read_calculation_result", "find_calculation_job", "calculation_job_status", "list_data_files", "read_data_file"})
 EXECUTION_TOOLS = {
@@ -1925,6 +1928,14 @@ async def _run_task(command: dict[str, Any], writer: Any, *,
             "若任务必须使用项目内容，说明需要在设置中为该服务开启此许可。"
             "项目路径检测只是补充检查，不能识别所有复制内容。"
             "失败返回effect:unknown时说明结果未知并先核对，禁止自动重复调用。")
+    instructions += (
+        "\n[Unified offline library] Use library_search/library_read/library_status as the common entry for "
+        "packaged research, built-in material datasets, installed RII and registered sources. No external-library "
+        "path or database page is needed. Cite source URLs, rights/license, hashes, version and actual bands/units; "
+        "reference_only_not_builtin means metadata only, never downloaded full text. Missing sources stay missing. "
+        "For RII candidates reuse the exact returned snapshot_id with refractiveindex_convert; preserve unknown k, "
+        "block-selection requirements and original resolution. Conversion never authorizes material writes. "
+        "Legacy authorized private research remains accessible with research_library_search/read under its existing grant.")
     research_generation = command.get('_research_grant_generation')
     def live_library_grant():
         return (not toolkit.cancel_event.is_set()

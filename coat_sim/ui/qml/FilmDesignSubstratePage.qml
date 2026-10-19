@@ -111,6 +111,7 @@ ScrollView {
                     model: substratePageScrollRoot.editorWindow.controller.substrateOptions
                     textRole: "name"
                     valueRole: "id"
+                    duplicateContextLabel: "基片材料"
                     currentIndex: substratePageScrollRoot.editorWindow.indexFor(model, substratePageScrollRoot.editorWindow.controller.designMeta.substrate.material_id)
                     optionObjectNamePrefix: "filmSubstrateMaterialOption_"
                     accessibleLabel: "基片材质"

@@ -14,35 +14,12 @@ import stat
 
 from .atomic_io import replace_with_retry
 from .material_business import MaterialLibrary
-from .materials import material_category, substrate_bindable, material_library_lock
-from .optical_constants import validate_optical_set, evaluate_optical_set
+from .materials import substrate_bindable, material_library_lock
+from .optical_constants import evaluate_optical_set
+from .optical_substrate_presets import builtin_optical_substrates
 
-
-def _builtin_substrates():
-    rows = [
-        ('film_substrate_schott_nbk7','SCHOTT N-BK7', 'schott_nbk7_sellmeier',
-         'SCHOTT N-BK7 catalogue, room temperature',.3125663,2.32542,
-         [1.039612120,.231792344,1.010469450], [.006000699,.0200179144,103.56065300],
-         'https://media.schott.com/api/public/content/41e799d0bf874807a0bb8e702fbb75b5?v=54856406',
-         'index_reference=relative_to_air; catalogue room temperature. Not K9/H-K9L. '
-         'Only the source table wavelength interval is admitted. k is unknown.'),
-        ('film_substrate_malitson_silica','熔石英 / Malitson 20°C','malitson_silica_sellmeier',
-         'Malitson fused silica, 20 °C',.21,3.71,
-         [.6961663,.4079426,.8974794],[.0684043**2,.1162414**2,9.896161**2],
-         'https://opg.optica.org/josa/abstract.cfm?uri=josa-55-10-1205',
-         '20 °C isotropic fused silica. DOI:10.1364/JOSA.55.001205. '
-         'index_reference=source_reported; do not silently convert air/vacuum reference. k is unknown.')]
-    result=[]
-    for identifier,name,set_id,set_name,low,high,b,c,source,notes in rows:
-        parameters={f'B{i+1}':value for i,value in enumerate(b)}
-        parameters.update({f'C{i+1}':value for i,value in enumerate(c)})
-        optical=validate_optical_set(dict(id=set_id,name=set_name,kind='sellmeier',
-            wavelength_unit='um',wavelength_min=low,wavelength_max=high,
-            parameters=parameters,source=source,notes=notes))
-        result.append(dict(id=identifier,name=name,roles=['substrate'],category='substrate',
-                           optical_sets=[optical],notes=notes,readonly=True,
-                           design_ready=False))
-    return result
+# Preserve this current-code import seam while all catalogs share one provider.
+_builtin_substrates = builtin_optical_substrates
 
 
 class FilmMaterialLibrary:
@@ -101,11 +78,6 @@ class FilmMaterialLibrary:
             row['notes'] = row.get('description', '')
             records.append(row)
 
-        known = {row['id'].casefold() for row in records}
-        for row in _builtin_substrates():
-            if row['id'].casefold() in known:
-                raise ValueError('\u819c\u7cfb\u5185\u7f6e\u57fa\u7247ID\u51b2\u7a81: ' + row['id'])
-            records.append(row)
         return records
 
     def _usage(self):
@@ -137,7 +109,7 @@ class FilmMaterialLibrary:
             elif purpose=='medium':
                 default='medium' in roles if roles is not None else False
             else:
-                default=material_category(row)=='film'
+                default='film' in roles if roles is not None else row.get('category', 'film') == 'film'
             if usage.get(row['id'],{}).get(purpose,default):
                 result.append(row)
         return result
@@ -162,7 +134,7 @@ class FilmMaterialLibrary:
                 elif purpose=='medium':
                     default='medium' in roles if roles is not None else False
                 else:
-                    default=material_category(row)=='film'
+                    default='film' in roles if roles is not None else row.get('category', 'film') == 'film'
                 if material_usage.get(purpose,default):
                     result[purpose].append(row)
         return result

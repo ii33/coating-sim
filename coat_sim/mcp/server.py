@@ -1451,6 +1451,54 @@ def read_material(identifier: str) -> dict:
 
 
 @mcp.tool()
+def library_status() -> dict[str, Any]:
+    """Read actual unified offline availability; no path setup, download or material write."""
+    from coat_sim.core.unified_reference_library import UnifiedReferenceLibrary
+    return UnifiedReferenceLibrary().status()
+
+
+@mcp.tool()
+def library_search(
+        query: Annotated[str, Field(min_length=1, max_length=200)],
+        offset: Annotated[StrictInt, Field(ge=0, le=1000000)] = 0,
+        limit: Annotated[StrictInt, Field(ge=1, le=10)] = 6,
+        expected_version: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None,
+        ) -> dict[str, Any]:
+    """Search packaged research/material data, installed RII and source metadata together.
+
+    Results distinguish real data from reference_only_not_builtin sources. Keep
+    source rights, hashes, bands/units and snapshot IDs. Page with next_offset
+    and inventory_version. Follow returned read_tool/read_arguments; RII selection
+    remains an explicit, provenance-preserving conversion candidate, never import.
+    Literal offline discovery only; no network, private-root scan or persistence.
+    """
+    from coat_sim.core.unified_reference_library import UnifiedReferenceLibrary
+    try:
+        return UnifiedReferenceLibrary().search(query, offset, limit, expected_version)
+    except (OSError, ValueError) as exc:
+        raise ToolError(f"{getattr(exc, 'code', 'library_error')}: {exc}") from exc
+
+
+@mcp.tool()
+def library_read(
+        path: Annotated[str, Field(min_length=1, max_length=700)],
+        offset: Annotated[StrictInt, Field(ge=0, le=10000000)] = 0,
+        max_chars: Annotated[StrictInt, Field(ge=1, le=6000)] = 6000,
+        ) -> dict[str, Any]:
+    """Read a bounded page of a returned library ID, preserving exact source provenance.
+
+    IDs select fixed existing owners, never arbitrary paths or URLs. JSON data
+    projections are paginated text; retain next_offset and explicit raw-source
+    truncation. Source registry records are metadata only, not downloaded full text.
+    """
+    from coat_sim.core.unified_reference_library import UnifiedReferenceLibrary
+    try:
+        return UnifiedReferenceLibrary().read(path, offset, max_chars)
+    except (OSError, ValueError) as exc:
+        raise ToolError(f"{getattr(exc, 'code', 'library_error')}: {exc}") from exc
+
+
+@mcp.tool()
 def reference_sources_catalog(
         query: Annotated[str, Field(max_length=200)] = "",
         category: Literal["optical_constants", "thermochemistry", "process", "colorimetry",
@@ -1495,9 +1543,9 @@ def reference_sources_detail(
 
 def _refractiveindex_call(operation: str, snapshot_id: str | None, **arguments) -> dict[str, Any]:
     """Use only the configured reference owner, never caller-selected file paths."""
-    from coat_sim.core.refractiveindex_local import RefractiveIndexLocalStore, default_store_root
+    from coat_sim.core.refractiveindex_local import RefractiveIndexLocalStore, store_root_for_snapshot
     try:
-        store = RefractiveIndexLocalStore(default_store_root(), snapshot_id=snapshot_id)
+        store = RefractiveIndexLocalStore(store_root_for_snapshot(snapshot_id), snapshot_id=snapshot_id)
         return getattr(store, operation)(**arguments)
     except (ValueError, OSError) as exc:
         raise ToolError(f"{getattr(exc, 'code', 'refractiveindex_error')}: {exc}") from exc
@@ -1595,7 +1643,7 @@ def refractiveindex_convert(
     if len(json.dumps(result, ensure_ascii=False, allow_nan=False).encode("utf-8")) > 1024 * 1024:
         raise ToolError("REFRACTIVEINDEX_RESULT_TOO_LARGE: Full-resolution candidate JSON exceeds "
             "the 1 MiB MCP limit. The source entry is unchanged; use the explicit CLI conversion "
-            "or an authorized GUI import. Candidate data was not truncated or sampled.")
+            "for full-resolution data. Candidate data was not truncated or sampled.")
     return result
 
 

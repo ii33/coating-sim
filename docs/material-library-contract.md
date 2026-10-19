@@ -41,3 +41,50 @@ The QML editor entry point `openSetEditor(identity)` keeps its one-argument (`QV
 The material library is a page popup inside its existing host, not a separate window. Loading and applying states disable conflicting controls; an empty list keeps the new-material action visible; read/validation failures appear in the preview dialog. Save clears dirty only on success. Closing a dirty draft follows the existing save/discard/cancel confirmation. Restore explicitly names the affected builtin override and states that saved snapshots are unchanged.
 
 Theme sizing comes from the existing Theme.snapshot logical dimensions. The containing host continues to own window geometry and scrolling; the import preview does not reset the edit form or current selection. The material list, editor scroll position, popup focus, and draft confirmation remain owned by the existing page/host; scrolling is reset only when a different material draft is installed, not on field edits. The action toolbar wraps by available logical width so all actions remain visible in narrow windows.
+
+
+## Category-local names (2026-10-19)
+
+The visible/name categories are `film` and `substrate`.
+`material_categories(record) -> tuple[str, ...]` admits only explicit film and
+substrate roles; an explicit category is used only when roles are absent.
+Dual-purpose records belong to both pools. `material_category(record)` is the
+first membership or `None`, never a fallback to film. Medium-only, container,
+component, element and unclassified records gain neither membership by name,
+optics, nor a historical `other` value. Their stored data is preserved; no new
+`other` browser category, relabeling or automatic deletion is introduced.
+
+`check_material_name(record, records)` compares trimmed, case-insensitive names
+only where the same owner's explicit category memberships intersect and excludes the same opaque ID.
+Global writes/overrides/restores/import application and project material writes
+and imports use that fence; package/import failures preserve all existing files.
+Reading pre-existing records does not reject or discard historical duplicate
+names. Project material IDs and optical-set ownership remain the binding truth.
+
+Each category contains its ordinary ideal Air record: film `builtin_ideal_air`
+retains its stable ID, substrate uses `builtin_ideal_air_substrate`. Their optical
+values and project-model provenance are equal but their editable value ownership,
+overrides and deletion markers are independent. Both are optical-only; no
+evaporation source models or physical substrate data are inferred.
+
+
+Medium/film picker projection refresh captures all pending purpose rows before
+notifying the edit session. The session remains the state owner; its synchronous
+change callbacks may reinstall picker projections without replacing inputs that
+are still pending in the same refresh. This preserves declared-medium dataset
+selection while restricting newly offered media to explicit usage.
+
+
+## Confirmed builtin seed removal (2026-10-19)
+
+After explicit user confirmation, the ten `_source_container` records for W,
+Mo, Ta, Pt, graphite, glassy carbon, FABMATE, Cu hearth, Al2O3 crucible and TiB2–BN
+were removed from `core/resources/researched_materials.json`, the sole seed read
+by `material_research.research_material_records()` and `builtin_material_profiles()`.
+They are not generated, relabeled, hidden or transferred to another library.
+The 18 remaining research material records, including independent `Cu_film`,
+`Al2O3_film` and all five research substrates, remain unchanged. Shared original
+literature/source registries and paper references remain unchanged; no deleted
+material record was saved as a research-library replacement. The two ordinary
+Air records and three sourced optical-substrate presets remain available.
+No user project or user material file is changed by this seed deletion.

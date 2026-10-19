@@ -8,7 +8,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from copy import deepcopy
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
@@ -457,7 +457,8 @@ def _entry_rows(builtins, entries, overridden_ids=()):
                 "description": row.get("description", ""), "builtin": builtin,
                 "overridden": builtin and row["id"] in overridden_ids,
                 "opticalOnly": bool(row.get("optical_only", False)),
-                "roles": list(roles), "category": materials.material_category(row), "roleLabel": role_label(roles),
+                "roles": list(roles), "category": materials.material_category(row),
+                "categories": list(materials.material_categories(row)), "roleLabel": role_label(roles),
                 "sourceBindable": materials.source_bindable(row), "substrateBindable": materials.substrate_bindable(row), "coverage": "",
                 "formula": research.get("formula") or "",
                 "searchText": " ".join((row["id"], row["name"], row.get("description", ""),
@@ -628,8 +629,7 @@ class MaterialLibraryBridge(QObject):
         self._error = ""
         self._valid = False
         initial = materials.default_material_profile()
-        if self._purpose == "substrate":
-            initial["category"] = "substrate"
+        initial["category"] = self._purpose
         self._load_draft(initial)
         self.reload()
 
@@ -734,11 +734,11 @@ class MaterialLibraryBridge(QObject):
 
     @Property(list, notify=changed)
     def filmEntries(self):
-        return [dict(row, roles=list(row["roles"])) for row in self._entry_cache if row["sourceBindable"]]
+        return [dict(row, roles=list(row["roles"])) for row in self._entry_cache if row["sourceBindable"] and "film" in row["categories"]]
 
     @Property(list, notify=changed)
     def substrateEntries(self):
-        return [dict(row, roles=list(row["roles"])) for row in self._entry_cache if row["substrateBindable"]]
+        return [dict(row, roles=list(row["roles"])) for row in self._entry_cache if row["substrateBindable"] and "substrate" in row["categories"]]
 
     @Property(str, constant=True)
     def purpose(self):
@@ -785,11 +785,15 @@ class MaterialLibraryBridge(QObject):
 
     @Property(str, notify=changed)
     def category(self):
-        return materials.material_category({"roles": self._roles} if self._roles else {"category": self._category or "film"})
+        return materials.material_category({"roles": self._roles} if self._roles is not None else {"category": self._category}) or ""
+
+    @Property(list, notify=changed)
+    def categories(self):
+        return list(materials.material_categories({"roles": self._roles} if self._roles is not None else {"category": self._category}))
 
     @Slot(str)
     def setCategory(self, value):
-        if self._builtin or self._roles or self._loading or value not in ("film", "substrate", "other"):
+        if self._builtin or self._roles or self._loading or value not in ("film", "substrate"):
             return
         self._category = value
         self._dirty = True
@@ -1117,8 +1121,7 @@ class MaterialLibraryBridge(QObject):
     def filteredEntries(self):
         terms = self._search_text.casefold().split()
         return [dict(row, roles=list(row["roles"])) for row in self._entry_cache
-                if (self._role_filter in row["roles"] or self._role_filter == row["category"] or
-                    (self._role_filter == "substrate" and row["substrateBindable"]))
+                if self._role_filter in row["categories"]
                 and all(term in row["searchText"] for term in terms)]
 
     @Property(str, notify=changed)
@@ -1137,7 +1140,7 @@ class MaterialLibraryBridge(QObject):
 
     @Slot(str)
     def setRoleFilter(self, value):
-        if value in {"other", *ROLE_LABELS} and self._role_filter != value:
+        if value in {"film", "substrate", *ROLE_LABELS} and self._role_filter != value:
             self._role_filter = value
             self.changed.emit()
 
@@ -1251,7 +1254,7 @@ class MaterialLibraryBridge(QObject):
             return self._error
         conflict = self._same_scope_name_conflict(self._draft.get("name", ""))
         if conflict:
-            return f"同一材料库已存在同名材料“{conflict}”；请使用不同名称后再保存"
+            return f"同一材料分类已存在同名材料“{conflict}”；请使用不同名称后再保存"
         return ""
 
     @Property(str, notify=changed)
@@ -1569,8 +1572,7 @@ class MaterialLibraryBridge(QObject):
             self._saved_id = None; self._builtin = False; self._selected_key = ""
             self._builtin_overridden = False
             profile = materials.default_material_profile()
-            if self._purpose == "substrate":
-                profile["category"] = "substrate"
+            profile["category"] = self._purpose
             self._load_draft(profile)
             self._status = "新材料尚未保存；保存后才会写入本地材料库"
             self.changed.emit()
@@ -1728,14 +1730,15 @@ class MaterialLibraryBridge(QObject):
         for row in self._scope_rows():
             if str(row.get("id", "")).casefold() == own:
                 continue
-            if str(row.get("name", "")).strip().casefold() == key:
+            if (set(materials.material_categories(row)).intersection(cast(list[str], self.categories))
+                    and str(row.get("name", "")).strip().casefold() == key):
                 return str(row.get("name", ""))
         return ""
 
     def _name_conflict_error(self, record):
         conflict = self._same_scope_name_conflict(record.get("name", ""))
         if conflict:
-            return f"同一材料库已存在同名材料“{conflict}”；请使用不同名称后再保存"
+            return f"同一材料分类已存在同名材料“{conflict}”；请使用不同名称后再保存"
         return ""
 
     def _begin_save(self, discard_pending=False):

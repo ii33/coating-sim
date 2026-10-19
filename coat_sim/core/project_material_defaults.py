@@ -1,7 +1,8 @@
 """Immutable packaged-seed material defaults owned by every project.
 
-Scope (explicit): only the packaged ideal-Air optical material
-(``builtin_ideal_air`` / ``ideal_air_n1_k0``, n=1, k=0) is provided here. It is
+Scope (explicit): the two independently owned packaged ideal-Air optical materials
+(``builtin_ideal_air`` and ``builtin_ideal_air_substrate``, each owning
+``ideal_air_n1_k0``, n=1, k=0) are provided here. They are
 read from the read-only built-in seed (``builtin_material_profiles``), never from
 a user's mutable global material library.
 
@@ -14,7 +15,7 @@ Consequences that callers and tests may rely on:
 * The value is captured into the project's own optical closure when the film is
   saved, after which the project no longer needs any global input.
 
-Nothing else (substrates, films, extra media) is provisioned; those remain
+Nothing else beyond the two ideal-Air records is provisioned; those remain
 explicit user/project choices.
 """
 
@@ -24,11 +25,14 @@ from copy import deepcopy
 from typing import Any
 
 # The packaged starter seed is limited to this ordered identity list.
-STARTER_MATERIAL_IDS: tuple[str, ...] = ("builtin_ideal_air",)
+STARTER_MATERIAL_IDS: tuple[str, ...] = ("builtin_ideal_air", "builtin_ideal_air_substrate")
 
-# Picker usage is a usage role, not a material category. Ideal Air is only
-# offered where an incident/exit medium is chosen.
-STARTER_USAGE: dict[str, tuple[str, ...]] = {"builtin_ideal_air": ("medium",)}
+# Picker usage remains separate from category presentation. Each Air is offered
+# in its own category and in the incident/exit medium picker.
+STARTER_USAGE: dict[str, tuple[str, ...]] = {
+    "builtin_ideal_air": ("film", "medium"),
+    "builtin_ideal_air_substrate": ("substrate",),
+}
 
 
 def project_starter_materials() -> list[dict[str, Any]]:

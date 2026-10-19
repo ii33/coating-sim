@@ -22,7 +22,7 @@ from coat_sim.ui.theme_service import ThemeEngineBridge
 from coat_sim.ui.theme_tokens import build_theme_snapshot
 from tests.test_launcher_information_global_resources import global_root as global_root
 from tests.test_project_last_window_close import desktop as desktop, drain_events, spin_until
-from tests.test_scoped_resource_libraries import open_library, qml, settled
+from tests.test_scoped_resource_libraries import open_library, settled
 
 pytestmark = [pytest.mark.contract, pytest.mark.qt]
 yaml = importlib.import_module("yaml")
@@ -435,7 +435,7 @@ def test_pagination_and_filters_use_core_index(global_browser, snapshot):
 
 
 @pytest.mark.parametrize("theme_name,width,font_scale", [("light", 1100, 1.0), ("dark", 680, 1.0), ("light", 680, 1.6)])
-def test_actual_qml_browser_layout_preview_close_and_reopen(global_browser, theme_name, width, font_scale, tmp_path):
+def test_actual_qml_library_has_no_database_page_or_entry(global_browser, theme_name, width, font_scale, tmp_path):
     owner, browser, _root = global_browser
     engine = QQmlEngine()
     theme = ThemeEngineBridge(build_theme_snapshot(theme_name, font_scale=font_scale), 0, theme_name, theme_name,
@@ -450,38 +450,18 @@ def test_actual_qml_browser_layout_preview_close_and_reopen(global_browser, them
         window.resize(width, 820)
         window.show()
         QTest.qWait(100)
-        assert window.findChild(QQuickItem, "refractiveIndexDatabaseButton") is not None
+        assert window.findChild(QQuickItem, "refractiveIndexDatabaseButton") is None
+        assert window.findChild(QObject, "refractiveIndexBrowserDialog") is None
+        # Even an explicitly exercised legacy controller cannot create a page.
         choose(browser)
-        QTest.qWait(80)
-        popup = window.findChild(QObject, "refractiveIndexBrowserDialog")
-        assert popup is not None and popup.property("visible")
-        assert popup.property("width") <= window.width()
-        assert popup.property("height") <= window.height()
-        field = window.findChild(QQuickItem, "riiImportMaterialName")
-        assert field is not None and field.property("text") == browser.entry["name"]
-        block = cast(Any, window.findChild(QQuickItem, "riiBlockChoice"))
-        assert block.property("currentIndex") == -1
-        block.setProperty("currentIndex", 0)
-        assert browser.previewImport(0, str(field.property("text")))
-        idle(browser)
-        QTest.qWait(80)
-        assert popup.property("visible") and browser.importSummary["rows"]
-        image = window.grabWindow()
-        assert not image.isNull()
-        assert image.save(str(tmp_path / f"rii-browser-{theme_name}-{width}-{font_scale}.png"))
-        assert browser.close()
         QTest.qWait(40)
-        assert not popup.property("visible")
-        assert owner.openRefractiveIndexBrowser()
-        QTest.qWait(40)
-        assert popup.property("visible") and browser.entry["entry_id"]
-        assert qml(engine, window, "resourceBridge.refractiveIndexBrowser.active")
+        assert window.findChild(QObject, "refractiveIndexBrowserDialog") is None
+        assert window.findChild(QQuickItem, "globalResourcesRefreshButton") is not None
     finally:
         browser.close()
         window.deleteLater()
         engine.deleteLater()
         drain_events()
-
 
 @pytest.fixture
 def vendor_file(tmp_path):
@@ -596,8 +576,7 @@ def test_merck_metadata_reference_is_separate_from_installed_sources(global_brow
 
 
 @pytest.mark.parametrize("mode,width,font_scale", [("vendor", 1100, 1.0), ("vendor", 680, 1.6), ("n2", 1100, 1.0)])
-def test_actual_vendor_and_nonlinear_qml_are_truthful(global_browser, vendor_file, mode, width, font_scale, tmp_path):
-    from PySide6.QtCore import Qt
+def test_removed_browser_does_not_expose_vendor_or_n2_controls(global_browser, vendor_file, mode, width, font_scale, tmp_path):
     owner, browser, _root = global_browser
     engine = QQmlEngine()
     diagnostics: list[str] = []
@@ -613,67 +592,22 @@ def test_actual_vendor_and_nonlinear_qml_are_truthful(global_browser, vendor_fil
         assert window is not None, component.errorString()
         window.resize(width, 820)
         window.show()
-        window.requestActivate()
-        QTest.qWait(50)
         if mode == "vendor":
             vendor_choose(browser, vendor_file)
-            consent = window.findChild(QQuickItem, "vendorReferenceAirConsent")
-            assert consent is not None and not consent.property("checked")
-            window.findChild(QQuickItem, "riiBlockChoice").setProperty("currentIndex", 0)
-            assert not window.findChild(QQuickItem, "riiPreviewImportButton").property("enabled")
-            consent.setProperty("checked", True)
-            assert window.findChild(QQuickItem, "riiPreviewImportButton").property("enabled")
-            assert browser.previewImport(0, "A long descriptive vendor material name " * 2, True)
-            idle(browser)
+            assert browser.sourceKind == "vendor"
         else:
             choose(browser, "/nonlinear.yml", "n2")
-            window.findChild(QQuickItem, "riiCatalogFilter").setProperty("currentIndex", 1)
-        QTest.qWait(80)
-        def visual_items(item):
-            found = [item]
-            for child in item.childItems():
-                found.extend(visual_items(child))
-            return found
-        items = visual_items(window.contentItem())
-        target_label = window.findChild(QQuickItem, "riiImportTargetLabel")
-        assert target_label.x() >= 0
-        assert target_label.x() + target_label.width() <= target_label.parentItem().width()
-        summaries = [item for item in items if item.objectName() == "riiCurveSummary"]
-        assert any("λ：" in item.property("text") and "µm" in item.property("text") for item in summaries)
-        if mode == "vendor":
-            assert any("0.400000–2.50000 µm（参考空气）" in item.property("text") for item in summaries)
-        curves = [item for item in items if item.objectName() == "riiSourceCurve"]
-        if mode == "n2":
-            assert not any(curve.property("visible") for curve in curves)
-            rows = [item for item in items if item.objectName() == "riiNonlinearRawValues"]
-            assert any("单位尚未核实" in str(row.property("text")) for row in rows)
-            assert not window.findChild(QQuickItem, "riiPreviewImportButton").property("enabled")
-        else:
-            assert any(curve.property("visible") for curve in curves)
-            assert window.findChild(QQuickItem, "riiConfirmImportButton").property("visible")
-        scroll = window.findChild(QQuickItem, "riiBrowserPageScroll")
-        flickable = scroll.property("contentItem")
-        flickable.setProperty("contentY", max(0, flickable.property("contentHeight") - flickable.property("height")))
-        QTest.qWait(80)
-        assert window.grabWindow().save(str(tmp_path / f"optical-browser-{mode}-{width}-{font_scale}.png"))
-        if mode == "vendor" and width == 1100:
-            assert browser.loadReferences()
-            idle(browser)
-            reference_choice = window.findChild(QQuickItem, "opticalReferenceSourceChoice")
-            assert reference_choice.property("currentIndex") == -1
-            assert browser.selectReference("merck-patinal")
-            idle(browser)
-            assert "Merck" in reference_choice.property("currentText")
+            assert browser.entry["catalog"] == "n2"
+        QTest.qWait(50)
+        for name in ("refractiveIndexBrowserDialog", "vendorReferenceAirConsent", "riiCatalogFilter",
+                     "riiPreviewImportButton", "riiConfirmImportButton", "opticalReferenceSourceChoice"):
+            assert window.findChild(QObject, name) is None
         assert not diagnostics, "\n".join(diagnostics)
-        QTest.keyClick(window, Qt.Key.Key_Escape)
-        QTest.qWait(80)
-        assert not browser.active
     finally:
         browser.close()
         window.deleteLater()
         engine.deleteLater()
         drain_events()
-
 
 def test_vendor_display_is_bounded_and_oversized_provenance_is_not_discarded(global_browser, vendor_file):
     _owner, browser, root = global_browser

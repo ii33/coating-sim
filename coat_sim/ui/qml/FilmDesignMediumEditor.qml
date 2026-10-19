@@ -86,6 +86,7 @@ ColumnLayout {
             model: editor.controller ? editor.controller.mediumOptions : []
             textRole: "name"
             valueRole: "id"
+            duplicateContextLabel: "介质材料"
             currentIndex: editor.mediumData.kind === "material"
                           ? editor.indexFor(model, editor.mediumData.material_id) : -1
             optionObjectNamePrefix: "filmMediumMaterialOption_"

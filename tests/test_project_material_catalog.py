@@ -75,7 +75,7 @@ def test_default_global_view_is_builtin_read_only_records_without_copy_or_lock(t
 
     rows = library.catalog_records()
     expected_ids = {profile["id"] for profile in builtin_material_profiles()}
-    assert len(rows) == len(expected_ids) == 29
+    assert len(rows) == len(expected_ids) == 23
     assert {row["record"]["id"] for row in rows} == expected_ids
     assert all(row["builtin"] and not row["overridden"] for row in rows)
     assert all(row["origin"] == "global" and row["readonly"] for row in rows)

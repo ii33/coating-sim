@@ -15,7 +15,7 @@ from coat_sim.core.api import CoatService
 from coat_sim.core.input_snapshot import canonical_json_bytes, freeze_process, runtime_from_snapshot
 from coat_sim.core.material_physics import evaluate_source_thermochemistry, reference_material_data
 from coat_sim.core.material_research import research_material_records, validate_research_data
-from coat_sim.core.materials import builtin_material_profiles, default_material_profile, validate_material_profile
+from coat_sim.core.materials import builtin_material_profiles, default_material_profile, validate_material_profile, source_bindable
 from coat_sim.core.schemas import SourceDesign, design_data
 from coat_sim.core.simulation_assets import export_simulation_asset, read_simulation_asset, save_simulation_input_asset
 from coat_sim.core.simulator import Settings
@@ -24,16 +24,16 @@ from tests.test_input_snapshot import fixture, rehash
 
 
 def films():
-    return [row for row in builtin_material_profiles() if "film" in row["roles"]]
+    return [row for row in builtin_material_profiles() if source_bindable(row)]
 
 
 class ResearchCatalogIndependentReview(unittest.TestCase):
     def test_expected_material_roles_are_separate_records(self):
         records = research_material_records()
-        self.assertEqual(len(records), 28)
+        self.assertEqual(len(records), 18)
         self.assertEqual(sum("film" in row["roles"] for row in records), 13)
         self.assertEqual(sum("substrate" in row["roles"] for row in records), 5)
-        self.assertEqual(sum("boat" in row["roles"] for row in records), 10)
+        self.assertEqual(sum("boat" in row["roles"] for row in records), 0)
         byid = {row["id"]: row for row in records}
         for formula in ("ZnS", "Ge"):
             self.assertNotEqual(byid[formula + "_film"]["roles"],

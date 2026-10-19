@@ -65,9 +65,13 @@ LocalComponents.AppWindow {
     property string categoryKey: ""
     property bool materialSectionRequested: false
     property string materialUse: ""
+    property bool materialUseExplicitlySelected: false
+    onMaterialUseChanged: {
+        if (materialUse !== "film" && materialUse !== "substrate")
+            materialUse = defaultBrowserMaterialCategory()
+    }
     property string lastCatalogId: ""
     property var decisions: ({})
-    property var restoreRecord: ({})
     readonly property var deletionPlan: resourceBridge ? resourceBridge.deletionPlan || ({}) : ({})
     readonly property bool planChoicesResolved: (plan.rows || []).every(function(row) {
         return row.conflict !== "different" || !!decisions[row.id]
@@ -83,7 +87,7 @@ LocalComponents.AppWindow {
             const kind = browserKind(value)
             if (actualKinds.indexOf(kind) < 0) actualKinds.push(kind)
         }
-        if (librarySource && materialSectionRequested && actualKinds.indexOf("material_profile") < 0)
+        if (librarySource && actualKinds.indexOf("material_profile") < 0)
             actualKinds.unshift("material_profile")
         const kinds = actualKinds.sort(function(left, right) {
             const a = order.indexOf(String(left))
@@ -95,45 +99,39 @@ LocalComponents.AppWindow {
             result.push({key: String(kinds[i]), label: kindLabel(String(kinds[i]))})
         return result
     }
-    // "medium" is an incident/exit medium picker usage, not a browser category:
-    // medium-only records (for example ideal Air) browse as ordinary "其他材料".
-    // A record that is also film/substrate keeps those browser uses as well.
-    // The backend material_uses value and the medium picker role are unchanged.
-    function browserMaterialUse(use) {
-        return use === "medium" ? "other" : use
-    }
-    function browserMaterialUses(row) {
-        const uses = row.material_uses || [row.kind === "optical_material" ? "unspecified" : "other"]
+    // Only explicit backend memberships populate the browser/name pools.
+    // Keep material_uses separate: it remains the source/picker contract.
+    function browserMaterialCategories(row) {
+        const categories = row.material_categories || []
         const result = []
-        for (const use of uses) {
-            const browserUse = browserMaterialUse(use)
-            if (result.indexOf(browserUse) < 0)
-                result.push(browserUse)
+        for (const category of categories) {
+            if ((category === "film" || category === "substrate")
+                    && result.indexOf(category) < 0)
+                result.push(category)
         }
         return result
     }
-    readonly property var materialUses: {
-        const existing = []
-        for (const row of allRows) {
-            if (browserKind(row.kind) === "material_profile") {
-                for (const use of browserMaterialUses(row)) {
-                    if (existing.indexOf(use) < 0)
-                        existing.push(use)
-                }
-            }
+    function defaultBrowserMaterialCategory() {
+        for (const category of ["film", "substrate"]) {
+            if (allRows.some(function(row) {
+                return browserKind(row.kind) === "material_profile"
+                    && browserMaterialCategories(row).indexOf(category) >= 0
+            }))
+                return category
         }
-        const labels = {film: "膜料", substrate: "基片材料", other: "其他材料", unspecified: "用途未标注"}
-        return ["film", "substrate", "other", "unspecified"].filter(function(use) {
-            return existing.indexOf(use) >= 0
-        }).map(function(use) { return {key: use, label: labels[use]} })
+        return "film"
     }
+    readonly property var materialUses: [
+        {key: "film", label: "膜料"},
+        {key: "substrate", label: "基片材料"}
+    ]
     readonly property var visibleRows: {
         const kind = categoryKey
         const query = searchField.text.trim().toLowerCase()
         return allRows.filter(function(row) {
             return browserKind(row.kind) === kind
                 && (kind !== "material_profile"
-                    || browserMaterialUses(row).indexOf(browserMaterialUse(materialUse)) >= 0)
+                    || browserMaterialCategories(row).indexOf(materialUse) >= 0)
                 && (!query || String(row.name || "").toLowerCase().indexOf(query) >= 0
                     || String(row.summary || "").toLowerCase().indexOf(query) >= 0)
         })
@@ -156,13 +154,10 @@ LocalComponents.AppWindow {
             appearance_configuration: "外观配置", binary_asset: "依赖输入"}
         return labels[kind] || kind
     }
-    function recycleStateLabel(state) {
-        const labels = {active: "已回收", restored: "已恢复", rolled_back: "已回滚",
-            prepared: "准备中，需审查", uncertain: "未确认完成，需审查", restoring: "恢复中，需审查"}
-        return labels[state] || "需审查"
-    }
     function selectMaterialUse(use) {
         if (!canLeaveMaterialEditor()) return
+        if (use !== "film" && use !== "substrate") return
+        materialUseExplicitlySelected = true
         if (materialUse === use)
             return
         materialUse = use
@@ -226,24 +221,30 @@ LocalComponents.AppWindow {
             const identity = String(window.catalog.catalog_id || "")
             if (identity && identity !== window.lastCatalogId) {
                 window.lastCatalogId = identity
-                if (!window.categories.some(function(row) { return row.key === window.categoryKey }))
-                    window.categoryKey = window.categories.length ? window.categories[0].key : ""
-                if (!window.materialUses.some(function(row) { return row.key === window.materialUse }))
-                    window.materialUse = window.materialUses.length ? window.materialUses[0].key : ""
+                if (!window.categories.some(function(row) { return row.key === window.categoryKey })) {
+                    const populated = window.categories.filter(function(category) {
+                        return window.allRows.some(function(row) {
+                            return window.browserKind(row.kind) === category.key
+                        })
+                    })
+                    window.categoryKey = populated.length ? populated[0].key
+                        : window.categories.length ? window.categories[0].key : ""
+                }
+                if (!window.materialUseExplicitlySelected
+                        || !window.materialUses.some(function(row) { return row.key === window.materialUse }))
+                    window.materialUse = window.defaultBrowserMaterialCategory()
                 window.selectedIds = window.selectedIds.filter(function(value) {
                     return window.allRows.some(function(row) {
                         return row.id === value && window.browserKind(row.kind) === window.categoryKey
                             && (window.browserKind(row.kind) !== "material_profile"
-                                || window.browserMaterialUses(row).indexOf(
-                                    window.browserMaterialUse(window.materialUse)) >= 0)
+                                || window.browserMaterialCategories(row).indexOf(window.materialUse) >= 0)
                     })
                 })
             }
         }
         function onDeletionPreviewReady() { deletionDialog.open() }
-        function onDeletionHistoryReady() { recycleDialog.open() }
         function onDeletionFinished(succeeded) {
-            if (succeeded) { deletionDialog.close(); restoreDialog.close(); recycleDialog.close() }
+            if (succeeded) deletionDialog.close()
         }
         function onTransferOperationFinished(operationId, kind, succeeded, error) {
             if (kind === "preview" && succeeded) {
@@ -252,32 +253,6 @@ LocalComponents.AppWindow {
             }
             if (kind === "apply" && succeeded)
                 previewDialog.close()
-        }
-    }
-    Menu {
-        id: assetImportMenu
-        MenuItem {
-            objectName: "assetImportFileAction"
-            text: "从文件 / 工程导入…"
-            onTriggered: importDialog.open()
-        }
-        MenuItem {
-            objectName: "projectResourcesImportGlobalButton"
-            text: "从全局库导入…"
-            visible: window.projectScoped
-            height: visible ? implicitHeight : 0
-            onTriggered: {
-                window.selectedIds = []
-                window.informationId = ""
-                window.resourceBridge.browseSource("global")
-            }
-        }
-        MenuItem {
-            objectName: "assetImportMaterialFileAction"
-            text: "导入材料文件…"
-            visible: window.materialPaneVisible
-            height: visible ? implicitHeight : 0
-            onTriggered: window.editorInstance.openMaterialImport()
         }
     }
     Menu {
@@ -517,25 +492,33 @@ LocalComponents.AppWindow {
                         }
                     }
                     ThemeControls.ThemeButton {
+                        objectName: "assetLibraryNewMaterialButton"
+                        text: "新建"
+                        visible: window.librarySource && window.materialCategory
+                        enabled: !window.operationBusy && window.librarySource
+                        onClicked: {
+                            window.materialSectionRequested = true
+                            window.selectCategory("material_profile")
+                            window.resourceBridge.newMaterialAsset()
+                        }
+                    }
+                    ThemeControls.ThemeButton {
                         objectName: "globalResourcesRefreshButton"
                         text: window.librarySource ? "刷新" : "返回" + window.libraryLabel
                         enabled: !window.operationBusy
                         onClicked: window.resourceBridge.browseLibrary()
                     }
                     ThemeControls.ThemeButton {
-                        objectName: "refractiveIndexDatabaseButton"
-                        text: "折射率数据库…"
-                        enabled: !window.operationBusy
-                        onClicked: {
-                            window.focusReturnItem = this
-                            window.resourceBridge.openRefractiveIndexBrowser()
-                        }
-                    }
-                    ThemeControls.ThemeButton {
                         objectName: "globalResourcesImportButton"
                         text: "导入…"
                         enabled: !window.operationBusy
-                        onClicked: { window.focusReturnItem = this; assetImportMenu.popup() }
+                        onClicked: {
+                            window.focusReturnItem = this
+                            if (window.materialPaneVisible)
+                                window.editorInstance.openMaterialImport()
+                            else
+                                importDialog.open()
+                        }
                     }
                     ThemeControls.ThemeButton {
                         objectName: "globalResourcesExportButton"
@@ -551,37 +534,11 @@ LocalComponents.AppWindow {
                     }
                     ThemeControls.ThemeButton {
                         objectName: "assetLibraryDeleteButton"
-                        text: "回收所选…"
+                        text: "删除所选…"
                         enabled: !window.operationBusy && !window.operationFailed && window.librarySource && window.selectedIds.length === 1
                         onClicked: {
                             window.focusReturnItem = this
                             window.resourceBridge.previewAssetDeletion(window.selectedIds)
-                        }
-                    }
-                    ThemeControls.ThemeButton {
-                        objectName: "assetLibraryRecycleButton"
-                        text: "回收记录…"
-                        enabled: !window.operationBusy && window.librarySource
-                        onClicked: { window.focusReturnItem = this; window.resourceBridge.loadAssetDeletions() }
-                    }
-                    ThemeControls.ThemeButton {
-                        objectName: "globalResourcesMaterialsButton"
-                        text: "材料"
-                        enabled: !window.operationBusy && window.librarySource
-                        onClicked: {
-                            window.materialSectionRequested = true
-                            window.selectCategory("material_profile")
-                            window.resourceBridge.openMaterialSection()
-                        }
-                    }
-                    ThemeControls.ThemeButton {
-                        objectName: "assetLibraryNewMaterialButton"
-                        text: "新建材料"
-                        enabled: !window.operationBusy && window.librarySource
-                        onClicked: {
-                            window.materialSectionRequested = true
-                            window.selectCategory("material_profile")
-                            window.resourceBridge.newMaterialAsset()
                         }
                     }
                 }
@@ -778,20 +735,10 @@ LocalComponents.AppWindow {
             }
         }
     }
-    Loader {
-        active: !!window.resourceBridge && !!window.resourceBridge.refractiveIndexBrowser
-        sourceComponent: Component {
-            LocalComponents.RefractiveIndexBrowserDialog {
-                parent: Overlay.overlay
-                browser: window.resourceBridge.refractiveIndexBrowser
-                onClosed: window.restoreFocus()
-            }
-        }
-    }
     ThemeControls.ThemeDialogBase {
         id: deletionDialog
         objectName: "assetDeletionPreviewDialog"
-        title: "确认回收" + window.libraryLabel + "资产"
+        title: "确认删除" + window.libraryLabel + "资产"
         modal: true
         parent: Overlay.overlay
         anchors.centerIn: parent
@@ -803,8 +750,8 @@ LocalComponents.AppWindow {
             ThemeControls.ThemeLabel {
                 text: "范围：" + window.libraryLabel + "\n"
                     + (window.deletionPlan.action === "revert_builtin_override"
-                       ? "归档自定义覆盖并恢复内置内容；覆盖内容可从回收记录恢复。"
-                       : "资产将移入可恢复的回收记录。不会级联移除引用它的其他资产。")
+                       ? "将移除自定义覆盖并恢复内置内容。"
+                       : "将从当前资产库删除所列资产；不会级联移除引用它的其他资产。")
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
             }
@@ -828,7 +775,7 @@ LocalComponents.AppWindow {
                         model: window.deletionPlan.blockers || []
                         ThemeControls.ThemeLabel {
                             required property var modelData
-                            text: "无法回收：" + String(modelData.message || modelData.code || "引用检查未通过")
+                            text: "无法删除：" + String(modelData.message || modelData.code || "引用检查未通过")
                                 + (modelData.name ? " · " + modelData.name : "")
                             color: window.tokens.colorError
                             wrapMode: Text.WrapAnywhere
@@ -853,73 +800,9 @@ LocalComponents.AppWindow {
                 }
                 ThemeControls.ThemeButton {
                     objectName: "assetDeletionConfirmButton"
-                    text: window.deletionPlan.action === "revert_builtin_override" ? "归档覆盖，恢复内置" : "确认回收"
+                    text: window.deletionPlan.action === "revert_builtin_override" ? "归档覆盖，恢复内置" : "确认删除"
                     enabled: !window.operationBusy && window.deletionPlan.can_apply === true
                     onClicked: window.resourceBridge.confirmAssetDeletion()
-                }
-            }
-        }
-    }
-    ThemeControls.ThemeDialogBase {
-        id: recycleDialog
-        objectName: "assetDeletionHistoryDialog"
-        title: window.libraryLabel + "回收记录"
-        modal: true
-        parent: Overlay.overlay
-        anchors.centerIn: parent
-        width: Math.min(660, parent ? parent.width - 30 : 660)
-        height: Math.min(480, parent ? parent.height - 30 : 480)
-        onClosed: window.restoreFocus()
-        contentItem: ColumnLayout {
-            ThemeControls.ThemeLabel { text: "恢复只写回当前资产库；目标冲突时保留现有内容并拒绝恢复。"; wrapMode: Text.Wrap; Layout.fillWidth: true }
-            ListView {
-                objectName: "assetDeletionHistoryList"
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                model: window.resourceBridge ? window.resourceBridge.deletionRecords : []
-                ScrollBar.vertical: ScrollBar {}
-                delegate: ItemDelegate {
-                    required property var modelData
-                    required property int index
-                    objectName: "assetDeletionRestoreEntry_" + index
-                    readonly property bool recoverable: modelData.recoverable === true || modelData.state === "active"
-                    width: ListView.view.width
-                    enabled: recoverable
-                    text: String(modelData.created_at || modelData.receipt_id) + " · " + (modelData.affected_ids || []).length
-                        + (recoverable ? " 项资产组成 · 恢复…" : " 项资产组成 · 记录状态：" + window.recycleStateLabel(String(modelData.state || "")))
-                    onClicked: { window.restoreRecord = modelData; restoreDialog.open() }
-                }
-                ThemeControls.ThemeLabel { anchors.centerIn: parent; visible: parent.count === 0; text: "当前资产库没有可恢复记录"; muted: true }
-            }
-            ThemeControls.ThemeButton { text: "关闭"; onClicked: recycleDialog.close() }
-        }
-    }
-    ThemeControls.ThemeDialogBase {
-        id: restoreDialog
-        objectName: "assetRestoreDialog"
-        title: "确认恢复资产"
-        modal: true
-        parent: Overlay.overlay
-        anchors.centerIn: parent
-        width: Math.min(560, parent ? parent.width - 30 : 560)
-        closePolicy: window.cancellable ? Popup.CloseOnEscape : Popup.NoAutoClose
-        contentItem: ColumnLayout {
-            ThemeControls.ThemeLabel {
-                text: "恢复至：" + window.libraryLabel + "\n回收时间：" + String(window.restoreRecord.created_at || "")
-                    + "\n恢复位置：" + String(window.restoreRecord.recovery_path || "")
-                    + "\n恢复不会覆盖当前同名或同身份资产。"
-                wrapMode: Text.WrapAnywhere
-                Layout.fillWidth: true
-            }
-            ThemeControls.ThemeLabel { text: window.resourceBridge ? window.resourceBridge.deletionMessage : ""; wrapMode: Text.WrapAnywhere; Layout.fillWidth: true }
-            RowLayout {
-                ThemeControls.ThemeButton { text: "取消"; enabled: window.cancellable; onClicked: restoreDialog.close() }
-                ThemeControls.ThemeButton {
-                    objectName: "assetRestoreConfirmButton"
-                    text: "确认恢复"
-                    enabled: !window.operationBusy
-                    onClicked: window.resourceBridge.restoreAssetDeletion(String(window.restoreRecord.receipt_id || ""))
                 }
             }
         }

@@ -205,7 +205,7 @@ class ProjectResourceTransferController(QObject):
         if getattr(self, "module_key", "") == "materials":
             suffixes = sorted({*suffixes, ".cmat", ".cmatl"})
         if not kinds:
-            suffixes = sorted(set(EXTENSIONS.values()))
+            suffixes = sorted({*EXTENSIONS.values(), ".cmat", ".cmatl"})
         return ["工程与目标资源 (*.coatproj *.cproject " + " ".join("*" + value for value in suffixes) + ")"]
 
     def _scoped_transfer_catalog(self, catalog):
@@ -336,6 +336,9 @@ class ProjectResourceTransferController(QObject):
             self._transfer_catalog = self._scoped_transfer_catalog(result)
             self._transfer_status = ("请选择要传输的资源；依赖将在预览中自动包含。"
                 if self._transfer_catalog.get("rows") else "此位置没有当前窗口类型的可传输资源，请选择其他来源。")
+            warnings = self._transfer_catalog.get("warnings", [])
+            if warnings:
+                self._transfer_status += "\n部分条目无法读取，已保留原文件：\n" + "\n".join(warnings)
             self.transferChanged.emit()
         elif kind == "preview":
             self._transfer_plan = result
@@ -382,6 +385,22 @@ class ProjectResourceTransferController(QObject):
         self._transfer_mode = mode
         self._transfer_active = True
         return self.inspectTransferSource("global" if mode == "import" else "project")
+
+    @Slot(str, result=bool)
+    def beginFileImport(self, source):
+        """Admit a chosen file directly; cancelling its picker has no effects."""
+        if self._transfer_busy or getattr(self, "assetApplying", False):
+            return False
+        try:
+            location = self._transfer_location(source)
+            if location in {"global", "project"} or not Path(location).is_file():
+                raise ValueError("请选择现行工程文件或当前窗口支持的设计文件。")
+        except (ValueError, TypeError, OSError) as exc:
+            return self._transfer_failed(exc)
+        self.cancelTransfer()
+        self._transfer_mode = "import"
+        self._transfer_active = True
+        return self.inspectTransferSource(location)
 
     @Slot(str, result=bool)
     def inspectTransferSource(self, source):

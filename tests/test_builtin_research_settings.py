@@ -59,12 +59,8 @@ def test_loading_private_settings_does_not_rewrite_or_enable_permissions(tmp_pat
     assert settings.SETTINGS_PATH.read_text() == original
 
 
-def test_qml_labels_default_and_override_without_claiming_live_connection():
-    qml = (settings.PROJECT_ROOT / "coat_sim/ui/qml/SettingsWindow.qml").read_text()
-    section = qml.split('objectName: "researchLibraryCategory"')[1].split('objectName: "externalMcpCategory"')[0]
-    assert "内置公开研究资料随应用只读提供" in section
-    assert "可选" in section
-    assert "绝对路径" in section
-    assert "已有本机 sidecar" in section
-    assert "实际来源、版本和覆盖范围以研究库状态为准" in section
-    assert "无配置时研究库不可用" not in section
+def test_qml_has_no_separate_research_root_setup():
+    qml = (settings.PROJECT_ROOT / "coat_sim/ui/qml/SettingsWindow.qml").read_text(encoding="utf-8")
+    assert 'objectName: "researchLibraryCategory"' not in qml
+    assert 'objectName: "researchLibraryRootField"' not in qml
+    assert 'objectName: "externalMcpCategory"' in qml

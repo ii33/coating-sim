@@ -175,7 +175,7 @@ def test_air_exit_survives_single_double_single_mode(tmp_path):
 @pytest.mark.qt
 def test_native_project_medium_controls_match_model_and_missing_ids(tmp_path):
     from PySide6.QtCore import QCoreApplication, QEvent, QUrl
-    from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent
+    from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent, QQmlEngine, QQmlExpression
     from PySide6.QtQuick import QQuickItem, QQuickWindow
     from PySide6.QtTest import QTest
     from coat_sim.ui.film_quick_controller import FilmDesignQuickController
@@ -183,15 +183,26 @@ def test_native_project_medium_controls_match_model_and_missing_ids(tmp_path):
 
     session, _ = make_session(tmp_path)
     controller = FilmDesignQuickController(tmp_path, service=session.service, edit_session=session)
-    # Ideal Air is an ordinary entry in the medium picker (usage, not category).
-    assert any(row["id"] == AIR_MATERIAL_ID
-               for row in cast(list[dict[str, Any]], controller.mediumOptions))
+    # The fresh project has separate category pools and a single default Air
+    # candidate in medium; same display names never combine their identities.
+    film_air_ids = [row["id"] for row in cast(list[dict[str, Any]], controller.filmOptions)
+                    if row["name"] == "Air"]
+    substrate_air_ids = [row["id"] for row in cast(list[dict[str, Any]], controller.substrateOptions)
+                         if row["name"] == "Air"]
+    medium_air_ids = [row["id"] for row in cast(list[dict[str, Any]], controller.mediumOptions)
+                      if row["name"] == "Air"]
+    assert film_air_ids == [AIR_MATERIAL_ID]
+    assert substrate_air_ids == ["builtin_ideal_air_substrate"]
+    assert medium_air_ids == [AIR_MATERIAL_ID]
+    assert len([row for row in cast(list[dict[str, Any]], controller.mediumOptions) if row["name"] == "Air"]) == 1
     assert AIR_OPTICAL_SET_ID in {row["id"]
                                   for row in controller.opticalSetsFor(AIR_MATERIAL_ID)}
     assert all(row["id"] != AIR_MATERIAL_ID
                for row in cast(list[dict[str, Any]], controller.substrateOptions))
-    assert all(row["id"] != AIR_MATERIAL_ID
+    assert any(row["id"] == AIR_MATERIAL_ID
                for row in cast(list[dict[str, Any]], controller.filmOptions))
+    assert any(row["id"] == "builtin_ideal_air_substrate"
+               for row in cast(list[dict[str, Any]], controller.substrateOptions))
 
     engine = QQmlApplicationEngine()
     ThemeService.instance().attach_engine(engine, "Theme")
@@ -218,6 +229,11 @@ def test_native_project_medium_controls_match_model_and_missing_ids(tmp_path):
             assert material is not None and dataset is not None
             assert material.property("currentValue") == AIR_MATERIAL_ID
             assert dataset.property("currentValue") == AIR_OPTICAL_SET_ID
+            context = QQmlEngine.contextForObject(material) or engine.rootContext()
+            label_expression = QQmlExpression(context, material, "candidateLabel(0)")
+            label, undefined = label_expression.evaluate()
+            assert not label_expression.hasError(), label_expression.error().toString()
+            assert not undefined and label == "Air"
         exit_editor = root.findChild(QQuickItem, "filmDesignMediumEditor_exit_medium")
         incident_editor = root.findChild(QQuickItem, "filmDesignMediumEditor_incident_medium")
         assert exit_editor is not None and incident_editor is not None

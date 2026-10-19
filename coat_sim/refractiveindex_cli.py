@@ -65,10 +65,10 @@ def main(argv=None, *, stdout=None) -> int:
     effect = "write" if operation == "build" else "read"
     try:
         from .core.refractiveindex_local import (
-            RefractiveIndexLocalStore, build_from_directory, default_store_root,
+            RefractiveIndexLocalStore, build_from_directory, default_store_root, writable_store_root,
         )
 
-        store_root = _local_path(args.store, "store") if args.store is not None else default_store_root()
+        store_root = _local_path(args.store, "store") if args.store is not None else (writable_store_root() if operation == "build" else default_store_root())
         if operation == "build":
             if args.snapshot_id is not None:
                 raise ValueError("--snapshot-id selects an existing read version and cannot be used with build")

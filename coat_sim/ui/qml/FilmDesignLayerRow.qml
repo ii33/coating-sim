@@ -173,6 +173,7 @@ Rectangle {
             model: row.controller ? row.controller.filmOptions : []
             textRole: "name"
             valueRole: "id"
+            duplicateContextLabel: "薄膜材料"
             optionObjectNamePrefix: "filmMaterialOption_"
             Component.onCompleted: row.syncMaterialIndex()
             onModelChanged: row.syncMaterialIndex()

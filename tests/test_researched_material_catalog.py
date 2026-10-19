@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 from coat_sim.core.materials import (builtin_material_profiles, material_completeness,
-    material_emission_model, validate_material_profile, save_material, list_materials)
+    material_emission_model, validate_material_profile, save_material, list_materials, source_bindable)
 from coat_sim.core.material_research import research_material_records
 from coat_sim.core.source_profiles import validate_source_profile
 from coat_sim.core.schemas import design_data
@@ -31,10 +31,13 @@ class ResearchCatalogTests(unittest.TestCase):
                          {identity: p['research_data'] for identity, p in by_research_id.items()})
         # Air is a documented optical-medium placeholder added with the Film Quick workflow
         # (docs/film-design-quick-migration.md; commit 129de86), not a research-catalog row.
-        self.assertEqual(len(non_research), 1)
-        air = non_research[0]
+        self.assertEqual({row['id'] for row in non_research}, {
+            'builtin_ideal_air', 'builtin_ideal_air_substrate',
+            'film_substrate_schott_nbk7', 'film_substrate_malitson_silica',
+            'film_substrate_cdgm_hk9l'})
+        air = next(row for row in non_research if row['id'] == 'builtin_ideal_air')
         self.assertEqual(air['id'], 'builtin_ideal_air')
-        self.assertEqual(air['roles'], ['medium'])
+        self.assertEqual(air['roles'], ['film', 'medium'])
         self.assertTrue(air['optical_only'])
         self.assertIsNone(air['resistance_model'])
         self.assertIsNone(air['electron_beam_model'])
@@ -65,7 +68,7 @@ class ResearchCatalogTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, '快照'):
             validate_material_profile(copy)
         copy = deepcopy(original); copy['roles'] = ['film'] if original['roles'] != ['film'] else ['boat']
-        with self.assertRaisesRegex(ValueError, '用途'):
+        with self.assertRaisesRegex(ValueError, '用途|光学'):
             validate_material_profile(copy)
         unchanged = next(row for row in builtin_material_profiles() if row['id'] == original['id'])
         self.assertEqual(unchanged, original)
@@ -73,7 +76,7 @@ class ResearchCatalogTests(unittest.TestCase):
     def test_source_role_guard_applies_to_custom_and_uniform_sources(self):
         for material in builtin_material_profiles():
             profile = {'kind':'point', 'material':material}
-            if 'film' in material['roles']:
+            if source_bindable(material):
                 self.assertEqual(validate_source_profile(profile)['material'], material)
                 self.assertEqual(design_data('source', validate_source_profile(profile))['material'], material)
             else:

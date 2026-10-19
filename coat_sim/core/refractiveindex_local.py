@@ -44,7 +44,7 @@ class RiiLocalError(ValueError):
         self.details = details
 
 
-def default_store_root() -> Path:
+def writable_store_root() -> Path:
     """Resolve the trusted process configuration without creating directories."""
     override = os.environ.get("COAT_SIM_REFRACTIVEINDEX_STORE")
     if override:
@@ -62,6 +62,31 @@ def default_store_root() -> Path:
         if not base.is_absolute():
             base = Path.home() / ".local" / "share"
     return base / "CoatSim" / "reference-databases" / "refractiveindex"
+
+
+def packaged_store_root() -> Path:
+    """Fixed read-only package resource, independent of cwd and user configuration."""
+    return Path(__file__).absolute().parent / "resources" / "refractiveindex"
+
+
+def default_store_root() -> Path:
+    """Use explicit/legacy installation first, otherwise the shipped snapshot."""
+    user = writable_store_root()
+    if os.environ.get("COAT_SIM_REFRACTIVEINDEX_STORE") or (user / "CURRENT.json").exists():
+        return user
+    packaged = packaged_store_root()
+    return packaged if (packaged / "CURRENT.json").exists() else user
+
+
+def store_root_for_snapshot(snapshot_id: str | None = None) -> Path:
+    """Keep returned shipped IDs reachable after a new user snapshot is installed."""
+    root = default_store_root()
+    if (snapshot_id is not None and _SNAPSHOT.fullmatch(snapshot_id)
+            and not os.environ.get("COAT_SIM_REFRACTIVEINDEX_STORE")
+            and not (root / "versions" / snapshot_id).exists()
+            and (packaged_store_root() / "versions" / snapshot_id).is_dir()):
+        return packaged_store_root()
+    return root
 
 
 def _json(value: Any) -> str:

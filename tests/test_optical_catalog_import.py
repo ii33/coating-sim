@@ -84,8 +84,8 @@ def test_packaged_catalog_itself_satisfies_importer_mapping_contract():
     catalog = json.loads((root / "data/optical_catalog.json").read_text(encoding="utf-8"))
     summary = validate_package_catalog(catalog)
     assert summary["material_count"] == 17
-    assert summary["groups_by_category"]["other"] == 1
-    assert summary["materials"]["builtin_ideal_air"]["category"] == "other"
+    assert "other" not in summary["groups_by_category"]
+    assert summary["materials"]["builtin_ideal_air"]["category"] == "film"
 
 
 def test_archived_batch_replay_is_a_noop_on_current_catalog():

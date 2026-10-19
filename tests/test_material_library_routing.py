@@ -268,7 +268,7 @@ class MaterialLibraryRoutingTests(unittest.TestCase):
         self.assertFalse(role_filter.property("visible"),
                          "embedded editor duplicated the asset browser material filter")
         self.assertIsNotNone(handle.window.findChild(QObject, "resourceLibraryMaterialUse"))
-        self.assertEqual(role_filter.property("count"), 3)
+        self.assertEqual(role_filter.property("count"), 2)
         self.assertGreaterEqual(role_filter.property("currentIndex"), 0)
         self.assertEqual(role_filter.property("currentIndex"), 0)
         self.assertEqual(role_filter.property("currentValue"), "film")

@@ -14,6 +14,7 @@ FocusScope {
     property var model: []
     property string textRole: "name"
     property string valueRole: "id"
+    property string duplicateContextLabel: ""
     property int currentIndex: -1
     property string displayText: ""
     property string placeholderText: "搜索材料"
@@ -53,7 +54,13 @@ FocusScope {
         const row = sourceRow(index)
         if (!row) return ""
         const value = row[textRole]
-        return value === undefined || value === null ? "" : String(value)
+        if (value === undefined || value === null || !String(value).trim())
+            return "未命名材料"
+        const identity = row[valueRole]
+        if (identity !== undefined && identity !== null
+                && normalized(value) === normalized(identity))
+            return "未命名材料"
+        return String(value)
     }
 
     function valueAt(index) {
@@ -103,6 +110,57 @@ FocusScope {
         if (highlightedIndex >= matches.length) highlightedIndex = -1
     }
 
+    function friendlyCategory(value) {
+        const labels = {
+            film: "薄膜材料", substrate: "基片材料", medium: "介质材料",
+            component: "组件材料", boat: "蒸发源舟皿", other: "其他材料"
+        }
+        return labels[normalized(value)] || ""
+    }
+
+    function candidateDetails(index) {
+        const row = sourceRow(index)
+        if (!row) return ""
+        const details = []
+        function addCategory(value) {
+            const label = friendlyCategory(value)
+            if (label && details.indexOf(label) < 0) details.push(label)
+        }
+        function addCategories(values) {
+            if (!Array.isArray(values)) return
+            for (let i = 0; i < values.length; ++i) addCategory(values[i])
+        }
+        addCategories(row.material_categories)
+        addCategories(row.roles)
+        addCategory(row.category)
+        addCategory(row.material_category)
+        addCategory(row.role)
+
+        const source = String(row.sourceLabel || row.source_label
+                               || row.originLabel || row.origin_label || "").trim()
+        if (source) details.push(source)
+        else {
+            const origin = normalized(row.origin)
+            if (origin === "project") details.push("当前工程")
+            else if (origin === "global") details.push("全局材料库")
+            else if (row.builtin === true) details.push("内置材料")
+        }
+        if (!details.length && duplicateContextLabel.trim())
+            details.push(duplicateContextLabel.trim())
+        return details.join(" · ")
+    }
+
+    function sameDetailsOrdinal(index, details) {
+        const targetName = normalized(nameAt(index))
+        let ordinal = 0
+        for (let i = 0; i <= index && i < sourceRows.length; ++i) {
+            if (normalized(nameAt(i)) === targetName
+                    && candidateDetails(i) === details)
+                ++ordinal
+        }
+        return ordinal
+    }
+
     function candidateLabel(index) {
         const name = nameAt(index)
         const normalizedName = normalized(name)
@@ -113,14 +171,17 @@ FocusScope {
         }
         if (sameNameCount < 2) return name
 
-        const row = sourceRow(index)
-        const details = []
-        const category = String(row.category || row.material_category || row.role || "").trim()
-        if (category) details.push(category)
-        const identity = String(row.material_id || row.id || row.key || "").trim()
-        if (identity && details.indexOf(identity) < 0) details.push(identity)
-        if (!details.length) details.push("选项 " + String(index + 1))
-        return name + " · " + details.join(" · ")
+        let details = candidateDetails(index)
+        let sameDetailsCount = 0
+        for (let i = 0; i < sourceRows.length; ++i) {
+            if (normalized(nameAt(i)) === normalizedName
+                    && candidateDetails(i) === details)
+                ++sameDetailsCount
+        }
+        if (sameDetailsCount > 1 || !details)
+            details = (details ? details + " · " : "")
+                    + "选项 " + sameDetailsOrdinal(index, candidateDetails(index))
+        return name + " · " + details
     }
 
     function beginSearch() {

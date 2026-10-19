@@ -34,10 +34,10 @@ class IdealAirOpticalContractTests(unittest.TestCase):
         optical = next(item for item in row["optical_constants"] if item["id"] == AIR_SET_ID)
         air = builtin_air()
 
-        self.assertEqual(row["category"], "other")
+        self.assertEqual(row["category"], "film")
         self.assertIn("project_ideal_air_20261012_v1", catalog["datasets"])
         self.assertIn("project-defined mathematical engineering model", catalog["provenance_contract"])
-        self.assertEqual(air["roles"], ["medium"])
+        self.assertEqual(air["roles"], ["film", "medium"])
         self.assertTrue(air["optical_only"])
         self.assertNotIn("research_data", air)
         self.assertIsNone(air["resistance_model"])
@@ -90,7 +90,7 @@ class IdealAirOpticalContractTests(unittest.TestCase):
             copied_record = copied["record"]
             self.assertEqual(copied_record["id"], "my_ideal_air_copy")
             self.assertEqual(copied_record["optical_constants"], original["optical_constants"])
-            self.assertEqual(copied_record["roles"], ["medium"])
+            self.assertEqual(copied_record["roles"], ["film", "medium"])
             self.assertTrue(copied_record["optical_only"])
 
             override = deepcopy(original)

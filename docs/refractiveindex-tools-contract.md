@@ -1,6 +1,6 @@
 # Local RefractiveIndex.info tool contract
 
-Date: 2026-10-18. Python signatures and the published MCP schemas are the
+Date: 2026-10-19. Python signatures and the published MCP schemas are the
 interface truth. These adapters do not change optical formulas or numerical
 semantics.
 
@@ -8,13 +8,21 @@ semantics.
 
 `core/refractiveindex_local.py` owns snapshot construction, immutable versions,
 classification, source integrity, parsing, conversion and preview. Its
-`default_store_root()` selects the per-user persistent
-`CoatSim/reference-databases/refractiveindex` directory, using Windows
-`LOCALAPPDATA` or POSIX `XDG_DATA_HOME` and the owner's documented fallback.
-The trusted process environment `COAT_SIM_REFRACTIVEINDEX_STORE` can override
-that location. A model cannot change the location through MCP arguments.
-No copy is created in every project and no raw upstream database is shipped in
-the software repository.
+`default_store_root()` honors trusted process configuration and an existing
+per-user installation first, then the fixed shipped snapshot under
+`core/resources/refractiveindex`. The user store uses Windows `LOCALAPPDATA` or
+POSIX `XDG_DATA_HOME` and the original fallback; an explicit
+`COAT_SIM_REFRACTIVEINDEX_STORE` never silently falls back. `writable_store_root()`
+remains the target for an explicit CLI build without `--store`; packaged bytes
+are read-only inputs. A model cannot choose a root. Snapshot-specific reads can
+still resolve an exact packaged version after a later user installation.
+No copy is created in each project. The existing CC0 snapshot is now shipped
+without new downloads, preserving its license, manifest, hashes and the fact
+that its upstream commit was operator-declared rather than independently verified.
+
+The canonical assistant entry is [the unified offline library](unified-offline-library-contract.md).
+The standalone browser and its toolbar entry are removed; these specialized tools
+remain as precise detail/preview/conversion adapters for returned source IDs.
 
 The MCP adapter creates only a read-only Store for each call. An optional
 `snapshot_id` selects one immutable installed version. Without it, the Store
@@ -71,7 +79,7 @@ of material persistence; a candidate does not authorize those actions.
 
 `python -m coat_sim.refractiveindex_cli` provides `status`, `search`, `detail`,
 `preview`, `convert` and `build`. Global `--store` selects a local store for the
-human/process invoking the CLI; omission uses the same default as MCP/GUI.
+human/process invoking the CLI; omission uses the same read default as MCP; build uses the original writable user store.
 `--snapshot-id` pins a read. The CLI returns one finite JSON result and exit code
 0 on success or a JSON error and exit code 2 for domain/input failures.
 An interrupted operation returns a cancellation error and exit code 130;

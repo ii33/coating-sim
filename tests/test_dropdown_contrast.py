@@ -110,6 +110,72 @@ Window {
         app.processEvents()
 
 
+def test_material_picker_duplicate_labels_are_human_facing_and_keep_ids():
+    app = QGuiApplication.instance() or QGuiApplication([])
+    engine = QQmlEngine()
+    tokens = build_theme_snapshot("light")
+    theme = ThemeEngineBridge(tokens, 0, "light", "light", "qa", "QA", {}, parent=engine)
+    engine.rootContext().setContextProperty("Theme", theme)
+    source = '''import QtQuick
+import QtQuick.Controls
+import "theme_controls" as T
+Window {
+ width: 650; height: 420; color: Theme.snapshot.colorWindow
+ T.ThemeMaterialPicker {
+  id: picker; objectName: "picker"; x: 25; y: 25; width: 500
+  duplicateContextLabel: "材料"
+  model: [
+   {id: "builtin_ideal_air", name: "Air", material_categories: ["film"]},
+   {id: "builtin_ideal_air_substrate", name: "Air", material_categories: ["substrate"]},
+   {id: "builtin_zns_literature_20261004", name: "ZnS", origin: "global"},
+   {id: "project_zns", name: "ZnS", origin: "project"},
+   {id: "same_name_one", name: "Same purpose"},
+   {id: "same_name_two", name: "Same purpose"},
+   {id: "unnamed_secret_id", name: "unnamed_secret_id"}
+  ]
+ }
+}'''
+    component = QQmlComponent(engine)
+    harness = Path(__file__).parents[1] / "coat_sim/ui/qml/DropdownContrastHarness.qml"
+    component.setData(source.encode("utf-8"), QUrl.fromLocalFile(str(harness)))
+    window = component.create()
+    assert isinstance(window, QQuickWindow), component.errorString()
+    try:
+        window.show()
+        window.requestActivate()
+        QTest.qWait(35)
+        picker = window.findChild(QQuickItem, "picker")
+        field = window.findChild(QQuickItem, "picker_input")
+        assert picker is not None and field is not None
+        field.forceActiveFocus()
+        QTest.keyClick(window, Qt.Key.Key_Down)
+        QTest.qWait(35)
+        assert picker.property("popupVisible")
+        labels = []
+        for index in range(7):
+            option = qml(engine, picker, f"optionsListView.itemAtIndex({index})")
+            assert option is not None
+            labels.append(str(option.property("text")))
+        assert labels == [
+            "Air · 薄膜材料", "Air · 基片材料",
+            "ZnS · 全局材料库", "ZnS · 当前工程",
+            "Same purpose · 材料 · 选项 1", "Same purpose · 材料 · 选项 2",
+            "未命名材料",
+        ]
+        shown_labels = " ".join(labels)
+        for internal_id in ("builtin_ideal_air", "builtin_ideal_air_substrate",
+                            "builtin_zns_literature_20261004", "project_zns",
+                            "same_name_one", "same_name_two", "unnamed_secret_id"):
+            assert internal_id not in shown_labels
+        assert qml(engine, picker, "valueAt(0)") == "builtin_ideal_air"
+        assert qml(engine, picker, "valueAt(1)") == "builtin_ideal_air_substrate"
+    finally:
+        window.close()
+        window.deleteLater()
+        engine.deleteLater()
+        app.processEvents()
+
+
 @pytest.mark.parametrize("mode", ["light", "dark"])
 def test_project_menu_keyboard_pressed_and_disabled_states(runtime, mode):
     tokens = build_theme_snapshot(mode)

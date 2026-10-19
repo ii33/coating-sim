@@ -106,6 +106,7 @@ def test_default_location_is_explicit_and_read_only(tmp_path: Path, monkeypatch:
 
 
 def test_relative_windows_localappdata_falls_back_without_mkdir(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(local_rii, "packaged_store_root", lambda: Path("missing-packaged-snapshot"))
     monkeypatch.setattr(local_rii, "os", SimpleNamespace(name="nt", environ={"LOCALAPPDATA": "relative/local"}))
     expected = Path.home() / "AppData/Local/CoatSim/reference-databases/refractiveindex"
     with patch.object(Path, "mkdir", side_effect=AssertionError("path lookup must not write")):

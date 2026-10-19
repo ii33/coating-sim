@@ -585,6 +585,7 @@ LocalComponents.AppWindow {
                                 Layout.preferredWidth: 230
                                 model: bridge.materialLibrary.filmEntries
                                 textRole: "name"; valueRole: "key"
+                                duplicateContextLabel: "源材料"
                                 currentIndex: -1
                                 displayText: bridge.materialLibrary.loading ? "正在加载材料…" : bridge.materialName
                                 enabled: !bridge.materialLibrary.loading

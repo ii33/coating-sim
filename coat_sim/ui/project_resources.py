@@ -102,7 +102,7 @@ def capture_project_resources_snapshot(controller, window, _module):
     if (catalog.get("source_type") != "project"
             or catalog.get("source_path") != str(controller.service.store.project_file)):
         return None, "external_import_source"
-    rows = [{key: row.get(key) for key in ("id", "kind", "name", "summary", "notes", "dependencies", "material_uses")}
+    rows = [{key: row.get(key) for key in ("id", "kind", "name", "summary", "notes", "dependencies", "material_uses", "material_category", "material_categories")}
             for row in catalog.get("rows", [])]
     selected = window.property("selectedIds")
     if hasattr(selected, "toVariant"):

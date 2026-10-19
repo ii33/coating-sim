@@ -308,6 +308,11 @@ def _merge(source: dict, selected: list[str], target: dict, preview_rows: list[d
     materials = ProjectStore._material_index(records, data)
     for key, row in records.items():
         row["dependencies"] = ProjectStore._dependencies(key, records, data, materials)
+    from .materials import check_material_name
+    profiles = [data[key]["material"] for key, row in records.items() if row["kind"] == "material_profile"]
+    for identity in changed:
+        if records[identity]["kind"] == "material_profile":
+            check_material_name(data[identity]["material"], profiles)
     merged = _snapshot(records, data, target["manifest"], asset_sources)
     _validate_snapshot(merged, asset_limits)
     return merged, {**counts, "id_map": mapping,
@@ -465,6 +470,61 @@ def _standalone_snapshot(path: Path) -> dict:
     return snapshot
 
 
+def _project_catalog_snapshot(path, asset_limits) -> dict:
+    """Strict normal read, with diagnostic isolation of malformed saved rows."""
+    try:
+        return ProjectStore.open(path, asset_limits=asset_limits).snapshot_saved_inputs()
+    except (OSError, ValueError, TypeError, KeyError) as initial:
+        if isinstance(initial, ProjectError) and initial.code in {"capacity_exceeded", "unsafe_path"}:
+            raise
+    from .project_store import project_file_root
+    root = project_file_root(path)
+    manifest, content = read_json(path)
+    manifest = _manifest(manifest)
+    store = ProjectStore(root, manifest, hashlib.sha256(content).hexdigest(),
+                         project_file=path, asset_limits=asset_limits)
+    records, documents, assets, warnings = {}, {}, {}, []
+    for row in manifest["documents"]:
+        identity = row["id"]
+        try:
+            document = store._read_record(row)
+            if row["kind"] == "binary_asset":
+                assets.update(store.asset_sources({identity: row}, {identity: document}, verify=True))
+            records[identity], documents[identity] = deepcopy(row), document
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            if isinstance(exc, ProjectError) and exc.code in {"capacity_exceeded", "unsafe_path"}:
+                raise
+            warnings.append(f"{root / row['path']}: {exc}")
+    while True:
+        materials = ProjectStore._material_index(records, documents)
+        invalid = []
+        for identity, row in records.items():
+            try:
+                if (any(child not in records for child in row["dependencies"]) or
+                        ProjectStore._dependencies(identity, records, documents, materials) != sorted(row["dependencies"])):
+                    raise ProjectError("missing_dependency", "Saved dependency is unavailable or invalid")
+            except (OSError, ValueError, TypeError, KeyError) as exc:
+                invalid.append((identity, exc))
+        if not invalid:
+            break
+        for identity, error in invalid:
+            row = records.pop(identity)
+            documents.pop(identity)
+            assets.pop(identity, None)
+            warnings.append(f"{root / row['path']}: {error}")
+    manifest["documents"] = list(records.values())
+    if manifest["default_configuration_id"] not in records:
+        manifest["default_configuration_id"] = None
+    snapshot = {"manifest": manifest, "documents": documents, "_warnings": warnings}
+    if assets:
+        snapshot["assets"] = assets
+    _validate_snapshot(snapshot, asset_limits)
+    # A concurrent edit must not yield a mixed browse generation.
+    if read_json(path)[1] != content:
+        raise ProjectError("stale_project", "Project changed while its catalog was read")
+    return snapshot
+
+
 @dataclass
 class _Catalog:
     snapshot: dict
@@ -556,7 +616,7 @@ class ProjectResourceExchange:
             source_path = str(self.service.store.project_file)
             source_type = "project"
             def loader():
-                return ProjectStore.open(source_path, asset_limits=self.service.store.asset_limits).snapshot_saved_inputs()
+                return _project_catalog_snapshot(Path(source_path), self.service.store.asset_limits)
         elif source == "global":
             from .project_global_resources import read_global_resources
             source_path, source_type = "global", "global"
@@ -568,7 +628,7 @@ class ProjectResourceExchange:
             if path.suffix.casefold() == ".coatproj":
                 source_type = "project"
                 def loader():
-                    return ProjectStore.open(path, asset_limits=self.service.store.asset_limits).snapshot_saved_inputs()
+                    return _project_catalog_snapshot(path, self.service.store.asset_limits)
             elif path.suffix.casefold() == ".cproject":
                 source_type = "package"
 
@@ -580,11 +640,16 @@ class ProjectResourceExchange:
                 source_type = "file"
                 def loader():
                     return _standalone_snapshot(path)
-        snapshot = loader()
+        try:
+            snapshot = loader()
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            if source_type == "file":
+                raise ProjectError(getattr(exc, "code", "invalid_document"), f"{source_path}: {exc}") from exc
+            raise
         _validate_snapshot(snapshot, self.service.store.asset_limits)
         catalog_id = uuid.uuid4().hex
         catalog = _Catalog(deepcopy(snapshot), loader, source_type, source_path, _digest(snapshot))
-        if source_type in {"project", "package", "file"} or snapshot.get("assets"):
+        if not snapshot.get("_warnings") and (source_type in {"project", "package", "file"} or snapshot.get("assets")):
             catalog.signature = self._source_signature(catalog)
         with self.service._operation(), self._token_lock:
             if self._closed:
@@ -608,7 +673,7 @@ class ProjectResourceExchange:
         # Usage metadata is presentation-only and preserves the existing material
         # library's role/legacy-category rules. Optical-only records have no
         # declared role in this format, so do not infer a film/substrate use.
-        from .materials import material_category
+        from .materials import material_category, material_categories
         for row in rows:
             if row["kind"] != "material_profile":
                 continue
@@ -617,12 +682,14 @@ class ProjectResourceExchange:
             uses = [role for role in (roles or []) if role in {"film", "substrate", "medium"}]
             if roles is None:
                 uses = (["unspecified"] if material.get("optical_only") and "category" not in material
-                        else [material_category(material)])
+                        else [material.get("category", "film")])
             row["material_uses"] = uses or ["other"]
+            row["material_category"] = material_category(material)
+            row["material_categories"] = list(material_categories(material))
         return {"catalog_id": catalog_id, "source_type": source_type,
                 "source_path": source_path, "name": snapshot["manifest"]["name"],
                 "categories": sorted({row["kind"] for row in rows}), "rows": rows,
-                "warnings": []}
+                "warnings": list(snapshot.get("_warnings", []))}
 
     @staticmethod
     def _source_signature(catalog):

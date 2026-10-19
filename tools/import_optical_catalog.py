@@ -82,8 +82,12 @@ def _profile_material_id(profile: Mapping[str, Any]) -> str:
 
 
 def _profile_category(profile: Mapping[str, Any]) -> str:
-    from coat_sim.core.materials import material_category
-    return material_category(profile)
+    # Persisted optical package metadata is independent of UI category/name
+    # pools. Retain exact historical role mapping when replaying source batches.
+    roles = profile.get("roles")
+    if roles is not None:
+        return "film" if "film" in roles else "substrate" if "substrate" in roles else "other"
+    return str(profile.get("category", "film"))
 
 
 def _validate_group_records(value: Any, *, label: str) -> list[dict[str, Any]]:

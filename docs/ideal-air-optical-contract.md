@@ -1,13 +1,13 @@
 # 理想 Air 光学数据契约
 
 更新：2026-10-19
-范围：内置光学占位数据集 `builtin_ideal_air` / `ideal_air_n1_k0`
+范围：膜料 `builtin_ideal_air` 与基片 `builtin_ideal_air_substrate`；各自拥有 `ideal_air_n1_k0` 数据集
 
 ## 用途与身份
 
-`builtin_ideal_air` 是材料库中的内置光学介质占位记录，`roles` 为 `["medium"]`，`optical_only` 为 `true`。它不是研究材料目录中的材料条目，不含 `research_data`，也没有电阻舟或电子束蒸发源模型；代码把两个工艺源模型保留为 `null`。因此该记录只表达 Film Design 所需的光学边界近似，不提供实体基片、蒸发源或工艺性能参数。
+`builtin_ideal_air` 是材料库中的内置光学介质占位记录，`roles` 为 `["film", "medium"]`，`optical_only` 为 `true`。它不是研究材料目录中的材料条目，不含 `research_data`，也没有电阻舟或电子束蒸发源模型；代码把两个工艺源模型保留为 `null`。因此该记录只表达 Film Design 所需的光学边界近似，不提供实体基片、蒸发源或工艺性能参数。
 
-其光学数据集稳定 ID 为 `ideal_air_n1_k0`，类型为 `tabulated`，材料目录分类为 `other`。Film Quick 在内置 Air 记录和该数据集均存在时，将它作为新设计入射与出射介质的默认绑定；picker 及参考配方继续按材料 ID 与其所属数据集 ID 解析，不通过材料名或特殊合成数据绕过归属检查。相关行为见 [`film-design-quick-migration.md`](film-design-quick-migration.md) 与 `coat_sim/core/film_design_session.py`、`coat_sim/core/film_design_reference_recipes.py`。
+其光学数据集稳定 ID 为 `ideal_air_n1_k0`，类型为 `tabulated`，材料目录分类为 `film`；独立的基片 Air 为 `substrate`，角色为 `["substrate"]`，两条记录同名但身份及可编辑数据独立。介质候选默认只接纳显式 medium 用途及当前设计已经绑定的介质 ID；不会拼接所有膜料与基片。基片 Air 不因同名而被合并，已有合法介质绑定仍按原 ID 保留。Film Quick 在内置 Air 记录和该数据集均存在时，将它作为新设计入射与出射介质的默认绑定；picker 及参考配方继续按材料 ID 与其所属数据集 ID 解析，不通过材料名或特殊合成数据绕过归属检查。相关行为见 [`film-design-quick-migration.md`](film-design-quick-migration.md) 与 `coat_sim/core/film_design_session.py`、`coat_sim/core/film_design_reference_recipes.py`。
 
 ### 项目起始默认与全局 Air 的关系
 
@@ -18,7 +18,7 @@
 - 该起始默认只存在于项目内存视图；它**不写入全局材料库**，因此不会复活被全局删除的 Air，也不会覆盖用户对全局 Air 的编辑。
 - 首次保存膜系时，Air 作为被测设计显式引用的材料被捕获进项目自身的 `optical_material` 文档；此后项目在全局库不可用时仍能读取自己的闭包。
 
-全局材料库中的 `builtin_ideal_air` 仍是可编辑/可恢复的普通内置记录（见下文“实现与数据边界”）；上述起始默认只改变新项目草稿的取值来源，不改变该内置记录本身的身份或分类。
+全局材料库中的 `builtin_ideal_air` 仍是可编辑/可恢复的普通内置记录（见下文“实现与数据边界”）；上述起始默认只改变新项目草稿的取值来源，保持该内置记录的稳定身份。两个分类的 Air 都走普通材料复制、编辑、删除和恢复路径；既有工程按原材料 ID 解析，不按名称自动换绑。
 
 ## 模型、单位与求值域
 

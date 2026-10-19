@@ -45,7 +45,8 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
   <p class="source">外观视口更新：2026-10-11——新增几何基片、坐标轴与面光源的轻量相机投影说明；不计算镀膜颜色、光谱或 TMM。见 16b。</p>
 <p class="source">公开参考配方补充：2026-10-11。新增14l-1，独立保存教程名义层表；schema v1通过明确材料映射载入，并保留原物理厚度，不继承名义性能。</p>
 <p class="source">外观圆片扩展更新：2026-10-12。原生解析圆盘与开口圆柱构成闭合圆片；逐层实际节点均值和局部边界扩展须显式启用，域内缺值仍拒绝，见 16c。</p>
-<p class="source">理想 Air 数据集补充：2026-10-12。普通材料模型明确采用 n=1、k=0；有限范围只标为软件序列化域，见 <a href="#film-ideal-air-model">14-1</a>。</p>
+<p class="source">基片来源更新：2026-10-19，新增具体 CDGM H-K9L 与 Malitson 熔融石英 nm 数据组，见<a href="#sourced-substrate-presets-20261019">来源、单位、域与未知 k</a>。</p>
+<p class="source">理想 Air 数据集补充：2026-10-19（分类和独立身份；模型数值不变）。普通材料模型明确采用 n=1、k=0；有限范围只标为软件序列化域，见 <a href="#film-ideal-air-model">14-1</a>。</p>
 <p class="source">优化目标与文件工作流更新：2026-10-13。新增14i-10，含端点采样步长/点数联动、复制目标与全膜堆变量，保留文件解析及求值资源边界。</p>
 </header>
 <p class="source" style="max-width:1280px;margin:16px auto;padding:0 26px">膜系求解器扩展更新：2026-10-11。14i旧基线保留；新增14i-1至14i-9，说明真实方法、解析导数域、有限缓存、稳定评分与唯一条件留出验收。修复证据见仓库最终定向报告；接口与使用说明见 <a href="film-optimization-solvers-contract.md">求解器契约</a>、<a href="film-optimization-methods.md">方法使用说明</a>。</p>
@@ -62,7 +63,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#project-file-format-contract">工程文件格式契约（2026-10-15）</a>
 <a href="#optical-input-recovery">光学草稿关闭与异常恢复（2026-10-15）</a>
 <a href="#film-design-optics">14 膜系设计与光谱计算</a>
-<a href="#film-ideal-air-model">14-1 理想 Air 普通材料模型</a>
+<a href="#film-ideal-air-model">14-1 理想 Air 普通材料模型与独立分类</a>
   <a href="#geometric-raytrace">15 几何光线追迹与沉积膜层（2026-10-10）</a>
 <a href="#raytrace-valid-domain">15a 逐层厚度有效域与孔洞边界</a>
 <a href="#appearance-critical-angle">16a-1 临界角、源单位与输出清单</a>
@@ -203,6 +204,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#engineering-notes-storage-20261018">工程 BBS、精简记忆与回收记录格式（2026-10-18）</a>
 <a href="#assistant-material-readiness-ito">材料有效域诊断与 ITO 条件光学数据（2026-10-18）</a>
 <a href="#local-optical-reference-import">本地 RII 与厂商 AGF 数据投影（2026-10-18）</a>
+<a href="#sourced-substrate-presets-20261019">H-K9L 与熔融石英基片预设（2026-10-19）</a>
 </nav>
 <main>
 <section id="film-wavelength-workers-20261017"><h2>CPU wavelength workers and fair single-candidate timing — 2026-10-17</h2>
@@ -1968,12 +1970,12 @@ return review_without_changing_user_values()</pre>
 </section>
 
 <section id="film-ideal-air-model">
-<h2>14-1 理想 Air 普通材料数据集（2026-10-12）</h2>
-<p><strong>用途与输入输出：</strong>为普通材料 <code>builtin_ideal_air</code> 提供可选、可覆盖和可复制的数据集 <code>ideal_air_n1_k0</code>。输入为数据集和正的有限真空波长，输出 n=1、k=0；N=n+ik，n/k 无量纲，无几何坐标。材料角色为 medium、分类 other，不新增实体基片或蒸发源物性。</p>
+<h2>14-1 理想 Air 普通材料数据集（2026-10-19）</h2>
+<p><strong>用途与输入输出：</strong>为普通材料 <code>builtin_ideal_air</code> 提供可选、可覆盖和可复制的数据集 <code>ideal_air_n1_k0</code>。输入为数据集和正的有限真空波长，输出 n=1、k=0；N=n+ik，n/k 无量纲，无几何坐标。材料分为膜料 Air（film、medium，稳定 ID builtin_ideal_air）与基片 Air（substrate，独立 ID builtin_ideal_air_substrate）；两者均为普通光学材料，各自拥有数据，不新增实体基片或蒸发源物性。</p>
 <div class="formula">λ ∈ [0.001,1000] µm：n(λ)=1，k(λ)=0，N(λ)=1+0i<br>λ₀=0.001 µm，λ₁=1000 µm；w=(λ−λ₀)/(λ₁−λ₀)<br>n=(1−w)×1+w×1=1；k=(1−w)×0+w×0=0</div>
 <figure class="figure"><svg viewBox="0 0 760 210" role="img" aria-label="理想Air两端恒定光学模型及软件范围"><path d="M85 25V164H698" fill="none" stroke="#50616a" stroke-width="2"/><path d="M124 64H660" stroke="#087f78" stroke-width="3"/><path d="M124 139H660" stroke="#b56527" stroke-width="3"/><circle cx="124" cy="64" r="5" fill="#087f78"/><circle cx="660" cy="64" r="5" fill="#087f78"/><circle cx="124" cy="139" r="5" fill="#b56527"/><circle cx="660" cy="139" r="5" fill="#b56527"/><text x="290" y="52" class="svgtext">恒定 n=1</text><text x="290" y="127" class="svgtext">恒定 k=0</text><text x="87" y="188" class="svgsmall">0.001 µm</text><text x="608" y="188" class="svgsmall">1000 µm</text><text x="172" y="207" class="svgsmall">横轴仅示意软件模型域；端点是模型记录，不是实测点</text></svg><figcaption>使用已有 tabulated 线性插值，两端同值表达恒定模型。图中间距仅为示意，不代表采样密度。</figcaption></figure>
 <p><strong>默认参数与适用条件：</strong>保存两个模型端点，单位 µm；1 nm–1 mm 为<strong>本项目选择的软件模型序列化/求值域</strong>，满足既有 schema 的有限正数范围要求，不是厂商、论文或 RII 的空气实测有效波段。直接来源求值域外拒绝，其他显式策略仍按原求值器。此理想非色散、无吸收近似不描述真实空气的压力、温度、湿度影响及色散或吸收，不承诺实验精度。已知 n-only 数据的未知 k 不因此补零。</p>
-<p><strong>实现与契约：</strong><a href="../data/optical_catalog.json">optical_catalog.json</a> 追加模型条目；<code>materials.py::_optical_catalog_by_builtin_id</code>、<code>optical_constants.py::validate_optical_set / evaluate_optical_set / prepare_optical_set</code> 和 <code>film_materials.py::FilmMaterialLibrary</code> 复用通用路径，保持精确材料所属校验；<code>tools/import_optical_catalog.py::validate_package_catalog</code> 通用接受 schema 的 other 分类。copy/override/restore 和文件读写沿用材料库，不给 picker/template 增加豁免。浏览器分类仅作展示：medium-only 记录（如 Air）并入“其他材料”，medium 仍是 picker 使用角色，数值仍为 n=1、k=0；新建项目草稿的入射/出射默认取自打包种子，与全局库是否被编辑或删除无关。详见 <a href="ideal-air-optical-contract.md">模型与数据契约</a>。</p>
+<p><strong>实现与契约：</strong><a href="../data/optical_catalog.json">optical_catalog.json</a> 追加模型条目；<code>materials.py::_optical_catalog_by_builtin_id</code>、<code>optical_constants.py::validate_optical_set / evaluate_optical_set / prepare_optical_set</code> 和 <code>film_materials.py::FilmMaterialLibrary</code> 复用通用路径，保持精确材料所属校验；<code>tools/import_optical_catalog.py::validate_package_catalog</code> 通用接受 schema 的 other 分类。copy/override/restore 和文件读写沿用材料库，不给 picker/template 增加豁免。浏览器保留膜料与基片两个独立名字池；历史记录不擅自改写；2026-10-19 经用户确认的十条内置源容器种子已删除，不转存或隐藏，原始文献及独立膜料、合法基片保留；仅显式 film/substrate 用途进入相应名字池，双用途进入两池；medium-only、源容器、component、element 与未分类记录不被推断成膜料或基片。介质候选来自显式 medium 用途和当前设计已有介质绑定，不拼接所有光学材料；冻结计算闭包不授予额外候选用途。分类/名字规则为本项目约定，未找到外部依据，仅为本项目实现。两个 Air 的数值仍为 n=1、k=0；新建项目草稿的入射/出射默认取自打包种子，与全局库是否被编辑或删除无关。详见 <a href="ideal-air-optical-contract.md">模型与数据契约</a>。</p>
 <p class="source"><strong>参考来源：</strong>本项目定义的数学工程近似，<strong>未找到外部依据，仅为本项目实现</strong>；不引用实测空气来源，不声称由 refractiveindex.info 提供，不继承根级 RII/CC0 来源身份。根级混合来源说明及本条目的 source/notes 明确区分此模型与既有公开数据。</p>
 </section>
 
@@ -2739,6 +2741,20 @@ record_sha256 = SHA256(canonical JSON bytes of normalized record)</pre>
 <p class="source">来源：NIST <a href="https://www.nist.gov/pml/nanoscale-device-characterization-division/popular-links/hall-effect/hall-effect">The Hall Effect</a> 给出 ρ = Rs d；NIST <a href="https://www.nist.gov/pml/nist-technical-note-1297/nist-tn-1297-appendix-law-propagation-uncertainty">TN 1297 Appendix A</a> 给出一阶不确定度传播及协方差。矩形公式由均匀导体 R = ρL/A、A = Wt 得到；边界条件令牌、JSON 格式与容差为本项目实现约定。</p>
 </section>
 
+<section id="sourced-substrate-presets-20261019">
+<h2>H-K9L 与熔融石英基片预设（2026-10-19）</h2>
+<p><strong>用途与输入输出：</strong>普通基片材料提供可选 n 数据组，输入为材料/数据组 ID 与正的有限波长，输出无量纲 n 和未知的 k（null）。没有几何坐标。CDGM H-K9L 是实际厂家牌号、玻璃代码 517642，不是任意 K9，也不替代 SCHOTT N-BK7。石英默认指各向同性熔融石英，不包含晶体石英普通/非常光模型。公式保持既有三项 Sellmeier 求值器，新增来源数据及 nm 表示。</p>
+<div class="formula">n²(λ) = 1 + Σᵢ₌₁³ Bᵢ λ² / (λ² − Cᵢ)，n = √n²<br>λ：nm；Bᵢ：无量纲；Cᵢ：nm²；Cᵢ,nm² = 10⁶ Cᵢ,µm²</div>
+<table><thead><tr><th>数据组 / 稳定身份</th><th>B₁, B₂, B₃</th><th>C₁, C₂, C₃（nm²）</th><th>有效域与条件</th></tr></thead><tbody>
+<tr><td>CDGM H-K9L / film_substrate_cdgm_hk9l<br>cdgm_hk9l_sellmeier_nm</td><td>0.614555251, 0.656775017, 1.02699346</td><td>14598.7884, 2877.69588, 107653051</td><td>302–2325 nm，原厂 AGF 的 LD 域；TD 参考温度 20°C</td></tr>
+<tr><td>熔融石英 / film_substrate_malitson_silica<br>malitson_silica_sellmeier_nm</td><td>0.6961663, 0.4079426, 0.8974794</td><td>4679.14825849, 13512.06307396, 97934002.537921</td><td>210–3710 nm，Malitson 1965，20°C</td></tr>
+</tbody></table>
+<figure class="figure"><svg viewBox="0 0 900 170" role="img" aria-labelledby="substrateDomainTitle"><title id="substrateDomainTitle">基片来源域与查询边界</title><rect x="140" y="25" width="560" height="42" fill="#e3f1ed" stroke="#087f78"/><text x="152" y="52" font-size="18">H-K9L：302 ≤ λ ≤ 2325 nm</text><rect x="85" y="90" width="730" height="42" fill="#e8eef8" stroke="#4c6899"/><text x="100" y="117" font-size="18">熔融石英：210 ≤ λ ≤ 3710 nm</text><text x="710" y="52" font-size="14">域外直接查询拒绝</text><text x="140" y="156" font-size="14">λ（nm）→ 仅来源域内代入公式；k 未知，不填 0</text></svg><figcaption>示意图不按线性比例。域来自各自来源，完整厂商表中的 2325.42 nm 核对点不扩大 H-K9L 公式的 2325 nm 上限。</figcaption></figure>
+<p><strong>实现与默认参数：</strong><code>core/optical_substrate_presets.py::builtin_optical_substrates</code>、<code>core/resources/optical_substrate_supplement.json</code>（全部公式参数、来源 URL/SHA256 与 H-K9L 原厂 20 点 n 表）、<code>materials.py::builtin_material_profiles</code>、<code>optical_constants.py</code>。新选择优先 nm 数据组，不进行离散重采样；严格来源查询默认不外推。原 N-BK7 和 Malitson 的材料/µm 数据组 ID 保留，旧引用不换绑。统一目录和工程材料选择器共用这些当前预设，首次保存仅捕获显式引用到工程自持闭包。</p>
+<p><strong>核对、适用条件与近似：</strong>H-K9L 公式与原厂单页表 19 个域内点逐点核对，绝对差小于 10⁻⁶；表有 20 点，最后一点在公式域外，仅保留核对资料。两种数据均保留 index_reference=source_reported；未确认空气/真空/压力口径时不擅自转换。不合并 RII/Tan 的石英扩展域，不推断 OH 含量、熔次或供应商品级，不把由内透过率反推的有效 k 当作实测 k。这里 k 未知；仿真既有缺省 k 计算规则另见 14f，不能倒写来源值。目录可见性、nm 优先和归属规则是本项目约定；点表一致性不是熔次精度或实验认证。</p>
+<p class="source"><strong>参考来源：</strong><a href="https://www.cdgmgd.com/webapp/pdf/H-K9L.pdf">CDGM H-K9L 原厂单页</a>；<a href="https://refractiveindex.info/download/data/2022/CDGM-ZEMAX202206new.AGF">原厂 CDGM 2022-06 Zemax AGF 归档</a>；<a href="https://github.com/polyanskiy/refractiveindex.info-database/blob/c5c2f188e848453def5970e347399d653df2ffc2/database/data/specs/cdgm/optical/H-K9L.yml">固定版本 RII H-K9L 交叉核对</a>；I. H. Malitson, “Interspecimen Comparison of the Refractive Index of Fused Silica”, JOSA 55(10),1205–1209 (1965)，<a href="https://doi.org/10.1364/JOSA.55.001205">DOI:10.1364/JOSA.55.001205</a>。</p>
+</section>
+
 </main>
 <article style="grid-column:2;max-width:1000px">
 <section id="film-solver-contract">
@@ -3081,7 +3097,7 @@ for each explicitly available dataset:
 <figure class="figure"><svg viewBox="0 0 820 180" role="img" aria-label="材料诊断分别比较n与k的声明范围，ITO来源表仅作为条件化数据输入"><g fill="none" stroke="#087f78" stroke-width="2"><rect x="10" y="25" width="225" height="85" rx="8"/><rect x="295" y="25" width="230" height="85" rx="8"/><rect x="585" y="25" width="225" height="85" rx="8"/><path d="M235 67h60m230 0h60"/></g><g class="svgtext" text-anchor="middle"><text x="122" y="58">材料、数据集、目标波段</text><text x="122" y="84">真空波长 nm</text><text x="410" y="58">独立核对 n 与 k 域</text><text x="410" y="84">保留样品条件和来源</text><text x="697" y="58">完整 / 假设依赖 / 缺失</text><text x="697" y="84">不自动修改计算参数</text><text x="410" y="150">数值表覆盖 ≠ 全段实测验证 ≠ 设备生产标定</text></g></svg><figcaption>仅资料诊断，不产生新的光学常数，也不把缺少的损耗数据转换成测量零值。</figcaption></figure>
 <p><strong>本批 ITO 记录：</strong><code>builtin_research_ITO_film / ri_ito_minenkov_glass_2024</code>，110 nm ITO / XY15S 玻璃商用样品，706 对 n/k 点，原表 0.19146–1.68869 μm。膜厚为光学模型样品厚度，不与供应商标称规格混用。数据来自椭偏与透射联合光学模型拟合；沉积温度、气氛、组成比例及独立核验实测/拟合有效波段未知。声明范围是原始数值表域，不是逐点直接测量或全域精度保证。</p>
 <p>保留原始十进制行，沿用既有域内线性插值 <code>q(λ)=q_i+(q_(i+1)-q_i)·(λ-λ_i)/(λ_(i+1)-λ_i)</code>，其中 q 为 n 或 k；不补点、不平滑、不扩域、不设为通用生产默认。既有材料行、研究物性和源模型保持原语义。来源档案、固定 commit、SHA-256 与 CC0 原许可见 <a href="../data/optical_catalog_sources/rii_ito_minenkov_20261018_v1/README.md">ITO 数据说明</a>和 <a href="../data/optical_catalog_sources/rii_ito_minenkov_20261018_v1/provenance.json">来源元数据</a>；适用性与边界回归见 <code>tests/test_material_readiness.py</code>、<code>tests/test_ito_optical_reference.py</code>。</p>
-<p><strong>来源与限制：</strong><a href="https://doi.org/10.1021/acsami.3c17923">Minenkov 等，ACS Applied Materials &amp; Interfaces 16, 9517–9531 (2024)</a>；<a href="https://github.com/polyanskiy/refractiveindex.info-database/tree/c5c2f188e848453def5970e347399d653df2ffc2">固定版 RII 数据库</a>。CC0 仅针对收录的数据库数值记录，不扩展到论文图文。ZnS 薄膜 380–400 nm、H4、K9 等本轮未取得可验收数据的缺口继续保留，不用晶体或其他玻璃自动替代。覆盖诊断及工作流约定是本项目实现，不是新的材料物理定律。</p>
+<p><strong>来源与限制：</strong><a href="https://doi.org/10.1021/acsami.3c17923">Minenkov 等，ACS Applied Materials &amp; Interfaces 16, 9517–9531 (2024)</a>；<a href="https://github.com/polyanskiy/refractiveindex.info-database/tree/c5c2f188e848453def5970e347399d653df2ffc2">固定版 RII 数据库</a>。CC0 仅针对收录的数据库数值记录，不扩展到论文图文。ZnS 薄膜 380–400 nm、H4 等未取得可验收数据的缺口继续保留，不用晶体或其他玻璃自动替代；通用 K9 不自动等同任何厂家牌号。2026-10-19 新增的具体 CDGM H-K9L 数据见下方独立条目。覆盖诊断及工作流约定是本项目实现，不是新的材料物理定律。</p>
 </section>
 
 
