@@ -5780,16 +5780,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/film_simulation_quick_controller.py",
-      "code": "arg-type",
-      "message": "Argument 1 to \"tuple\" has incompatible type \"object\"; expected \"Iterable[Never]\"",
-      "scope": "FilmSimulationQuickController._finish_calculation",
-      "anchor": "current_polarizations = tuple(self._plot_settings.get(\"polarizations\", ()))",
-      "fingerprint": "1847de9d56c2c842a5fd74727de010c5296f26328f6f90ae06ee866b0a6a388b",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/ui/process.py",
       "code": "var-annotated",
       "message": "Need type annotation for \"snapshot\" (hint: \"snapshot: dict[<type>, <type>] = ...\")",
@@ -11609,16 +11599,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignLayerRow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "? Theme.snapshot.colorSurfaceRaised : Theme.snapshot.colorSurface",
-      "fingerprint": "2eaf98647e9afb8937a7bd7f6515953338bbf18569cecf7a817139e4b21671d5",
-      "count": 2
-    },
-    {
       "tool": "mypy",
       "path": "coat_sim/ui/assistant.py",
       "code": "arg-type",
@@ -11926,16 +11906,6 @@
       "scope": "test_real_gpu_complete_tiny_image",
       "anchor": "job = _job(); job[\"resolution\"].update(width=8, height=6, spp=4)",
       "fingerprint": "2fab68fa9b35fec0238bb3e8055096e9b214917db42ddc3eb19dcebe72c20922",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignLayerRow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "highlighted: index === setBox.highlightedIndex",
-      "fingerprint": "2fb4d32609493919fce7aa99163d3328d9a44c5a524be0b634d56c782c6d95e8",
       "count": 1
     },
     {
@@ -12277,16 +12247,6 @@
       "anchor": "window.raise_(); window.activateWindow(); window.windowHandle().requestActivate()",
       "fingerprint": "30e55ddfc10a83652c98a6fb35750d14a20f03312214402b4018769b5502b829",
       "count": 2
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/film_simulation_quick_controller.py",
-      "code": "arg-type",
-      "message": "Argument 1 to \"tuple\" has incompatible type \"object\"; expected \"Iterable[Never]\"",
-      "scope": "FilmSimulationQuickController._begin_calculation",
-      "anchor": "tuple(self._plot_settings.get(\"polarizations\", ())))",
-      "fingerprint": "30e8ba2c85e3ba0816da5a0ea79a9e04eded6c08e5935da98348ac112d2ccfbe",
-      "count": 1
     },
     {
       "tool": "mypy",
@@ -22160,16 +22120,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/film_simulation_quick_controller.py",
-      "code": "arg-type",
-      "message": "Argument 2 to \"_automatic_y_limits\" has incompatible type \"object\"; expected \"list[str] | tuple[str, ...]\"",
-      "scope": "FilmSimulationQuickController._plot_base_bounds",
-      "anchor": "self._result, self._plot_settings.get(\"curves\", []),",
-      "fingerprint": "5b02840d5446fdb45c441d49aa46967b71a1598dea853c978914a3235738aca0",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_material_optical_editor.py",
       "code": "attr-defined",
       "message": "\"QCoreApplication\" has no attribute \"setFont\"",
@@ -31119,16 +31069,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignLayerRow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "ToolTip.visible: hovered && !!row.datasetTooltip(modelData)",
-      "fingerprint": "7f54e0ab4275d4db527a6bad325f6075c56682c833ac0eacafbcd9cd193a0d3e",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_material_optical_editor.py",
       "code": "union-attr",
@@ -35310,16 +35250,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/film_simulation_quick_controller.py",
-      "code": "var-annotated",
-      "message": "Need type annotation for \"current_polarizations\"",
-      "scope": "FilmSimulationQuickController._finish_calculation",
-      "anchor": "current_polarizations = tuple(self._plot_settings.get(\"polarizations\", ()))",
-      "fingerprint": "9021096e7bd063ee44074ab947c1c2c9eb20085a0dbc519f4fbfa81342b2cfe5",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_process_environment_ui.py",
       "code": "index",
       "message": "Value of type \"Property\" is not indexable",
@@ -35479,16 +35409,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/ui/film_simulation_quick_controller.py",
-      "code": "index",
-      "message": "Value of type \"object\" is not indexable",
-      "scope": "FilmSimulationQuickController._plot_base_bounds",
-      "anchor": "y_min, y_max = float(y_axis[\"min\"]), float(y_axis[\"max\"])",
-      "fingerprint": "912a47dd891141e7e28de6bd754760408ea166e6686ef22259bee24fd16276b3",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/AppearanceWorkspace.qml",
       "code": "unqualified",
@@ -35576,16 +35496,6 @@
       "scope": "MaskViewportTests.test_scroll_mode_toggle_documents_mouse_compatibility",
       "anchor": "self.assertLessEqual(origin.y() + item.height(), self.window.height() + 0.5)",
       "fingerprint": "91b7dc1a473df3e65dfa8a7ded35cf568b45cf70ade97ea92b314e1d436911c1",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignLayerRow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "ToolTip.text: row.datasetTooltip(modelData)",
-      "fingerprint": "91bbc6ee60be47352afdaf9e818344f40dc76da12a8ca048ede58917a9f8804d",
       "count": 1
     },
     {
@@ -37400,16 +37310,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/film_simulation_quick_controller.py",
-      "code": "attr-defined",
-      "message": "\"object\" has no attribute \"__iter__\"; maybe \"__dir__\" or \"__str__\"? (not iterable)",
-      "scope": "FilmSimulationQuickController._build_plot_data",
-      "anchor": "for key in settings.get(\"curves\", []) if key in _CURVE_LABELS)",
-      "fingerprint": "994bad081b4dd0655bb083d2f118d177928e82042f218f1eebc22328787b96cb",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_mask_viewport.py",
       "code": "union-attr",
       "message": "Item \"None\" of \"QQuickItem | None\" has no attribute \"height\"",
@@ -37757,16 +37657,6 @@
       "anchor": "text: key === \"effective_cross_section_source\" ? valueText : \"\"",
       "fingerprint": "9a8d0b72c82d6e55ee2d877d46ded6c2bb67842082994d3e3af6d65f99fadae2",
       "count": 2
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/film_simulation_quick_controller.py",
-      "code": "index",
-      "message": "Value of type \"object\" is not indexable",
-      "scope": "FilmSimulationQuickController._plot_base_bounds",
-      "anchor": "if y_axis[\"auto\"]:",
-      "fingerprint": "9a9dbc1b83d4b9c4a8c2d2db3323b5e8be59e0d04a2cb4687f9a9829654ad98f",
-      "count": 1
     },
     {
       "tool": "mypy",
@@ -38926,16 +38816,6 @@
       "scope": "test_popup_header_render_and_keyboard",
       "anchor": "fonts = _install_capture_fonts(app)",
       "fingerprint": "9fb8663f1b5913456fd480caa59a728f30184343ec5c475be9186264364b21e1",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/film_simulation_quick_controller.py",
-      "code": "attr-defined",
-      "message": "\"object\" has no attribute \"__iter__\"; maybe \"__dir__\" or \"__str__\"? (not iterable)",
-      "scope": "FilmSimulationQuickController.setPlotCursor",
-      "anchor": "for polarization in self._plot_settings.get(\"polarizations\", []):",
-      "fingerprint": "9fbd8d2d46316f290a557c8b1c4ae5357108e97a0150183f65a79c788acaae0e",
       "count": 1
     },
     {
@@ -45329,16 +45209,6 @@
       "count": 3
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/ui/film_simulation_quick_controller.py",
-      "code": "index",
-      "message": "Value of type \"object\" is not indexable",
-      "scope": "FilmSimulationQuickController._plot_base_bounds",
-      "anchor": "x_min, x_max = float(x_axis[\"min\"]), float(x_axis[\"max\"])",
-      "fingerprint": "b951828b2769d8d67b715eec13c3b7ba1a75ad41e63fa511ed1bc7a5ecb6b323",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/AssistantNotification.qml",
       "code": "unqualified",
@@ -46190,16 +46060,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/film_simulation_quick_controller.py",
-      "code": "arg-type",
-      "message": "Argument 3 to \"_axis_ticks\" has incompatible type \"object\"; expected \"dict[str, Any]\"",
-      "scope": "FilmSimulationQuickController.plotView",
-      "anchor": "bounds[\"x_min\"], bounds[\"x_max\"], settings[\"x\"]),",
-      "fingerprint": "bcbca66dea7b5d76de214ead2c6d1e065e7618cb080c2233847499f67eeb3d2f",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_utility_windows_compact_chrome_ui.py",
       "code": "arg-type",
       "message": "Argument 1 to \"Property\" has incompatible type \"str\"; expected \"type\"",
@@ -46336,16 +46196,6 @@
       "scope": "",
       "anchor": "from coat_sim.appearance.render import _scene_dict, display_rgb, write_png",
       "fingerprint": "bda6334ddcdf581915b5cc12618b26205357d2e5b503df19139b7c643b9bb52d",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/film_simulation_quick_controller.py",
-      "code": "arg-type",
-      "message": "Argument 3 to \"_automatic_y_limits\" has incompatible type \"object\"; expected \"list[str] | tuple[str, ...]\"",
-      "scope": "FilmSimulationQuickController._plot_base_bounds",
-      "anchor": "self._plot_settings.get(\"polarizations\", []))",
-      "fingerprint": "bda8661fedb3391cf383721282e5a284e5c31f1c222611a3819889aa3be6b6fa",
       "count": 1
     },
     {
@@ -54520,16 +54370,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/film_simulation_quick_controller.py",
-      "code": "arg-type",
-      "message": "Argument 1 to \"tuple\" has incompatible type \"object\"; expected \"Iterable[Never]\"",
-      "scope": "FilmSimulationQuickController.requestCalculation",
-      "anchor": "or self._active_calculation_token[3] != tuple(self._plot_settings.get(\"polarizations\", ()))):",
-      "fingerprint": "dfb6de9230266f6364f53184c2efadc05f3d5c84f412160b7ec18deda9424938",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_film_optimization_batch_job.py",
       "code": "var-annotated",
       "message": "Need type annotation for \"checkpoints\" (hint: \"checkpoints: list[<type>] = ...\")",
@@ -54786,16 +54626,6 @@
       "scope": "main",
       "anchor": "report[\"cases\"].append(snapshot(app,window,output/'真实ZnS结果_默认折叠.png'))",
       "fingerprint": "e0cd5653b4f2d00baf6c230f3acd3305403a1cc1ef6af77bcf61ae574f62cc0e",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/film_simulation_quick_controller.py",
-      "code": "arg-type",
-      "message": "Argument 3 to \"_axis_ticks\" has incompatible type \"object\"; expected \"dict[str, Any]\"",
-      "scope": "FilmSimulationQuickController.plotView",
-      "anchor": "bounds[\"y_min\"], bounds[\"y_max\"], settings[\"y\"]),",
-      "fingerprint": "e0ce7309f6f094ba2ed432e952fd8b3cd01d9734bb93ff90699bf8ebd1ffbe64",
       "count": 1
     },
     {
@@ -59279,16 +59109,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignLayerRow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "width: setBox.width",
-      "fingerprint": "f264692261064bec219509f0f0659e297b8ce1875462939a8fa312af4418024b",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "coat_sim/agent/runtime.py",
       "code": "call-overload",
@@ -59536,16 +59356,6 @@
       "scope": "test_one_million_context_uses_eighty_percent_auto_threshold_on_init_and_reset",
       "anchor": "assert binary_million[\"profile\"][\"max_input_tokens\"] == 1_048_576",
       "fingerprint": "f3150752c3c8362642fb3cb23a50e73c004bd348e0d2957f10d61fc8bb0620e6",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/film_simulation_quick_controller.py",
-      "code": "attr-defined",
-      "message": "\"object\" has no attribute \"__iter__\"; maybe \"__dir__\" or \"__str__\"? (not iterable)",
-      "scope": "FilmSimulationQuickController.setPlotCursor",
-      "anchor": "for key in self._plot_settings.get(\"curves\", []):",
-      "fingerprint": "f3443cae4f3bbb76bb8548410b673784b033d4047c77d305d1cee6656e9b744f",
       "count": 1
     },
     {
@@ -60520,16 +60330,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/film_simulation_quick_controller.py",
-      "code": "var-annotated",
-      "message": "Need type annotation for \"token\"",
-      "scope": "FilmSimulationQuickController._begin_calculation",
-      "anchor": "token = (self._next_calculation_id, self._generation,",
-      "fingerprint": "f779e31cb26be00db092fd867dab3811b09219e1d7da4486a2b4090555019d45",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_film_optimization_forward_cache.py",
       "code": "var-annotated",
       "message": "Need type annotation for \"regular_checkpoints\" (hint: \"regular_checkpoints: list[<type>] = ...\")",
@@ -61249,16 +61049,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/ui/film_simulation_quick_controller.py",
-      "code": "arg-type",
-      "message": "Argument 1 to \"len\" has incompatible type \"object\"; expected \"Sized\"",
-      "scope": "FilmSimulationQuickController.resourceEstimate",
-      "anchor": "extra_polarizations=len(self._plot_settings.get(\"polarizations\", ())))",
-      "fingerprint": "f9df1adeb2f7fcf399c2ea036de4a06a6ab071043e1dbc2eb88b98d5e39cd63d",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/FilmDesignImportDialog.qml",
       "code": "unqualified",
@@ -61936,16 +61726,6 @@
       "scope": "ZnSReferenceEditorTests.test_real_qml_calculate_cancel_apply_and_error_at_minimum_size",
       "anchor": "self.assertLessEqual(dialog.property(\"width\"), window.width())",
       "fingerprint": "fc96bc90db6cd9e9718aac3ab9042793dadc56e66bf0693a9e0e750a0270a5f0",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/film_simulation_quick_controller.py",
-      "code": "index",
-      "message": "Value of type \"object\" is not indexable",
-      "scope": "FilmSimulationQuickController._plot_base_bounds",
-      "anchor": "if x_axis[\"auto\"]:",
-      "fingerprint": "fc9746719f2ed15c96126acd5275cc04be72f8ae6a274d2b8120ddcceb72d556",
       "count": 1
     },
     {
@@ -62759,6 +62539,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "Remove exactly 35 resolved diagnostic occurrences proven by Linux CI run 39242945988 at 7db2cc74d30be0bdc9eb6e5f797e71dd39d2f6e3; no new allowances, identities or counts increased.",
+  "last_prune_reason": "Reviewed complete 3171c68 Linux CI report (run39269203979): remove23 resolved occurrences in22 fingerprint groups; no added or increased allowance.",
   "configuration_review_reason": "2026-10-17: add only BSD-3-Clause pypdf 6.21.0 for isolated research PDF extraction; all previous dependency/tool versions, analyzer rules and diagnostic entries remain unchanged. The lock-file digest changes only for this reviewed runtime dependency."
 }

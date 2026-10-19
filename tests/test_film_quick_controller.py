@@ -1189,7 +1189,12 @@ class FilmDesignQuickControllerTests(unittest.TestCase):
             self.assertIsNotNone(dataset_item)
             move_to_visual_item(dataset_item)
             self.assertTrue(dataset_item.property("hovered"))
-            tooltip = read_qml_property(dataset_item, "ToolTip.text")
+            tooltip_popup = dataset_item.findChild(
+                QObject, "filmOpticalSetTooltip_" + str(read_qml_property(dataset_item, "modelData.id")))
+            assert tooltip_popup is not None, "Missing dataset tooltip control"
+            QTest.qWait(int(tooltip_popup.property("delay")) + 100)
+            self.assertTrue(tooltip_popup.property("visible"))
+            tooltip = str(tooltip_popup.property("text"))
             self.assertIn("Synthetic unit-test data", tooltip)
             self.assertIn("400", tooltip)
             self.assertNotIn("Local unit-test fixture", tooltip)
