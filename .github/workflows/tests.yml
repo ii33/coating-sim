@@ -57,9 +57,15 @@ jobs:
       - name: Run ${{ matrix.tier }} tests and save JUnit output
         run: |
           mkdir -p "artifacts/test-ci/${{ matrix.tier }}"
+          qt_diagnostics=()
+          if [[ "${{ matrix.tier }}" == "qt" ]]; then
+            export PYTHONUNBUFFERED=1
+            qt_diagnostics=(-vv --tb=short -p tools.pytest_qt_diagnostics
+              --qt-diagnostic-log=artifacts/test-ci/qt/exceptions.jsonl)
+          fi
           set +e
           python tools/run_tests.py "${{ matrix.tier }}" \
-            -- --junitxml="artifacts/test-ci/${{ matrix.tier }}/junit.xml" \
+            -- "${qt_diagnostics[@]}" --junitxml="artifacts/test-ci/${{ matrix.tier }}/junit.xml" \
             > "artifacts/test-ci/${{ matrix.tier }}/test.log" 2>&1
           result=$?
           cat "artifacts/test-ci/${{ matrix.tier }}/test.log"
