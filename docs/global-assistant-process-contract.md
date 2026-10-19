@@ -244,3 +244,11 @@ assistant continues independently until explicit application exit.
 These are lifecycle changes only; project formats, physical algorithms and
 numerical results are unchanged. Interface signatures and lifecycle tests are
 the source of truth for request identity and cancellation boundaries.
+
+
+Scheduler shutdown withdraws its exact-owner discovery endpoint before closing
+the HTTP listener. A background `snapshot_if_running()` read that loses its RPC
+connection treats a now-absent endpoint as offline even while the old process
+is still unwinding. A still-published endpoint with a live or uncertain process
+identity remains an error; no background read starts a replacement daemon.
+This ordering prevents normal idle exit from being mislabeled unavailable.

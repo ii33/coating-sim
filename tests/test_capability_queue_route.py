@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import asyncio
-from collections import deque
 from copy import deepcopy
+from contextlib import closing
 import io
 import json
 import os
@@ -11,7 +11,6 @@ from pathlib import Path
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
-import threading
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -51,8 +50,7 @@ class _FakeSchedulerTransport:
 
 class CapabilityQueueRouteTests(unittest.TestCase):
     def setUp(self):
-        self.temp = TemporaryDirectory(prefix="capability-queue-route-",
-                                       dir=Path(__file__).resolve().parent)
+        self.temp = TemporaryDirectory(prefix="capability-queue-route-")
         base = Path(self.temp.name)
         self.root_a = base / "project-a"
         self.root_b = base / "project-b"
@@ -401,38 +399,28 @@ assert not any(any(name == prefix or name.startswith(prefix + ".") for prefix in
                            "fail_save": False},
             "inputs": {},
         }, job_id="capability-existing-job")
-        daemon = object.__new__(Scheduler)
-        daemon.root = self.root_a
-        daemon.runtime = self.root_a / "artifacts" / "runtime" / "scheduler"
-        daemon.store = store
-        daemon.condition = threading.Condition(threading.RLock())
-        daemon.sequence = store.last_sequence
-        daemon.index = {job["job_id"]: deepcopy(job)}
-        daemon.event_buffer = deque(maxlen=1024)
-        daemon.artifact_index = {}
-        daemon.active = None
-        daemon.stopping = threading.Event()
-        daemon.recovery_error = None
+        daemon = Scheduler(self.root_a)
 
-        class DaemonTransport:
-            def __init__(self, scheduler):
-                self.daemon = scheduler
-                self.requests: list[tuple[str, dict]] = []
+        with closing(daemon.lock), closing(daemon.guard):
+            class DaemonTransport:
+                def __init__(self, scheduler):
+                    self.daemon = scheduler
+                    self.requests: list[tuple[str, dict]] = []
 
-            def request(self, action, arguments):
-                self.requests.append((action, deepcopy(arguments)))
-                return self.daemon.dispatch(action, arguments)
+                def request(self, action, arguments):
+                    self.requests.append((action, deepcopy(arguments)))
+                    return self.daemon.dispatch(action, arguments)
 
-        transport = DaemonTransport(daemon)
-        client = SchedulerClient(self.root_a, transport=transport)
-        capabilities = self._capabilities(self.root_a, client)
+            transport = DaemonTransport(daemon)
+            client = SchedulerClient(self.root_a, transport=transport)
+            capabilities = self._capabilities(self.root_a, client)
 
-        status = capabilities.call("calculation_job_status", {"job_id": job["job_id"]})
-        self.assertEqual(status["state"], "queued")
-        cancelled = capabilities.call("cancel_calculation_job", {"job_id": job["job_id"]})
-        self.assertEqual(cancelled["state"], "cancelled")
-        self.assertEqual(store.status(job["job_id"])["state"], "cancelled")
-        self.assertEqual([action for action, _ in transport.requests], ["status", "cancel"])
+            status = capabilities.call("calculation_job_status", {"job_id": job["job_id"]})
+            self.assertEqual(status["state"], "queued")
+            cancelled = capabilities.call("cancel_calculation_job", {"job_id": job["job_id"]})
+            self.assertEqual(cancelled["state"], "cancelled")
+            self.assertEqual(store.status(job["job_id"])["state"], "cancelled")
+            self.assertEqual([action for action, _ in transport.requests], ["status", "cancel"])
 
 
 if __name__ == "__main__":

@@ -171,6 +171,12 @@ class SchedulerClient:
             state, current = _process_identity(endpoint['pid'])
             if state == 'dead' or (current is not None and current != start):
                 return None
+            # Shutdown withdraws discovery before closing HTTP. The process may
+            # still be alive while its interpreter and owned resources unwind.
+            try:
+                self.endpoint.stat()
+            except FileNotFoundError:
+                return None
             raise RuntimeError('scheduler_unavailable') from None
 
     def submit(self, spec, job_id=None, metadata=None):

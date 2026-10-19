@@ -106,3 +106,13 @@ IT 保留波长 μm、内透过率（无量纲）及每一行独立的厚度 mm�
 - [Herzberger](https://ansyshelp.ansys.com/public/Views/Secured/Zemax/v26103/en/OpticStudio_User_Guide/OpticStudio_Help/topics/The_Herzberger_Formula.html)；[Sellmeier 3](https://ansyshelp.ansys.com/public/Views/Secured/Zemax/v26103/en/OpticStudio_User_Guide/OpticStudio_Help/topics/The_Sellmeier_3_Formula.html)
 - [Extended 2](https://ansyshelp.ansys.com/public/Views/Secured/Zemax/v26103/en/OpticStudio_User_Guide/OpticStudio_Help/topics/The_Extended_2_Formula.html)；[Extended 3（已实际核对公式图片）](https://ansyshelp.ansys.com/public/Views/Secured/Zemax/v26103/en/OpticStudio_User_Guide/OpticStudio_Help/topics/The_Extended_3_Formula.html)
 - 官方入口：[SCHOTT](https://www.schott.com/en-us/products/optical-glass)、[OHARA](https://www.ohara-inc.co.jp/en/product/catalog/)、[SUMITA](https://www.sumita-opt.co.jp/en/download/)。具体下载地址与许可判断随离线来源清单保存，不由适配器扩大授权。
+
+
+### Air category metadata and distribution integrity (2026-10-19)
+
+The current catalog explicitly classifies `builtin_ideal_air` as `film`, rather
+than the historical `other` metadata. This is the documented material pool
+convention; no optical values or ITO provenance files change. The distribution
+manifest pins the reviewed current catalog bytes. The ITO import-preservation
+regression accounts for this one explicit metadata field when comparing its
+immutable historical hash, and continues to pin all remaining rows and values.

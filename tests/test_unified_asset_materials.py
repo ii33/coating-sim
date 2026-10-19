@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+import time
 from typing import Any, cast
 
 import pytest
@@ -32,15 +33,32 @@ class EmptyMaterials:
         return []
 
 
-def seed_project_material(desktop, project, identity="glass"):
+def wait_for_material_idle(library, identity, label):
+    deadline = time.monotonic() + 8
+    stable_since = None
+    while time.monotonic() < deadline:
+        QTest.qWait(10)
+        if not library.loading and (identity is None or library.currentId == identity):
+            stable_since = stable_since or time.monotonic()
+            if time.monotonic() - stable_since >= 0.25:
+                return
+        else:
+            stable_since = None
+    raise AssertionError(f"{label}: loading={library.loading!r}, currentId={library.currentId!r}")
+
+
+def seed_project_material(desktop, project, identity="glass", *, category=None):
     resources = ProjectResourceWorkspace.for_project(desktop.adapter.host, project.session.binding)
-    ProjectMaterialLibrary(resources.service, global_library=EmptyMaterials()).write(profile(identity))
+    material = profile(identity)
+    if category is not None:
+        material["category"] = category
+    ProjectMaterialLibrary(resources.service, global_library=EmptyMaterials()).write(material)
     return next(row for row in resources.store.manifest["documents"] if row["kind"] == "material_profile")
 
 
 def test_material_route_reuses_one_asset_window_and_one_retained_owner(desktop, monkeypatch):
     project = desktop.open()
-    row = seed_project_material(desktop, project)
+    row = seed_project_material(desktop, project, category="film")
     monkeypatch.setattr("coat_sim.core.material_business.application_material_library",
                         lambda: pytest.fail("project asset material editor must not create a global picker"))
     route_id = desktop.adapter.desktop.open_project_module(project.workspace, "materials")
@@ -48,8 +66,8 @@ def test_material_route_reuses_one_asset_window_and_one_retained_owner(desktop, 
                  if route.module_key == "project_resources")
     window, assets, engine, *_ = desktop.adapter.desktop._views[route]
     settled(assets)
-    # The logical open must select the material after asynchronous inspection.
-    QTest.qWait(80)
+    # The logical open selects an explicitly film-eligible material after inspection.
+    wait_for_material_idle(assets._material_controller.bridge, "glass", "project material selection")
     assert route_id == route.route_id
     assert all(route.module_key != "materials" for route in desktop.adapter.host.routes(project.session.binding.project_id))
     editor = assets._material_controller
@@ -245,7 +263,9 @@ def test_global_material_route_uses_one_asset_window_and_dirty_shutdown_review(t
     from tests.launcher_test_isolation import LauncherTestIsolation
     app = QApplication.instance() or QApplication([])
     isolation = LauncherTestIsolation(tmp_path / "isolated", launcher_module).apply()
-    MaterialLibrary(directory=isolation.data_root / "materials").write(profile())
+    global_profile = profile()
+    global_profile["category"] = "film"
+    MaterialLibrary(directory=isolation.data_root / "materials").write(global_profile)
     engine = QQmlApplicationEngine()
     theme = ThemeEngineBridge(build_theme_snapshot("light"), 0, "light", "light", "qa", "QA", {}, parent=engine)
     engine.rootContext().setContextProperty("Theme", theme)
@@ -264,17 +284,21 @@ def test_global_material_route_uses_one_asset_window_and_dirty_shutdown_review(t
         handle = launcher._windows[identity]
         assets = cast(Any, handle.bridge)
         settled(assets)
-        spin_until(lambda: assets.materialLibrary.loading, lambda value: not value, "global alias load")
+        wait_for_material_idle(assets.materialLibrary, None, "global alias load")
         assert handle.key == "global_resources" and assets.materialLibrary.currentId
         material_row = next(row for row in assets.transferCatalog["rows"]
                             if row["kind"] == "material_profile" and row.get("material_id") == "glass")
         assert assets.openMaterialAsset(material_row["id"])
-        spin_until(lambda: assets.materialLibrary.loading, lambda value: not value, "selected global material")
+        wait_for_material_idle(assets.materialLibrary, "glass", "selected global material")
         assert assets.materialLibrary.currentId == "glass"
         assert launcher.open_window("materials") == launcher.open_window("global_resources") == identity
+        wait_for_material_idle(assets.materialLibrary, "glass", "reused global material")
         assert not any(option["key"] == "materials" for option in launcher.property("modules"))
         assert not any(window.key == "materials" for window in launcher._windows.values())
         assets.materialLibrary.setField("notes", "Preserve global unsaved input")
+        assert assets.dirty
+        assert not handle.window.property("allowClose")
+        assert launcher._runtime_shutdown_callback is None
         launcher.shutdown()
         assert not launcher._closing and launcher._shutdown_confirmation_pending
         launcher.cancelShutdown()

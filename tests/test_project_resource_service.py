@@ -144,7 +144,7 @@ def test_full_profile_optics_are_atomic_and_removing_referenced_dataset_rejects(
     library.write(profile)
     assert api.store.manifest["revision"] == before + 1
     film_service = ProjectFilmService(api.store, global_material_library=EmptyCatalog())
-    assert [item["id"] for item in film_service.material_options("film")] == ["film"]
+    assert [item["id"] for item in film_service.material_options("film")] == ["film", "builtin_ideal_air"]
     design = new_design("Linked")
     design["front_layers"] = [{"id": "layer", "material_id": "film", "optical_set_id": "set",
         "thickness": {"value": 100., "unit": "nm"}, "note": ""}]

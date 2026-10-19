@@ -365,8 +365,9 @@ class DiscussionComputePolicyTests(unittest.TestCase):
 
     def test_refresh_revalidates_authority_and_tags_ui_epoch_not_daemon_value(self):
         from coat_sim.ui.assistant_desktop import DesktopAssistantBridge
-        client = Mock()
-        client.snapshot.return_value = {'confirmations': [], '_assistant_mode_epoch': 999}
+        from coat_sim.scheduler.client import SchedulerClient
+        client = Mock(spec=SchedulerClient)
+        client.snapshot_if_running.return_value = {'confirmations': [], '_assistant_mode_epoch': 999}
         def submit(function):
             future: Future = Future()
             future.set_result(function())
@@ -376,11 +377,13 @@ class DiscussionComputePolicyTests(unittest.TestCase):
             _executor=SimpleNamespace(submit=submit), snapshotReady=Mock())
         with patch('coat_sim.scheduler.SchedulerClient', return_value=client):
             DesktopAssistantBridge.refreshQueue(cast(DesktopAssistantBridge, dummy))
-        client.refresh_estimates.assert_called_once_with()
-        client.snapshot.assert_called_once_with(after_event=0, limit=100)
+        client.snapshot_if_running.assert_called_once_with(
+            after_event=0, limit=100, refresh_estimates=True)
+        client.refresh_estimates.assert_not_called()
+        client.snapshot.assert_not_called()
         result, error = dummy.snapshotReady.emit.call_args.args
         self.assertEqual(result['_assistant_mode_epoch'], 7)
-        self.assertEqual(client.snapshot.return_value['_assistant_mode_epoch'], 999)
+        self.assertEqual(client.snapshot_if_running.return_value['_assistant_mode_epoch'], 999)
         self.assertEqual(error, '')
         self.assertFalse(dummy._refresh_estimates_pending)
 
@@ -411,16 +414,18 @@ class DiscussionComputePolicyTests(unittest.TestCase):
                 future.set_exception(error)
             return future
         dummy._executor = SimpleNamespace(submit=submit)
-        client = Mock()
-        client.snapshot.return_value = {'confirmations': [
+        from coat_sim.scheduler.client import SchedulerClient
+        client = Mock(spec=SchedulerClient)
+        client.snapshot_if_running.return_value = {'confirmations': [
             {**receipt, 'release_at': '2000-01-01T00:00:00+00:00'}]}
         attempts: list[bool] = []
-        def revalidate():
+        def revalidate(**arguments):
+            self.assertEqual(arguments, dict(after_event=0, limit=100, refresh_estimates=True))
             attempts.append(True)
             if len(attempts) == 1:
                 raise OSError('temporary refresh failure')
-            client.snapshot.return_value = fresh
-        client.refresh_estimates.side_effect = revalidate
+            return fresh
+        client.snapshot_if_running.side_effect = revalidate
         with patch('coat_sim.scheduler.SchedulerClient', return_value=client):
             dummy.refreshQueue()
             self.assertTrue(dummy._refresh_estimates_pending)
@@ -430,7 +435,9 @@ class DiscussionComputePolicyTests(unittest.TestCase):
             self.assertTrue(decision['release_blocked'])
             dummy.refreshQueue()  # The next ordinary UI timer tick.
         self.assertEqual(len(attempts), 2)
-        client.snapshot.assert_called_once()
+        self.assertEqual(client.snapshot_if_running.call_count, 2)
+        client.snapshot.assert_not_called()
+        client.refresh_estimates.assert_not_called()
         self.assertTrue(decision['release_blocked'])
         self.assertFalse(decision['optional'])
         self.assertIsNone(decision['deadline_ms'])

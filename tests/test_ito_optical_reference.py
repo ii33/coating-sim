@@ -110,7 +110,14 @@ class ItoOpticalReferenceTests(unittest.TestCase):
         rows = [row for row in self.catalog["materials"] if row["material_id"] != "ITO_film"]
         metadata = {key: value for key, value in self.catalog.items()
                     if key not in ("materials", "datasets")}
-        self.assertEqual(canonical_hash(rows), self.record["preserved_material_rows_sha256"])
+        # The ITO import record is immutable historical evidence. The later
+        # approved Air category migration changes only this project metadata;
+        # every optical value and every other material stays hash-pinned.
+        historical_rows = deepcopy(rows)
+        air = next(row for row in historical_rows if row["material_id"] == "builtin_ideal_air")
+        self.assertEqual(air["category"], "film")
+        air["category"] = "other"
+        self.assertEqual(canonical_hash(historical_rows), self.record["preserved_material_rows_sha256"])
         self.assertEqual(canonical_hash(metadata), self.record["preserved_root_metadata_sha256"])
 
     def test_reimport_noop_and_conflicting_same_id_rejected(self):

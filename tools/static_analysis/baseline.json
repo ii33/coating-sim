@@ -1439,16 +1439,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "E701",
-      "message": "Multiple statements on one line (colon)",
-      "scope": "Scheduler.serve.Handler.do_POST",
-      "anchor": "if request.get('protocol_version') != 1: raise ValueError('unsupported_protocol_version')",
-      "fingerprint": "0674e8c217b85b793761f3d6d7ac941b3384eb70161ca46e681d2e424da23fbd",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tools/build_desktop_host.py",
       "code": "attr-defined",
@@ -3199,16 +3189,6 @@
       "count": 2
     },
     {
-      "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "E701",
-      "message": "Multiple statements on one line (colon)",
-      "scope": "Scheduler.dispatch",
-      "anchor": "if action == 'health': return {'protocol_version': 1, 'pid': os.getpid(), 'instance': self.owner,",
-      "fingerprint": "0de180c6367199f09e243d71c234db658404bc57071ca4b31583c58ca3c2958a",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "coat_sim/ui/assistant_desktop.py",
       "code": "attr-defined",
@@ -3649,16 +3629,6 @@
       "count": 2
     },
     {
-      "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "E701",
-      "message": "Multiple statements on one line (colon)",
-      "scope": "Scheduler.dispatch",
-      "anchor": "if action == 'snapshot': return self.memory_snapshot(**arguments)",
-      "fingerprint": "107f5a3c5117855872d7101a49072fc06b8ff7aeacf34b2c46ffd046cdea2f95",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "coat_sim/appearance/contract.py",
       "code": "type-var",
@@ -3876,16 +3846,6 @@
       "scope": "material_library_lock",
       "anchor": "msvcrt.locking(descriptor, msvcrt.LK_LOCK, 1)",
       "fingerprint": "115d46119960dfc5961a2c17b614800ca9bf9259cb68e3b8c7b4855f853e7ab4",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "E701",
-      "message": "Multiple statements on one line (colon)",
-      "scope": "Scheduler.serve.Handler.do_GET",
-      "anchor": "try: item = scheduler.resolve_artifact(self.path[len(prefix):])",
-      "fingerprint": "117681720a4beb42c2901c4a387a57461367644757fec90bf75064969fbe0b73",
       "count": 1
     },
     {
@@ -12859,16 +12819,6 @@
       "count": 2
     },
     {
-      "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "E702",
-      "message": "Multiple statements on one line (semicolon)",
-      "scope": "Scheduler.serve.Handler.do_POST",
-      "anchor": "self.send_header('Content-Type', 'application/json'); self.send_header('Content-Length', str(len(body)))",
-      "fingerprint": "336ead7d6a84b46012b3d70c49e422e7be031c8bcbf3146f031e9a1da9e965c4",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_mask_viewport.py",
       "code": "union-attr",
@@ -16949,16 +16899,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "E701",
-      "message": "Multiple statements on one line (colon)",
-      "scope": "Scheduler.serve",
-      "anchor": "if endpoint.get('instance') == self.owner: (self.runtime / 'endpoint.json').unlink(missing_ok=True)",
-      "fingerprint": "44804afa75ccf9db9bb52e62aa0d3adef9ac653bc588962f714810c0343b58c5",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_material_optical_editor.py",
       "code": "union-attr",
@@ -20089,16 +20029,6 @@
       "count": 2
     },
     {
-      "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "E702",
-      "message": "Multiple statements on one line (semicolon)",
-      "scope": "Scheduler.serve.Handler.do_GET",
-      "anchor": "self.send_response(200); self.send_header('Content-Type', 'application/octet-stream')",
-      "fingerprint": "51b38ec1ab156a9f70414915f81087df6528778f11e79019e420e99c59e38c33",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "coat_sim/ui/assistant.py",
       "code": "return-value",
@@ -20566,16 +20496,6 @@
       "scope": "FilmDesignReferenceQtTests.setUp",
       "anchor": "self.settings_path = self.temp_path / \"reference-geometry.ini\"",
       "fingerprint": "533dd2a373cfdb8ff77391bd39ca7aa7b6c7938316e1de699ee3b899c382b11c",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "E702",
-      "message": "Multiple statements on one line (semicolon)",
-      "scope": "Scheduler.serve.Handler.do_POST",
-      "anchor": "self.send_error(403); return",
-      "fingerprint": "536eeab59c3cad7f3f337bebaa74d945b185cf678e7eaa151796e52ea817d144",
       "count": 1
     },
     {
@@ -23099,16 +23019,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "E701",
-      "message": "Multiple statements on one line (colon)",
-      "scope": "Scheduler.serve.Handler.do_POST",
-      "anchor": "if length < 1: raise ValueError('empty_request')",
-      "fingerprint": "5e778ff1cc91e122bff7aa50f6893cd4dad143705ce10f50d118c942d7d95d4d",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/AppearanceWorkspace.qml",
       "code": "unqualified",
@@ -24896,16 +24806,6 @@
       "scope": "MaskViewportTests.test_floating_tools_stay_inside_view_and_work_at_multiple_zooms",
       "anchor": "self.assertLessEqual(top_left.y()+toolbar.height(), viewport.height())",
       "fingerprint": "65d345a030d706462e084f3ccc1d958994039d54eef0231d438a80752807e7b3",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "E701",
-      "message": "Multiple statements on one line (colon)",
-      "scope": "Scheduler.dispatch",
-      "anchor": "with self.condition: self.confirmations = value['confirmations']",
-      "fingerprint": "65ddf85cb9ce6b60f0560ceecbb11137a010905f1bcfa0a9a59f170048202102",
       "count": 1
     },
     {
@@ -27599,16 +27499,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "E701",
-      "message": "Multiple statements on one line (colon)",
-      "scope": "Scheduler.dispatch",
-      "anchor": "if self.stopping.is_set(): raise ValueError('scheduler_stopping')",
-      "fingerprint": "700092c0c511c9b2e91f29843b020ba03ab693c7be5a3cbf3c1b12d70ed0190d",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_process_environment_ui.py",
       "code": "index",
@@ -28046,16 +27936,6 @@
       "scope": "MaskViewportTests.test_native_pinch_repeated_begin_zoom_end_keeps_anchor",
       "anchor": "(Qt.ZoomNativeGesture,-1/11), (Qt.EndNativeGesture,0)):",
       "fingerprint": "719dcfa907fe7aa7fe30df662384f3842c97db2505119f4fb3150859fdaf6f23",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "E701",
-      "message": "Multiple statements on one line (colon)",
-      "scope": "Scheduler.dispatch",
-      "anchor": "if action == 'cancel': return self._commit('cancel', **arguments)",
-      "fingerprint": "719f082b476206c281cb0d7b6cd6cefffef7dfa3db6e1a0e633520f12ebc1f26",
       "count": 1
     },
     {
@@ -29956,16 +29836,6 @@
       "scope": "source_selection_options",
       "anchor": "material = profile.get(\"material\") or {}",
       "fingerprint": "79ca09f45f964227f1624462404012fcf80d6ede3913d118167be50877be2dfb",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "E701",
-      "message": "Multiple statements on one line (colon)",
-      "scope": "Scheduler.tick",
-      "anchor": "if self.stopping.is_set() or self.recovery_error: return",
-      "fingerprint": "79d9caac02491a798696713c79307fb4379374d63d0b449a2ceb7d38d2daddb6",
       "count": 1
     },
     {
@@ -31930,16 +31800,6 @@
     },
     {
       "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "E702",
-      "message": "Multiple statements on one line (semicolon)",
-      "scope": "Scheduler.serve.Handler.do_GET",
-      "anchor": "self.send_error(404); return",
-      "fingerprint": "82623fb6de7e09ed57c1182614713e87cf0308b16a5f04c293cc1ecf6a0f87dd",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
       "path": "tests/test_desktop_compute_queue.py",
       "code": "E702",
       "message": "Multiple statements on one line (semicolon)",
@@ -33630,16 +33490,6 @@
     },
     {
       "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "F401",
-      "message": "`time` imported but unused",
-      "scope": "",
-      "anchor": "import time",
-      "fingerprint": "8920310db4b6dcf50cabe1940fd8761f4ca83e921d968506b7a9a63ca97f401b",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
       "path": "tests/test_film_design_gui.py",
       "code": "E702",
       "message": "Multiple statements on one line (semicolon)",
@@ -34707,16 +34557,6 @@
       "anchor": "? (advancedForm ? advancedForm.assistantModelFieldControl.text : bridge.assistantModel)",
       "fingerprint": "8d71c39b2191052b5abcae9f21822b808bc46d5d1d26a72086cf300ff7976b71",
       "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/theme_controls/ThemeMaterialPicker.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "typeof Theme.tokenValues !== \"undefined\" ? Theme.tokenValues : Theme.snapshot",
-      "fingerprint": "8d799c7c46f5b3e2d2ffed3bdb4db83b5bab8570ae264b7f20b28a517b32879e",
-      "count": 3
     },
     {
       "tool": "ruff",
@@ -39550,16 +39390,6 @@
     },
     {
       "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "E701",
-      "message": "Multiple statements on one line (colon)",
-      "scope": "Scheduler.serve.Handler.do_POST",
-      "anchor": "except (BrokenPipeError, ConnectionResetError): pass",
-      "fingerprint": "a170b7a950f45abae5b12496ec3325baa6dff7025778a0c6d81169772adfc4b9",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
       "path": "coat_sim/core/film_optimization_needle.py",
       "code": "B023",
       "message": "Function definition does not bind loop variable `total_iterations`",
@@ -40040,16 +39870,6 @@
     },
     {
       "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "E701",
-      "message": "Multiple statements on one line (colon)",
-      "scope": "Scheduler.dispatch",
-      "anchor": "if not row: raise ValueError('run_not_found')",
-      "fingerprint": "a31e51479e216a715bbac0b62142b92b036c9ca679327797c745f6e41e70907b",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
       "path": "tests/test_editor_reload_and_live_inputs.py",
       "code": "E702",
       "message": "Multiple statements on one line (semicolon)",
@@ -40317,16 +40137,6 @@
       "anchor": "item = table.item(row, column)",
       "fingerprint": "a45678113e997d31d33404b3e22827f6f96bbcd9ee1ae2ff563cdb9b4ca09938",
       "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "coat_sim/scheduler/client.py",
-      "code": "E701",
-      "message": "Multiple statements on one line (colon)",
-      "scope": "SchedulerClient._ensure_started",
-      "anchor": "if not value.get('stopping'): return value",
-      "fingerprint": "a45ac9a2bb1a2c7d4420f48e41d2ad54e29e723e9eadb80bd817544a4b29b357",
-      "count": 2
     },
     {
       "tool": "mypy",
@@ -40916,16 +40726,6 @@
       "scope": "",
       "anchor": "objectName: \"filmGeneratorDataset_\" + role",
       "fingerprint": "a69c807b5c7e23cd6d680f57d6645ca548c44aaca301a1839b551d1c1a54734e",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "E701",
-      "message": "Multiple statements on one line (colon)",
-      "scope": "Scheduler.serve.Handler.do_POST",
-      "anchor": "try: self.wfile.write(body)",
-      "fingerprint": "a6a3a2eac1e7935f1b970587852346cd2dba4bfce891347d2b4708f726069a8f",
       "count": 1
     },
     {
@@ -46930,16 +46730,6 @@
     },
     {
       "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "E702",
-      "message": "Multiple statements on one line (semicolon)",
-      "scope": "Scheduler.serve",
-      "anchor": "http.shutdown(); http.server_close(); thread.join(timeout=2)",
-      "fingerprint": "bf2fce8f6508adaa6d0008cc220efda15f074acb85f89acf2a355cff4f69f706",
-      "count": 2
-    },
-    {
-      "tool": "ruff",
       "path": "coat_sim/ui/film_design.py",
       "code": "E702",
       "message": "Multiple statements on one line (semicolon)",
@@ -51390,16 +51180,6 @@
     },
     {
       "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "E701",
-      "message": "Multiple statements on one line (colon)",
-      "scope": "Scheduler.dispatch",
-      "anchor": "if action == 'events': return self.events(**arguments)",
-      "fingerprint": "d13e7b061be48ab106a8992487089a21b229399c322c27bcdfced8ba35b8529c",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
       "path": "coat_sim/core/film_optimization_needle.py",
       "code": "B023",
       "message": "Function definition does not bind loop variable `total_evaluations`",
@@ -51436,16 +51216,6 @@
       "scope": "validate_film_structure_candidate_topology",
       "anchor": "\"layer_ids\": list(group.layer_ids), \"fractions\": list(group.fractions),",
       "fingerprint": "d1735dc29c82ecdb694851e331dd350aa87fe5fd82049522dc7b71cec4c25fb2",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "E702",
-      "message": "Multiple statements on one line (semicolon)",
-      "scope": "Scheduler.serve.Handler.do_GET",
-      "anchor": "self.send_header('Content-Length', str(item['bytes'])); self.end_headers()",
-      "fingerprint": "d175d2f9bdef6485e2734aa2399795fbaadc79fe7dbf0d8152962facb0d1ad71",
       "count": 1
     },
     {
@@ -55629,16 +55399,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "E701",
-      "message": "Multiple statements on one line (colon)",
-      "scope": "Scheduler.serve",
-      "anchor": "while not self.stopping.wait(.1): self.tick()",
-      "fingerprint": "e2c71cdffb2d0458e5985b00d116f736d226bb1684cc406c222b0cd9c73841d5",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/FilmSimulationCalculationItems.qml",
       "code": "unqualified",
@@ -57010,16 +56770,6 @@
     },
     {
       "tool": "ruff",
-      "path": "coat_sim/scheduler/__main__.py",
-      "code": "E702",
-      "message": "Multiple statements on one line (semicolon)",
-      "scope": "main",
-      "anchor": "sub.add_parser('serve'); sub.add_parser('start'); sub.add_parser('stop'); sub.add_parser('list')",
-      "fingerprint": "e87828bff427885cb0feb4eebbacf6089cd1c5c5fd79aa88af40964704fc3802",
-      "count": 3
-    },
-    {
-      "tool": "ruff",
       "path": "coat_sim/core/film_optimization_solvers.py",
       "code": "B905",
       "message": "`zip()` without an explicit `strict=` parameter",
@@ -57366,16 +57116,6 @@
       "scope": "_materialize",
       "anchor": "if parameters.get(key): parameters[key] = names[parameters[key]]",
       "fingerprint": "e9bd7619db31118ec5034fb2b44bca085cd7c78591061d4f788b3cc2b10f4199",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "E701",
-      "message": "Multiple statements on one line (colon)",
-      "scope": "Scheduler.serve.Handler.do_GET",
-      "anchor": "except (OSError, BrokenPipeError): pass",
-      "fingerprint": "e9ce19e5064ed2892724a870a60fc1336498826e40bc4a3a71cd0d913af9acd6",
       "count": 1
     },
     {
@@ -59526,16 +59266,6 @@
       "scope": "",
       "anchor": "from coat_sim.core.film_design import validate_design",
       "fingerprint": "f24d182a7f3df545092789646cff0ea330cbf1beac13453998b688344abe71c5",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "E701",
-      "message": "Multiple statements on one line (colon)",
-      "scope": "Scheduler.serve.Handler.do_POST",
-      "anchor": "if length > MAX_RPC_BODY_BYTES: raise ValueError('request_body_too_large')",
-      "fingerprint": "f255dac6693bfcadb84eb017da032373bf28a684fe94ef32d94784738ce00daa",
       "count": 1
     },
     {
@@ -62410,16 +62140,6 @@
     },
     {
       "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "E701",
-      "message": "Multiple statements on one line (colon)",
-      "scope": "Scheduler.dispatch",
-      "anchor": "if action == 'status': return self.memory_status(**arguments)",
-      "fingerprint": "fd64b87a3635b35f5df128f2450fd3592f24690d950b99059c916025a92a3506",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
       "path": "coat_sim/core/film_design_service.py",
       "code": "F401",
       "message": "`.optical_constants.evaluate_optical_set` imported but unused",
@@ -62726,16 +62446,6 @@
       "scope": "",
       "anchor": "FilmSimulation.resolvePendingAction(true)",
       "fingerprint": "feccfefb9691d962d4c6efaf614add61e5d62ffa9f3614fb4dee0b3412064b04",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "E702",
-      "message": "Multiple statements on one line (semicolon)",
-      "scope": "Scheduler.serve.Handler.do_GET",
-      "anchor": "self.send_error(403); return",
-      "fingerprint": "fedb577cb793988826cd4d8d7d1766ea4dfcce9ebf6549451eb737ec5d59157f",
       "count": 1
     },
     {
@@ -63049,6 +62759,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "2026-10-19: reviewed 77 resolved QML occurrences across SettingsWindow, FilmOptimizationWindow and ThemeMaterialPicker after real offline QML tests; removed only, no new allowances; unrelated Windows diagnostics and local legacy deletions excluded.",
+  "last_prune_reason": "Remove exactly 35 resolved diagnostic occurrences proven by Linux CI run 39242945988 at 7db2cc74d30be0bdc9eb6e5f797e71dd39d2f6e3; no new allowances, identities or counts increased.",
   "configuration_review_reason": "2026-10-17: add only BSD-3-Clause pypdf 6.21.0 for isolated research PDF extraction; all previous dependency/tool versions, analyzer rules and diagnostic entries remain unchanged. The lock-file digest changes only for this reviewed runtime dependency."
 }

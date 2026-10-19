@@ -763,17 +763,21 @@ class Scheduler:
             finally:
                 self.guard.close()
                 try:
-                    if http is not None:
-                        if thread is not None and thread.ident is not None:
-                            http.shutdown()
-                            thread.join(timeout=2)
-                        http.server_close()
+                    # Withdraw discovery before closing HTTP; background reads
+                    # can then distinguish normal shutdown from an unavailable
+                    # daemon whose exact endpoint remains published.
                     try:
                         endpoint = json.loads((self.runtime / 'endpoint.json').read_text(encoding='utf-8'))
                         if endpoint.get('instance') == self.owner:
                             (self.runtime / 'endpoint.json').unlink(missing_ok=True)
                     except FileNotFoundError:
                         pass
+                    finally:
+                        if http is not None:
+                            if thread is not None and thread.ident is not None:
+                                http.shutdown()
+                                thread.join(timeout=2)
+                            http.server_close()
                 finally:
                     try:
                         remove_registration(self.root, self.owner)

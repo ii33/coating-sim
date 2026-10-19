@@ -105,6 +105,55 @@ def test_background_snapshot_absent_and_invalid_never_launch(tmp_path, monkeypat
         client.snapshot_if_running()
 
 
+@pytest.mark.parametrize('refresh_fails', [False, True])
+def test_background_snapshot_revalidates_before_read_without_starting(tmp_path, refresh_fails):
+    calls = []
+    class Transport:
+        def request(self, action, arguments):
+            calls.append((action, arguments))
+            if action == 'refresh_estimates':
+                if refresh_fails:
+                    raise OSError('authority unavailable')
+                return {}
+            assert action == 'snapshot'
+            return {'confirmations': []}
+    client = SchedulerClient(tmp_path / 'authority', transport=Transport())
+    if refresh_fails:
+        with pytest.raises(OSError, match='authority unavailable'):
+            client.snapshot_if_running(after_event=7, limit=20, refresh_estimates=True)
+        assert calls == [('refresh_estimates', {})]
+    else:
+        assert client.snapshot_if_running(after_event=7, limit=20, refresh_estimates=True) == {'confirmations': []}
+        assert calls == [('refresh_estimates', {}), ('snapshot', {'after_event': 7, 'limit': 20})]
+
+
+@pytest.mark.parametrize('withdraw_endpoint', [False, True])
+@pytest.mark.parametrize('process_state', ['alive', 'unknown'])
+def test_background_read_disconnect_requires_withdrawn_endpoint_for_offline(
+        tmp_path, monkeypatch, withdraw_endpoint, process_state):
+    from coat_sim.core import process_identity
+    client = SchedulerClient(tmp_path / 'disconnect')
+    client.endpoint.parent.mkdir(parents=True)
+    endpoint = {'protocol_version': 1, 'host': '127.0.0.1', 'port': 1,
+                'pid': 12345, 'instance': 'private-generation'}
+    client.endpoint.write_text(json.dumps(endpoint), encoding='utf-8')
+    identities = iter([('alive', 'private-start'),
+                       (process_state, 'private-start' if process_state == 'alive' else None)])
+    monkeypatch.setattr(process_identity, '_process_identity', lambda _pid: next(identities))
+    monkeypatch.setattr(client, 'ensure_started',
+                        lambda: pytest.fail('background read attempted daemon startup'))
+    def disconnect(*_args, **_kwargs):
+        if withdraw_endpoint:
+            client.endpoint.unlink()
+        raise OSError('listener closed')
+    monkeypatch.setattr(client._opener, 'open', disconnect)
+    if withdraw_endpoint:
+        assert client.snapshot_if_running() is None
+    else:
+        with pytest.raises(RuntimeError, match='scheduler_unavailable'):
+            client.snapshot_if_running()
+
+
 def test_start_gate_blocks_late_child_and_client(tmp_path):
     group = SchedulerExitGroup()
     assert group.prepare('exit-empty') == 0

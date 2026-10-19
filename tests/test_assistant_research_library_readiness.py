@@ -139,8 +139,8 @@ def test_settings_save_rejects_bad_root_and_persists_valid_root(tmp_path, monkey
         bridge.closeMcpConnections()
 
 
-def test_settings_qml_exposes_local_root_without_mcp_registration(tmp_path, monkeypatch):
-    from PySide6.QtCore import QCoreApplication, QEvent, Qt, QUrl
+def test_settings_qml_needs_no_builtin_library_root_or_mcp_registration(tmp_path, monkeypatch):
+    from PySide6.QtCore import QCoreApplication, QEvent, QObject, QUrl
     from PySide6.QtGui import QGuiApplication
     from PySide6.QtQml import QQmlApplicationEngine
     from PySide6.QtQuick import QQuickWindow
@@ -167,21 +167,10 @@ def test_settings_qml_exposes_local_root_without_mcp_registration(tmp_path, monk
         window.showNormal()
         find(window, "settingsAdvancedCategory").setProperty("expanded", True)
         QTest.qWait(80)
-        find(window, "researchLibraryCategory").setProperty("expanded", True)
-        QTest.qWait(30)
-        field = find(window, "researchLibraryRootField")
-        assert field.width() > 100 and field.width() < 560
-        field.forceActiveFocus()
-        QTest.qWait(30)
-        for letter in "relative":
-            QTest.keyClick(window, ord(letter))
-        assert bridge.assistantResearchLibraryRoot == "relative"
-        assert not bridge.save()
-        assert field.property("text") == "relative"
-        assert not (tmp_path / "settings.json").exists()
-        QTest.keyClick(window, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
-        QTest.keyClick(window, Qt.Key.Key_Backspace)
-        assert bridge.assistantResearchLibraryRoot == ""
+        # Builtin offline references no longer require a settings page or root.
+        # Compatibility route validation/persistence is covered independently.
+        assert window.findChild(QObject, "researchLibraryCategory") is None
+        assert window.findChild(QObject, "researchLibraryRootField") is None
         assert len(bridge.property("mcpServers")) == 3
     finally:
         bridge.closeModelProbe()

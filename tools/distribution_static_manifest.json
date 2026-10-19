@@ -31,7 +31,7 @@
     "film_design/cie-illuminants-20261006/upstream/CIE_std_illum_D65.csv_metadata_v2.json": "71994379b81c65db111f652e747a00b599b5456c2a8242e9a0d6f379f560a14e",
     "film_design/cie-illuminants-20261006/upstream/CIE_xyz_1931_2deg.csv": "bd7973e895a97e543815614b19c51ceff552ae9910a424724ae04ed89bd863a3",
     "film_design/cie-illuminants-20261006/upstream/CIE_xyz_1931_2deg.csv_metadata.json": "f08c934713c00ca3eb3bcb98ed006df9d88df36b87edcf8d5e85e10938029e69",
-    "optical_catalog.json": "4bb8b2c0e6a9ee71f7162e8028a238f457dcf902da0a8bfc6fd84dfc270ea017",
+    "optical_catalog.json": "c70ac5f83fc217e72a97e0f42a5f421c9bcc22dd2ab236ac65e22d975e97396a",
     "optical_catalog_sources/rii_additional_public_20261006_v1/README.md": "56229c4d9c23dc2155c5705a8468feca1741736f6996cb021b83b398e65b7c38",
     "optical_catalog_sources/rii_additional_public_20261006_v1/formula_sampling.json": "2d80ceafad5f580ae2ed0eb9895f3114a6e521d6d8b66848fe85326f3b6eee8c",
     "optical_catalog_sources/rii_additional_public_20261006_v1/import_record.json": "13ebfc8fbc66e4fa49b42c43ed3b8a275b89ac4c06add2e24b9c94f6b6940450",

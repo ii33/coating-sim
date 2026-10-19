@@ -7,7 +7,7 @@ import time
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtCore import QSettings, QUrl
+from PySide6.QtCore import QCoreApplication, QEvent, QSettings, QUrl
 from PySide6.QtQml import QQmlComponent, QQmlEngine, QQmlExpression
 from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtWidgets import QApplication
@@ -55,7 +55,8 @@ def wait_bridge(app, bridge):
     while time.monotonic() < deadline:
         app.processEvents()
         bridge._poll_transfer_tasks()
-        if not bridge.transferBusy:
+        if (bridge._transfer_generation > 0 and not bridge.transferBusy
+                and not bridge._transfer_tasks):
             return
         time.sleep(0.005)
     pytest.fail("global resource task did not settle")
@@ -183,7 +184,7 @@ def test_global_window_loads_real_bridge_and_async_catalog(app, global_root):
         wait_bridge(app, bridge)
         assert bridge.property("transferCatalog")["source_type"] == "global"
         assert bridge.property("transferCatalog")["rows"][0]["name"] == "Named source"
-        assert bridge.property("libraryMessage") == ""
+        assert bridge.property("libraryMessage") == "已读取 1 项资产"
         assert window.property("globalSource") is True
     finally:
         bridge.dispose()
@@ -354,6 +355,7 @@ def test_launcher_routes_global_manager_and_blocks_exit_during_publication(app, 
     engine.rootContext().setContextProperty("launcher", launcher)
     errors: list[str] = []
     launcher.launchError.connect(errors.append)
+    handle = None
     try:
         identity = launcher.open_window("global_resources")
         assert identity
@@ -376,13 +378,25 @@ def test_launcher_routes_global_manager_and_blocks_exit_during_publication(app, 
         assert launcher.closeWindow(identity)
         assert handle.bridge._disposed
     finally:
-        for handle in list(launcher._windows.values()):
-            if isinstance(handle.bridge, GlobalResourcesBridge):
-                handle.bridge._transfer_applying = False
-            handle.window.close()
+        bridges = [handle.bridge] if handle is not None else []
+        bridges.extend(item.bridge for item in launcher._windows.values()
+                       if isinstance(item.bridge, GlobalResourcesBridge) and item.bridge not in bridges)
+        pending = [task.future for bridge in bridges
+                   for task in getattr(bridge, "_transfer_tasks", {}).values()
+                   if task.future is not None]
+        for item in list(launcher._windows.values()):
+            if isinstance(item.bridge, GlobalResourcesBridge):
+                item.bridge._transfer_applying = False
+            item.window.close()
         launcher.shutdown()
-        launcher.deleteLater()
+        # Workers own only Python data. Complete cancelled reads before the
+        # fixture restores global data paths, and destroy QML while bridges live.
+        for future in pending:
+            future.result(timeout=5)
         engine.deleteLater()
+        QCoreApplication.sendPostedEvents(engine, QEvent.Type.DeferredDelete)
+        launcher.deleteLater()
+        QCoreApplication.sendPostedEvents(launcher, QEvent.Type.DeferredDelete)
         app.processEvents()
         isolation.stop()
 
