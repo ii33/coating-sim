@@ -29,7 +29,7 @@ from .plugins import PluginRegistry
 from .project_dependencies import ProjectError, normalize_optical_material, reject_links
 from .project_dependencies import document_material_references, external_document
 from .project_material_defaults import project_starter_materials, project_starter_usage
-from .project_paths import legacy_document_handle, project_document_handle
+from .project_paths import project_document_handle
 from .tfcalc_import import (build_tfcalc_design, read_tfcalc_file,
                             register_tfcalc_plugin)
 
@@ -459,7 +459,6 @@ class ProjectFilmService:
             identity = row["id"]
             handles = {
                 project_document_handle(self.root, identity, "film"),
-                legacy_document_handle(self.root, identity, "film"),
             }
             if target in handles:
                 return identity

@@ -87,7 +87,7 @@ class InputSnapshotTests(unittest.TestCase):
         snapshot = self.freeze()
         self.assertEqual(snapshot["kind"], "coat_sim.input_snapshot")
         self.assertEqual(snapshot["version"], 1)
-        self.assertEqual(snapshot["process_path"], "designs/process.json")
+        self.assertEqual(snapshot["process_path"], "designs/process.cproc")
         self.assertEqual([item["kind"] for item in snapshot["files"]],
                          ["process", "machine", "substrate", "source", "mask", "mask"])
         self.assertEqual(without_references(snapshot["runtime"]), without_references(expected))
@@ -217,7 +217,7 @@ class InputSnapshotTests(unittest.TestCase):
             runtime_from_snapshot(bad)
         bad = deepcopy(good)
         extra = deepcopy(record(bad, "source"))
-        extra["path"] = "designs/unused.json"
+        extra["path"] = "designs/unused.csrc"
         bad["files"].append(extra)
         with self.assertRaisesRegex(ValueError, "未被工艺引用"):
             runtime_from_snapshot(bad)
@@ -228,8 +228,8 @@ class InputSnapshotTests(unittest.TestCase):
 
     def test_rejects_unsafe_graph_paths_and_references(self):
         good = self.freeze()
-        for value in ("../source.json", "/etc/source.json", "C:/source.json", "\\\\server\\source.json",
-                      "source.py", "./source.json", "nested/../source.json", "NUL.json"):
+        for value in ("../source.csrc", "/etc/source.csrc", "C:/source.csrc", "\\\\server\\source.csrc",
+                      "source.py", "./source.csrc", "nested/../source.csrc", "NUL.json"):
             with self.subTest(reference=value):
                 bad = deepcopy(good)
                 item = record(bad, "machine")
@@ -237,8 +237,8 @@ class InputSnapshotTests(unittest.TestCase):
                 rehash(item)
                 with self.assertRaises(ValueError):
                     runtime_from_snapshot(bad)
-        for value in ("../process.json", "outside/process.json", "designs/../process.json",
-                      "/designs/process.json", "designs/p.py", "designs/P.json/"):
+        for value in ("../process.cproc", "outside/process.cproc", "designs/../process.cproc",
+                      "/designs/process.cproc", "designs/p.py", "designs/P.json/"):
             with self.subTest(path=value):
                 bad = deepcopy(good)
                 bad["process_path"] = value

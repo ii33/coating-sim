@@ -162,8 +162,10 @@ class SourceMaterialEditorTests(MaterialQtCase):
         source.setField("device_type", "resistance_boat")
         source.materialLibrary.setField("name", "Test")
         source.materialLibrary.useMaterial()
-        for key, value in {"boat_mode":"covered", "cover_height_mm":"8", "cover_thickness_mm":"2", "aperture_kind":"disk", "aperture_radius_mm":"4", "aperture_offset_x_mm":"1", "quadrature_order":"13"}.items():
+        for key, value in {"boat_mode":"covered", "cover_height_mm":"8", "cover_thickness_mm":"2", "quadrature_order":"13"}.items():
             source.setEmissionField(key,value)
+        for key, value in {"kind":"disk", "radius_mm":"4", "offset_x_mm":"1"}.items():
+            source.setApertureField(key, value)
         coverpath = self.root / "boat.csrc"
         self.assertTrue(source.saveAsPath(str(coverpath)), source.status)
         restored = self.make_source(self.service, str(coverpath))

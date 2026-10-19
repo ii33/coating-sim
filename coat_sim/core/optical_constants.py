@@ -461,8 +461,9 @@ def validate_optical_set(data):
               "source": _text(data.get("source", ""), "来源"), "kind": kind, "wavelength_unit": unit}
     low = _number(data.get("wavelength_min"), "有效波长下限")
     high = _number(data.get("wavelength_max"), "有效波长上限")
-    if not 0 < low < high or not math.isfinite(high ** 2 if high < 1e154 else math.inf):
-        raise ValueError("有效波长须为有限正数且下限小于上限")
+    if (not 0 < low <= high or (kind != "tabulated" and low == high)
+            or not math.isfinite(high ** 2 if high < 1e154 else math.inf)):
+        raise ValueError("有效波长须为有限正数；离散表下限不得大于上限，色散公式下限须小于上限")
     result.update(wavelength_min=low, wavelength_max=high)
     if "process_parameters" in data:
         result["process_parameters"] = _validate_process_parameters(data["process_parameters"])
@@ -474,8 +475,8 @@ def validate_optical_set(data):
         if any(key in data for key in ("parameters", "formula_number", "coefficients", "k_data")):
             raise ValueError("离散 n/k 数据不能同时携带色散参数或独立 k_data")
         wave, n, k = data.get("wavelengths"), data.get("n"), data.get("k")
-        if not isinstance(wave, list) or not 2 <= len(wave) <= MAX_SAMPLES or not isinstance(n, list) or len(n) != len(wave):
-            raise ValueError(f"离散数据须有 2–{MAX_SAMPLES} 对波长和 n")
+        if not isinstance(wave, list) or not 1 <= len(wave) <= MAX_SAMPLES or not isinstance(n, list) or len(n) != len(wave):
+            raise ValueError(f"离散数据须有 1–{MAX_SAMPLES} 对波长和 n")
         if k is not None and (not isinstance(k, list) or len(k) != len(wave)):
             raise ValueError("k 必须与波长等长，或保持未知 null")
         wave = [_number(v, "波长") for v in wave]
@@ -567,8 +568,8 @@ def import_optical_text(text, *, name, wavelength_unit, notes="", source="", ide
         rows.append([_number(cell, f"第 {line_number} 行") for cell in cells])
         if len(rows) > MAX_SAMPLES:
             raise ValueError("光学数据点数超限")
-    if len(rows) < 2:
-        raise ValueError("至少需要两个光学数据点")
+    if not rows:
+        raise ValueError("至少需要一个光学数据点")
     return validate_optical_set({"id": identifier or uuid.uuid4().hex, "name": name, "notes": notes,
         "source": source, "kind": "tabulated", "wavelength_unit": wavelength_unit,
         "wavelength_min": rows[0][0], "wavelength_max": rows[-1][0],

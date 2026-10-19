@@ -260,7 +260,7 @@ class SourceAreaAndIsolationTests(unittest.TestCase):
     def test_spatial_model_coefficients_do_not_become_thermochemistry(self):
         s = source(config(area_basis="source_geometry", emitting_area_m2=None))
         s["emission_model"] = {"kind": "resistance_boat", "active_fraction": .05,
-                               "boat_mode": "covered", "aperture_radius_mm": 1}
+                               "boat_mode": "covered", "apertures": [{"kind": "disk", "radius_mm": 1}]}
         a = evaluate_source_thermochemistry(s)
         s["device_type"] = "electron_beam"
         s["emission_model"] = {"kind": "electron_beam", "spot_sigma_mm": 2, "scan_width_mm": 80}

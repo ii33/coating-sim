@@ -27,7 +27,7 @@ PROJECT_TYPED_DIRECTORY_BY_KIND = MappingProxyType({
 })
 
 PROJECT_LAYOUT_DIRECTORIES = (
-    "objects",
+    "objects",  # Private transaction staging; never accepted in a saved manifest.
     "data/sources",
     "data/substrates",
     "data/masks",
@@ -53,7 +53,7 @@ def ensure_project_layout(root: str | Path) -> dict[str, Path]:
 
     Managed JSON lives in immutable r<revision> children of these categories.
     UUID chooser handles remain logical references rather than physical files.
-    Existing legacy object generations are retained and accepted when opening.
+    Existing unmanaged folders are left untouched.
     """
     project_root = Path(root).expanduser().absolute()
     reject_links(project_root)
@@ -90,14 +90,6 @@ def project_document_handle(root: str | Path, document_id: str, kind: str) -> Pa
     if kind not in PROJECT_TYPED_DIRECTORY_BY_KIND:
         raise ProjectError("invalid_document", "Unsupported project resource kind: " + str(kind))
     return project_default_directory(root, kind) / (identity + EXTENSIONS[kind])
-
-
-def legacy_document_handle(root: str | Path, document_id: str, kind: str) -> Path:
-    """Return the pre-layout logical handle accepted for existing projects."""
-    identity = identifier(document_id)
-    if kind not in PROJECT_TYPED_DIRECTORY_BY_KIND:
-        raise ProjectError("invalid_document", "Unsupported project resource kind: " + str(kind))
-    return Path(root) / "documents" / (identity + EXTENSIONS[kind])
 
 
 def safe_resource_filename(name: str, kind: str, *, occupied: set[str] | None = None) -> str:
@@ -138,15 +130,10 @@ def safe_resource_filename(name: str, kind: str, *, occupied: set[str] | None = 
 
 
 def managed_document_path(value: str, kind: str, identity: str) -> str:
-    """Validate current named paths or retained version-1 UUID object paths."""
+    """Validate a current typed named project revision path."""
     from .project_dependencies import portable_path
     relative = portable_path(value)
     parts = PurePosixPath(relative).parts
-    if len(parts) == 3 and parts[0] == "objects":
-        identifier(parts[1])
-        if parts[2] != identifier(identity) + EXTENSIONS[kind]:
-            raise ProjectError("invalid_manifest", "Legacy document path differs from its identity/kind")
-        return relative
     directory = PurePosixPath(PROJECT_TYPED_DIRECTORY_BY_KIND[kind]).parts
     if (len(parts) != len(directory) + 2 or parts[:len(directory)] != directory or
             re.fullmatch(r"r[0-9]{8,}(?:-[1-9][0-9]*)?", parts[-2]) is None or

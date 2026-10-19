@@ -23,21 +23,21 @@ def fixture_snapshot():
     machine = {"schema_version": 5, "carrier_x_mm": 0, "carrier_y_mm": 0,
         "planet_offset_mm": 312, "planet_tilt_deg": 0, "substrate_z_mm": 1000,
         "sun_teeth": 120, "planet_teeth": 36, "gear_module_mm": 4,
-        "sources": [{"file": "source.json", "x_mm": 300, "y_mm": 0, "z_mm": 0}],
-        "masks": [{"file": "mask.json"}], "monitors": []}
+        "sources": [{"file": "source.csrc", "x_mm": 300, "y_mm": 0, "z_mm": 0}],
+        "masks": [{"file": "mask.cmsk"}], "monitors": []}
     substrate = {"schema_version": 1, "name": "test substrate",
         "outline": {"kind": "circle", "radius_mm": 15}, "surface": {"kind": "flat"}}
-    process = {"schema_version": 6, "name": "recipe", "machine_file": "machine.json",
-        "substrate_file": "substrate.json", "steps": [{"source_slot": 1, "target_nm": 10,
+    process = {"schema_version": 6, "name": "recipe", "machine_file": "machine.cmac",
+        "substrate_file": "substrate.csub", "steps": [{"source_slot": 1, "target_nm": 10,
         "rate_nm_s": 1, "target_mode": "mean"}]}
     rows = []
     for kind, data in [("process", process), ("machine", machine), ("source", source),
                        ("mask", mask), ("substrate", substrate)]:
-        rows.append({"kind": kind, "path": f"designs/{kind}.json", "data": data,
+        rows.append({"kind": kind, "path": f"designs/{kind}{assets.design_extension(kind)}", "data": data,
             "sha256": hashlib.sha256(assets._json_bytes(data)).hexdigest(),
             "original_path": "/nonexistent/private/never-read.json"})
     return {"kind": "coat_sim.input_snapshot", "version": 1,
-            "process_path": "designs/process.json", "files": rows,
+            "process_path": "designs/process.cproc", "files": rows,
             "runtime": {"never": "/nonexistent/private/never-read.json"},
             "parameters": {"backend": "CPU", "fast_cycle": False, "secret": "excluded"}}
 
@@ -166,34 +166,21 @@ class PortableAssetBundleTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 assets.portable_input_snapshot(snapshot)
 
-    def test_legacy_files_snapshot_is_captured_then_source_can_disappear(self):
+    def test_old_frozen_file_contract_is_rejected_without_reading_files(self):
         snapshot = fixture_snapshot()
         directory = self.root / "frozen"
         directory.mkdir()
-        files = []
         for row in snapshot["files"]:
             target = directory / Path(row["path"]).name
             target.write_bytes(assets._json_bytes(row["data"]))
-            files.append({"kind": row["kind"], "snapshot_path": str(target), "original_path": "/no/read"})
-        for legacy in ({"directory": str(directory), "process_path": str(directory / "process.json")},
-                       {"manifest_file": str(directory / "manifest.json"), "files": files,
-                        "parameters": {"process_path": str(directory / "process.json")}}):
-            frozen = assets.portable_input_snapshot(legacy)
-            self.assertEqual(len(frozen["files"]), 5)
-        result = {"field": np.ones((2, 2)), "x": np.arange(2.), "y": np.arange(2.)}
-        with patch("coat_sim.core.result_visualization.render_result_visualizations", return_value={"files": []}):
-            receipt = assets.prepare_simulation_asset(self.root, result=result, settings={},
-                machine=None, process=None, elapsed_s=1, requested_device="CPU", input_snapshot=legacy)
-        temporary_bundle = Path(receipt["temporary_bundle_path"])
-        self.assertTrue(temporary_bundle.is_file())
-        self.assertTrue(assets.read_simulation_asset(temporary_bundle)["portable_inputs"])
-        shutil.rmtree(directory)
-        saved = assets.save_simulation_asset(self.root, receipt["run_id"], "results", confirmed=True)
-        content = assets.read_simulation_asset(saved["asset_path"], detail="full", include_arrays=True)
-        np.testing.assert_array_equal(content["arrays"]["field"], result["field"])
-        self.assertEqual(len(content["designs"]), 5)
-        no_result = assets.save_simulation_asset(self.root, receipt["run_id"], "inputs", confirmed=True, include_results=False)
-        self.assertFalse(assets.read_simulation_asset(no_result["asset_path"])["has_results"])
+        for legacy in (
+            {"directory": str(directory), "process_path": str(directory / "process.cproc")},
+            {"manifest_file": str(directory / "manifest.json"),
+             "files": [{"kind": row["kind"], "snapshot_path": str(directory / Path(row["path"]).name)}
+                       for row in snapshot["files"]]},
+        ):
+            with self.assertRaisesRegex(ValueError, "in-memory typed"):
+                assets.portable_input_snapshot(legacy)
 
     def test_old_frozen_dependency_cannot_escape_or_use_original(self):
         directory = self.root / "frozen"
@@ -201,10 +188,10 @@ class PortableAssetBundleTests(unittest.TestCase):
         secret = self.root / "secret.json"
         secret.write_text('{"schema_version":2,"kind":"point"}')
         snapshot = {"directory": str(directory), "source_path": str(secret)}
-        with self.assertRaisesRegex(ValueError, "路径"):
+        with self.assertRaisesRegex(ValueError, "in-memory typed"):
             assets.portable_input_snapshot(snapshot)
 
-    def test_legacy_v1_remains_readable(self):
+    def test_legacy_v1_is_rejected_without_modifying_bundle(self):
         result = {"field": np.ones((2, 2)), "x": np.arange(2.), "y": np.arange(2.)}
         with patch("coat_sim.core.result_visualization.render_result_visualizations", return_value={"files": []}):
             receipt = assets.prepare_simulation_asset(self.root, result=result, settings={}, machine=None,
@@ -212,12 +199,11 @@ class PortableAssetBundleTests(unittest.TestCase):
         path = assets.save_simulation_asset(self.root, receipt["run_id"], "legacy", confirmed=True)["asset_path"]
         def legacy(content, manifest):
             manifest["schema_version"] = 1
-            manifest.pop("has_results")
-            manifest.pop("portable_inputs")
-            for row in manifest["entries"]:
-                row.pop("role")
         self.rewrite(path, legacy)
-        self.assertTrue(assets.read_simulation_asset(path, include_arrays=True)["has_results"])
+        original = Path(path).read_bytes()
+        with self.assertRaises(ValueError):
+            assets.read_simulation_asset(path, include_arrays=True)
+        self.assertEqual(Path(path).read_bytes(), original)
 
     def test_bad_checksums_and_typed_roles_rejected(self):
         for mutation in (lambda content, manifest: content.update({"summary.json": b"{}"}),

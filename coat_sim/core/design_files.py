@@ -1,11 +1,7 @@
 """Canonical standalone design filenames and internal bundle suffixes.
 
-Standalone source, substrate, mask, machine, process, and film-design documents
-use only their short typed suffix. The historical long suffixes and untyped
-JSON paths are not accepted by standalone design readers or writers. Internal input
-snapshots and asset bundles retain their historical member names; their suffix
-checks use ``DESIGN_SUFFIXES`` and do not make those names valid standalone
-design files.
+Standalone documents, input snapshots, and asset design members use the same
+short typed suffix for each design kind.
 """
 from pathlib import Path
 
@@ -21,12 +17,7 @@ LEGACY_DESIGN_EXTENSIONS = {
     "mask": ".coatmask", "machine": ".coatmachine", "process": ".coatprocess",
 }
 
-# Snapshot and .coatasset member validation is a separate, internal contract.
-# Keep the old member suffixes and JSON names so existing package layouts remain
-# readable. Standalone files must be checked with validate_design_path instead.
-DESIGN_SUFFIXES = frozenset((
-    *DESIGN_EXTENSIONS.values(), *LEGACY_DESIGN_EXTENSIONS.values(), ".json",
-))
+DESIGN_SUFFIXES = frozenset(DESIGN_EXTENSIONS.values())
 
 
 def design_extension(kind: str) -> str:
@@ -53,18 +44,11 @@ def legacy_design_kind_from_path(path) -> str | None:
 def validate_design_member_path(kind: str, path) -> Path:
     """Validate an internal designs/ member in an input snapshot or asset.
 
-    Older containers use untyped JSON member names, so this intentionally has
-    a narrower internal-only contract than validate_design_path. It is not for
-    standalone file dialogs or ordinary user design reads/writes.
+    Internal design members follow the same suffix contract as standalone files.
     """
     target = Path(path)
     suffix = target.suffix.lower()
-    if suffix == ".json":
-        return target
-    canonical_kind = design_kind_from_path(target)
-    old_kind = legacy_design_kind_from_path(target)
-    member_kind = canonical_kind if canonical_kind is not None else old_kind
-    if member_kind != kind:
+    if design_kind_from_path(target) != kind:
         raise ValueError(f"资产包内部设计成员类型或扩展名不匹配：{kind} / {suffix}")
     return target
 

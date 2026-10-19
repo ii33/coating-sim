@@ -17329,16 +17329,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/core/simulation_assets.py",
-      "code": "arg-type",
-      "message": "Argument 1 to \"design_data\" has incompatible type \"str\"; expected \"Literal['source', 'substrate', 'mask', 'machine', 'process']\"",
-      "scope": "portable_input_snapshot.collect",
-      "anchor": "data = design_data(kind, _load_json(payload.decode(\"utf-8\")))",
-      "fingerprint": "45642b490f6ff70eddfdd7ecbb746264ccaeec751d85f16f4c4ec16a54d35a79",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/scheduler/desktop.py",
       "code": "E701",
@@ -21729,16 +21719,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/core/simulation_assets.py",
-      "code": "assignment",
-      "message": "Incompatible types in assignment (expression has type \"str\", variable has type \"Path\")",
-      "scope": "portable_input_snapshot",
-      "anchor": "for path, kind in allowed_files.items():",
-      "fingerprint": "57776f6643a49f83e854bdc456b1ee44fd18fb30f9a2981f1933c48ce914ac42",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "tests/test_compute_confirmation_policy.py",
       "code": "E702",
@@ -22916,16 +22896,6 @@
       "scope": "",
       "anchor": "checked: controller.draft.area_enabled",
       "fingerprint": "5cdedeed197ce08f9e09e93e36f5cd20a3f2fad0b040450a6fdf3823d7b78712",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/simulation_assets.py",
-      "code": "operator",
-      "message": "Unsupported operand types for / (\"None\" and \"Path\")",
-      "scope": "portable_input_snapshot.reference",
-      "anchor": "key = str((candidate if candidate.is_absolute() else boundary / candidate).resolve())",
-      "fingerprint": "5cdfb0b7215b2d284f08a332bf64c8a43d766a0e133de9ac360aa13505fec529",
       "count": 1
     },
     {
@@ -54769,16 +54739,6 @@
       "count": 6
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_portable_asset_bundle.py",
-      "code": "index",
-      "message": "Value of type \"dict[str, Any] | None\" is not indexable",
-      "scope": "PortableAssetBundleTests.test_legacy_files_snapshot_is_captured_then_source_can_disappear",
-      "anchor": "self.assertEqual(len(frozen[\"files\"]), 5)",
-      "fingerprint": "dd6411e41325e9342cbf18a5ecd615c5e6e25bc3759b31623ef81a966e059873",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/ui/appearance.py",
       "code": "B905",
@@ -61279,16 +61239,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_material_emission_models.py",
-      "code": "attr-defined",
-      "message": "\"Collection[str]\" has no attribute \"update\"",
-      "scope": "SpatialSourceTests.test_cover_loss_is_real_and_no_transmitted_weight_renormalization",
-      "anchor": "closed['emission_model'].update(boat_mode='covered', cover_height_mm=50,",
-      "fingerprint": "f6f4b796074131986e8e7a1d04da8300a1b5c06b6369b8143918a1083e2b3b25",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/ui/material_research.py",
       "code": "E702",
@@ -63679,6 +63629,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "Reviewed Linux GitHub Actions static-analysis report for 435560892e0a2442156755ebf5e91ea046316476: 0 new, 35 resolved; removed only resolved fingerprints and reduced one existing count.",
+  "last_prune_reason": "Reviewed exact candidate 68faabeb492f37fafd961054bcecde6bd9596b0b with pinned Mypy 2.4.0 and Ruff 0.17.0: 0 new Python diagnostics; removed only 5 resolved fingerprints from deleted frozen-file compatibility code/tests and the explicitly typed source fixture. No platform diagnostics or configuration changes.",
   "configuration_review_reason": "2026-10-17: add only BSD-3-Clause pypdf 6.21.0 for isolated research PDF extraction; all previous dependency/tool versions, analyzer rules and diagnostic entries remain unchanged. The lock-file digest changes only for this reviewed runtime dependency."
 }

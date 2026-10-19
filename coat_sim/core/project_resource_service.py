@@ -23,7 +23,7 @@ from .machine_profiles import validate_mask_profile
 from .project_dependencies import (EXTENSIONS, ProjectError, file_references,
                                    identifier, normalize_document, reject_links)
 from .project_store import ProjectStore
-from .project_paths import (legacy_document_handle, project_default_directory,
+from .project_paths import (project_default_directory,
                             project_document_handle)
 
 if TYPE_CHECKING:
@@ -202,7 +202,6 @@ class ProjectResourceService(CoatService):
         for row in self.store.manifest["documents"]:
             handles = {
                 project_document_handle(self.root, row["id"], row["kind"]),
-                legacy_document_handle(self.root, row["id"], row["kind"]),
                 self.root / row["path"],
             }
             if target not in handles:

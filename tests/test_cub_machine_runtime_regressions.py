@@ -83,7 +83,7 @@ class CubMachineAssetReview(unittest.IsolatedAsyncioTestCase):
             frozen.pop("process_path")
             frozen.pop("runtime")
             frozen["files"] = [row for row in frozen["files"] if row["kind"] != "process"]
-            frozen["parameters"] = {"machine_path": "designs/machine.json"}
+            frozen["parameters"] = {"machine_path": "designs/machine.cmac"}
             asset = save_simulation_input_asset(root, name="machine only",
                 settings={}, input_snapshot=frozen, confirmed=True)
             report = service.check_machine_structure(machine_path=asset["asset_path"],

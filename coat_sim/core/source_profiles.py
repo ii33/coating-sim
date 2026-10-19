@@ -5,6 +5,7 @@ from .materials import (validate_material_profile, material_emission_model,
                         validate_provenance, validate_model_defaults, source_bindable)
 
 from collections.abc import Mapping
+from copy import deepcopy
 import json
 import math
 from pathlib import Path
@@ -94,6 +95,8 @@ def validate_source_profile(data):
     model = data.get("emission_model")
     if model is None and material and device in ("resistance_boat", "electron_beam"):
         model = material_emission_model(material, device)
+        if device == "resistance_boat":
+            model["apertures"] = deepcopy(_BOAT_MODEL["apertures"])
     if model is not None:
         result["emission_model"] = validate_emission_model(model, material)
     if data.get("thermochemistry") is not None:
@@ -219,10 +222,11 @@ _COMMON_MODEL = {"reference_rate_nm_s": 1.0, "rate_exponent_per_decade": 0.0,
                  "valid_rate_min_nm_s": None, "valid_rate_max_nm_s": None, "quadrature_order": 9}
 _BOAT_MODEL = {"active_fraction": 1.0, "rate_active_fraction_per_decade": 0.0,
                "center_weight": 0.0, "boat_mode": "open", "cover_height_mm": 10.0,
-               "cover_thickness_mm": 0.0, "aperture_kind": "rectangle",
-               "aperture_length_mm": 20.0, "aperture_width_mm": 10.0,
-               "aperture_radius_mm": 5.0, "aperture_offset_x_mm": 0.0,
-               "aperture_offset_y_mm": 0.0, "apertures": None}
+               "cover_thickness_mm": 0.0,
+               "apertures": [{"kind": "rectangle", "length_mm": 20.0,
+                              "width_mm": 10.0, "radius_mm": 5.0,
+                              "offset_x_mm": 0.0, "offset_y_mm": 0.0,
+                              "angle_deg": 0.0}]}
 _BEAM_MODEL = {"spot_sigma_mm": 3.0, "rate_spot_sigma_per_decade": 0.0,
                "scan_pattern": "point", "scan_width_mm": 0.0, "scan_height_mm": 0.0,
                "dwell_center_fraction": 0.0, "dwell_points": [],
@@ -242,6 +246,8 @@ def validate_emission_model(data, material=None):
     allowed = set(template) | {"kind", "provenance"}
     if set(data) - allowed:
         raise ValueError("发射模型包含未知参数：" + "、".join(sorted(set(data) - allowed)))
+    if kind == "resistance_boat" and "apertures" not in data:
+        raise ValueError("resistance_boat emission_model requires an explicit apertures list")
     if material is not None and kind != "uniform":
         template.update(material_emission_model(material, kind))
     template.update(data)
@@ -249,7 +255,7 @@ def validate_emission_model(data, material=None):
     template["provenance"] = validate_provenance(template.get("provenance"))
     if type(template["quadrature_order"]) is not int or not 3 <= template["quadrature_order"] <= 21 or template["quadrature_order"] % 2 != 1:
         raise ValueError("源空间采样阶数须为 3–21 的奇数；需自行检查收敛")
-    numerical = set(template) - {"quadrature_order", "kind", "provenance", "boat_mode", "aperture_kind",
+    numerical = set(template) - {"quadrature_order", "kind", "provenance", "boat_mode",
                                  "scan_pattern", "dwell_points", "apertures"}
     for key in numerical:
         if key.startswith("valid_rate_") and template[key] is None:
@@ -264,21 +270,10 @@ def validate_emission_model(data, material=None):
     if kind == "resistance_boat":
         if template["boat_mode"] not in ("open", "covered"):
             raise ValueError("boat_mode 必须是 open 或 covered")
-        if template["aperture_kind"] not in ("rectangle", "disk"):
-            raise ValueError("开口须为 rectangle 或 disk")
-        for key in ("cover_height_mm", "aperture_length_mm", "aperture_width_mm", "aperture_radius_mm"):
-            _size(template[key], key)
+        _size(template["cover_height_mm"], "cover_height_mm")
         if not 0 <= template["cover_thickness_mm"] <= 10000:
             raise ValueError("盖板厚度须在 0–10000 mm 之间")
-        if max(abs(template[k]) for k in ("aperture_offset_x_mm", "aperture_offset_y_mm")) > 10000:
-            raise ValueError("开口偏移不得超过 10000 mm")
         apertures = template["apertures"]
-        if apertures is None:
-            # Preserve old single-hole covers exactly; the explicit list is
-            # authoritative after migration and the legacy keys stay readable.
-            apertures = [{key: template["aperture_" + key] for key in
-                          ("kind", "length_mm", "width_mm", "radius_mm",
-                           "offset_x_mm", "offset_y_mm")}]
         if not isinstance(apertures, (list, tuple)) or not 1 <= len(apertures) <= 100:
             raise ValueError("盖板开口须为 1–100 项的几何列表")
         template["apertures"] = [validate_source_aperture(hole) for hole in apertures]
@@ -474,10 +469,8 @@ def source_visibility(xp, x, y, z, sx, sy, sz, cover):
         planes.append((ix * ca + iy * sa, -ix * sa + iy * ca,
                        (dz == 0) | (t <= 0) | (t >= 1)))
     holes = cover.get("apertures")
-    if holes is None:
-        holes = [{key: cover["aperture_" + key] for key in
-                  ("kind", "length_mm", "width_mm", "radius_mm",
-                   "offset_x_mm", "offset_y_mm")}]
+    if not isinstance(holes, (list, tuple)) or not holes:
+        raise ValueError("source cover requires an explicit apertures list")
     visible = xp.zeros_like(x, dtype=bool)
     for hole in holes:
         # Union of straight channels, not independent unions at the two faces:

@@ -3,8 +3,9 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import QObject, QUrl, QCoreApplication, QEvent, QPointF, Property, Signal
 from PySide6.QtQml import QQmlComponent, QQmlEngine
-from PySide6.QtQuick import QQuickWindow
+from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtTest import QTest
+import shiboken6
 from tests.test_assistant_token_budget_contract import real_bridge as _real_bridge_fixture
 from coat_sim.ui.theme_tokens import build_theme_snapshot
 from coat_sim.ui.fonts import bundled_font_family
@@ -26,6 +27,14 @@ class _Theme(QObject):
 
 
 def visual_items(item):
+    """Yield only live QQuickItem visual children, defensively.
+
+    Imported by the message-lifecycle test, where a torn-down or
+    non-visual child wrapper could otherwise be yielded and then
+    dereferenced with ``metaObject()``.
+    """
+    if not isinstance(item, QQuickItem) or not shiboken6.isValid(item):
+        return
     yield item
     for child in item.childItems():
         yield from visual_items(child)

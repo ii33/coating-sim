@@ -15,6 +15,7 @@ from coat_sim.core.film_expression_store import FilmExpressionTemplateStore
 from coat_sim.core.material_business import MaterialLibrary
 from coat_sim.core.materials import default_material_profile
 from coat_sim.core.project_dependencies import EXTENSIONS, ProjectError, json_bytes, normalize_document
+from coat_sim.core.project_paths import PROJECT_TYPED_DIRECTORY_BY_KIND
 from coat_sim.core.project_store import ProjectStore
 
 pytestmark = pytest.mark.contract
@@ -86,7 +87,8 @@ def after_snapshot(before, additions=(), updates=None):
     for identity, data in (updates or {}).items():
         value["documents"][identity] = normalize_document(rows[identity]["kind"], data)
     for identity, row in rows.items():
-        row["path"] = "objects/" + "f" * 32 + "/" + identity + EXTENSIONS[row["kind"]]
+        row["path"] = (PROJECT_TYPED_DIRECTORY_BY_KIND[row["kind"]] + "/r00000000/"
+                       + identity + EXTENSIONS[row["kind"]])
         row["sha256"] = hashlib.sha256(json_bytes(value["documents"][identity])).hexdigest()
     materials = ProjectStore._material_index(rows, value["documents"])
     for identity, row in rows.items():

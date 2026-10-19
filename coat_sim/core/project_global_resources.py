@@ -31,6 +31,7 @@ from .project_dependencies import (
     parse_json, read_json, reject_links,
 )
 from .project_store import ProjectStore, _manifest, _rename_directory_no_replace
+from .project_paths import PROJECT_TYPED_DIRECTORY_BY_KIND
 from .project_simulation_resources import GLOBAL_SIMULATION_FOLDERS, SIMULATION_EXTENSIONS
 
 _NAMESPACE = uuid.UUID("03693c8e-4549-45b1-80fa-0fa2ea466054")
@@ -173,7 +174,7 @@ def read_global_resources() -> dict:
             if len(content) > MAX_FILE_BYTES or total > MAX_PROJECT_BYTES or len(records) >= MAX_PROJECT_DOCUMENTS:
                 raise ProjectError("capacity_exceeded", "Global resource snapshot exceeds its safety capacity")
             records[identity] = {"id": identity, "kind": kind,
-                                 "path": f"objects/{_GENERATION}/{identity}{EXTENSIONS[kind]}",
+                                 "path": f"{PROJECT_TYPED_DIRECTORY_BY_KIND[kind]}/r00000000/{identity}{EXTENSIONS[kind]}",
                                  "sha256": hashlib.sha256(content).hexdigest(), "dependencies": []}
             documents[identity] = data
             encoded_sizes[identity] = len(content)

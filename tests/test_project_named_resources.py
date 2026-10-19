@@ -172,7 +172,7 @@ def test_symlink_category_is_rejected_before_directory_scan_or_publish(tmp_path)
     assert list(outside.iterdir()) == []
 
 
-def test_legacy_objects_open_without_migration_and_save_retains_old_files(tmp_path):
+def test_legacy_objects_are_rejected_without_migration_or_deletion(tmp_path):
     store, _, _, _ = setup_project(tmp_path)
     manifest = store.manifest
     for record in manifest["documents"]:
@@ -183,16 +183,10 @@ def test_legacy_objects_open_without_migration_and_save_retains_old_files(tmp_pa
         target.write_bytes(old.read_bytes())
     store.project_file.write_bytes(json_bytes(manifest))
     before = file_snapshot(store.root)
-    reopened = ProjectStore.open(store.project_file)
-    graph = reopened.resolve_default()
+    with pytest.raises(ProjectError) as error:
+        ProjectStore.open(store.project_file)
+    assert error.value.code == "invalid_manifest"
     assert file_snapshot(store.root) == before
-    record = by_kind(graph, "source")
-    record["data"]["name"] = "Saved source"
-    reopened.save_document(record["id"], record["data"])
-    assert all(value["path"].startswith("data/") for value in reopened.manifest["documents"])
-    assert all((store.root / path).read_bytes() == content for path, content in before.items()
-               if path.startswith("objects/"))
-    assert reopened.resolve_default()["runtime"]["machine"]["sources"]
 
 
 def test_named_physical_path_resolves_and_stable_dependencies_survive_package_and_recovery(tmp_path):

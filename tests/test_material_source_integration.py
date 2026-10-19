@@ -104,6 +104,7 @@ class MaterialSourceEstimateIntegrationTests(unittest.TestCase):
             for response, expected_calls in ((1., 2), (0., 1)):
                 source = {"schema_version": 2, "kind": "point",
                           "emission_model": {"kind": "resistance_boat",
+                                             "apertures": [{"kind": "rectangle"}],
                                              "rate_exponent_per_decade": response}}
                 service.save("source", root / "parts/source.csrc", source, overwrite=True)
                 with self.subTest(response=response), \

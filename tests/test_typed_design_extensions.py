@@ -12,6 +12,7 @@ from coat_sim.core.design_files import (
     LEGACY_DESIGN_EXTENSIONS,
     default_design_path,
     design_kind_from_path,
+    validate_design_member_path,
     validate_design_path,
 )
 from coat_sim.core.input_snapshot import runtime_from_snapshot
@@ -47,7 +48,7 @@ class TypedDesignExtensionTests(unittest.TestCase):
             "source": ".csrc", "substrate": ".csub", "mask": ".cmsk",
             "machine": ".cmac", "process": ".cproc", "film": ".cfilm",
         })
-        self.assertEqual(len(DESIGN_SUFFIXES), 12)  # Includes preserved internal package members.
+        self.assertEqual(DESIGN_SUFFIXES, frozenset(DESIGN_EXTENSIONS.values()))
         for kind, extension in DESIGN_EXTENSIONS.items():
             with self.subTest(kind=kind):
                 self.assertEqual(default_design_path(kind, "new").name, "new" + extension)
@@ -64,9 +65,9 @@ class TypedDesignExtensionTests(unittest.TestCase):
                     if other != kind:
                         with self.assertRaises(ValueError):
                             validate_design_path(kind, "wrong" + other_extension)
-        # Internal snapshots and .coatasset members retain their current names.
-        self.assertIn(".json", DESIGN_SUFFIXES)
-        self.assertIn(".coatsource", DESIGN_SUFFIXES)
+        # Internal snapshots and .coatasset design members use the same suffixes.
+        self.assertNotIn(".json", DESIGN_SUFFIXES)
+        self.assertNotIn(".coatsource", DESIGN_SUFFIXES)
         self.assertNotIn(".coatasset", DESIGN_SUFFIXES)
         self.assertIsNone(design_kind_from_path("bundle.coatasset"))
 
@@ -112,6 +113,16 @@ class TypedDesignExtensionTests(unittest.TestCase):
         self.assertTrue(all(Path(row["path"]).suffix == DESIGN_EXTENSIONS[row["kind"]]
                             for row in portable["files"]))
         runtime_from_snapshot(portable)
+
+    def test_old_internal_design_member_suffixes_are_rejected(self):
+        for suffix in (".json", ".coatsource", ".coatmask"):
+            with self.subTest(suffix=suffix):
+                with self.assertRaises(ValueError):
+                    validate_design_member_path("source", "designs/source" + suffix)
+                snapshot = fixture_snapshot()
+                snapshot["files"][2]["path"] = "designs/source" + suffix
+                with self.assertRaises(ValueError):
+                    assets.portable_input_snapshot(snapshot)
 
 
 if __name__ == "__main__":

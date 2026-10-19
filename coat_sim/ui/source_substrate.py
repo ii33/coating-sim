@@ -589,9 +589,8 @@ class SourceBridge(_EditorBridge):
         self._emission = {
             "kind": "uniform", "quadrature_order": "9", "reference_rate_nm_s": "10", "rate_exponent_per_decade": "0",
             "active_fraction": "1", "rate_active_fraction_per_decade": "0", "center_weight": "0",
-            "boat_mode": "open", "cover_height_mm": "10", "cover_thickness_mm": "0", "aperture_kind": "rectangle",
-            "aperture_length_mm": "20", "aperture_width_mm": "10", "aperture_radius_mm": "5",
-            "aperture_offset_x_mm": "0", "aperture_offset_y_mm": "0", "spot_sigma_mm": "3",
+            "boat_mode": "open", "cover_height_mm": "10", "cover_thickness_mm": "0",
+            "spot_sigma_mm": "3",
             "rate_spot_sigma_per_decade": "0", "scan_pattern": "point", "scan_width_mm": "0",
             "scan_height_mm": "0", "scan_center_x_mm": "0", "scan_center_y_mm": "0", "scan_angle_deg": "0", "dwell_center_fraction": "0", "dwell_points": "",
             "valid_rate_min_nm_s": "", "valid_rate_max_nm_s": "",
@@ -613,7 +612,7 @@ class SourceBridge(_EditorBridge):
                 self._emission[key] = _format(value)
         for key in ("status", "reference", "notes"):
             self._emission["provenance_" + key] = str(model.get("provenance", {}).get(key, "unvalidated" if key == "status" else ""))
-        if model.get("apertures") is not None:
+        if "apertures" in model:
             self._apertures = [{key: _format(value) for key, value in row.items()} for row in model["apertures"]]
             self._aperture_index = min(self._aperture_index, len(self._apertures) - 1)
 
@@ -699,8 +698,6 @@ class SourceBridge(_EditorBridge):
         if key not in row or row[key] == value:
             return
         row[key] = value
-        if self._aperture_index == 0 and "aperture_" + key in self._emission:
-            self._emission["aperture_" + key] = value
         self._emission_present = True
         self._edited()
 
@@ -864,8 +861,6 @@ class SourceBridge(_EditorBridge):
             return
         self._emission[key] = value
         self._emission_present = True
-        if key.startswith("aperture_") and key[len("aperture_"):] in self._apertures[0]:
-            self._apertures[0][key[len("aperture_"):]] = value
         if key == "kind":
             self._fields["device_type"] = "custom" if value == "uniform" else value
         if key == "kind" and self._material is not None and value != "uniform":
@@ -946,8 +941,6 @@ class SourceBridge(_EditorBridge):
     def _compose_emission(self):
         from .source_materials import RATE_KEYS
         fields = dict(self._emission)
-        fields.update({"aperture_" + key: value for key, value in self._apertures[0].items()
-                       if "aperture_" + key in fields})
         kind = fields["kind"]
         order = _number(fields["quadrature_order"], "采样阶数")
         if not order.is_integer():
@@ -955,9 +948,8 @@ class SourceBridge(_EditorBridge):
         model = {"kind": kind, "quadrature_order": int(order)}
         keys = ["reference_rate_nm_s", "rate_exponent_per_decade", "valid_rate_min_nm_s", "valid_rate_max_nm_s"]
         if kind == "resistance_boat":
-            keys += ["active_fraction", "rate_active_fraction_per_decade", "center_weight", "cover_height_mm", "cover_thickness_mm",
-                     "aperture_length_mm", "aperture_width_mm", "aperture_radius_mm", "aperture_offset_x_mm", "aperture_offset_y_mm"]
-            model.update(boat_mode=fields["boat_mode"], aperture_kind=fields["aperture_kind"])
+            keys += ["active_fraction", "rate_active_fraction_per_decade", "center_weight", "cover_height_mm", "cover_thickness_mm"]
+            model["boat_mode"] = fields["boat_mode"]
             model["apertures"] = [{key: value if key == "kind" else _number(value, "开口 " + key)
                                     for key, value in row.items()} for row in self._apertures]
         elif kind == "electron_beam":

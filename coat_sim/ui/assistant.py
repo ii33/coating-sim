@@ -3115,7 +3115,7 @@ class AssistantBridge(QObject):
                 raise ValueError(view.get("error", "此文件不能预览"))
             mime = str(view.get("mime", ""))
             suffix = path.suffix.lower()
-            text_suffixes = {".csrc", ".csub", ".cmsk", ".cmac", ".cproc", ".coatsource", ".coatsubstrate", ".coatmask", ".coatmachine", ".coatprocess", ".txt", ".log", ".py", ".json", ".yaml", ".yml", ".xml", ".ini", ".cfg", ".toml"}
+            text_suffixes = {".csrc", ".csub", ".cmsk", ".cmac", ".cproc", ".cfilm", ".txt", ".log", ".py", ".json", ".yaml", ".yml", ".xml", ".ini", ".cfg", ".toml"}
             rich_suffixes = {".md", ".markdown", ".html", ".htm"}
             view["previewKind"] = ("image" if view["image"] else "table" if suffix in {".csv", ".tsv"}
                                    else "richtext" if suffix in rich_suffixes

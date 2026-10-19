@@ -89,7 +89,7 @@ def test_large_snapshot_still_rejects_duplicate_missing_unused_files_and_keeps_e
         runtime_from_snapshot(missing)
     unused = deepcopy(snapshot)
     extra = deepcopy(unused["files"][-1])
-    extra["path"] = "designs/unused-board.json"
+    extra["path"] = "designs/unused-board.cmsk"
     unused["files"].append(extra)
     with pytest.raises(ValueError, match="未被工艺引用"):
         runtime_from_snapshot(unused)

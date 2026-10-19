@@ -8,9 +8,11 @@ from pathlib import Path
 import tempfile
 import time
 import unittest
+from typing import Any, cast
 from unittest.mock import patch
 
 import numpy as np
+from coat_sim.core.schemas import design_data, design_json_schema
 from coat_sim.core.source_profiles import (source_samples, source_cover, source_visibility,
     validate_source_profile, effective_source_exponent)
 from coat_sim.core.simulator import Settings
@@ -23,26 +25,33 @@ class SourceRefinementPhysicsTests(unittest.TestCase):
     def cover(self, **kwargs):
         return source_cover({"kind": "point", "emission_model": {
             "kind": "resistance_boat", "boat_mode": "covered", "cover_height_mm": 10,
+            "apertures": [{"kind": "rectangle", "length_mm": 20, "width_mm": 10}],
             **kwargs}}, self.settings)
 
-    def test_legacy_single_hole_migrates_with_identical_visibility(self):
+    def test_canonical_single_hole_and_old_fields_rejected_without_mutation(self):
+        hole = {"kind": "disk", "radius_mm": 2, "offset_x_mm": 1, "offset_y_mm": -1}
         profile = {"kind": "disk", "radius_mm": 8, "device_type": "crucible",
                    "emission_model": {"kind": "resistance_boat", "boat_mode": "covered",
-                       "cover_height_mm": 10, "cover_thickness_mm": 2,
-                       "aperture_kind": "disk", "aperture_radius_mm": 2,
-                       "aperture_offset_x_mm": 1, "aperture_offset_y_mm": -1}}
-        migrated = validate_source_profile(profile)
-        self.assertEqual(migrated["device_type"], "crucible")
-        self.assertEqual(len(migrated["emission_model"]["apertures"]), 1)
-        hole = migrated["emission_model"]["apertures"][0]
-        self.assertEqual((hole["kind"], hole["radius_mm"], hole["offset_x_mm"]), ("disk", 2, 1))
+                                      "cover_height_mm": 10, "cover_thickness_mm": 2,
+                                      "apertures": [hole]}}
+        normalized = validate_source_profile(profile)
+        self.assertEqual(normalized["emission_model"]["apertures"][0]["radius_mm"], 2)
         cover = source_cover(profile, self.settings)
-        old_cover = deepcopy(cover)
-        old_cover.pop("apertures")
         x = np.linspace(-40, 40, 101)
-        np.testing.assert_array_equal(source_visibility(np, x, x/3, 100, 0, 0, 0, cover),
-                                      source_visibility(np, x, x/3, 100, 0, 0, 0, old_cover))
-        self.assertEqual(validate_source_profile(migrated), migrated)
+        visible = source_visibility(np, x, x/3, 100, 0, 0, 0, cover)
+        self.assertTrue(visible.any())
+        self.assertEqual(validate_source_profile(normalized), normalized)
+        old = deepcopy(profile)
+        old_model = cast(dict[str, Any], old["emission_model"])
+        old_model.pop("apertures")
+        old_model.update(aperture_kind="disk", aperture_radius_mm=2)
+        before = deepcopy(old)
+        with self.assertRaises(ValueError):
+            validate_source_profile(old)
+        self.assertEqual(old, before)
+        with self.assertRaisesRegex(ValueError, "apertures"):
+            source_visibility(np, x, x/3, 100, 0, 0, 0,
+                              {key: value for key, value in cover.items() if key != "apertures"})
 
     def test_finite_plate_requires_same_hole_at_both_faces(self):
         cover = self.cover(cover_thickness_mm=10, apertures=[
@@ -79,6 +88,25 @@ class SourceRefinementPhysicsTests(unittest.TestCase):
         for order in (0, 2, 4, 43, True, 3.0):
             with self.subTest(order=order), self.assertRaises(ValueError):
                 validate_source_profile({"kind":"point", "sampling_order":order})
+
+    def test_source_schema_requires_canonical_apertures_without_old_aliases(self):
+        profile = {"schema_version": 2, "kind": "point", "emission_model": {
+            "kind": "resistance_boat", "boat_mode": "covered",
+            "apertures": [{"kind": "rectangle", "length_mm": 4, "width_mm": 2}]}}
+        self.assertEqual(len(design_data("source", profile)["emission_model"]["apertures"]), 1)
+        emission_schema = design_json_schema("source")
+        self.assertIn("apertures", str(emission_schema))
+        for mutation in (
+            lambda model: model.pop("apertures"),
+            lambda model: model.update(apertures=None),
+            lambda model: model.update(aperture_radius_mm=3),
+        ):
+            bad = deepcopy(profile)
+            mutation(bad["emission_model"])
+            before = deepcopy(bad)
+            with self.assertRaises(ValueError):
+                design_data("source", bad)
+            self.assertEqual(bad, before)
 
     def test_default_uniform_source_nodes_are_unchanged(self):
         cases = [(dict(kind="point"), 1), (dict(kind="line", length_mm=20), 9),
@@ -168,7 +196,7 @@ class SourceRefinementEditorTests(unittest.TestCase):
         from coat_sim.ui.source_substrate import SourceBridge
         self.bridge.setEmissionField("kind", "resistance_boat")
         self.bridge.setEmissionField("boat_mode", "covered")
-        self.bridge.setEmissionField("aperture_radius_mm", "3")
+        self.bridge.setApertureField("radius_mm", "3")
         self.bridge.addAperture()
         self.bridge.setApertureField("kind", "disk")
         self.bridge.setApertureField("offset_x_mm", "7")

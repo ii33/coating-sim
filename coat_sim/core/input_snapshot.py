@@ -16,7 +16,7 @@ import re
 from typing import Any
 
 from .data_files import MAX_FILE_BYTES
-from .design_files import DESIGN_SUFFIXES, validate_design_member_path, validate_design_path
+from .design_files import DESIGN_SUFFIXES, design_extension, validate_design_member_path, validate_design_path
 from .machine_profiles import validate_machine_profile, validate_mask_profile
 from .process_profiles import validate_process_profile
 from .source_profiles import validate_source_profile
@@ -24,7 +24,7 @@ from .substrate_profiles import effective_radius_mm, validate_substrate_profile
 
 SNAPSHOT_KIND = "coat_sim.input_snapshot"
 SNAPSHOT_VERSION = 1
-PROCESS_PATH = "designs/process.json"
+PROCESS_PATH = "designs/process.cproc"
 _VALIDATORS = {
     "process": validate_process_profile, "machine": validate_machine_profile,
     "source": validate_source_profile, "mask": validate_mask_profile,
@@ -122,13 +122,13 @@ def freeze_process(service, data: Mapping[str, Any], base_dir) -> dict[str, Any]
         files.append(record)
         return record
 
-    machine = capture("machine", process["machine_file"], base, "designs/machine.json")
-    substrate = capture("substrate", process["substrate_file"], base, "designs/substrate.json")
+    machine = capture("machine", process["machine_file"], base, "designs/machine.cmac")
+    substrate = capture("substrate", process["substrate_file"], base, "designs/substrate.csub")
     machine_dir = Path(machine["original_path"]).parent
     for kind, collection in (("source", "sources"), ("mask", "masks")):
         for index, entry in enumerate(machine["data"][collection], 1):
             item = capture(kind, entry["file"], machine_dir,
-                           f"designs/{kind}-{index:02d}.json")
+                           f"designs/{kind}-{index:02d}{design_extension(kind)}")
             entry["file"] = PurePosixPath(item["path"]).name
     machine["sha256"] = _sha256(machine["data"])
     process["machine_file"] = PurePosixPath(machine["path"]).name
@@ -261,12 +261,12 @@ def candidate_snapshot(snapshot: Mapping[str, Any],
         data = validate_mask_profile(deepcopy(candidate),
                                      substrate_z_mm=machine["data"]["substrate_z_mm"])
         stem = f"mask-candidate-{slot + 1:02d}"
-        filename = stem + ".json"
+        filename = stem + ".cmsk"
         number = 1
         while _reference(machine_path, filename).casefold() in {
                 path.casefold() for path in records}:
             number += 1
-            filename = f"{stem}-{number}.json"
+            filename = f"{stem}-{number}.cmsk"
         path = _reference(machine_path, filename)
         record = _record("mask", path, data)
         records[path] = record

@@ -523,8 +523,7 @@ def _validate_design_graph(designs: Mapping[str, dict[str, Any]]) -> None:
 def portable_input_snapshot(snapshot: Any) -> dict[str, Any] | None:
     """Capture only typed JSON dependencies; never read provenance/original paths.
 
-    Accepts in-memory ``files[{kind,path,data,sha256}]`` snapshots and the two
-    older frozen-file contracts. No directory is recursively archived. All
+    Accepts in-memory ``files[{kind,path,data,sha256}]`` snapshots. All
     output design paths are flattened and rebased, avoiding basename collisions.
     """
     from .schemas import design_data
@@ -535,88 +534,24 @@ def portable_input_snapshot(snapshot: Any) -> dict[str, Any] | None:
     rows = snapshot.get("files", [])
     if not isinstance(rows, list) or len(rows) > MAX_PACKAGE_ENTRIES - 8:
         raise ValueError("输入快照设计成员数无效")
-    in_memory = bool(rows) and all(isinstance(row, Mapping) and "data" in row for row in rows)
-    if rows and any("data" in row for row in rows) and not in_memory:
-        raise ValueError("不能混合内存与文件输入快照")
+    if not rows or not all(isinstance(row, Mapping) and "data" in row for row in rows):
+        raise ValueError("input snapshot requires in-memory typed design files")
     documents: dict[str, dict[str, Any]] = {}
     path_aliases: dict[str, str] = {}
-    allowed_files = None
-    boundary = None
-    if in_memory:
-        for row in rows:
-            source = _member_path(row["path"])
-            if source in documents or source.casefold() in {v.casefold() for v in documents}:
-                raise ValueError("输入快照包含重复设计路径")
-            if row.get("kind") not in DESIGN_KINDS or PurePosixPath(source).suffix.lower() not in DESIGN_SUFFIXES:
-                raise ValueError("输入快照仅支持已知类型 JSON 设计")
-            validate_design_member_path(row["kind"], source)
-            content = _json_bytes(row["data"])
-            if len(content) > MAX_DESIGN_BYTES:
-                raise ValueError("设计 JSON 超出容量限制")
-            expected = row.get("sha256")
-            if expected is not None and hashlib.sha256(content).hexdigest() != expected:
-                raise ValueError("输入快照设计校验失败：" + source)
-            documents[source] = {"kind": row["kind"], "data": design_data(row["kind"], deepcopy(row["data"]))}
-    else:
-        if snapshot.get("directory"):
-            boundary = Path(snapshot["directory"]).resolve()
-        elif snapshot.get("manifest_file"):
-            boundary = Path(snapshot["manifest_file"]).resolve().parent
-        if rows:
-            allowed_files = {}
-            for row in rows:
-                if not isinstance(row, Mapping) or row.get("kind") not in DESIGN_KINDS or not row.get("snapshot_path"):
-                    raise ValueError("旧输入快照缺少类型或冻结路径")
-                path = Path(row["snapshot_path"])
-                resolved = str(path.resolve())
-                if resolved in allowed_files:
-                    raise ValueError("输入快照包含重复冻结路径")
-                allowed_files[resolved] = row["kind"]
-            if boundary is None:
-                boundary = Path(os.path.commonpath([str(Path(p).parent) for p in allowed_files]))
-        if boundary is None:
-            raise ValueError("输入快照缺少冻结目录或内存设计")
-
-        def collect(kind: str, value: Any) -> str:
-            path = Path(value)
-            if not path.is_absolute():
-                path = boundary / path
-            if path.is_symlink():
-                raise ValueError("冻结设计不能是符号链接")
-            path = path.resolve()
-            key = str(path)
-            validate_design_member_path(kind, path)
-            if (not path.is_relative_to(boundary)
-                    or not path.is_file() or path.stat().st_size > MAX_DESIGN_BYTES):
-                raise ValueError("冻结设计路径或容量无效")
-            if allowed_files is not None and allowed_files.get(key) != kind:
-                raise ValueError("依赖不在冻结输入清单中或类型不符")
-            if key in documents:
-                if documents[key]["kind"] != kind:
-                    raise ValueError("相同冻结设计不能有多个类型")
-                return key
-            if len(documents) >= MAX_PACKAGE_ENTRIES - 8:
-                raise ValueError("输入设计依赖过多")
-            with path.open("rb") as stream:
-                payload = stream.read(MAX_DESIGN_BYTES + 1)
-            if len(payload) > MAX_DESIGN_BYTES:
-                raise ValueError("设计 JSON 超出容量限制")
-            data = design_data(kind, _load_json(payload.decode("utf-8")))
-            documents[key] = {"kind": kind, "data": data}
-            for owner, field, child in _design_references(kind, data):
-                owner[field] = collect(child, path.parent / owner[field])
-            return key
-
-        if allowed_files is not None:
-            for path, kind in allowed_files.items():
-                collect(kind, path)
-        else:
-            for field, kind in (("process_path", "process"), ("machine_path", "machine"),
-                                ("substrate_path", "substrate"), ("source_path", "source")):
-                if snapshot.get(field):
-                    collect(kind, snapshot[field])
-            for path in snapshot.get("mask_paths", []):
-                collect("mask", path)
+    for row in rows:
+        source = _member_path(row["path"])
+        if source in documents or source.casefold() in {v.casefold() for v in documents}:
+            raise ValueError("输入快照包含重复设计路径")
+        if row.get("kind") not in DESIGN_KINDS or PurePosixPath(source).suffix.lower() not in DESIGN_SUFFIXES:
+            raise ValueError("输入快照仅支持已知类型 JSON 设计")
+        validate_design_member_path(row["kind"], source)
+        content = _json_bytes(row["data"])
+        if len(content) > MAX_DESIGN_BYTES:
+            raise ValueError("设计 JSON 超出容量限制")
+        expected = row.get("sha256")
+        if expected is not None and hashlib.sha256(content).hexdigest() != expected:
+            raise ValueError("输入快照设计校验失败：" + source)
+        documents[source] = {"kind": row["kind"], "data": design_data(row["kind"], deepcopy(row["data"]))}
     if not documents:
         raise ValueError("输入快照未包含设计")
     for index, (source, row) in enumerate(documents.items()):
@@ -624,18 +559,8 @@ def portable_input_snapshot(snapshot: Any) -> dict[str, Any] | None:
 
     def reference(value: Any, kind: str | None = None, owner: str | None = None) -> str:
         key = value
-        if in_memory:
-            if owner is not None:
-                key = _relative_member(owner, value)
-            elif key not in path_aliases:
-                # Older callers used a logical root basename such as process.json.
-                candidates = [p for p in documents if PurePosixPath(p).name == value
-                              and (kind is None or documents[p]["kind"] == kind)]
-                if len(candidates) == 1:
-                    key = candidates[0]
-        elif isinstance(value, str):
-            candidate = Path(value)
-            key = str((candidate if candidate.is_absolute() else boundary / candidate).resolve())
+        if owner is not None:
+            key = _relative_member(owner, value)
         if key not in path_aliases or (kind is not None and documents[key]["kind"] != kind):
             raise ValueError("输入快照根引用不存在或类型不符")
         return path_aliases[key]
@@ -645,7 +570,7 @@ def portable_input_snapshot(snapshot: Any) -> dict[str, Any] | None:
         target = path_aliases[source]
         data = row["data"]
         for owner, field, kind in _design_references(row["kind"], data):
-            member = reference(owner[field], kind, source if in_memory else None)
+            member = reference(owner[field], kind, source)
             owner[field] = posixpath.relpath(member, posixpath.dirname(target))
         output[target] = {"path": target, "kind": row["kind"], "data": data,
                           "sha256": hashlib.sha256(_json_bytes(data)).hexdigest()}
@@ -1003,7 +928,7 @@ def _validated_archive(archive, cancel_event=None):
         raise ValueError("资产清单超过容量限制")
     manifest = _load_json(archive.read("manifest.json").decode("utf-8"))
     version = manifest.get("schema_version")
-    if manifest.get("kind") != PACKAGE_KIND or type(version) is not int or version not in (1, 2):
+    if manifest.get("kind") != PACKAGE_KIND or type(version) is not int or version != PACKAGE_VERSION:
         raise ValueError("不是受支持的仿真资产包")
     asset_name(manifest["name"])
     if not re.fullmatch(r"[0-9a-f]{32}", str(manifest.get("run_id", ""))):
@@ -1019,9 +944,9 @@ def _validated_archive(archive, cancel_event=None):
                 or not re.fullmatch(r"[0-9a-f]{64}", entry["sha256"])):
             raise ValueError("资产清单成员格式无效")
         role = _role_for(name)
-        if version == 2 and entry.get("role") != role:
+        if entry.get("role") != role:
             raise ValueError("资产清单成员角色无效")
-        if role == "design" and (version == 1 or entry.get("kind") not in DESIGN_KINDS):
+        if role == "design" and entry.get("kind") not in DESIGN_KINDS:
             raise ValueError("资产清单设计类型无效")
         expected[name] = {**entry, "role": role}
     if set(expected) | {"manifest.json"} != set(names):
@@ -1043,11 +968,11 @@ def _validated_archive(archive, cancel_event=None):
             raise ValueError("资产包校验失败：" + name)
     has_results = "result.npz" in expected
     required = {"configuration.json", "summary.json"}
-    if version == 1 or has_results:
+    if has_results:
         required |= {"result.npz", "result-metadata.json"}
     if (not required.issubset(expected) or ("result-metadata.json" in expected) != has_results
-            or (version == 2 and (type(manifest.get("has_results")) is not bool
-                                or manifest["has_results"] != has_results))):
+            or type(manifest.get("has_results")) is not bool
+            or manifest["has_results"] != has_results):
         raise ValueError("资产包缺少必要成员或结果状态不一致")
     if archive.getinfo("configuration.json").file_size > 32 * MAX_DESIGN_BYTES:
         raise ValueError("资产配置超出容量限制")
@@ -1067,34 +992,33 @@ def _validated_archive(archive, cancel_event=None):
             designs[name] = {"path": name, "kind": entry["kind"], "role": "design",
                              "sha256": entry["sha256"], "data": data}
     _validate_design_graph(designs)
-    if version == 2:
-        if type(manifest.get("portable_inputs")) is not bool or manifest["portable_inputs"] != bool(designs):
-            raise ValueError("资产输入状态与设计清单不一致")
-        snapshot = configuration.get("input_snapshot")
-        if designs:
-            if not isinstance(snapshot, dict) or snapshot.get("kind") != "coat_sim.input_snapshot" or snapshot.get("version") != 1:
-                raise ValueError("资产输入快照无效")
-            records = snapshot["files"]
-            if not isinstance(records, list) or len(records) != len(designs):
-                raise ValueError("资产输入清单不一致")
-            seen = set()
-            for row in records:
-                path = row["path"]
-                if (path in seen or path not in designs or row.get("kind") != designs[path]["kind"]
-                        or row.get("data") != designs[path]["data"]
-                        or row.get("sha256") != hashlib.sha256(_json_bytes(row["data"])).hexdigest()):
-                    raise ValueError("资产输入数据与设计成员不一致")
-                seen.add(path)
-            for field, kind in (("process_path", "process"), ("machine_path", "machine"),
-                                ("source_path", "source"), ("substrate_path", "substrate")):
-                value = snapshot.get(field)
-                if value is not None and (value not in designs or designs[value]["kind"] != kind):
-                    raise ValueError("资产输入根引用无效")
-            if snapshot.get("process_path"):
-                from .input_snapshot import runtime_from_snapshot
-                runtime_from_snapshot(snapshot)
-        elif snapshot is not None:
-            raise ValueError("资产输入快照没有设计成员")
+    if type(manifest.get("portable_inputs")) is not bool or manifest["portable_inputs"] != bool(designs):
+        raise ValueError("资产输入状态与设计清单不一致")
+    snapshot = configuration.get("input_snapshot")
+    if designs:
+        if not isinstance(snapshot, dict) or snapshot.get("kind") != "coat_sim.input_snapshot" or snapshot.get("version") != 1:
+            raise ValueError("资产输入快照无效")
+        records = snapshot["files"]
+        if not isinstance(records, list) or len(records) != len(designs):
+            raise ValueError("资产输入清单不一致")
+        seen = set()
+        for row in records:
+            path = row["path"]
+            if (path in seen or path not in designs or row.get("kind") != designs[path]["kind"]
+                    or row.get("data") != designs[path]["data"]
+                    or row.get("sha256") != hashlib.sha256(_json_bytes(row["data"])).hexdigest()):
+                raise ValueError("资产输入数据与设计成员不一致")
+            seen.add(path)
+        for field, kind in (("process_path", "process"), ("machine_path", "machine"),
+                            ("source_path", "source"), ("substrate_path", "substrate")):
+            value = snapshot.get(field)
+            if value is not None and (value not in designs or designs[value]["kind"] != kind):
+                raise ValueError("资产输入根引用无效")
+        if snapshot.get("process_path"):
+            from .input_snapshot import runtime_from_snapshot
+            runtime_from_snapshot(snapshot)
+    elif snapshot is not None:
+        raise ValueError("资产输入快照没有设计成员")
     return manifest, expected, configuration, designs
 
 

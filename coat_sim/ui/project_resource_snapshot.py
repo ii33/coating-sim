@@ -24,9 +24,7 @@ _SOURCE_FIELDS = frozenset({
 _SOURCE_EMISSION_FIELDS = frozenset({
     "kind", "quadrature_order", "reference_rate_nm_s", "rate_exponent_per_decade",
     "active_fraction", "rate_active_fraction_per_decade", "center_weight", "boat_mode",
-    "cover_height_mm", "cover_thickness_mm", "aperture_kind", "aperture_length_mm",
-    "aperture_width_mm", "aperture_radius_mm", "aperture_offset_x_mm",
-    "aperture_offset_y_mm", "spot_sigma_mm", "rate_spot_sigma_per_decade",
+    "cover_height_mm", "cover_thickness_mm", "spot_sigma_mm", "rate_spot_sigma_per_decade",
     "scan_pattern", "scan_width_mm", "scan_height_mm", "scan_center_x_mm",
     "scan_center_y_mm", "scan_angle_deg", "dwell_center_fraction", "dwell_points",
     "valid_rate_min_nm_s", "valid_rate_max_nm_s", "provenance_status",

@@ -257,16 +257,10 @@ class ResistanceEmission(EmissionCommon):
     active_fraction: FiniteFloat = Field(default=1.0, gt=0, le=1)
     rate_active_fraction_per_decade: FiniteFloat = Field(default=0.0, ge=-100, le=100)
     center_weight: FiniteFloat = Field(default=0.0, ge=0, le=1)
-    apertures: list[SourceAperture] | None = Field(default=None, min_length=1, max_length=100)
+    apertures: list[SourceAperture] = Field(min_length=1, max_length=100)
     boat_mode: Literal["open", "covered"] = "open"
     cover_height_mm: FiniteFloat = Field(default=10.0, gt=0, le=10000)
     cover_thickness_mm: FiniteFloat = Field(default=0.0, ge=0, le=10000)
-    aperture_kind: Literal["rectangle", "disk"] = "rectangle"
-    aperture_length_mm: FiniteFloat = Field(default=20.0, gt=0, le=10000)
-    aperture_width_mm: FiniteFloat = Field(default=10.0, gt=0, le=10000)
-    aperture_radius_mm: FiniteFloat = Field(default=5.0, gt=0, le=10000)
-    aperture_offset_x_mm: FiniteFloat = Field(default=0.0, ge=-10000, le=10000)
-    aperture_offset_y_mm: FiniteFloat = Field(default=0.0, ge=-10000, le=10000)
 
 
 class ScanDwellPoint(_StrictModel):

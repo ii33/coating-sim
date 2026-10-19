@@ -9,6 +9,7 @@ ThemePageDialog {
     id: editor
     required property var library
     property string editingId: ""
+    property string nameError: ""
     readonly property var processColumnWidths: [176, 232]
     property int loadedModelIndex: 0
     property string datasetSource: "用户输入，未独立验证"
@@ -285,6 +286,7 @@ ThemePageDialog {
     }
     function beginNew() {
         editingId = ""
+        nameError = ""
         datasetSource = "用户输入，未独立验证"
         existingKData = ({})
         datasetName.text = ""
@@ -292,14 +294,14 @@ ThemePageDialog {
         fillProcessRows([])
         modelType.currentIndex = 0
         loadedModelIndex = 0
-        unit.currentIndex = 0
+        unit.currentIndex = 1
         wavelengthLow.text = ""
         wavelengthHigh.text = ""
         fillNRows(null)
         coefficientValues = []
         parameterValues = ({})
         independentK.checked = false
-        kUnit.currentIndex = 0
+        kUnit.currentIndex = 1
         kLow.text = ""
         kHigh.text = ""
         fillKRows(null)
@@ -312,6 +314,7 @@ ThemePageDialog {
         let record = library.opticalSetDetails(identity)
         if (!record || !record.id) return
         editingId = identity
+        nameError = ""
         datasetSource = record.source || ""
         existingKData = record.k_data || ({})
         datasetName.text = record.name
@@ -333,7 +336,7 @@ ThemePageDialog {
             fillKRows(record.k_data)
             kNotes.text = record.k_data.notes || ""
         } else {
-            kUnit.currentIndex = 0
+            kUnit.currentIndex = 1
             kLow.text = ""
             kHigh.text = ""
             fillKRows(null)
@@ -435,7 +438,21 @@ ThemePageDialog {
                 enabled: !editor.library.readOnly && !editor.library.loading
                 onClicked: editor.openInversion()
             }
-            ThemeControls.ThemeField { id: datasetName; objectName: "opticalEditorName"; Layout.fillWidth: true; placeholderText: "数据集名称" }
+            ThemeControls.ThemeField {
+                id: datasetName
+                objectName: "opticalEditorName"
+                Layout.fillWidth: true
+                placeholderText: "数据集名称"
+                onTextEdited: editor.nameError = ""
+            }
+            ThemeControls.ThemeLabel {
+                objectName: "opticalEditorNameError"
+                Layout.fillWidth: true
+                visible: editor.nameError.length > 0
+                text: editor.nameError
+                color: editor.palette.brightText
+                wrapMode: Text.Wrap
+            }
             ThemeControls.ThemeLabel { text: "数据集备注 / 样品说明" }
             TextArea {
                 id: datasetNotes
@@ -928,6 +945,16 @@ ThemePageDialog {
                 && !editor.blocksIndependentKLoss
             DialogButtonBox.buttonRole: DialogButtonBox.ApplyRole
             onClicked: {
+                if (!datasetName.text.trim().length) {
+                    editor.nameError = "请填写光学数据集名称"
+                    editorStatus.text = editor.nameError
+                    const flickable = materialEditorScroll.contentItem as Flickable
+                    if (flickable)
+                        flickable.contentY = 0
+                    datasetName.forceActiveFocus()
+                    return
+                }
+                editor.nameError = ""
                 let json = editor.formPayload()
                 let ok = editor.editingId.length ? editor.library.updateOpticalSet(editor.editingId, json) : editor.library.addOpticalSet(json)
                 if (ok) editor.close()

@@ -1,5 +1,12 @@
 # 更新日志
 
+## dev.20261019.05 - 2026-10-19
+
+- Remove five source-specific resolved static baseline diagnostics; no new diagnostics or platform differences are suppressed.
+- Report blank optical dataset names at the field, allow explicit single-point tables, and default new wavelength fields to nm while preserving saved units.
+- Require canonical typed native design members, current asset schema and project paths, and explicit apertures lists throughout source models and editors. Old-format rejection preserves user files; supported third-party imports remain available.
+- Harden Qt test traversal and replace repository-example dependencies with isolated current-format test fixtures.
+
 ## dev.20261019.04 - 2026-10-19
 
 - Make film GUI test teardown destroy only its owned Qt roots, retaining lifetime assertions while avoiding process-wide deferred deletion during QML cleanup.

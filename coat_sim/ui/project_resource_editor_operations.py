@@ -22,8 +22,7 @@ SOURCE_FIELDS = frozenset({"name", "description", "notes", "device_type", "kind"
 SOURCE_EMISSION_FIELDS = frozenset({"kind", "quadrature_order", "reference_rate_nm_s",
     "rate_exponent_per_decade", "active_fraction", "rate_active_fraction_per_decade",
     "center_weight", "boat_mode", "cover_height_mm", "cover_thickness_mm",
-    "aperture_kind", "aperture_length_mm", "aperture_width_mm", "aperture_radius_mm",
-    "aperture_offset_x_mm", "aperture_offset_y_mm", "spot_sigma_mm",
+    "spot_sigma_mm",
     "rate_spot_sigma_per_decade", "scan_pattern", "scan_width_mm", "scan_height_mm",
     "scan_center_x_mm", "scan_center_y_mm", "scan_angle_deg", "dwell_center_fraction",
     "dwell_points", "valid_rate_min_nm_s", "valid_rate_max_nm_s", "provenance_status",
@@ -53,7 +52,6 @@ MATERIAL_RATE_KEYS = frozenset({"reference_rate_nm_s", "valid_rate_min_nm_s", "v
 _SOURCE_EMISSION_ENUMS = {
     "kind": frozenset({"uniform", "resistance_boat", "electron_beam"}),
     "boat_mode": frozenset({"open", "covered"}),
-    "aperture_kind": frozenset({"rectangle", "disk"}),
     "scan_pattern": frozenset({"point", "line", "raster", "ring", "custom"}),
     "provenance_status": frozenset({"unvalidated", "theoretical", "calibrated"}),
 }
@@ -86,14 +84,13 @@ def _source_field_schema() -> dict[str, Any]:
 
 def _source_emission_schema() -> dict[str, Any]:
     result = {key: _field("string") for key in SOURCE_EMISSION_FIELDS}
-    for key in ("kind", "boat_mode", "aperture_kind", "scan_pattern", "provenance_status"):
+    for key in ("kind", "boat_mode", "scan_pattern", "provenance_status"):
         result[key] = _field("string", enum=tuple(sorted(_SOURCE_EMISSION_ENUMS[key])))
     for key in ("reference_rate_nm_s", "valid_rate_min_nm_s", "valid_rate_max_nm_s"):
         result[key] = _field("string", unit="Å/s (GUI input)", stored_unit="nm/s in serialized emission_model")
     for key in ("source_exponent", "quadrature_order", "rate_exponent_per_decade",
                 "active_fraction", "rate_active_fraction_per_decade", "center_weight",
-                "cover_height_mm", "cover_thickness_mm", "aperture_length_mm", "aperture_width_mm",
-                "aperture_radius_mm", "aperture_offset_x_mm", "aperture_offset_y_mm",
+                "cover_height_mm", "cover_thickness_mm",
                 "spot_sigma_mm", "rate_spot_sigma_per_decade", "scan_width_mm", "scan_height_mm",
                 "scan_center_x_mm", "scan_center_y_mm", "scan_angle_deg", "dwell_center_fraction"):
         unit = ("deg" if key.endswith("_deg") else "mm" if key.endswith("_mm") else

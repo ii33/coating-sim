@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
+from typing import Any
 import unittest
 from unittest.mock import patch
 
@@ -84,7 +85,9 @@ class SpatialSourceTests(unittest.TestCase):
 
     def model(self, kind='resistance_boat', **kwargs):
         return validate_source_profile({'kind': 'rectangle', 'length_mm': 40,
-            'width_mm': 20, 'emission_model': {'kind': kind, **kwargs}})
+            'width_mm': 20, 'emission_model': {'kind': kind,
+                **({'apertures': [{'kind': 'rectangle', 'length_mm': 20, 'width_mm': 10}]}
+                   if kind == 'resistance_boat' else {}), **kwargs}})
 
     def test_legacy_geometry_and_zero_response_preserve_rate_independence(self):
         for p, expected in (({'kind': 'point'}, 1), ({'kind': 'line', 'length_mm': 8}, 9),
@@ -156,7 +159,7 @@ class SpatialSourceTests(unittest.TestCase):
 
     def test_cover_visibility_depends_on_receiver_and_checks_both_faces(self):
         p = self.model(boat_mode='covered', cover_height_mm=10,
-                       aperture_length_mm=2, aperture_width_mm=20)
+                       apertures=[{'kind': 'rectangle', 'length_mm': 2, 'width_mm': 20}])
         cover = source_cover(p, self.settings)
         x, y = np.array([0., 8., 20.]), np.zeros(3)
         visibility = source_visibility(np, x, y, 100., 0., 0., 0., cover)
@@ -167,10 +170,10 @@ class SpatialSourceTests(unittest.TestCase):
         self.assertTrue(source_visibility(np, np.array([20.]), np.array([0.]), 100, 0, 0, 0, cover)[0])
 
     def test_cover_loss_is_real_and_no_transmitted_weight_renormalization(self):
-        open_p = {'kind': 'point', 'emission_model': {'kind': 'resistance_boat'}}
+        open_p: dict[str, Any] = {'kind': 'point', 'emission_model': {'kind': 'resistance_boat',
+                  'apertures': [{'kind': 'disk', 'radius_mm': 10}]}}
         closed = deepcopy(open_p)
-        closed['emission_model'].update(boat_mode='covered', cover_height_mm=50,
-                                       aperture_kind='disk', aperture_radius_mm=10)
+        closed['emission_model'].update(boat_mode='covered', cover_height_mm=50)
         a = simulate(self.settings, source_profile=open_p, backend='CPU')
         b = simulate(self.settings, source_profile=closed, backend='CPU')
         self.assertLess(b['mean_raw'], a['mean_raw'])
@@ -187,7 +190,7 @@ class SpatialSourceTests(unittest.TestCase):
         settings = replace(self.settings, planet_offset_mm=15, substrate_radius_mm=10)
         p = {'kind': 'point', 'emission_model': {'kind': 'resistance_boat',
             'boat_mode': 'covered', 'cover_height_mm': 50,
-            'aperture_kind': 'disk', 'aperture_radius_mm': 10}}
+            'apertures': [{'kind': 'disk', 'radius_mm': 10}]}}
         board = {'outer': [[11,-100], [100,-100], [100,100], [11,100]], 'holes': [], 'z_mm': 50}
         closed = correction_board_blocking_weights(settings, board, radii_mm=[0, 5, 10], source_profile=p)
         p['emission_model']['boat_mode'] = 'open'
@@ -214,7 +217,8 @@ class RateCacheTests(unittest.TestCase):
         runtime['profile']['steps'] = [dict(source_slot=1, target_nm=120., rate_nm_s=rate,
             target_mode='mean', mask_slots=[]) for rate in (1., 10.)]
         runtime['machine']['sources'][0]['profile'] = validate_source_profile({'kind': 'point',
-            'emission_model': {'kind': 'resistance_boat', 'rate_exponent_per_decade': 1}})
+            'emission_model': {'kind': 'resistance_boat', 'rate_exponent_per_decade': 1,
+                               'apertures': [{'kind': 'rectangle'}]}})
         with patch('coat_sim.core.process_simulator.simulate', wraps=simulate) as mocked:
             out = simulate_process(Settings(grid_size=21, time_steps=240), runtime,
                                    backend='CPU', fast_cycle=True)

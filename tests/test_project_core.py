@@ -300,6 +300,23 @@ def test_manifest_path_escapes_are_rejected(tmp_path, bad_path):
     assert error.value.code in ("unsafe_path", "invalid_manifest")
 
 
+def test_old_objects_manifest_path_is_rejected_without_deleting_document(tmp_path):
+    source = tmp_path / "source.csrc"
+    write_json(source, {"schema_version": 2, "kind": "point"})
+    store = ProjectStore.create(tmp_path / "project", "P")
+    store.import_document(source)
+    value = store.manifest
+    original = store.root / value["documents"][0]["path"]
+    content = original.read_bytes()
+    row = value["documents"][0]
+    row["path"] = f"objects/{value['id']}/{row['id']}.csrc"
+    write_json(store.project_file, value)
+    with pytest.raises(ProjectError) as error:
+        ProjectStore.open(store.project_file)
+    assert error.value.code == "invalid_manifest"
+    assert original.read_bytes() == content
+
+
 def test_links_and_link_ancestors_rejected_for_import_and_project_reads(tmp_path):
     source = tmp_path / "source.csrc"
     write_json(source, {"schema_version": 2, "kind": "point"})

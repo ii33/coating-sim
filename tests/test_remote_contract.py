@@ -64,7 +64,7 @@ def test_submission_fields_and_job_id_are_strict():
 
 def test_portable_copy_removes_provenance_and_runtime_without_mutating_source():
     snapshot = {"kind": "coat_sim.input_snapshot", "version": 1,
-                "process_path": "designs/process.json", "files": [],
+                "process_path": "designs/process.cproc", "files": [],
                 "original_path": "C:/work/process.json", "runtime": {"cached": True}}
     source = JobSpec("process", {"process_path": snapshot, "settings": {}},
                      {"snapshot": snapshot})

@@ -118,8 +118,9 @@ def _optical_curve_points(record, count=65):
     x_scale_nm = 1000.0 if unit == "um" else 1.0
     k_low_nm = float(k_data.get("wavelength_min", 0.0)) * k_scale_nm
     k_high_nm = float(k_data.get("wavelength_max", 0.0)) * k_scale_nm
-    for index in range(count):
-        wavelength = low + (high - low) * index / (count - 1)
+    sample_count = 1 if low == high else max(2, count)
+    for index in range(sample_count):
+        wavelength = low if sample_count == 1 else low + (high - low) * index / (sample_count - 1)
         try:
             n_value, _unknown_k, _details = optical_constants.evaluate_optical_set_with_details(
                 record, wavelength, unit, include_k=False)
@@ -200,9 +201,11 @@ def _optical_summary(record):
             k_values = inside + [_table_value(data["wavelengths"], data["k"], k_low),
                                  _table_value(data["wavelengths"], data["k"], k_high)]
     k_label = "k=" + _range_text(k_values) if k_values else "k 未知"
+    range_label = (f"单点 {low:g} {unit}" if low == high
+                   else f"波段 {low:g}–{high:g} {unit}")
     return {
-        "range": f"{low:g}–{high:g} {unit}",
-        "summary": f"波段 {low:g}–{high:g} {unit}；{n_label}；{k_label}",
+        "range": range_label,
+        "summary": f"{range_label}；{n_label}；{k_label}",
         "kStatus": "含 k" if k_values else "k 未知",
         "conditions": _optical_condition_rows(record.get("process_parameters", [])),
     }
@@ -278,8 +281,8 @@ def _editor_grid_to_text(rows, *, k_only=False):
         if "k" in numbers and numbers["k"] < 0:
             raise ValueError(f"第 {row_number} 行 k 单元格不能为负数")
         output.append("\t".join(values[key] for key in columns))
-    if len(output) < 2:
-        raise ValueError("数据表至少需要两行完整数据")
+    if not output:
+        raise ValueError("数据表至少需要一行完整数据")
     return "\n".join(output)
 
 

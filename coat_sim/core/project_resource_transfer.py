@@ -24,6 +24,12 @@ from .project_dependencies import (
     normalize_document, read_json, reject_links,
 )
 from .project_store import ProjectStore, _PreparedProject, _manifest
+from .project_paths import PROJECT_TYPED_DIRECTORY_BY_KIND
+
+
+def _preview_document_path(kind: str, identity: str) -> str:
+    """Typed placeholder for a detached transfer plan; publication picks its revision."""
+    return f"{PROJECT_TYPED_DIRECTORY_BY_KIND[kind]}/r00000000/{identity}{EXTENSIONS[kind]}"
 
 
 def _digest(value: dict) -> str:
@@ -293,12 +299,12 @@ def _merge(source: dict, selected: list[str], target: dict, preview_rows: list[d
             value["process_document_id"] = mapping[value["process_document_id"]]
         data[target_id] = normalize_document(kind, value)
         records[target_id] = {"id": target_id, "kind": kind,
-                              "path": f"objects/{generation}/{target_id}{EXTENSIONS[kind]}",
+                              "path": _preview_document_path(kind, target_id),
                               "sha256": "0" * 64, "dependencies": []}
     # Both existing and incoming references are UUID filenames. One preview
     # generation lets the ordinary graph validator resolve their identities.
     for key, row in records.items():
-        row["path"] = f"objects/{generation}/{key}{EXTENSIONS[row['kind']]}"
+        row["path"] = _preview_document_path(row["kind"], key)
     materials = ProjectStore._material_index(records, data)
     for key, row in records.items():
         row["dependencies"] = ProjectStore._dependencies(key, records, data, materials)
@@ -332,7 +338,7 @@ def _standalone_snapshot(path: Path) -> dict:
         if len(records) >= MAX_PROJECT_DOCUMENTS or total > MAX_PROJECT_BYTES:
             raise ProjectError("capacity_exceeded", "External resource catalog exceeds project capacity")
         records[identity] = {"id": identity, "kind": kind,
-                             "path": f"objects/{generation}/{identity}{EXTENSIONS[kind]}",
+                             "path": _preview_document_path(kind, identity),
                              "sha256": "0" * 64, "dependencies": []}
         data[identity] = normalized
         return identity

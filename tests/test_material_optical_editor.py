@@ -1834,5 +1834,129 @@ Window {
                          ["Project HD visible"])
 
 
+    def test_single_point_editor_blank_name_error_default_nm_and_saved_roundtrip(self):
+        from coat_sim.core.optical_constants import (
+            evaluate_optical_set_with_details, import_optical_text,
+            prepare_optical_set,
+        )
+        from coat_sim.ui.source_materials import _optical_curve_points
+
+        self.assertTrue(self.lib.newMaterial())
+        self.lib.setField("name", "Single point synthetic")
+        engine = QQmlEngine()
+        engine.setNetworkAccessManagerFactory(NoNetworkAccessManagerFactory())
+        ThemeService.instance().attach_engine(engine, "Theme")
+        engine.rootContext().setContextProperty("materialLibrary", self.lib)
+        component = QQmlComponent(engine)
+        component.setData(b'''
+import QtQuick
+import QtQuick.Window
+import "../coat_sim/ui/qml" as CoatUi
+Window {
+    width: 1000; height: 800; visible: true
+    CoatUi.MaterialEditor {
+        id: opticalEditor
+        objectName: "materialEditor"
+        library: materialLibrary
+    }
+}
+''', QUrl.fromLocalFile(str(ROOT / "tests" / "single_point_material_host.qml")))
+        self.assertEqual(component.status(), QQmlComponent.Status.Ready,
+                         [error.toString() for error in component.errors()])
+        window = cast(QQuickWindow, component.create())
+        self.assertIsNotNone(window)
+        try:
+            window.show()
+            editor = _qml_object(window, "materialEditor")
+            self.assertTrue(QMetaObject.invokeMethod(editor, "beginNew"))
+            QTest.qWait(60)
+            unit = _qml_object(window, "opticalEditorUnit")
+            self.assertEqual(unit.property("currentText"), "nm")
+            self.assertEqual(_qml_object(window, "opticalEditorKUnit").property("currentText"), "nm")
+            name = _qml_object(window, "opticalEditorName")
+            self.assertTrue(QMetaObject.invokeMethod(
+                editor, "loadImportedNTable", Q_ARG("QVariant", "550\t1.5\t0.02")))
+            _qml_object(window, "opticalEditorRangeMin").setProperty("text", "550")
+            _qml_object(window, "opticalEditorRangeMax").setProperty("text", "550")
+            apply = _qml_object(window, "opticalEditorSaveButton")
+            self.assertTrue(QMetaObject.invokeMethod(apply, "click"))
+            QTest.qWait(30)
+            self.assertTrue(editor.property("visible"))
+            error = _qml_object(window, "opticalEditorNameError")
+            self.assertTrue(error.property("visible"))
+            self.assertIn("名称", str(error.property("text")))
+            self.assertTrue(name.property("activeFocus"))
+            self.assertEqual(len(self.lib.opticalSets), 0)
+
+            name.setProperty("text", "Single measured point")
+            self.assertTrue(QMetaObject.invokeMethod(apply, "click"))
+            QTest.qWait(40)
+            self.assertFalse(editor.property("visible"), self.lib.status)
+            row = self.lib.opticalSetDetails(self.lib.opticalSets[0]["id"])
+            self.assertEqual(row["wavelength_unit"], "nm")
+            self.assertEqual(row["wavelength_min"], row["wavelength_max"])
+            self.assertEqual(row["wavelengths"], [550.0])
+            self.assertEqual(row["k"], [0.02])
+            self.assertEqual(len(_optical_curve_points(
+                {key: value for key, value in row.items() if key != "conditions"})), 1)
+            self.assertTrue(self.lib.save(), self.lib.status)
+            identity = self.lib.currentId
+            self.assertTrue(self.lib.selectMaterial("user:" + identity))
+            self.settle_materials()
+            saved = self.lib.opticalSetDetails(row["id"])
+            self.assertEqual(saved["wavelengths"], [550.0])
+            self.assertTrue(QMetaObject.invokeMethod(
+                editor, "beginEdit", Q_ARG("QVariant", row["id"])))
+            QTest.qWait(30)
+            self.assertEqual(unit.property("currentText"), "nm")
+            self.assertEqual(_qml_object(window, "opticalEditorRangeMin").property("text"), "550")
+            self.assertEqual(_qml_object(window, "opticalEditorRangeMax").property("text"), "550")
+            name.setProperty("text", "   ")
+            self.assertTrue(QMetaObject.invokeMethod(apply, "click"))
+            QTest.qWait(20)
+            self.assertTrue(editor.property("visible"))
+            self.assertTrue(error.property("visible"))
+            self.assertTrue(name.property("activeFocus"))
+            self.assertEqual(self.lib.opticalSetDetails(row["id"])["name"], "Single measured point")
+            name.setProperty("text", "Single measured point edited")
+            self.assertTrue(QMetaObject.invokeMethod(apply, "click"))
+            QTest.qWait(30)
+            self.assertFalse(editor.property("visible"), self.lib.status)
+            self.assertEqual(self.lib.opticalSetDetails(row["id"])["name"],
+                             "Single measured point edited")
+
+            um_form = {"name": "Legacy micrometre sample", "kind": "tabulated",
+                       "wavelength_unit": "um", "table": "0.55 1.6",
+                       "wavelength_min": "0.55", "wavelength_max": "0.55"}
+            self.assertTrue(self.lib.addOpticalSet(json.dumps(um_form)), self.lib.status)
+            um_id = next(item["id"] for item in self.lib.opticalSets
+                         if item["name"] == "Legacy micrometre sample")
+            self.assertTrue(QMetaObject.invokeMethod(
+                editor, "beginEdit", Q_ARG("QVariant", um_id)))
+            QTest.qWait(20)
+            self.assertEqual(unit.property("currentText"), "um")
+            self.assertEqual(_qml_object(window, "opticalEditorRangeMin").property("text"), "0.55")
+            self.assertEqual(_qml_object(window, "opticalEditorRangeMax").property("text"), "0.55")
+            self.assertTrue(QMetaObject.invokeMethod(
+                _qml_object(window, "opticalEditorCancelButton"), "click"))
+
+            optical = {key: value for key, value in saved.items() if key != "conditions"}
+            self.assertEqual(evaluate_optical_set_with_details(optical, 550, "nm")[:2], (1.5, 0.02))
+            series, _trace = prepare_optical_set(optical).evaluate_many([550], "nm")
+            self.assertEqual(complex(series[0]), complex(1.5, 0.02))
+            with self.assertRaises(ValueError):
+                evaluate_optical_set_with_details(optical, 551, "nm")
+            with self.assertRaises(ValueError):
+                prepare_optical_set(optical).evaluate_many([550, 551], "nm")
+            self.assertEqual(prepare_optical_set(optical)(551, "nm", "endpoint_hold")[:2], (1.5, 0.02))
+            unknown = import_optical_text(
+                "0.55 1.5", name="Unknown k", wavelength_unit="um")
+            self.assertIsNone(unknown["k"])
+            self.assertEqual(evaluate_optical_set_with_details(unknown, 550, "nm")[:2],
+                             (1.5, None))
+        finally:
+            _close_qml_test_window(engine, window)
+
+
 if __name__ == "__main__":
     unittest.main()

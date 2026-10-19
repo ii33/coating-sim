@@ -27,7 +27,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <div class="meta"><span class="pill">版本：机器 v5 · 工艺 v7 · 源 v2；材料交换包 v1、安全导入冲突预览与原子回滚)</span><span class="pill">更新：2026-10-19（厚度编辑精度、零厚层与优化边界；冻结服务边界与单点归一化；研究证据与单层光谱反演；修正板不设数量上限、完整依赖快照与逐板遮挡；工程文件格式契约说明；优化多角网格与计算量人工顶值移除；TFCalc明文层表导入；外观逐光线精确 TMM 与独立波长 CPU 进程并行；Qt Quick 光谱极值与波长通带、场景图曲线预览；多孔厚盖、独立源采样、无固定最大网格与计算隔离；工艺环境、工作气体及零碰撞直达束；材料库、已设计源工艺选择、盖孔射线与快扫描空间分布；桌面仿真共享队列、逐批进度、无固定步数上限、100%快算默认与Å/s界面；五项上下文预算、硬限与安全压缩、后台流合并与固定设计绘图；平滑轮廓、全膜系目标选优与评分进度；凭据反馈与有界模型候选兼容探测；待决选项、模式放行、诊断未读摘要、结果队列身份修复、紧凑产物；计算量估算、后台串行队列、源板分组优化与跨段选区；完整设备回退、成功设备记忆、临时仿真资产包、可选 PDF、历史闭合与滚动高度缓存；批量膜系、物理层表导入、固定图表、工具原文归档与任务成本、视口文本增量渲染；批量工具契约、演示工作流、逐回合展示与复制、撤回确认、本地助手调试、实际生效参数快照、LPAC启动修复；容量自适应上下文、轮次关闭、插话与排队、剪贴板图片、系统语言与语气、开发访问；逐层修正板、轮廓优化、工艺快算、估时、上下文用量、请求续约、原生档位缓存、滚动跟随、二维 CAD 与加工图、模型 Token 上限、缓存命中统计、富文本与开发门禁；修正板视口设备路由、反向滚动与可选输入诊断）</span><span class="pill">单位：mm · s · rpm · nm · px；助手 Token / 字符 / 附件字节</span><span class="pill">离线单文件 HTML</span></div>
 <p class="source">补充更新：2026-10-05——通过服务接口执行的非 CPU 沉积仿真使用一次任务一个短生命周期计算进程；Windows 子进程关闭管道时把 WinError 109 视作 EOF，避免计算完成后误记失败。</p>
 <p class="source">cub 接口补齐更新：2026-10-05。三路径提交、材料业务工具、机器工程检查和 AI 资产导出契约；未覆盖在线模型及实机校准。</p>
-<p class="source">膜系设计更新：2026-10-07；schema v1、严格TFCalc子集、复n光谱与自动单/双面有限基底；RII 1–9、独立 k 数据域、稀疏线性插值、n 显式端点保持及仿真 k 缺失/域外取零。</p>
+<p class="source">膜系设计更新：2026-10-19；schema v1、严格TFCalc子集、复n光谱与自动单/双面有限基底；RII 1–9、独立 k 数据域、含显式单点的离散采样、稀疏线性插值、n 显式端点保持及仿真 k 缺失/域外取零。</p>
 <p class="source">公开光学数据追加更新：2026-10-06；固定源SHA256、跨批去重、Siefke保守域与仅光学材料，见14b。</p>
 <p class="source">膜系本批更新：2026-10-06——自动基底含吸收、相位采样诊断、单次数据准备与缓存、QW/nm双列、百分比显示与折叠说明。</p>
 <p class="source">Qt Quick 膜系光谱补充：2026-10-07——显示预览按波长桶保留曲线端点与极值，导出继续使用完整采样结果。</p>
@@ -238,9 +238,11 @@ parallel identical frozen evaluation; concatenate along the chosen axis</pre>
 </section>
 
 <section id="project-file-format-contract">
-<h2>工程文件格式契约（2026-10-15）</h2>
+<h2>工程文件格式契约（2026-10-19）</h2>
 <figure class="figure"><div class="flow" aria-label="工程描述文件与资源路径"><span>显式选择任意名称.coatproj</span><i>→</i><span>校验后缀、普通文件、路径及 JSON v1</span><i>→</i><span>父目录作为资源根；保存仍写所选文件</span></div><figcaption>文件名与资源目录是不同身份：不扫描目录或猜测清单。后缀不区分大小写，后续保存保留原名和大小写；JSON 内容和依赖校验保持严格。</figcaption></figure>
-<p>受管项目的原始描述文件是以 <code>.coatproj</code> 结尾的严格 UTF-8 JSON，kind 为 <code>coat_sim.project</code>、version 为 1；保留原七个必需字段，新增可选工程 summary/notes，各限20000字符。已有 version 1 描述文件及 objects 资源路径继续受支持，打开不重写；旧严格 reader 会拒绝新路径或不认识的额外字段。描述文件可有任意名前缀，例如 <code>My-study.coatproj</code>，打开时显式选中文件，工程根目录是其父目录。新建项目仍接收一个新目录，并在其中创建默认名 <code>project.coatproj</code>。程序不扫描目录，也不把目录、旧名 <code>project.json</code> 或 <code>.cproject</code> 当作打开别名。</p>
+<p><span class="tag local">本项目约定</span>当前工程清单只接受 <code>data/&lt;typed-category&gt;/r&lt;revision&gt;/&lt;name&gt;.&lt;typed-extension&gt;</code> 路径；旧 <code>objects/&lt;generation&gt;/&lt;UUID&gt;.&lt;extension&gt;</code> 只用于写事务的私有暂存，不能作为清单成员。设计快照与 <code>.coatasset</code> 内的设计成员使用对应类型唯一专有后缀（<code>.csrc/.csub/.cmsk/.cmac/.cproc/.cfilm</code>），拒绝旧长后缀及设计成员 <code>.json</code>；<code>.coatasset</code> 仅读 schema v2，旧磁盘冻结快照契约拒绝读取。配置、清单、材料等非设计 JSON 仍按各自契约处理，TFCalc 明文导入仍为独立的第三方入口。格式拒绝不删除用户文件；未找到外部依据，仅为本项目实现。</p>
+
+<p>主项目描述文件仅接受 <code>.coatproj</code>，工程包仅接受 <code>.cproject</code>，两者职责不同。描述文件采用严格 UTF-8 JSON、<code>coat_sim.project</code> kind 和 version 1；打开时必须显式选择描述文件，不能用目录、<code>project.json</code> 或工程包代替。项目内保存路径按类型及修订号校验，不读取或自动迁移旧 objects 清单成员。后缀匹配不区分大小写，保存仍保留所选描述文件的原始名称；拒绝旧格式不改变原文件。</p>
 <p><code>.cproject</code> 是独立的 ZIP 工程包；包内清单入口固定为 <code>project.coatproj</code>，与源描述文件名无关。导入新目录会创建默认 <code>project.coatproj</code> 并重新分配工程 ID。工程包只承载经验证的受管输入，不吸收目录中的任意文件、结果或凭据。这里记录的是文件选择与封装约定，不是物理算法更新。详见<a href="project-core-contract.md">工程核心契约</a>和<a href="project-package-contract.md">工程包契约</a>。</p>
 <h3>按资源名称保存的不可变修订</h3>
 <p><strong>输入输出与身份：</strong>输入是已有受管 UUID、kind、资源名称和完整依赖闭包；输出是新清单及 <code>data/分类/r00000001/净化资源名.扩展名</code>，例如 <code>data/sources/r00000001/Copper.csrc</code>。SHA-256仍只校验字节，不是资源名。UUID继续作为身份；受管JSON内的 <code>UUID.扩展名</code> 是清单逻辑引用，不对人类可读目录做相对路径查找。改名不改UUID或物理内容。</p>
@@ -1823,14 +1825,15 @@ completed background job → persistent event → idle original session, read-on
 <p>来源：已有研究库 T04 全材料记录、T05 舟/容器适用性及 T11 ITO 原始样本记录；每条内置属性携带原始 URL/DOI、定位、条件和原记录。H4 保持商业混合料未知配方；QCM 设置密度不替代实测膜密度。无光学跨域插值，无新温度到速率/粘附/再蒸发/反应机制。ZnS 原有限域参考计算仍由独立章节约束。</p>
 </section>
 
-<section id="multi-hole-source-refinement"><h2>04c · 多孔厚盖与独立源采样精度</h2>
+<section id="multi-hole-source-refinement"><h2>04c · 多孔厚盖与独立源采样精度（2026-10-19）</h2>
 <p>输入：源局部 XY 几何、孔中心偏移/形状/角度（mm、度）、盖底高度 h 和厚度 d（mm），机架中的源样本 s 与接收点 r。输出为每条直线射线的可见性 V∈{0,1}。坐标先逆转源角度，再减孔偏移并逆转该孔角度；盖的两个平面在 z=s_z+h 与 z=s_z+h+d。</p>
 <div class="formula">tₖ=(zₖ−s_z)/(r_z−s_z)；pₖ=s+tₖ(r−s)<br>V = ORⱼ(ANDₖ inside(pₖ, holeⱼ))</div>
-<p>矩形孔条件为 |u|≤L/2 且 |v|≤W/2，圆孔为 u²+v²≤R²。同一条射线必须穿过同一个凸直孔的入面和出面；不能从 A 孔进入、B 孔离开而穿过中间金属。重叠孔作可见并集，不重复加权；遮挡后不重新归一化，损失不会被源权重消除。旧 aperture_* 字段按单孔兼容；显式 apertures 列表优先，1–100 孔。</p>
+<p>矩形孔条件为 |u|≤L/2 且 |v|≤W/2，圆孔为 u²+v²≤R²。同一条射线必须穿过同一个凸直孔的入面和出面；不能从 A 孔进入、B 孔离开而穿过中间金属。重叠孔作可见并集，不重复加权；遮挡后不重新归一化，损失不会被源权重消除。当前 resistance_boat 发射模型必须显式给出 apertures 列表（1–100 孔），单孔也用一个元素；缺少列表、null 或旧 aperture_* 平铺字段均拒绝。</p>
 <figure class="figure"><svg viewBox="0 0 720 210" role="img" aria-label="厚盖同孔通过与跨孔穿墙拒绝"><rect x="60" y="70" width="590" height="65" fill="#adb8b7"/><rect x="160" y="70" width="80" height="65" fill="#fff"/><rect x="420" y="70" width="80" height="65" fill="#fff"/><path d="M175 185L217 20" stroke="#087f78" stroke-width="5"/><path d="M90 190L550 15" stroke="#b54a39" stroke-width="5" stroke-dasharray="8 5"/><text x="155" y="57" class="svgtext">孔 A</text><text x="418" y="57" class="svgtext">孔 B</text><text x="280" y="188" class="svgtext">绿线：同孔直达；红线：穿金属，拒绝</text></svg><figcaption>盖板截面示意，不按比例。当前只支持平行盖面和凸直通圆/矩形孔；没有壁面再发射、反射或源内热流体求解。</figcaption></figure>
 <p><code>sampling_order</code> 是独立的数值精度选项（奇数 3–41），不改变源的物理分布。省略时，简单快速模型精确保留旧点/线/盘/环/矩形的 1/9/12/16/16 节点。显式指定 q 时：线用 2q+7 中点；矩形 q×q 中点；圆盘 q×q 包围网格内圆心点筛选；环面用 max(2,(q+1)/2) 等面积径向环、每环 4q 角点并交错相位。模型默认 q=9 保持不变，源权重在遮挡前归一化。</p>
 <figure class="figure"><svg viewBox="0 0 720 140" role="img" aria-label="独立的源采样与接收网格"><circle cx="110" cy="70" r="45" fill="#e8f1ed" stroke="#087f78"/><g fill="#087f78"><circle cx="90" cy="50" r="5"/><circle cx="130" cy="50" r="5"/><circle cx="90" cy="90" r="5"/><circle cx="130" cy="90" r="5"/></g><path d="M175 70H260" stroke="#b56527" stroke-width="3"/><text x="280" y="53" class="svgtext">源采样 q：积分半影与源足迹</text><text x="280" y="85" class="svgtext">基片网格 n：接收场空间分辨率</text><text x="280" y="116" class="svgsmall">两者分别加密；更多网格不能补足稀疏源节点</text></svg><figcaption>几何半影原来就存在：有限源逐样本遮挡后加权。旧模型较少的源样本可能形成分段面；接收网格与源采样须分别做收敛检查。</figcaption></figure>
 <p>角分布 cosⁿθ 与源面内的高斯空间权重是独立维度，可以同时使用。比较模型时应固定工艺、物理分布、色标范围与 nm 原始值，不能仅凭自动缩放后的色图推断真实性。加密不保证误差单调下降；401 点单位圆刀口解析 CDF F(a)=1/2+[asin(a)+a√(1−a²)]/π 用于有界回归检查（q=41 最大可见度误差&lt;0.025），不证明实机蒸镀模型已标定。</p>
+<p><span class="tag local">本项目约定</span>源编辑器新建盖孔默认为一个矩形孔，并只写 apertures；读取旧字段失败时不迁移、不覆盖原文件。可见性求解只使用已校验孔列表，不再从旧平铺字段推导孔形。坐标及厚度仍为 mm，权重无量纲；几何算法本身未改变，拒绝旧内容的格式策略未找到外部依据，仅为本项目实现。</p>
 <p class="source">实现：<code>coat_sim/core/source_profiles.py</code>、源设计 UI（物理预览仅按几何/发射参数缓存，不重复解析已保存研究/光学证据；保存仍校验完整材料快照） 与 <code>tests/test_source_refinements.py</code>。多孔可见性与数值节点为本项目实现约定，未找到额外外部验证依据；几何直线截交来源为本页既有射线遮挡定义，单位圆积分为解析面积恒等式。默认采样兼容不代表收敛精度保证。</p></section>
 <section id="grid-memory-boundaries"><h2>11g · 无固定网格上限、资源估算与隔离失败</h2>
 <p>输入为正整数边长 n（保留原有最小值 21）及膜层数 L；取消原先 501 的最大值。提交前只显示粗略内存提示，不以估算人为拒绝网格。输出包括估计峰值字节、当前系统/容器可用内存、风险提示。GPU 还受显存、驱动暂存与传输资源影响。</p>
@@ -1843,13 +1846,13 @@ completed background job → persistent event → idle original session, read-on
 <section id="optical-constant-sets">
 <h2>材料光学常数集：离散数据、Cauchy、Sellmeier 与 RII 1–9</h2>
 <p><strong>用途与范围。</strong>每个膜料、基片或其他材料可保存最多 100 个独立命名、带备注与来源的光学常数集。它们是用户输入的材料快照，不自动参与蒸发、传输、沉积率或膜厚计算，也不自动验证样品真实性。保留原研究证据与旧角色；无角色的旧记录按膜料兼容。</p>
-<p><strong>输入 / 输出与单位。</strong>输入类型为 tabulated、cauchy、sellmeier或 rii_formula；RII 模型从核心目录取 formula_number=1..9 及系数项名称，界面不自行重建公式，明确指定波长单位 nm 或 um，指定有效区间 0 &lt; λmin &lt; λmax。查询必须同时给出波长与单位，输出 (n,k)，二者均无量纲；没有 k 时输出 null。没有空间坐标系；波长记录不推断环境或温度，须在备注中说明测量条件。</p>
+<p><strong>输入 / 输出与单位。</strong>输入类型为 tabulated、cauchy、sellmeier或 rii_formula；RII 模型从核心目录取 formula_number=1..9 及系数项名称，界面不自行重建公式。新建界面默认波长单位 nm；保存的 nm 或 um 原样读取，不按界面默认值重解释。色散公式的有效区间满足 0 &lt; λmin &lt; λmax；离散数据允许 0 &lt; λmin ≤ λmax，单点表只能声明该点波长。查询必须同时给出波长与单位，输出 (n,k)，二者均无量纲；没有 k 时输出 null。没有空间坐标系；波长记录不推断环境或温度，须在备注中说明测量条件。</p>
 <h3>离散光谱</h3>
-<p>UTF-8 CSV、TSV 或空白分列，列为 wavelength,n[,k]；允许同名表头与 # 注释。最多 100,000 点、16 MiB，至少两点；波长严格递增，所有数据有限，n &gt; 0、k ≥ 0。两列文件的 k 保持未知，三列不允许空缺 k，不将 NaN、缺值或“透明”转换成零。</p>
+<p>UTF-8 CSV、TSV 或空白分列，列为 wavelength,n[,k]；允许同名表头与 # 注释。最多 100,000 点、16 MiB，至少一点；多点波长严格递增，所有数据有限，n &gt; 0、k ≥ 0。用户显式提供的单点是稀疏实测/输入记录，不构成完整参考光谱。两列文件的 k 保持未知，三列不允许空缺 k，不将 NaN、缺值或“透明”转换成零。</p>
 <pre>t = (λ − λi) / (λi+1 − λi)
 n(λ) = (1 − t) ni + t ni+1
 k(λ) = (1 − t) ki + t ki+1   # 仅当完整 k 列存在</pre>
-<p>分段线性插值是<strong>本项目约定</strong>，不代表窄带吸收峰或满足 Kramers–Kronig 关系。直接材料 API 默认仅在声明有效区间求值并拒绝外推；膜系可显式选择 14a 的端点保持策略。跨单位查询只归一化不超过 4 ULP 的端点舍入差，不放宽物理域。</p>
+<p>两点之间的分段线性插值是<strong>本项目约定</strong>，不代表窄带吸收峰或满足 Kramers–Kronig 关系。单点只在记录波长直接返回 n 与已提供的 k，不执行插值。直接材料 API 默认仅在声明有效区间求值并拒绝外推；显式端点保持可在域外沿用唯一点值，属于外推策略而非来源有效域。跨单位查询只归一化不超过 4 ULP 的端点舍入差，不放宽物理域。</p>
 <h3>实折射率色散</h3>
 <pre>Cauchy:    n(λ) = A + B / λ² + C / λ⁴
 Sellmeier: n²(λ) = 1 + Σ(i=1..3) Bi λ² / (λ² − Ci)</pre>
@@ -1858,17 +1861,18 @@ Sellmeier: n²(λ) = 1 + Σ(i=1..3) Bi λ² / (λ² − Ci)</pre>
 <p>当前输入界面<strong>不执行隐式系数换算</strong>：切换单位立即清空模型系数及波段，并提示按新单位重新输入。已保存的用户数据集可完整编辑模型、范围、单位和表格，保留稳定 ID；候选先整组校验，成功后才替换草稿。内置原始目录保持只读；当前材料库允许编辑内置材料，并通过显式覆盖接口将同 ID 的用户记录保存到 .overrides/，不改写打包原件或已有设计快照。</p>
 <p><strong>奇点与有效性。</strong>本实现限定标准三项 Sellmeier 的 Bi、Ci 均非负；禁止任何 √Ci 落在有效区间或距其边界过近（保护带为 10⁻¹⁰·max(λmax,√Ci,10⁻¹⁵)）。逐次求值亦检查 |λ²−Ci| ≤ 10⁻¹²·max(|λ²|,|Ci|,10⁻³⁰)；遇到极点、溢出或非正 n² 即报错。非负系数使无极点区间内 n² 单调非增，验证两端即可覆盖正性。Cauchy 验证两端及区间内唯一可能的驻点 x=−B/(2C)，x=1/λ²。上述数值保护带与参数子集为<strong>本项目约定</strong>，不是文献材料精度保证。</p>
 <figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 170" role="img" aria-label="有效光谱区间与禁止外推示意"><rect x="0" y="0" width="700" height="170" fill="#f3f6fa"/><rect x="185" y="32" width="335" height="100" fill="#d9f1e6"/><path d="M60 130H650M120 140V25" stroke="#24334c" fill="none" stroke-width="2"/><path d="M185 65L280 84L395 95L520 101" stroke="#2264a3" stroke-width="3" fill="none"/><g fill="#2264a3"><circle cx="185" cy="65" r="5"/><circle cx="280" cy="84" r="5"/><circle cx="395" cy="95" r="5"/><circle cx="520" cy="101" r="5"/></g><g font-family="sans-serif" font-size="16" fill="#24334c"><text x="150" y="155">λmin</text><text x="500" y="155">λmax</text><text x="310" y="55">仅域内插值 / 求值</text><text x="35" y="65">拒绝外推</text><text x="565" y="65">拒绝外推</text><text x="640" y="150">λ</text><text x="93" y="30">n</text></g></svg><figcaption>绿色区域为显式有效波段；离散点仅分段插值。未知 k 不生成曲线，任何有效域外查询都拒绝。</figcaption></figure>
-<p><strong>实现与默认参数。</strong><code>coat_sim/core/optical_constants.py</code>（校验、文件导入与求值）；<code>coat_sim/core/materials.py</code>（角色与嵌入快照）；<code>coat_sim/ui/source_materials.py</code>、<code>MaterialLibraryDialog.qml</code>、<code>MaterialEditor.qml</code>（输入、后台加载及独立常数集管理）。新材料默认无光学常数集，没有默认物理系数。后台线程仅处理普通 Python 数据，Qt 定时器在主线程采用最新请求；关闭或新选择使旧结果失效。</p>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 110" role="img" aria-label="单点光学常数有效域示意"><path d="M35 75H525" stroke="#24334c" stroke-width="2"/><circle cx="280" cy="48" r="7" fill="#2264a3"/><path d="M280 57V75" stroke="#2264a3" stroke-width="2"/><g font-family="sans-serif" font-size="14" fill="#24334c"><text x="20" y="35">域外拒绝</text><text x="220" y="100">λmin = λmax</text><text x="430" y="35">域外拒绝</text></g></svg><figcaption>单点数据只在该波长有来源值；图上的其他波长没有由此产生有效区间。</figcaption></figure>
+<p><strong>实现与默认参数。</strong><code>coat_sim/core/optical_constants.py</code>（校验、文件导入与求值）；<code>coat_sim/core/materials.py</code>（角色与嵌入快照）；<code>coat_sim/ui/source_materials.py</code>、<code>MaterialLibraryDialog.qml</code>、<code>MaterialEditor.qml</code>（输入、后台加载及独立常数集管理）。新材料默认无光学常数集，没有默认物理系数；新建数据集界面仅将波长单位预选为 nm。后台线程仅处理普通 Python 数据，Qt 定时器在主线程采用最新请求；关闭或新选择使旧结果失效。单点许可及其域外错误/端点保持规则为<strong>本项目约定</strong>，未找到外部依据，仅为本项目实现。</p>
 <p><strong>资料展示。</strong><code>ui/material_research.py</code> 将本地 Markdown 转为转义后的受限 HTML，禁止原始 HTML、自动图片与本地文件链接；参考详情采用按需实例化列表，每段正文不超过 12,000 字。完整原文、条件和来源继续存于不可变研究快照，不因分页删除。只允许用户主动打开 http/https 原始链接。</p>
-<h3 id="material-optical-editor">材料光学数据集完整编辑与摘要（2026-10-06）</h3>
+<h3 id="material-optical-editor">材料光学数据集完整编辑与摘要（2026-10-19）</h3>
 <p><strong>用途与输入输出。</strong>输入为用户材料上的一个光学数据集（离散 n/k、Cauchy、Sellmeier或核心目录的 RII formula 1–9）；输出为折叠摘要、展开的全数据集与工艺条件行、单独的材料参考详情。该界面是管理与显示规则，不用光学摘要取代膜系物理计算。</p>
 <p><strong>坐标系与单位。</strong>无空间坐标；独立光学数据集以显式 nm 或 um 表示波长、n/k 均无量纲。区间须符合数据集声明的有效域。</p>
-<pre>对 tabulated n：在显式波长域内使用分段线性插值，并取显示采样点的 min/max。
+<pre>对 tabulated n：单点只呈现一个来源点；多点在显式波长域内分段线性插值，并取显示采样点的 min/max。
 对解析 n：取 x_j = x_min + j(x_max-x_min)/128，j=0..128，调用核心既有求值函数，将 min/max 标为“域内129点采样估计”。
 仅在来源明确提供 k 表或 k_data 时显示 k 范围；否则标为未知，不创造 k=0。</pre>
 <p><strong>工艺条件展示。</strong>展开时固定列出工艺类型、基片温度、真空/压力、工作气体流量；仅解析备注中明确存在的条目，缺失值显示“未提供”。来源明确标注为块材时，工艺条件显示“不适用（块材）”。程序不推断温度、真空或气体流量。折叠卡仅显示名称、备注和单行波段/n/k 摘要；来源仅在“材料参考详情”中呈现。</p>
 <figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 190" role="img" aria-label="材料光学数据集的折叠、展开与来源分层"><rect width="900" height="190" fill="#f3f6fa"/><g fill="#d9f1e6" stroke="#226b62" stroke-width="2"><rect x="20" y="45" width="180" height="90" rx="8"/><rect x="250" y="45" width="190" height="90" rx="8"/><rect x="490" y="45" width="190" height="90" rx="8"/><rect x="730" y="45" width="150" height="90" rx="8"/></g><g stroke="#24334c" stroke-width="2" fill="none"><path d="M200 90H245M440 90H485M680 90H725"/><path d="M235 82L245 90L235 98M475 82L485 90L475 98M715 82L725 90L715 98"/></g><g font-family="sans-serif" font-size="17" fill="#24334c" text-anchor="middle"><text x="110" y="80">用户数据集</text><text x="110" y="108">n / k / 单位 / 范围</text><text x="345" y="80">折叠卡片</text><text x="345" y="108">名称 / 备注 / 摘要</text><text x="585" y="80">展开详情</text><text x="585" y="108">数据 / 条件</text><text x="805" y="80">参考详情</text><text x="805" y="108">来源 / 依据</text></g></svg><figcaption>模型字段、条件、参考来源分层显示；修改后先整体验证，不会半写草稿。</figcaption></figure>
-<p><strong>实现位置与默认参数。</strong><code>coat_sim/ui/source_materials.py</code>（核心目录、全数据组校验、摘要与条件解析）、<code>coat_sim/ui/qml/MaterialLibraryDialog.qml</code>、<code>coat_sim/ui/qml/MaterialEditor.qml</code>。RII 模型列表直接来自 <code>optical_model_catalog()</code>；线性/解析模型摘要使用显式有效域，解析摘要采样数默认 129 点；导入支持 UTF-8 TXT/CSV/TSV/空白分列文本，错误报告行号。用户自定义材料的已有数据集保稳定 ID 完整编辑；内置材料也可编辑并保存为同 ID 的用户覆盖，打包原始记录保持不变。</p>
+<p><strong>实现位置与默认参数。</strong><code>coat_sim/ui/source_materials.py</code>（核心目录、全数据组校验、摘要与条件解析）、<code>coat_sim/ui/qml/MaterialLibraryDialog.qml</code>、<code>coat_sim/ui/qml/MaterialEditor.qml</code>。新建编辑器波长单位默认 nm；名称空白时在字段旁显示错误并聚焦。RII 模型列表直接来自 <code>optical_model_catalog()</code>；单点只绘一个点，线性/解析模型摘要使用显式有效域，解析摘要采样数默认 129 点；导入支持 UTF-8 TXT/CSV/TSV/空白分列文本，错误报告行号。用户自定义材料的已有数据集保稳定 ID 完整编辑；内置材料也可编辑并保存为同 ID 的用户覆盖，打包原始记录保持不变。</p>
 <p><strong>仅光学材料。</strong><code>optical_only=true</code> 的材料在库中可见、可编辑光学数据，但 <code>resistance_model</code> 和 <code>electron_beam_model</code> 保留 null；这些条目不加入蒸发源候选，也不会被界面转成虚构默认模型。</p>
 <p><strong>适用条件与近似。</strong>数值范围与 129 点解析模型值是快速显示估计，不是全域极值证明；列表显示不拓展数据集的有效域。条件只来自用户备注中可确认的字段；空缺值和块材适用性不作物理推断。</p>
 <p class="source"><strong>参考来源：</strong><span class="tag local">本项目约定</span>摘要统计、条件缺省呈现、交互布局、稳定 ID 及 optical_only 路由未找到外部依据，仅为本项目实现；光学公式及外部来源沿用本节上述 Sellmeier/光学数据参考，本次不为显示算法编造外部引用。</p>
