@@ -2283,6 +2283,7 @@ class FilmOptimizationQuickController(QObject):
         return {
             "wavelength_nm": [row.wavelength_nm for row in rows],
             "baseline": list(original.get("actual", [])),
+            "baseline_label": "N=0 空栈基线" if self._synthesis_payload is not None else "原设计",
             "candidate": [row.actual for row in rows],
             "metric": objective["metric"],
             "mode": objective["mode"],
@@ -2312,6 +2313,25 @@ class FilmOptimizationQuickController(QObject):
             "violation": f"{row.normalized_violation * 100:.4g}%",
             "normalized_violation": row.normalized_violation,
         } for row in rows]
+
+    @Property(str, notify=changed)
+    def conditionErrorsEmptySummary(self) -> str:
+        if self._result is None:
+            return "完成一次计算后显示实际值与目标差异。"
+        if self._synthesis_payload is not None:
+            raw = self._synthesis_payload.get("result")
+            audit = self._synthesis_payload.get("best_candidate_audit")
+            if (not isinstance(raw, dict) or not isinstance(audit, dict)
+                    or raw.get("validation_complete") is not True
+                    or audit.get("available") is not True):
+                return "没有完整独立审计；目标状态未验证。"
+            if audit.get("targets_met") is True:
+                return "独立离散审计已完成；所有条件均达标。"
+            if audit.get("targets_met") is False:
+                return "独立离散审计已完成；仍有条件未达标。"
+            return "独立审计状态未知；不能确认已达标。"
+        return ("所有条件已达标。" if self._result.targets_met
+                else "当前候选未满足所有目标。")
 
     @Property(str, notify=changed)
     def sourceName(self) -> str:
@@ -2369,6 +2389,10 @@ class FilmOptimizationQuickController(QObject):
             return "正在加载膜系优化组件与材料，请稍候…"
         if self._structure_material_error:
             return "材料读取失败：" + self._structure_material_error
+        if (self._inspection_objectives is not None
+                and (self._result_terminal_state == "队列历史结果"
+                     or self._result_terminal_state.startswith("历史合成结果 / "))):
+            return "只读历史候选；不会应用到当前设计。"
         if self._result_terminal_state in {"已取消", "失败"}:
             if self._result is not None:
                 if self._result_terminal_state == "已取消" and self._candidate_applied:
@@ -2381,6 +2405,12 @@ class FilmOptimizationQuickController(QObject):
             if self._result_terminal_state == "失败" and self._error:
                 return f"优化失败；没有可用的验证候选，原设计未改变。{self._error}"
             return "优化已取消；队列没有可用的验证候选，原设计未改变。"
+        if self._result is None and self._result_terminal_state == "cancelled":
+            return "优化已取消；没有返回可用候选，原设计未改变。"
+        if self._result is None and self._result_terminal_state == "not_found":
+            return "未找到可行候选；原设计未改变。"
+        if self._result is None and self._result_terminal_state == "failed":
+            return "优化失败；没有返回可用候选，原设计未改变。" + (" " + self._error if self._error else "")
         if self._error:
             return self._error
         if self._source_stale:
@@ -4163,6 +4193,8 @@ class FilmOptimizationQuickController(QObject):
             try:
                 self._project_operation = self._project_compute.capture(job_id)
             except Exception as exc:
+                self._project_operation = None
+                self._prepared_angle_job_id = None
                 self._error = f"项目已关闭或正在退出；未准备角度网格：{exc}"
                 self.changed.emit()
                 return False
@@ -4183,6 +4215,8 @@ class FilmOptimizationQuickController(QObject):
             )
         except Exception:
             self._pending_angle_preparation = None
+            self._project_operation = None
+            self._prepared_angle_job_id = None
             raise
         self._error = ""
         self._progress = 0.0
@@ -4283,6 +4317,7 @@ class FilmOptimizationQuickController(QObject):
             self._error = str(exc)
             self.changed.emit()
             return False
+        attempt_project_operation: OperationBinding | None = None
         try:
             spec = (prepared_start.spec if prepared_start is not None else
                     synthesis_spec(self.service, request) if self._search_mode == "synthesis" else
@@ -4295,8 +4330,11 @@ class FilmOptimizationQuickController(QObject):
                     raise ValueError("项目已关闭或正在退出；未提交优化任务。")
                 if prepared_angle_job_id is None:
                     self._project_operation = self._project_compute.capture(job_id)
-                elif not self._project_current():
-                    raise ValueError("项目已关闭或正在退出；未提交优化任务。")
+                    attempt_project_operation = self._project_operation
+                else:
+                    attempt_project_operation = self._project_operation
+                    if not self._project_current():
+                        raise ValueError("项目已关闭或正在退出；未提交优化任务。")
             base_request = (synthesis_base_request(request) if self._search_mode == "synthesis" else
                             cast(FilmOptimizationRequest, getattr(request, "base_request", request)))
             metadata = {
@@ -4471,6 +4509,9 @@ class FilmOptimizationQuickController(QObject):
                 self._clear_cancel_attempt()
             if self._project_compute is not None and "job_id" in locals():
                 self._project_compute.update_job(job_id, "failed")
+            if self._project_operation is attempt_project_operation:
+                self._project_operation = None
+            self._prepared_angle_job_id = None
             self._queue_job_id = locals().get("previous_job_id", self._queue_job_id)
             self._frozen_request = locals().get("previous_frozen_request", self._frozen_request)
             detail = str(exc)
@@ -5079,7 +5120,9 @@ class FilmOptimizationQuickController(QObject):
             self.requestClose()
             return
         self._prepared_angle_job_id = str(pending["job_id"])
-        self._start_optimization(prepared_start=result)
+        if not self._start_optimization(prepared_start=result):
+            self._project_operation = None
+            self._prepared_angle_job_id = None
 
     @Slot(int, object, object, object)
     def _on_finished(self, operation_id: int, result, baseline_rows, error) -> None:

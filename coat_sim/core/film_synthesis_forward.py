@@ -214,8 +214,7 @@ class SynthesisForward:
         self.verify_cpu_points += int(verification.get("cpu_completed", 0)) * size
         self.verify_gpu_points += int(verification.get("gpu_completed_wavelength_points",
             int(verification.get("gpu_completed", 0)) * size))
-        if verification and not verification.get("complete"):
-            self.unknown += 1
+        # _spectra owns unknown candidate accounting once for the whole failed batch.
         self.upload_seconds += float(metadata.get("thickness_upload_seconds", 0.))
         self.compute_seconds += float(metadata.get("forward_seconds", 0.))
         self.download_seconds += float(metadata.get("download_seconds", 0.))

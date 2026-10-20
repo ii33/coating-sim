@@ -237,6 +237,7 @@ class CoherentBatchEvaluator:
         self.last_metadata = {"backend": "cpu", "requested_backend": self.options.backend, "cpu_workers": workers,
                               "cpu_parallel_axis": axis,
                               "selection_reason": reason, "fallback_reason": error,
+                              "verification": dict(verification),
                               "kernel_version": KERNEL_VERSION, "dtype": "float64/complex128",
                               "jacobian_backend": "cpu_if_supported", "total_seconds": time.perf_counter() - start}
         return values

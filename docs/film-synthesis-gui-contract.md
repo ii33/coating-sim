@@ -51,3 +51,10 @@
 ## Unknown checkpoint work and rejected assumption edits
 
 Recovered historical synthesis envelopes may contain null for unsaved cumulative counters, together with explicit work_counters metadata. They retain a valid independently audited candidate; the GUI must preserve the raw envelope, display unknown work explicitly and keep inspection/save available under existing frozen-material rules. Any integer placeholder needed only by legacy plot/result presentation is not a new statistical authority and must not replace null in exported payloads. The unknown-k control follows the same controller busy/shutdown/pending-edit guard, and restores its property binding if a setter rejection races a toggle.
+
+
+## 质量未知状态与无效作业引用收口（2026-10-20）
+
+Controller的只读conditionErrorsEmptySummary基于已绑定typed synthesis payload的候选审计事实提供两处空条件列表文案：无完整独审为未知，不以空列表推断全部通过。任务targets_met仍是任务训练/独审综合真值，候选事实与任务取消状态分开；Apply资格及来源保护不放宽。角度准备启动失败或准备后的提交提前拒绝时，清理该未提交attempt的project operation与prepared job ID，不将它们带入下一次操作。
+
+无候选cancelled/not_found显示明确终态；历史结果保持只读保护并显示历史身份，不把人为只读标记说成原设计已修改。裸片基线图例绑定结果自身的合成身份，避免之后修改算法草稿改变旧结果含义。Controller继续是状态唯一所有者，QML只读呈现。新回归为tests/test_film_synthesis_deepseek_closeout_gui.py。

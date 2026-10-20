@@ -1692,8 +1692,9 @@ AppWindow {
                             }
                         }
                         Label {
+                            objectName: "filmOptimizationPlotBaselineTitle"
                             Layout.fillWidth: true
-                            text: "R/T (%) · 原设计与候选；目标线按未加权界限显示"
+                            text: "R/T (%) · " + (controller.plotData.baseline_label || "原设计") + "与候选；目标线按未加权界限显示"
                             color: window.themeTokens.colorTextMuted
                             font.pointSize: window.themeTokens.fontSizeSmall
                         }
@@ -1778,7 +1779,7 @@ AppWindow {
                                 if (!discreteLine) ctx.fillText(maxWave.toFixed(0) + " nm", left + plotWidth - 52, height - 8)
                                 ctx.fillStyle = window.themeTokens.colorTextMuted
                                 ctx.fillRect(left + 8, 4, 14, 3)
-                                ctx.fillText("原设计", left + 26, 10)
+                                ctx.fillText(rows.baseline_label || "原设计", left + 26, 10)
                                 ctx.fillStyle = window.themeTokens.colorAccent
                                 ctx.fillRect(left + 90, 4, 14, 3)
                                 ctx.fillText("候选", left + 108, 10)
@@ -1808,9 +1809,8 @@ AppWindow {
                         Label {
                             Layout.fillWidth: true
                             visible: window.controller.conditionErrors.length === 0
-                            text: window.controller.hasCandidate
-                                  ? "所有条件已达标。"
-                                  : "完成一次计算后显示实际值与目标的差异。"
+                            objectName: "filmOptimizationConditionEmptySummary"
+                            text: window.controller.conditionErrorsEmptySummary
                             color: window.themeTokens.colorTextMuted
                         }
                         ScrollView {
@@ -2037,7 +2037,8 @@ AppWindow {
             Label {
                 Layout.fillWidth: true
                 visible: window.controller.conditionErrors.length === 0
-                text: window.controller.hasCandidate ? "没有条件误差。" : "完成评估后显示条件误差。"
+                objectName: "filmOptimizationConditionFooterEmptySummary"
+                text: window.controller.conditionErrorsEmptySummary
                 color: window.themeTokens.colorTextMuted
                 wrapMode: Text.WordWrap
             }

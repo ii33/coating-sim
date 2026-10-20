@@ -26,6 +26,7 @@ _TEST_CACHE_TEMP = tempfile.TemporaryDirectory(prefix="deposition-sim-pytest-")
 _TEST_CACHE_ROOT = Path(_TEST_CACHE_TEMP.name)
 
 QT_MODULES = frozenset({
+    "test_film_synthesis_deepseek_closeout_gui.py",
     "test_film_synthesis_gpu_forward_gui.py",
     "test_film_optimization_cancel_spectrum.py",
     "test_film_optimization_cancel_native.py",
@@ -145,6 +146,7 @@ QT_MODULES = frozenset({
 })
 
 ALGORITHM_MODULES = frozenset({
+    "test_film_synthesis_deepseek_closeout.py",
     "test_film_synthesis_gpu_forward.py",
     "test_film_synthesis_cancel_jobs.py",
     "test_film_synthesis_cancel.py",
@@ -195,6 +197,8 @@ ALGORITHM_MODULES = frozenset({
 })
 
 CONTRACT_MODULES = frozenset({
+    "test_film_synthesis_deepseek_closeout.py",
+    "test_film_synthesis_deepseek_closeout_gui.py",
     "test_film_synthesis_gpu_forward_gui.py",
     "test_film_synthesis_gpu_forward.py",
     "test_film_optimization_cancel_spectrum.py",

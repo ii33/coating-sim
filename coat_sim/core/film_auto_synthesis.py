@@ -403,6 +403,14 @@ def _check_cancel(event):
         raise _StructureCancelled()
 
 
+class _ObserverFailure(Exception):
+    """Keep caller callback failures distinct from physical runtime failures."""
+
+    def __init__(self, error: Exception):
+        super().__init__(str(error))
+        self.error = error
+
+
 class _Stopped(Exception):
     pass
 
@@ -414,7 +422,10 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
 
     Invalid requests raise ValueError. Numerical failures, cancellation and
     exhausted user limits are explicit result states. Callbacks run on the
-    caller's thread. Cancellation is cooperative between physical helper calls.
+    caller's thread. Observer exceptions propagate unchanged after owned-resource
+    cleanup, including snapshot/checkpoint write failures; they are not physical
+    failures and the search does not continue. Cancellation is cooperative
+    between physical helper calls.
     snapshot_callback receives copied (design, training, validation, audit)
     only when a new best independently audited candidate is retained.
     Cancellation returns the best complete feasible training score committed
@@ -457,12 +468,18 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             result["actual_work_complete"] = result["actual_work_complete"] and work["actual_work_complete"]
         return result
 
+    def observe(callback, *args):
+        try:
+            callback(*args)
+        except Exception as exc:
+            raise _ObserverFailure(exc) from exc
+
     def emit(stage, message, design=None, score=None, **kwargs):
         layers = len(design["front_layers"]) if design is not None else 0
         error = score["max_error"] if score is not None else None
         trace.append(FilmSynthesisTrace(stage, cycle, evaluations, layers, error, message=message, **kwargs))
         if progress_callback:
-            progress_callback(FilmSynthesisProgress(stage, cycle, evaluations, layers,
+            observe(progress_callback, FilmSynthesisProgress(stage, cycle, evaluations, layers,
                 (audited_best[1]["score"]["max_error"] if audited_best is not None else
                  None if best is None else best["score"]["max_error"]), message))
 
@@ -541,7 +558,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             return value
         except _StructureCancelled:
             raise
-        except (ValueError, ArithmeticError):
+        except (ValueError, ArithmeticError, RuntimeError):
             failures += 1
             raise
 
@@ -572,7 +589,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     "audit_physical_evaluations": audit_physical_evaluations,
                     "audit_wavelength_points": audit_wavelength_points}
                 checkpoint_audit["synthesis_performance"] = performance()
-                snapshot_callback(annotate_synthesis_design(request, value["design"]), deepcopy(value["score"]),
+                observe(snapshot_callback, annotate_synthesis_design(request, value["design"]), deepcopy(value["score"]),
                                   deepcopy(audited["score"]), checkpoint_audit)
         emit("validation_complete", "Independent physical candidate audit completed", value["design"], audited["score"])
         _check_cancel(cancel_event)
@@ -912,7 +929,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             reason = str(exc)
         except _StructureCancelled:
             state, reason = "cancelled", "cancelled"
-        except (ValueError, ArithmeticError) as exc:
+        except (ValueError, ArithmeticError, RuntimeError) as exc:
             state, reason = "failed", f"numerical_failure: {exc}"
 
         if best is not None and state != "cancelled":
@@ -927,7 +944,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                             reason = "validation_targets_not_met"
             except _StructureCancelled:
                 state, reason = "cancelled", "cancelled_during_validation"
-            except (ValueError, ArithmeticError, _Stopped) as exc:
+            except (ValueError, ArithmeticError, RuntimeError, _Stopped) as exc:
                 state, reason = "failed", f"validation_failed: {exc}"
         if state == "cancelled":
             # Freeze only values already committed above. Pool shutdown may
@@ -953,6 +970,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             None if validation is None else deepcopy(validation["score"]), validation is not None,
             cycle, evaluations, validation_evaluations, failures, tuple(trace), message, request,
             audit_physical_evaluations, audit_wavelength_points, performance(), candidate_provenance)
+    except _ObserverFailure as exc:
+        raise exc.error.with_traceback(exc.error.__traceback__) from None
     finally:
         execution.close()
         if forward is not None:

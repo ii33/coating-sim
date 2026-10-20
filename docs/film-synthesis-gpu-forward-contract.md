@@ -67,3 +67,10 @@ CPU候选评价复用现有 `OrderedEvaluationExecutor` 8个真实headless进程
 60层执行前最终窄审ACK：child `run_case.py` SHA256 `42d221d208e87655f7e6f285c847cbab747071b4801c1e7d7a0710534d77be80`；parent `monitor_sixty_layer.py` SHA256 `fc61aac55f5643078d6bb168eba4a100a4221c3a4956674a2ee6b324b3cb55fd`。正式两端完整流程优先，微基准和CPU/CUDA独立取消随后顺序执行；每例独立新目录及子进程。基线1+64枚举+local训练≤6=训练≤71，另密网holdout≤1，总≤72候选完整网格评价等价；数值门额外工作单列。实际pipeline GPU仍用生产LRU4，micro显式保留12上下文作为resident诊断，不能代替生产缓存性能。监控以实际execution/metadata识别后端，CPU8门须8个真实worker，数值事件与心跳分开；预检、整卡基线查询和spawn至退出墙时独立。只读ACK不是数值通过，正式后另查完整64×24024输出有限/2e-12容差及实际资源/取消。此段冻结后不在正式运行中改动合同或harness。
 
 60层首个CPU r1因artifact错误读取compact worker已裁去的responses字段退出，日志、实际60层baseline、部分批量及资源数据保留，不计有效配对；27个观察到的自有PID均已退出。已用同一共享评分的完整score.errors.actual无额外TMM提取24024点并检查顺序，child新SHA256 `0f9cb8a938d74e13bf295ff6e77e3556c017a9b97f4f2fa128e2448367fea919`，只读差异终审ACK；monitor SHA不变。旧child/runner manifest另存before-score-projection，生产、输入、候选矩阵、精度/选择和预算未变。新CPU r2/CUDA共用修正child重新完整运行，合同此后再次冻结。
+
+
+## 外部意见核实后的错误与计量收口（2026-10-20）
+
+实际物理训练/独审的RuntimeError沿用既有failed终态，分别给numerical_failure或validation_failed原因。调用者progress/snapshot观察者错误（包括检查点写入失败）不是物理失败：在资源清理后原样传播同一个异常，停止本次搜索，不吞错继续；CLI/worker沿现有上层错误出口报告失败。本项目约定，未找到外部依据，仅为本项目实现。
+
+通用evaluator发生CPU回退时保留本次已发生验证的metadata与CPU/GPU完成计数。显式GPU合成仍要求实际GPU后端；本次统计修复不允许静默回退通过。失败批次的unknown_candidates只由批次拥有者按N个候选登记一次；verification的工作量另外累计，不再额外把一个验证事件计为候选。正常评分、逻辑预算、物理精度及取消选择不变。新回归为tests/test_film_synthesis_deepseek_closeout.py；真实CUDA控制和独立核实、原始红绿证据保存在本地delivery-closeout-20261020。
