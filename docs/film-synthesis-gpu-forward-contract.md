@@ -74,3 +74,10 @@ CPU候选评价复用现有 `OrderedEvaluationExecutor` 8个真实headless进程
 实际物理训练/独审的RuntimeError沿用既有failed终态，分别给numerical_failure或validation_failed原因。调用者progress/snapshot观察者错误（包括检查点写入失败）不是物理失败：在资源清理后原样传播同一个异常，停止本次搜索，不吞错继续；CLI/worker沿现有上层错误出口报告失败。本项目约定，未找到外部依据，仅为本项目实现。
 
 通用evaluator发生CPU回退时保留本次已发生验证的metadata与CPU/GPU完成计数。显式GPU合成仍要求实际GPU后端；本次统计修复不允许静默回退通过。失败批次的unknown_candidates只由批次拥有者按N个候选登记一次；verification的工作量另外累计，不再额外把一个验证事件计为候选。正常评分、逻辑预算、物理精度及取消选择不变。新回归为tests/test_film_synthesis_deepseek_closeout.py；真实CUDA控制和独立核实、原始红绿证据保存在本地delivery-closeout-20261020。
+
+
+## 显式真实GPU回归入口（2026-10-20）
+
+仅在已支持的GPU运行时解释器中设置 `COAT_SIM_TEST_SYNTHESIS_GPU=cuda`，然后以该解释器运行 `python -m pytest tests/test_film_synthesis_gpu_forward.py::test_real_gpu_complete_synthesis_and_cpu_audit tests/test_film_synthesis_gpu_forward.py::test_real_gpu_cancel_entry_never_reuses_previous_work -vv -s`。后一个节点含after_gate和cached_entry两个参数例，合计3项。该变量仅选择显式测试，不改变产品默认后端。测试依赖遵循requirements-test.txt；本轮在既有隔离CUDA13环境补齐pytest9.1.1，未改默认环境。
+
+本轮三项原断言全部通过，3 passed、0 skipped、3.78秒；原联合回归127/3记录保留，不能将两轮写成同一轮130项运行。结果、已发生工作量、取消边界、心跳、原始JUnit及执行前后哈希见delivery-closeout-20261020/gpu-skips-r2。没有改变算法、预算、终止条件或精度，也没有重跑60层矩阵。

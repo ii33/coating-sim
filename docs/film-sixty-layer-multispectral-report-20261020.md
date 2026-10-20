@@ -127,3 +127,9 @@ CPU为Core Ultra7 265K，真实8个headless worker PID，未回退串行；GPU�
 新增核心7项与GUI6项红绿验证通过；同一次联合回归127 passed、3 skipped，63.71秒，生产源码前后稳定。三项skip均要求显式受支持GPU runtime；另在独立CUDA13环境对修后源码实际跑通单层已知AR控制与缓存门复用：1层112.268279878nm，520–580nm有限审计最大R约0.000341136，目标R≤0.001，state=completed、validation_complete=true。该控制使用明确k=0的教学材料，不替代真实材料双窗结论；计时未用于速度比较。60层大矩阵没有重跑，之前性能/内存数字保留原冻结来源。
 
 可选CUDA GUI窗口、探测/选择与typed请求冻结的R2实测保留；当前界面更改另由真实Qt定向回归覆盖。原XPU环境和CPU默认保留，启动/选择步骤见[GUI指南](film-synthesis-gui-guide.md#cuda-13-gui-启动可选)。软件推送、研究资料同步和安装包发布分开处理。
+
+### 显式 CUDA 三项回归补齐（2026-10-20）
+
+原环境联合回归的127 passed、3 skipped是保留的历史结果。随后在隔离CUDA13解释器中设置既有测试开关 `COAT_SIM_TEST_SYNTHESIS_GPU=cuda`，原样执行此前跳过的三项：`test_real_gpu_complete_synthesis_and_cpu_audit`、`test_real_gpu_cancel_entry_never_reuses_previous_work[after_gate]`、`[cached_entry]`。结果 **3 passed、0 skipped，3.78秒**（pytest时间；外部测试驱动5.80秒，不用于性能比较）。Torch 2.10.0+cu130、CUDA runtime13.0、RTX4070 Ti SUPER，实际完整合成使用CUDA并通过CPU独审；两个取消边界保留已发生数值门工作，未重复累计前次调用。测试源码和生产源码前后哈希一致，未修改或放宽断言。
+
+首个启动仅因隔离环境缺pytest退出，没有执行测试；按requirements-test.txt约束补齐与原环境相同的pytest9.1.1后重跑。隔离环境106个包离线兼容检查通过，原XPU环境、默认CPU及项目依赖文件不变。原始JUnit、完整实际工作日志、心跳和源码哈希位于本地 `delivery-closeout-20261020/gpu-skips-r2`；失败启动位于r1，未覆盖。未重跑60层矩阵，也没有新增软件缺陷、外部模型调用或性能结论。
