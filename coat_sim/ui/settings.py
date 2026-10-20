@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Literal, Mapping, cast
 from urllib.parse import urlsplit
 
-from PySide6.QtCore import QObject, Property, QTimer, QUrl, Signal, Slot, QLockFile, QProcess, QProcessEnvironment
+from PySide6.QtCore import QObject, Property, QTimer, QUrl, Signal, Slot, QLockFile, QProcess, QProcessEnvironment, qVersion
 from PySide6.QtGui import QFont, QGuiApplication
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply
 
@@ -817,12 +817,24 @@ def save_ui_settings(values: Mapping[str, object]) -> dict[str, object]:
     return result
 
 
+def _configure_qt_quick_render_backend() -> None:
+    """Use the verified software presentation path on Windows Qt 6.12.
+
+    Explicit graphics backend choices always win, including empty values.
+    This affects Qt Quick presentation only, never simulation compute backends.
+    """
+    if (sys.platform == "win32" and qVersion().startswith("6.12.")
+            and "QT_QUICK_BACKEND" not in os.environ
+            and "QSG_RHI_BACKEND" not in os.environ):
+        os.environ["QT_QUICK_BACKEND"] = "software"
+
 def configure_qt_dpi_scale(settings: Mapping[str, object] | None = None) -> dict[str, object]:
     """Call before constructing QGuiApplication in every standalone entry point.
 
     Qt applies QT_SCALE_FACTOR while creating its application/screens, so a DPI
     change made in the settings page takes effect after the process restarts.
     """
+    _configure_qt_quick_render_backend()
     resolved = normalized_ui_settings(settings) if settings is not None else load_ui_settings()
     # Fusion consumes the active Qt palette for controls, including fields,
     # buttons and scroll bars. Apply it before any QML Controls are loaded.

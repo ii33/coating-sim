@@ -2050,6 +2050,7 @@ def main(argv: list[str] | None = None) -> int:
         _fatal(f"缺少启动器背景图：{BACKGROUND}")
         return 2
     configure_qt_dpi_scale()
+    software_mode = software_mode or os.environ.get("QT_QUICK_BACKEND", "").strip().lower() == "software"
     # The desktop tray and its native context menu need QApplication. The UI
     # remains Qt Quick; no separate platform-specific presentation layer.
     app = cast(QGuiApplication, QGuiApplication.instance() or QApplication(qt_args))

@@ -54,7 +54,7 @@ def main(argv: list[str] | None = None) -> int:
     env["QT_QUICK_BACKEND"] = "software"
     env["QSG_RHI_BACKEND"] = "software"
     env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
-    command = [sys.executable, "-m", "pytest", "-p", "tools.pytest_qt_lifecycle"]
+    command = [sys.executable, "-m", "pytest"]
     if args.tier != "all":
         command.extend(["-m", args.tier])
     if args.collect_only:
@@ -71,6 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     ):
         if enabled:
             command.append(option)
+    command.extend(["-p", "tools.pytest_qt_lifecycle"])
     command.extend(["-q", "tests"])
     command.extend(pytest_args)
     with tempfile.TemporaryDirectory(prefix="deposition-sim-pytest-") as cache_directory:
