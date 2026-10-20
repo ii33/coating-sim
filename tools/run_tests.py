@@ -54,7 +54,7 @@ def main(argv: list[str] | None = None) -> int:
     env["QT_QUICK_BACKEND"] = "software"
     env["QSG_RHI_BACKEND"] = "software"
     env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
-    command = [sys.executable, "-m", "pytest"]
+    command = [sys.executable, "-m", "pytest", "-p", "tools.pytest_qt_lifecycle"]
     if args.tier != "all":
         command.extend(["-m", args.tier])
     if args.collect_only:

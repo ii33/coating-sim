@@ -66,6 +66,27 @@ errors. This is an observed version-specific binding defect, not evidence
 about every supported Qt version. GC remains enabled, and teardown is not
 skipped or replaced by retaining deleted objects.
 
+The runner loads `tools.pytest_qt_lifecycle` for every tier. After a Qt-marked
+case has completed its entire pytest protocol (including fixture teardown and
+release of pytest's case arguments), the plugin calls Python `gc.collect()`.
+It does not delete Qt objects, invalidate wrappers, drain Qt events, change
+selection, suppress exceptions or retry tests. Existing window/engine ownership,
+destruction spies and business assertions remain the fixture's responsibility.
+
+An isolated PySide6/Shiboken 6.12.0 reproduction showed a borrowed dynamic QML
+`QMetaObject` wrapper surviving destruction of its C++ owner while an invalid
+QObject wrapper remained in a Python reference cycle. A later `childItems()`
+returned that exact old Python metadata object when the C++ address was reused.
+Collecting the now unreachable cycle at the completed-case boundary released
+the metadata wrapper before the next scene. This is a test isolation measure,
+not a repair of PySide's native pointer cache: reachable objects and multiple
+engines inside one case still require correct explicit ownership. Python GC
+stays enabled; stderr and pytest's unraisable-exception warnings remain visible.
+The local raw reproduction and controls are retained under
+`artifacts/film_synthesis_20261020/gpu-forward-20261020/delivery-closeout-20261020/publication/ci-followup/closure-r4/`.
+See the [pytest protocol implementation](https://github.com/pytest-dev/pytest/blob/9.1.0/src/_pytest/runner.py)
+and [Python cyclic garbage collection](https://docs.python.org/3/library/gc.html).
+
 Provider, remote-service, and actual-GPU checks must carry the corresponding
 `live_provider`, `live_remote`, or `real_gpu` marker. Such checks are skipped
 unless explicitly enabled:
