@@ -16,6 +16,8 @@
 
 第一次使用可先看[软件说明书的操作流程](docs/software_manual.html#workflow)、[助手设置](docs/software_manual.html#settings)和[按目标选择算法](docs/software_manual.html#algorithm_selection)。公式、单位、采样、近似与参考来源见[算法图解](docs/algorithms.html)。两份 HTML 都可下载后离线打开；GitHub 文件预览不等同于渲染页面。
 
+从裸片起步的自动合成已接入现有优化页，物理结构与组合段已接入参数生成器；操作见[GUI指南](docs/film-synthesis-gui-guide.md)，接口见[执行契约](docs/film-synthesis-execution-contract.md)、[结构参数](docs/film-physical-structures-contract.md)及[算法图解14t/14u](docs/algorithms.html#film-synthesis-audit-20261020)。默认不设搜索总量预算，支持进度、取消和已审计候选；当前能力范围与未支持项以契约为准。本轮同源GUI验收见[阶段报告](docs/film-synthesis-gui-stage-report-20261020.md)。角度输入、两膜料结构与动态候选行的后续修复见[交互修复验收](docs/film-synthesis-gui-repair-report-20261020.md)。仅n材料的显式无损近似见[未知k策略](docs/film-synthesis-unknown-k-contract.md)及[算法14v](docs/algorithms.html#film-synthesis-unknown-k-20261020)。
+
 ## 快速开始
 
 ### 使用独立安装器
@@ -116,3 +118,17 @@ python tools/run_tests.py all
 [可迁移看板娘工具集：能力、开关与后端迁移](docs/assistant-toolkit-capability-map.md) · [接口契约](docs/assistant-toolkit-contract.md) · [宿主 provider 边界](docs/assistant-toolkit-provider-contract.md)
 
 助手具备独立持久工作区与[精简长期记忆](docs/assistant-memory-contract.md)。[工程 BBS](docs/project-bbs-contract.md)用于长期保存日志、进度和研究/工作报告，支持修订历史与回复，区别于即时对话。讨论模式只开放 BBS 追加评论/回复，其他修改仍受操作模式约束。
+
+当前各路线的GUI、CLI/MCP与研究边界见[算法落地只读清单](docs/film-synthesis-algorithm-rollout-20261020.md)。
+
+[未知 k 显式无损假设阶段与验证](docs/film-synthesis-unknown-k-report-20261020.md)（默认严格、已知吸收保留、真实ZnS原生执行和保存证据）。
+
+[从零合成CPU候选并行契约](docs/film-synthesis-parallel-contract.md)；离线算法图解见14w。
+
+[取消时应用当前最好候选验收报告](docs/film-optimization-cancel-apply-report-20261020.md)；[取消时应用当前最好候选契约](docs/film-optimization-cancel-apply-contract.md)；离线算法图解见 [14x](docs/algorithms.html#film-cancel-best-20261020)。
+
+[膜系优化输入草稿契约](docs/film-optimization-input-draft-contract.md)。
+
+[CPU多核与GPU评估阶段报告](docs/film-synthesis-performance-report-20261020.md)
+
+[从零合成GPU整轮验收报告](docs/film-synthesis-gpu-forward-report-20261020.md)；[实际60层多光谱对照](docs/film-sixty-layer-multispectral-report-20261020.md)；[从零合成GPU前向实施契约](docs/film-synthesis-gpu-forward-contract.md)；离线算法[14y](docs/algorithms.html#film-synthesis-gpu-forward-20261020)。

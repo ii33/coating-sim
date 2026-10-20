@@ -1,8 +1,10 @@
 # 膜系参数化生成器契约
 
-日期：2026-10-15
+日期：2026-10-20（保留经典模板原契约，追加物理结构分支）
 
 入射端口适用边界：参数模板要求已知k精确为0，微小非零k也明确拒绝，与实际光谱求解器一致；不能按透明阈值将它清零。膜层/基片保留现有1e-9透明近似阈值，未知入射k仍须显式无损假设。独立测试数据的生成→真实服务观察及修补后验证见`artifacts/film_design_reference_library_validation/incident-k-boundary-*.json`。
+
+本文原有透明阈值与未知k选项仅适用于经典模板。新增物理结构分支严格采用其独立真实n/k契约，不继承该无损假设选项；见文末。
 
 ## 范围与唯一状态所有者
 
@@ -70,3 +72,16 @@ revision 和材料 provider；应用只接受该候选，拒绝未知、已被�
 
 数据结构、Python 签名和契约测试为实现真值。核心生成器与目录位于 `coat_sim/core/film_design_templates.py`；session 的原子替换和一次性撤销位于 `coat_sim/core/film_design_session.py`；Quick 参数适配位于 `coat_sim/ui/film_quick_controller.py`；侧栏与各功能区位于 `coat_sim/ui/qml/FilmDesignQuick.qml` 和 `FilmDesignGeneratorPanel.qml`。算法来源、公式推导和有说明的图解见 [离线算法文档](algorithms.html)，用户操作说明见 [生成器指南](film-design-generator-guide.md)。
 
+## 物理结构分支（2026-10-20）
+
+原侧栏的模式选择在“经典参数模板”和“物理结构与组合段”之间切换；经典模板行为不变。`film_physical_generator.py`只将表单参数转换为既有`FilmStructureSpec`，目录与默认值为本项目交互约定，不新增光学公式。`FilmPhysicalGeneratorForm.qml`、`FilmPhysicalSectionEditor.qml`、`FilmPhysicalFields.qml`呈现可编辑结构段、次序与真实材料/数据集角色，调用`previewPhysicalStructure(inputs)`；会话`preview_physical_structure(inputs)`复用同一预览token、revision、provider守卫和应用/撤销入口。
+
+环境来自当前设计：保留真实介质/基片/参考波长，在单面front的替换预览副本中展开正面层表。双面、back入射、禁用k或无损假设等不支持环境明确报错；未知k和数据域不足拒绝，不从经典模板无损复选框继承许可。输入变化或预览错误使旧预览失效；确认应用前不修改文档。完整逐层nm处方并不代表目标通过。角色、结构公式、支持范围及出处见[结构契约](film-physical-structures-contract.md)和[14u](algorithms.html#film-physical-structures-20261020)。
+
+加载/空材料/失败状态、Theme逻辑尺寸、现有侧栏焦点和滚动约定继续生效；没有新窗口和几何例外。纯核心、会话与真实Qt验收分别见`test_film_physical_structures.py`、`test_film_physical_generator_session.py`、`test_film_physical_generator_frozen_apply.py`和`test_film_synthesis_gui_review.py`。操作见[GUI指南](film-synthesis-gui-guide.md)。
+
+## 两膜料交互修复（2026-10-20）
+
+内部用途ID `role`不是不同材料数量。表单默认只有H/L，显示高/低折射率膜料和真实材料名，腔层默认复用H，可改L；额外C/M1等只在需要独立用料时添加。不同用途允许相同material_id/optical_set_id。旧显式C保持可用，核心真实nH>nL和k/波段检查不变。GUI预览只提交当前结构实际引用用途，未用的附加用料不因缺集/越域阻断当前结构；真正引用的缺项明确失败。`physical_required_material_uses`遍历当前段、独立端镜、腔和耦合镜，材料服务仍由当前会话提供。默认腔C→H及用料过滤为本项目交互约定，不新增物理算法或证明。
+
+字段以nm、rad、无量纲及整数标注，光学厚度0.25/0.5的说明分别为四分之一/半波长。真实两膜料预览、确认替换和撤销，以及同材料不同数据集合法、同实际n被核心拒绝，见`test_film_physical_generator_usability.py`和`test_film_synthesis_gui_usability_review.py`。

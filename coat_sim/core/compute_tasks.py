@@ -54,6 +54,7 @@ def _compact_progress(value):
         return None
     text_keys = {
         "stage", "objective", "score_scope", "estimate_basis", "algorithm", "status",
+        "message", "heartbeat",
         "actual_backend", "dtype",
         "gpu_runtime", "device", "device_uuid", "output_device", "requested_backend", "cpu_parallel_axis",
         "estimate_kind",
@@ -65,6 +66,11 @@ def _compact_progress(value):
         "best_score", "best_search_score", "best_search_cv_percent", "best_verified_score",
         "best_verified_cv_percent", "full_recipe_cv_percent", "original_full_recipe_cv_percent",
         "elapsed_s", "estimated_remaining_s", "fraction", "step_index", "step_count",
+        "cycle", "layer_count", "best_max_normalized_error",
+        "algorithm_progress_age_seconds", "worker_activity_age_seconds",
+        "worker_heartbeat_age_seconds",
+        "heartbeat_sequence",
+        "physical_evaluations", "wavelength_points",
         "completed_wavelengths", "total_wavelengths",
           "cpu_workers", "capacity", "forward_calls", "cached_forward_calls",
           "cache_hits", "prepared_builds", "cache_evictions", "fallback_calls",
@@ -81,6 +87,9 @@ def _compact_progress(value):
             result[key] = number
     if type(value.get("accepted")) is bool:
         result["accepted"] = value["accepted"]
+    for key in ("stalled", "unresponsive"):
+        if type(value.get(key)) is bool:
+            result[key] = value[key]
     return result or None
 
 

@@ -21,6 +21,7 @@ from . import film_design
 from .film_design_reference_recipes import build_reference_recipe_preview
 from .film_design_templates import build_preview as build_film_design_preview
 from .optical_constants import prepare_optical_set
+from .film_physical_generator import (build_physical_structure_preview, physical_material_snapshot, physical_materials_equal)
 
 
 AIR_MATERIAL_ID = "builtin_ideal_air"
@@ -164,6 +165,7 @@ class FilmDesignEditSession:
         self._generated_undo_state: dict[str, Any] | None = None
         self._optimized_undo_state: dict[str, Any] | None = None
         self._generated_preview_source: tuple[dict[str, Any], int, Any] | None = None
+        self._physical_preview_materials: dict[str, Any] | None = None
 
         material_options_many = getattr(service, "material_options_many", None)
         if callable(material_options_many):
@@ -323,6 +325,36 @@ class FilmDesignEditSession:
     def _restore_generated_context(self, context: Any) -> None:
         pass
 
+    def clear_generated_preview(self) -> None:
+        with self._lock:
+            self._generated_preview_source = None
+            self._physical_preview_materials = None
+
+    def preview_physical_structure(self, inputs: Mapping[str, Any]) -> dict[str, Any]:
+        """Keep the candidate in the session; expose only prescription metadata."""
+        with self._lock:
+            preview = self._preview_generated_design(
+                inputs, build_physical_structure_preview, use_service_materials=True)
+            self._physical_preview_materials = preview.pop("_physical_material_snapshot")
+            preview.pop("candidate_design")
+            return preview
+
+    def apply_pending_generated_design(self, base_design_revision: int) -> bool:
+        with self._lock:
+            source = self._generated_preview_source
+            if source is None:
+                return False
+            return self.apply_generated_design(source[0], base_design_revision)
+
+    def _physical_preview_current(self) -> bool:
+        snapshot = self._physical_preview_materials
+        if snapshot is None:
+            return True
+        refs = {(row["id"], optical["id"]) for row in snapshot["materials"]
+                for optical in row["optical_sets"]}
+        current = self.service.material_options_many(("film", "substrate", "medium"))
+        return physical_materials_equal(physical_material_snapshot(current, refs), snapshot)
+
     def preview_generated_design(self, inputs: Mapping[str, Any]) -> dict[str, Any]:
         """Build an immutable candidate from the current design and catalog.
 
@@ -343,7 +375,7 @@ class FilmDesignEditSession:
         with self._lock:
             # A failed or superseding preview cannot leave an older candidate
             # eligible for application through the core API.
-            self._generated_preview_source = None
+            self.clear_generated_preview()
             if self._pending_confirmation is not None:
                 raise ValueError("存在待确认的替换或关闭操作，完成或取消后再生成预览。")
             if self._expression_busy:
@@ -380,6 +412,9 @@ class FilmDesignEditSession:
                     or source[2] is not self._generation_source()):
                 return False
             try:
+                if not self._physical_preview_current():
+                    self.clear_generated_preview()
+                    return False
                 replacement = deepcopy(dict(candidate_design))
                 # Apply replaces the current document contents. Its stable
                 # identity/path stay owned by this edit session; explicit New
@@ -453,8 +488,68 @@ class FilmDesignEditSession:
                         and expected_design_revision == self._design_revision
                         and state.get("applied_revision") == expected_design_revision)
 
+    def _capture_optimized_context(self) -> Any:
+        return {"provider": getattr(self.service, "materials", None),
+                "catalog": self._catalog_options, "options": self._material_options}
+
+    def _prepare_optimized_context(self, design: Mapping[str, Any],
+                                   snapshot: Mapping[str, Any] | None) -> Any:
+        if snapshot is None:
+            return None
+        from .film_process_import import validate_frozen_design_snapshot
+        from .project_dependencies import document_material_references
+        from .project_film_service import ProjectOpticalSnapshot
+        frozen = validate_frozen_design_snapshot(snapshot)
+        materials = {row["id"]: row for row in frozen["materials"]}
+        for material_id, optical_id in document_material_references("film", dict(design)):
+            row = materials.get(material_id)
+            if row is None or optical_id not in {item["id"] for item in row["optical_sets"]}:
+                raise ValueError("合成候选缺少冻结材料：" + material_id + "/" + optical_id)
+        provider = ProjectOpticalSnapshot(materials.values())
+        options = provider.options_many(("film", "substrate", "medium"))
+        return {"provider": provider, "catalog": options,
+                "options": self._make_picker_options(options)}
+
+    def _restore_optimized_context(self, context: Any) -> None:
+        if context is not None:
+            self.service.materials = context["provider"]
+            self._catalog_options = context["catalog"]
+            self._material_options = context["options"]
+            self._prepared_optical_cache.clear()
+            self._reference_index_cache.clear()
+
+    def _prepare_optimized_undo_context(self, design: Mapping[str, Any], context: Any) -> Any:
+        if context is None or context["provider"] is getattr(self.service, "materials", None):
+            return context
+        from .project_dependencies import document_material_references
+        from .project_film_service import ProjectOpticalSnapshot
+        original = context["provider"]
+        records = {row["id"]: {key: deepcopy(value) for key, value in row.items()
+                   if key in {"id", "name", "notes", "optical_sets", "design_ready"}}
+                   for rows in context["catalog"].values() for row in rows}
+        added = False
+        for material_id, optical_id in document_material_references("film", dict(design)):
+            if material_id in records:
+                material = records[material_id]
+            else:
+                try:
+                    material = original.get(material_id)
+                except (ValueError, KeyError, AttributeError):
+                    material = self.service.materials.get(material_id)
+                    added = True
+                records[material_id] = material
+            if optical_id not in {row["id"] for row in material["optical_sets"]}:
+                raise ValueError("撤销后的工作流缺少材料数据集：" + material_id + "/" + optical_id)
+        if not added:
+            return context
+        provider = ProjectOpticalSnapshot(records.values())
+        options = provider.options_many(("film", "substrate", "medium"))
+        return {"provider": provider, "catalog": options,
+                "options": self._make_picker_options(options)}
+
     def apply_optimized_design(self, candidate_design: Mapping[str, Any],
-                               base_design_revision: int) -> bool:
+                               base_design_revision: int, *,
+                               frozen_material_snapshot: Mapping[str, Any] | None = None) -> bool:
         """Atomically replace the draft if an optimization's source is current.
 
         Optimizer output is a full candidate design, but the edit session stays
@@ -473,6 +568,9 @@ class FilmDesignEditSession:
                 return False
             try:
                 normalized = self.service.validate(deepcopy(dict(candidate_design)))
+                normalized = self._preserve_workflow_configuration(normalized)
+                generated_context = self._prepare_optimized_context(
+                    normalized, frozen_material_snapshot)
             except Exception as exc:
                 self._set_error(str(exc))
                 return False
@@ -482,7 +580,9 @@ class FilmDesignEditSession:
 
             # Commit one complete validated value while holding the same lock
             # used by every draft mutation and by snapshot().
-            previous = {"design": deepcopy(self._design), "dirty": self._dirty}
+            previous = {"design": deepcopy(self._design), "dirty": self._dirty,
+                        "optimized_context": self._capture_optimized_context()}
+            self._restore_optimized_context(generated_context)
             self._generated_undo_state = None
             self._optimized_undo_state = None
             self._design = self._preserve_workflow_configuration(normalized)
@@ -515,7 +615,15 @@ class FilmDesignEditSession:
             assert state is not None
             configuration_changed = (self._design.get("workflow_settings", {})
                                      != state["design"].get("workflow_settings", {}))
-            self._design = self._preserve_workflow_configuration(state["design"])
+            restored_design = self._preserve_workflow_configuration(state["design"])
+            try:
+                context = self._prepare_optimized_undo_context(
+                    restored_design, state.get("optimized_context"))
+                self._restore_optimized_context(context)
+            except (ValueError, TypeError, OSError) as exc:
+                self._set_error(str(exc))
+                return False
+            self._design = restored_design
             self._dirty = bool(state["dirty"]) or configuration_changed
             self._optimized_undo_state = None
             self._design_revision += 1

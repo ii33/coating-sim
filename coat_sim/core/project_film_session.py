@@ -257,6 +257,44 @@ class ProjectFilmEditSession(FilmDesignEditSession):
         return {"retained": retained, "frozen": frozen,
                 "draft": ProjectOpticalSnapshot(retained.values()) if retained else None}
 
+    def _capture_optimized_context(self) -> Any:
+        return self._capture_generated_context()
+
+    def _prepare_optimized_context(self, design: Mapping[str, Any],
+                                   snapshot: Mapping[str, Any] | None) -> Any:
+        if snapshot is None:
+            return self._prepare_generated_context(design)
+        frozen = validate_frozen_design_snapshot(snapshot)
+        materials = {row["id"]: deepcopy(row) for row in frozen["materials"]}
+        for material_id, optical_id in document_material_references("film", dict(design)):
+            value = materials.get(material_id)
+            if value is None or optical_id not in {row["id"] for row in value["optical_sets"]}:
+                raise ProjectError("missing_dependency", "合成候选缺少冻结材料："
+                                   + material_id + "/" + optical_id)
+        # An unsaved synthesis owns its task's exact optical closure, including
+        # materials absent from the original draft and from the live project.
+        return {"retained": materials, "frozen": deepcopy(materials),
+                "draft": ProjectOpticalSnapshot(materials.values())}
+
+    def _restore_optimized_context(self, context: Any) -> None:
+        self._restore_generated_context(context)
+
+    def _prepare_optimized_undo_context(self, design: Mapping[str, Any], context: Any) -> Any:
+        return self._prepare_generated_undo_context(design, context)
+
+    def apply_optimized_design(self, candidate_design: Mapping[str, Any],
+                               base_design_revision: int, *,
+                               frozen_material_snapshot: Mapping[str, Any] | None = None) -> bool:
+        with self._lock:
+            with self.service._operation():
+                return super().apply_optimized_design(candidate_design, base_design_revision,
+                    frozen_material_snapshot=frozen_material_snapshot)
+
+    def undo_optimized_design(self, expected_revision: int) -> bool:
+        with self._lock:
+            with self.service._operation():
+                return super().undo_optimized_design(expected_revision)
+
     def apply_generated_design(self, candidate_design: Mapping[str, Any],
                                base_design_revision: int) -> bool:
         with self._lock:

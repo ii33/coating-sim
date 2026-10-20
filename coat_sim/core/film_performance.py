@@ -170,6 +170,8 @@ class CoherentBatchEvaluator:
             return self._evaluate(thickness_nm, cancel=cancel)
 
     def _evaluate(self, thickness_nm, *, cancel=None):
+        # Early cancellation belongs to this call, never the previous gate.
+        self.last_metadata = {}
         d = np.asarray(thickness_nm, dtype=np.float64)
         if (d.ndim != 2 or d.shape[0] == 0 or d.shape[1] != self.stack.internal_layer_count or
                 not np.all(np.isfinite(d)) or np.any(d < 0)):
@@ -181,6 +183,7 @@ class CoherentBatchEvaluator:
         selected, workers, reason = self._selection(d.shape[0])
         start = time.perf_counter()
         error = self._gpu_failure
+        verification: dict[str, object] = {}
         if self._gpu_failure is not None:
             selected = "cpu"
         if selected in {"gpu", "cuda", "rocm", "xpu"}:
@@ -192,6 +195,7 @@ class CoherentBatchEvaluator:
                 if self._gpu is None:
                     self._gpu = TorchCoherentBatch(self.stack, backend=selected)
                 if not self._gpu.verified and d.shape[0]:
+                    verification = getattr(self._gpu, "last_verification", {})
                     self._gpu.verify(d, chunk_bytes=self.options.chunk_bytes, cancel=cancel)
                 values = self._gpu.evaluate(d, chunk_bytes=self.options.chunk_bytes, cancel=cancel)
                 self.last_metadata = {"backend": "gpu", "gpu_runtime": self._gpu.backend,
@@ -202,9 +206,13 @@ class CoherentBatchEvaluator:
                                       "total_seconds": time.perf_counter() - start,
                                       "resident_upload_seconds": self._gpu.upload_seconds,
                                       "device": self._gpu.device_name,
+                                      "verification": dict(verification),
                                       **self._gpu.last_timing}
                 return values
             except (InterruptedError, CancelledError) as exc:
+                self.last_metadata = {"backend": "gpu", "requested_backend": self.options.backend,
+                    "gpu_runtime": selected, "verification": dict(verification), "complete": False,
+                    "partial_execution": (dict(getattr(self._gpu, "last_execution", {})) if self._gpu is not None else {})}
                 raise InterruptedError("film batch cancelled") from exc
             except (ImportError, RuntimeError, OSError, ValueError, AttributeError, NotImplementedError) as exc:
                 error = str(exc)

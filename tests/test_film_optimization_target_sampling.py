@@ -17,7 +17,7 @@ os.environ.setdefault("QT_QUICK_BACKEND", "software")
 import pytest
 import numpy as np
 from PySide6.QtCore import QObject, QPointF, QUrl
-from PySide6.QtGui import QGuiApplication, QValidator
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlComponent, QQmlEngine
 from PySide6.QtQuick import QQuickItem, QQuickWindow
 
@@ -980,7 +980,13 @@ def test_invalid_sampling_edit_preserves_last_legal_row_and_blocks_start(
         assert original["wavelength_samples"] == 301
         assert not controller.setObjectiveField(field, value)
         assert controller._objectives[0] == original
-        assert controller._pending_edit_error
+        if field == "wavelength_max_nm":
+            assert "波长下限" in str(controller.property("objectiveBoundsError"))
+            assert controller.property("selectedObjective")[field] == str(value)
+            with pytest.raises(ValueError, match="波长下限"):
+                controller._build_request()
+        else:
+            assert controller._pending_edit_error
         assert not controller.canStart
     finally:
         _dispose(controller)
@@ -1369,14 +1375,15 @@ def test_optimization_controls_and_tabs_fit_shared_default_minimum_window(tmp_pa
         angle_step_field = window.findChild(QQuickItem, "filmOptimizationAngleStepField")
         assert angle_step_field is not None
         validator = angle_step_field.property("validator")
-        assert isinstance(validator, QValidator)
-        validation = validator.validate("1e-15", 5)
-        assert isinstance(validation, tuple) and len(validation) == 3
-        assert validation[0] == QValidator.State.Acceptable
+        assert validator is None
+        angle_step_field.setProperty("text", "-")
+        assert angle_step_field.property("text") == "-"
         assert controller.setObjectiveField("angle_min_deg", 0.0)
         assert controller.setObjectiveField("angle_max_deg", 1e-8)
         assert controller.setObjectiveField("angle_step_deg", "1e-15")
         assert controller._objectives[0]["angle_sample_count"] == 10_000_001
+        assert not controller.confirmObjectiveAngleRange("0", "1e-8", "-")
+        assert "精度" in str(controller.property("error"))
     finally:
         if window is not None and shiboken6.isValid(window):
             window.setProperty("allowClose", True)

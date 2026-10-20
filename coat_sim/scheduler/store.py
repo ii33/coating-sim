@@ -50,7 +50,8 @@ class SchedulerStore:
                     if metadata.get("origin", {}) != receipt.get("origin", {}):
                         raise ValueError("compute_origin_conflict: queue metadata belongs to another origin")
                 value = {key: metadata[key] for key in ('summary', 'estimated_s', 'origin', 'estimate_id',
-                         'memory_estimate_label', 'memory_warning', 'input_summary') if key in metadata}
+                         'memory_estimate_label', 'memory_warning', 'input_summary',
+                         'execution_project_root') if key in metadata}
                 value.update(job_id=job_id, kind=parsed.executor, state='queued', created_at=_now(),
                              started_at=None, finished_at=None, result=None, error=None,
                              cancel_requested=False, scheduler_managed=True,

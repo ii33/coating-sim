@@ -245,8 +245,8 @@ class _BoundedHTTPServer(ThreadingHTTPServer):
 class RemoteScheduler(Scheduler):
     """The same queue lifecycle, launching the source-only remote worker adapter."""
     def register_artifacts(self, job_id, result):
-        from .result_capability import is_film_optimization_result
-        if is_film_optimization_result(result):
+        from .result_capability import is_film_optimization_result, is_synthesis_result
+        if is_film_optimization_result(result) or is_synthesis_result(result):
             # This typed result is inline; adding an empty binary manifest would
             # violate its exact existing schema and hide a successful result.
             return result
@@ -257,6 +257,11 @@ class RemoteScheduler(Scheduler):
         return registered
 
     def _attach_best_candidate_checkpoint(self, job_id, outcome):
+        if (self.memory_status(job_id).get('kind') in ('film_optimization', 'film_synthesis')
+                and (outcome or {}).get('state') == 'cancelled'):
+            # The parent binds the existing worker reply, or returns an explicit
+            # unavailable reason. Active cancellation never replays a checkpoint.
+            return super()._attach_best_candidate_checkpoint(job_id, outcome)
         if self.memory_status(job_id).get('kind') != 'film_optimization':
             return super()._attach_best_candidate_checkpoint(job_id, outcome)
         result = dict(outcome)
@@ -576,7 +581,7 @@ class RemoteComputeService:
 
     def _capabilities(self):
         from .remote_contract import REMOTE_EXECUTORS
-        selected = ['process_recipe', 'film_optimization']
+        selected = ['process_recipe', 'film_optimization', 'film_synthesis']
         if self.appearance_cpu_available:
             selected.append('appearance_render')
         gpu = {'id': 'cuda:default', 'name': 'NVIDIA CUDA 默认设备 · 未指定物理 GPU',

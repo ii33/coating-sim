@@ -391,7 +391,11 @@ class ProjectFilmDesktop(QObject):
             if module_key == "film_optimization":
                 target.startOptimizationFromShortcut()
             else:
-                target.requestCalculation()
+                requester = getattr(target, "requestSourceRefresh", None)
+                if callable(requester):
+                    requester()
+                else:
+                    target.requestCalculation()
         return identity
 
     @staticmethod

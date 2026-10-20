@@ -20,7 +20,8 @@ from PySide6.QtQml import QQmlApplicationEngine
 
 from coat_sim.core.film_design import physical_thickness_nm, validate_design, validate_workflow_settings
 from coat_sim.core.film_design_service import (
-    FilmDesignService, estimate_film_simulation_resources, simulation_settings,
+    FilmDesignService, active_material_references, estimate_film_simulation_resources,
+    simulation_settings,
 )
 from coat_sim.core.optical_constants import prepare_optical_set
 from coat_sim.core.film_optimization_preview import (
@@ -322,6 +323,11 @@ def _simulate_with_polarizations(service: FilmDesignService, design: dict[str, A
         return service.simulate(design, active_settings)
 
     result = simulate(settings)
+    def optical_inputs(payload):
+        return {(item["material_id"], item["optical_set"]["id"]): item["optical_set"]
+                for item in payload.get("provenance", ())}
+
+    result["_source_refresh_provenance_consistent"] = True
     current = result.get("settings", {}).get("polarization", settings.get("polarization"))
     polarization_curves: dict[str, dict[str, Any]] = {}
     for polarization in ("s", "p"):
@@ -333,6 +339,8 @@ def _simulate_with_polarizations(service: FilmDesignService, design: dict[str, A
             polarized_settings = copy.deepcopy(settings)
             polarized_settings["polarization"] = polarization
             polarized = simulate(polarized_settings)
+        if optical_inputs(polarized) != optical_inputs(result):
+            result["_source_refresh_provenance_consistent"] = False
         polarization_curves[polarization] = {
             key: copy.deepcopy(polarized[key]) for key in ("R", "T", "A")
         }
@@ -824,6 +832,10 @@ class FilmSimulationQuickController(QObject):
         self._generation = 0
         self._next_calculation_id = 0
         self._active_calculation_token = None
+        self._active_source_refresh_identity: str | None = None
+        self._active_source_refresh_merged = False
+        self._completed_source_refresh_token: Any = None
+        self._completed_source_refresh_identity: str | None = None
         self._pending_recompute = False
         self._closed = False
         self._theme_mode = "light"
@@ -1512,6 +1524,20 @@ class FilmSimulationQuickController(QObject):
 
     @Slot()
     def requestCalculation(self) -> None:
+        self._request_calculation(reuse_fresh=False)
+
+    @Slot()
+    def requestSourceRefresh(self) -> None:
+        """Coalesce an automatic source refresh with the same complete input."""
+        source = self._source_controller_ref() if callable(self._source_controller_ref) else None
+        if not self._source_alive or source is None or getattr(source, "_source_closed", False):
+            return
+        if (getattr(source, "session", None) is not self._source_session
+                or getattr(source, "service", None) is not self.service):
+            return
+        self._request_calculation(reuse_fresh=True)
+
+    def _request_calculation(self, *, reuse_fresh: bool) -> None:
         if self._closed:
             return
         if self._pending_window_open is not None:
@@ -1521,14 +1547,77 @@ class FilmSimulationQuickController(QObject):
             # Same in-flight input already meets this intent. A changed input
             # gets one recompute after cancellation/old result completion.
             try:
-                if (self._active_calculation_token[2] != self._signature()
-                        or self._active_calculation_token[1] != self._generation
-                        or self._active_calculation_token[3] != tuple(self._plot_settings.get("polarizations", ()))):
+                active_token = self._active_calculation_token
+                if (active_token is None or active_token[2] != self._signature()
+                        or active_token[1] != self._generation
+                        or active_token[3] != tuple(self._plot_settings.get("polarizations", ()))):
                     self._pending_recompute = True
+                if reuse_fresh:
+                    identity = self._source_refresh_input_identity()
+                    if identity is None or identity != self._active_source_refresh_identity:
+                        self._pending_recompute = True
+                    else:
+                        self._active_source_refresh_merged = True
             except (TypeError, ValueError):
                 self._pending_recompute = True
             return
+        if reuse_fresh and self._result is not None and not self._stale:
+            token = self._completed_source_refresh_token
+            identity = self._source_refresh_input_identity()
+            if (token is not None and identity is not None
+                    and identity == self._completed_source_refresh_identity
+                    and token[1] == self._generation
+                    and token[2] == self._signature()
+                    and token[3] == tuple(self._plot_settings.get("polarizations", ()))):
+                return
         self.startCalculation()
+
+    def _source_refresh_input_identity(self, frozen_materials=None) -> str | None:
+        """Read used optical records without spectral evaluation or interpolation."""
+        source = self._source_controller_ref() if callable(self._source_controller_ref) else None
+        if (not self._source_alive or source is None or self._source_session is None
+                or getattr(source, "_source_closed", False)
+                or getattr(source, "session", None) is not self._source_session):
+            return None
+        if self._project_compute is not None and (
+                self._project_operation is None
+                or not self._project_compute.accepts(self._project_operation)):
+            return None
+        try:
+            materials = self.service.materials
+            provider = (_FrozenPreviewMaterials(frozen_materials)
+                        if frozen_materials is not None else materials)
+            rows = []
+            records: dict[str, Any] = {}
+            references = {(ref["material_id"], ref["optical_set_id"])
+                          for ref in active_material_references(self._design)}
+            for material_id, set_id in sorted(references):
+                if material_id not in records:
+                    records[material_id] = provider.get(material_id)
+                material = records[material_id]
+                optical = next(row for row in material["optical_sets"] if row["id"] == set_id)
+                rows.append((material_id, set_id, optical))
+            return json.dumps([id(self.service), id(materials), id(source), id(self._source_session),
+                self._source_design_revision, rows], sort_keys=True, separators=(",", ":"),
+                ensure_ascii=False, allow_nan=False)
+        except (AttributeError, KeyError, TypeError, ValueError, StopIteration):
+            # Unknown/custom providers remain usable; they cannot claim a
+            # complete reusable identity for an automatic source refresh.
+            return None
+
+    def _completed_refresh_identity(self, result: dict[str, Any]) -> str | None:
+        identity = self._active_source_refresh_identity
+        if identity is None or result.get("_source_refresh_provenance_consistent") is False:
+            return None
+        try:
+            expected = json.loads(identity)[-1]
+            actual = {(item["material_id"], item["optical_set"]["id"]): item["optical_set"]
+                      for item in result["provenance"]}
+            if all(actual.get((mid, sid)) == optical for mid, sid, optical in expected):
+                return identity
+        except (KeyError, TypeError, ValueError):
+            pass
+        return None
 
     def _signature(self, design=None, settings=None) -> str:
         physical_design = {key: value for key, value in (design or self._design).items()
@@ -2361,6 +2450,11 @@ class FilmSimulationQuickController(QObject):
                  self._signature(design, settings),
                  tuple(self._plot_settings.get("polarizations", ())))
         self._active_calculation_token = token
+        frozen_materials = (self._project_frozen_snapshot["materials"]
+                            if self._project_compute is not None
+                            and self._project_frozen_snapshot is not None else None)
+        self._active_source_refresh_identity = self._source_refresh_input_identity(frozen_materials)
+        self._active_source_refresh_merged = False
         self._calculation_cancel_event = threading.Event()
         cancel_event = self._calculation_cancel_event
         self._busy = True
@@ -2524,6 +2618,13 @@ class FilmSimulationQuickController(QObject):
             return
         self._result = result
         self._stale = False
+        self._completed_source_refresh_token = token
+        self._completed_source_refresh_identity = self._completed_refresh_identity(result)
+        if (self._active_source_refresh_merged
+                and self._active_source_refresh_identity is not None
+                and self._completed_source_refresh_identity is None
+                and result.get("provenance")):
+            self._pending_recompute = True
         self._invalidate_spectrum_analysis()
         self._invalidate_calculation_items()
         self._cursor_readout = ""
@@ -2597,6 +2698,9 @@ class FilmSimulationQuickController(QObject):
         self._active_calculation_token = None
         self._pending_recompute = False
         self._busy = False
+        self._active_source_refresh_identity = None
+        self._completed_source_refresh_token = None
+        self._completed_source_refresh_identity = None
         # Retire both the worker result and derived views as soon as the
         # window closes. A late completion is already token-gated below, and
         # must not leave a stale spectrum retained on a closed controller.

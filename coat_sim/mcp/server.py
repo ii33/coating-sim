@@ -46,7 +46,9 @@ from coat_sim.core.film_compute import FILM_TOOL_ARGUMENTS, validate_tool_argume
 from coat_sim.core.appearance_compute import (APPEARANCE_TOOL_ARGUMENTS,
                                              validate_tool_arguments as validate_appearance_arguments)
 from coat_sim.core.compute_tasks import ComputeTaskStore
-from coat_sim.core.mcp_contracts import (ITO_ELECTRICAL_INPUT_SCHEMA,
+from coat_sim.core.mcp_contracts import (FILM_SYNTHESIS_ESTIMATE_INPUT_SCHEMA,
+                                          FILM_SYNTHESIS_PLAN_INPUT_SCHEMA, FILM_SYNTHESIS_SUBMIT_INPUT_SCHEMA,
+                                          ITO_ELECTRICAL_INPUT_SCHEMA,
                                           tool_annotations, validate_mcp_arguments)
 from coat_sim.core.design_files import design_extension
 from coat_sim.core.compute_estimation import input_file_fingerprints
@@ -93,6 +95,12 @@ class CapabilityMCPServer(MCPServer):
                 arguments = validate_tool_arguments(name, arguments)
             except (ValueError, TypeError):
                 raise ToolError("invalid_arguments: typed film arguments failed strict validation") from None
+        if name == "submit_film_synthesis":
+            from coat_sim.core.film_synthesis_jobs import validate_tool_arguments as validate_synthesis_arguments
+            try:
+                arguments = validate_synthesis_arguments(arguments)
+            except (ValueError, TypeError):
+                raise ToolError("invalid_arguments: typed film synthesis arguments failed strict validation") from None
         if name in POLICIES:
             try:
                 arguments = CapabilityService(service).validate_arguments(name, arguments)
@@ -107,6 +115,9 @@ class CapabilityMCPServer(MCPServer):
         schemas.update({name: model.model_json_schema() for name, model in FILM_TOOL_ARGUMENTS.items()})
         schemas.update({name: model.model_json_schema() for name, model in APPEARANCE_TOOL_ARGUMENTS.items()})
         schemas["ito_electrical_calculate"] = ITO_ELECTRICAL_INPUT_SCHEMA
+        schemas["estimate_compute_task"] = FILM_SYNTHESIS_ESTIMATE_INPUT_SCHEMA
+        schemas["plan_film_synthesis"] = FILM_SYNTHESIS_PLAN_INPUT_SCHEMA
+        schemas["submit_film_synthesis"] = FILM_SYNTHESIS_SUBMIT_INPUT_SCHEMA
         result = []
         for tool in registered:
             key = "input_schema" if "input_schema" in type(tool).model_fields else "inputSchema"
@@ -1173,6 +1184,33 @@ def input_schema(kind: DesignKind | Literal["settings", "mask_optimization", "fi
 
 
 @mcp.tool()
+def plan_film_synthesis(payload: dict[str, Any]) -> dict[str, Any]:
+    """Read-only prepare a frozen synthesis request and physical-structure seeds for the CLI.
+
+    Returns a canonical CLI-ready request and construction metadata. It creates
+    no job, estimate, file, design mutation or search result.
+    """
+    from coat_sim.core.film_synthesis_io import prepare_film_synthesis_payload
+    try:
+        request, structures = prepare_film_synthesis_payload(service, payload)
+        return {"ok": True, "request": request,
+                "physical_structure_metadata": list(structures),
+                "execution": "Pass request to coat_sim.film_synthesis_cli; this operation does not run optimization."}
+    except (ValueError, TypeError, KeyError, ArithmeticError) as exc:
+        raise ToolError(f"invalid_arguments: {exc}") from exc
+
+
+@mcp.tool()
+def submit_film_synthesis(payload: dict[str, Any], client_request_id: str | None = None) -> dict[str, Any]:
+    """Submit a frozen synthesis request through the project's confirmed durable scheduler."""
+    from coat_sim.core.film_synthesis_jobs import submit_synthesis
+    try:
+        return submit_synthesis(service, payload, client_request_id)
+    except (ServiceError, OSError, ValueError, TypeError) as exc:
+        raise _error(exc) from exc
+
+
+@mcp.tool()
 def film_design_schema() -> dict[str, Any]:
     """Return the film-design object schema and a valid starter design."""
     example = service.new_film_design()
@@ -2227,7 +2265,26 @@ def _get_job(job_id: str, *, locked: bool = False) -> dict[str, Any]:
 
 def _job_status_snapshot(job_id):
     from coat_sim.scheduler import SchedulerClient
-    return SchedulerClient(service.root).status(job_id)
+    return _attach_synthesis_execution_root(SchedulerClient(service.root).status(job_id))
+
+
+def _attach_synthesis_execution_root(value):
+    """Project the host-configured compute workspace onto typed synthesis views."""
+    if not isinstance(value, dict):
+        return value
+    if value.get("kind") in {"film_synthesis", "coat_sim.film_synthesis_result"}:
+        value["execution_project_root"] = str(service.root)
+    job = value.get("job")
+    if isinstance(job, dict):
+        _attach_synthesis_execution_root(job)
+    result = value.get("result")
+    if isinstance(result, dict) and result.get("kind") == "coat_sim.film_synthesis_result":
+        _attach_synthesis_execution_root(result)
+    jobs = value.get("jobs")
+    if isinstance(jobs, list):
+        for item in jobs:
+            _attach_synthesis_execution_root(item)
+    return value
 
 def _submit_job(kind, parameters, execute, client_request_id, *, prepare=None, estimate_id=None):
     # Legacy signature remains private for plugin compatibility; callables are never executed or serialized.
@@ -2395,7 +2452,7 @@ def close_window(window_type: UiWindowType, force: bool = False,
 
 
 @mcp.tool()
-def estimate_compute_task(kind: Literal["single_source", "process", "mask_optimization", "film_optimization", "mask_weights", "mask_field", "point_weights", "python_script"],
+def estimate_compute_task(kind: Literal["single_source", "process", "mask_optimization", "film_optimization", "film_synthesis", "mask_weights", "mask_field", "point_weights", "python_script"],
                           parameters: dict[str, Any]) -> dict[str, Any]:
     """Describe workload and empirical duration; never execute physics or a script.
 
@@ -2517,7 +2574,8 @@ def request_compute_confirmation(estimate_id: str, session_id: str = "", request
 @mcp.tool()
 def calculation_queue_snapshot(after_event: int = 0, limit: int = 100) -> dict[str, Any]:
     """Compact persistent queue with measured progress and one-time queue events."""
-    return _capability_call("calculation_queue_snapshot", {"after_event": after_event, "limit": limit})
+    return _attach_synthesis_execution_root(
+        _capability_call("calculation_queue_snapshot", {"after_event": after_event, "limit": limit}))
 
 
 def confirm_and_submit_compute(estimate_id, accepted, *, service_root=None, _automatic=False):
@@ -3047,7 +3105,8 @@ def submit_mask_optimization(settings: SimulationSettings, process_path: str,
 @mcp.tool()
 def calculation_job_status(job_id: str) -> dict[str, Any]:
     """Read queued/running/succeeded/failed/cancelled state without blocking."""
-    return _capability_call("calculation_job_status", {"job_id": job_id})
+    return _attach_synthesis_execution_root(
+        _capability_call("calculation_job_status", {"job_id": job_id}))
 
 
 @mcp.tool()
@@ -3081,7 +3140,8 @@ async def wait_calculation_job(job_id: str, timeout_s: float = 30.0) -> dict[str
 
 @mcp.tool()
 def find_calculation_job(client_request_id):
-    return _capability_call("find_calculation_job", {"client_request_id": client_request_id})
+    return _attach_synthesis_execution_root(
+        _capability_call("find_calculation_job", {"client_request_id": client_request_id}))
 
 @mcp.tool()
 def cancel_calculation_job(job_id):
@@ -3089,7 +3149,8 @@ def cancel_calculation_job(job_id):
 
 @mcp.tool()
 def calculation_job_result(job_id):
-    return _capability_call("calculation_job_result", {"job_id": job_id})
+    return _attach_synthesis_execution_root(
+        _capability_call("calculation_job_result", {"job_id": job_id}))
 
 @mcp.tool()
 def read_calculation_result(run_id: str, include_grid: bool = False, export_data: bool = False,

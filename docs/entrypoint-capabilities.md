@@ -1,6 +1,6 @@
 # 看板娘、MCP 与 CLI 能力矩阵
 
-初始审计：2026-10-11；当前源码边界复核：2026-10-16。范围是看板娘工具路由、MCP 注册工具、CLI 命令及其共享调度服务。本文说明入口的源码接入状态；目录可见不代表该轮、该模式或本地调用者已获准执行。讨论（兼容值chat）只读；所有写入、估算登记、提交/取消、导出、脚本及外部action均被执行层阻断，操作/攻关每次非只读dispatch还须通过UI-owned模式/代际检查，缺可信来源失败关闭。具体签名和模式白名单以代码与契约测试为准。原始运行记录 `entrypoint-service-evidence-20261011.md` 已从当前检出移除；当前定向检查及未闭环项见 本轮边界复核（历史验证记录，未随公开源码发布）。
+初始审计：2026-10-11；当前源码边界复核：2026-10-20（本轮追加GUI合成入口，其他边界沿用原审计）。范围是看板娘工具路由、MCP 注册工具、CLI 命令及其共享调度服务。本文说明入口的源码接入状态；目录可见不代表该轮、该模式或本地调用者已获准执行。讨论（兼容值chat）只读；所有写入、估算登记、提交/取消、导出、脚本及外部action均被执行层阻断，操作/攻关每次非只读dispatch还须通过UI-owned模式/代际检查，缺可信来源失败关闭。具体签名和模式白名单以代码与契约测试为准。原始运行记录 `entrypoint-service-evidence-20261011.md` 已从当前检出移除；当前定向检查及未闭环项见 本轮边界复核（历史验证记录，未随公开源码发布）。
 
 ## 入口总览
 
@@ -114,6 +114,18 @@
 
 参数化初始膜系生成器、公开参考层表和对应 Quick UI 已存在：`film_design_templates.py`、`film_design_reference_recipes.py` 与控制器实现目录/映射预览，session 负责替换/撤销，用户设计库使用 SQLite。其限定历史验收见 [生成器阶段](film-design-generator-stage-report-20261011.md) 与 [参考层表阶段](film-design-reference-library-stage-report-20261011.md)；这些日期不等于本轮重验。当前没有为这套光学初始设计/参考映射注册独立 MCP 工具或共享 CLI catalog 操作。已有 MCP `build_film_stack` 是沉积工艺层表生成入口，不能代替光学设计模板、参考层表映射或用户设计库操作。
 
+## 自动膜系生长与物理结构执行入口（2026-10-19）
+
+`plan_film_synthesis` 只读准备并验证冻结请求；它不会开始优化。simulation 执行助手可以调用 `submit_film_synthesis`，它复用既有估算、会话确认和持久 scheduler，不允许 payload 指定 project root、worker、批准状态或输出路径。执行落在与现有膜系优化相同的配置业务 `CoatService` root；回执和结果明确返回 `execution_project_root`。此root是业务计算工作区，不声称等同当前选中的 `.coatproj`；本次不新增动态项目路由。讨论模式只有 plan；估算/提交/取消被执行层阻断。作业由 `calculation_job_status`、`wait_calculation_job`、`calculation_job_result` 和 `cancel_calculation_job` 跟踪，使用原 `client_request_id` 可恢复提交回执。
+
+| 操作 | 助手模式 | MCP/队列入口 | 返回与边界 |
+| --- | --- | --- | --- |
+| `plan_film_synthesis(payload)` | 讨论、操作和 simulation 可读；discussion 只允许这项合成准备操作。 | MCP 注册 strict payload schema；同步读材料、展开真实物理结构 seed，并运行核心冻结校验。 | 返回 canonical 冻结请求与物理结构元数据；不创建估算、任务、文件或项目改动。 |
+| `submit_film_synthesis(payload, client_request_id?)` | 仅执行模式的 simulation 角色；经 runtime 会话身份、项目绑定和模式代际检查。 | MCP 工具适配到 `ComputeTaskStore` 与共享持久 scheduler。 | 返回估算/确认或 job receipt。不会在 RPC 中等待，也不会写回用户设计。重复 request ID 且相同输入恢复原回执；输入变化则拒绝。 |
+| `calculation_job_status/wait/cancel/result` | 沿用现有任务读取/取消权限，discussion 不可提交或取消。 | 公共 scheduler lifecycle APIs。 | 状态与进度包括阶段、cycle/evaluations/layer_count、最好分数所有权、活动年龄及 stalled/unresponsive 标志。取消是协作式，返回已独立审计的最佳层表（若已存在）；训练候选不能冒充已审计结果。 |
+
+结果为可审查的真实层序、逐目标独立审计、材料来源与停止原因，不会自动应用到当前设计。长 helper 期间 heartbeat 只代表 worker 仍响应，进度停滞/不响应为诊断，均不会自动取消。失败/取消时只有经过冻结输入绑定和物理审计回放验证的 checkpoint 可作为 partial result；未审计训练 incumbent 不返回为 verified candidate。具体字段、唯一状态所有者和取消边界见[膜系生长执行合同](film-synthesis-execution-contract.md)。
+
 ## 代码与契约依据
 
 - 入口路由：`coat_sim/agent/runtime.py` 的 READ/MAIN/EXECUTION 工具集合；`coat_sim/agent/tool_dispatch.py` 的 `ProjectGateway` schema、参数校验、去重和未知副作用处理。
@@ -133,3 +145,9 @@
 ## 2026-10-18 专用 CLI 边界修复
 
 `algorithm_cli --root ROOT` 显式选择项目与队列根目录，工艺输入仍受该根目录约束；冻结输入校验完成后才构造 scheduler。时间步数与步长冲突会拒绝，步长回执含实际平均步长。初始化失败返回 JSON/退出 2 并恢复 SIGINT。膜系 JSON CLI 验证冻结快照对象后才读取设置，支持单波长归一化设置回放。完整优先级、错误和生命周期见 [无界面 CLI 合同](headless-cli-contract.md)。
+
+## 现有桌面GUI自动合成与结构表单（2026-10-20）
+
+膜系优化页“算法”内新增“从零自动合成”模式，使用当前工程目标和显式选中材料、裸栈环境及可选当前seed，经当前工程既有队列提交`film_synthesis`。GUI项目root来自`ProjectComputeWorkspace`，不改变上文助手固定业务root。空预算是None，进度/心跳/无响应诊断与协作取消保留；结果显示候选审计与完整层表，完成不自动应用。仅有效完成候选可确认应用；历史、取消和失败结果只读，另存遵守冻结材料与目录漂移规则。
+
+膜系设计“参数设计”原侧栏新增“物理结构与组合段”：多堆/匹配、多腔/耦合镜、啁啾、数字rugate和组合段。使用当前材料/数据集表单，预览真实nm层表，确认替换未保存草稿并允许一次撤销。核心仍GUI独立；不是论文精确复现或Ge研究TRF模式。当前入口操作与限定见[GUI指南](film-synthesis-gui-guide.md)，状态/异步边界见[GUI契约](film-synthesis-gui-contract.md)。本轮未发布安装包。

@@ -26,6 +26,7 @@ PREFS_NAME = "compute_target_selections.json"
 TASK_EXECUTORS = {
     "deposition": "process_recipe",
     "film_optimization": "film_optimization",
+    "film_synthesis": "film_synthesis",
     "appearance": "appearance_render",
 }
 _PREFS_LOCK = threading.RLock()
@@ -39,6 +40,7 @@ _TASK_SUPPORT_SUMMARIES = {
         "仅单条件单角度、前表面半无限基片。FP64/complex128 XPU批量前向、CPU评分与验证，失败不回退CPU。"
         "仅 sakuya 8086:7D67 有限定实测，其他硬件未验收，也不保证更快。"
     ),
+    "film_synthesis": "CPU-only physical film synthesis; XPU and GPU execution are not supported.",
     "appearance": (
         "已支持：CPU 外观。GPU 为 NVIDIA CUDA 实验路径，需单独检测。"
         "Intel 核显外观 GPU 不可用：当前没有 Intel 渲染后端；CPU 渲染不代表 GPU 支持。"
@@ -209,7 +211,7 @@ class ComputeTarget(QObject):
     def message(self):
         return self._message
 
-    @Property(str, constant=True)
+    @Property(str, notify=changed)
     def supportSummary(self):
         """Task acceptance scope is separate from transient runtime availability."""
         return _TASK_SUPPORT_SUMMARIES[self.task]
@@ -229,7 +231,7 @@ class ComputeTarget(QObject):
         if self.task == "appearance" and self._host_id == "local":
             self.appearanceCudaProbeRequested.emit()
 
-    @Property(bool, constant=True)
+    @Property(bool, notify=changed)
     def supportsFilmXpuProbe(self):
         return self.task == "film_optimization"
 
@@ -332,6 +334,34 @@ class ComputeTarget(QObject):
         self.refresh()
 
     @Slot(str)
+    def setTask(self, task: str):
+        """Switch the task policy while retaining its independent host preference."""
+        if task not in TASK_EXECUTORS:
+            raise ValueError("unknown_compute_task")
+        if task == self.task:
+            return
+        self._generation += 1
+        self._selection_serial += 1
+        self._poll.stop()
+        self._film_poll.stop()
+        self._film_probe_future = None
+        self._film_probe_busy = False
+        self._confirmed_xpu_uuid = ""
+        self._remote_client = None
+        self._devices = []
+        self._all_devices = []
+        self._ready = False
+        self.task = task
+        preference = _read_prefs(self._prefs_path).get(task, {})
+        self._host_id = (str(preference.get("host_id") or "local")
+                         if isinstance(preference, dict) else "local")
+        self._device_id = (str(preference.get("device_id") or
+                               ("cpu:default" if self._host_id == "local" else ""))
+                           if isinstance(preference, dict) else "cpu:default")
+        self.changed.emit()
+        self.reloadSettings()
+
+    @Slot(str)
     def setHostId(self, host_id: str):
         if host_id not in {row["id"] for row in self._host_rows}:
             return
@@ -400,6 +430,11 @@ class ComputeTarget(QObject):
         ]
 
     def _filter_devices(self, devices):
+        if self.task == "film_synthesis":
+            return [row if row["backend"] == "CPU" else {
+                **row, "available": False,
+                "reason": "Film synthesis supports CPU execution only."}
+                for row in devices]
         if self.task == "film_optimization":
             rows = []
             for row in devices:
@@ -447,6 +482,13 @@ class ComputeTarget(QObject):
                 self._devices = list(self._all_devices)
                 self._ready = True
                 self._message = "CPU 就绪；可按需检测 Intel XPU，需显式启用受支持的延迟批量模式。"
+                self.changed.emit()
+                return
+            if self.task == "film_synthesis":
+                self._all_devices = self._film_cpu_devices()
+                self._devices = list(self._all_devices)
+                self._ready = True
+                self._message = "Film synthesis uses the local CPU scheduler."
                 self.changed.emit()
                 return
             self._future = self._executor.submit(self._probe_local, generation)
@@ -571,6 +613,8 @@ class ComputeTarget(QObject):
         else:
             device = deepcopy(next(row for row in self._devices if row["id"] == self._device_id))
         if self.task == "film_optimization" and device["backend"] not in ("CPU", "xpu"):
+            raise ComputeTargetError("unsupported_algorithm_device")
+        if self.task == "film_synthesis" and device["backend"] != "CPU":
             raise ComputeTargetError("unsupported_algorithm_device")
         if self.task == "film_optimization" and self._film_batch_enabled:
             if self._host_id != "local":

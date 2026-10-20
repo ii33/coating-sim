@@ -1,0 +1,37 @@
+# 从零自动合成：CPU候选并行执行契约
+
+日期：2026-10-20。本阶段保持TMM、未知k显式假设、评分、目标审计与原顺序接受准则。只把同一基准层序下互相独立的纯候选评价分发到CPU进程；生成处方、合法性、层ID、逻辑评价预算、归档与停止仍由原核心单一状态所有者管理。接口真值为当前类型/签名及契约测试，不新增独立求解器或队列。
+
+## 请求及GUI状态
+
+`FilmSynthesisRequest.cpu_workers`为整数：旧wire缺字段默认1（串行），0表示自动选择，正整数表示期望工作进程上限；布尔和负数明确拒绝；正整数在执行器按可用CPU上限收缩，自动选择最多8个并尊重进程亲和性。GPU不是这个数字的含义。GUI独立CPU工作进程字段保存在`synthesis.cpu_workers`，新GUI缺省0；它不是循环/评价预算。开始时冻结，运行、关闭或非法草稿尚未处理时禁止修改，setter拒绝时控件须恢复绑定。旧配置继续可读，历史结果读取原冻结请求，不从当前设备或草稿猜补。
+
+当前模式的主机选择仍决定本地/远端CPU队列；GPU/XPU仍禁用。合成请求的cpu_workers须通过CLI/助手typed-job使用同一数值。原有可选max_cycles/max_evaluations和厚度约束None含义不变，不因并行加小额默认预算。
+
+## 原序执行与有界投机
+
+局部polish回溯、依赖前次接受结果的换材/删层、审计归档与停止保持串行。零厚针扫描在同一输入栈下原序建立合法probe；只有本轮完整扫描可放入剩余有限预算并留审计额度时才允许并行，否则沿原串行顺序执行。有限max_evaluations时，可能在每个候选后提前审计/停止的有限厚度growth保持串行。
+
+无评价次数上限时，growth raw候选可以有界预评价，窗口不大于工作进程数；父进程严格按原始界面/材料/厚度次序消费，并在相同位置做archive/audit/停止。完成顺序不改变排名或tie-break。提前停止的窗口尾部结果不加入逻辑trace/归档，尾部物理错误也不能提前改变原顺序的失败。它们消耗的真实工作须在performance单列，不把逻辑evaluations等同于全部实际计算。
+
+小批次/低估计工作量走串行，首次合格batch才启动池，并在本次run复用。初始auto上限及阈值是本项目启发式，最终值以当前实现和实测记录为准，不是外部已验证速度保证；工作进程数上限不保证相应加速。
+
+## worker边界、取消及回收
+
+子进程只运行明确的headless模块，输入为已冻结请求和纯评价任务，禁止重新导入或运行GUI主入口。只使用当前项目已有运行时，既有材料来源保持冻结。标准输出专用于内部协议；错误/就绪握手有明确边界。每个worker的有界写队列与专用writer让大冻结快照的管道回压不堵住父进程取消轮询；reader/writer均属于本次run并须回收。每个child在导入NumPy前通过独立env限制内部数学线程为1，不修改父进程环境，避免工作进程再各起一组数学线程。
+
+原运行器心跳/无响应诊断继续存在。候选数值计算无默认墙钟截止；20秒超时仅用于进程就绪握手。owner等待结果期间轮询取消；仅控制自己创建的PID与管道。Windows虚拟环境启动器与实际Python可能是两层进程，先将挂起的自有启动器纳入kill-on-close Job Object再恢复运行，验证实际worker PID、创建身份及job归属；两层和管道均须回收。正常结束、用户取消、异常及窗口关闭均须走finally回收，合作退出超过有界宽限后仅终止自有worker并wait；不得残留reader线程或因Windows spawn再次打开GUI。数值ValueError按原位置传播，不能用fallback掩盖；进程启动、通信等基础设施失败可恢复未消费任务到串行，并明确fallback原因与已消耗/未知工作。
+
+## 结果与检查点
+
+`FilmSynthesisResult.performance`为独立执行诊断，原数值评分不依赖它。报告请求/实际进程、PID、提交/完成/消费/丢弃/异常/取消或未知工作、串行回退、启动和通信开销；字段及单位以当前实现为准。evaluations仍是原算法依次消费的逻辑评价，实际额外投机/失败部分另记；未返回的半次求值不得假定完成或按0宣称准确计数。审计累计计数含义保持原契约，不能用候选调用数代替底层所有谱核调用数。工作完整时training_evaluator_invocations等于serial_evaluator_invocations与worker_evaluator_invocations之和；它包含已报告启动而未消费的任务和回退重算。unknown_tasks非零时这两个完整调用总量为null，known_worker_evaluator_invocations及known_training_evaluator_invocations保留已知下界。底层training_physical_evaluations和training_wavelength_points来自实际谱核调用；存在取消/异常未知部分时完整值为null，并保留known_training_*下界、incomplete_physical_calls及unknown_tasks。审计调用单列，不与训练调用重复相加。
+
+已审计检查点保存该保存时刻的performance快照（可仍有inflight未知部分），恢复时作为历史/部分诊断，不借旧PID启动/杀进程，不把保存之后的工作猜成0。旧检查点未记录performance时明确未记录；未知k策略、旧累计null/unknown_fields及候选物理重放保持。终态必须先完成worker回收，再记录终态完整诊断。另存候选保持原冻结材料及假设，不向材料库写假k。
+
+## 验收
+
+单核/多核使用同一当前源码、相同冻结请求，仅改变cpu_workers；比较最终层序/厚度、分数、目标、消费trace/候选排序，计量额外物理工作。覆盖有限预算边界、worker错误原序传播、基础设施回退、取消/关闭、headless/no GUI、无遗留进程、JSON/CLI/typedjob/保存恢复。性能在真实硬件测1/2/4及合理更多核，记录端到端wall（包含startup/IPC/回收）、进程树采样内存、进度/日志/心跳与可中止性。微基准不能代替整任务；未稳定加速应如实报告，不换算法后拿指标差异算加速。
+
+GPU属于后续独立测量阶段；没有端到端可重复收益和精度验收前不接设备选择。本阶段新性能代码未获专项外部CLI发送授权，先内部复核；此前k/GUI批准不扩用，Seed未配置不得声称已审。
+
+调度阈值、计量组织与上述边界均为“本项目约定”；未找到外部依据，仅为本项目实现。进程API语义参考Python官方subprocess文档，不能据此声称本项目已验证加速或连续光谱证书。离线算法图解见algorithms.html的14w。

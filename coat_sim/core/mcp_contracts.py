@@ -48,6 +48,41 @@ _jsonschema = cast(_JsonSchema, import_module("jsonschema"))
 Draft202012Validator = _jsonschema.Draft202012Validator
 validators = _jsonschema.validators
 
+FILM_SYNTHESIS_PLAN_INPUT_SCHEMA: dict[str, Any] = {
+    "type": "object", "additionalProperties": False, "required": ["payload"],
+    "properties": {"payload": {
+        "type": "object", "additionalProperties": False,
+        "required": ["schema_version", "kind", "request_id", "request", "physical_structures"],
+        "properties": {
+            "schema_version": {"const": 1},
+            "kind": {"const": "coat_sim.film_synthesis_request"},
+            "request_id": {"type": "string", "minLength": 1, "maxLength": 128},
+            "request": {"type": "object", "additionalProperties": True},
+            "physical_structures": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
+        }}}
+}
+
+FILM_SYNTHESIS_SUBMIT_INPUT_SCHEMA: dict[str, Any] = {
+    "type": "object", "additionalProperties": False,
+    "required": ["payload"],
+    "properties": {"payload": FILM_SYNTHESIS_PLAN_INPUT_SCHEMA["properties"]["payload"],
+        "client_request_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 512}},
+}
+
+FILM_SYNTHESIS_ESTIMATE_INPUT_SCHEMA: dict[str, Any] = {
+    "type": "object", "additionalProperties": False,
+    "required": ["kind", "parameters"],
+    "properties": {
+        "kind": {"enum": ["single_source", "process", "mask_optimization", "film_optimization",
+            "film_synthesis", "mask_weights", "mask_field", "point_weights", "python_script"]},
+        "parameters": {"type": "object"},
+    },
+    "allOf": [{"if": {"properties": {"kind": {"const": "film_synthesis"}}, "required": ["kind"]},
+        "then": {"properties": {"parameters": {"type": "object", "additionalProperties": False,
+            "required": ["payload"],
+            "properties": {"payload": FILM_SYNTHESIS_PLAN_INPUT_SCHEMA["properties"]["payload"]}}}}}],
+}
+
 # Shared domain operations take their effects directly from POLICIES. These
 # explicit classifications cover the remaining MCP adapters, including optional
 # development tools. New tools must be classified deliberately.
@@ -64,7 +99,7 @@ film_design_schema source_quadrature convert_gear_geometry sample_substrate_outl
 sample_substrate_surface calculation_history estimate_calculation convert_time_fields
 list_windows read_window project_editor_snapshot inspect_appearance_asset
 wait_calculation_job mask_optimization_groups ito_electrical_calculate
-list_deleted_builtin_materials'''.split())
+list_deleted_builtin_materials plan_film_synthesis'''.split())
 _WRITE = frozenset('''project_bbs_import_attachment project_bbs_comment project_bbs_write project_open project_research_save project_manage
  developer_report_issue developer_issue_reports developer_access developer_checks
  developer_persona run_python_script write_data_file move_data_path delete_data_path
@@ -77,6 +112,7 @@ _WRITE = frozenset('''project_bbs_import_attachment project_bbs_comment project_
  correction_board_weights correction_board_field selected_point_weights
  planet_center_occlusion_ring export_pdf open_window update_window window_action
  close_window estimate_compute_task estimate_film_optimization submit_film_optimization
+ submit_film_synthesis
  estimate_appearance_render submit_appearance_render request_compute_confirmation
  submit_mask_weights submit_mask_field submit_point_weights submit_python_script
  submit_single_source submit_process_recipe create_default_workflow create_design_workflow

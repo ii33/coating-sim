@@ -3,7 +3,7 @@ from dataclasses import asdict
 import hashlib
 import math
 
-KINDS = frozenset({"single_source", "process", "mask_optimization", "film_optimization", "appearance_render", "mask_weights", "mask_field", "point_weights", "python_script"})
+KINDS = frozenset({"single_source", "process", "mask_optimization", "film_optimization", "film_synthesis", "appearance_render", "mask_weights", "mask_field", "point_weights", "python_script"})
 
 
 def canonical_parameters(service, kind, supplied):
@@ -16,6 +16,9 @@ def canonical_parameters(service, kind, supplied):
     if kind == "film_optimization":
         from .film_compute import canonical_film_parameters
         return canonical_film_parameters(service, value)
+    if kind == "film_synthesis":
+        from .film_synthesis_jobs import canonical_parameters
+        return canonical_parameters(service, value)
     if kind == "python_script":
         if set(value) - {"code", "files", "timeout_s"}:
             raise ValueError("脚本参数包含未知字段")
@@ -153,6 +156,16 @@ def estimate(service, kind, parameters):
                 "operations": {key: request[key] for key in
                     ("max_iterations", "max_evaluations", "solver", "seed", "validation_samples_multiplier")},
                 "basis": "No matching measured film optimization history; request controls are stop limits, not a runtime prediction"}
+    if kind == "film_synthesis":
+        request = parameters["payload"]["request"]
+        return {"summary": "Film synthesis", "execution_project_root": str(service.root),
+                "estimated_s": None, "work_index": None,
+                "sample_count": 0,
+                "operations": {"max_cycles": request.get("max_cycles"),
+                    "max_evaluations": request.get("max_evaluations"),
+                    "objective_count": len(request.get("objectives", [])),
+                    "seed_count": len(request.get("seed_designs", []))},
+                "basis": "No matching measured film synthesis history; request limits are not a runtime prediction"}
     name = {"single_source": "单源沉积", "process": "工艺沉积仿真", "mask_optimization": "源与修正板优化",
             "mask_weights": "径向遮挡分析", "mask_field": "工件盘遮挡热图", "point_weights": "选点遮挡分析",
             "python_script": "Python 沙箱脚本"}[kind]

@@ -780,6 +780,73 @@ def validate_checkpoint(service: Any, checkpoint: Mapping[str, Any]) -> dict[str
     return deepcopy(dict(checkpoint))
 
 
+def validate_completed_structure_cancel_result(payload: Mapping[str, Any]) -> None:
+    """Validate current saved training/topology evidence without physical replay.
+
+    candidate_verified remains false: this path does not claim an independent
+    optical replay. The scheduler separately binds the complete worker reply.
+    """
+    from .film_optimization_structure import (film_structure_result_from_payload,
+        validate_film_structure_candidate_topology)
+
+    result = film_structure_result_from_payload(payload)
+    request = result.frozen_request
+    marker = result.topology_audit.get("cancel_snapshot")
+    if (request is None or result.state != "cancelled" or result.candidate_verified is not False
+            or marker != {"source": "worker_completed_reply", "replay_performed": False,
+                          "candidate_available": True, "training_complete": True}):
+        raise ValueError("structure cancel lacks an explicit complete worker snapshot")
+    topology = validate_film_structure_candidate_topology(request, result.best_design,
+        split_groups=result.topology_audit.get("split_groups", {}))
+    if any(result.topology_audit.get(key) != item for key, item in topology.items()):
+        raise ValueError("structure cancel topology does not match frozen hard bounds")
+    if (tuple(result.added_needle_layer_ids) != tuple(topology["added_needle_layer_ids"])
+            or dict(result.best_thickness_nm) != topology["layer_thickness_nm"]):
+        raise ValueError("structure cancel layer IDs/thickness map do not match topology")
+
+    def check_score(errors, objectives, maximum, weighted_maximum, rms, targets_met):
+        cursor = 0
+        normalized, weighted, weights = [], [], []
+        for index, objective in enumerate(objectives):
+            for angle in objective.angles_deg:
+                for sample in range(objective.wavelength_samples):
+                    wave = (objective.wavelength_min_nm if objective.wavelength_samples == 1 else
+                        objective.wavelength_min_nm + (objective.wavelength_max_nm - objective.wavelength_min_nm)
+                        * sample / (objective.wavelength_samples - 1))
+                    error = errors[cursor]
+                    cursor += 1
+                    if (error.objective_index != index or not _same_number(error.wavelength_nm, wave)
+                            or not _same_number(error.angle_deg, angle) or error.metric != objective.metric
+                            or error.polarization != objective.polarization
+                            or error.target_value != objective.target_value or error.lower_bound != objective.lower_bound
+                            or error.upper_bound != objective.upper_bound):
+                        raise ValueError("structure cancel saved conditions differ from frozen objectives")
+                    violation = (abs(error.actual - objective.target_value) if objective.mode == "value" else
+                        max(0., 0. if objective.lower_bound is None else objective.lower_bound - error.actual,
+                            0. if objective.upper_bound is None else error.actual - objective.upper_bound))
+                    norm, weight = score_condition(violation, objective.normalization_scale, objective.weight)
+                    if (not _same_number(error.normalized_violation, norm)
+                            or not _same_number(error.weighted_normalized_violation, weight)):
+                        raise ValueError("structure cancel saved condition scores are inconsistent")
+                    normalized.append(norm)
+                    weighted.append(weight)
+                    weights.append(objective.weight)
+        if (cursor != len(errors) or not _same_number(maximum, max(normalized))
+                or not _same_number(weighted_maximum, max(weighted))
+                or not _same_number(rms, weighted_rms_error(normalized, weights))
+                or targets_met is not (max(normalized) <= request.base_request.acceptable_normalized_error)):
+            raise ValueError("structure cancel aggregate score is inconsistent")
+
+    base = result.base_result
+    check_score(base.per_condition_errors, request.base_request.objectives,
+        base.max_normalized_error, base.weighted_max_normalized_error, base.weighted_rms_error, base.targets_met)
+    if base.validation_complete:
+        errors = base.validation_per_condition_errors
+        check_score(errors, _validation_objectives(request.base_request), base.validation_max_normalized_error,
+            max(error.weighted_normalized_violation for error in errors),
+            base.validation_weighted_rms_error, base.validation_targets_met)
+
+
 def execute_film_optimization_job(
     service: Any,
     payload: Mapping[str, Any],
@@ -836,6 +903,26 @@ def execute_film_optimization_job(
                                 if checkpoint_callback is not None else None),
         )
         result_payload = film_structure_result_to_payload(request, result)
+        if cancel_event is not None and cancel_event.is_set():
+            if not result.base_result.per_condition_errors:
+                raise InterruptedError("Cancelled before a complete structure candidate was scored")
+            from .film_optimization_structure import validate_film_structure_candidate_topology
+            # Keep the core's actual final/audit/verified flags. Only complete
+            # saved scores and recomputed hard-bound topology gain this marker.
+            topology = validate_film_structure_candidate_topology(request, result.best_design,
+                split_groups=result.topology_audit.get("split_groups", {}))
+            topology = {**topology, "cancel_snapshot": {"source": "worker_completed_reply",
+                "replay_performed": False, "candidate_available": True, "training_complete": True}}
+            if result.state == "completed":
+                # The search genuinely completed first. Cancellation wins only
+                # the task envelope; all candidate/audit/final facts stay intact.
+                result_payload["state"] = "cancelled"
+                result_payload["message"] = ("search completed before cancellation accepted; "
+                    "complete candidate retained without physical replay")
+                topology["core_terminal_state_before_cancel"] = "completed"
+            result_payload["structure"]["topology_audit"] = topology
+            validate_completed_structure_cancel_result(result_payload)
+            return result_payload
         return validate_film_structure_payload(frozen_service, result_payload)
 
     request = deserialize_request(request_payload)

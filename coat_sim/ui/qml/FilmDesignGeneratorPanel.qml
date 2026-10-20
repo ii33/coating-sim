@@ -8,6 +8,8 @@ import "theme_controls" as ThemeControls
 Item {
     id: panel
     required property var controller
+    property string generatorMode: "classic"
+    property var modeFocus: ({})
     property string templateId: "ar_single_qw"
     property var roleBindings: ({})
     property var substrateBinding: ({})
@@ -21,6 +23,19 @@ Item {
     property bool defaultsLoaded: false
     property string boundDesignId: ""
 
+    function setGeneratorMode(mode) {
+        if (mode === generatorMode) return
+        const focusMap = Object.assign({}, modeFocus)
+        if (Window.window) focusMap[generatorMode] = Window.window.activeFocusItem
+        modeFocus = focusMap
+        clearPreview()
+        physicalForm.invalidate()
+        generatorMode = mode
+        Qt.callLater(function() {
+            const item = panel.modeFocus[mode]
+            if (item && item.visible) item.forceActiveFocus()
+        })
+    }
     function indexFor(options, id) {
         if (!options) return -1
         for (let i = 0; i < options.length; ++i)
@@ -252,7 +267,25 @@ Item {
                 }
             }
         }
+        ThemeControls.ThemeComboBox {
+            objectName: "filmDesignGeneratorMode"
+            Layout.fillWidth: true
+            model: [{id: "classic", title: "经典参数模板"}, {id: "physical", title: "物理结构与组合段"}]
+            textRole: "title"
+            valueRole: "id"
+            currentIndex: panel.generatorMode === "physical" ? 1 : 0
+            onActivated: panel.setGeneratorMode(String(currentValue))
+        }
+        FilmPhysicalGeneratorForm {
+            id: physicalForm
+            themeSnapshot: Theme.snapshot
+            visible: panel.generatorMode === "physical"
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            controller: panel.controller
+        }
         Label {
+            visible: panel.generatorMode === "classic"
             Layout.fillWidth: true
             text: "按真实材料数据集在 λ0 求 n/k；生成物理 nm 厚度后，扫谱保持厚度不变。"
             wrapMode: Text.WordWrap
@@ -260,6 +293,7 @@ Item {
         }
         Label {
             objectName: "filmDesignGeneratorThicknessDescription"
+            visible: panel.generatorMode === "classic"
             Layout.fillWidth: true
             text: String(panel.controller.thicknessSummaryDescription || "")
             wrapMode: Text.WordWrap
@@ -270,6 +304,7 @@ Item {
 
         ScrollView {
             id: generatorScroll
+            visible: panel.generatorMode === "classic"
             objectName: "filmDesignGeneratorScroll"
             Layout.fillWidth: true
             Layout.fillHeight: true

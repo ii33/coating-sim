@@ -1005,9 +1005,11 @@ class LauncherBridge(QObject):
     @staticmethod
     def _start_reused_film_companion(handle: WindowHandle) -> None:
         """Controller queues starts behind its own replacement confirmation."""
-        name = ("requestCalculation" if handle.key == "film_simulation"
+        name = ("requestSourceRefresh" if handle.key == "film_simulation"
                 else "requestOptimization")
         starter = getattr(handle.bridge, name, None)
+        if not callable(starter) and handle.key == "film_simulation":
+            starter = getattr(handle.bridge, "requestCalculation", None)
         if not callable(starter) and handle.key == "film_optimization":
             # Optimization's public shortcut queues behind source replacement.
             starter = getattr(handle.bridge, "startOptimizationFromShortcut", None)
@@ -1589,7 +1591,8 @@ class LauncherBridge(QObject):
             self._activate_window(existing.window)
             if start:
                 if module_key == "film_simulation":
-                    requester = getattr(existing.bridge, "requestCalculation", None)
+                    requester = (getattr(existing.bridge, "requestSourceRefresh", None)
+                                 or getattr(existing.bridge, "requestCalculation", None))
                     if callable(requester):
                         requester()
                     else:
@@ -1610,8 +1613,12 @@ class LauncherBridge(QObject):
                 if pending_qml is not None and matches(pending_qml.bridge):
                     pending_qml.on_ready = None
                     if module_key == "film_simulation":
-                        pending_qml.bridge.refreshFromSource()
-                        pending_qml.bridge.startCalculation()
+                        requester = getattr(pending_qml.bridge, "requestSourceRefresh", None)
+                        if callable(requester):
+                            requester()
+                        else:
+                            pending_qml.bridge.refreshFromSource()
+                            pending_qml.bridge.startCalculation()
                     else:
                         pending_qml.bridge.startOptimizationFromShortcut()
                 else:

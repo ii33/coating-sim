@@ -21,11 +21,12 @@ MAX_SPEC_BYTES = MAX_RAYTRACE_SPEC_BYTES  # 20 MiB, matching frozen ray jobs.
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _JOB_ID = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 _ALLOWED = frozenset({"process", "process_recipe", "single_source",
-    "mask_optimization", "film_optimization", "mask_weights", "mask_field",
+    "mask_optimization", "film_optimization", "film_synthesis", "mask_weights", "mask_field",
     "point_weights", "geometric_raytrace", "appearance_render"})
 REMOTE_EXECUTORS = _ALLOWED
 DEVICE_BINDING_VERSION = 1
-_BOUND_EXECUTORS = frozenset({"process_recipe", "film_optimization", "appearance_render"})
+_BOUND_EXECUTORS = frozenset({
+    "process_recipe", "film_optimization", "film_synthesis", "appearance_render"})
 
 
 class RemoteContractError(ValueError):
@@ -172,12 +173,17 @@ def _validate_spec(spec: JobSpec, *, allow_probe: bool, bound: bool = False):
         if executor not in _BOUND_EXECUTORS:
             _fail("unsupported_device_executor", "executor has no device-bound remote route")
         binding = inputs.get("device_binding")
-        if (not isinstance(binding, dict) or set(binding) != {"schema_version", "device_id"}
+        if not isinstance(binding, dict):
+            raise RemoteContractError(
+                "invalid_device_binding", "frozen input has no valid device binding")
+        if (set(binding) != {"schema_version", "device_id"}
                 or type(binding.get("schema_version")) is not int
                 or binding["schema_version"] != DEVICE_BINDING_VERSION
                 or not isinstance(binding.get("device_id"), str)
                 or not 1 <= len(binding["device_id"]) <= 120):
             _fail("invalid_device_binding", "frozen input has no valid device binding")
+        if executor == "film_synthesis" and binding["device_id"] != "cpu:default":
+            _fail("unsupported_device_binding", "film synthesis supports only cpu:default")
         inputs = {key: value for key, value in inputs.items() if key != "device_binding"}
     elif "device_binding" in inputs:
         _fail("invalid_device_binding", "device binding requires the extended request envelope")
@@ -285,6 +291,12 @@ def _validate_spec(spec: JobSpec, *, allow_probe: bool, bound: bool = False):
         _fields(p, {"payload"})
         if inputs: _fail("invalid_executor_inputs", "film optimization inputs must be empty")
         _validate_film_payload(p["payload"])
+        return
+    if executor == "film_synthesis":
+        _fields(p, {"payload"})
+        if inputs:
+            _fail("invalid_executor_inputs", "film synthesis inputs must be empty")
+        _validate_film_synthesis_payload(p["payload"])
         return
     if executor == "geometric_raytrace":
         _fields(p, {"request"})
@@ -422,6 +434,20 @@ def _validate_film_payload(payload):
         raise
     except Exception:
         _fail("invalid_film_payload", "film optimization request or frozen material snapshot is invalid")
+
+
+def _validate_film_synthesis_payload(payload):
+    from coat_sim.core.film_synthesis_jobs import deserialize_job_payload
+    from coat_sim.core.film_synthesis_io import prepare_film_synthesis_payload
+    try:
+        _request_id, _request, _metadata = deserialize_job_payload(payload)
+        canonical, _ = prepare_film_synthesis_payload(None, payload["request"])
+        if canonical["request"] != payload["request"]["request"]:
+            _fail("invalid_film_synthesis_payload", "film synthesis payload is not canonical")
+    except RemoteContractError:
+        raise
+    except Exception:
+        _fail("invalid_film_synthesis_payload", "film synthesis request or frozen materials are invalid")
 
 
 def prepare_portable_spec(spec: JobSpec) -> JobSpec:

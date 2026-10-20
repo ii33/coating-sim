@@ -197,9 +197,19 @@ def _is_film_structure_result(result) -> bool:
             or not isinstance(structure.get("added_needle_layer_ids"), list)):
         return False
     partial = result.get("partial_result")
+    complete_worker_cancel = False
+    if (isinstance(partial, dict) and partial.get("candidate_verified") is False
+            and result.get("state") == "cancelled"
+            and structure["topology_audit"].get("cancel_snapshot")):
+        from coat_sim.core.film_optimization_job import validate_completed_structure_cancel_result
+        try:
+            validate_completed_structure_cancel_result(result)
+        except (KeyError, TypeError, ValueError, ArithmeticError, IndexError):
+            return False
+        complete_worker_cancel = True
     if (not isinstance(partial, dict)
             or partial.get("kind") != "best_candidate"
-            or partial.get("candidate_verified") is not True
+            or (partial.get("candidate_verified") is not True and not complete_worker_cancel)
             or type(partial.get("best_so_far")) is not bool
             or type(partial.get("validation_complete")) is not bool
             or type(partial.get("is_final")) is not bool
@@ -239,6 +249,16 @@ def is_best_candidate_result(result) -> bool:
     """Return whether a terminal result explicitly advertises a verified candidate."""
     if is_film_optimization_result(result):
         return True
+    from coat_sim.core.film_synthesis_jobs import is_synthesis_result
+    if is_synthesis_result(result):
+        body = result.get("result", {})
+        provenance = body.get("candidate_provenance") or {}
+        audited = (body.get("validation_complete") is True
+                   and isinstance(body.get("validation_score"), dict))
+        complete_cancel = (body.get("state") == "cancelled"
+            and provenance.get("selection") == "completed_training_at_cancel"
+            and provenance.get("training_complete") is True)
+        return isinstance(body.get("candidate_design"), dict) and (audited or complete_cancel)
     if not isinstance(result, dict):
         return False
     partial = result.get("partial_result")
@@ -291,6 +311,12 @@ def _has_registered_result_artifact(result) -> bool:
     return False
 
 
+def is_synthesis_result(result) -> bool:
+    """Typed film synthesis result predicate shared by the scheduler boundary."""
+    from coat_sim.core.film_synthesis_jobs import is_synthesis_result as check
+    return check(result)
+
+
 def is_geometric_raytrace_result(result) -> bool:
     """Recognize a complete ray result summary backed by a registered artifact."""
     try:
@@ -308,6 +334,9 @@ def job_has_viewable_result(job) -> bool:
     if not isinstance(result, dict):
         return False
     if job.get("state") == "succeeded":
+        from coat_sim.core.film_synthesis_jobs import is_synthesis_result
+        if is_synthesis_result(result):
+            return True
         if result.get("kind") == "appearance_render":
             return is_appearance_render_result(result) and _has_registered_result_artifact(result)
         if is_film_optimization_result(result):
@@ -342,7 +371,7 @@ def validate_appearance_render_result(root, job_id, result, *,
                     require_registered_artifact=require_registered_artifact)
 
 
-def load_best_candidate_checkpoint(root, job_id):
+def load_best_candidate_checkpoint(root, job_id, *, terminal_state="cancelled"):
     """Load and validate a job-local checkpoint; return ``(result, reason)``.
 
     A checkpoint is usable only if its pointer is contained in the scheduler job
@@ -362,6 +391,24 @@ def load_best_candidate_checkpoint(root, job_id):
         if pointer.is_symlink() or not pointer.resolve().is_relative_to(job_directory):
             raise ValueError("checkpoint pointer escaped its job directory")
         envelope = json.loads(pointer.read_text(encoding="utf-8"))
+        if isinstance(envelope, dict) and envelope.get("kind") == "coat_sim.film_synthesis_audited_checkpoint":
+            from .jobs import JobSpec
+            from .store import SchedulerStore
+            from coat_sim.core.film_synthesis_jobs import validate_checkpoint
+            spec_path = job_directory / "spec.json"
+            if spec_path.is_symlink() or not spec_path.resolve().is_relative_to(job_directory):
+                raise ValueError("film synthesis job spec escaped its scheduler directory")
+            spec = JobSpec.parse_frozen_json(spec_path.read_text(encoding="utf-8"))
+            queue_record = SchedulerStore(root).status(job_id)
+            if (spec.executor != "film_synthesis"
+                    or queue_record.get("input_digest") != spec.fingerprint
+                    or spec.parameters.get("payload") != envelope.get("job")):
+                raise ValueError("audited synthesis checkpoint is not bound to this frozen job input")
+            recovered = validate_checkpoint(envelope, terminal_state=terminal_state)
+            business_root = queue_record.get("execution_project_root")
+            recovered["execution_project_root"] = (
+                business_root if isinstance(business_root, str) and business_root else str(root))
+            return recovered, ""
         result = envelope.get("result") if isinstance(envelope, dict) else None
         if is_film_optimization_result(result):
             from coat_sim.core.api import CoatService

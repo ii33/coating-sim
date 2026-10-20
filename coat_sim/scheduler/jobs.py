@@ -10,7 +10,7 @@ PROTOCOL_VERSION = 1
 MAX_RAYTRACE_SPEC_BYTES = 20 * 1024 * 1024
 EXECUTORS = frozenset({'process', 'process_recipe', 'single_source', 'mask_optimization',
                        'film_optimization', 'mask_weights', 'mask_field', 'point_weights',
-                       'geometric_raytrace', 'appearance_render', 'python_script', 'probe'})
+                       'film_synthesis', 'geometric_raytrace', 'appearance_render', 'python_script', 'probe'})
 
 def canonical(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False)
@@ -93,6 +93,12 @@ def freeze_spec(service, kind, parameters):
             raise ValueError('film_optimization requires exactly one FilmOptimizationRequest')
         from coat_sim.core.film_optimization_job import freeze_job_payload
         payload = freeze_job_payload(service, values['request'])
+        return JobSpec(kind, {'payload': payload}, {}).to_dict()
+    if kind == 'film_synthesis':
+        if set(values) != {'payload', 'physical_structure_metadata'}:
+            raise ValueError('film_synthesis requires one frozen request and structure metadata')
+        from coat_sim.core.film_synthesis_jobs import build_job_payload
+        payload = build_job_payload(values)
         return JobSpec(kind, {'payload': payload}, {}).to_dict()
     if kind == 'appearance_render':
         if set(values) != {'frozen'} or not isinstance(values.get('frozen'), dict):

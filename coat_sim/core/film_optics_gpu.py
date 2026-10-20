@@ -152,6 +152,8 @@ class TorchCoherentBatch:
         self.upload_seconds = time.perf_counter() - begin
         self.verified = False
         self.last_timing = {}
+        self.last_verification = {}
+        self.last_execution = {}
 
     def _compute(self, thickness, wave_start, wave_stop, cancel=None):
         torch = self.torch
@@ -181,6 +183,10 @@ class TorchCoherentBatch:
         return sum(channels) / len(channels)
 
     def evaluate(self, thickness_nm, *, chunk_bytes=64 * 1024**2, cancel=None):
+        # Each invocation owns its counters even when its first check cancels.
+        # A completed verification invocation must never become training work.
+        self.last_execution = {"submitted_candidates": 0, "completed_candidates": 0,
+            "completed_wavelength_points": 0, "complete": False}
         torch = self.torch
         d = np.asarray(thickness_nm, dtype=np.float64)
         layers = self.stack.indices.shape[1] - 2
@@ -192,6 +198,7 @@ class TorchCoherentBatch:
             if cancel is not None and (cancel.is_set() if hasattr(cancel, "is_set") else cancel()):
                 raise InterruptedError("film GPU batch cancelled")
         check()
+        self.last_execution["submitted_candidates"] = len(d)
         result = np.empty((d.shape[0], self.waves.numel(), 3), dtype=np.float64)
         # Conservative scratch convention, excludes separately limited retained
         # output and resident stack. Never use all reported free VRAM.
@@ -216,12 +223,15 @@ class TorchCoherentBatch:
                     forward += time.perf_counter() - start
                     start = time.perf_counter()
                     actual = block.cpu().numpy()
+                    self.last_execution["completed_wavelength_points"] += int(actual.shape[0] * actual.shape[1])
                     download += time.perf_counter() - start
                     if not np.all(np.isfinite(actual)):
                         raise ValueError("nonfinite GPU spectrum; whole batch discarded")
                     result[c:c + dt.shape[0], w:w + actual.shape[1]] = actual
                     del block
+                self.last_execution["completed_candidates"] += int(dt.shape[0])
                 del dt
+        self.last_execution["complete"] = True
         check()
         self.last_timing = {"thickness_upload_seconds": upload, "forward_seconds": forward,
                             "download_seconds": download,
@@ -234,8 +244,18 @@ class TorchCoherentBatch:
         """Stack-local real numerical gate, before any GPU output is selected."""
         d = np.asarray(thickness_nm, dtype=np.float64)
         probes = np.concatenate((d[:2], np.zeros((1, d.shape[1]))), axis=0)
+        self.last_verification.clear()
+        self.last_verification.update(cpu_submitted=len(probes), cpu_completed=0,
+            gpu_submitted=0, gpu_completed=0, wavelength_samples=int(self.stack.waves.size), complete=False)
         cpu = self.stack.evaluate(probes, chunk_bytes=chunk_bytes, cancel=cancel)
-        gpu = self.evaluate(probes, chunk_bytes=chunk_bytes, cancel=cancel)
+        self.last_verification["cpu_completed"] = len(probes)
+        self.last_verification["gpu_submitted"] = len(probes)
+        try:
+            gpu = self.evaluate(probes, chunk_bytes=chunk_bytes, cancel=cancel)
+        finally:
+            self.last_verification["gpu_completed"] = self.last_execution.get("completed_candidates", 0)
+            self.last_verification["gpu_completed_wavelength_points"] = self.last_execution.get("completed_wavelength_points", 0)
+        self.last_verification["complete"] = True
         error = float(np.max(np.abs(cpu - gpu)))
         if not np.allclose(cpu, gpu, rtol=2e-12, atol=2e-12):
             raise RuntimeError(f"GPU spectrum CPU comparison failed: max absolute error {error}")

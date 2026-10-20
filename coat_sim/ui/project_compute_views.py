@@ -29,6 +29,16 @@ def _wire_project_queue_results(queue, workspace: ProjectFilmWorkspace, navigati
             raise ValueError("Result destination has a different project owner")
         return controller
 
+    def existing_target(module_key: str):
+        desktop = getattr(navigation, "desktop", None)
+        if desktop is None:
+            return None
+        controller = desktop.controller_for(workspace, module_key)
+        if (controller is None
+                or getattr(controller, "project_context", None) is not workspace):
+            return None
+        return controller
+
     def film_result(job_id, payload):
         try:
             row = queue._require_owned_job(job_id)
@@ -40,6 +50,21 @@ def _wire_project_queue_results(queue, workspace: ProjectFilmWorkspace, navigati
             queue._result_status("已打开本项目历史候选；没有自动应用到当前设计。")
         except Exception as exc:
             queue._result_status("无法打开项目候选：" + str(exc))
+
+    def synthesis_result(job_id, payload):
+        try:
+            row = queue._require_owned_job(job_id)
+            from coat_sim.scheduler.result_capability import is_synthesis_result
+            if (not isinstance(row, dict) or payload != row.get("result")
+                    or not is_synthesis_result(payload)):
+                raise ValueError("Synthesis result differs from its typed project queue record")
+            controller = target("film_optimization")
+            inspect = getattr(controller, "inspectSynthesisQueueResult", None)
+            if not callable(inspect) or not inspect(job_id, payload, origin=row["origin"]):
+                raise ValueError(getattr(controller, "errorText", "Synthesis result could not be opened"))
+            queue._result_status("Opened this project's historical synthesis candidate in read-only mode.")
+        except Exception as exc:
+            queue._result_status("Unable to open the project synthesis candidate: " + str(exc))
 
     def raytrace_result(job_id, result_path):
         try:
@@ -64,8 +89,26 @@ def _wire_project_queue_results(queue, workspace: ProjectFilmWorkspace, navigati
         except Exception as exc:
             queue._result_status("无法打开项目光追结果：" + str(exc))
 
+    def cancel_received(job_id, result, error):
+        if error or result is not True:
+            return
+        try:
+            row = queue._require_owned_job(job_id)
+            if not isinstance(row, dict) or not isinstance(row.get("origin"), dict):
+                return
+            controller = existing_target("film_optimization")
+            accept = getattr(controller, "onProjectQueueCancelAccepted", None)
+            if callable(accept):
+                accept(job_id, result, row["origin"])
+        except Exception:
+            # A closed or stale project view has no live observer to receive
+            # the cancellation intent; the queue remains authoritative.
+            return
+
     queue.filmOptimizationResultReady.connect(film_result)
+    queue.filmSynthesisResultReady.connect(synthesis_result)
     queue.rayTraceResultReady.connect(raytrace_result)
+    queue.cancelReceived.connect(cancel_received)
 
 
 def _design_source(workspace: ProjectFilmWorkspace):

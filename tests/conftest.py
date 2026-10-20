@@ -26,6 +26,19 @@ _TEST_CACHE_TEMP = tempfile.TemporaryDirectory(prefix="deposition-sim-pytest-")
 _TEST_CACHE_ROOT = Path(_TEST_CACHE_TEMP.name)
 
 QT_MODULES = frozenset({
+    "test_film_synthesis_gpu_forward_gui.py",
+    "test_film_optimization_cancel_spectrum.py",
+    "test_film_optimization_cancel_native.py",
+    "test_film_optimization_cancel_apply_review.py",
+    "test_film_optimization_bounds_edit_review.py",
+    "test_film_synthesis_parallel_gui.py",
+    "test_film_synthesis_quick_controller.py",
+    "test_film_synthesis_gui_review.py",
+    "test_film_synthesis_gui_repairs.py",
+    "test_film_physical_generator_usability.py",
+    "test_film_synthesis_gui_usability_review.py",
+    "test_film_synthesis_unknown_k_review.py",
+    "test_film_synthesis_queue_gui.py",
     "test_assistant_message_body_qml.py",
     "test_assistant_message_lifecycle_qml.py",
     "test_toolkit_settings_ui.py",
@@ -132,6 +145,13 @@ QT_MODULES = frozenset({
 })
 
 ALGORITHM_MODULES = frozenset({
+    "test_film_synthesis_gpu_forward.py",
+    "test_film_synthesis_cancel_jobs.py",
+    "test_film_synthesis_cancel.py",
+    "test_film_synthesis_parallel.py",
+    "test_film_synthesis_parallel_review.py",
+    "test_film_synthesis_parallel_benchmark.py",
+    "test_film_synthesis_unknown_k_policy.py",
     "test_film_optimization_derivative_limits.py",
     "test_film_prepared_scoring.py",
     "test_film_backend_selection.py",
@@ -175,6 +195,29 @@ ALGORITHM_MODULES = frozenset({
 })
 
 CONTRACT_MODULES = frozenset({
+    "test_film_synthesis_gpu_forward_gui.py",
+    "test_film_synthesis_gpu_forward.py",
+    "test_film_optimization_cancel_spectrum.py",
+    "test_film_optimization_cancel_native.py",
+    "test_film_optimization_cancel_apply_review.py",
+    "test_film_synthesis_cancel_jobs.py",
+    "test_film_optimization_bounds_edit_review.py",
+    "test_film_synthesis_cancel.py",
+    "test_film_synthesis_parallel.py",
+    "test_film_synthesis_parallel_review.py",
+    "test_film_synthesis_parallel_benchmark.py",
+    "test_film_synthesis_parallel_gui.py",
+    "test_film_synthesis_unknown_k_policy.py",
+    "test_film_synthesis_quick_controller.py",
+    "test_film_synthesis_gui_review.py",
+    "test_film_synthesis_gui_repairs.py",
+    "test_film_physical_generator_usability.py",
+    "test_film_synthesis_gui_usability_review.py",
+    "test_film_synthesis_unknown_k_review.py",
+    "test_film_synthesis_queue_gui.py",
+    "test_film_synthesis_quick_adapter.py",
+    "test_film_physical_generator_session.py",
+    "test_film_physical_generator_frozen_apply.py",
     "test_assistant_message_body_qml.py",
     "test_assistant_message_lifecycle_qml.py",
     "test_assistant_compute_ui_authority.py",

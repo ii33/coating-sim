@@ -2,7 +2,6 @@ import csv
 import copy
 import asyncio
 import json
-import os
 import sys
 import tempfile
 import types
@@ -276,15 +275,19 @@ class FilmDesignMcpTests(unittest.TestCase):
         self.assertTrue(target.with_suffix(".csv").is_file())
         self.assertIn(str(target.with_suffix(".csv")), str(raised.exception))
 
-    def test_real_api_mcp_film_workflow_with_project_fixture(self):
-        project_root = Path(os.environ.get("COAT_SIM_TEST_PROJECT", Path(__file__).resolve().parents[1]))
-        example_path = project_root / "examples" / "film_design_nbk7_plate.json"
-        design = json.loads(example_path.read_text(encoding="utf-8"))
+    def test_real_api_mcp_film_workflow_with_self_contained_current_fixture(self):
+        # The former examples/ descriptor was removed from this worktree. Build
+        # current schema input and use the current catalog in the isolated root;
+        # do not restore an old file or read mutable project material overrides.
+        design = new_design("Self-contained N-BK7 API fixture", design_id="mcp-current-nbk7")
+        design["substrate"].update(material_id="film_substrate_schott_nbk7",
+                                   optical_set_id="schott_nbk7_sellmeier")
+        design["assume_lossless"] = True  # Explicit legacy simulation convention.
         self.assertIs(design["assume_lossless"], True)
         with tempfile.TemporaryDirectory() as root:
             api = CoatService(root=root)
             self.assertEqual(api.film_design_service.root, Path(root).resolve())
-            api.film_design_service.materials = FilmMaterialLibrary(project_root)
+            api.film_design_service.materials = FilmMaterialLibrary(root)
             validated = api.validate_film_design(design)
             saved = api.save_film_design("data/designs/nbk7.cfilm", validated)
             self.assertEqual(saved["path"], str(Path(root, "data", "designs", "nbk7.cfilm")))
@@ -304,7 +307,7 @@ class FilmDesignMcpTests(unittest.TestCase):
             result = json.loads(Path(receipt["artifact_paths"]["json"]).read_text(encoding="utf-8"))["result"]
             self.assertTrue(result["provenance"])
             self.assertIn("source_units", result)
-            for reflectance, transmission, absorption in zip(result["R"], result["T"], result["A"]):
+            for reflectance, transmission, absorption in zip(result["R"], result["T"], result["A"], strict=True):
                 self.assertAlmostEqual(reflectance + transmission + absorption, 1.0, places=8)
             self.assertEqual(read_service.root, Path(root).resolve())
 

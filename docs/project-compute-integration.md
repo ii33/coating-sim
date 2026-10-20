@@ -101,3 +101,9 @@ provenance convention, not a new optical model. Failed/stale generation
 callbacks never replace current display state. Local calculations use frozen
 material providers across every polarization; completion is deferred while an
 exit preflight freezes editing and replayed only if that exit is cancelled.
+
+### Project film synthesis desktop route (2026-10-20)
+
+The existing film optimizer's `synthesis` mode captures current project objectives and explicitly selected materials through `ProjectFilmService`; the same project `ProjectComputeWorkspace` admits the `film_synthesis` task. This is independent of the assistant business-root route. The run coordinator remains the sole observer/cancellation owner. Generation, revision, edit-epoch and attempt guards reject stale callbacks after edits, close/reopen or source destruction. Historical typed queue inspection checks the persisted row and originating workspace and stays read-only.
+
+A completed candidate requires the existing replacement confirmation and atomic film-session application. The existing optimizer plot previews frozen target samples. Live submissions capture a separate editable material closure for project save/application, while historical results retain only their numerical snapshot. Frozen records must cover every actual candidate document reference; incomplete closure rejects save/application without reading the later live catalog. Undo restores the original design/provider while preserving subsequent independent workflow material additions. Standalone `.cfilm` save rejects drifted/missing catalog references because that format does not embed material snapshots. No project/document schema changes are introduced. See [GUI contract](film-synthesis-gui-contract.md) and independent Qt/project closure tests `test_film_synthesis_gui_review.py` and `test_film_physical_generator_frozen_apply.py`.

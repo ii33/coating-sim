@@ -348,6 +348,22 @@ class Scheduler:
         if not row: raise ValueError('artifact_not_found')
         return json.loads(row['metadata'])
 
+    def _bound_film_reply(self, job_id, result):
+        """No physical replay: require this exact persisted spec and input digest."""
+        from .worker import _film_reply_matches_payload
+        from .jobs import JobSpec
+        try:
+            directory = self.runtime / 'jobs' / job_id
+            spec_path = directory / 'spec.json'
+            if spec_path.is_symlink() or not spec_path.resolve().is_relative_to(directory.resolve()):
+                return False
+            spec = JobSpec.parse_frozen_json(spec_path.read_text(encoding='utf-8'))
+            queued = self.memory_status(job_id)
+            return (spec.executor == queued.get('kind') and spec.fingerprint == queued.get('input_digest')
+                and _film_reply_matches_payload(result, spec.parameters.get('payload')))
+        except (OSError, KeyError, TypeError, ValueError):
+            return False
+
     def _attach_best_candidate_checkpoint(self, job_id, outcome):
         if self.memory_status(job_id).get('kind') == 'appearance_render':
             # Appearance output is readable only after a successful terminal
@@ -355,6 +371,28 @@ class Scheduler:
             outcome = dict(outcome)
             outcome['result'] = None
             outcome.pop('result_unavailable_reason', None)
+            return outcome
+        if (self.memory_status(job_id).get('kind') in ('film_synthesis', 'film_optimization')
+                and (outcome or {}).get('state') == 'cancelled'):
+            from .result_capability import is_film_optimization_result, is_synthesis_result
+            existing = (outcome or {}).get('result')
+            if ((is_synthesis_result(existing) or is_film_optimization_result(existing))
+                    and self._bound_film_reply(job_id, existing)):
+                return dict(outcome)
+            if (outcome or {}).get('state') == 'cancelled':
+                return {**dict(outcome or {}), 'result': None,
+                    'result_unavailable_reason': ('No complete current worker reply is available; '
+                        'checkpoint retained for explicit review without cancellation replay.')}
+        if self.memory_status(job_id).get('kind') == 'film_synthesis':
+            from .result_capability import load_best_candidate_checkpoint
+            candidate, reason = load_best_candidate_checkpoint(self.root, job_id,
+                terminal_state=(outcome or {}).get('state', 'cancelled'))
+            outcome = dict(outcome)
+            outcome['result'] = candidate
+            if candidate is None:
+                outcome['result_unavailable_reason'] = reason
+            else:
+                outcome.pop('result_unavailable_reason', None)
             return outcome
         from .result_capability import load_best_candidate_checkpoint
 
@@ -368,11 +406,40 @@ class Scheduler:
         return outcome
 
     def _cancelled_outcome(self, job_id, previous):
-        outcome = {'state': 'cancelled', 'error_code': 'cancelled',
+        outcome: dict[str, Any] = {'state': 'cancelled', 'error_code': 'cancelled',
                    'error': (previous or {}).get('error') or 'Cancelled by user'}
         if self.memory_status(job_id).get('kind') == 'appearance_render':
             outcome['result'] = None
             return outcome
+        if self.memory_status(job_id).get('kind') == 'film_synthesis':
+            from .result_capability import is_synthesis_result
+            existing = (previous or {}).get('result')
+            if is_synthesis_result(existing) and self._bound_film_reply(job_id, existing):
+                outcome['result'] = deepcopy(existing)
+                body = outcome['result'].get('result', {})
+                if body.get('state') == 'completed':
+                    body['state'] = 'cancelled'
+                    body['termination_reason'] = 'scheduler_cancel_won'
+                    body['message'] = 'Cancellation was accepted at the scheduler completion boundary; the audited candidate is preserved.'
+                    body['targets_met'] = False
+                    review = outcome['result'].get('review', {})
+                    review['termination'] = {'state': 'cancelled', 'reason': 'scheduler_cancel_won'}
+                    review['targets_met'] = False
+                    warnings = review.setdefault('warnings', [])
+                    if isinstance(warnings, list):
+                        warnings.append(
+                            'A fully audited candidate may have met its objectives before cancellation; '
+                            'the job was cancelled before completion was accepted.')
+                outcome['result'].setdefault('review', {})['cancel_snapshot'] = {
+                    'source': 'worker_completed_reply', 'replay_performed': False,
+                    'candidate_available': isinstance(body.get('candidate_design'), dict)}
+                return outcome
+        if self.memory_status(job_id).get('kind') == 'film_optimization':
+            from .worker import _completed_film_cancel_reply
+            saved = _completed_film_cancel_reply((previous or {}).get('result'))
+            if saved is not None and self._bound_film_reply(job_id, saved):
+                outcome['result'] = saved
+                return outcome
         return self._attach_best_candidate_checkpoint(job_id, outcome)
 
     def _expire_exit(self):
@@ -473,7 +540,7 @@ class Scheduler:
             result = value.get('result')
             from .result_capability import (
                 is_best_candidate_result, is_film_optimization_result,
-                job_has_viewable_result,
+                is_synthesis_result, job_has_viewable_result,
             )
             if not job_has_viewable_result(value):
                 if state in ('failed', 'cancelled'):
@@ -500,7 +567,7 @@ class Scheduler:
                 artifacts = result.get('result_artifacts') or []
                 if not is_best_candidate_result(result):
                     raise ValueError('job_result_unavailable: no verified candidate is available')
-                if (not is_film_optimization_result(result) and not any(
+                if (not is_film_optimization_result(result) and not is_synthesis_result(result) and not any(
                         isinstance(item, dict) and item.get('role') == 'bundle'
                         and item.get('artifact_id') for item in artifacts)):
                     raise ValueError('job_result_unavailable: candidate bundle is not registered')
@@ -613,22 +680,27 @@ class Scheduler:
             elif outcome.get('state') in ('failed', 'cancelled'):
                 outcome = self._attach_best_candidate_checkpoint(job_id, outcome)
             if outcome.get('state') == 'succeeded':
-                try: outcome['result'] = self.register_artifacts(job_id, outcome['result'])
-                except Exception as exc:
-                    outcome = {'state': 'failed', 'error_code': 'result_save_failed', 'error': str(exc)}
-                    outcome = self._attach_best_candidate_checkpoint(job_id, outcome)
+                from .result_capability import is_synthesis_result
+                if is_synthesis_result(outcome.get('result')):
+                    pass
+                else:
+                    try: outcome['result'] = self.register_artifacts(job_id, outcome['result'])
+                    except Exception as exc:
+                        outcome = {'state': 'failed', 'error_code': 'result_save_failed', 'error': str(exc)}
+                        outcome = self._attach_best_candidate_checkpoint(job_id, outcome)
             elif outcome.get('state') in ('failed', 'cancelled'):
-                from .result_capability import is_best_candidate_result, is_film_optimization_result
+                from .result_capability import is_best_candidate_result, is_film_optimization_result, is_synthesis_result
                 if is_best_candidate_result(outcome.get('result')):
-                    if not is_film_optimization_result(outcome.get('result')):
+                    if not is_film_optimization_result(outcome.get('result')) and not is_synthesis_result(outcome.get('result')):
                         try: outcome['result'] = self.register_artifacts(job_id, outcome['result'])
                         except Exception as exc:
                             outcome['result'] = None
                             outcome['result_unavailable_reason'] = f'Candidate artifact registration failed: {exc}'
-            from .result_capability import is_best_candidate_result, is_film_optimization_result
+            from .result_capability import is_best_candidate_result, is_film_optimization_result, is_synthesis_result
             if (outcome.get('state') in ('failed', 'cancelled')
                     and is_best_candidate_result(outcome.get('result'))
                     and not is_film_optimization_result(outcome.get('result'))
+                    and not is_synthesis_result(outcome.get('result'))
                     and not any(isinstance(item, dict) and item.get('role') == 'bundle'
                                 and item.get('artifact_id')
                                 for item in outcome['result'].get('result_artifacts', []))):
@@ -640,9 +712,10 @@ class Scheduler:
             with self.condition:
                 if self.memory_status(job_id).get('cancel_requested'):
                     outcome = self._cancelled_outcome(job_id, outcome)
-                    from .result_capability import is_best_candidate_result, is_film_optimization_result
+                    from .result_capability import is_best_candidate_result, is_film_optimization_result, is_synthesis_result
                     if (is_best_candidate_result(outcome.get('result'))
-                            and not is_film_optimization_result(outcome.get('result'))):
+                            and not is_film_optimization_result(outcome.get('result'))
+                            and not is_synthesis_result(outcome.get('result'))):
                         try: outcome['result'] = self.register_artifacts(job_id, outcome['result'])
                         except Exception as exc:
                             outcome['result'] = None

@@ -11,11 +11,16 @@ import "theme_controls/NumericFormat.js" as NumericFormat
 AppWindow {
     id: window
     property bool projectCloseAuthorized: false
+    property bool synthesisPreviewHighlighted: false
+    onActiveChanged: {
+        if (active && controller.searchMode === "synthesis" && !controller.busy)
+            controller.refreshSynthesisMaterials()
+    }
     property var projectNavigation: null
     property var projectResources: null
     readonly property var themeTokens: window.themeColors
     required property var controller
-    titleBase: "膜系厚度优化"
+    titleBase: window.controller.searchMode === "synthesis" ? "膜系自动合成" : "膜系厚度优化"
     captionBase: titleBase
     projectNameForTitle: projectNavigation ? projectNavigation.projectName : ""
     statusText: controller.statusText
@@ -47,6 +52,20 @@ AppWindow {
     property bool detailsExpanded: false
     readonly property bool detailsDocked: detailsExpanded && width >= 1100
     property var nativeF4Combos: []
+
+    // Repeater.itemAt is statically QQuickItem; this parameter is the dynamic
+    // material-row delegate contract, including its modelData and selector alias.
+    function restoreSynthesisMaterialPopup(row: var, rowId: string): bool {
+        if (!row || row.modelData.id !== rowId) return false
+        row.materialSelector.forceActiveFocus()
+        row.materialSelector.popup.open()
+        return true
+    }
+    function openSynthesisMaterialPopup(rowId) {
+        for (let i = 0; i < synthesisMaterialRows.count; ++i) {
+            if (window.restoreSynthesisMaterialPopup(synthesisMaterialRows.itemAt(i), rowId)) return
+        }
+    }
 
     function toggleDetails() {
         if (detailsExpanded)
@@ -137,6 +156,12 @@ AppWindow {
         Qt.callLater(function() { window.controller.startOptimization() })
     }
 
+    function selectObjectiveFromPointer(index) {
+        const selectedIndex = Number(index)
+        commitActiveEditor()
+        window.controller.selectObjective(selectedIndex)
+    }
+
     Shortcut {
         objectName: "filmOptimizationSimulationShortcut"
         sequence: "F5"
@@ -158,6 +183,7 @@ AppWindow {
     onClosing: function(close) {
         if (!allowClose && !projectCloseAuthorized) {
             close.accepted = false
+            if (objectiveAngleEditor.dirty && !objectiveAngleEditor.commitDraft()) return
             controller.requestClose()
         } else {
             controller.shutdown(1000)
@@ -171,6 +197,14 @@ AppWindow {
             Qt.callLater(window.close)
         }
         function onCloseConfirmationRequested() { closeDialog.open() }
+        function onChanged() {
+            if (!window.controller.hasCandidate) window.synthesisPreviewHighlighted = false
+        }
+        function onSynthesisPreviewRequested() {
+            window.synthesisPreviewHighlighted = true
+            comparisonCanvas.forceActiveFocus()
+            comparisonCanvas.requestPaint()
+        }
         function onApplyConfirmationRequested(message) {
             applyDialog.message = message
             applyDialog.open()
@@ -195,8 +229,9 @@ AppWindow {
 
     ThemeControls.ThemeDialogBase {
         id: applyDialog
+        objectName: "filmOptimizationApplyConfirmation"
         property string message: ""
-        title: "应用未达标候选？"
+        title: window.controller.searchMode === "synthesis" ? "应用合成候选？" : "应用未达标候选？"
         modal: true
         anchors.centerIn: parent
         width: Math.min(520, window.width - window.themeTokens.spaceXl * 2)
@@ -342,6 +377,13 @@ AppWindow {
                     onClicked: window.controller.cancelOptimization()
                 }
                 ThemeControls.ThemeButton {
+                    objectName: "filmSynthesisPreviewButton"
+                    visible: window.controller.synthesisAuditSummary.length > 0
+                    text: window.controller.synthesisPreviewLabel
+                    enabled: window.controller.canSave
+                    onClicked: window.controller.previewSynthesisCandidate()
+                }
+                ThemeControls.ThemeButton {
                     objectName: "filmOptimizationApplyButton"
                     text: "应用"
                     enabled: window.controller.canApply
@@ -444,7 +486,8 @@ AppWindow {
                                     checkable: true
                                     checked: modelData.selected
                                     Accessible.name: "选择" + modelData.display
-                                    onClicked: window.controller.selectObjective(modelData.index)
+                                    focusPolicy: Qt.NoFocus
+                                    onPressed: window.selectObjectiveFromPointer(modelData.index)
                                 }
                             }
                             Rectangle {
@@ -482,26 +525,30 @@ AppWindow {
                                             ThemeControls.ThemeField {
                                                 objectName: "filmOptimizationWavelengthMinField"
                                                 Layout.fillWidth: true
+                                                preserveNumericDisplayText: true
                                                 numericDisplayValue: window.controller.selectedObjective.wavelength_min_nm ?? ""
-                                                validator: DoubleValidator { bottom: 0.000001; decimals: 6 }
+                                                onTextEdited: window.controller.setObjectiveBoundsDraft("wavelength_min_nm", text)
                                                 function commitDraft() {
                                                     if (!numericValueEdited) return
-                                                    window.controller.setObjectiveField("wavelength_min_nm", numericEditText)
+                                                    window.controller.commitObjectiveBoundsDraft("wavelength_min_nm", numericEditText)
                                                     numericValueEdited = false
                                                 }
+                                                onAccepted: commitDraft()
                                                 onEditingFinished: commitDraft()
                                             }
                                             Label { text: "-"; color: window.themeTokens.colorTextMuted }
                                             ThemeControls.ThemeField {
                                                 objectName: "filmOptimizationWavelengthMaxField"
                                                 Layout.fillWidth: true
+                                                preserveNumericDisplayText: true
                                                 numericDisplayValue: window.controller.selectedObjective.wavelength_max_nm ?? ""
-                                                validator: DoubleValidator { bottom: 0.000001; decimals: 6 }
+                                                onTextEdited: window.controller.setObjectiveBoundsDraft("wavelength_max_nm", text)
                                                 function commitDraft() {
                                                     if (!numericValueEdited) return
-                                                    window.controller.setObjectiveField("wavelength_max_nm", numericEditText)
+                                                    window.controller.commitObjectiveBoundsDraft("wavelength_max_nm", numericEditText)
                                                     numericValueEdited = false
                                                 }
+                                                onAccepted: commitDraft()
                                                 onEditingFinished: commitDraft()
                                             }
                                         }
@@ -545,58 +592,13 @@ AppWindow {
                                             wrapMode: Text.WordWrap
                                             font.pointSize: window.themeTokens.fontSizeSmall
                                         }
-                                        Label {
-                                            text: "角度范围 (°)"; color: window.themeTokens.colorText
-                                        }
-                                        RowLayout {
+                                        FilmOptimizationAngleRangeEditor {
+                                            id: objectiveAngleEditor
+                                            Layout.columnSpan: 2
                                             Layout.fillWidth: true
-                                            spacing: window.themeTokens.spaceXs
-                                            ThemeControls.ThemeField {
-                                                id: objectiveAngleMinField
-                                                objectName: "filmOptimizationAngleMinField"
-                                                Layout.fillWidth: true
-                                                numericDisplayValue: window.controller.selectedObjective.angle_min_deg ?? 0
-                                                validator: DoubleValidator { bottom: 0; top: 90; decimals: 9 }
-                                                function commitDraft() {
-                                                    if (!numericValueEdited) return
-                                                    window.controller.setObjectiveField("angle_min_deg", numericEditText)
-                                                    numericValueEdited = false
-                                                }
-                                                onEditingFinished: commitDraft()
-                                            }
-                                            Label { text: "-"; color: window.themeTokens.colorTextMuted }
-                                            ThemeControls.ThemeField {
-                                                id: objectiveAngleMaxField
-                                                objectName: "filmOptimizationAngleMaxField"
-                                                Layout.fillWidth: true
-                                                numericDisplayValue: window.controller.selectedObjective.angle_max_deg ?? 0
-                                                validator: DoubleValidator { bottom: 0; top: 90; decimals: 9 }
-                                                function commitDraft() {
-                                                    if (!numericValueEdited) return
-                                                    window.controller.setObjectiveField("angle_max_deg", numericEditText)
-                                                    numericValueEdited = false
-                                                }
-                                                onEditingFinished: commitDraft()
-                                            }
-                                        }
-                                        Label {
-                                            text: "精度 (°)"; color: window.themeTokens.colorText
-                                        }
-                                        ThemeControls.ThemeField {
-                                            id: objectiveAngleStepField
-                                            objectName: "filmOptimizationAngleStepField"
-                                            Layout.fillWidth: true
-                                            numericDisplayValue: window.controller.selectedObjective.angle_step_deg ?? 1
-                                            validator: DoubleValidator {
-                                                bottom: 0; decimals: 17
-                                                notation: DoubleValidator.ScientificNotation
-                                            }
-                                            function commitDraft() {
-                                                if (!numericValueEdited) return
-                                                window.controller.setObjectiveField("angle_step_deg", numericEditText)
-                                                numericValueEdited = false
-                                            }
-                                            onEditingFinished: commitDraft()
+                                            controller: window.controller
+                                            sourceObjective: window.controller.selectedObjective
+                                            themeTokens: window.themeTokens
                                         }
                                         Label {
                                             objectName: "filmOptimizationAngleSamplingSummary"
@@ -617,17 +619,6 @@ AppWindow {
                                                   + "。原角度尚未改变；请确认当前范围与精度后再开始优化。非均匀角度不能自动替换为均匀范围。"
                                             wrapMode: Text.WordWrap
                                             color: window.themeTokens.colorWarning
-                                        }
-                                        ThemeControls.ThemeButton {
-                                            objectName: "filmOptimizationConfirmAngleRangeButton"
-                                            Layout.columnSpan: 2
-                                            Layout.fillWidth: true
-                                            visible: window.controller.selectedObjective.angle_sampling_mode === "points"
-                                            text: "确认使用当前角度范围与精度"
-                                            onClicked: window.controller.confirmObjectiveAngleRange(
-                                                objectiveAngleMinField.text,
-                                                objectiveAngleMaxField.text,
-                                                objectiveAngleStepField.text)
                                         }
                                         Label { text: "偏振"; color: window.themeTokens.colorText }
                                         ThemeControls.ThemeComboBox {
@@ -655,13 +646,15 @@ AppWindow {
                                                 objectName: "filmOptimizationLowerBoundField"
                                                 Layout.fillWidth: true
                                                 Layout.minimumWidth: 64
+                                                preserveNumericDisplayText: true
                                                 numericDisplayValue: window.controller.selectedObjective.lower_bound_percent ?? ""
-                                                validator: DoubleValidator { bottom: 0; top: 100; decimals: 5 }
+                                                onTextEdited: window.controller.setObjectiveBoundsDraft("lower_bound_percent", text)
                                                 function commitDraft() {
                                                     if (!numericValueEdited) return
-                                                    window.controller.setObjectiveField("lower_bound_percent", numericEditText)
+                                                    window.controller.commitObjectiveBoundsDraft("lower_bound_percent", numericEditText)
                                                     numericValueEdited = false
                                                 }
+                                                onAccepted: commitDraft()
                                                 onEditingFinished: commitDraft()
                                             }
                                             Label { text: "–"; color: window.themeTokens.colorTextMuted }
@@ -670,15 +663,26 @@ AppWindow {
                                                 objectName: "filmOptimizationUpperBoundField"
                                                 Layout.fillWidth: true
                                                 Layout.minimumWidth: 64
+                                                preserveNumericDisplayText: true
                                                 numericDisplayValue: window.controller.selectedObjective.upper_bound_percent ?? ""
-                                                validator: DoubleValidator { bottom: 0; top: 100; decimals: 5 }
+                                                onTextEdited: window.controller.setObjectiveBoundsDraft("upper_bound_percent", text)
                                                 function commitDraft() {
                                                     if (!numericValueEdited) return
-                                                    window.controller.setObjectiveField("upper_bound_percent", numericEditText)
+                                                    window.controller.commitObjectiveBoundsDraft("upper_bound_percent", numericEditText)
                                                     numericValueEdited = false
                                                 }
+                                                onAccepted: commitDraft()
                                                 onEditingFinished: commitDraft()
                                             }
+                                        }
+                                        Label {
+                                            objectName: "filmOptimizationTargetBoundsWarning"
+                                            Layout.columnSpan: 2
+                                            Layout.fillWidth: true
+                                            visible: window.controller.objectiveBoundsError.length > 0
+                                            text: window.controller.objectiveBoundsError
+                                            color: window.themeTokens.colorWarning
+                                            wrapMode: Text.WordWrap
                                         }
                                         Label { text: "目标权重"; color: window.themeTokens.colorText }
                                         ThemeControls.ThemeField {
@@ -886,7 +890,7 @@ AppWindow {
                                     Layout.fillWidth: true
                                     model: window.controller.searchModeOptions
                                     textRole: "label"
-                                    currentIndex: window.controller.searchMode === "structure" ? 1 : 0
+                                    currentIndex: Math.max(0, window.controller.searchModeOptions.findIndex(function(item) { return item.id === window.controller.searchMode }))
                                     onActivated: {
                                         const option = window.controller.searchModeOptions[currentIndex]
                                         if (option) window.controller.setSearchMode(option.id)
@@ -1122,6 +1126,268 @@ AppWindow {
                                     color: window.themeTokens.colorTextMuted
                                     wrapMode: Text.WordWrap
                                     font.pointSize: window.themeTokens.fontSizeSmall
+                                }
+                                ColumnLayout {
+                                    id: synthesisOptions
+                                    objectName: "filmSynthesisOptions"
+                                    visible: window.controller.searchMode === "synthesis"
+                                    enabled: !window.controller.busy
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 0
+                                    spacing: window.themeTokens.spaceSm
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: "从 N=0 空栈开始。当前设计只提供物理环境；结果先审计，原设计不自动改变。空预算和空约束表示未指定。"
+                                        color: window.themeTokens.colorTextMuted
+                                        wrapMode: Text.WordWrap
+                                    }
+                                    CheckBox {
+                                        objectName: "filmSynthesisUseCurrentSeedField"
+                                        text: "另将当前真实处方作为显式起点（仍保留 N=0 分支）"
+                                        checked: window.controller.synthesisUseCurrentSeed
+                                        onToggled: window.controller.setSynthesisUseCurrentSeed(checked)
+                                        Accessible.name: text
+                                    }
+                                    CheckBox {
+                                        objectName: "filmSynthesisUnknownKZeroField"
+                                        text: "未知 k 按 0 计算（无损假设）"
+                                        enabled: window.controller.canEditSynthesisAssumption
+                                        checked: window.controller.synthesisAssumeUnknownKZero
+                                        onToggled: {
+                                            if (!window.controller.setSynthesisAssumeUnknownKZero(checked))
+                                                checked = Qt.binding(() => window.controller.synthesisAssumeUnknownKZero)
+                                        }
+                                        Accessible.name: text
+                                        Accessible.description: "任务运行中或输入尚有错误时不可更改；请先修正输入或等待任务结束。"
+                                    }
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: "默认严格检查基片、入射介质和候选膜料。勾选后仅把未知消光系数 k 按 0 计算；已知吸收保留，折射率 n 与有效波段仍须合法。审计结果基于此假设，不代表真实吸收已验证。"
+                                        color: window.themeTokens.colorTextMuted
+                                        wrapMode: Text.WordWrap
+                                    }
+                                    Label { text: "候选膜料与光学数据集"; color: window.themeTokens.colorText }
+                                    Repeater {
+                                        id: synthesisMaterialRows
+                                        objectName: "filmSynthesisMaterialRows"
+                                        model: window.controller.synthesisMaterialRows
+                                        delegate: ColumnLayout {
+                                            id: materialRow
+                                            required property var modelData
+                                            property alias materialSelector: materialSelectorBox
+                                            objectName: "filmSynthesisMaterialRow_" + modelData.id
+                                            Layout.maximumWidth: synthesisOptions.width
+                                            Layout.fillWidth: true
+                                            Layout.minimumWidth: 0
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Layout.minimumWidth: 0
+                                                ThemeControls.ThemeComboBox {
+                                                    id: materialSelectorBox
+                                                    objectName: "filmSynthesisMaterial_" + materialRow.modelData.id
+                                                    Accessible.name: "候选膜料"
+                                                    Layout.fillWidth: true
+                                                    Layout.minimumWidth: 0
+                                                    Layout.preferredWidth: 0
+                                                    model: materialRow.modelData.material_options
+                                                    textRole: "name"
+                                                    currentIndex: model.findIndex(item => item.id === materialRow.modelData.material_id)
+                                                    displayText: currentIndex < 0 ? "选择材料" : currentText
+                                                    onPressedChanged: {
+                                                        if (pressed) {
+                                                            const identity = materialRow.modelData.id
+                                                            const wasOpen = popup.visible
+                                                            const revision = window.controller.synthesisMaterialCatalogRevision
+                                                            window.controller.refreshSynthesisMaterials()
+                                                            if (!wasOpen && revision !== window.controller.synthesisMaterialCatalogRevision)
+                                                                Qt.callLater(window.openSynthesisMaterialPopup, identity)
+                                                        }
+                                                    }
+                                                    onActivated: {
+                                                        const selected = model[currentIndex]
+                                                        if (selected) window.controller.setSynthesisRowMaterial(materialRow.modelData.id, selected.id)
+                                                    }
+                                                }
+                                                ThemeControls.ThemeButton {
+                                                    objectName: "filmSynthesisRemove_" + materialRow.modelData.id
+                                                    Layout.minimumWidth: window.themeTokens.controlHeightMd
+                                                    Layout.preferredWidth: window.themeTokens.controlHeightMd
+                                                    Layout.maximumWidth: window.themeTokens.controlHeightMd
+                                                    text: "×"
+                                                    Accessible.name: "删除此候选材料行"
+                                                    onClicked: window.controller.removeSynthesisMaterialRow(materialRow.modelData.id)
+                                                }
+                                            }
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Layout.minimumWidth: 0
+                                                ThemeControls.ThemeComboBox {
+                                                    objectName: "filmSynthesisOpticalSet_" + materialRow.modelData.id
+                                                    Accessible.name: "光学数据集"
+                                                    Layout.fillWidth: true
+                                                    Layout.minimumWidth: 0
+                                                    Layout.preferredWidth: 0
+                                                    model: materialRow.modelData.optical_set_options
+                                                    textRole: "name"
+                                                    currentIndex: model.findIndex(item => item.id === materialRow.modelData.optical_set_id)
+                                                    displayText: currentIndex < 0 ? "选择数据集" : currentText
+                                                    onActivated: {
+                                                        const selected = model[currentIndex]
+                                                        if (selected) window.controller.setSynthesisRowOpticalSet(materialRow.modelData.id, selected.id)
+                                                    }
+                                                }
+                                                ThemeControls.ThemeButton {
+                                                    objectName: "filmSynthesisUp_" + materialRow.modelData.id
+                                                    Layout.minimumWidth: window.themeTokens.controlHeightMd
+                                                    Layout.preferredWidth: window.themeTokens.controlHeightMd
+                                                    Layout.maximumWidth: window.themeTokens.controlHeightMd
+                                                    text: "↑"
+                                                    Accessible.name: "上移此候选材料行"
+                                                    onClicked: window.controller.moveSynthesisMaterialRow(materialRow.modelData.id, -1)
+                                                }
+                                                ThemeControls.ThemeButton {
+                                                    objectName: "filmSynthesisDown_" + materialRow.modelData.id
+                                                    Layout.minimumWidth: window.themeTokens.controlHeightMd
+                                                    Layout.preferredWidth: window.themeTokens.controlHeightMd
+                                                    Layout.maximumWidth: window.themeTokens.controlHeightMd
+                                                    text: "↓"
+                                                    Accessible.name: "下移此候选材料行"
+                                                    onClicked: window.controller.moveSynthesisMaterialRow(materialRow.modelData.id, 1)
+                                                }
+                                            }
+                                            Label {
+                                                visible: materialRow.modelData.error.length > 0
+                                                text: materialRow.modelData.error
+                                                Layout.fillWidth: true
+                                                wrapMode: Text.WordWrap
+                                                color: window.themeTokens.colorWarning
+                                            }
+                                        }
+                                    }
+                                    ThemeControls.ThemeButton {
+                                        objectName: "filmSynthesisAddMaterialButton"
+                                        text: "＋ 添加候选材料"
+                                        onClicked: window.controller.addSynthesisMaterialRow()
+                                    }
+                                    Label {
+                                        objectName: "filmSynthesisMaterialError"
+                                        Layout.fillWidth: true
+                                        visible: window.controller.synthesisMaterialError.length > 0
+                                        text: window.controller.synthesisMaterialError
+                                        wrapMode: Text.WordWrap
+                                        color: window.themeTokens.colorWarning
+                                    }
+                                    Repeater {
+                                        model: [
+                                            {key: "max_cycles", label: "最大轮次"},
+                                            {key: "max_evaluations", label: "最大候选评价次数"},
+                                            {key: "max_layers", label: "最大层数"},
+                                            {key: "minimum_nonzero_thickness_nm", label: "最小非零层厚 nm"},
+                                            {key: "max_layer_thickness_nm", label: "最大单层厚 nm"},
+                                            {key: "max_total_thickness_nm", label: "最大总厚 nm"}
+                                        ]
+                                        delegate: RowLayout {
+                                            id: synthesisOptionRow
+                                            required property var modelData
+                                            Layout.fillWidth: true
+                                            Label { text: synthesisOptionRow.modelData.label; color: window.themeTokens.colorText; Layout.preferredWidth: 130 }
+                                            ThemeControls.ThemeField {
+                                                objectName: "filmSynthesis_" + synthesisOptionRow.modelData.key + "Field"
+                                                Layout.fillWidth: true
+                                                text: String(window.controller.synthesisOptions[synthesisOptionRow.modelData.key] ?? "")
+                                                placeholderText: "未指定"
+                                                accessibleLabel: synthesisOptionRow.modelData.label
+                                                onEditingFinished: window.controller.setSynthesisOption(synthesisOptionRow.modelData.key, text)
+                                            }
+                                        }
+                                    }
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: "CPU 工作进程数：0=自动，1=串行，2+=请求的工作进程数。此项只控制膜系合成内部任务；调度器的 CPU 选择仍独立。"
+                                        color: window.themeTokens.colorTextMuted
+                                        wrapMode: Text.WordWrap
+                                        font.pointSize: window.themeTokens.fontSizeSmall
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Label {
+                                            text: "CPU 工作进程数"
+                                            color: window.themeTokens.colorText
+                                            Layout.preferredWidth: 130
+                                        }
+                                        ThemeControls.ThemeField {
+                                            objectName: "filmSynthesisCpuWorkersField"
+                                            Layout.fillWidth: true
+                                            text: String(window.controller.synthesisCpuWorkers)
+                                            placeholderText: "0"
+                                            accessibleLabel: "CPU 工作进程数"
+                                            onEditingFinished: window.controller.setSynthesisCpuWorkers(text)
+                                        }
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Label {
+                                            text: "前向设备"
+                                            color: window.themeTokens.colorText
+                                            Layout.preferredWidth: 130
+                                        }
+                                        ThemeControls.ThemeComboBox {
+                                            objectName: "filmSynthesisForwardBackendBox"
+                                            Layout.fillWidth: true
+                                            model: window.controller.synthesisForwardBackendOptions
+                                            textRole: "label"
+                                            currentIndex: Math.max(0, model.findIndex(
+                                                item => item.id === window.controller.synthesisForwardBackend))
+                                            enabled: window.controller.canEditSynthesisAssumption
+                                            onActivated: {
+                                                const selected = model[currentIndex]
+                                                if (selected) window.controller.setSynthesisForwardBackend(selected.id)
+                                            }
+                                        }
+                                    }
+                                    RowLayout {
+                                        visible: window.controller.synthesisForwardBackend !== "cpu"
+                                        Layout.fillWidth: true
+                                        Label {
+                                            text: "GPU 设备"
+                                            color: window.themeTokens.colorText
+                                            Layout.preferredWidth: 130
+                                        }
+                                        ThemeControls.ThemeComboBox {
+                                            objectName: "filmSynthesisForwardDeviceBox"
+                                            Layout.fillWidth: true
+                                            model: window.controller.synthesisForwardDeviceOptions
+                                            textRole: "label"
+                                            currentIndex: Math.max(0, model.findIndex(item =>
+                                                item.binding.index === window.controller.synthesisForwardDevice.index
+                                                && item.binding.uuid === window.controller.synthesisForwardDevice.uuid))
+                                            enabled: window.controller.canEditSynthesisAssumption
+                                            onActivated: window.controller.setSynthesisForwardDevice(currentIndex)
+                                        }
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        ThemeControls.ThemeButton {
+                                            objectName: "filmSynthesisForwardProbeButton"
+                                            text: "重新探测 GPU"
+                                            enabled: !window.controller.busy
+                                            onClicked: window.controller.probeSynthesisForwardDevices()
+                                        }
+                                        Label {
+                                            objectName: "filmSynthesisForwardProbeStatus"
+                                            Layout.fillWidth: true
+                                            text: window.controller.synthesisForwardStatus
+                                            color: window.themeTokens.colorTextMuted
+                                            wrapMode: Text.WordWrap
+                                        }
+                                    }
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: "CPU 为默认前向。GPU 探测在独立子进程中运行；选定设备身份随冻结请求复核。外层任务执行设备设置保持独立。"
+                                        color: window.themeTokens.colorTextMuted
+                                        wrapMode: Text.WordWrap
+                                        font.pointSize: window.themeTokens.fontSizeSmall
+                                    }
                                 }
                                 ColumnLayout {
                                     objectName: "filmOptimizationStructureOptions"
@@ -1390,7 +1656,7 @@ AppWindow {
                     Layout.minimumHeight: Math.max(140, Math.min(220, window.height * 0.25))
                     radius: window.themeTokens.radiusMd
                     color: window.themeTokens.colorSurface
-                    border.color: window.themeTokens.colorBorder
+                    border.color: window.synthesisPreviewHighlighted ? window.themeTokens.colorAccent : window.themeTokens.colorBorder
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: window.themeTokens.spaceSm
@@ -1440,6 +1706,14 @@ AppWindow {
                             wrapMode: Text.WordWrap
                             font.pointSize: window.themeTokens.fontSizeSmall
                         }
+                        Label {
+                            objectName: "filmSynthesisPlotPreviewStatus"
+                            Layout.fillWidth: true
+                            visible: window.synthesisPreviewHighlighted && window.controller.hasCandidate
+                            text: "已显示任务冻结候选的目标采样点；仅针对所选目标与角度，不代表连续谱证明。"
+                            color: window.themeTokens.colorAccent
+                            wrapMode: Text.WordWrap
+                        }
                         Canvas {
                             id: comparisonCanvas
                             objectName: "filmOptimizationComparisonCanvas"
@@ -1463,13 +1737,15 @@ AppWindow {
                                     ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(left + plotWidth, y); ctx.stroke()
                                     ctx.fillText(String(100 - tick * 25) + "%", 2, y + 4)
                                 }
-                                if (!rows || !rows.wavelength_nm || rows.wavelength_nm.length < 2) {
+                                if (!rows || !rows.wavelength_nm || rows.wavelength_nm.length === 0) {
                                     ctx.fillStyle = window.themeTokens.colorTextMuted
                                     ctx.fillText("运行优化后显示采样光谱", left + 12, top + 24)
                                     return
                                 }
                                 const waves = rows.wavelength_nm
-                                const minWave = waves[0], maxWave = waves[waves.length - 1]
+                                const discreteLine = waves.length === 1
+                                const minWave = discreteLine ? waves[0] - 0.5 : waves[0]
+                                const maxWave = discreteLine ? waves[0] + 0.5 : waves[waves.length - 1]
                                 const xAt = value => left + (value - minWave) / Math.max(1e-12, maxWave - minWave) * plotWidth
                                 const yAt = value => top + plotHeight * (1 - Math.max(0, Math.min(1, value)))
                                 const drawTarget = value => {
@@ -1490,12 +1766,16 @@ AppWindow {
                                         if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
                                     }
                                     ctx.stroke()
+                                    if (discreteLine) {
+                                        ctx.beginPath(); ctx.fillStyle = color
+                                        ctx.arc(xAt(waves[0]), yAt(values[0]), 4, 0, 2 * Math.PI); ctx.fill()
+                                    }
                                 }
                                 drawSeries(rows.baseline, window.themeTokens.colorTextMuted, 1.5)
                                 drawSeries(rows.candidate, window.themeTokens.colorAccent, 2.5)
                                 ctx.fillStyle = window.themeTokens.colorTextMuted
-                                ctx.fillText(minWave.toFixed(0) + " nm", left, height - 8)
-                                ctx.fillText(maxWave.toFixed(0) + " nm", left + plotWidth - 52, height - 8)
+                                ctx.fillText(discreteLine ? waves[0] + " nm（离散目标）" : minWave.toFixed(0) + " nm", left, height - 8)
+                                if (!discreteLine) ctx.fillText(maxWave.toFixed(0) + " nm", left + plotWidth - 52, height - 8)
                                 ctx.fillStyle = window.themeTokens.colorTextMuted
                                 ctx.fillRect(left + 8, 4, 14, 3)
                                 ctx.fillText("原设计", left + 26, 10)
@@ -1675,6 +1955,54 @@ AppWindow {
                 text: window.controller.resultValidationSummary
                 color: window.themeTokens.colorWarning
                 wrapMode: Text.WordWrap
+            }
+            Label {
+                objectName: "filmSynthesisExecutionSummary"
+                visible: window.controller.synthesisExecutionSummary.length > 0
+                Layout.fillWidth: true
+                text: window.controller.synthesisExecutionSummary
+                wrapMode: Text.WrapAnywhere
+                color: window.themeTokens.colorTextMuted
+            }
+            Label {
+                objectName: "filmSynthesisAuditSummary"
+                visible: window.controller.synthesisAuditSummary.length > 0
+                Layout.fillWidth: true
+                text: window.controller.synthesisAuditSummary
+                wrapMode: Text.WrapAnywhere
+                color: window.themeTokens.colorText
+            }
+            Repeater {
+                objectName: "filmSynthesisObjectiveAudit"
+                model: window.controller.synthesisObjectiveAudit
+                delegate: Label {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    text: modelData.display
+                    wrapMode: Text.WrapAnywhere
+                    color: window.themeTokens.colorText
+                    Accessible.name: text
+                }
+            }
+            Label {
+                objectName: "filmSynthesisAbsorptionSummary"
+                visible: window.controller.synthesisAbsorptionSummary.length > 0
+                Layout.fillWidth: true
+                text: window.controller.synthesisAbsorptionSummary
+                wrapMode: Text.WrapAnywhere
+                color: window.themeTokens.colorTextMuted
+            }
+            Repeater {
+                objectName: "filmSynthesisLayers"
+                model: window.controller.synthesisLayers
+                delegate: Label {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    text: modelData.display
+                    wrapMode: Text.WrapAnywhere
+                    color: window.themeTokens.colorText
+                    Accessible.name: text
+                }
             }
             Label {
                 objectName: "filmOptimizationRunMetadataSummary"

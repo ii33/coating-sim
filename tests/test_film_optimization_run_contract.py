@@ -129,6 +129,7 @@ def attempt_harness(tmp_path, monkeypatch):
     request = SimpleNamespace(
         design_snapshot=design,
         design_revision=19,
+        frozen_material_snapshot=None,
         objectives=(object(),),
         variables=(object(),),
     )

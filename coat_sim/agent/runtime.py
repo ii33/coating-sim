@@ -317,6 +317,7 @@ READ_TOOLS = frozenset({
     "design_workflow_status",
     "preview_film_stack_import", "read_process_layers", "read_simulation_asset", "simulation_summaries",
     "film_design_schema", "film_materials", "validate_film_design", "load_film_design",
+    "plan_film_synthesis",
     "expand_film_expression",
     "estimate_compute_task", "estimate_film_optimization", "estimate_appearance_render",
     "inspect_appearance_asset",
@@ -368,7 +369,8 @@ MAIN_TOOLS = READ_TOOLS | DATA_WRITE_TOOLS | {"save_design", "export_pdf", "wind
                            "correction_board_weights", "correction_board_field", "selected_point_weights", "planet_center_occlusion_ring",
                            "submit_single_source", "submit_process_recipe", "submit_mask_optimization", "create_default_workflow", "estimate_mask_optimization", "import_mask_dxf", "export_mask_dxf", "export_mask_drawing", "cancel_calculation_job"}
 MAIN_TOOLS = MAIN_TOOLS | {"project_research_save", "project_bbs_write", "project_bbs_import_attachment", DISCUSSION_COMMENT_TOOL, "project_open", "project_manage", "save_film_design", "simulate_film_design", "submit_film_optimization", "submit_appearance_render"}
-SUBMIT_TOOLS = frozenset({"submit_single_source", "submit_process_recipe", "submit_mask_optimization", "submit_film_optimization", "submit_appearance_render", "create_default_workflow"})
+MAIN_TOOLS = MAIN_TOOLS | {"submit_film_synthesis"}
+SUBMIT_TOOLS = frozenset({"submit_single_source", "submit_process_recipe", "submit_mask_optimization", "submit_film_optimization", "submit_film_synthesis", "submit_appearance_render", "create_default_workflow"})
 WORKFLOW_TOOLS = frozenset({"create_design_workflow", "advance_design_workflow", "cancel_design_workflow", "render_design", "render_design_workflow"})
 MAIN_TOOLS = MAIN_TOOLS | WORKFLOW_TOOLS | {"build_film_stack", "import_film_stack", "update_design_fields", "visualize_calculation_result",
     "create_material", "update_material", "copy_material", "export_simulation_asset",
@@ -1485,6 +1487,8 @@ EXECUTION_TOOLS = {
     "windows": frozenset({"project_list", "project_editor_snapshot", "project_open", "read_software_manual", "list_windows", "read_window", "open_window", "close_window", "update_window", "window_action"}),
     "design": _COMMON | _JOB_READ | DATA_WRITE_TOOLS | {"preview_design", "save_design", "export_pdf", "convert_time_fields", "convert_gear_geometry", "import_mask_dxf", "export_mask_dxf", "export_mask_drawing"},
     "simulation": _COMMON | _JOB_READ | {"estimate_calculation", "estimate_film_optimization",
+                                         "plan_film_synthesis",
+                                         "submit_film_synthesis",
                                          "estimate_appearance_render", "submit_appearance_render",
                                          "inspect_appearance_asset",
                                          "submit_single_source", "submit_process_recipe",
@@ -1540,6 +1544,8 @@ async def _background_completion_context(notification: dict[str, Any], *, client
         job = await read("calculation_job_status", {"job_id": job_id})
         meter.ledger.update_job(job)
         state = job.get("state")
+        partial_synthesis = (job.get("kind") == "film_synthesis"
+                             and state in ("failed", "cancelled"))
         if state not in ("succeeded", "failed", "cancelled"):
             # A race or stale desktop event cannot imply completion or permit
             # another submit. The queue remains the place to view the job.
@@ -1547,9 +1553,15 @@ async def _background_completion_context(notification: dict[str, Any], *, client
                     "notice": "该作业尚未达到终态；没有重复提交或等待循环。"}
         compact_job = {key: job[key] for key in ("job_id", "kind", "state", "error", "summary", "estimated_s") if key in job}
         context: dict[str, Any] = {"job": compact_job, "source": "trusted_background_result"}
-        if state != "succeeded":
+        if state != "succeeded" and not partial_synthesis:
             return context
-        result = await read("calculation_job_result", {"job_id": job_id})
+        try:
+            result = await read("calculation_job_result", {"job_id": job_id})
+        except Exception as result_error:
+            if not partial_synthesis:
+                raise
+            context["result_unavailable"] = meter.writer.redact(str(result_error))[:1000]
+            return context
         workflow_id = str(notification.get("workflow_run_id") or "")
         if workflow_id and meter.mode == "chat":
             context["workflow"] = {"workflow_run_id": workflow_id,
@@ -1590,7 +1602,9 @@ async def _background_completion_context(notification: dict[str, Any], *, client
             for candidate in appearance_output_artifacts(result, expected_job_id=job_id):
                 meter._upsert_artifact(candidate)
             return context
-        context["result"] = meter.archive.project(result, tool_name="read_calculation_result")
+        projection_tool = ("calculation_job_result" if result.get("kind") == "coat_sim.film_synthesis_result"
+                           else "read_calculation_result")
+        context["result"] = meter.archive.project(result, tool_name=projection_tool)
         for candidate in result.get("files", []):
             meter._upsert_artifact(candidate)
         return context

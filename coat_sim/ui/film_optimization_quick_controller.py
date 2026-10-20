@@ -13,7 +13,7 @@ import re
 import threading
 import time
 from uuid import uuid4
-from typing import Any, Literal, cast
+from typing import Any, Literal, Mapping, Protocol, cast
 import weakref
 from coat_sim.project_session import OperationBinding
 
@@ -38,11 +38,24 @@ from coat_sim.scheduler.desktop import (
     observe_job,
     resolve_unknown_submission,
 )
+from coat_sim.ui.film_synthesis_quick_adapter import (
+    SYNTHESIS_DEFAULT_OPTIONS, SynthesisQuickResult, build_synthesis_request,
+    synthesis_base_request, synthesis_cpu_workers, synthesis_options, synthesis_result_view, synthesis_spec,
+    synthesis_preview_handoff,
+    verify_synthesis_file_references,
+)
+from coat_sim.ui.film_synthesis_forward_probe import FilmSynthesisForwardProbe
 from coat_sim.ui.film_optimization_run_coordinator import (
     FilmOptimizationRunCoordinator,
     FilmOptimizationRunPreparationError,
     FilmOptimizationRunStartError,
 )
+
+
+class _SynthesisMaterialService(Protocol):
+    """Shared film-purpose picker contract of standalone and project services."""
+
+    def material_options(self, purpose: str = "film") -> list[dict[str, Any]]: ...
 
 
 # These values select responsive UI paths only. They never reject an angle
@@ -313,6 +326,7 @@ class _OptimizationSignals(QObject):
 class _PreparedAngleGrid:
     request: Any
     spec: dict
+    editable_snapshot: dict | None = None
 
 
 def _angles_for_row_cancellable(row: dict, cancel_event=None, progress=None,
@@ -424,18 +438,26 @@ class _AngleGridPreparationTask(QRunnable):
                 state="validating", fraction=0.99, iteration=0, evaluations=0,
                 best_max_normalized_error=None,
                 message="正在后台冻结材料输入并序列化队列请求"))
+            editable_snapshot = None
             if structure:
                 from coat_sim.core.film_optimization_structure import (
                     freeze_film_structure_optimization_request,
                 )
                 request = freeze_film_structure_optimization_request(self.service, request)
+            elif self.search_mode == "synthesis":
+                from coat_sim.core.film_auto_synthesis import freeze_film_synthesis_request
+                request = freeze_film_synthesis_request(self.service, request, cancel_event=self.cancel_event)
+                from coat_sim.core.film_physical_generator import freeze_synthesis_editable_snapshot
+                editable_snapshot = freeze_synthesis_editable_snapshot(
+                    self.service, request.environment, request.frozen_material_snapshot)
             else:
                 request = freeze_film_optimization_request(self.service, request)
-            spec = freeze_spec(self.service, "film_optimization", {"request": request})
+            spec = (synthesis_spec(self.service, request) if self.search_mode == "synthesis" else
+                    freeze_spec(self.service, "film_optimization", {"request": request}))
             if self.cancel_event.is_set():
                 raise InterruptedError("角度准备已取消；未提交队列任务。")
             self.signals.finished.emit(
-                self.operation_id, _PreparedAngleGrid(request, spec), None, None)
+                self.operation_id, _PreparedAngleGrid(request, spec, editable_snapshot), None, None)
         except InterruptedError as exc:
             self.signals.finished.emit(
                 self.operation_id, None, None,
@@ -544,6 +566,30 @@ def _film_result_from_queue(value: Any) -> FilmOptimizationResult:
     )
 
 
+def _cancel_snapshot_from_queue(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    execution = value.get("execution")
+    if not isinstance(execution, dict):
+        return None
+    marker = execution.get("cancel_snapshot")
+    if marker is None:
+        return None
+    if (not isinstance(marker, dict)
+            or set(marker) != {"source", "replay_performed", "candidate_available"}
+            or marker.get("source") != "worker_completed_reply"
+            or marker.get("replay_performed") is not False
+            or type(marker.get("candidate_available")) is not bool):
+        raise ValueError("queue cancel snapshot marker is invalid")
+    return deepcopy(marker)
+
+
+@dataclass(frozen=True)
+class _FilmOptimizationTerminal:
+    result: Any
+    cancel_snapshot: dict[str, Any] | None = None
+
+
 class _FilmOptimizationTask(QRunnable):
     """Compute the baseline from frozen inputs, then observe the shared queue job."""
 
@@ -602,7 +648,14 @@ class _FilmOptimizationTask(QRunnable):
             return
         self.signals.progress.emit(self.operation_id, progress)
 
-    def _verified_terminal_candidate(self) -> FilmOptimizationResult | None:
+    def _decode_result(self, payload):
+        result = _film_result_from_queue(payload)
+        marker = _cancel_snapshot_from_queue(payload)
+        if marker is not None or result.state == "cancelled":
+            return _FilmOptimizationTerminal(result, marker)
+        return result
+
+    def _verified_terminal_candidate(self) -> Any | None:
         """Fetch only a queue-verified checkpoint-backed terminal candidate."""
         if not self.admitted:
             return None
@@ -612,7 +665,7 @@ class _FilmOptimizationTask(QRunnable):
             return None
         try:
             payload = result_method(self.job_id)
-            return _film_result_from_queue(payload)
+            return self._decode_result(payload)
         except Exception:
             # The scheduler rejects this action when cancellation/failure has
             # no replay-validated candidate.  Keep the original terminal error.
@@ -701,7 +754,7 @@ class _FilmOptimizationTask(QRunnable):
                 self.store, self.job_id, self._publish_queue_progress,
                 disconnected=self._observer_disconnected.is_set,
             )
-            result = _film_result_from_queue(payload)
+            result = self._decode_result(payload)
             self._record_state("succeeded")
             self.signals.finished.emit(self.operation_id, result, baseline, None)
         except InterruptedError as exc:
@@ -767,11 +820,36 @@ class _QueueCompatibilityError(RuntimeError):
     pass
 
 
+class _FilmSynthesisTask(_FilmOptimizationTask):
+    def _decode_result(self, payload):
+        return synthesis_result_view(payload)
+
+    def _publish_queue_progress(self, value):
+        if isinstance(value, dict):
+            value = dict(value)
+            value["iteration"] = value.get("cycle", value.get("iteration", 0))
+            if value.get("stage") == "audit_incumbent":
+                self._audited_layer_count = value.get("layer_count")
+            parts = [str(value.get("stage", "synthesis")),
+                     str(value.get("message", value.get("status", ""))),
+                     f"当前报告层数 {value.get('layer_count', '?')}，已审计最好层数 {getattr(self, '_audited_layer_count', '尚无完整审计')}",
+                     f"候选评价 {value.get('evaluations', 0)}"]
+            if "heartbeat_sequence" in value:
+                parts.append(f"heartbeat {value['heartbeat_sequence']}")
+            for key in ("algorithm_progress_age_seconds", "worker_heartbeat_age_seconds",
+                        "stalled", "unresponsive", "physical_evaluations", "wavelength_points"):
+                if key in value:
+                    parts.append(f"{key}={value[key]}")
+            value["message"] = " | ".join(parts)
+        super()._publish_queue_progress(value)
+
+
 class FilmOptimizationQuickController(QObject):
     """Per-window optimization state; the edit session remains the design owner."""
 
     changed = Signal()
     plotDataChanged = Signal()
+    synthesisPreviewRequested = Signal()
     overwriteRequested = Signal(str)
     closeConfirmed = Signal()
     closeConfirmationRequested = Signal()
@@ -933,11 +1011,44 @@ class FilmOptimizationQuickController(QObject):
         self._result_application_eligible = False
         self._frozen_request: FilmOptimizationRequest | None = None
         self._queue_job_id = ""
+        self._attempt_operation_id: int | None = None
+        self._attempt_job_id = ""
+        self._attempt_session = None
+        self._attempt_source_controller = None
+        self._attempt_source_revision: int | None = None
+        self._attempt_edit_epoch: int | None = None
+        self._attempt_project_operation: OperationBinding | None = None
+        self._attempt_origin: dict[str, Any] = {}
+        self._attempt_cancel_event = None
+        self._attempt_search_mode = ""
+        self._attempt_materials_owner: Any = None
+        self._attempt_frozen_material_snapshot: dict[str, Any] | None = None
+        self._terminal_operation_id: int | None = None
+        self._cancel_intent_operation_id: int | None = None
+        self._cancel_intent_job_id = ""
+        self._cancel_intent_requested = False
+        self._cancel_intent_accepted = False
+        self._cancel_intent_consumed = False
+        self._attempt_cancel_snapshot: dict[str, Any] | None = None
         self._completion_handoff_done = False
         self._baseline: dict[tuple[int, float], dict] = {}
         self._candidate_saved = False
         self._candidate_applied = False
         self._search_mode = "fixed_topology"
+        self._synthesis_options = dict(SYNTHESIS_DEFAULT_OPTIONS)
+        self._synthesis_cpu_workers = 0
+        self._synthesis_forward_backend = "cpu"
+        self._synthesis_forward_device: dict[str, Any] | None = None
+        self._synthesis_forward_probe = FilmSynthesisForwardProbe(parent=self)
+        self._synthesis_forward_probe.changed.connect(self.changed.emit)
+        self._synthesis_forward_probe.finished.connect(self._on_synthesis_forward_probe_finished)
+        self._synthesis_use_current_seed = False
+        self._synthesis_assume_unknown_k_zero = False
+        self._synthesis_material_rows: list[dict[str, str]] = []
+        self._synthesis_rows_initialized = False
+        self._synthesis_material_catalog_revision = 0
+        self._synthesis_payload: dict[str, Any] | None = None
+        self._synthesis_editable_snapshot: dict[str, Any] | None = None
         self._structure_mode = "combined"
         self._structure_material_options: list[dict] = []
         self._structure_material_error = ""
@@ -972,12 +1083,16 @@ class FilmOptimizationQuickController(QObject):
         self._population_size = 12
         self._pending_edit_error = False
         self._pending_edit_error_key: str | None = None
+        self._angle_draft: dict[str, str] | None = None
         if self._initial_loading:
             self._scipy_import_error, self._trf_callback_available = "", False
         else:
             self._scipy_import_error, self._trf_callback_available = (
                 _scipy_runtime_availability())
         self._objectives = [_objective_default(0)]
+        self._objective_range_drafts: dict[tuple[str, str], str] = {}
+        self._objective_range_errors: dict[tuple[str, str], str] = {}
+        self._objective_range_display: dict[tuple[str, str], str] = {}
         self._inspection_objectives: list[dict] | None = None
         self._selected_objective = 0
         self._plot_objective = 0
@@ -1156,7 +1271,7 @@ class FilmOptimizationQuickController(QObject):
     @Slot()
     def cancelLocalWork(self) -> None:
         if self.localWorkRunning:
-            self.cancelOptimization()
+            self._request_optimization_cancel(user_initiated=False)
 
     def _on_project_unfrozen(self) -> None:
         pending, self._pending_project_completion = self._pending_project_completion, None
@@ -1206,7 +1321,11 @@ class FilmOptimizationQuickController(QObject):
 
     @Slot(result="QVariantMap")
     def exportOptimizationConfiguration(self) -> dict:
-        """Return JSON-only editor state; candidates and active jobs are excluded."""
+        """Return JSON-only editor state; commit an angle draft or reject export."""
+        if not self._commit_pending_angle_draft():
+            raise ValueError(self._error or "请先完成角度输入")
+        if self._pending_edit_error or self._objective_bounds_pending():
+            raise ValueError(self._error or "请先修正尚未提交的优化输入")
         return {
             "version": 1,
             "objectives": deepcopy(self._objectives),
@@ -1223,6 +1342,12 @@ class FilmOptimizationQuickController(QObject):
                 "multistart_count": self._multistart_count,
                 "population_size": self._population_size,
             },
+            "synthesis": {"options": dict(self._synthesis_options), "cpu_workers": self._synthesis_cpu_workers,
+                          "forward_backend": self._synthesis_forward_backend,
+                          "forward_device": deepcopy(self._synthesis_forward_device),
+                          "use_current_seed": self._synthesis_use_current_seed,
+                          "assume_unknown_k_zero": self._synthesis_assume_unknown_k_zero,
+                          "material_rows": deepcopy(self._synthesis_material_rows)},
             "search_mode": self._search_mode,
             "structure_mode": self._structure_mode,
             "structure_options": {key: list(value) if isinstance(value, tuple) else value
@@ -1247,7 +1372,7 @@ class FilmOptimizationQuickController(QObject):
                 raise ValueError("优化配置必须为对象")
             json.dumps(configuration, allow_nan=False)
             allowed = {"version", "objectives", "variables", "solver", "search_mode",
-                       "structure_mode", "structure_options", "structure_materials"}
+                       "structure_mode", "structure_options", "structure_materials", "synthesis"}
             if (set(configuration) - allowed or type(configuration.get("version")) is not int
                     or configuration.get("version") != 1):
                 raise ValueError("优化配置版本或字段不受支持")
@@ -1359,7 +1484,7 @@ class FilmOptimizationQuickController(QObject):
                 raise ValueError("差分进化群体数至少为 5")
             search_mode = configuration.get("search_mode", "fixed_topology")
             structure_mode = configuration.get("structure_mode", "combined")
-            if search_mode not in {"fixed_topology", "structure"} or structure_mode not in {"combined", "needle_only", "growth_only"}:
+            if search_mode not in {"fixed_topology", "structure", "synthesis"} or structure_mode not in {"combined", "needle_only", "growth_only"}:
                 raise ValueError("优化或结构模式无效")
             structure = {**defaults["structure_options"], **configuration.get("structure_options", {})}
             if set(structure) != set(defaults["structure_options"]):
@@ -1385,12 +1510,52 @@ class FilmOptimizationQuickController(QObject):
                 structure[name] = self._parse_positive_float_list(
                     ",".join(str(value) for value in structure[name]), name,
                     maximum=1.0e6, allow_fraction=name == "growth_phase_fractions")
+            synthesis_config = configuration.get("synthesis", {})
+            if not isinstance(synthesis_config, dict) or set(synthesis_config) - {
+                    "options", "cpu_workers", "forward_backend", "forward_device",
+                    "use_current_seed", "material_rows", "assume_unknown_k_zero"}:
+                raise ValueError("Invalid synthesis configuration")
+            synthesis_values = synthesis_options(synthesis_config.get("options", {}))
+            synthesis_workers = synthesis_cpu_workers(synthesis_config.get("cpu_workers", 0))
+            synthesis_forward_backend = synthesis_config.get("forward_backend", "cpu")
+            synthesis_forward_device = synthesis_config.get("forward_device")
+            from coat_sim.core.film_synthesis_forward import validate_forward_device
+            if not isinstance(synthesis_forward_backend, str):
+                raise ValueError("Synthesis forward backend must be a string")
+            synthesis_forward_device = validate_forward_device(
+                synthesis_forward_device, synthesis_forward_backend)
+            if synthesis_forward_backend != "cpu" and synthesis_forward_device is None:
+                raise ValueError("Saved GPU forward selection has no verified device binding")
+            synthesis_seed = synthesis_config.get("use_current_seed", False)
+            synthesis_assumption = synthesis_config.get("assume_unknown_k_zero", False)
+            if type(synthesis_assumption) is not bool:
+                raise ValueError("未知 k 按 0 假设必须为明确的开关")
+            if type(synthesis_seed) is not bool:
+                raise ValueError("Synthesis seed selection must be explicit")
+            synthesis_rows = synthesis_config.get("material_rows")
+            if synthesis_rows is not None:
+                if not isinstance(synthesis_rows, list):
+                    raise ValueError("Synthesis material rows must be a list")
+                row_ids = set()
+                for material_row in synthesis_rows:
+                    if (not isinstance(material_row, dict)
+                            or set(material_row) != {"id", "material_id", "optical_set_id"}
+                            or any(not isinstance(value, str) for value in material_row.values())
+                            or not material_row["id"] or material_row["id"] in row_ids):
+                        raise ValueError("Synthesis material rows require unique stable IDs and typed references")
+                    row_ids.add(material_row["id"])
+                synthesis_rows = deepcopy(synthesis_rows)
             refs = configuration.get("structure_materials", [])
             if not isinstance(refs, list):
                 raise ValueError("结构候选材料必须为数组")
             selected_refs = set()
             available_refs = {(row["material_id"], row["optical_set_id"])
                               for row in self._structure_material_options}
+            if search_mode == "synthesis":
+                available_refs = {(material["id"], optical["id"])
+                    for material in cast(_SynthesisMaterialService, self.service).material_options("film")
+                    if material.get("design_ready") is not False
+                    for optical in material.get("optical_sets", [])}
             for raw in refs:
                 if not isinstance(raw, dict) or set(raw) != {"material_id", "optical_set_id"}:
                     raise ValueError("结构候选材料字段无效")
@@ -1403,8 +1568,15 @@ class FilmOptimizationQuickController(QObject):
             self._error = self._configuration_load_error
             self.changed.emit()
             return False
+        if synthesis_rows is None:
+            synthesis_rows = [{"id": uuid4().hex, "material_id": row["material_id"],
+                               "optical_set_id": row["optical_set_id"]} for row in refs]
         self._configuration_loading = True
         try:
+            self._angle_draft = None
+            self._objective_range_drafts.clear()
+            self._objective_range_errors.clear()
+            self._objective_range_display.clear()
             self._objectives, self._variables = objectives, variables
             self._selected_objective = 0 if objectives else -1
             self._plot_objective, self._plot_angle = 0, 0.0
@@ -1413,7 +1585,19 @@ class FilmOptimizationQuickController(QObject):
                          "multistart_count", "population_size"):
                 setattr(self, "_" + name, solver[name])
             self._search_mode, self._structure_mode = search_mode, structure_mode
+            self._compute_target.setTask("film_synthesis" if search_mode == "synthesis" else "film_optimization")
+            self._synthesis_options, self._synthesis_use_current_seed = synthesis_values, synthesis_seed
+            self._synthesis_cpu_workers = synthesis_workers
+            self._synthesis_forward_backend = synthesis_forward_backend
+            self._synthesis_forward_device = deepcopy(synthesis_forward_device)
+            self._synthesis_assume_unknown_k_zero = synthesis_assumption
+            self._synthesis_material_rows = synthesis_rows
+            self._synthesis_rows_initialized = True
             self._structure_options = structure
+            if search_mode == "synthesis":
+                self._refresh_structure_material_options(preserve_selection=True)
+                if synthesis_forward_backend != "cpu":
+                    self._synthesis_forward_probe.probe()
             for row in self._structure_material_options:
                 row["selected"] = (row["material_id"], row["optical_set_id"]) in selected_refs
             self._pending_edit_error = False
@@ -1432,8 +1616,8 @@ class FilmOptimizationQuickController(QObject):
         getter = getattr(self.session, "workflow_configuration", None)
         if not callable(setter):
             return
-        configuration = self.exportOptimizationConfiguration()
         try:
+            configuration = self.exportOptimizationConfiguration()
             if callable(getter) and getter("optimization") == configuration:
                 return
             if not setter("optimization", configuration):
@@ -1630,6 +1814,7 @@ class FilmOptimizationQuickController(QObject):
         """Stop receiving source/session events before this window is destroyed."""
         if self._observers_detached:
             return
+        self._synthesis_forward_probe.cancel()
         if self._busy and self._pending_angle_preparation is not None:
             # Pre-submission preparation is local work even for project-owned
             # windows; disposal must stop it rather than leave a large grid
@@ -1652,7 +1837,7 @@ class FilmOptimizationQuickController(QObject):
         self._source_closed = True
         self._source_stale = True
         if self._busy and self.project_context is None and self._pending_angle_preparation is None:
-            self.cancelOptimization()
+            self._request_optimization_cancel(user_initiated=False)
 
     def _source_edit_epoch(self) -> int | None:
         if self._source_controller is None:
@@ -1777,6 +1962,11 @@ class FilmOptimizationQuickController(QObject):
                 records = catalog._records() if callable(getattr(catalog, "_records", None)) else None
             if records is None:
                 raise ValueError("膜材目录不支持枚举")
+            if self._search_mode == "synthesis":
+                # Project snapshots have no role/category fields. Only the
+                # service's explicit film-purpose projection grants eligibility.
+                records = [{**material, "roles": ["film"]}
+                           for material in cast(_SynthesisMaterialService, self.service).material_options("film")]
             for material in records:
                 if not isinstance(material, dict) or material.get("design_ready") is False:
                     continue
@@ -1817,6 +2007,10 @@ class FilmOptimizationQuickController(QObject):
             rows = []
             self._structure_material_error = f"{type(exc).__name__}: {exc}"
         self._structure_material_options = rows
+        if not self._synthesis_rows_initialized and any(row.get("selected") for row in rows):
+            self._synthesis_material_rows = [{"id": uuid4().hex, "material_id": row["material_id"],
+                "optical_set_id": row["optical_set_id"]} for row in rows if row.get("selected")]
+            self._synthesis_rows_initialized = True
 
     def _on_session_change(self, change) -> None:
         if self._configuration_loading:
@@ -1850,6 +2044,8 @@ class FilmOptimizationQuickController(QObject):
         if not self._configuration_loading:
             self._configuration_load_error = ""
         self._result = None
+        self._synthesis_payload = None
+        self._synthesis_editable_snapshot = None
         self._structure_result = None
         self._inspection_objectives = None
         self._result_terminal_state = ""
@@ -1876,8 +2072,109 @@ class FilmOptimizationQuickController(QObject):
     @Property("QVariantMap", notify=changed)
     def selectedObjective(self) -> dict:
         if 0 <= self._selected_objective < len(self._objectives):
-            return dict(self._objectives[self._selected_objective])
+            row = dict(self._objectives[self._selected_objective])
+            objective_id = str(row.get("id", ""))
+            for field in ("lower_bound_percent", "upper_bound_percent",
+                          "wavelength_min_nm", "wavelength_max_nm"):
+                key = (objective_id, field)
+                draft = self._objective_range_drafts.get(
+                    key, self._objective_range_display.get(key))
+                if draft is not None:
+                    row[field] = draft
+            return row
         return {}
+
+    @Property(str, notify=changed)
+    def objectiveBoundsError(self) -> str:
+        if not 0 <= self._selected_objective < len(self._objectives):
+            return ""
+        objective_id = str(self._objectives[self._selected_objective].get("id", ""))
+        return "\n".join(
+            message for (error_objective, _group), message in self._objective_range_errors.items()
+            if error_objective == objective_id)
+
+    def _objective_bounds_pending(self) -> bool:
+        return bool(self._objective_range_drafts or self._objective_range_errors)
+
+    def _objective_bounds_invalid(self) -> bool:
+        return bool(self._objective_range_errors)
+
+    @Slot(str, str)
+    def setObjectiveBoundsDraft(self, field: str, text: str) -> None:
+        """Keep the editor's literal text without validating during typing."""
+        if (self._busy or self._shutting_down
+                or field not in {"lower_bound_percent", "upper_bound_percent",
+                                 "wavelength_min_nm", "wavelength_max_nm"}
+                or not 0 <= self._selected_objective < len(self._objectives)):
+            return
+        objective_id = str(self._objectives[self._selected_objective].get("id", ""))
+        self._objective_range_drafts[(objective_id, field)] = str(text)
+        self.changed.emit()
+
+    @Slot(str, str, result=bool)
+    def commitObjectiveBoundsDraft(self, field: str, text: str) -> bool:
+        """Validate a bounds pair at Enter/blur while retaining invalid text."""
+        if (self._busy or self._shutting_down
+                or field not in {"lower_bound_percent", "upper_bound_percent",
+                                 "wavelength_min_nm", "wavelength_max_nm"}
+                or not 0 <= self._selected_objective < len(self._objectives)):
+            return False
+        index = self._selected_objective
+        row = self._objectives[index]
+        objective_id = str(row.get("id", ""))
+        group = ("target" if field in {"lower_bound_percent", "upper_bound_percent"}
+                 else "wavelength")
+        drafts = self._objective_range_drafts
+        drafts[(objective_id, field)] = str(text)
+        try:
+            if field in {"lower_bound_percent", "upper_bound_percent"}:
+                lower = _number(drafts.get((objective_id, "lower_bound_percent"),
+                                           row["lower_bound_percent"]), "\u76ee\u6807\u4e0b\u9650%")
+                upper = _number(drafts.get((objective_id, "upper_bound_percent"),
+                                           row["upper_bound_percent"]), "\u76ee\u6807\u4e0a\u9650%")
+                if not 0 <= lower <= 100 or not 0 <= upper <= 100:
+                    raise ValueError("\u76ee\u6807\u4e0a\u4e0b\u9650\u5fc5\u987b\u5728 0 \u5230 100% \u4e4b\u95f4\u3002")
+                if lower > upper:
+                    raise ValueError("\u76ee\u6807\u4e0b\u9650\u4e0d\u80fd\u5927\u4e8e\u76ee\u6807\u4e0a\u9650\uff1b\u8bf7\u4fee\u6539\u4e0b\u9650\u6216\u4e0a\u9650\u3002")
+            else:
+                wavelength_min = _number(drafts.get((objective_id, "wavelength_min_nm"),
+                                                    row["wavelength_min_nm"]), "\u6ce2\u957f\u4e0b\u9650 nm")
+                wavelength_max = _number(drafts.get((objective_id, "wavelength_max_nm"),
+                                                    row["wavelength_max_nm"]), "\u6ce2\u957f\u4e0a\u9650 nm")
+                if wavelength_min <= 0 or wavelength_max <= 0:
+                    raise ValueError("\u6ce2\u957f\u8303\u56f4\u5fc5\u987b\u5927\u4e8e 0 nm\u3002")
+                if wavelength_min > wavelength_max:
+                    raise ValueError("\u6ce2\u957f\u4e0b\u9650\u4e0d\u80fd\u5927\u4e8e\u4e0a\u9650\uff1b\u8bf7\u4fee\u6539\u8303\u56f4\u3002")
+                updated = _resolve_objective_sampling({
+                    **row, "wavelength_min_nm": wavelength_min,
+                    "wavelength_max_nm": wavelength_max,
+                }, edited_field=field)
+        except (TypeError, ValueError, OverflowError) as exc:
+            self._objective_range_errors[(objective_id, group)] = str(exc)
+            self._error = str(exc)
+            self.changed.emit()
+            return False
+
+        if field in {"lower_bound_percent", "upper_bound_percent"}:
+            updated = deepcopy(row)
+            updated["lower_bound_percent"] = lower
+            updated["upper_bound_percent"] = upper
+            updated["mode"] = "range"
+        self._objectives[index] = updated
+        pair = ("lower_bound_percent", "upper_bound_percent") if field in {
+            "lower_bound_percent", "upper_bound_percent"} else ("wavelength_min_nm", "wavelength_max_nm")
+        raw_pair_texts = {pair_field: drafts.get((objective_id, pair_field))
+                          for pair_field in pair}
+        drafts.pop((objective_id, pair[0]), None)
+        drafts.pop((objective_id, pair[1]), None)
+        for pair_field in pair:
+            raw_text = text if pair_field == field else raw_pair_texts[pair_field]
+            if raw_text is not None:
+                self._objective_range_display[(objective_id, pair_field)] = raw_text
+        self._objective_range_errors.pop((objective_id, group), None)
+        self._error = next(iter(self._objective_range_errors.values()), "")
+        self._invalidate_result()
+        return True
 
     @Property("QVariantList", notify=changed)
     def variables(self) -> list[dict]:
@@ -1891,6 +2188,7 @@ class FilmOptimizationQuickController(QObject):
     def searchModeOptions(self) -> list[dict]:
         return [
             {"id": "fixed_topology", "label": "固定层序优化"},
+            {"id": "synthesis", "label": "从零自动合成"},
             {"id": "structure", "label": "结构合成"},
         ]
 
@@ -2000,7 +2298,8 @@ class FilmOptimizationQuickController(QObject):
     def conditionErrors(self) -> list[dict]:
         if self._result is None:
             return []
-        rows = sorted(self._result.per_condition_errors,
+        rows = sorted((self._result.validation_per_condition_errors if self._synthesis_payload is not None
+                       else self._result.per_condition_errors),
                       key=lambda row: row.normalized_violation, reverse=True)[:24]
         return [{
             "objective": row.objective_index + 1,
@@ -2048,6 +2347,9 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(str, notify=changed)
     def progressStatistics(self) -> str:
+        if self._synthesis_payload is not None:
+            return (f"轮次 {self._synthesis_work_count('cycles')} · "
+                    f"评价 {self._synthesis_work_count('evaluations')}" + self._synthesis_work_counters_note())
         text = f"迭代 {self._progress_iteration} · 评估 {self._progress_evaluations}"
         if self._progress_best_error is not None:
             text += f" · 最大违约 {self._progress_best_error * 100:.4g}%"
@@ -2069,6 +2371,10 @@ class FilmOptimizationQuickController(QObject):
             return "材料读取失败：" + self._structure_material_error
         if self._result_terminal_state in {"已取消", "失败"}:
             if self._result is not None:
+                if self._result_terminal_state == "已取消" and self._candidate_applied:
+                    if self._error:
+                        return self._error
+                    return "优化已取消；最佳候选已应用到当前膜系，未保存，并已请求刷新光谱。"
                 status = (f"优化{self._result_terminal_state}；已保留队列验证的最佳候选，"
                           "可查看或另存，不能应用。")
                 return status + (" " + self._error if self._error else "")
@@ -2098,6 +2404,8 @@ class FilmOptimizationQuickController(QObject):
         if self._result is None:
             return "按波段内离散波长和所列角度采样点进行优化。"
         if self._result.state == "cancelled":
+            if self._candidate_applied:
+                return "优化已取消；最佳候选已应用到当前膜系，未保存，并已请求刷新光谱。"
             return "优化已取消；最佳候选仍可预览或另存。"
         if self._result.targets_met:
             return "已满足所有采样目标；可预览、另存或显式应用。"
@@ -2108,13 +2416,14 @@ class FilmOptimizationQuickController(QObject):
         has_search_inputs = (
             any(row["enabled"] and row["available"] for row in self._variables)
             if self._search_mode == "fixed_topology"
-            else (self._structure_mode == "growth_only"
+            else (self._search_mode != "synthesis" and self._structure_mode == "growth_only"
                   or any(row.get("selected") for row in self._structure_material_options)))
         return (not self._initial_loading and not self._initial_load_failed
                 and not self._structure_material_error
                 and not self._busy and not self._source_closed and not self._source_stale
                 and bool(self._objectives) and has_search_inputs
                 and not self._pending_edit_error
+                and not self._objective_bounds_invalid()
                 and not self._active_configuration_error())
 
     @Property(bool, notify=changed)
@@ -2262,6 +2571,8 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(str, notify=changed)
     def resultValidationSummary(self) -> str:
+        if self._synthesis_payload is not None:
+            return self._synthesis_audit_summary()
         result = self._result
         if result is None:
             return ""
@@ -2283,6 +2594,11 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(str, notify=changed)
     def resultRunMetadataSummary(self) -> str:
+        if self._synthesis_payload is not None:
+            return ("方法 从零自动合成 · "
+                    f"失败评价 {self._synthesis_work_count('failed_evaluations')} · "
+                    f"审计候选评价 {self._synthesis_work_count('validation_evaluations')}"
+                    + self._synthesis_work_counters_note())
         result = self._result
         if result is None:
             return ""
@@ -2390,6 +2706,8 @@ class FilmOptimizationQuickController(QObject):
             return "延迟批量模式目前仅支持本机。"
         if self._search_mode == "structure":
             return self._structure_configuration_error()
+        if self._search_mode == "synthesis":
+            return self._synthesis_configuration_error()
         reason = self._solver_unavailable_reason(self._solver_id)
         if reason:
             return reason
@@ -2455,14 +2773,24 @@ class FilmOptimizationQuickController(QObject):
     def setSearchMode(self, mode: str) -> bool:
         mode = str(mode)
         if (self._busy or self._shutting_down or self._pending_edit_error
-                or mode not in {"fixed_topology", "structure"}):
-            if mode not in {"fixed_topology", "structure"}:
+                or mode not in {"fixed_topology", "structure", "synthesis"}):
+            if mode not in {"fixed_topology", "structure", "synthesis"}:
                 self._error = "未知的优化模式。"
                 self.changed.emit()
             return False
         if mode == self._search_mode:
             return True
+        previous_mode = self._search_mode
         self._search_mode = mode
+        self._compute_target.setTask("film_synthesis" if mode == "synthesis" else "film_optimization")
+        if mode == "synthesis":
+            self._synthesis_forward_probe.probe()
+        if mode == "synthesis" or previous_mode == "synthesis":
+            self._refresh_structure_material_options(preserve_selection=True)
+        if mode == "synthesis" and not self._synthesis_rows_initialized:
+            self._synthesis_material_rows = [{"id": uuid4().hex, "material_id": row["material_id"],
+                "optical_set_id": row["optical_set_id"]} for row in self._structure_material_options if row.get("selected")]
+            self._synthesis_rows_initialized = True
         self._error = ""
         self._invalidate_result()
         return True
@@ -2496,6 +2824,15 @@ class FilmOptimizationQuickController(QObject):
             self._error = "所选候选材料已不在当前材料目录中。"
             self.changed.emit()
             return False
+        if self._search_mode == "synthesis":
+            matches = [item for item in self._synthesis_material_rows
+                       if (item["material_id"], item["optical_set_id"]) == pair]
+            if selected and not matches:
+                self._synthesis_material_rows.append({"id": uuid4().hex,
+                    "material_id": pair[0], "optical_set_id": pair[1]})
+            elif not selected:
+                self._synthesis_material_rows = [item for item in self._synthesis_material_rows if item not in matches]
+            self._synthesis_rows_initialized = True
         row["selected"] = bool(selected)
         self._error = ""
         self._invalidate_result()
@@ -2676,6 +3013,12 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(str, notify=changed)
     def resultSummary(self) -> str:
+        if self._synthesis_payload is not None:
+            raw = self._synthesis_payload["result"]
+            facts = self._synthesis_payload["best_candidate_audit"]
+            return (f"任务 {raw['state']}；候选审计目标通过 {facts.get('targets_met')}；"
+                    f"轮次 {self._synthesis_work_count('cycles')}；评价 {self._synthesis_work_count('evaluations')}"
+                    + self._synthesis_work_counters_note())
         if self._result is None:
             return "尚无候选结果"
         result = self._result
@@ -2693,7 +3036,7 @@ class FilmOptimizationQuickController(QObject):
             return []
         labels = {(row["side"], row["layer_id"]): row for row in self._variables}
         output = []
-        for (side, layer_id), row in labels.items():
+        for (_side, layer_id), row in labels.items():
             if layer_id in self._result.best_thickness_nm:
                 output.append({
                     "label": f"{row['side_label']} · {row['label']}",
@@ -2782,12 +3125,17 @@ class FilmOptimizationQuickController(QObject):
     def selectObjective(self, index: int) -> None:
         if (not self._busy and not self._pending_edit_error
                 and 0 <= int(index) < len(self._objectives)):
+            if not self._commit_pending_angle_draft():
+                return
             self._selected_objective = int(index)
             self.changed.emit()
 
     @Slot()
     def addObjective(self) -> None:
-        if self._busy or self._shutting_down or self._pending_edit_error:
+        if (self._busy or self._shutting_down or self._pending_edit_error
+                or self._objective_bounds_pending()):
+            return
+        if not self._commit_pending_angle_draft():
             return
         self._objectives.append(_objective_default(len(self._objectives)))
         self._selected_objective = len(self._objectives) - 1
@@ -2796,7 +3144,10 @@ class FilmOptimizationQuickController(QObject):
     @Slot(result=bool)
     def duplicateSelectedObjective(self) -> bool:
         if (self._busy or self._shutting_down or self._pending_edit_error
+                or self._objective_bounds_pending()
                 or not 0 <= self._selected_objective < len(self._objectives)):
+            return False
+        if not self._commit_pending_angle_draft():
             return False
         row = deepcopy(self._objectives[self._selected_objective])
         row["id"] = uuid4().hex
@@ -2808,16 +3159,48 @@ class FilmOptimizationQuickController(QObject):
 
     @Slot()
     def removeSelectedObjective(self) -> None:
-        if self._busy or self._shutting_down or self._pending_edit_error:
+        if (self._busy or self._shutting_down or self._pending_edit_error
+                or self._objective_bounds_pending()):
             return
         if not 0 <= self._selected_objective < len(self._objectives):
             return
-        self._objectives.pop(self._selected_objective)
+        if not self._commit_pending_angle_draft():
+            return
+        removed = self._objectives.pop(self._selected_objective)
+        removed_id = str(removed.get("id", ""))
+        for key in tuple(self._objective_range_display):
+            if key[0] == removed_id:
+                self._objective_range_display.pop(key, None)
+        for key in tuple(self._objective_range_errors):
+            if key[0] == removed_id:
+                self._objective_range_errors.pop(key, None)
         self._selected_objective = min(self._selected_objective,
                                        len(self._objectives) - 1)
         self._plot_objective = min(self._plot_objective,
                                    max(0, len(self._objectives) - 1))
         self._invalidate_result()
+
+    @Slot(str, str, str)
+    def noteObjectiveAngleDraft(self, minimum: str, maximum: str, precision: str) -> None:
+        if self._busy or self._shutting_down or not 0 <= self._selected_objective < len(self._objectives):
+            return
+        self._angle_draft = {"id": self._objectives[self._selected_objective]["id"],
+            "minimum": minimum, "maximum": maximum, "precision": precision}
+
+    def _commit_pending_angle_draft(self) -> bool:
+        draft = self._angle_draft
+        if draft is None:
+            return True
+        if not 0 <= self._selected_objective < len(self._objectives):
+            return False
+        row = self._objectives[self._selected_objective]
+        if row["id"] != draft["id"]:
+            return False
+        if row.get("angle_sampling_mode") == "points":
+            self._record_pending_edit_error(f"objective:{self._selected_objective}:angle_range",
+                "原显式角度序列已保留；请明确确认角度范围与精度后再保存或开始")
+            return False
+        return self.confirmObjectiveAngleRange(draft["minimum"], draft["maximum"], draft["precision"])
 
     @Slot(str, str, str, result=bool)
     def confirmObjectiveAngleRange(self, minimum: str, maximum: str, precision: str) -> bool:
@@ -2825,7 +3208,7 @@ class FilmOptimizationQuickController(QObject):
         if self._busy or self._shutting_down or not 0 <= self._selected_objective < len(self._objectives):
             return False
         key = f"objective:{self._selected_objective}:"
-        angle_keys = {key + field for field in ("angle_min_deg", "angle_max_deg", "angle_step_deg")}
+        angle_keys = {key + field for field in ("angle_min_deg", "angle_max_deg", "angle_step_deg", "angle_range")}
         if self._pending_edit_error and self._pending_edit_error_key not in angle_keys:
             return False
         try:
@@ -2836,9 +3219,9 @@ class FilmOptimizationQuickController(QObject):
                 "angle_step_deg": _number(precision, "角度精度"),
             })
         except (ValueError, TypeError, OverflowError) as exc:
-            self._error = str(exc)
-            self.changed.emit()
+            self._record_pending_edit_error(key + "angle_range", str(exc))
             return False
+        self._angle_draft = None
         self._objectives[self._selected_objective] = updated
         if self._pending_edit_error_key:
             self._clear_pending_edit_error(self._pending_edit_error_key)
@@ -2851,6 +3234,11 @@ class FilmOptimizationQuickController(QObject):
         if self._busy or self._shutting_down:
             return False
         if not 0 <= self._selected_objective < len(self._objectives):
+            return False
+        if field in {"lower_bound_percent", "upper_bound_percent",
+                     "wavelength_min_nm", "wavelength_max_nm"}:
+            return self.commitObjectiveBoundsDraft(field, str(value))
+        if self._objective_bounds_pending():
             return False
         error_key = f"objective:{self._selected_objective}:{field}"
         if not self._pending_edit_allows(error_key):
@@ -2925,6 +3313,10 @@ class FilmOptimizationQuickController(QObject):
                 exc = ValueError("入射角列表过大，无法转换为显式点列")
             self._record_pending_edit_error(error_key, str(exc))
             return False
+        if field == "target_value_percent" or (field == "mode" and value == "value"):
+            objective_id = str(updated.get("id", ""))
+            self._objective_range_display.pop((objective_id, "lower_bound_percent"), None)
+            self._objective_range_display.pop((objective_id, "upper_bound_percent"), None)
         self._objectives[self._selected_objective] = updated
         if not self._clear_pending_edit_error(error_key):
             return False
@@ -3084,6 +3476,11 @@ class FilmOptimizationQuickController(QObject):
                        fixed_topology: bool = True,
                        prepared_angles: tuple[tuple[float, ...], ...] | None = None
                        ) -> FilmOptimizationRequest:
+        if not self._commit_pending_angle_draft():
+            raise ValueError(self._error or "请先完成角度输入")
+        if self._objective_bounds_pending():
+            objective_error = next(iter(self._objective_range_errors.values()), "")
+            raise ValueError(objective_error or "Uncommitted target bounds; original text is retained")
         configuration_error = self._active_configuration_error(
             require_thickness_bounds=require_variables)
         if configuration_error:
@@ -3094,7 +3491,7 @@ class FilmOptimizationQuickController(QObject):
         if prepared_angles is not None and len(prepared_angles) != len(self._objectives):
             raise ValueError("后台准备的角度网格与当前目标数不一致")
         variables = []
-        for row in self._variables:
+        for row in (() if self._search_mode == "synthesis" else self._variables):
             if not row["enabled"]:
                 continue
             if not require_variables and row["upper_nm"] is None:
@@ -3208,6 +3605,540 @@ class FilmOptimizationQuickController(QObject):
             seed=_integer(values["seed"], "随机种子", 0, 0xFFFFFFFF),
         )
 
+    def _synthesis_material_catalog(self) -> list[dict]:
+        materials: dict[str, dict] = {}
+        for row in self._structure_material_options:
+            item = materials.setdefault(row["material_id"], {"id": row["material_id"],
+                "name": row["material_name"], "optical_sets": []})
+            item["optical_sets"].append({"id": row["optical_set_id"], "name": row["optical_set_name"]})
+        return list(materials.values())
+
+    def _synthesis_material_rows_error(self) -> str:
+        if not self._synthesis_material_rows:
+            return "请添加至少一行候选材料及数据集"
+        available = {(row["material_id"], row["optical_set_id"]) for row in self._structure_material_options}
+        seen = set()
+        for index, row in enumerate(self._synthesis_material_rows):
+            pair = (row["material_id"], row["optical_set_id"])
+            if not all(pair):
+                return f"候选材料第 {index + 1} 行：请选择材料及其数据集"
+            if pair not in available:
+                return f"候选材料第 {index + 1} 行已不可用：{pair[0]}/{pair[1]}；请重新选择或删除该行"
+            if pair in seen:
+                return f"候选材料第 {index + 1} 行重复：{pair[0]}/{pair[1]}"
+            seen.add(pair)
+        return ""
+
+    @Property(list, notify=changed)
+    def synthesisMaterialRows(self):
+        materials = self._synthesis_material_catalog()
+        by_id = {row["id"]: row for row in materials}
+        options = [{"id": row["id"], "name": row["name"]} for row in materials]
+        result = []
+        for row in self._synthesis_material_rows:
+            optical = by_id.get(row["material_id"], {}).get("optical_sets", [])
+            error = ("材料或数据集已不可用，请重新选择或删除" if row["material_id"] and
+                (row["material_id"] not in by_id or row["optical_set_id"] not in {item["id"] for item in optical})
+                else "" if row["material_id"] and row["optical_set_id"] else "请选择材料及其数据集")
+            result.append({**row, "material_options": deepcopy(options),
+                           "optical_set_options": deepcopy(optical), "error": error})
+        return result
+
+    @Property(str, notify=changed)
+    def synthesisMaterialError(self) -> str:
+        return self._structure_material_error or self._synthesis_material_rows_error()
+
+    def _synthesis_rows_changed(self) -> None:
+        selected = {(row["material_id"], row["optical_set_id"]) for row in self._synthesis_material_rows}
+        for row in self._structure_material_options:
+            row["selected"] = (row["material_id"], row["optical_set_id"]) in selected
+        self._synthesis_rows_initialized = True
+        self._error = ""
+        self._invalidate_result()
+
+    @Slot(result=str)
+    def addSynthesisMaterialRow(self) -> str:
+        if self._busy or self._shutting_down or self._pending_edit_error:
+            return ""
+        identity = uuid4().hex
+        self._synthesis_material_rows.append({"id": identity, "material_id": "", "optical_set_id": ""})
+        self._synthesis_rows_changed()
+        return identity
+
+    @Slot(str, result=bool)
+    def removeSynthesisMaterialRow(self, row_id: str) -> bool:
+        if self._busy or self._shutting_down or self._pending_edit_error:
+            return False
+        row = next((item for item in self._synthesis_material_rows if item["id"] == row_id), None)
+        if row is None:
+            return False
+        self._synthesis_material_rows.remove(row)
+        self._synthesis_rows_changed()
+        return True
+
+    @Slot(str, int, result=bool)
+    def moveSynthesisMaterialRow(self, row_id: str, delta: int) -> bool:
+        if self._busy or self._shutting_down or self._pending_edit_error or delta not in (-1, 1):
+            return False
+        index = next((i for i, row in enumerate(self._synthesis_material_rows) if row["id"] == row_id), -1)
+        target = index + delta
+        if index < 0 or not 0 <= target < len(self._synthesis_material_rows):
+            return False
+        self._synthesis_material_rows.insert(target, self._synthesis_material_rows.pop(index))
+        self._synthesis_rows_changed()
+        return True
+
+    @Slot(str, str, result=bool)
+    def setSynthesisRowMaterial(self, row_id: str, material_id: str) -> bool:
+        if self._busy or self._shutting_down or self._pending_edit_error:
+            return False
+        row = next((item for item in self._synthesis_material_rows if item["id"] == row_id), None)
+        material = next((item for item in self._synthesis_material_catalog() if item["id"] == material_id), None)
+        if row is None or material is None:
+            return False
+        row["material_id"] = material_id
+        row["optical_set_id"] = material["optical_sets"][0]["id"]
+        self._synthesis_rows_changed()
+        return True
+
+    @Slot(str, str, result=bool)
+    def setSynthesisRowOpticalSet(self, row_id: str, optical_set_id: str) -> bool:
+        if self._busy or self._shutting_down or self._pending_edit_error:
+            return False
+        row = next((item for item in self._synthesis_material_rows if item["id"] == row_id), None)
+        if row is None or not any(item["material_id"] == row["material_id"] and item["optical_set_id"] == optical_set_id
+                                  for item in self._structure_material_options):
+            return False
+        row["optical_set_id"] = optical_set_id
+        self._synthesis_rows_changed()
+        return True
+
+    @Property(int, notify=changed)
+    def synthesisMaterialCatalogRevision(self) -> int:
+        return self._synthesis_material_catalog_revision
+
+    @Slot(result=bool)
+    def refreshSynthesisMaterials(self) -> bool:
+        if self._busy or self._shutting_down or self._search_mode != "synthesis" or not self._project_current():
+            return False
+        before, error = deepcopy(self._structure_material_options), self._structure_material_error
+        refresher = getattr(self.service, "refresh_materials", None)
+        try:
+            if callable(refresher):
+                refresher()
+            self._refresh_structure_material_options(preserve_selection=True)
+        except (ValueError, OSError) as exc:
+            self._structure_material_error = str(exc)
+        if before != self._structure_material_options or error != self._structure_material_error:
+            self._synthesis_material_catalog_revision += 1
+            self.changed.emit()
+        return not self._structure_material_error
+
+    def _build_synthesis_request(self, *, prepared_angles=None):
+        from coat_sim.core.film_optimization_needle import FilmNeedleMaterialReference
+        base = self._build_request(require_variables=False, fixed_topology=False,
+                                   prepared_angles=prepared_angles)
+        error = self._synthesis_material_rows_error()
+        if error:
+            raise ValueError(error)
+        refs = tuple(FilmNeedleMaterialReference(r["material_id"], r["optical_set_id"])
+                     for r in self._synthesis_material_rows)
+        return build_synthesis_request(base, refs, self._synthesis_options, self._synthesis_use_current_seed,
+                                       self._synthesis_assume_unknown_k_zero,
+                                       cpu_workers=self._synthesis_cpu_workers,
+                                       forward_backend=self._synthesis_forward_backend,
+                                       forward_device=self._synthesis_forward_device)
+
+    def _synthesis_configuration_error(self):
+        if self._pending_edit_error:
+            return self._error or "请完成当前输入"
+        if self._structure_material_error:
+            return self._structure_material_error
+        material_error = self._synthesis_material_rows_error()
+        if material_error:
+            return material_error
+        if self._design.get("substrate", {}).get("sides") != "single" or self._design.get("first_surface") != "front":
+            return "从零合成目前仅支持单面、前表面入射"
+        if not self._design.get("use_k"):
+            return "从零合成要求保留真实 n/k，不能关闭 k"
+        if self._validation_samples_multiplier < 2:
+            return "自动合成的独立审计倍率至少为 2"
+        try:
+            synthesis_options(self._synthesis_options)
+            synthesis_cpu_workers(self._synthesis_cpu_workers)
+            from coat_sim.core.film_synthesis_forward import validate_forward_device
+            validate_forward_device(self._synthesis_forward_device, self._synthesis_forward_backend)
+        except (ValueError, TypeError, OverflowError) as exc:
+            return str(exc)
+        if self._synthesis_forward_backend != "cpu":
+            if self._synthesis_forward_probe.busy:
+                return "正在检查所选 GPU 前向设备，请等待探测完成。"
+            result = self._synthesis_forward_probe.results.get(self._synthesis_forward_backend, {})
+            if not result.get("available"):
+                reason = result.get("reason") or "尚未完成设备探测"
+                return f"所选 {self._synthesis_forward_backend.upper()} 前向不可用：{reason}"
+            if self._synthesis_forward_device not in result.get("devices", []):
+                return "所选 GPU 设备身份与当前解释器的探测结果不一致，请重新选择设备。"
+        return ""
+
+    @Property(dict, notify=changed)
+    def synthesisOptions(self):
+        return dict(self._synthesis_options)
+
+    @Property(int, notify=changed)
+    def synthesisCpuWorkers(self) -> int:
+        return self._synthesis_cpu_workers
+
+    @Property(str, notify=changed)
+    def synthesisForwardBackend(self) -> str:
+        return self._synthesis_forward_backend
+
+    @Property(cast(type, "QVariantMap"), notify=changed)
+    def synthesisForwardDevice(self) -> dict[str, Any]:
+        return deepcopy(self._synthesis_forward_device or {})
+
+    @Property(cast(type, "QVariantList"), notify=changed)
+    def synthesisForwardBackendOptions(self) -> list[dict[str, Any]]:
+        options = [{"id": "cpu", "label": "CPU（默认）", "available": True}]
+        results = self._synthesis_forward_probe.results
+        for backend in ("cuda", "rocm", "xpu"):
+            result = results.get(backend, {})
+            if result.get("available"):
+                options.append({"id": backend, "label": backend.upper(), "available": True})
+        if self._synthesis_forward_backend != "cpu" and not any(
+                row["id"] == self._synthesis_forward_backend for row in options):
+            options.append({"id": self._synthesis_forward_backend,
+                            "label": f"{self._synthesis_forward_backend.upper()}（不可用）",
+                            "available": False})
+        return options
+
+    @Property(cast(type, "QVariantList"), notify=changed)
+    def synthesisForwardDeviceOptions(self) -> list[dict[str, Any]]:
+        if self._synthesis_forward_backend == "cpu":
+            return []
+        result = self._synthesis_forward_probe.results.get(self._synthesis_forward_backend, {})
+        rows = []
+        for binding in result.get("devices", []):
+            rows.append({"index": binding["index"], "binding": deepcopy(binding),
+                         "label": f"{binding['name']} · {binding['runtime']}:{binding['index']}"
+                                  + (f" · {binding['uuid']}" if binding.get("uuid") else "")})
+        return rows
+
+    @Property(str, notify=changed)
+    def synthesisForwardStatus(self) -> str:
+        status = self._synthesis_forward_probe.status
+        results = self._synthesis_forward_probe.results
+        unavailable = [f"{backend.upper()}：{row.get('reason') or '不可用'}"
+                       for backend, row in results.items() if not row.get("available")]
+        if unavailable and not self._synthesis_forward_probe.busy:
+            status += "。" + "；".join(unavailable)
+        return status
+
+    @Property(bool, notify=changed)
+    def synthesisForwardProbeBusy(self) -> bool:
+        return self._synthesis_forward_probe.busy
+
+    @Slot()
+    def probeSynthesisForwardDevices(self) -> None:
+        if self._busy or self._shutting_down:
+            return
+        self._synthesis_forward_probe.probe()
+
+    @Slot(str, result=bool)
+    def setSynthesisForwardBackend(self, backend: str) -> bool:
+        if self._busy or self._shutting_down or self._pending_edit_error:
+            return False
+        backend = str(backend).lower()
+        if backend not in {"cpu", "cuda", "rocm", "xpu"}:
+            self._error = "未知的膜系合成前向设备。"
+            self.changed.emit()
+            return False
+        binding = None
+        if backend != "cpu":
+            result = self._synthesis_forward_probe.results.get(backend, {})
+            devices = result.get("devices", [])
+            if not result.get("available") or not devices:
+                self._error = f"{backend.upper()} 前向当前不可用：{result.get('reason') or '请先探测设备'}"
+                self.changed.emit()
+                return False
+            current = self._synthesis_forward_device
+            binding = current if current in devices else devices[0]
+        if backend == self._synthesis_forward_backend and binding == self._synthesis_forward_device:
+            return True
+        self._synthesis_forward_backend = backend
+        self._synthesis_forward_device = deepcopy(binding)
+        self._error = ""
+        self._invalidate_result()
+        return True
+
+    @Slot(int, result=bool)
+    def setSynthesisForwardDevice(self, index: int) -> bool:
+        if self._busy or self._shutting_down or self._pending_edit_error:
+            return False
+        result = self._synthesis_forward_probe.results.get(self._synthesis_forward_backend, {})
+        devices = result.get("devices", [])
+        if (isinstance(index, bool) or index < 0 or not isinstance(devices, list)
+                or index >= len(devices)):
+            self._error = "所选 GPU 设备不存在，请重新探测。"
+            self.changed.emit()
+            return False
+        binding = devices[index]
+        if binding != self._synthesis_forward_device:
+            self._synthesis_forward_device = deepcopy(binding)
+            self._error = ""
+            self._invalidate_result()
+        return True
+
+    @Slot(int, object)
+    def _on_synthesis_forward_probe_finished(self, _generation: int, _results: object) -> None:
+        self.changed.emit()
+
+    @Slot("QVariant", result=bool)
+    def setSynthesisCpuWorkers(self, value: Any) -> bool:
+        error_key = "synthesis:cpu_workers"
+        if self._busy or self._shutting_down or not self._pending_edit_allows(error_key):
+            return False
+        try:
+            workers = synthesis_cpu_workers(value)
+        except (ValueError, TypeError, OverflowError) as exc:
+            self._record_pending_edit_error(error_key, str(exc))
+            return False
+        self._clear_pending_edit_error(error_key)
+        self._synthesis_cpu_workers = workers
+        self._error = ""
+        self._invalidate_result()
+        return True
+
+    @Property(bool, notify=changed)
+    def canEditSynthesisAssumption(self) -> bool:
+        return not (self._busy or self._shutting_down or self._pending_edit_error)
+
+    @Property(bool, notify=changed)
+    def synthesisAssumeUnknownKZero(self) -> bool:
+        return self._synthesis_assume_unknown_k_zero
+
+    @Slot(bool, result=bool)
+    def setSynthesisAssumeUnknownKZero(self, enabled: bool) -> bool:
+        if self._busy or self._shutting_down or self._pending_edit_error:
+            return False
+        self._synthesis_assume_unknown_k_zero = bool(enabled)
+        self._error = ""
+        self._invalidate_result()
+        return True
+
+    @Property(bool, notify=changed)
+    def synthesisUseCurrentSeed(self):
+        return self._synthesis_use_current_seed
+
+    @Slot(bool, result=bool)
+    def setSynthesisUseCurrentSeed(self, enabled):
+        if self._busy or self._pending_edit_error:
+            return False
+        self._synthesis_use_current_seed = bool(enabled)
+        self._invalidate_result()
+        return True
+
+    @Slot(str, "QVariant", result=bool)
+    def setSynthesisOption(self, name, value):
+        if self._busy or self._shutting_down or not self._pending_edit_allows("synthesis:" + name):
+            return False
+        try:
+            values = synthesis_options({**self._synthesis_options, name: value})
+        except (ValueError, TypeError, OverflowError) as exc:
+            self._record_pending_edit_error("synthesis:" + name, str(exc))
+            return False
+        self._clear_pending_edit_error("synthesis:" + name)
+        self._synthesis_options = values
+        self._error = ""
+        self._invalidate_result()
+        return True
+
+    @Property(dict, notify=changed)
+    def synthesisCandidateAudit(self):
+        return deepcopy((self._synthesis_payload or {}).get("best_candidate_audit", {}))
+
+    @Property(str, notify=changed)
+    def synthesisExecutionSummary(self) -> str:
+        if self._synthesis_payload is None:
+            return ""
+        payload = self._synthesis_payload
+        result = payload.get("result", {})
+        performance = result.get("performance") if isinstance(result, dict) else None
+        if not isinstance(performance, dict):
+            return "未记录合成执行诊断"
+        forward = performance.get("forward")
+        if not isinstance(forward, dict):
+            forward = {}
+        forward_requested = forward.get("requested_backend")
+        forward_actual = forward.get("actual_backend")
+        forward_device = forward.get("device_identity")
+        forward_text = ""
+        if isinstance(forward_requested, str):
+            forward_label = {"cpu": "CPU", "cuda": "CUDA", "rocm": "ROCm", "xpu": "XPU"}.get(
+                forward_requested, forward_requested.upper())
+            actual_label = ({"cpu": "CPU", "cuda": "CUDA", "rocm": "ROCm", "xpu": "XPU",
+                             "gpu": "GPU"}.get(forward_actual, "未记录")
+                            if isinstance(forward_actual, str) else "未记录")
+            device_label = ""
+            if isinstance(forward_device, dict):
+                runtime = forward_device.get("runtime")
+                index = forward_device.get("index")
+                name = forward_device.get("name")
+                if isinstance(runtime, str) and type(index) is int:
+                    device_label = f"（{runtime}:{index}" + (f" {name}" if isinstance(name, str) else "") + "）"
+            forward_text = (f"前向请求 {forward_label}，实际 {actual_label}{device_label}；"
+                            f"批次/候选提交完成采用：{forward.get('batches', '未知')}/"
+                            f"{forward.get('candidates_submitted', '未知')}/"
+                            f"{forward.get('candidates_completed', '未知')}/"
+                            f"{forward.get('candidates_consumed', '未知')}；")
+        backend = performance.get("backend", "unknown")
+        requested = performance.get("requested_workers", "unknown")
+        effective = performance.get("effective_workers", "unknown")
+        pids = performance.get("worker_pids")
+        process_count = effective if isinstance(effective, int) and not isinstance(effective, bool) else "未知"
+        pid_count = len(pids) if isinstance(pids, list) else "未知"
+        request_text = "自动" if requested == 0 else str(requested)
+        backend_text = {"serial": "CPU 串行", "headless_process": "CPU 多进程"}.get(
+            backend, "CPU 执行方式未知")
+        historical = performance.get("historical") is True
+        history_text = "历史检查点记录" if historical else "本次执行记录"
+
+        def count(name: str) -> str:
+            value = performance.get(name)
+            return str(value) if type(value) is int and value >= 0 else "未知"
+
+        fallback_events = performance.get("fallback_events")
+        reasons = []
+        if isinstance(fallback_events, list):
+            for item in fallback_events[:3]:
+                if isinstance(item, str) and item:
+                    reasons.append(item)
+                elif isinstance(item, dict) and (item.get("reason") or item.get("code")):
+                    reasons.append(str(item.get("reason") or item.get("code")))
+        fallback_reason = "、".join(reasons) if reasons else "未记录"
+        return (forward_text + f"{backend_text}（{history_text}；PID 仅为记录，不代表进程仍在运行）；"
+                f"请求进程数：{request_text}；实际工作进程数：{process_count}；记录的 PID 数：{pid_count}；"
+                f"任务提交/完成：{count('submitted_tasks')}/{count('completed_tasks')}；"
+                f"按原序采用：{count('consumed_tasks')}；投机未采用：{count('discarded_tasks')}；"
+                f"串行回退：{count('serial_fallback_tasks')}（原因：{fallback_reason}）")
+
+    @Property(list, notify=changed)
+    def synthesisLayers(self):
+        rows = deepcopy((self._synthesis_payload or {}).get("review", {}).get("layers", []))
+        for row in rows:
+            source = row.get("material_source", {})
+            row["display"] = (f"{row.get('index', 0) + 1} | {row.get('id')} | "
+                f"{row.get('material_name')} ({row.get('material_id')}) / "
+                f"{row.get('optical_set_name')} ({row.get('optical_set_id')}) | {row.get('thickness_nm')} nm\n"
+                f"n 波段 {row.get('n_wavelength_domain_nm')} nm，k 波段 {row.get('k_wavelength_domain_nm')} nm\n"
+                + json.dumps(source, ensure_ascii=False, sort_keys=True))
+        return rows
+
+    @Property(list, notify=changed)
+    def synthesisObjectiveAudit(self):
+        rows = deepcopy((self._synthesis_payload or {}).get("review", {}).get("per_objective", []))
+        for row in rows:
+            row["display"] = (f"目标 {row['objective_index'] + 1} | {row['metric']} | "
+                f"{row['wavelength_min_nm']}–{row['wavelength_max_nm']} nm | "
+                f"审计通过：{row['targets_met']}\n"
+                f"最坏点 {row['worst_wavelength_nm']} nm / {row['worst_angle_deg']}°，"
+                f"实际值 {row['worst_actual']}，最大归一化违规 {row['max_normalized_error']}")
+        return rows
+
+    @Property(str, notify=changed)
+    def synthesisAbsorptionSummary(self) -> str:
+        if self._synthesis_payload is None:
+            return ""
+        assumption = self._synthesis_payload.get("absorption_assumption")
+        if not isinstance(assumption, dict):
+            return "此历史结果未记录未知 k 策略，请查看原始任务输入。"
+        if not assumption.get("assume_unknown_k_zero"):
+            return "吸收策略：严格使用已知 k；未把未知吸收按 0 计算。"
+        refs = assumption.get("affected_materials", [])
+        identities = "、".join(f"{row['material_id']} / {row['optical_set_id']}" for row in refs)
+        used = assumption.get("used_affected_materials", [])
+        used_identities = "、".join(f"{row['material_id']} / {row['optical_set_id']}" for row in used)
+        if not identities:
+            return "已启用未知 k 按 0 假设；本任务未发现需要替代的未知 k 数据集。已知非零 k 保留。"
+        candidate_scope = (f"当前候选实际采用此假设的数据集：{used_identities}。"
+                           if used_identities else "当前候选未使用这些需要假设的数据集。")
+        return ("吸收假设：仅将未知 k 按 0 计算，已知非零 k 保留。\n"
+                f"受影响的输入数据集：{identities}\n{candidate_scope}\n"
+                "审计基于所记录的输入策略，不是实际吸收的实验验证；原材料记录未改变。")
+
+    @Property(str, notify=changed)
+    def synthesisAuditSummary(self) -> str:
+        return self._synthesis_audit_summary()
+
+    def _synthesis_work_count(self, name: str) -> str:
+        value = (self._synthesis_payload or {}).get("result", {}).get(name)
+        return "未知" if value is None else str(value)
+
+    def _synthesis_work_counters_note(self) -> str:
+        payload = self._synthesis_payload or {}
+        work = payload.get("work_counters", {})
+        names = ("cycles", "evaluations", "failed_evaluations", "validation_evaluations",
+                 "audit_physical_evaluations", "audit_wavelength_points")
+        if (work.get("work_counters_complete") is not False
+                and all(payload.get("result", {}).get(name) is not None for name in names)):
+            return ""
+        text = "\n历史检查点缺少完整累计工作量；未知项未按 0 报告。统计范围：原任务截至已保存检查点。"
+        replay = work.get("recovery_replay_work")
+        if isinstance(replay, dict):
+            def count(name: str) -> str:
+                value = replay.get(name)
+                return "未知" if value is None else str(value)
+            text += (f"\n本次恢复重放单列：训练评价 {count('training_evaluations')}、"
+                     f"审计候选评价 {count('validation_evaluations')}、"
+                     f"物理调用 {count('audit_physical_evaluations')}、波长点 {count('audit_wavelength_points')}。")
+        return text
+
+    def _synthesis_audit_summary(self) -> str:
+        payload = self._synthesis_payload
+        if payload is None:
+            return ""
+        raw, facts = payload["result"], payload["best_candidate_audit"]
+        quality = ("通过" if facts.get("targets_met") is True else "未通过"
+                   if facts.get("targets_met") is False else "尚无完整审计")
+        layers = payload.get("review", {}).get("layers", [])
+        return (f"任务状态：{raw['state']} / {raw['termination_reason']}\n"
+                f"候选独立审计：{quality}，层数 {len(layers)}，"
+                f"最大违规 {facts.get('audit_max_normalized_error')}，允许误差 {facts.get('acceptable_normalized_error')}\n"
+                f"审计物理调用 {self._synthesis_work_count('audit_physical_evaluations')}，"
+                f"审计波长点 {self._synthesis_work_count('audit_wavelength_points')}。"
+                "有限采样审计，无连续谱证书。原设计仅在确认应用后改变。"
+                + self._synthesis_work_counters_note())
+
+    @Property(str, notify=changed)
+    def synthesisPreviewLabel(self):
+        if self.project_context is not None or not callable(getattr(self.parent(), "open_window", None)):
+            return "查看候选采样光谱"
+        return "打开候选采样预览"
+
+    @Slot(result=bool)
+    def previewSynthesisCandidate(self):
+        if self._busy or self._result is None or self._synthesis_payload is None or self._frozen_request is None:
+            return False
+        if not self._project_current():
+            self._error = "来源项目已关闭或重新打开，未打开旧候选预览"
+            self.changed.emit()
+            return False
+        opener = getattr(self.parent(), "open_window", None)
+        if self.project_context is not None or not callable(opener):
+            self._error = ""
+            self.synthesisPreviewRequested.emit()
+            self.plotDataChanged.emit()
+            self.changed.emit()
+            return True
+        try:
+            payload = synthesis_preview_handoff(self._frozen_request, self._result,
+                task_state=self._synthesis_payload["result"]["state"])
+            return bool(opener("film_simulation", mode="new", payload=payload))
+        except (ValueError, TypeError, KeyError) as exc:
+            self._error = str(exc)
+            self.changed.emit()
+            return False
+
     @Slot(result=bool)
     def startOptimization(self) -> bool:
         return self._start_optimization()
@@ -3284,6 +4215,8 @@ class FilmOptimizationQuickController(QObject):
                 if self._requires_async_angle_preparation():
                     placeholders = tuple((0.0,) for _ in self._objectives)
                     request_template = (
+                        self._build_synthesis_request(prepared_angles=placeholders)
+                        if self._search_mode == "synthesis" else
                         self._build_structure_request(prepared_angles=placeholders)
                         if self._search_mode == "structure"
                         else self._build_request(prepared_angles=placeholders))
@@ -3295,6 +4228,8 @@ class FilmOptimizationQuickController(QObject):
         try:
             if prepared_start is not None:
                 request = prepared_start.request
+            elif self._search_mode == "synthesis":
+                request = self._build_synthesis_request()
             elif self._search_mode == "structure":
                 request = self._build_structure_request()
             else:
@@ -3307,6 +4242,10 @@ class FilmOptimizationQuickController(QObject):
             store, _device = self._compute_target.client_for_submit(
                 client_factory=SchedulerClient)
             remote = bool(getattr(getattr(store, "transport", None), "remote_http", False))
+            if (remote and self._search_mode == "synthesis"
+                    and getattr(request, "forward_backend", "cpu") != "cpu"):
+                raise _QueueCompatibilityError(
+                    "GPU 前向仅支持本机合成；请切回 CPU 前向后再选择远程任务，尚未提交作业。")
             if getattr(request,"execution_device",None) is not None:
                 if request.execution_device != self._selected_execution_binding():
                     raise _QueueCompatibilityError("准备期间执行设备已改变；请重新开始，未提交任务。")
@@ -3324,8 +4263,15 @@ class FilmOptimizationQuickController(QObject):
         try:
             # Freeze inputs on the owner thread before background admission.
             # The worker still verifies the running queue before submission.
+            editable_snapshot = prepared_start.editable_snapshot if prepared_start is not None else None
             if prepared_start is None:
-                if self._search_mode == "structure":
+                if self._search_mode == "synthesis":
+                    from coat_sim.core.film_auto_synthesis import freeze_film_synthesis_request
+                    request = freeze_film_synthesis_request(self.service, request)
+                    from coat_sim.core.film_physical_generator import freeze_synthesis_editable_snapshot
+                    editable_snapshot = freeze_synthesis_editable_snapshot(
+                        self.service, request.environment, request.frozen_material_snapshot)
+                elif self._search_mode == "structure":
                     from coat_sim.core.film_optimization_structure import (
                         freeze_film_structure_optimization_request,
                     )
@@ -3339,6 +4285,7 @@ class FilmOptimizationQuickController(QObject):
             return False
         try:
             spec = (prepared_start.spec if prepared_start is not None else
+                    synthesis_spec(self.service, request) if self._search_mode == "synthesis" else
                     freeze_spec(self.service, "film_optimization", {"request": request}))
             prepared_angle_job_id = self._prepared_angle_job_id
             job_id = prepared_angle_job_id or uuid4().hex
@@ -3350,11 +4297,13 @@ class FilmOptimizationQuickController(QObject):
                     self._project_operation = self._project_compute.capture(job_id)
                 elif not self._project_current():
                     raise ValueError("项目已关闭或正在退出；未提交优化任务。")
-            base_request = cast(FilmOptimizationRequest, getattr(request, "base_request", request))
+            base_request = (synthesis_base_request(request) if self._search_mode == "synthesis" else
+                            cast(FilmOptimizationRequest, getattr(request, "base_request", request)))
             metadata = {
-                "summary": ("Film structure synthesis — "
-                            if self._search_mode == "structure"
-                            else "Film optimization — ") + str(
+                "summary": ("Film automatic synthesis | "
+                            if self._search_mode == "synthesis" else
+                            "Film structure synthesis | " if self._search_mode == "structure"
+                            else "Film optimization | ") + str(
                     base_request.design_snapshot.get("name", "film design")),
                 "origin": {"surface": "desktop"},
                 "input_summary": {
@@ -3365,7 +4314,7 @@ class FilmOptimizationQuickController(QObject):
                     "search_mode": self._search_mode,
                     "structure_mode": (request.mode if self._search_mode == "structure" else None),
                     "candidate_material_count": (len(request.candidate_materials)
-                                                  if self._search_mode == "structure" else 0),
+                                                  if self._search_mode in {"structure", "synthesis"} else 0),
                 },
             }
             if self._project_compute is not None:
@@ -3379,6 +4328,21 @@ class FilmOptimizationQuickController(QObject):
             admission_project = self._project_compute
             admission_operation = self._project_operation
             admission_stopped = self._admission_stopped
+
+            original_verify_admission = verify_admission
+            synthesis_mode = self._search_mode == "synthesis"
+            admission_revision = self._source_revision
+            admission_epoch = self._source_edit_epoch()
+            admission_session = self.session
+            def verify_admission():
+                if synthesis_mode:
+                    from coat_sim.ui.compute_target import validate_capabilities
+                    validate_capabilities(store.capabilities(), "film_synthesis", remote=remote)
+                    if (admission_session is not None and (
+                            admission_session.snapshot().design_revision != admission_revision
+                            or self._source_edit_epoch() != admission_epoch)):
+                        raise InterruptedError("合成提交前原设计或未提交编辑已改变")
+                original_verify_admission()
 
             def admission_project_is_current() -> bool:
                 if admission_stopped.is_set():
@@ -3399,6 +4363,8 @@ class FilmOptimizationQuickController(QObject):
                         "远程请求设备与冻结的设备选择不一致；未提交任务。")
 
                 def remote_admission():
+                    if synthesis_mode:
+                        verify_admission()
                     target_is_current()
                     if not admission_project_is_current():
                         raise InterruptedError("项目已关闭或正在退出；未接纳新的远程作业。")
@@ -3414,7 +4380,7 @@ class FilmOptimizationQuickController(QObject):
                             "远程主机能力核对失败；未提交优化任务。") from exc
                     try:
                         rows = validate_capabilities(
-                            capabilities, "film_optimization", remote=True)
+                            capabilities, "film_synthesis" if synthesis_mode else "film_optimization", remote=True)
                     except Exception as exc:
                         raise _QueueCompatibilityError(
                             f"远程主机能力不兼容；未提交优化任务（{getattr(exc, 'code', 'invalid_capabilities')}）。"
@@ -3478,26 +4444,35 @@ class FilmOptimizationQuickController(QObject):
                 queue_admission = remote_admission
                 if queue_admission is None:
                     queue_admission = async_local_admission
-                return (_FilmOptimizationTask(*args, remote_admission=queue_admission,
-                                              project_compute=self._project_compute)
+                task_class = _FilmSynthesisTask if self._search_mode == "synthesis" else _FilmOptimizationTask
+                return (task_class(*args, remote_admission=queue_admission,
+                                   project_compute=self._project_compute)
                         if queue_admission is not None else
-                        _FilmOptimizationTask(*args, project_compute=self._project_compute))
+                        task_class(*args, project_compute=self._project_compute))
 
             previous_job_id = self._queue_job_id
+            previous_frozen_request = self._frozen_request
             self._queue_job_id = job_id
+            self._frozen_request = base_request
             if self._project_compute is not None:
                 self._project_compute.register_job(
                     job_id, module_key="film_optimization", service_owned=False,
                     state="submitting", metadata=metadata)
+            next_operation_id = self._operation_serial + 1
+            self._capture_cancel_attempt(
+                next_operation_id, job_id, metadata.get("origin", {}), cancel_event)
             self._run_coordinator.start(
                 submit=None,
                 worker_factory=create_worker,
                 edit_epoch=self._source_edit_epoch(),
             )
         except Exception as exc:
+            if self._attempt_operation_id == self._operation_serial + 1:
+                self._clear_cancel_attempt()
             if self._project_compute is not None and "job_id" in locals():
                 self._project_compute.update_job(job_id, "failed")
             self._queue_job_id = locals().get("previous_job_id", self._queue_job_id)
+            self._frozen_request = locals().get("previous_frozen_request", self._frozen_request)
             detail = str(exc)
             if isinstance(exc, FilmOptimizationRunStartError):
                 self._error = f"Unable to start film optimization worker: {detail}"
@@ -3513,8 +4488,10 @@ class FilmOptimizationQuickController(QObject):
             self.changed.emit()
             return False
         self._frozen_request = base_request
+        self._synthesis_editable_snapshot = deepcopy(editable_snapshot)
         self._completion_handoff_done = False
         self._result = None
+        self._synthesis_payload = None
         self._structure_result = None
         self._inspection_objectives = None
         self._result_terminal_state = ""
@@ -3554,21 +4531,304 @@ class FilmOptimizationQuickController(QObject):
             self.refreshDesign()
         return self.startOptimization()
 
-    @Slot(str, str)
+    def _capture_cancel_attempt(self, operation_id: int, job_id: str,
+                                origin: Any, cancel_event: Any) -> None:
+        self._attempt_operation_id = int(operation_id)
+        self._attempt_job_id = str(job_id)
+        self._attempt_session = self.session
+        self._attempt_source_controller = self._source_controller
+        self._attempt_source_revision = self._source_revision
+        self._attempt_edit_epoch = self._source_edit_epoch()
+        self._attempt_project_operation = self._project_operation
+        self._attempt_origin = deepcopy(dict(origin)) if isinstance(origin, dict) else {}
+        self._attempt_cancel_event = cancel_event
+        self._attempt_search_mode = self._search_mode
+        self._attempt_materials_owner = getattr(self.service, "materials", None)
+        frozen_request = self._frozen_request
+        self._attempt_frozen_material_snapshot = (
+            deepcopy(dict(frozen_request.frozen_material_snapshot))
+            if frozen_request is not None and frozen_request.frozen_material_snapshot is not None
+            else None)
+        self._terminal_operation_id = None
+        self._attempt_cancel_snapshot = None
+        self._cancel_intent_operation_id = None
+        self._cancel_intent_job_id = ""
+        self._cancel_intent_requested = False
+        self._cancel_intent_accepted = False
+        self._cancel_intent_consumed = False
+
+    def _clear_cancel_attempt(self) -> None:
+        self._attempt_operation_id = None
+        self._attempt_job_id = ""
+        self._attempt_session = None
+        self._attempt_source_controller = None
+        self._attempt_source_revision = None
+        self._attempt_edit_epoch = None
+        self._attempt_project_operation = None
+        self._attempt_origin = {}
+        self._attempt_cancel_event = None
+        self._attempt_search_mode = ""
+        self._attempt_materials_owner = None
+        self._attempt_frozen_material_snapshot = None
+        self._attempt_cancel_snapshot = None
+        self._terminal_operation_id = None
+        self._cancel_intent_operation_id = None
+        self._cancel_intent_job_id = ""
+        self._cancel_intent_requested = False
+        self._cancel_intent_accepted = False
+        self._cancel_intent_consumed = False
+
+    def _matching_cancel_attempt(self, job_id: str, origin: Any) -> bool:
+        if (self._shutting_down or self._attempt_operation_id is None
+                or self._attempt_job_id != str(job_id)
+                or self._attempt_session is not self.session
+                or self._attempt_source_controller is not self._source_controller
+                or self._source_closed or self._observers_detached or self._pending_close
+                or self._cancel_intent_consumed):
+            return False
+        if origin is not None and origin != self._attempt_origin:
+            return False
+        if self._attempt_project_operation is not None:
+            if (self._project_compute is None
+                    or self._project_operation is not self._attempt_project_operation
+                    or not self._project_compute.accepts(self._attempt_project_operation)):
+                return False
+        return (self._active_operation_id == self._attempt_operation_id
+                or self._terminal_operation_id == self._attempt_operation_id
+                or (not self._busy
+                    and self._operation_serial == self._attempt_operation_id
+                    and not self._result_terminal_state))
+
     def _on_cancel_transport_status(self, job_id: str, code: str) -> None:
-        if (not self._busy or job_id != self._queue_job_id
-                or not self._project_current()):
+        if not self._matching_cancel_attempt(job_id, self._attempt_origin):
             return
         if code:
             self._error = f"Unable to request queue cancellation: {code}"
             self._progress_text = "取消请求尚未确认；可再次点击取消，继续按原作业 ID 重试。"
-        elif self._error.startswith("Unable to request queue cancellation:"):
-            self._error = ""
+        else:
+            if (self._cancel_intent_requested
+                    and bool(getattr(self._attempt_cancel_event, "cancel_acknowledged", False))):
+                self._cancel_intent_accepted = True
+                self._accept_cancel_intent()
+            if self._error.startswith("Unable to request queue cancellation:"):
+                self._error = ""
         self.changed.emit()
+
+    def _accept_cancel_intent(self) -> bool:
+        if (self._cancel_intent_consumed or not self._cancel_intent_accepted
+                or not self._cancel_intent_requested
+                or self._cancel_intent_operation_id != self._attempt_operation_id
+                or self._cancel_intent_job_id != self._attempt_job_id
+                or self._terminal_operation_id != self._attempt_operation_id):
+            return False
+        return self._apply_cancel_candidate_once()
+
+    def _cancel_candidate_verified(self) -> bool:
+        result = self._result
+        if (result is None or result.state != "cancelled" or result.evaluations < 1
+                or not result.best_design or not result.per_condition_errors):
+            return False
+        try:
+            if not math.isfinite(float(result.max_normalized_error)):
+                return False
+        except (TypeError, ValueError, OverflowError):
+            return False
+        if self._attempt_search_mode == "synthesis":
+            payload = self._synthesis_payload
+            raw = payload.get("result") if isinstance(payload, dict) else None
+            review = payload.get("review") if isinstance(payload, dict) else None
+            provenance = raw.get("candidate_provenance") if isinstance(raw, dict) else None
+            marker = review.get("cancel_snapshot") if isinstance(review, dict) else None
+            if (not isinstance(raw, dict) or not isinstance(provenance, dict)
+                    or not isinstance(marker, dict)
+                    or provenance.get("selection") != "completed_training_at_cancel"
+                    or provenance.get("training_complete") is not True
+                    or provenance.get("frozen_at_cancel") is not True
+                    or type(provenance.get("fully_scored_evaluations")) is not int
+                    or provenance["fully_scored_evaluations"] < 1
+                    or marker.get("source") != "worker_completed_reply"
+                    or marker.get("replay_performed") is not False
+                    or marker.get("candidate_available") is not True
+                    or not isinstance(raw.get("training_score"), dict)):
+                return False
+        elif self._structure_result is not None:
+            structure = self._structure_result
+            request = getattr(structure, "frozen_request", None)
+            marker = (structure.topology_audit.get("cancel_snapshot")
+                      if isinstance(structure.topology_audit, Mapping) else None)
+            if (request is None or not isinstance(marker, Mapping)
+                    or marker.get("source") != "worker_completed_reply"
+                    or marker.get("replay_performed") is not False
+                    or marker.get("candidate_available") is not True
+                    or marker.get("training_complete") is not True):
+                return False
+            try:
+                from coat_sim.core.film_optimization_structure import (
+                    validate_film_structure_candidate_topology,
+                )
+                validate_film_structure_candidate_topology(
+                    request, structure.best_design,
+                    split_groups=structure.topology_audit.get("split_groups", {}))
+            except (ValueError, TypeError, KeyError):
+                return False
+        else:
+            marker = self._attempt_cancel_snapshot
+            if not isinstance(marker, dict) or marker.get("candidate_available") is not True:
+                return False
+        if (self._attempt_source_revision is None
+                or result.design_revision != self._attempt_source_revision):
+            return False
+        try:
+            normalized = cast(Any, self.service).validate(deepcopy(dict(result.best_design)))
+            if not isinstance(normalized, Mapping):
+                return False
+        except (ValueError, TypeError, KeyError, AttributeError):
+            return False
+        if self._attempt_search_mode == "fixed_topology" and not self._matches_frozen_fixed_topology(normalized):
+            return False
+        return True
+
+    def _matches_frozen_fixed_topology(self, candidate: Mapping[str, Any]) -> bool:
+        request = self._frozen_request
+        if request is None:
+            return False
+        frozen = request.design_snapshot
+        for key in set(frozen) | set(candidate):
+            if key in {"front_layers", "back_layers"}:
+                continue
+            if frozen.get(key) != candidate.get(key):
+                return False
+        for side in ("front_layers", "back_layers"):
+            base_rows = list(frozen.get(side, ()))
+            candidate_rows = list(candidate.get(side, ()))
+            if len(base_rows) != len(candidate_rows):
+                return False
+            for base, row in zip(base_rows, candidate_rows, strict=True):
+                if base.get("id") != row.get("id"):
+                    return False
+                base_metadata = {key: value for key, value in base.items() if key != "thickness"}
+                candidate_metadata = {key: value for key, value in row.items() if key != "thickness"}
+                if base_metadata != candidate_metadata:
+                    return False
+        return True
+
+    def _cancel_material_references_unchanged(self, design: Mapping[str, Any]) -> bool:
+        materials = getattr(self.service, "materials", None)
+        if materials is None or materials is not self._attempt_materials_owner:
+            return False
+        snapshot = self._attempt_frozen_material_snapshot
+        if snapshot is None:
+            return self._attempt_search_mode != "synthesis"
+        try:
+            from coat_sim.core.film_design_service import active_material_references
+            frozen_rows = {row["id"]: row for row in snapshot.get("materials", [])}
+            for ref in active_material_references(design):
+                material_id = ref["material_id"]
+                set_id = ref["optical_set_id"]
+                expected = next((row for row in frozen_rows[material_id].get("optical_sets", [])
+                                 if row.get("id") == set_id), None)
+                material = materials.get(material_id)
+                if material is None:
+                    return False
+                actual = next((row for row in material.get("optical_sets", [])
+                               if row.get("id") == set_id), None)
+                if expected is None or actual != expected:
+                    return False
+        except (ValueError, KeyError, TypeError, AttributeError):
+            return False
+        return True
+
+    def _apply_cancel_candidate_once(self) -> bool:
+        if self._cancel_intent_consumed:
+            return False
+        self._cancel_intent_consumed = True
+        if not self._cancel_candidate_verified():
+            self._progress_text = "取消时没有可用的完整有效候选，原设计保持不变。"
+            self.changed.emit()
+            return False
+        result = self._result
+        if result is None:
+            return False
+        if not self._cancel_material_references_unchanged(result.best_design):
+            self._source_stale = True
+            self._error = "Materials referenced by the candidate changed during the run; the candidate is retained and was not applied."
+            self.changed.emit()
+            return False
+        if (self._attempt_session is not self.session
+                or self._attempt_source_controller is not self._source_controller
+                or self.session is None or self._source_controller is None
+                or self._source_closed or self._shutting_down):
+            self._source_stale = True
+            self._error = "计算期间源设计或项目版本已变化；候选已保留供查看，未自动应用。"
+            self.changed.emit()
+            return False
+        if self._project_compute is not None and (
+                self._attempt_project_operation is None
+                or not self._project_compute.accepts(self._attempt_project_operation)):
+            self._source_stale = True
+            self._error = "计算期间源设计或项目版本已变化；候选已保留供查看，未自动应用。"
+            self.changed.emit()
+            return False
+        snapshot = self.session.snapshot()
+        if (snapshot.design_revision != self._attempt_source_revision
+                or self._source_edit_epoch() != self._attempt_edit_epoch):
+            self._source_stale = True
+            self._error = "计算期间源设计或项目版本已变化；候选已保留供查看，未自动应用。"
+            self.changed.emit()
+            return False
+        try:
+            current = cast(Any, self.service).validate(deepcopy(dict(snapshot.design)))
+            candidate = cast(Any, self.service).validate(deepcopy(dict(self._result.best_design)))
+            same_design = current == candidate
+        except (ValueError, TypeError, KeyError, AttributeError):
+            same_design = False
+        if same_design:
+            self._candidate_applied = True
+            self._source_stale = False
+        else:
+            self._operation_edit_epoch = self._attempt_edit_epoch
+            if not self._apply_candidate():
+                self._source_stale = True
+                self._error = self._error or "候选未通过源版本校验；原设计保持不变。"
+                self.changed.emit()
+                return False
+        self._progress_text = "取消后已将当前最佳候选应用到原设计并请求刷新光谱；未保存文件。"
+        opener = getattr(self._source_controller, "openSimulationAndCalculate", None)
+        try:
+            if callable(opener) and not opener():
+                raise ValueError("same-project spectrum route did not confirm refresh")
+        except (ValueError, RuntimeError, TypeError) as exc:
+            self._error = f"候选已应用，但光谱刷新未完成：{exc}"
+        self.changed.emit()
+        self.plotDataChanged.emit()
+        return True
+
+    @Slot(str, object, object, result=bool)
+    def onProjectQueueCancelAccepted(self, job_id: str, cancellation_result: Any,
+                                    origin: Any) -> bool:
+        accepted = (cancellation_result is True or
+                    isinstance(cancellation_result, dict) and bool(
+                        cancellation_result.get("cancel_requested")
+                        or cancellation_result.get("state") == "cancelled"))
+        if not accepted or not self._matching_cancel_attempt(job_id, origin):
+            return False
+        self._cancel_intent_operation_id = self._attempt_operation_id
+        self._cancel_intent_job_id = self._attempt_job_id
+        self._cancel_intent_requested = True
+        self._cancel_intent_accepted = True
+        self._accept_cancel_intent()
+        return True
 
     @Slot()
     def cancelOptimization(self) -> None:
+        self._request_optimization_cancel(user_initiated=True)
+
+    def _request_optimization_cancel(self, *, user_initiated: bool) -> None:
         if self._busy and self._cancel_event is not None:
+            if user_initiated:
+                self._cancel_intent_operation_id = self._attempt_operation_id
+                self._cancel_intent_job_id = self._attempt_job_id
+                self._cancel_intent_requested = self._attempt_operation_id is not None
             error = self._run_coordinator.request_cancel()
             if error is not None:
                 detail = str(getattr(self._cancel_event, "cancel_error_message", "")
@@ -3649,6 +4909,68 @@ class FilmOptimizationQuickController(QObject):
         self._progress = 1.0
         self._result_terminal_state = "队列历史结果"
         self._progress_text = "历史候选仅供查看或另存；未修改当前设计和优化配置。"
+        self._error = ""
+        self.changed.emit()
+        self.plotDataChanged.emit()
+        return True
+
+    def inspectSynthesisQueueResult(self, job_id: str, payload: dict, *, origin=None) -> bool:
+        """Inspect a factory-verified same-project typed synthesis result, read only."""
+        try:
+            if self.project_context is None or self._project_compute is None:
+                raise ValueError("Synthesis history requires an explicit project")
+            if (not isinstance(origin, dict)
+                    or origin.get("project_id") != self.project_context.binding.project_id
+                    or origin.get("project_root") != str(self.project_context.binding.root)):
+                raise ValueError("Synthesis result belongs to a different project")
+            if self._busy or self._pending_edit_error or self._shutting_down:
+                raise ValueError("Finish the active operation or edit before inspecting history")
+            if self._result is not None and not self._candidate_saved and not self._candidate_applied:
+                raise ValueError("Save or discard the current candidate before inspecting history")
+            operation = self._project_compute.capture("inspect-" + str(job_id))
+            if not self._project_compute.accepts(operation):
+                raise ValueError("The originating project generation is no longer current")
+            view = synthesis_result_view(payload)
+            from coat_sim.core.film_synthesis_io import film_synthesis_request_from_payload
+            envelope = {"schema_version": 1, "kind": "coat_sim.film_synthesis_request",
+                        "request_id": "history-" + str(job_id)[:100], "physical_structures": [],
+                        "request": payload["result"]["frozen_request"]}
+            _, request, _ = film_synthesis_request_from_payload(envelope)
+            objectives = []
+            for index, objective in enumerate(request.objectives):
+                row = _objective_default(index)
+                row.update(wavelength_min_nm=objective.wavelength_min_nm,
+                           wavelength_max_nm=objective.wavelength_max_nm,
+                           wavelength_samples=objective.wavelength_samples,
+                           metric=objective.metric, polarization=objective.polarization,
+                           mode=objective.mode,
+                           target_value_percent=(objective.target_value or 0) * 100,
+                           lower_bound_percent=(objective.lower_bound or objective.target_value or 0) * 100,
+                           upper_bound_percent=(objective.upper_bound if objective.upper_bound is not None else
+                                                objective.target_value if objective.target_value is not None else 1) * 100,
+                           angle_sampling_mode="points", angles_text=", ".join(str(v) for v in objective.angles_deg))
+                objectives.append(row)
+        except (ValueError, TypeError, KeyError) as exc:
+            self._error = str(exc)
+            self.changed.emit()
+            return False
+        self._project_operation = operation
+        self._queue_job_id = str(job_id)
+        self._synthesis_payload = deepcopy(dict(view.payload))
+        self._synthesis_editable_snapshot = None
+        self._result = view.optimization_result
+        self._frozen_request = synthesis_base_request(request)
+        self._structure_result = None
+        self._inspection_objectives = objectives
+        self._result_application_eligible = False
+        self._operation_edit_epoch = None
+        self._baseline = {}
+        self._candidate_saved = self._candidate_applied = False
+        self._source_stale = True
+        self._plot_objective = 0
+        self._plot_angle = float(request.objectives[0].angles_deg[0])
+        self._result_terminal_state = "历史合成结果 / " + str(payload["result"]["state"])
+        self._progress_text = "只读历史合成候选；可预览/另存，不能应用到当前设计"
         self._error = ""
         self.changed.emit()
         self.plotDataChanged.emit()
@@ -3765,7 +5087,19 @@ class FilmOptimizationQuickController(QObject):
         if pending is not None and pending.get("operation_id") == operation_id:
             self._on_angle_preparation_finished(operation_id, result, error)
             return
-        if self._project_compute is not None and operation_id == self._operation_serial:
+        if (self._attempt_operation_id == operation_id
+                and operation_id == self._operation_serial):
+            self._terminal_operation_id = operation_id
+        if isinstance(result, _FilmOptimizationTerminal):
+            self._attempt_cancel_snapshot = deepcopy(result.cancel_snapshot)
+            result = result.result
+            if (getattr(result, "state", None) == "cancelled"
+                    and isinstance(result.cancel_snapshot if hasattr(result, "cancel_snapshot") else
+                                   self._attempt_cancel_snapshot, dict)):
+                error = None
+        project_current = self._project_current()
+        if (self._project_compute is not None and operation_id == self._operation_serial
+                and project_current):
             state = ("submission_unknown" if isinstance(error, dict) and error.get("state") == "submission_unknown"
                      else "cancelled" if isinstance(error, dict) and error.get("state") == "cancelled"
                      else "failed" if error else "succeeded")
@@ -3773,14 +5107,45 @@ class FilmOptimizationQuickController(QObject):
             if self._project_compute.editing_frozen and not self._shutting_down:
                 self._pending_project_completion = (operation_id, result, baseline_rows, error)
                 return
-        if (self._shutting_down or operation_id != self._operation_serial
-                or not self._project_current()):
+        if self._shutting_down or operation_id != self._operation_serial:
             return
+        synthesis_result = result if isinstance(result, SynthesisQuickResult) else None
+        self._synthesis_payload = deepcopy(dict(synthesis_result.payload)) if synthesis_result is not None else None
+        if synthesis_result is not None:
+            result = synthesis_result.optimization_result
+            synthesis_payload = self._synthesis_payload
+            raw_cancel = synthesis_payload.get("result", {}) if synthesis_payload is not None else {}
+            review = synthesis_payload.get("review", {}) if synthesis_payload is not None else {}
+            cancel_marker = review.get("cancel_snapshot") if isinstance(review, dict) else None
+            if (isinstance(raw_cancel, dict) and raw_cancel.get("state") == "cancelled"
+                    and isinstance(cancel_marker, dict)
+                    and cancel_marker.get("source") == "worker_completed_reply"
+                    and cancel_marker.get("replay_performed") is False):
+                error = None
+            if result is None:
+                self._result = None
+                raw = synthesis_result.payload["result"]
+                self._result_terminal_state = str(raw["state"])
+                self._progress_text = str(raw["message"])
+                self._error = str(error or "") if raw["state"] == "failed" else ""
+                self._result_application_eligible = False
+                self.changed.emit()
+                self.plotDataChanged.emit()
+                if self._cancel_intent_accepted:
+                    self._accept_cancel_intent()
+                if self._run_coordinator.take_pending_close():
+                    self.requestClose()
+                return
         structure_result = (result if hasattr(result, "base_result")
                             and hasattr(result, "topology_audit") else None)
         if structure_result is not None:
             result = structure_result.base_result
         self._structure_result = structure_result
+        if (structure_result is not None
+                and isinstance(structure_result.topology_audit, Mapping)):
+            marker = structure_result.topology_audit.get("cancel_snapshot")
+            if isinstance(marker, Mapping):
+                self._attempt_cancel_snapshot = deepcopy(dict(marker))
         has_candidate = isinstance(result, FilmOptimizationResult)
         self._result_application_eligible = bool(
             not error and has_candidate and result.state == "completed"
@@ -3802,6 +5167,14 @@ class FilmOptimizationQuickController(QObject):
                                       or snapshot.design_revision != result.design_revision)
             else:
                 self._source_stale = False
+        if not project_current:
+            self._source_stale = True
+            self._error = "Source project generation changed; the candidate is retained read-only."
+        if has_candidate and result.state == "cancelled" and self._cancel_candidate_verified():
+            self._result_application_eligible = True
+            if not self._cancel_material_references_unchanged(result.best_design):
+                self._source_stale = True
+                self._error = "Materials referenced by the candidate changed during the run; the candidate is retained for review."
         if isinstance(error, dict) and error.get("state") == "submission_unknown":
             job_id = str(error.get("job_id") or self._queue_job_id)
             self._result_terminal_state = "提交状态未知"
@@ -3838,9 +5211,29 @@ class FilmOptimizationQuickController(QObject):
             self._progress_text = result.message
         else:
             self._error = "优化任务没有返回有效候选；原设计未改变"
+        if self._synthesis_payload is not None and not error:
+            task_state = self._synthesis_payload["result"]["state"]
+            if task_state == "not_found":
+                self._result_terminal_state = "未找到达标候选"
+        if has_candidate and result.state == "cancelled":
+            self._result_terminal_state = "取消"
+            if not isinstance(error, dict) or error.get("state") == "cancelled":
+                self._error = ""
+            self._progress_text = "已结束取消；保留同一计算中完整评分的候选供查看，未写入文件。"
+        if (has_candidate and result.state == "cancelled"
+                and self._cancel_candidate_verified()
+                and not self._cancel_material_references_unchanged(result.best_design)):
+            self._source_stale = True
+            self._error = "Materials referenced by the candidate changed during the run; the candidate is retained for review."
+        if not project_current:
+            self._error = "Source project generation changed; the candidate is retained read-only."
+            self._progress_text = "The source project changed during this run; its candidate was retained without applying."
         self.changed.emit()
         self.plotDataChanged.emit()
-        if (not error and isinstance(result, FilmOptimizationResult)
+        if (self._terminal_operation_id == self._attempt_operation_id
+                and self._cancel_intent_accepted):
+            self._accept_cancel_intent()
+        if (self._synthesis_payload is None and not error and isinstance(result, FilmOptimizationResult)
                 and result.state == "completed"):
             self._apply_completed_result(operation_id, result)
         if self._run_coordinator.take_pending_close():
@@ -3973,6 +5366,9 @@ class FilmOptimizationQuickController(QObject):
             self._error = "候选已过期、正在计算或不存在；没有修改原设计。"
             self.changed.emit()
             return False
+        if self._synthesis_payload is not None:
+            self.applyConfirmationRequested.emit("确认用已审计合成候选替换当前完整层序？原设计仅在确认后改变。")
+            return False
         if not self._result.targets_met:
             self.applyConfirmationRequested.emit(
                 "当前候选未达到全部离散采样目标。仍要把这个未达标候选应用到当前设计吗？")
@@ -4016,7 +5412,8 @@ class FilmOptimizationQuickController(QObject):
             return False
         # The design controller checks both the committed revision and any
         # text still being edited before delegating the atomic session update.
-        apply = getattr(self._source_controller, "applyOptimizedDesign", None)
+        apply = getattr(self._source_controller,
+                        "applySynthesizedDesign" if self._synthesis_payload is not None else "applyOptimizedDesign", None)
         if not callable(apply):
             self._error = "来源设计窗口不支持安全候选应用；原设计未改变。"
             self.changed.emit()
@@ -4027,10 +5424,27 @@ class FilmOptimizationQuickController(QObject):
             self.changed.emit()
             return False
         try:
-            accepted = bool(apply(deepcopy(dict(result.best_design)),
-                                  int(result.design_revision), int(edit_epoch)))
+            args = (deepcopy(dict(result.best_design)), int(result.design_revision), int(edit_epoch))
+            if self._synthesis_payload is not None:
+                if self._frozen_request is None or self._frozen_request.frozen_material_snapshot is None:
+                    raise ValueError("Synthesis candidate has no frozen optical closure")
+                closure = self._synthesis_editable_snapshot
+                if closure is None:
+                    raise ValueError("Synthesis candidate has no submission-time editable material closure")
+                accepted = bool(apply(*args, deepcopy(closure)))
+            else:
+                accepted = bool(apply(*args))
         except Exception as exc:
             self._error = f"应用候选失败：{type(exc).__name__}: {exc}"
+            self.changed.emit()
+            return False
+        if not accepted and self._synthesis_payload is not None:
+            snapshot = session.snapshot()
+            detail = str(getattr(snapshot, "error", "") or "")
+            self._error = ("合成候选未应用：" + detail if detail else
+                           "原设计版本已变化或合成候选校验失败；候选未应用。")
+            self._source_stale = (snapshot.design_revision != result.design_revision
+                                  or self._source_edit_epoch() != edit_epoch)
             self.changed.emit()
             return False
         if not accepted:
@@ -4065,8 +5479,19 @@ class FilmOptimizationQuickController(QObject):
             project_service = self.project_context.service
             frozen = (self._frozen_request.frozen_material_snapshot
                       if self._frozen_request is not None else None)
+            if self._synthesis_payload is not None and self._synthesis_editable_snapshot is not None:
+                frozen = self._synthesis_editable_snapshot
             rows = frozen["materials"] if frozen is not None else project_service.materials._records()
             materials = {row["id"]: row for row in rows}
+            if self._synthesis_payload is not None:
+                from coat_sim.core.project_dependencies import document_material_references
+                missing = [f"{material_id}/{set_id}" for material_id, set_id in
+                    document_material_references("film", design)
+                    if material_id not in materials or set_id not in {
+                        item["id"] for item in materials[material_id]["optical_sets"]}]
+                if missing:
+                    raise ValueError("合成历史缺少完整可编辑材料出处：" + ", ".join(missing)
+                        + "；已有 active 光学快照仍可查看/冻结预览，无法另存完整项目处方")
             saved = project_service.create_film(design, materials=materials)
         except Exception as exc:
             self._error = f"保存项目候选失败：{exc}"
@@ -4094,6 +5519,10 @@ class FilmOptimizationQuickController(QObject):
             self.overwriteRequested.emit(path)
             return False
         try:
+            if self._synthesis_payload is not None:
+                if self._frozen_request is None:
+                    raise ValueError("Synthesis candidate has no frozen request")
+                verify_synthesis_file_references(self.service, self._frozen_request, self._result.best_design)
             save = getattr(self.service, "save", None)
             if not callable(save):
                 raise ValueError("当前膜系服务不支持另存候选")
@@ -4110,6 +5539,9 @@ class FilmOptimizationQuickController(QObject):
 
     @Slot()
     def requestClose(self) -> None:
+        if not self._busy and not self._commit_pending_angle_draft():
+            self.changed.emit()
+            return
         if self._initial_loading:
             self._initial_load_closed = True
             self._pending_shortcut_start = False
@@ -4153,6 +5585,7 @@ class FilmOptimizationQuickController(QObject):
     def shutdown(self, timeout_ms: int = 5000) -> bool:
         """Cancel and wait for this window's private pool during test/teardown."""
         self.detach_observers()
+        self._synthesis_forward_probe.shutdown()
         self._pending_project_completion = None
         if self._project_compute is not None:
             self._project_compute.unregister_thaw_callback(self._on_project_unfrozen)

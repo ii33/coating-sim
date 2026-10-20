@@ -495,6 +495,7 @@ def evaluate_frozen_structure_candidate(
     with_jacobian: bool = False,
     zero_thickness_layer_ids: Sequence[str] = (),
     derived_validation_grid: bool = False,
+    forward_responses: Sequence[Mapping[str, Any]] | None = None,
 ) -> Mapping[str, Any]:
     """Pure complete-grid score/Jacobian evaluation over a frozen snapshot.
 
@@ -545,6 +546,11 @@ def evaluate_frozen_structure_candidate(
     elif variable_ids:
         raise ValueError("variable_ids require with_jacobian=True")
 
+    if forward_responses is not None:
+        if with_jacobian or zero_ids:
+            raise ValueError("precomputed forward responses cannot supply analytic derivatives or zero probes")
+        if len(forward_responses) != sum(len(o.angles_deg) for o in objective_rows):
+            raise ValueError("precomputed forward response condition count differs")
     responses: list[dict[str, Any]] = []
     jac_calls = 0
     helper_sample_limit = min(
@@ -561,6 +567,20 @@ def evaluate_frozen_structure_candidate(
                 objective.wavelength_max_nm,
                 objective.wavelength_samples,
             )
+            if forward_responses is not None:
+                if cancel_event is not None and cancel_event.is_set():
+                    raise _StructureCancelled()
+                supplied = forward_responses[len(responses)]
+                supplied_waves = np.asarray(supplied["wavelength_nm"], dtype=float)
+                supplied_values = np.asarray(supplied[objective.metric], dtype=float)
+                if (supplied_waves.shape != global_waves.shape or
+                        not np.array_equal(supplied_waves, global_waves) or
+                        supplied_values.shape != global_waves.shape or
+                        not np.all(np.isfinite(supplied_values))):
+                    raise ValueError("precomputed forward response samples differ from the objective grid")
+                responses.append({"objective_index": objective_index, "angle_deg": float(angle),
+                    "wavelength_nm": global_waves.tolist(), "actual_values": supplied_values.tolist()})
+                continue
             value_chunks: list[np.ndarray] = []
             jacobian_chunks: list[np.ndarray] = []
             for start in range(0, objective.wavelength_samples, helper_sample_limit):

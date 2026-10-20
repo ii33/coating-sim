@@ -39,6 +39,9 @@ def _check_bound_worker(root, job_id):
         if device_id != 'cpu:default':
             raise ValueError('remote_film_device_mismatch')
         os.environ['COAT_SIM_FILM_BACKEND'] = 'cpu'
+    elif spec.executor == 'film_synthesis':
+        if device_id != 'cpu:default':
+            raise ValueError('remote_film_synthesis_device_mismatch')
     else:
         raise ValueError('remote_device_executor_unsupported')
     return spec

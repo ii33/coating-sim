@@ -32,7 +32,7 @@ def submit_confirmed(service, kind, parameters, client_request_id=None, *, estim
     store.authorize(estimate_id, kind, parameters, input_file_fingerprints(service, kind, parameters))
     job_id = hashlib.sha256(('confirmation:' + estimate_id).encode('utf-8')).hexdigest()[:32]
     metadata = {key: receipt[key] for key in ('summary','estimated_s','origin','estimate_id',
-                'memory_estimate_label','memory_warning') if key in receipt}
+                'memory_estimate_label','memory_warning','execution_project_root') if key in receipt}
     return client.submit(spec, job_id=job_id, metadata=metadata)
 
 def confirm_and_submit(service, estimate_id, accepted, *, automatic=False):

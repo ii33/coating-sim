@@ -18,7 +18,7 @@ from coat_sim.core.geometric_raytrace_result import (
 from coat_sim.scheduler import SchedulerClient
 from coat_sim.scheduler.result_capability import (
     is_best_candidate_result, is_film_optimization_result,
-    is_geometric_raytrace_result,
+    is_geometric_raytrace_result, is_synthesis_result,
     validate_film_optimization_result,
 )
 from coat_sim.ui.icons import window_icon
@@ -46,6 +46,10 @@ def _read_queue_result(service, store, job_id, asset_path=None):
     """Dispatch a queue result by its typed product kind."""
     job = store.read_job(job_id)
     result = _require_result_payload(job)
+    if is_synthesis_result(result):
+        if job.get('kind') != 'film_synthesis':
+            raise ValueError('Typed synthesis result does not belong to a film_synthesis queue job.')
+        return deepcopy(result), ''
     if (job.get('state') in ('failed', 'cancelled')
             and not is_best_candidate_result(result)):
         raise ValueError(job.get('result_unavailable_reason')
@@ -131,6 +135,14 @@ def _annotate_result_availability(root, rows):
             row['resultAvailable'] = True
             row['resultUnavailableReason'] = ''
             continue
+        if is_synthesis_result(result):
+            if row.get('kind') != 'film_synthesis':
+                row['resultAvailable'] = False
+                row['resultUnavailableReason'] = 'Typed synthesis result does not belong to this job kind.'
+                continue
+            row['resultAvailable'] = True
+            row['resultUnavailableReason'] = ''
+            continue
         if is_geometric_raytrace_result(result):
             row['resultAvailable'] = True
             row['resultUnavailableReason'] = ''
@@ -178,6 +190,14 @@ def _annotate_result_availability(root, rows):
             row['resultUnavailableReason'] = row.get('result_unavailable_reason') or str(exc)
             continue
         if is_film_optimization_result(result):
+            row['resultAvailable'] = True
+            row['resultUnavailableReason'] = ''
+            continue
+        if is_synthesis_result(result):
+            if row.get('kind') != 'film_synthesis':
+                row['resultAvailable'] = False
+                row['resultUnavailableReason'] = 'Typed synthesis result does not belong to this job kind.'
+                continue
             row['resultAvailable'] = True
             row['resultUnavailableReason'] = ''
             continue
@@ -234,6 +254,7 @@ class ComputeQueueView(QObject):
     received = Signal(object, str)
     cancelReceived = Signal(str, object, str)
     filmOptimizationResultReady = Signal(str, object)
+    filmSynthesisResultReady = Signal(str, object)
     rayTraceResultReady = Signal(str, str)
     def __init__(self, engine, root, *, project_context=None, navigation=None):
         super().__init__(engine)
@@ -545,6 +566,8 @@ class ComputeQueueView(QObject):
                 self._result_viewer.availabilityChanged.connect(self._result_availability_changed)
                 self._result_viewer.filmOptimizationResultReady.connect(
                     self.filmOptimizationResultReady.emit)
+                self._result_viewer.filmSynthesisResultReady.connect(
+                    self.filmSynthesisResultReady.emit)
                 self._result_viewer.rayTraceResultReady.connect(
                     self.rayTraceResultReady.emit)
             self._result_viewer.open(job_id, row.get('resultAssetPath') if row else None)
@@ -583,6 +606,7 @@ class QueueResultViewer(QObject):
     statusChanged = Signal(str)
     availabilityChanged = Signal(str, bool, str)
     filmOptimizationResultReady = Signal(str, object)
+    filmSynthesisResultReady = Signal(str, object)
     rayTraceResultReady = Signal(str, str)
 
     def __init__(self, owner, root, *, project_context=None):
@@ -646,6 +670,9 @@ class QueueResultViewer(QObject):
             if self._shown_kind == 'film_optimization' and self._shown_film_result is not None:
                 self.filmOptimizationResultReady.emit(job_id, deepcopy(self._shown_film_result))
                 return
+            if self._shown_kind == 'film_synthesis' and self._shown_film_result is not None:
+                self.filmSynthesisResultReady.emit(job_id, deepcopy(self._shown_film_result))
+                return
             if self._shown_kind == 'geometric_raytrace' and self._shown_raytrace_path:
                 self.rayTraceResultReady.emit(job_id, self._shown_raytrace_path)
                 return
@@ -699,6 +726,14 @@ class QueueResultViewer(QObject):
             self.filmOptimizationResultReady.emit(job_id, deepcopy(loaded))
             self.availabilityChanged.emit(job_id, True, '')
             self.statusChanged.emit('Film optimization candidate is ready for its typed result view.')
+            return
+        if is_synthesis_result(loaded):
+            self._shown_job = job_id
+            self._shown_kind = 'film_synthesis'
+            self._shown_film_result = deepcopy(loaded)
+            self.filmSynthesisResultReady.emit(job_id, deepcopy(loaded))
+            self.availabilityChanged.emit(job_id, True, '')
+            self.statusChanged.emit('Film synthesis candidate is ready for its read-only typed result view.')
             return
         if isinstance(loaded, _RayTraceQueueResult):
             self._shown_job = job_id

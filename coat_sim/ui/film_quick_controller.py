@@ -900,6 +900,70 @@ class FilmDesignQuickController(QObject):
     def mediumOptions(self) -> list[dict]:
         return self._medium_picker_options
 
+    @Property(list, constant=True)
+    def physicalStructureCatalog(self) -> list[dict]:
+        from coat_sim.core.film_physical_generator import MECHANISMS
+        return deepcopy(list(MECHANISMS))
+
+    @Slot(str, result=str)
+    def physicalMaterialUseLabel(self, role: str) -> str:
+        from coat_sim.core.film_physical_generator import physical_material_use_label
+        return physical_material_use_label(role)
+
+    @Slot("QVariantList", result="QVariantList")
+    def physicalRequiredMaterialUses(self, sections: list) -> list[str]:
+        from coat_sim.core.film_physical_generator import physical_required_material_uses
+        return physical_required_material_uses(sections)
+
+    @Slot(str, result="QVariantList")
+    def physicalSectionFields(self, kind: str) -> list[dict]:
+        from coat_sim.core.film_physical_generator import physical_section_fields
+        return physical_section_fields(kind)
+
+    @Slot(str, result="QVariantMap")
+    def physicalSectionDefaults(self, kind: str) -> dict:
+        from coat_sim.core.film_physical_generator import physical_section_defaults
+        return physical_section_defaults(
+            kind, self._snapshot.design.get("reference_wavelength_nm", 550.0))
+
+    def _generator_project_current(self) -> bool:
+        if self._source_closed:
+            return False
+        if self.project_context is None:
+            return True
+        try:
+            self.project_context.host.store_for(self.project_context.binding)
+        except Exception:
+            return False
+        return True
+
+    @Slot("QVariantMap", result="QVariantMap")
+    def previewPhysicalStructure(self, inputs: dict) -> dict:
+        self.clearGeneratorPreview()
+        if not self._generator_project_current():
+            return {"ok": False, "error": "来源设计或工程已关闭，请重新打开后预览。"}
+        if self.session is None or self._initialization_state != "ready":
+            return {"ok": False, "error": "材料目录尚未准备好。"}
+        revision = self.session.snapshot().design_revision
+        epoch = self._pending_edit_epoch
+        provider = getattr(self.service, "materials", None)
+        try:
+            preview = self.session.preview_physical_structure(inputs)
+            if (not self._generator_project_current()
+                    or revision != self.session.snapshot().design_revision
+                    or epoch != self._pending_edit_epoch
+                    or provider is not getattr(self.service, "materials", None)):
+                self.clearGeneratorPreview()
+                raise ValueError("设计或材料状态已变化，请重新预览。")
+        except Exception as exc:
+            self.clearGeneratorPreview()
+            return {"ok": False, "error": str(exc)}
+        token = uuid.uuid4().hex
+        self._generator_preview = {"token": token, "kind": "physical",
+            "base_design_revision": revision, "base_edit_epoch": epoch,
+            "material_source": provider}
+        return {**preview, "ok": True, "preview_token": token}
+
     @Property("QVariantList", constant=True)
     def builtinDesignTemplates(self) -> list[dict]:
         return template_catalog()
@@ -925,6 +989,8 @@ class FilmDesignQuickController(QObject):
 
     @Slot()
     def clearGeneratorPreview(self) -> None:
+        if self.session is not None:
+            self.session.clear_generated_preview()
         if self._generator_preview is not None:
             self._generator_preview = None
             self.generatorPreviewInvalidated.emit()
@@ -1029,8 +1095,17 @@ class FilmDesignQuickController(QObject):
                 or preview.get("material_source") is not getattr(self.service, "materials", None)):
             self.clearGeneratorPreview()
             return False
-        if not self.session.apply_generated_design(
-                preview["candidate_design"], preview["base_design_revision"]):
+        if not self._generator_project_current():
+            self.clearGeneratorPreview()
+            return False
+        try:
+            applied = (self.session.apply_pending_generated_design(preview["base_design_revision"])
+                       if preview.get("kind") == "physical" else
+                       self.session.apply_generated_design(
+                           preview["candidate_design"], preview["base_design_revision"]))
+        except (ValueError, TypeError, OSError):
+            applied = False
+        if not applied:
             self.clearGeneratorPreview()
             return False
         self._generator_preview = None
@@ -1043,6 +1118,8 @@ class FilmDesignQuickController(QObject):
 
     @Slot(result=bool)
     def undoGeneratedDesign(self) -> bool:
+        if not self._generator_project_current():
+            return False
         if (self.session is None or self._generator_undo_revision is None
                 or self._pending_edit_epoch != self._generator_undo_edit_epoch):
             return False
@@ -1405,6 +1482,26 @@ class FilmDesignQuickController(QObject):
         try:
             accepted = bool(apply(candidate_design, int(base_design_revision)))
         except (TypeError, ValueError, OverflowError):
+            return False
+        if accepted:
+            self._optimization_undo_revision = self.session.snapshot().design_revision
+            self._optimization_undo_epoch = self._pending_edit_epoch
+            self.optimizationUndoChanged.emit()
+            self.changed.emit()
+            self.optimizationApplied.emit()
+        return accepted
+
+    @Slot("QVariantMap", int, int, "QVariantMap", result=bool)
+    def applySynthesizedDesign(self, candidate_design: dict,
+                               expected_revision: int, expected_edit_epoch: int,
+                               frozen_material_snapshot: dict) -> bool:
+        if (self.session is None or not self._generator_project_current()
+                or expected_edit_epoch != self._pending_edit_epoch):
+            return False
+        try:
+            accepted = self.session.apply_optimized_design(candidate_design, expected_revision,
+                frozen_material_snapshot=frozen_material_snapshot)
+        except (ValueError, TypeError, OSError):
             return False
         if accepted:
             self._optimization_undo_revision = self.session.snapshot().design_revision
@@ -1837,6 +1934,8 @@ class FilmDesignQuickController(QObject):
             self._session_unsubscribe()
             self._session_unsubscribe = None
         self.clearTfcalcImport()
+        if self.session is not None:
+            self.session.clear_generated_preview()
         self._generator_preview = None
         self._generator_undo_revision = None
         self._generator_undo_edit_epoch = None

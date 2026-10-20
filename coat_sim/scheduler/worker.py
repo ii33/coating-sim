@@ -312,6 +312,11 @@ def _film_optimization(service, parameters, cancel, report, checkpoint_path):
             publish_performance(latest_performance[0], force_report=True)
     if payload.get('request', {}).get('execution_device') is not None and result.get('state') == 'failed':
         raise RuntimeError('显式设备批量前向失败；未回退 CPU；已保留最后完整候选供查看。')
+    if cancel.is_set():
+        saved = _completed_film_cancel_reply(result, payload)
+        if saved is None:
+            raise InterruptedError('Cancelled without a complete candidate bound to this frozen input')
+        return saved
     return validate_film_optimization_result(film_service, result)
 
 def _geometric_raytrace(root, spec, directory, cancel, report):
@@ -362,6 +367,66 @@ def _geometric_raytrace(root, spec, directory, cancel, report):
         'detector_spectra': detector_spectra,
     }
 
+def _film_reply_matches_payload(reply, payload):
+    """Bind a self-contained typed result to this worker's exact frozen input."""
+    if not isinstance(reply, dict) or not isinstance(payload, dict):
+        return False
+    try:
+        expected: Any
+        actual: Any
+        kind = reply.get('kind')
+        if kind == 'coat_sim.film_synthesis_result':
+            from coat_sim.core.film_synthesis_io import film_synthesis_request_from_payload
+            expected_id, expected, _ = film_synthesis_request_from_payload(payload['request'])
+            actual_id, actual, _ = film_synthesis_request_from_payload({
+                'schema_version': 1, 'kind': 'coat_sim.film_synthesis_request',
+                'request_id': reply['request_id'], 'request': reply['result']['frozen_request'],
+                'physical_structures': []})
+            if expected_id != actual_id:
+                return False
+        elif kind == 'coat_sim.film_optimization_result':
+            from coat_sim.core.film_optimization_job import deserialize_request
+            expected, actual = deserialize_request(payload['request']), deserialize_request(reply['request'])
+        elif kind == 'coat_sim.film_structure_optimization_result':
+            from coat_sim.core.film_optimization_structure import film_structure_request_from_payload
+            expected = film_structure_request_from_payload(payload['request'])
+            actual = film_structure_request_from_payload(reply['request'])
+        else:
+            return False
+        return json.loads(json.dumps(asdict(expected), allow_nan=False)) == json.loads(
+            json.dumps(asdict(actual), allow_nan=False))
+    except (KeyError, TypeError, ValueError, ArithmeticError):
+        return False
+
+
+def _completed_film_cancel_reply(reply, expected_payload=None):
+    """Preserve a current worker's complete typed reply without checkpoint replay."""
+    from .result_capability import is_film_optimization_result, is_synthesis_result
+    if expected_payload is not None and not _film_reply_matches_payload(reply, expected_payload):
+        return None
+    if is_synthesis_result(reply):
+        saved = deepcopy(reply)
+        body = saved['result']
+        body['state'], body['targets_met'] = 'cancelled', False
+        if reply['result']['state'] != 'cancelled':
+            body['termination_reason'] = 'scheduler_cancel_won'
+        saved['review']['termination'] = {'state': 'cancelled', 'reason': body['termination_reason']}
+        saved['review']['targets_met'] = False
+        saved['review']['cancel_snapshot'] = {'source': 'worker_completed_reply',
+            'replay_performed': False, 'candidate_available': isinstance(body.get('candidate_design'), dict)}
+        return saved
+    if is_film_optimization_result(reply):
+        saved = deepcopy(reply)
+        saved['state'] = 'cancelled'
+        # The structure envelope intentionally has no execution extension field.
+        if saved.get('kind') == 'coat_sim.film_optimization_result':
+            execution = saved.setdefault('execution', {})
+            execution['cancel_snapshot'] = {'source': 'worker_completed_reply',
+                'replay_performed': False, 'candidate_available': True}
+        return saved
+    return None
+
+
 def run(root, job_id, owner_pid, owner_instance):
     root = Path(root).resolve()
     directory = root / 'artifacts/runtime/scheduler/jobs' / job_id
@@ -407,6 +472,14 @@ def run(root, job_id, owner_pid, owner_instance):
         elif spec.executor == 'appearance_render':
             from coat_sim.core.appearance_execution import execute_appearance
             reply = execute_appearance(root, job_id, spec.parameters, cancel, report)
+        elif spec.executor == 'film_synthesis':
+            from coat_sim.core.film_synthesis_jobs import execute_job
+            business_root = queue_record.get('execution_project_root')
+            if not isinstance(business_root, str) or not business_root:
+                business_root = str(root)
+            reply = execute_job(spec.parameters, cancel, report,
+                                directory / 'best-candidate.json', write_json,
+                                execution_project_root=business_root)
         else:
             from coat_sim.core.api import CoatService
             from coat_sim.core import isolated_compute
@@ -456,13 +529,27 @@ def run(root, job_id, owner_pid, owner_instance):
                     return await task
                 reply = asyncio.run(sandbox_run())
             else: raise ValueError('executor_not_registered')
-        if cancel.is_set(): raise InterruptedError('cancelled')
-        outcome = {'state': 'succeeded', 'result': reply, 'error': None,
-                   'progress': {'fraction': 1., 'stage': 'complete'}}
+        if cancel.is_set():
+            saved = (_completed_film_cancel_reply(reply, spec.parameters.get('payload'))
+                if spec.executor in ('film_synthesis', 'film_optimization') else None)
+            if saved is None:
+                raise InterruptedError('cancelled')
+            outcome = {'state': 'cancelled', 'result': saved, 'error_code': 'cancelled',
+                'error': 'Cancelled by user', 'cancel_snapshot': {'source': 'worker_completed_reply',
+                    'replay_performed': False}}
+        else:
+            outcome = {'state': 'succeeded', 'result': reply, 'error': None,
+                       'progress': {'fraction': 1., 'stage': 'complete'}}
     except BaseException as exc:
         traceback.print_exc()
         partial_result, unavailable_reason = None, ''
-        if queue_kind != 'appearance_render' and (spec is None or spec.executor != 'appearance_render'):
+        cancelled_film = (spec is not None and spec.executor in ('film_synthesis', 'film_optimization')
+                          and (isinstance(exc, InterruptedError) or cancel.is_set()))
+        if cancelled_film:
+            unavailable_reason = ('Cancelled before a complete current worker reply was available; '
+                'saved checkpoint retained for explicit review, without cancellation replay.')
+        if (not cancelled_film and queue_kind != 'appearance_render'
+                and (spec is None or spec.executor != 'appearance_render')):
             try:
                 from .result_capability import load_best_candidate_checkpoint
                 partial_result, unavailable_reason = load_best_candidate_checkpoint(root, job_id)
