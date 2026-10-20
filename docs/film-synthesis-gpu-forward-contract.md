@@ -81,3 +81,10 @@ CPU候选评价复用现有 `OrderedEvaluationExecutor` 8个真实headless进程
 仅在已支持的GPU运行时解释器中设置 `COAT_SIM_TEST_SYNTHESIS_GPU=cuda`，然后以该解释器运行 `python -m pytest tests/test_film_synthesis_gpu_forward.py::test_real_gpu_complete_synthesis_and_cpu_audit tests/test_film_synthesis_gpu_forward.py::test_real_gpu_cancel_entry_never_reuses_previous_work -vv -s`。后一个节点含after_gate和cached_entry两个参数例，合计3项。该变量仅选择显式测试，不改变产品默认后端。测试依赖遵循requirements-test.txt；本轮在既有隔离CUDA13环境补齐pytest9.1.1，未改默认环境。
 
 本轮三项原断言全部通过，3 passed、0 skipped、3.78秒；原联合回归127/3记录保留，不能将两轮写成同一轮130项运行。结果、已发生工作量、取消边界、心跳、原始JUnit及执行前后哈希见delivery-closeout-20261020/gpu-skips-r2。没有改变算法、预算、终止条件或精度，也没有重跑60层矩阵。
+
+
+## Linux CI 自有worker断管收尾（2026-10-20）
+
+close在确认自有child终止后释放所有流。仅当自有stdin关闭时遇到EPIPE，或Windows对应EINVAL，且stream.closed已经为真，才将其视为预期的断管flush收尾；其他关闭异常完成余下流/child/temp释放后保留同一异常对象传播。消费者排序、逻辑预算、物理评分、取消候选与实际工作计量不变。WinDLL通过nt-only显式入口取得，不可用时明确失败；该改动只修复Linux类型识别，不改变Windows原生所有权。
+
+原Linux CI c77e5c3的故障注入测试确实在stream.close遇到errno32；修复增加Windows真实匿名管道errno22、POSIX EPIPE精确注入、EBADF及RuntimeError控制，原有真实worker故障回退断言全部保留。Windows定向结果不替代新提交的原生Linux CI。静态门禁的79次已消失诊断对应47条fingerprint、5个本轮修改文件；仅移除其旧豁免而不新增或增加任何豁免，检查规则与用户原有未提交配置差异保留。

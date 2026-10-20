@@ -999,16 +999,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "currentIndex: panel.indexFor(model, panel.roleBinding(role).optical_set_id)",
-      "fingerprint": "0472aade635f3c8ba03f76a48376bf3cc3abea92a757f3af2988f110d6eee4db",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "tests/scheduler_real_checks.py",
       "code": "E402",
@@ -1576,16 +1566,6 @@
       "scope": "LauncherBridge._open_quick_film",
       "anchor": "on_ready = lambda window, identity=request.instance_id: window.simulationRequested.connect(",
       "fingerprint": "0720b6e55735eb5e7018efb399b189b0c67f07783406e54664417e80ea9f070f",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "Label { text: \"基片材料\"; color: Theme.snapshot.colorTextMuted }",
-      "fingerprint": "0721315579d090aab01ce49f7b51f7be43e6abe0287f5e8a0213ed3ef3a1c2ee",
       "count": 1
     },
     {
@@ -8869,16 +8849,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "color: Theme.snapshot.colorInfo",
-      "fingerprint": "24ac3bde698253b32cdc2e0f717d3c8490ebbf9b04adee419f99b63733ce2c1d",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "tests/test_appearance_circle.py",
       "code": "E702",
@@ -9246,16 +9216,6 @@
       "scope": "FilmDesignWindow._toggle_expression",
       "anchor": "self.expression_toggle.setArrowType(Qt.DownArrow if expanded else Qt.RightArrow)",
       "fingerprint": "25c438ffa809171958eaf71d39a5f32ce0a0be409f59cd86c82606621bb68711",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "anchors.margins: Theme.snapshot.spaceMd",
-      "fingerprint": "25cb1dbbd287e49339b4d0166c3f4efc5535882507b4599e03331d239d7fdf05",
       "count": 1
     },
     {
@@ -10359,16 +10319,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "font.pointSize: Theme.snapshot.fontSizeHeading",
-      "fingerprint": "29d6087ef946240dc92ec007ae4315330f6dfcca48bf2801fa26d80f3fe9387a",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "tests/test_finite_periodic_integration.py",
       "code": "E701",
@@ -10929,16 +10879,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "color: Theme.snapshot.colorBorderStrong",
-      "fingerprint": "2c362f1cdc472a75e0c69264481d98343615dc4ae759499420e41a67c3ba18ac",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/scheduler/worker.py",
       "code": "E401",
@@ -10996,16 +10936,6 @@
       "scope": "MaterialOpticalEditorTests.test_qml_editable_tables_keyboard_paste_cancel_save_and_reload",
       "anchor": "f\"themeColor={equation_image.property('formulaColorDebug')}; warnings={warnings}; \"",
       "fingerprint": "2c575a452854080310af32027c2c41e9a44f2b581c5fe296befe7e163c4f307c",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "palette.base: Theme.snapshot.colorSurface",
-      "fingerprint": "2c5d3757f9b919eda83a068d38c249e586b0ea99698a772e6cf7830f33070369",
       "count": 1
     },
     {
@@ -12270,16 +12200,6 @@
     },
     {
       "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "implicitWidth: Theme.snapshot.controlHeightSm / 3",
-      "fingerprint": "3136a777997944aa7c946efdfd531f4c153c29262f07da6f36a93e571713fb88",
-      "count": 2
-    },
-    {
-      "tool": "qmllint",
       "path": "coat_sim/ui/qml/SourceEmissionForm.qml",
       "code": "unqualified",
       "message": "Unqualified access",
@@ -12796,16 +12716,6 @@
       "scope": "_validate_spec",
       "anchor": "if key in p: _number_list(p[key], f\"parameters.{key}\")",
       "fingerprint": "33a74867c083d03cc49b0ce2bff4ec6efc88f407795f926329e04bd27c0085b2",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "radius: Theme.snapshot.radiusSm",
-      "fingerprint": "33ad622f2a72075d7c89d6ed1bc6ce2236a1a7295bc67c6e34afd5a0bfdefdcb",
       "count": 1
     },
     {
@@ -13376,16 +13286,6 @@
       "scope": "sanitize_svg_bytes",
       "anchor": "owners = owners + (identifier,)",
       "fingerprint": "3630621099618d74cd9d7f2c20371c50dcbbfb357ff8a3bef0bead142692ca0c",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "model: panel.roleSetModel(role)",
-      "fingerprint": "3637f4eb01424a172a29c78efb345da7b22a97c9b4f6eac4ff201969ef59ff19",
       "count": 1
     },
     {
@@ -17239,16 +17139,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "coat_sim/ui/film_optimization_quick_controller.py",
-      "code": "B007",
-      "message": "Loop control variable `side` not used within loop body",
-      "scope": "FilmOptimizationQuickController.bestThicknesses",
-      "anchor": "for (side, layer_id), row in labels.items():",
-      "fingerprint": "46470aaa044fad503b2d21b72d743bd8d8c17dd65b287288d359cc64750edbea",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/FilmSimulationParameters.qml",
       "code": "unqualified",
@@ -19140,16 +19030,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/film_simulation_quick_controller.py",
-      "code": "index",
-      "message": "Value of type \"Any | None\" is not indexable",
-      "scope": "FilmSimulationQuickController.requestCalculation",
-      "anchor": "if (self._active_calculation_token[2] != self._signature()",
-      "fingerprint": "4e69eebced142ef70a2e9e6f65613b1f833c63df7e8d8ab4fae79650b9d5181c",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/ui/mcp_endpoint_process.py",
       "code": "assignment",
       "message": "Incompatible types in assignment (expression has type \"str\", variable has type \"None\")",
@@ -20096,16 +19976,6 @@
       "scope": "execute_film_optimization_job",
       "anchor": "frozen_snapshot = deepcopy(dict(request.base_request.frozen_material_snapshot))",
       "fingerprint": "52319ed25d5d41a686d686956c704285f291507fe6160d7ca2a0429c50a75c01",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "palette.highlight: Theme.snapshot.colorSelection",
-      "fingerprint": "5234e15a82b9f2e9f2428dd4e56eb779843319f3a56517cab5fe4430dc9aa5b7",
       "count": 1
     },
     {
@@ -21359,16 +21229,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "implicitHeight: previewSummary.implicitHeight + Theme.snapshot.spaceMd * 2",
-      "fingerprint": "57ac6145a8cd7ded63597686b621f455c83b589d0a005a4fa25a5e413f062620",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "coat_sim/ui/mcp_endpoint_process.py",
       "code": "assignment",
@@ -21397,16 +21257,6 @@
       "anchor": "zero = tuple(dr.select(inside, a, b) for a, b in zip(zs, reversed(zs)))",
       "fingerprint": "57be6446f45c3927c89ddefb166ceef172332c77d2c2f44e93d797e6a1285cd0",
       "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "font.weight: Theme.snapshot.fontWeightEmphasis",
-      "fingerprint": "57c269f38a512371177b6aa3e2ca19198d0a92efa044ed038e18b58248837f0f",
-      "count": 4
     },
     {
       "tool": "mypy",
@@ -22346,16 +22196,6 @@
       "scope": "main.forward",
       "anchor": "response = evaluator.evaluate_thickness_batch(ids, d)",
       "fingerprint": "5c569e3b90b3754e3e9f14aba477a72be5cb1caebd4e1f578a900ca4e971beaf",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "border.color: Theme.snapshot.colorBorder",
-      "fingerprint": "5c5ab90e5c40a50a0149332bdfb7e6fbbdc51e9f716ab3e3d4487d821ab7010e",
       "count": 1
     },
     {
@@ -23907,16 +23747,6 @@
       "anchor": "window.showNormal(); window.resize(780, 540); APP.processEvents()",
       "fingerprint": "62b3e8251442d851a23b5aaea73a67794ec1fea4493d47b82a74237404280070",
       "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "Label { text: \"经典结构\"; color: Theme.snapshot.colorText; font.weight: Theme.snapshot.fontWeightEmphasis }",
-      "fingerprint": "62cce1615c243969c1fd102715305943ce9d7d8446868251585a1c89758d7f53",
-      "count": 2
     },
     {
       "tool": "ruff",
@@ -25666,16 +25496,6 @@
       "scope": "MaterialOpticalEditorTests.test_qml_cancel_unsaved_optical_edit_preserves_draft_and_returns_focus",
       "anchor": "QApplication.instance().processEvents()",
       "fingerprint": "697f6fd6013265424cfe2813562aa284d76a3c2dd1f0fdc154bb0b433a1f621b",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "onActivated: panel.setRoleOpticalSet(role, panel.selectedOptionId(model, currentIndex))",
-      "fingerprint": "69804f09b7765c025d52a8b930095a1b06dd59210ff5dbf1c3ff5db802869d06",
       "count": 1
     },
     {
@@ -28297,16 +28117,6 @@
       "anchor": "font.family: Theme.snapshot.fontFamily",
       "fingerprint": "73d1e69faa3d8d1acbb85d9919ebd822658298cc60728c8d057c16f9f630846a",
       "count": 15
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/film_optimization_quick_controller.py",
-      "code": "assignment",
-      "message": "Incompatible types in assignment (expression has type \"FilmOptimizationResult | None\", variable has type \"FilmOptimizationResult\")",
-      "scope": "_FilmOptimizationTask.run",
-      "anchor": "result = self._verified_terminal_candidate()",
-      "fingerprint": "73d244183a78729486e92df92245edf20640574561a0afc8acc11915481f8de4",
-      "count": 2
     },
     {
       "tool": "ruff",
@@ -31019,16 +30829,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "tests/test_film_design_mcp.py",
-      "code": "B905",
-      "message": "`zip()` without an explicit `strict=` parameter",
-      "scope": "FilmDesignMcpTests.test_real_api_mcp_film_workflow_with_project_fixture",
-      "anchor": "for reflectance, transmission, absorption in zip(result[\"R\"], result[\"T\"], result[\"A\"]):",
-      "fingerprint": "7f7ee578446b6cc932793df0f6eebd5d9218fd240aac670bcd4b9d3a43bb6b11",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/ProcessWindow.qml",
       "code": "unqualified",
@@ -32169,16 +31969,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "coat_sim/scheduler/worker.py",
-      "code": "E701",
-      "message": "Multiple statements on one line (colon)",
-      "scope": "run",
-      "anchor": "if cancel.is_set(): raise InterruptedError('cancelled')",
-      "fingerprint": "83de5d731cb2a225a7adde3d0da2c4cffacf23691e4f6df60379d93e1e8b1690",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_machine_settings_compact_chrome_ui.py",
       "code": "attr-defined",
@@ -33026,16 +32816,6 @@
       "scope": "test_structure_controls_reject_invalid_values_and_show_explicit_materials",
       "anchor": "original_dmin = controller.structureOptions[\"min_thickness_nm\"]",
       "fingerprint": "8774d4e38e32c88a76a9ce75ba3a5e694436e24a05307a02d5d9bc2e17d97360",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "font.pointSize: Theme.snapshot.fontSizeBody",
-      "fingerprint": "877ed8779b7980e906ae0cff93a1f2412fbbc9d9a2bf9a5108bce342a9ccbb53",
       "count": 1
     },
     {
@@ -34350,16 +34130,6 @@
     },
     {
       "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "color: Theme.snapshot.colorTextMuted",
-      "fingerprint": "8d5410b8903220086ff894da1e0e8c0adb2744057db76bc9ec9453cd83202f3f",
-      "count": 13
-    },
-    {
-      "tool": "qmllint",
       "path": "coat_sim/ui/qml/SettingsWindow.qml",
       "code": "missing-property",
       "message": "Member \"editMcpServer\" not found on type \"QObject\"",
@@ -35416,16 +35186,6 @@
       "scope": "CoatService._optimize_masks_worker.group_progress",
       "anchor": "update = {**value, \"source_slot\": group[\"source_slot\"],",
       "fingerprint": "91c3a0e8a57936c6b652cfa2a76444e5256df5d14bf6dace60003b6be1eafc3c",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "currentIndex: panel.indexFor(model, panel.roleBinding(role).material_id)",
-      "fingerprint": "91c470af22255a5bfc5b909122a5a5775652766191838d2f2df6aefce34f5207",
       "count": 1
     },
     {
@@ -36559,16 +36319,6 @@
       "count": 2
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "palette.windowText: Theme.snapshot.colorText",
-      "fingerprint": "96493524734237550f2eb68d2e3996ae86e13e0738a77746afd0e001755f0724",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_utility_windows_compact_chrome_ui.py",
       "code": "union-attr",
@@ -37636,16 +37386,6 @@
       "scope": "",
       "anchor": "&& FilmSimulation.designPath.length === 0)",
       "fingerprint": "9aff0bb42b5750cf8214b29ea9b81cdbc8c8072bfdc2446772c7bfc9d863bc31",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unused-imports",
-      "message": "Unused import",
-      "scope": "",
-      "anchor": "import \".\"",
-      "fingerprint": "9b0c0c168e7392669871fec52be54fd49442257ef49b4bbbc86d78b7387b4bb0",
       "count": 1
     },
     {
@@ -39109,16 +38849,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "palette.buttonText: Theme.snapshot.colorText",
-      "fingerprint": "a12b3f7ecdcb2215898a876a4559ce47ece53c28056fbd7073a61b7597145684",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "coat_sim/ui/compute_target.py",
       "code": "var-annotated",
@@ -39647,16 +39377,6 @@
       "anchor": "self.service.save(cls.kind, path, b.documentData()); b.openPath(str(path))",
       "fingerprint": "a3200a98b4617fddbc2d23e213edb67a7daf9923ff506d838ad22ff741e20e88",
       "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "spacing: Theme.snapshot.spaceSm",
-      "fingerprint": "a3303ab54a98942855912be5fdd9b92038cd487e92292ad225488d574bb4d466",
-      "count": 3
     },
     {
       "tool": "mypy",
@@ -40229,16 +39949,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "Label { text: \"膜层材料与数据集\"; color: Theme.snapshot.colorText; font.weight: Theme.snapshot.fontWeightEmphasis }",
-      "fingerprint": "a5679570fc652d23d86ca166c5dcc7eb4e9f49567ba0aca4735efea078fdf019",
-      "count": 2
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_material_optical_editor.py",
       "code": "attr-defined",
@@ -40486,16 +40196,6 @@
       "scope": "MaskViewportTests.test_scroll_mode_toggle_documents_mouse_compatibility",
       "anchor": "self.assertEqual(str(mode_button.property(\"text\")), \"滚轮：自动\")",
       "fingerprint": "a69c5389d2270151df32322ca93a797e88092056b74103e838c74b62517d80f3",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "objectName: \"filmGeneratorDataset_\" + role",
-      "fingerprint": "a69c807b5c7e23cd6d680f57d6645ca548c44aaca301a1839b551d1c1a54734e",
       "count": 1
     },
     {
@@ -42919,16 +42619,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "font.pointSize: Theme.snapshot.fontSizeSmall",
-      "fingerprint": "b09821c4ac79f5347399df87662a7476ca85a0bbd2aa4a55b5ffdca91538ddb6",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_source_material_editor.py",
       "code": "union-attr",
@@ -44329,16 +44019,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "color: Theme.snapshot.colorSurfaceRaised",
-      "fingerprint": "b64fb1f6cd462b49c9ce1e59cb4a6c1db6c5a1692243e83a7af9fcb54742f99d",
-      "count": 2
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/ui/film_design.py",
       "code": "E702",
@@ -44356,16 +44036,6 @@
       "scope": "FilmDesignGeneratorQtTests.test_source_close_invalidates_preview_and_recreated_window_keeps_geometry",
       "anchor": "new_root.setWidth(1100)",
       "fingerprint": "b66883bb8d0932d2a6d2643a306b1dd1f92218bd51e3d54b05e829cef8d3fb75",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "Label { text: \"目标真空波长 λ0（nm）\"; color: Theme.snapshot.colorTextMuted }",
-      "fingerprint": "b67ebbb73ff3c55e2be572ae267bc9a74b0b9cbc615d077e33317feb87559a18",
       "count": 1
     },
     {
@@ -45516,16 +45186,6 @@
       "scope": "test_final_completion_applies_to_real_source_and_refreshes_simulation_once",
       "anchor": "base = source.session.snapshot()",
       "fingerprint": "bb0fc9c129dc40af57489a00e45fef4fa0e77460a806f56440a7a06088e66b6a",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/film_simulation_quick_controller.py",
-      "code": "index",
-      "message": "Value of type \"Any | None\" is not indexable",
-      "scope": "FilmSimulationQuickController.requestCalculation",
-      "anchor": "or self._active_calculation_token[3] != tuple(self._plot_settings.get(\"polarizations\", ()))):",
-      "fingerprint": "bb17fc93d9113b61fa33437a10a6ab76a92d062c77fe72051a8f805ffc0979ac",
       "count": 1
     },
     {
@@ -47679,16 +47339,6 @@
       "count": 3
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "color: panel.previewToken ? Theme.snapshot.colorTextMuted : Theme.snapshot.colorError",
-      "fingerprint": "c4623ee29234e8899381cf62be8f85f68ad3f36c5a393449115dba144f30dc73",
-      "count": 2
-    },
-    {
       "tool": "mypy",
       "path": "coat_sim/ui/film_optimization_quick_controller.py",
       "code": "var-annotated",
@@ -47747,16 +47397,6 @@
       "anchor": "onAccepted: bridge.confirmSaveAs(true)",
       "fingerprint": "c4aa332cbac510cdb62b44fd9bc9eb2652f9f32732b35a9d821bef799191eca3",
       "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "color: Theme.snapshot.colorText",
-      "fingerprint": "c4b0aabbefefb9f343351bf97240281cfeb89f00b6d0fd56561bdcb4db7fdf9a",
-      "count": 5
     },
     {
       "tool": "mypy",
@@ -48989,16 +48629,6 @@
       "count": 2
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "text: String(modelData.label || role)",
-      "fingerprint": "c9c0c2eee9bf93763e5a302f2d1724e92770ee18322efcd19847bb090dd0449a",
-      "count": 2
-    },
-    {
       "tool": "mypy",
       "path": "coat_sim/ui/settings.py",
       "code": "arg-type",
@@ -49096,16 +48726,6 @@
       "scope": "ProcessEnvironmentUiTests.test_defaults_update_checks_all_layers_and_step_selection_crosses_pages",
       "anchor": "document[\"steps\"] = [deepcopy(document[\"steps\"][0]) for _ in range(42)]",
       "fingerprint": "ca2436ebd59672a95ef7fe869a095132efeefed55992b30e43698c869271f1ca",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "onActivated: panel.setRoleMaterial(role, panel.selectedOptionId(model, currentIndex))",
-      "fingerprint": "ca3b4fde4d93c69718abed53c598fcc8d46882d6b45d48e59b00c2d908fc117b",
       "count": 1
     },
     {
@@ -51030,16 +50650,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/film_simulation_quick_controller.py",
-      "code": "index",
-      "message": "Value of type \"Any | None\" is not indexable",
-      "scope": "FilmSimulationQuickController.requestCalculation",
-      "anchor": "or self._active_calculation_token[1] != self._generation",
-      "fingerprint": "d1ee4da0681469804ab2e68507846e27d34b3f8f009ac0f2b7cc1ce3263db154",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_film_batch_de.py",
       "code": "arg-type",
       "message": "Argument 3 to \"run_batch_de\" has incompatible type \"ndarray[tuple[Any, ...], dtype[Any]]\"; expected \"Sequence[float]\"",
@@ -51586,16 +51196,6 @@
       "scope": "_exercise_page",
       "anchor": "controller.setWorkspaceMode(\"geometric\")",
       "fingerprint": "d3db34a565ca455c2efec44f302326e8f7b14249753246a1e5da75917e1e75f0",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "Label { text: \"入射介质材料\"; color: Theme.snapshot.colorTextMuted }",
-      "fingerprint": "d3de3a5750cdfbe8bfeddd8488186f546d139fb843f163085b074795b977892c",
       "count": 1
     },
     {
@@ -52656,16 +52256,6 @@
       "scope": "_render_probe",
       "anchor": "toolbar_origin = toolbar.mapToItem(window.contentItem(), QPoint(0, 0))",
       "fingerprint": "d8e10420ab4185a972889d7eb00f523064d5e67e05a998d2d23052ba48e7c904",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "objectName: \"filmGeneratorMaterial_\" + role",
-      "fingerprint": "d8e2aa2b23a10cf2fd6479e1bfd0fbfa137a5a7042ffc1042f6a1dff2f37d425",
       "count": 1
     },
     {
@@ -54197,16 +53787,6 @@
       "anchor": "from qt_test_guard import NoNetworkAccessManagerFactory",
       "fingerprint": "df9a9b8303d6f00a87ac554add040af7bceb0b88db881fcb12ad0f8c0cef0a2c",
       "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "Label { text: \"设计参数\"; color: Theme.snapshot.colorText; font.weight: Theme.snapshot.fontWeightEmphasis }",
-      "fingerprint": "dfa782c40960b165904e90f61424b133d5fc8fcda696e73a79e582a8e109337b",
-      "count": 2
     },
     {
       "tool": "mypy",
@@ -56759,16 +56339,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "coat_sim/scheduler/worker.py",
-      "code": "F401",
-      "message": "`dataclasses.asdict` imported but unused",
-      "scope": "",
-      "anchor": "from dataclasses import asdict",
-      "fingerprint": "e990ecc8f2ecf28946ffef4698884aab5d1c97906cc581b46fd9ec923702dd4a",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_settings_credentials.py",
       "code": "arg-type",
@@ -57387,16 +56957,6 @@
       "anchor": "ThemeControls.ThemeLabel { objectName: \"previewMonitorPosition\" + modelData.slot; text: window.xyz(modelData); Layout.fillWidth: true; wrapMode: Text.WordWrap }",
       "fingerprint": "ec1225463f0cb5298909bf8a632f876877ef0285bc2ce32030cd3e9b7f09d874",
       "count": 3
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "font.family: Theme.snapshot.fontFamily",
-      "fingerprint": "ec1ac5720b1a58ac0d6a25e58e8d6fe38651366b62b9b445c537261adfd00a1f",
-      "count": 2
     },
     {
       "tool": "mypy",
@@ -59050,16 +58610,6 @@
     },
     {
       "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "Label { text: \"入射介质与基片\"; color: Theme.snapshot.colorText; font.weight: Theme.snapshot.fontWeightEmphasis }",
-      "fingerprint": "f2a35cf0d34db8638eed20d0802125072edfeed746c7adc503659de4668ed052",
-      "count": 2
-    },
-    {
-      "tool": "qmllint",
       "path": "coat_sim/ui/qml/AppearanceWorkspace.qml",
       "code": "unqualified",
       "message": "Unqualified access",
@@ -59157,16 +58707,6 @@
       "anchor": "self.seed(); self.refresh(); self.select(1)",
       "fingerprint": "f300925a2f92bc77d5d7216b4f86dc956d40af80a64198714de5b97e1f9f053e",
       "count": 2
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "palette.text: Theme.snapshot.colorText",
-      "fingerprint": "f30150b7e84a99f86f119dbd2b00179c55ff9a78131c35163f1e6a11e042bec3",
-      "count": 1
     },
     {
       "tool": "ruff",
@@ -60007,16 +59547,6 @@
       "anchor": "report[\"benchmarks\"].append(row)",
       "fingerprint": "f6ca1d0bb158c0cf187db459a79855b05346a80f927340b8ef6d6a577de9a914",
       "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmDesignGeneratorPanel.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "spacing: Theme.snapshot.spaceXs",
-      "fingerprint": "f6ca9b20a8c3cb46df6dd3344a8e6ae690e61935b464d6efbb119da5a12c7559",
-      "count": 2
     },
     {
       "tool": "mypy",
@@ -62339,6 +61869,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "2026-10-19 approved model presets and user guidance batch: remove exactly 20 resolved occurrences reviewed in model-style-resolved-debt-review.json; no additions or count increases.",
+  "last_prune_reason": "Prune only79 allowances resolved by the reviewed current synthesis/UI integration; verified in full Linux CI report39410651701, no new/increased allowances; preserve existing configuration metadata.",
   "configuration_review_reason": "2026-10-17: add only BSD-3-Clause pypdf 6.21.0 for isolated research PDF extraction; all previous dependency/tool versions, analyzer rules and diagnostic entries remain unchanged. The lock-file digest changes only for this reviewed runtime dependency."
 }

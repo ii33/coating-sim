@@ -1694,7 +1694,7 @@ AppWindow {
                         Label {
                             objectName: "filmOptimizationPlotBaselineTitle"
                             Layout.fillWidth: true
-                            text: "R/T (%) · " + (controller.plotData.baseline_label || "原设计") + "与候选；目标线按未加权界限显示"
+                            text: "R/T (%) · " + (window.controller.plotData.baseline_label || "原设计") + "与候选；目标线按未加权界限显示"
                             color: window.themeTokens.colorTextMuted
                             font.pointSize: window.themeTokens.fontSizeSmall
                         }

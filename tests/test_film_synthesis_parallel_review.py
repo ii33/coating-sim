@@ -7,9 +7,13 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import asdict, replace
+import errno
 import json
 import os
-from threading import Event
+import subprocess
+import sys
+from tempfile import TemporaryDirectory, TemporaryFile
+from threading import Event, Thread
 import time
 from typing import Any, Mapping
 
@@ -344,3 +348,85 @@ def test_frozen_unknown_k_queue_checkpoint_roundtrip_preserves_historical_perfor
     assert missing["training_physical_evaluations"] is None
     assert missing["training_wavelength_points"] is None
     assert missing["active_worker_pids"] == []
+
+
+def _finished_executor(tmp_path, *, children=1):
+    """Actual owned subprocess pipes, without optical work or a running reader."""
+    executor = parallel.OrderedEvaluationExecutor(1)
+    executor.temporary = TemporaryDirectory(prefix="closed-worker-pipe-", dir=tmp_path)
+    for _ in range(children):
+        stderr = TemporaryFile()
+        process = subprocess.Popen([sys.executable, "-c", "pass"], stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE, stderr=stderr)
+        process.wait(timeout=10.)
+        executor.children.append(parallel._Child(process, stderr, Thread(target=lambda: None)))
+    return executor
+
+
+def _rescue_test_streams(executor):
+    # Rescue only our already-finished processes if a failing close leaves streams.
+    for child in executor.children:
+        for stream in (child.process.stdin, child.process.stdout, child.stderr):
+            try:
+                stream.close()
+            except (OSError, RuntimeError):
+                pass
+    executor.temporary.cleanup()
+
+
+def test_close_flushes_buffered_stdin_after_real_owned_reader_has_exited(tmp_path):
+    executor = _finished_executor(tmp_path)
+    child = executor.children[0]
+    temporary_path = executor.temporary.name
+    assert child.process.poll() == 0
+    assert child.process.stdin.write(b"buffered bytes for the exited owned reader") > 0
+    try:
+        # POSIX flush raises EPIPE; Windows FileIO reports EINVAL for this exact
+        # dead anonymous-pipe case. Both have actually closed the stream.
+        executor.close()
+        executor.close()
+        assert all(stream.closed for stream in (child.process.stdin, child.process.stdout, child.stderr))
+        assert not os.path.exists(temporary_path)
+        _assert_closed(executor.diagnostics())
+    finally:
+        _rescue_test_streams(executor)
+
+
+@pytest.mark.parametrize("error,ignored", [
+    (BrokenPipeError(errno.EPIPE, "POSIX closed owned pipe flush"), True),
+    (OSError(errno.EBADF, "unrelated bad descriptor"), False),
+    (RuntimeError("unexpected close implementation failure"), False),
+])
+def test_close_error_releases_all_streams_and_only_ignores_dead_pipe(tmp_path, error, ignored):
+    executor = _finished_executor(tmp_path, children=2)
+    child = executor.children[0]
+    original = child.process.stdin
+    temporary_path = executor.temporary.name
+
+    class FailedClose:
+        @property
+        def closed(self):
+            return original.closed
+
+        def close(self):
+            original.close()
+            raise error
+
+    child.process.stdin = FailedClose()
+    try:
+        if ignored:
+            executor.close()
+        else:
+            with pytest.raises(type(error)) as caught:
+                executor.close()
+            assert caught.value is error
+        # Even a programming error must remain visible after releasing the other
+        # owned streams/children and the run's temporary directory.
+        assert original.closed
+        assert all(row.process.stdout.closed and row.stderr.closed for row in executor.children)
+        assert executor.children[1].process.stdin.closed
+        assert not os.path.exists(temporary_path)
+        _assert_closed(executor.diagnostics())
+    finally:
+        child.process.stdin = original
+        _rescue_test_streams(executor)

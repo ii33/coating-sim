@@ -36,7 +36,7 @@ def audit_frozen_synthesis_candidate(
     import). Every physical evaluation reuses the current objective/TMM engine.
     The caller alone owns candidate budgets, archive and terminal commit.
     """
-    from scipy.optimize import minimize_scalar
+    from scipy.optimize import minimize_scalar  # type: ignore[import-untyped]
 
     if request.frozen_material_snapshot is None:
         raise ValueError("synthesis audit requires a frozen material snapshot")

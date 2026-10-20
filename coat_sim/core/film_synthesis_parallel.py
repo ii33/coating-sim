@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections import deque
 from contextlib import contextmanager
 from dataclasses import dataclass
+import errno
 import math
 from itertools import chain
 import os
@@ -92,7 +93,10 @@ def _windows_creation_time(handle=None):
         return None
     import ctypes
     from ctypes import wintypes as w
-    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    windows_library = getattr(ctypes, "WinDLL", None)
+    if windows_library is None:
+        raise OSError("Windows DLL loader unavailable")
+    kernel = windows_library("kernel32", use_last_error=True)
     kernel.GetCurrentProcess.restype = w.HANDLE
     kernel.GetProcessTimes.argtypes = [w.HANDLE, ctypes.POINTER(w.FILETIME), ctypes.POINTER(w.FILETIME),
                                       ctypes.POINTER(w.FILETIME), ctypes.POINTER(w.FILETIME)]
@@ -105,10 +109,15 @@ def _windows_creation_time(handle=None):
 class _WindowsWorkerJob:
     """Assign our suspended launcher before it can create its Python child."""
     def __init__(self):
+        if os.name != "nt":
+            raise OSError("owned Windows worker jobs require Windows")
         import ctypes
         from ctypes import wintypes as w
         self.ctypes, self.w = ctypes, w
-        self.kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        windows_library = getattr(ctypes, "WinDLL", None)
+        if windows_library is None:
+            raise OSError("Windows DLL loader unavailable")
+        self.kernel = windows_library("kernel32", use_last_error=True)
         for name, args, result in (
             ("CreateJobObjectW", [ctypes.c_void_p, w.LPCWSTR], w.HANDLE),
             ("SetInformationJobObject", [w.HANDLE, ctypes.c_int, ctypes.c_void_p, w.DWORD], w.BOOL),
@@ -119,7 +128,7 @@ class _WindowsWorkerJob:
             ("WaitForSingleObject", [w.HANDLE, w.DWORD], w.DWORD)):
             method = getattr(self.kernel, name)
             method.argtypes, method.restype = args, result
-        self.resume = ctypes.WinDLL("ntdll").NtResumeProcess
+        self.resume = windows_library("ntdll").NtResumeProcess
         self.resume.argtypes, self.resume.restype = [w.HANDLE], w.LONG
 
         class Basic(ctypes.Structure):
@@ -560,6 +569,7 @@ class OrderedEvaluationExecutor:
                 child.job.close()
             elif child.process.poll() is None:
                 child.process.terminate()
+        close_error: Exception | None = None
         for child in self.children:
             try:
                 child.process.wait(timeout=1.)
@@ -578,11 +588,25 @@ class OrderedEvaluationExecutor:
                 child.actual_dead = child.process.poll() is not None
             for stream in (child.process.stdin, child.process.stdout, child.stderr):
                 if stream is not None:
-                    stream.close()
+                    try:
+                        stream.close()
+                    except Exception as exc:
+                        # A buffered stdin can flush after its owned reader has
+                        # exited. FileIO reports EPIPE on POSIX, EINVAL on Windows.
+                        # Ignore only this released, dead-child stdin; defer other
+                        # errors until the remaining owned resources are closed.
+                        dead_stdin = (stream is child.process.stdin and child.process.poll() is not None
+                                      and stream.closed)
+                        pipe_flush = (isinstance(exc, OSError) and
+                                      (exc.errno == errno.EPIPE or os.name == "nt" and exc.errno == errno.EINVAL))
+                        if not (dead_stdin and pipe_flush) and close_error is None:
+                            close_error = exc
         while not self.events.empty():
             self._receive(timeout=0.)
         if self.temporary is not None:
             self.temporary.cleanup()
+        if close_error is not None:
+            raise close_error
 
     def diagnostics(self):
         unknown = len(self.submitted - self.finished)

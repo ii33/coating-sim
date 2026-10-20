@@ -111,6 +111,9 @@ def process_memory(root_pid):
         return [], 'unavailable: psutil absent; no cross-platform tree RSS fallback'
     import ctypes as C
     from ctypes import wintypes as W
+    dll_factory = getattr(C, 'WinDLL', None)
+    if dll_factory is None:
+        raise OSError('Windows process-memory APIs are unavailable')
     class Entry(C.Structure):
         _fields_ = [('dwSize', W.DWORD), ('cntUsage', W.DWORD), ('th32ProcessID', W.DWORD),
             ('th32DefaultHeapID', C.c_size_t), ('th32ModuleID', W.DWORD),
@@ -121,8 +124,8 @@ def process_memory(root_pid):
             (key, C.c_size_t) for key in ('PeakWorkingSetSize', 'WorkingSetSize',
             'QuotaPeakPagedPoolUsage', 'QuotaPagedPoolUsage', 'QuotaPeakNonPagedPoolUsage',
             'QuotaNonPagedPoolUsage', 'PagefileUsage', 'PeakPagefileUsage')]
-    kernel = C.WinDLL('kernel32', use_last_error=True)
-    psapi = C.WinDLL('psapi', use_last_error=True)
+    kernel = dll_factory('kernel32', use_last_error=True)
+    psapi = dll_factory('psapi', use_last_error=True)
     kernel.CreateToolhelp32Snapshot.restype = W.HANDLE
     kernel.OpenProcess.restype = W.HANDLE
     kernel.OpenProcess.argtypes = [W.DWORD, W.BOOL, W.DWORD]
