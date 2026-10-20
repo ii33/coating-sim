@@ -817,16 +817,14 @@ def save_ui_settings(values: Mapping[str, object]) -> dict[str, object]:
     return result
 
 
-def _configure_qt_quick_render_backend() -> None:
-    """Use the verified software presentation path on Windows Qt 6.12.
+def _configure_qt_quick_frame_updates() -> None:
+    """Keep Windows Qt 6.12 frame requests on the platform timer path.
 
-    Explicit graphics backend choices always win, including empty values.
-    This affects Qt Quick presentation only, never simulation compute backends.
+    Disable only Qt's DXGI VBlank notification thread; retain the selected
+    graphics backend, render loop and swap interval. Explicit values win.
     """
-    if (sys.platform == "win32" and qVersion().startswith("6.12.")
-            and "QT_QUICK_BACKEND" not in os.environ
-            and "QSG_RHI_BACKEND" not in os.environ):
-        os.environ["QT_QUICK_BACKEND"] = "software"
+    if sys.platform == "win32" and qVersion().startswith("6.12."):
+        os.environ.setdefault("QT_D3D_NO_VBLANK_THREAD", "1")
 
 def configure_qt_dpi_scale(settings: Mapping[str, object] | None = None) -> dict[str, object]:
     """Call before constructing QGuiApplication in every standalone entry point.
@@ -834,7 +832,7 @@ def configure_qt_dpi_scale(settings: Mapping[str, object] | None = None) -> dict
     Qt applies QT_SCALE_FACTOR while creating its application/screens, so a DPI
     change made in the settings page takes effect after the process restarts.
     """
-    _configure_qt_quick_render_backend()
+    _configure_qt_quick_frame_updates()
     resolved = normalized_ui_settings(settings) if settings is not None else load_ui_settings()
     # Fusion consumes the active Qt palette for controls, including fields,
     # buttons and scroll bars. Apply it before any QML Controls are loaded.

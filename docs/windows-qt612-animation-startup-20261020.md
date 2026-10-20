@@ -1,43 +1,55 @@
-# Windows Qt 6.12 原生呈现兼容策略（2026-10-20）
+# Windows Qt 6.12：保留 GPU 的帧更新调度兼容策略
 
-## 最终策略与边界
+更新：2026-10-21。版本适用范围为本项目兼容约定；已实测的 Qt 版本为 **6.12.0**，不能视为全部 6.12.x 或所有显示拓扑已验证。
 
-`coat_sim/ui/settings.py:configure_qt_dpi_scale()` 在 QApplication/QGuiApplication 创建前调用共享配置。仅 `win32` 且运行时 Qt 为 `6.12.x`，并且环境中 **同时不存在** `QT_QUICK_BACKEND` 与 `QSG_RHI_BACKEND` 两个键时，默认设置 `QT_QUICK_BACKEND=software`。任意显式后端值（包括空字符串）均优先；其他平台及 Qt 版本保留原默认行为。不设置或修改 `QSG_RENDER_LOOP`、`QSG_RHI_BACKEND`。
+## 启动契约
 
-环境状态由各启动进程持有，只对新进程生效，不进行运行中热切换，不修改持久用户配置。此策略仅影响 Qt Quick 界面呈现，不改变 CPU/CUDA 等物理计算后端、算法、文件格式或数值语义。没有新增异步任务或取消边界。
+`coat_sim/ui/settings.py:_configure_qt_quick_frame_updates()` 由 `configure_qt_dpi_scale()` 在创建 QApplication/QGuiApplication 前调用。仅 `win32` 且运行时 Qt 版本为 `6.12.x` 时，执行 `os.environ.setdefault("QT_D3D_NO_VBLANK_THREAD", "1")`。任意显式值，包括 `0` 和空字符串，均保持原值；其他平台、版本保持原行为。
 
-`coat_sim/ui/launcher.py` 在共享配置后同步实际 `software_mode`，沿用已有 `--software` 的视觉兼容分支，关闭软件呈现不支持的 MultiEffect，保留正常控件、输入和动画。没有修改页面交互断言、模块准入或保存/关闭确认。
+环境状态归各启动进程所有，只对新进程生效，不热切换、不改持久用户配置。兼容策略不设置或修改 `QT_QUICK_BACKEND`、`QSG_RHI_BACKEND`、`QSG_RENDER_LOOP`、`QSG_NO_VSYNC`、`QT_D3D_ADAPTER_INDEX`，不绑定厂商、GPU 型号、adapter 索引或独显输出，不改变系统 GPU 偏好。CPU/CUDA 计算后端、物理算法和文件格式不变；未新增异步任务或取消边界。
 
-软件呈现可能降低复杂场景吞吐量，这是本项目针对该环境实测的兼容策略，并非已确认的 Qt 上游缺陷。原生实测版本为 Qt 6.12.0；将缺省策略限定到 6.12.x 属于本项目兼容约定，其他补丁版本未逐一做原生验收。
+原 `1db889a` 的缺省软件呈现仅为临时降级，用户明确不接受作为最终方案；本次已移除该缺省。已有 `--software` 和显式 `QT_QUICK_BACKEND=software` 仍可作为备用；启动器继续按实际软件后端同步既有 `softwareMode` 视觉兼容分支。正常 GPU 路径保留 MultiEffect 等原有视觉行为。
 
-## 诊断依据
+## 根因链与依据
 
-全部原生探针使用原项目 `.venv`、Windows 原生平台及 `require_escalated`；配置和空工程隔离到 Temp，不导入 offscreen/software 测试守卫，不操作用户现场窗口。最终呈现验收使用顶层 `app.exec()` 与纯 QTimer；早期 QTest.qWait 属性级结果不作为呈现验收依据。
+Qt **exact tag v6.12.0** 的官方实现提供以下机制：
 
-- 默认 D3D11 的最小原生窗口动画时间停滞。basic 可让属性推进，但屏幕仍停留首帧。
-- 完整原版 ProjectRuntime 的 basic + D3D11 反控：原生 HWND 鼠标消息已使模型层数变为 1，`frameSwapped` 仍为 2；实际桌面仍显示空膜堆。Qt `grabWindow()` 已变化，说明属性/离屏抓图通过不能证明实际呈现。
-- 同一完整工程软件正控：帧持续增长，实际桌面动画区域哈希变化；原生点击后模型层数为 1，实际屏幕出现新增 100nm 膜层。
-- OpenGL 能推进 Qt 帧和模型，但 GDI/Pillow 抓到浏览器而非 OpenGL 表面；该捕获不可判断真实呈现。用户独立肉眼验证回复“没有红块”，故不采用 OpenGL 为最终默认方案。
+1. [`QWindowsWindow::requestUpdate()`](https://raw.githubusercontent.com/qt/qtbase/v6.12.0/src/plugins/platforms/windows/qwindowswindow.cpp) 在 DXGI VSync 服务支持窗口时依赖该服务回调投递更新，并停用平台基类更新计时器。
+2. [`QDxgiVSyncService`](https://raw.githubusercontent.com/qt/qtbase/v6.12.0/src/gui/rhi/qdxgivsyncservice.cpp) 在 `WaitForVBlank` 失败或耗时不超过 1ms 时只休眠、不发出该轮通知；构造时 `QT_D3D_NO_VBLANK_THREAD` 非零会禁用此通知服务，让窗口请求退回平台计时器路径。
+3. 独立只读 COM 采样在当前 DISPLAY1 / HMONITOR 65537、输出所属 NVIDIA LUID `[59888,0]` 上，观察到 `WaitForVBlank` 连续成功却远快于 1ms；间隔 20ms 重测的五次仍为约 31.7–69.3µs。采样未改设备、驱动或系统设置。
 
-basic 的第一轮用户重启反证被保留：新启动器、助手、工程运行时均已采用 basic / Fusion，用户仍报告无动画、设计页不可点击。不能将该候选描述为成功修复。
+这与首帧后不更新、basic 下属性变化但屏幕不变，以及仅切换通知线程参数后恢复硬件呈现的对照一致。该结论针对当前实测环境，不表述为 Qt 上游已确认的缺陷；虚拟显示设备与当前输出拓扑是环境线索，不能据此认定单一驱动责任。
 
-## 最终验证
+该参数改变的是平台更新通知来源，不是禁用 GPU 或强制关闭 Present vsync。实测窗口 `format().swapInterval()` 始终为 1，未设置 `QSG_NO_VSYNC`；官方机制也未在此参数分支修改图形后端或交换间隔。
 
-定向契约测试 `tests/test_qt_quick_render_loop_startup.py` 共 14 项通过，覆盖平台/版本范围、显式后端含空值、共享入口及 render loop 不变。
+## 原生对照
 
-无显式后端的新进程确认 `GraphicsApi.Software` 且未设置 render loop。完整 ProjectRuntime 真实准入后：
+所有探针使用原项目 `.venv`、Windows 原生平台及 `require_escalated`；配置、空工程和助手 IPC 根均隔离到 Temp。未运行硬编码用户助手根的外部 Start 包装器，未操作用户现场窗口。呈现检查使用顶层 `app.exec()` 和纯 QTimer、实际桌面像素、原生 HWND 鼠标消息与模型状态；早期仅有 QTest.qWait 或 grabWindow 的通过不作呈现验收。
 
-- 顶层 app.exec / QTimer 下动画区域真实桌面哈希持续变化，frameSwapped 为 22、30、42、53、73。
-- 原生 HWND 消息加层后模型为 1，实际屏幕显示新增膜层。
-- 原生标题按钮完成最大化、恢复、最小化；设计模块菜单及仿真子菜单展开，经正式菜单路由打开光谱仿真。
-- 干净工程 dirty=false，正常生命周期关闭后 QQuickWindow 销毁，无 allowClose 绕过。
+| 完整 ProjectRuntime：同一默认 D3D11 硬件路径 | 属性与实际桌面 | 原生加层 |
+| --- | --- | --- |
+| 通知线程参数缺省 | frameSwapped 恒 2，实际桌面不变 | 模型已为 1，画面仍为空 |
+| 显式参数 `0` | 同上，swapInterval=1 | 同上 |
+| 显式参数 `1`，两次独立正控 | 帧持续增长，诊断红矩形实际移动，桌面哈希变化 | 模型为 1，屏幕实际显示新增 100nm 行 |
+| 最终 helper 自生效，无显式 backend/RHI/loop/flag | 仅补参数 `1`，其余环境仍未设置；默认 D3D11、swapInterval=1，实际呈现恢复 | 原生加层与屏幕一致 |
 
-启动器实际组件确认缺省软件后端与 `softwareMode=true`，最大化、恢复、最小化有效。助手实际组件的右键菜单可展开；最终纯定时探针在获取弹出窗口包装器时遇到生命周期异常，因此不把该探针的 hover/ESC 后续步骤算通过，也不据此扩大产品修改。早期组件级菜单开合/hover结果单独保留，不替代最终现场验收。
+原生 Qt 日志确认默认所选硬件为 NVIDIA RTX 4070 Ti SUPER，vendor `10DE` / device `2689` / flags `0`，`Prefer software device=0`；不是 WARP。型号只作为这次证据，不进入产品选择逻辑。截图与 GPU 读回会影响帧计数，计数仅证明持续更新，不作为性能基准。
 
-**用户最终现场验收：原版全部重开后，明确确认点击和动画均恢复。** 验收记录位于 `artifacts/film_synthesis_20261020/gui-incident-20261020/accepted-original-gui.json`；只读核实三个新进程为 software、非 offscreen。未要求用户重复操作。
+另一独立实例通过 Qt 官方 [`QT_D3D_ADAPTER_INDEX`](https://raw.githubusercontent.com/qt/qtbase/v6.12.0/src/gui/rhi/qrhid3d11.cpp) 参数临时选择 Intel：原生日志确认 Intel Graphics `8086:7D67`、flags `0`、非 WARP；renderer LUID `[64425,0]`，输出仍为当前 DISPLAY1 / HMONITOR 65537。其动画、原生加层和真实桌面呈现均通过。这覆盖“Intel 渲染到当前输出”的混合路径，**不覆盖核显物理输出或多物理屏**；当前 Intel 的 EnumOutputs 没有输出，不能推断这些未测拓扑。
 
-证据目录：`artifacts/film_synthesis_20261020/gui-incident-20261020/native-probe/`。重点包括 `final-default-software-interaction-result.json`、`final-default-software-after-native-add.png`、`final-default-software-menus-result.json` 及对应探针脚本。反控保留 `full-runtime-native-interaction-basic-result.json` 与 stale 桌面图。
+## 交互与入口验证
 
-## 官方机制参考
+显式参数 `1` 的完整工程已验证最大化、恢复、最小化、实际两级模块菜单、正式路由打开光谱仿真；干净工程 dirty=false 正常关闭后 QQuickWindow 销毁，未绕过关闭策略。真实 LauncherWindow 组件保持 `softwareMode=false`，hover 和标题按钮通过；真实助手浮标组件的右键菜单开合、hover/highlight、Esc 关闭通过，未发送消息或触发退出菜单动作。
 
-Qt 官方 [Scene Graph — Driving Animations](https://doc.qt.io/qt-6/qtquick-visualcanvas-scenegraph.html#driving-animations) 解释渲染循环与动画驱动；[Qt Quick Software Adaptation](https://doc.qt.io/qt-6/qtquick-visualcanvas-adaptations-software.html) 说明软件呈现及限制。本项目版本限定和兼容默认值基于本次实测，官方文档不构成上游缺陷确认。
+最终无环境覆盖的公开 `coat_sim.ui.project_runtime.main()` 路径已单独验证：只附加诊断定时器，未替换准入或业务控制器；真实创建 Temp 工程、注册、进入顶层 app.exec，最终 helper 仅补通知参数，实际 D3D11、swapInterval=1、真实桌面动画和原生加层通过。实际 GPU 用户现场验收由父端另行记录，不把先前软件模式验收当作 GPU 验收。
+
+## 已排除的候选与限制
+
+- basic 只恢复属性计时，仍停留首帧；用户重启确认 basic 已生效后仍无动画和视觉点击响应，因此不是最终策略。
+- 软件呈现能恢复画面，但属于用户不接受的降级，保留为显式备用。
+- OpenGL Qt 帧计数与模型推进，但 GDI/Pillow 对该表面的捕获不可用；用户独立肉眼验证“没有红块”，不采用为已验收方案。
+- 未改变驱动、显示拓扑或系统配置；尚未覆盖核显物理输出、多屏切换或其他 Qt 补丁版本。
+
+契约测试位于 `tests/test_qt_quick_render_loop_startup.py`，覆盖平台/版本、显式通知参数含 0/空串、backend/RHI/loop/no-vsync/adapter 环境保持、共享启动不强制软件。
+
+证据在 `artifacts/film_synthesis_20261020/gui-incident-20261020/native-probe/gpu-vblank-notification/`，包括缺省/0/1 对照、重复正控、原生日志、默认公开入口、Intel 混合路径和只读 DXGI 采样。
