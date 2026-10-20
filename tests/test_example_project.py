@@ -104,7 +104,33 @@ def test_example_page_configurations_restore_without_guessing(example):
         assert simulation.exportSimulationConfiguration() == design["workflow_settings"]["simulation"]
         config = design["workflow_settings"]["optimization"]
         assert optimization.loadOptimizationConfiguration(config)
-        assert optimization.exportOptimizationConfiguration() == config
+        restored = optimization.exportOptimizationConfiguration()
+        # The checked-in example predates the optional synthesis section.
+        # Loading it must retain every saved legacy field while explicitly
+        # upgrading to today's canonical editor shape.
+        assert {key: restored[key] for key in config} == config
+        assert set(restored) == set(config) | {"synthesis"}
+        synthesis = restored["synthesis"]
+        assert synthesis == {
+            "options": {key: None for key in (
+                "max_cycles", "max_evaluations", "max_layers",
+                "minimum_nonzero_thickness_nm", "max_layer_thickness_nm",
+                "max_total_thickness_nm")},
+            "cpu_workers": 0,
+            "forward_backend": "cpu",
+            "forward_device": None,
+            "use_current_seed": False,
+            "assume_unknown_k_zero": False,
+            "material_rows": [{
+                "id": synthesis["material_rows"][0]["id"],
+                "material_id": "demo-film",
+                "optical_set_id": "visible",
+            }],
+        }
+        row_id = synthesis["material_rows"][0]["id"]
+        assert len(row_id) == 32 and all(character in "0123456789abcdef" for character in row_id)
+        assert optimization.loadOptimizationConfiguration(restored)
+        assert optimization.exportOptimizationConfiguration() == restored
         assert config["solver"]["max_evaluations"] == 40
         assert config["variables"] and config["objectives"]
         assert {row["layer_id"] for row in config["variables"]} == {"demo-layer"}

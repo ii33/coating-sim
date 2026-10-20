@@ -459,11 +459,13 @@ def test_real_portable_deposition_bundle_and_film_optimizer(tmp_path):
         assert result['candidate']['quality']['value'] >= 0
 
 
-def test_verified_cancelled_film_candidate_retains_remote_result_after_restart(tmp_path):
+def test_verified_cancelled_film_candidate_retains_remote_result_after_restart(tmp_path, monkeypatch):
     from threading import Event
     from coat_sim.core.film_design_service import FilmDesignService
     from coat_sim.scheduler.worker import _film_optimization
     from coat_sim.scheduler.jobs import canonical
+    from coat_sim.scheduler.io import write_text
+    from coat_sim.scheduler import result_capability
     payload = frozen_film(tmp_path / 'synthetic')['parameters']['payload']
     cancel = Event()
     def after_candidate(progress):
@@ -480,11 +482,46 @@ def test_verified_cancelled_film_candidate_retains_remote_result_after_restart(t
             cancel, after_candidate, checkpoint)
         assert result['state'] == 'cancelled'
         assert result['partial_result']['candidate_verified'] is True
-        persisted = json.loads(checkpoint.read_bytes())['result']
+        checkpoint_bytes = checkpoint.read_bytes()
+        persisted = json.loads(checkpoint_bytes)['result']
         assert persisted['candidate'] == result['candidate']
-        outcome = service.scheduler._cancelled_outcome('candidate', {})
-        assert canonical(outcome['result']) == canonical(persisted)
+        def no_replay(*_args, **_kwargs):
+            pytest.fail('active cancellation and stored terminal-result reads must not replay a checkpoint')
+
+        monkeypatch.setattr(result_capability, 'load_best_candidate_checkpoint', no_replay)
+        monkeypatch.setattr(result_capability, 'validate_film_optimization_result', no_replay)
+        # The real current worker reply is authoritative. A valid historical
+        # checkpoint alone must not manufacture an active-cancel result.
+        unavailable = service.scheduler._cancelled_outcome('candidate', {})
+        assert unavailable['result'] is None
+        assert 'without cancellation replay' in unavailable['result_unavailable_reason']
+        previous = {'state': 'cancelled', 'result': result}
+        assert service.scheduler._cancelled_outcome('candidate', previous)['result'] is None
+        # This fixture runs the worker directly; reproduce start_job's exact
+        # frozen-spec write before accepting its bound terminal reply.
+        write_text(checkpoint.parent / 'spec.json', canonical(spec))
+        assert result_capability.is_film_optimization_result(result)
+        assert service.scheduler._bound_film_reply('candidate', result)
+        foreign = json.loads(json.dumps(result))
+        foreign['request']['design_revision'] += 1
+        foreign['candidate']['design_revision'] += 1
+        assert result_capability.is_film_optimization_result(foreign)
+        assert service.scheduler._cancelled_outcome('candidate',
+            {'state': 'cancelled', 'result': foreign})['result'] is None
+        outcome = service.scheduler._cancelled_outcome('candidate', previous)
+        expected = json.loads(json.dumps(result))
+        marker = {'source': 'worker_completed_reply', 'replay_performed': False, 'candidate_available': True}
+        expected.setdefault('execution', {})['cancel_snapshot'] = marker
+        assert canonical(outcome['result']) == canonical(expected)
+        assert outcome['result']['candidate'] == persisted['candidate']
+        assert checkpoint.read_bytes() == checkpoint_bytes
         service.scheduler._commit('transition', 'candidate', **outcome)
+        with service.scheduler.store.queue.connection() as db:
+            stored = db.execute('SELECT payload FROM queue_jobs WHERE job_id=?', ('candidate',)).fetchone()
+        assert stored is not None
+        stored_job = json.loads(stored['payload'])
+        assert stored_job['state'] == 'cancelled'
+        assert canonical(stored_job['result']) == canonical(outcome['result'])
     finally:
         service.scheduler.guard.close()
         service.scheduler.lock.close()
@@ -493,6 +530,8 @@ def test_verified_cancelled_film_candidate_retains_remote_result_after_restart(t
         reply = restored._rpc({'api_version': 1, 'action': 'result', 'arguments': {'job_id': 'candidate'}})
         assert reply['candidate'] == result['candidate']
         assert reply['partial_result']['candidate_verified'] is True
+        assert reply['execution']['cancel_snapshot'] == marker
+        assert canonical(reply) == canonical(expected)
     finally:
         restored.scheduler.guard.close()
         restored.scheduler.lock.close()

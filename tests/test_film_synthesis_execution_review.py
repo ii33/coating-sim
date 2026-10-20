@@ -1,7 +1,8 @@
 """Independent adversarial checks for the synthesis execution boundary.
 
 The fixtures use current frozen materials and actual scoring. No production
-source, live model, scheduler daemon, or background worker is patched here.
+source, live model, or background worker is changed. Cancellation-boundary
+controls explicitly forbid an unexpected historical checkpoint replay.
 """
 from __future__ import annotations
 
@@ -250,7 +251,7 @@ def test_remote_admission_rejects_forged_library_provenance():
         _validate_film_synthesis_payload(job)
 
 
-def test_scheduler_cancel_wins_over_completed_result_without_success_claim(tmp_path: Path):
+def test_scheduler_cancel_wins_over_completed_result_without_success_claim(tmp_path: Path, monkeypatch):
     from coat_sim.scheduler.daemon import Scheduler
 
     job = _job(_request(revision=109, ceiling=0.001, maximum_nm=200.0))
@@ -260,14 +261,38 @@ def test_scheduler_cancel_wins_over_completed_result_without_success_claim(tmp_p
     assert completed["result"]["state"] == "completed"
     assert completed["result"]["targets_met"]
     job_id = "cancel-wins-completed-synthesis"
-    SchedulerStore(tmp_path).submit(JobSpec("film_synthesis", {"payload": job}, {}).to_dict(), job_id=job_id)
+    spec = JobSpec("film_synthesis", {"payload": job}, {}).to_dict()
+    SchedulerStore(tmp_path).submit(spec, job_id=job_id)
     scheduler = Scheduler(tmp_path)
     try:
-        outcome = scheduler._cancelled_outcome(job_id, {"state": "succeeded", "result": completed})
+        from coat_sim.scheduler import result_capability
+
+        def no_replay(*_args, **_kwargs):
+            pytest.fail("active cancellation must not replay an older checkpoint")
+
+        monkeypatch.setattr(result_capability, "load_best_candidate_checkpoint", no_replay)
+        assert is_synthesis_result(completed)
+        previous = {"state": "succeeded", "result": completed}
+        # Queue admission alone is not a started worker. Its reply must not be
+        # trusted until the exact frozen spec is persisted at the launch boundary.
+        missing = scheduler._cancelled_outcome(job_id, previous)
+        assert missing["result"] is None and "without cancellation replay" in missing["result_unavailable_reason"]
+        write_text(scheduler.runtime / "jobs" / job_id / "spec.json", canonical(spec))
+        assert scheduler._bound_film_reply(job_id, completed)
+        foreign = deepcopy(completed)
+        foreign["request_id"] = "another-valid-completed-reply"
+        assert is_synthesis_result(foreign), "self-consistency alone is insufficient"
+        rejected = scheduler._cancelled_outcome(job_id, {"state": "succeeded", "result": foreign})
+        assert rejected["result"] is None
+        outcome = scheduler._cancelled_outcome(job_id, previous)
+        assert completed["result"]["state"] == "completed", "the worker reply must remain immutable"
     finally:
         scheduler.guard.close()
         scheduler.lock.close()
     result = outcome["result"]
+    assert is_synthesis_result(result)
+    assert result["review"]["cancel_snapshot"] == {
+        "source": "worker_completed_reply", "replay_performed": False, "candidate_available": True}
     assert outcome["state"] == result["result"]["state"] == "cancelled"
     assert not result["result"]["targets_met"]
     assert not result["review"]["targets_met"]

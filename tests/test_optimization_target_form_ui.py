@@ -111,9 +111,24 @@ def test_angle_confirmation_cannot_clear_unrelated_input_error(app,tmp_path,fiel
         saved['objectives'][0].update(angle_sampling_mode='points',angles_text='0, 13.5, 47')
         assert controller.loadOptimizationConfiguration(saved)
         assert not controller.setObjectiveField(field,value)
-        key=controller._pending_edit_error_key
+        if field == 'lower_bound_percent':
+            range_state = (
+                controller.objectiveBoundsError,
+                deepcopy(controller._objective_range_errors),
+                deepcopy(controller._objective_range_drafts),
+                deepcopy(controller._objectives),
+            )
+            assert range_state[0]
+        else:
+            key=controller._pending_edit_error_key
         assert not controller.confirmObjectiveAngleRange('0','10','1')
-        assert controller._pending_edit_error_key==key and controller._pending_edit_error
+        if field == 'lower_bound_percent':
+            assert controller.objectiveBoundsError == range_state[0]
+            assert controller._objective_range_errors == range_state[1]
+            assert controller._objective_range_drafts == range_state[2]
+            assert controller._objectives == range_state[3]
+        else:
+            assert controller._pending_edit_error_key==key and controller._pending_edit_error
         assert controller.selectedObjective['angle_sampling_mode']=='points'
         with pytest.raises(ValueError):
             controller._build_request(require_variables=False)

@@ -3241,6 +3241,8 @@ class FilmOptimizationQuickController(QObject):
         angle_keys = {key + field for field in ("angle_min_deg", "angle_max_deg", "angle_step_deg", "angle_range")}
         if self._pending_edit_error and self._pending_edit_error_key not in angle_keys:
             return False
+        if self._objective_bounds_pending():
+            return False
         try:
             updated = _resolve_angle_sampling({
                 **self._objectives[self._selected_objective], "angle_sampling_mode": "range",

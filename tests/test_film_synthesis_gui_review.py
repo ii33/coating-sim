@@ -212,9 +212,13 @@ def _optimizer(gui):
     for name, value in (("WavelengthMin", "550"), ("WavelengthMax", "550"),
                         ("LowerBound", "0"), ("UpperBound", "0.1"), ("Tolerance", "0")):
         scene.edit(scene.item("filmOptimization" + name + "Field"), value)
-    assert cast(dict[str, Any], controller.property("selectedObjective"))["wavelength_min_nm"] == 550.
-    assert cast(dict[str, Any], controller.property("selectedObjective"))["wavelength_max_nm"] == 550.
-    assert cast(dict[str, Any], controller.property("selectedObjective"))["upper_bound_percent"] == .1
+    objective_form = cast(dict[str, Any], controller.property("selectedObjective"))
+    assert objective_form["wavelength_min_nm"] == "550"
+    assert objective_form["wavelength_max_nm"] == "550"
+    assert objective_form["upper_bound_percent"] == "0.1"
+    objective_request = controller._build_synthesis_request().objectives[0]
+    assert (objective_request.wavelength_min_nm, objective_request.wavelength_max_nm,
+            objective_request.upper_bound) == (550., 550., .001)
     assert controller.acceptableErrorPercent == 0.
     assert controller.canStart, (controller.error, controller.statusText, controller._source_stale, controller._active_configuration_error())
     _wait(lambda: cast(QObject, controller.property("computeTarget")).property("canSubmit"))
@@ -312,7 +316,7 @@ def test_qml_n0_grows_real_single_layer_and_freezes_current_targets_and_material
     assert not source.canUndoOptimizedDesign
 
 
-def test_qml_real_queue_heartbeat_then_cancel_retains_audited_candidate_facts(gui):
+def test_qml_real_queue_heartbeat_then_cancel_retains_audited_candidate_facts(gui, monkeypatch):
     service, source, controller, scene = _optimizer(gui)
     assert controller.setSynthesisOption("max_cycles", "")
     assert controller.setSynthesisOption("max_evaluations", "")
@@ -320,6 +324,13 @@ def test_qml_real_queue_heartbeat_then_cancel_retains_audited_candidate_facts(gu
     assert controller.setObjectiveField("upper_bound_percent", 100.)
     assert controller.setObjectiveField("lower_bound_percent", 90.)
     original = source.session.snapshot()
+    refreshes = []
+
+    def request_refresh():
+        refreshes.append(source.session.snapshot())
+        return "film_simulation"
+
+    monkeypatch.setattr(source, "openSimulationAndCalculate", request_refresh)
     scene.click(scene.item("filmOptimizationStartButton"))
     _wait(lambda: bool(controller.queueJobId))
     job_id = controller.queueJobId
@@ -354,8 +365,35 @@ def test_qml_real_queue_heartbeat_then_cancel_retains_audited_candidate_facts(gu
     assert len(controller.synthesisLayers) == len(payload["result"]["candidate_design"]["front_layers"])
     assert str(scene.item("filmSynthesisAuditSummary").property("text")) == controller.synthesisAuditSummary
     assert not controller.canApply
-    assert source.session.snapshot().design == original.design
-    assert source.session.snapshot().design_revision == original.design_revision
+    candidate_design = payload["result"]["candidate_design"]
+    normalized_original = service.validate(deepcopy(dict(original.design)))
+    normalized_candidate = service.validate(deepcopy(dict(candidate_design)))
+    after = source.session.snapshot()
+    if normalized_candidate == normalized_original:
+        assert after.design == original.design
+        assert after.design_revision == original.design_revision
+        assert after.dirty == original.dirty
+        assert not source.canUndoOptimizedDesign
+    else:
+        expected_candidate = deepcopy(dict(normalized_candidate))
+        if "workflow_settings" in original.design:
+            expected_candidate["workflow_settings"] = deepcopy(original.design["workflow_settings"])
+        assert after.design == expected_candidate
+        assert after.design_revision == original.design_revision + 1
+        assert after.dirty and source.canUndoOptimizedDesign
+        source_scene = _Scene(source, "FilmDesignQuick.qml")
+        gui[3].append(source_scene)
+        source_scene.click(source_scene.item("filmUndoOptimizationButton"))
+        _wait(lambda: source.session.snapshot().design == original.design)
+        restored = source.session.snapshot()
+        assert restored.design_revision == after.design_revision + 1
+        assert not source.canUndoOptimizedDesign
+    assert len(refreshes) == 1
+    assert refreshes[0].design == after.design
+    final_revision = source.session.snapshot().design_revision
+    controller.cancelOptimization()
+    assert source.session.snapshot().design_revision == final_revision
+    assert len(refreshes) == 1
 
 
 @pytest.mark.parametrize("change", ["revision", "edit_epoch", "source_closed"])
