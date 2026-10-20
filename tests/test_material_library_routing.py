@@ -11,11 +11,12 @@ os.environ.setdefault("QT_QUICK_BACKEND", "software")
 os.environ.setdefault("QSG_RHI_BACKEND", "software")
 os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
 
-from PySide6.QtCore import QObject, QPoint, QPointF, Qt, QUrl
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, QPoint, QPointF, Qt, QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtQml import QQmlApplicationEngine
-from PySide6.QtTest import QTest
+from PySide6.QtTest import QSignalSpy, QTest
+from shiboken6 import isValid
 
 from coat_sim.core import materials
 from coat_sim.ui.launcher import LauncherBridge, MODULES, QML_DIR
@@ -60,6 +61,8 @@ class MaterialLibraryRoutingTests(unittest.TestCase):
         self.engine.rootContext().setContextProperty("launcher", self.launcher)
         self.engine.load(QUrl.fromLocalFile(str(QML_DIR / "LauncherWindow.qml")))
         self.launcher_window = cast(QQuickWindow, self.engine.rootObjects()[0])
+        self._engine_destroyed = QSignalSpy(self.engine.destroyed)
+        self._launcher_window_destroyed = QSignalSpy(self.launcher_window.destroyed)
         self.launcher_window.show()
         self.app.processEvents()
         QTest.qWait(40)
@@ -79,6 +82,15 @@ class MaterialLibraryRoutingTests(unittest.TestCase):
         self.launcher_window.close()
         self.engine.deleteLater()
         self.app.processEvents()
+        if isValid(self.engine):
+            QCoreApplication.sendPostedEvents(self.engine, QEvent.Type.DeferredDelete)
+        self.assertFalse(isValid(self.engine), "test-owned QML engine survived tearDown")
+        self.assertEqual(self._engine_destroyed.count(), 1,
+                         "test-owned QML engine was not destroyed exactly once")
+        self.assertFalse(isValid(self.launcher_window),
+                         "test-owned launcher window survived tearDown")
+        self.assertEqual(self._launcher_window_destroyed.count(), 1,
+                         "test-owned launcher window was not destroyed exactly once")
 
     def _capture(self, window):
         screen = window.screen() or self.app.primaryScreen()

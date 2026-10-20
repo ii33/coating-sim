@@ -9,11 +9,12 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QPointF, Qt, QUrl
+from PySide6.QtCore import QCoreApplication, QEvent, QPointF, Qt, QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlComponent, QQmlEngine
 from PySide6.QtQuick import QQuickItem, QQuickWindow
-from PySide6.QtTest import QTest
+from PySide6.QtTest import QSignalSpy, QTest
+from shiboken6 import getCppPointer, isValid
 
 from coat_sim.core.film_optimization import optimize_film_design
 from coat_sim.ui.film_optimization_quick_controller import FilmOptimizationQuickController
@@ -63,10 +64,16 @@ def test_constraint_lower_zero_commits_in_real_qml_and_survives_reopen(
         ROOT / "coat_sim/ui/qml/FilmOptimizationWindow.qml")))
     window = None
     reopened = None
+    window_address: int | None = None
+    window_destroyed: QSignalSpy | None = None
+    component_destroyed = QSignalSpy(component.destroyed)
+    engine_destroyed = QSignalSpy(engine.destroyed)
     try:
         assert component.status() != QQmlComponent.Status.Error, component.errors()
         window = component.createWithInitialProperties({"controller": controller})
         assert isinstance(window, QQuickWindow), component.errors()
+        window_address = getCppPointer(window)[0]
+        window_destroyed = QSignalSpy(window.destroyed)
         window.resize(1100, 760)
         window.show()
         if restored:
@@ -170,11 +177,30 @@ def test_constraint_lower_zero_commits_in_real_qml_and_survives_reopen(
             result = optimize_film_design(service, request)
             assert result.state == "completed"
     finally:
+        # processEvents() alone does not drain DeferredDelete; keep these
+        # wrappers alive until this fixture's C++ objects are destroyed.
+        # https://doc.qt.io/qt-6/qcoreapplication.html#processEvents
         if window is not None:
             cast(QQuickWindow, window).close()
             window.deleteLater()
+            QCoreApplication.sendPostedEvents(window, QEvent.Type.DeferredDelete)
         if reopened is not None:
             reopened.shutdown(1000)
         controller.shutdown(1000)
+        component.deleteLater()
+        QCoreApplication.sendPostedEvents(component, QEvent.Type.DeferredDelete)
         engine.deleteLater()
+        QCoreApplication.sendPostedEvents(engine, QEvent.Type.DeferredDelete)
         app.processEvents()
+        assert component_destroyed.count() == 1
+        assert engine_destroyed.count() == 1
+        assert not isValid(component)
+        assert not isValid(engine)
+        if window_address is not None:
+            assert window_destroyed is not None and window_destroyed.count() == 1
+            assert not isValid(window)
+            live_window_addresses = {
+                getCppPointer(item)[0] for item in QGuiApplication.allWindows()
+                if isValid(item)
+            }
+            assert window_address not in live_window_addresses
