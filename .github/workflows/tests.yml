@@ -65,10 +65,13 @@ jobs:
           fi
           set +e
           python tools/run_tests.py "${{ matrix.tier }}" \
-            -- "${qt_diagnostics[@]}" --junitxml="artifacts/test-ci/${{ matrix.tier }}/junit.xml" \
-            > "artifacts/test-ci/${{ matrix.tier }}/test.log" 2>&1
-          result=$?
-          cat "artifacts/test-ci/${{ matrix.tier }}/test.log"
+            -- "${qt_diagnostics[@]}" --durations=30 --junitxml="artifacts/test-ci/${{ matrix.tier }}/junit.xml" \
+            2>&1 | tee "artifacts/test-ci/${{ matrix.tier }}/test.log"
+          pipeline_status=("${PIPESTATUS[@]}")
+          result="${pipeline_status[0]}"
+          if [[ "$result" -eq 0 && "${pipeline_status[1]}" -ne 0 ]]; then
+            result="${pipeline_status[1]}"
+          fi
           printf '%s\n' "$result" > "artifacts/test-ci/${{ matrix.tier }}/exit-code.txt"
           exit "$result"
       - uses: actions/upload-artifact@v4
