@@ -72,15 +72,18 @@ class _Scene:
         result = candidates[0] if candidates else None
         if isinstance(result, QQuickItem):
             return result
-        def visit(parent):
-            if parent.objectName() == name:
-                return parent
-            for child in parent.childItems():
-                found = visit(child)
-                if found is not None:
-                    return found
-            return None
-        result = visit(self.window.contentItem())
+        # Repeater delegates can have different QObject and visual parents.
+        # Keep the fallback in QML instead of wrapping every unrelated native
+        # child in Python; only the matched visual item crosses that boundary.
+        expression = """(function visit(item) {
+            if (item.objectName === %s) return item;
+            for (let i = 0; i < item.children.length; ++i) {
+                const found = visit(item.children[i]);
+                if (found !== null) return found;
+            }
+            return null;
+        })(contentItem)""" % json.dumps(name)
+        result = self.evaluate(self.window, expression)
         assert isinstance(result, QQuickItem), name
         return result
 
@@ -242,6 +245,48 @@ def _preview_sampled_candidate(scene, source, controller):
     assert source.service is service and source.service.materials is provider
     assert source.session.snapshot().design == before.design
     assert source.session.snapshot().design_revision == before.design_revision
+
+
+def test_scene_lookup_preserves_visual_ownership_and_strict_item_checks(tmp_path):
+    harness = tmp_path / "Lookup.qml"
+    harness.write_text(
+        "import QtQuick\nWindow { property var controller; width: 200; height: 150 }\n",
+        encoding="utf8",
+    )
+    scene = _Scene(None, str(harness))
+
+    class VisualBranch(QQuickItem):
+        def childItems(self):
+            raise AssertionError("Visual lookup must stay inside the QML engine")
+
+    branch = VisualBranch()
+    target = QQuickItem()
+    hidden = QQuickItem(scene.window.contentItem())
+    shown = QQuickItem(scene.window.contentItem())
+    nonvisual = QObject(scene.window)
+    try:
+        branch.setParentItem(scene.window.contentItem())
+        target.setParentItem(branch)
+        target.setObjectName('visual_"quoted"\\target')
+        # Visual parenting does not require QObject parenting. The fallback must
+        # return the same live target without wrapping each unrelated child.
+        assert target.parent() is None
+        assert scene.window.findChildren(QObject, target.objectName()) == []
+        assert scene.item(target.objectName()) is target
+        for item in (hidden, shown):
+            item.setParent(scene.window.contentItem())
+            item.setObjectName("duplicate")
+        hidden.setVisible(False)
+        shown.setVisible(True)
+        assert scene.item("duplicate") is shown
+        nonvisual.setObjectName("nonvisual")
+        for name in ("absent", "nonvisual"):
+            with pytest.raises(AssertionError, match=name):
+                scene.item(name)
+    finally:
+        target.deleteLater()
+        branch.deleteLater()
+        scene.close()
 
 
 def test_qml_n0_grows_real_single_layer_and_freezes_current_targets_and_materials(gui):
