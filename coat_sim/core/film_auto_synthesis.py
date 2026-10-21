@@ -12,6 +12,7 @@ from itertools import islice
 import hashlib
 import json
 import math
+from time import monotonic
 from typing import TYPE_CHECKING, Any, Callable, Generator, Mapping, NotRequired, TypedDict
 
 import numpy as np
@@ -85,6 +86,7 @@ class FilmSynthesisRequest:
     structure_search_seed: int = 0
     strict_lower_bound_objective_indices: tuple[int, ...] = ()
     ar_structure_mode: str = "clustered"
+    max_seconds: float | None = None
 
 
 @dataclass(frozen=True)
@@ -222,7 +224,8 @@ def _validated(request):
     if request.max_layers is not None and request.max_layers > MAX_LAYERS:
         raise ValueError(f"max_layers exceeds the design schema resource limit {MAX_LAYERS}")
     numeric = {}
-    for name in ("minimum_nonzero_thickness_nm", "max_layer_thickness_nm", "max_total_thickness_nm"):
+    for name in ("minimum_nonzero_thickness_nm", "max_layer_thickness_nm", "max_total_thickness_nm",
+                 "max_seconds"):
         value = getattr(request, name)
         if value is not None:
             numeric[name] = _number(value, name)
@@ -465,6 +468,23 @@ class _Stopped(Exception):
     pass
 
 
+class _SynthesisStopEvent:
+    """Share one cooperative wall/caller stop signal with all owned work."""
+
+    def __init__(self, caller_event: Any, deadline: float | None):
+        self.caller_event = caller_event
+        self.deadline = deadline
+
+    def caller_cancelled(self) -> bool:
+        return self.caller_event is not None and bool(self.caller_event.is_set())
+
+    def time_limit_reached(self) -> bool:
+        return self.deadline is not None and monotonic() >= self.deadline
+
+    def is_set(self) -> bool:
+        return self.caller_cancelled() or self.time_limit_reached()
+
+
 def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cancel_event: Any = None,
                            progress_callback: Callable[[FilmSynthesisProgress], None] | None = None,
                            snapshot_callback: Callable[[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]], None] | None = None) -> FilmSynthesisResult:
@@ -483,7 +503,11 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
     is attached only when it belongs to that exact candidate; no audit starts
     to make the cancellation candidate available.
     """
+    started = monotonic()
     request = _validated(request)
+    stop_event = _SynthesisStopEvent(cancel_event,
+        None if request.max_seconds is None else started + request.max_seconds)
+    cancel_event = stop_event
     from .film_synthesis_global import reflector_objectives
     automatic_reflector_route = not request.seed_designs and bool(reflector_objectives(request))
     from .film_synthesis_matching import matching_objectives
@@ -566,14 +590,23 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
     def feasible(design):
         return _feasible(request, design)
 
+    def check_training_admission():
+        # Apply the same remaining logical budget before lazy preparation as
+        # before physical scoring; keep one existing slot for independent audit.
+        _check_cancel(cancel_event)
+        if request.max_evaluations is not None and evaluations >= request.max_evaluations - 1:
+            raise _Stopped("evaluation_limit")
+
     def evaluate(design, *, jacobian=False, zero_ids=(), holdout=False, outcome=None, gpu_forward=False):
         nonlocal evaluations, validation_evaluations, failures
         nonlocal audit_physical_evaluations, audit_wavelength_points
         nonlocal completed_training_best, completed_training_validation, fully_scored_evaluations
-        _check_cancel(cancel_event)
-        limit = request.max_evaluations
-        if limit is not None and evaluations >= limit - (0 if holdout else 1):
-            raise _Stopped("evaluation_limit")
+        if holdout:
+            _check_cancel(cancel_event)
+            if request.max_evaluations is not None and evaluations >= request.max_evaluations:
+                raise _Stopped("evaluation_limit")
+        else:
+            check_training_admission()
         evaluations += 1
         if holdout:
             validation_evaluations += 1
@@ -672,6 +705,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
     def audit_archive(value):
         nonlocal audited_best, completed_training_validation
         signature = hashlib.sha256(json.dumps(value["design"], sort_keys=True, allow_nan=False).encode("utf-8")).digest()
+        _check_cancel(cancel_event)
         if signature in audited_signatures:
             return
         emit("validation", "Audit dense, offset and local-extremum physical responses", value["design"], value["score"])
@@ -737,7 +771,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         if forward is not None and value["design"]["front_layers"] and value.get("gradient_by_layer_id") is None:
             # The same already scored candidate gets analytic CPU derivatives;
             # it is not a new logical candidate or a finite-difference step.
-            _check_cancel(cancel_event)
+            check_training_admission()
             task = EvaluationTask(value["design"], True)
             forward.refresh_attempts += 1
             value = execution.serial(lambda: evaluate_frozen_structure_candidate(_proxy(request), task.design,
@@ -760,7 +794,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         step = 0.25
         local_trials = 0
         while True:
-            _check_cancel(cancel_event)
+            check_training_admission()
             if max_steps is not None and local_trials >= max_steps:
                 emit("local_quantum_complete", f"Completed {local_trials} local trial scheduling quantum; continue global/structural search", value["design"], value["score"])
                 return value
@@ -826,12 +860,13 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         return value
 
     def interior_refine(value):
+        check_training_admission()
         from .film_synthesis_refinement import refine_synthesis_candidate
         def local_progress(stage, candidate, details):
             emit(stage, json.dumps(details, sort_keys=True), candidate["design"], candidate["score"])
         refined, details = refine_synthesis_candidate(request, value,
             evaluate=evaluate, archive=archive, quarter_nm=quarter,
-            cancel_check=lambda: _check_cancel(cancel_event), progress=local_progress,
+            cancel_check=check_training_admission, progress=local_progress,
             max_iterations=64)
         search_diagnostics["local_refinement"].append(details)
         emit("interior_local_complete", json.dumps(details, sort_keys=True), refined["design"], refined["score"])
@@ -846,6 +881,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         current = value
         for layer in tuple(value["design"]["front_layers"]):
             for ref in request.candidate_materials:
+                check_training_admission()
                 old_pair = (layer["material_id"], layer["optical_set_id"])
                 new_pair = (ref.material_id, ref.optical_set_id)
                 if old_pair == new_pair:
@@ -886,6 +922,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
 
     try:
         try:
+            _check_cancel(cancel_event)
             emit("freezing", "冻结目标、基片和显式膜材")
             request = freeze_film_synthesis_request(service, request, cancel_event=cancel_event)
             snapshot = request.frozen_material_snapshot
@@ -983,6 +1020,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 emit(event["stage"], json.dumps(event, sort_keys=True))
 
             def scan_structural_proposals(epoch=0):
+                check_training_admission()
                 # A bounded parent-owned chunk limits prepared designs and
                 # speculative physical work. Keep only one complete best per
                 # family, rather than retaining every full evaluated design.
@@ -995,7 +1033,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     if has_bandpass:
                         if cavity_stream[0] is None:
                             cavity_stream[0] = iter_bandpass_proposals(request, epoch=epoch,
-                                cancel_check=lambda: _check_cancel(cancel_event), report=structural_report)
+                                cancel_check=check_training_admission, report=structural_report)
                             cavity_stream_epoch[0] = epoch
                         count = 0
                         try:
@@ -1022,11 +1060,11 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         ar_epoch = max(0, epoch - (0 if automatic_cluster_route else 1))
                         if matching_stream[0] is None:
                             matching_stream[0] = iter_matching_proposals(request, epoch=ar_epoch,
-                                cancel_check=lambda: _check_cancel(cancel_event), report=structural_report)
+                                cancel_check=check_training_admission, report=structural_report)
                             matching_stream_epoch[0] = ar_epoch
                         if automatic_cluster_route and cluster_stream[0] is None:
                             cluster_stream[0] = iter_ar_cluster_proposals(request, epoch=ar_epoch,
-                                cancel_check=lambda: _check_cancel(cancel_event), report=structural_report)
+                                cancel_check=check_training_admission, report=structural_report)
                             cluster_stream_epoch[0] = ar_epoch
                         streams = [matching_stream, cluster_stream] if automatic_cluster_route else [matching_stream]
                         counts = [0] * len(streams)
@@ -1058,7 +1096,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                                     noncluster_control_retained=True,
                                     policy="round-robin persistent noncluster/cluster iterators; initial global screening")
                     yield from iter_reflector_proposals(request, epoch=epoch,
-                        cancel_check=lambda: _check_cancel(cancel_event), report=structural_report)
+                        cancel_check=check_training_admission, report=structural_report)
                 proposals = merged_proposals()
                 keepers: dict[object, tuple[Mapping[str, Any], Mapping[str, Any]]] = {}
                 sample_points = sum(o.wavelength_samples * len(o.angles_deg) for o in request.objectives)
@@ -1075,7 +1113,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         emit("structure_targets_verified", "Structural prior passed physical audit; thickness global search not needed", value["design"], value["score"])
                 try:
                     while not targets_verified():
-                        _check_cancel(cancel_event)
+                        check_training_admission()
                         remaining = None if request.max_evaluations is None else request.max_evaluations - evaluations - 1
                         if remaining is not None and remaining <= 0:
                             raise _Stopped("evaluation_limit")
@@ -1118,12 +1156,14 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             def global_epoch(selected, epoch):
                 if not selected or targets_verified():
                     return selected
+                check_training_admission()
                 explored_values = []
                 next_selected = []
                 for seed_value, metadata in selected:
                     if targets_verified():
                         break
                     for parameterization in ("structure", "thickness"):
+                        check_training_admission()
                         ds = np.array([r["thickness"]["value"] for r in seed_value["design"]["front_layers"]])
                         expansion = 1 + .25 * epoch
                         lower = np.maximum(ds * .35 / expansion, request.minimum_nonzero_thickness_nm or np.finfo(float).tiny)
@@ -1184,11 +1224,12 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         evolution = DifferentialEvolutionProposals(initial, lower, upper, seed=request.structure_search_seed + epoch, population_size=population_size)
                         global_best = seed_value
                         for generation in range(5):
-                            _check_cancel(cancel_event)
+                            check_training_admission()
                             points = evolution.proposals()
                             tasks = []
                             losses = np.full(len(points), np.inf)
                             for index, point in enumerate(points):
+                                check_training_admission()
                                 if parameterization == "structure":
                                     if metadata["family"] == "ar_cluster":
                                         trial = ar_cluster_design(seed_value["design"], point, metadata)
@@ -1316,6 +1357,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 def needle_tasks(sites=sites, design=design, cycle=cycle, maximum_layers=maximum_layers):
                     for index, site in enumerate(sites):
                         for material_index, ref in enumerate(request.candidate_materials):
+                            check_training_admission()
                             ids = _proposal_layer_ids(design,
                                 f"auto-{cycle}-{index}-{material_index}", f"split-{cycle}-{index}-{material_index}",
                                 reserved_ids=reserved_layer_ids)
@@ -1371,6 +1413,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                                 growth_count += len(thicknesses)
                     def growth_tasks(growth_specs=growth_specs, design=design, cycle=cycle):
                         for interface, material_index, ref, thicknesses in growth_specs:
+                            check_training_admission()
                             growth_id, split_id = _proposal_layer_ids(design,
                                 f"growth-{cycle}-{interface}-{material_index}", "unused",
                                 reserved_ids=reserved_layer_ids)
@@ -1427,7 +1470,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             if search_diagnostics["global_search"]:
                 search_diagnostics["global_search"][-1]["stop_reason"] = reason
         except _StructureCancelled:
-            state, reason = "cancelled", "cancelled"
+            state, reason = (("not_found", "time_limit")
+                if stop_event.time_limit_reached() and not stop_event.caller_cancelled()
+                else ("cancelled", "cancelled"))
             if search_diagnostics["global_search"]:
                 search_diagnostics["global_search"][-1]["stop_reason"] = reason
         except (ValueError, ArithmeticError, RuntimeError) as exc:
@@ -1435,7 +1480,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             if search_diagnostics["global_search"]:
                 search_diagnostics["global_search"][-1]["stop_reason"] = reason
 
-        if best is not None and state != "cancelled":
+        # A wall deadline, like cancellation, never admits a new final audit.
+        if best is not None and state != "cancelled" and reason != "time_limit":
             try:
                 audit_archive(best)
                 if audited_best is not None:
@@ -1447,18 +1493,24 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         else:
                             reason = "validation_targets_not_met"
             except _StructureCancelled:
-                state, reason = "cancelled", "cancelled_during_validation"
-            except (ValueError, ArithmeticError, RuntimeError, _Stopped) as exc:
+                state, reason = (("not_found", "time_limit")
+                    if stop_event.time_limit_reached() and not stop_event.caller_cancelled()
+                    else ("cancelled", "cancelled_during_validation"))
+            except _Stopped as exc:
+                reason = str(exc)
+            except (ValueError, ArithmeticError, RuntimeError) as exc:
                 state, reason = "failed", f"validation_failed: {exc}"
-        if state == "cancelled":
+        if state == "cancelled" or reason == "time_limit":
             # Freeze only values already committed above. Pool shutdown may
             # collect work counters, but cannot promote any late candidate.
             best, validation = completed_training_best, completed_training_validation
             candidate_provenance = {
-                "selection": "completed_training_at_cancel" if best is not None else "none",
-                "training_complete": best is not None, "frozen_at_cancel": True,
+                "selection": ("completed_training_at_cancel" if state == "cancelled"
+                              else "completed_training_at_time_limit") if best is not None else "none",
+                "training_complete": best is not None,
                 "fully_scored_evaluations": fully_scored_evaluations,
                 "validation_matches_candidate": validation is not None}
+            candidate_provenance["frozen_at_cancel" if state == "cancelled" else "frozen_at_time_limit"] = True
         elif audited_best is not None:
             best, validation = audited_best
         execution.close()

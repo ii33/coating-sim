@@ -16,7 +16,8 @@ from coat_sim.core.film_synthesis_jobs import is_synthesis_result
 from coat_sim.core.film_synthesis_forward import validate_forward_device
 
 SYNTHESIS_DEFAULT_OPTIONS = dict.fromkeys(("max_cycles", "max_evaluations", "max_layers",
-    "minimum_nonzero_thickness_nm", "max_layer_thickness_nm", "max_total_thickness_nm"))
+    "max_seconds", "minimum_nonzero_thickness_nm", "max_layer_thickness_nm",
+    "max_total_thickness_nm"))
 
 
 def synthesis_options(values: Mapping[str, Any]) -> dict[str, Any]:

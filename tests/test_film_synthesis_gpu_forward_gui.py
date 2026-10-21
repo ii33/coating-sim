@@ -233,18 +233,25 @@ def test_ui_cpu_two_worker_setting_reaches_real_typed_job_and_history(app, tmp_p
         assert controller._synthesis_forward_backend == "cpu"
         assert not controller._active_configuration_error()
 
+        unbounded_request = freeze_film_synthesis_request(service, controller._build_synthesis_request())
+        assert unbounded_request.max_evaluations is None
+        # This checks real worker routing, accounting and history, not optical
+        # convergence. Keep its full physical request but explicitly fund one
+        # complete four-candidate process batch, plus baseline and audit work.
+        assert controller.setSynthesisOption("max_evaluations", 8)
         request = freeze_film_synthesis_request(service, controller._build_synthesis_request())
         assert request.cpu_workers == 2
         assert request.objectives[0].wavelength_samples == 4001
         assert len(request.objectives[0].angles_deg) == 3
         assert len(request.candidate_materials) == 6
-        assert request.max_evaluations is None
+        assert request.max_evaluations == 8
         from coat_sim.core.film_synthesis_io import film_synthesis_request_to_payload
         request_payload = film_synthesis_request_to_payload("ui-two-worker-real", request)
         parameters = canonical_parameters(None, {"payload": request_payload})
         job = build_job_payload(parameters)
         _, queued_request, _ = deserialize_job_payload(job)
         assert queued_request.cpu_workers == 2
+        assert queued_request.max_evaluations == 8
 
         reports = []
         result = execute_job({"payload": job}, threading.Event(),
@@ -257,10 +264,27 @@ def test_ui_cpu_two_worker_setting_reaches_real_typed_job_and_history(app, tmp_p
                 "training_evaluator_invocations", "training_physical_evaluations")}
         assert performance["effective_workers"] == 2
         assert len(performance["worker_pids"]) == 2
+        assert performance["parallel_batches"] > 0
+        assert performance["submitted_tasks"] > 0
+        assert any(row["phase"] == "structure" and row["parallel_selected"]
+                   and row["budget_allows"] and row["candidate_count"] == 4
+                   for row in performance["batch_decisions"])
+        assert result["result"]["evaluations"] <= 8
         assert performance["cleanup_complete"] is True
         assert performance["submitted_tasks"] == performance["completed_tasks"]
         assert performance["completed_tasks"] == performance["consumed_tasks"]
         assert performance["unknown_tasks"] == 0
+        print("two-worker budget evidence:", json.dumps({
+            "evaluation_budget": request.max_evaluations,
+            "logical_evaluations": result["result"]["evaluations"],
+            "parallel_batches": performance["parallel_batches"],
+            "worker_pids": performance["worker_pids"],
+            "submitted_tasks": performance["submitted_tasks"],
+            "completed_tasks": performance["completed_tasks"],
+            "consumed_tasks": performance["consumed_tasks"],
+            "unknown_tasks": performance["unknown_tasks"],
+            "cleanup_complete": performance["cleanup_complete"],
+        }, sort_keys=True))
 
         controller._synthesis_payload = result
         summary = controller.synthesisExecutionSummary

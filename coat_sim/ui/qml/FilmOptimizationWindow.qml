@@ -1281,6 +1281,7 @@ AppWindow {
                                         model: [
                                             {key: "max_cycles", label: "最大轮次"},
                                             {key: "max_evaluations", label: "最大候选评价次数"},
+                                            {key: "max_seconds", label: "最长计算时间（秒）"},
                                             {key: "max_layers", label: "最大层数"},
                                             {key: "minimum_nonzero_thickness_nm", label: "最小非零层厚 nm"},
                                             {key: "max_layer_thickness_nm", label: "最大单层厚 nm"},

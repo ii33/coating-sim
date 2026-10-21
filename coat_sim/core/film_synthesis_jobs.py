@@ -264,6 +264,14 @@ def validate_checkpoint(value: Mapping[str, Any], *, terminal_state="cancelled")
 
 
 def _validate_completed_cancel_candidate(value: Mapping[str, Any]) -> None:
+    _validate_completed_training_candidate(value, time_limited=False)
+
+
+def _validate_completed_time_limit_candidate(value: Mapping[str, Any]) -> None:
+    _validate_completed_training_candidate(value, time_limited=True)
+
+
+def _validate_completed_training_candidate(value: Mapping[str, Any], *, time_limited: bool) -> None:
     """Check saved conditions/constraints only; never run TMM or an audit.
 
     This validates an explicitly parent-committed worker result, not an
@@ -278,11 +286,15 @@ def _validate_completed_cancel_candidate(value: Mapping[str, Any]) -> None:
 
     result = value["result"]
     provenance = result["candidate_provenance"]
-    if (set(provenance) != {"selection", "training_complete", "frozen_at_cancel",
+    frozen_flag = "frozen_at_time_limit" if time_limited else "frozen_at_cancel"
+    selection = "completed_training_at_time_limit" if time_limited else "completed_training_at_cancel"
+    state = "not_found" if time_limited else "cancelled"
+    if (set(provenance) != {"selection", "training_complete", frozen_flag,
             "fully_scored_evaluations", "validation_matches_candidate"}
-            or result["state"] != "cancelled" or result["targets_met"] is not False
-            or provenance["selection"] != "completed_training_at_cancel"
-            or provenance["training_complete"] is not True or provenance["frozen_at_cancel"] is not True
+            or result["state"] != state or result["targets_met"] is not False
+            or (time_limited and result["termination_reason"] != "time_limit")
+            or provenance["selection"] != selection
+            or provenance["training_complete"] is not True or provenance[frozen_flag] is not True
             or type(provenance["fully_scored_evaluations"]) is not int
             or provenance["fully_scored_evaluations"] < 1
             or type(provenance["validation_matches_candidate"]) is not bool):
@@ -290,6 +302,8 @@ def _validate_completed_cancel_candidate(value: Mapping[str, Any]) -> None:
     _, request, _ = film_synthesis_request_from_payload({
         "schema_version": SCHEMA_VERSION, "kind": "coat_sim.film_synthesis_request",
         "request_id": value["request_id"], "request": result["frozen_request"], "physical_structures": []})
+    if time_limited and request.max_seconds is None:
+        raise ValueError("time-limit candidate requires an explicit frozen max_seconds")
     if request.frozen_material_snapshot is None:
         raise ValueError("cancel candidate requires frozen material provenance")
     snapshot = _checked_frozen_snapshot(request.frozen_material_snapshot, request.environment)
@@ -304,6 +318,14 @@ def _validate_completed_cancel_candidate(value: Mapping[str, Any]) -> None:
     if (type(result["evaluations"]) is not int
             or result["evaluations"] < provenance["fully_scored_evaluations"]):
         raise ValueError("cancel candidate complete-score count exceeds logical work")
+    if time_limited:
+        counters = [result[name] for name in ("cycles", "validation_evaluations", "failed_evaluations")]
+        if (any(type(counter) is not int or counter < 0 for counter in counters)
+                or result["validation_evaluations"] + provenance["fully_scored_evaluations"] > result["evaluations"]
+                or result["failed_evaluations"] > result["evaluations"]
+                or (request.max_evaluations is not None and result["evaluations"] > request.max_evaluations)
+                or (request.max_cycles is not None and result["cycles"] > request.max_cycles)):
+            raise ValueError("time-limit candidate counters exceed its frozen budgets")
     allowed = {(ref.material_id, ref.optical_set_id) for ref in request.candidate_materials}
     allowed.update((row["material_id"], row["optical_set_id"])
         for seed in request.seed_designs for row in seed["front_layers"])
@@ -484,6 +506,18 @@ def is_synthesis_result(value: Any) -> bool:
     if (type(result.get("validation_complete")) is not bool
             or type(result.get("targets_met")) is not bool):
         return False
+    if result.get("termination_reason") == "time_limit":
+        if (result["state"] != "not_found" or result["targets_met"] is not False
+                or "cancel_snapshot" in review):
+            return False
+        try:
+            _, timed_request, _ = film_synthesis_request_from_payload({
+                "schema_version": SCHEMA_VERSION, "kind": "coat_sim.film_synthesis_request",
+                "request_id": value["request_id"], "request": result["frozen_request"], "physical_structures": []})
+            if timed_request.max_seconds is None:
+                return False
+        except (KeyError, TypeError, ValueError, ArithmeticError):
+            return False
     candidate = result.get("candidate_design")
     if candidate is None:
         return (result.get("state") in {"not_found", "cancelled", "failed"}
@@ -497,9 +531,18 @@ def is_synthesis_result(value: Any) -> bool:
             and isinstance(review.get("per_objective"), list)):
         return False
     provenance = result.get("candidate_provenance")
+    if (result.get("termination_reason") == "time_limit"
+            and (not isinstance(provenance, Mapping)
+                 or provenance.get("selection") != "completed_training_at_time_limit")):
+        return False
     if provenance:
+        if not isinstance(provenance, Mapping):
+            return False
         try:
-            _validate_completed_cancel_candidate(value)
+            if provenance.get("selection") == "completed_training_at_time_limit":
+                _validate_completed_time_limit_candidate(value)
+            else:
+                _validate_completed_cancel_candidate(value)
         except (KeyError, TypeError, ValueError, ArithmeticError, StopIteration):
             return False
         return True
@@ -612,8 +655,14 @@ def execute_job(value: Mapping[str, Any], cancel_event, report, checkpoint_path,
         request_id, request, _ = film_synthesis_request_from_payload(canonical)
         result = synthesize_film_design(None, request, cancel_event=cancel_event,
                                         progress_callback=progress, snapshot_callback=checkpoint)
-        if not result.validation_complete and not (result.state == "cancelled"
-                and result.candidate_provenance.get("selection") == "completed_training_at_cancel"):
+        retained_training = (
+            result.candidate_provenance.get("training_complete") is True
+            and ((result.state == "cancelled"
+                  and result.candidate_provenance.get("selection") == "completed_training_at_cancel")
+                 or (result.state == "not_found" and result.termination_reason == "time_limit"
+                     and request.max_seconds is not None
+                     and result.candidate_provenance.get("selection") == "completed_training_at_time_limit")))
+        if not result.validation_complete and not retained_training:
             result = replace(result, candidate_design=None, targets_met=False,
                              training_score=None, validation_score=None)
         response = film_synthesis_result_to_payload(request_id, result,

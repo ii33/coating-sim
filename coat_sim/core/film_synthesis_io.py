@@ -251,8 +251,13 @@ def film_synthesis_result_to_payload(request_id: str, result: Any, *, audit: Map
             status["strict_lower_bound"] = True
             status["strict_lower_bound_met"] = strict_pass
             status["targets_met"] = status["targets_met"] and strict_pass
-    if (not audit_available and result.candidate_design is not None
-            and result.candidate_provenance.get("selection") == "completed_training_at_cancel"):
+    retained_training = (
+        (result.state == "cancelled"
+         and result.candidate_provenance.get("selection") == "completed_training_at_cancel")
+        or (result.state == "not_found" and result.termination_reason == "time_limit"
+            and frozen.max_seconds is not None
+            and result.candidate_provenance.get("selection") == "completed_training_at_time_limit"))
+    if not audit_available and result.candidate_design is not None and retained_training:
         # Present saved training evidence without claiming an independent audit.
         saved_errors = body.get("training_score", {}).get("errors", [])
         for index, objective in enumerate(objectives):
@@ -286,7 +291,8 @@ def film_synthesis_result_to_payload(request_id: str, result: Any, *, audit: Map
         "limits_nm_and_counts": {"minimum_nonzero_thickness_nm": frozen.minimum_nonzero_thickness_nm,
             "max_layer_thickness_nm": frozen.max_layer_thickness_nm,
             "max_total_thickness_nm": frozen.max_total_thickness_nm, "max_layers": frozen.max_layers,
-            "max_cycles": frozen.max_cycles, "max_evaluations": frozen.max_evaluations},
+            "max_cycles": frozen.max_cycles, "max_evaluations": frozen.max_evaluations,
+            "max_seconds": frozen.max_seconds},
         "cost": {"cycles": result.cycles, "evaluations": result.evaluations,
             "validation_evaluations": result.validation_evaluations,
             "failed_evaluations": result.failed_evaluations,

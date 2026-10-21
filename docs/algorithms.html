@@ -24,7 +24,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
   <div class="eyebrow">Optical Coating / Algorithm Atlas</div>
   <h1>光学镀膜<br>算法图解与参考来源</h1>
   <p>从独立基片、蒸发源、修正板、机器与工艺文件，到行星运动、射线通量、膜厚归一化和预计用时。本文依据当前代码写成，可离线阅读；公式描述的是本项目的计算模型。</p>
-<div class="meta"><span class="pill">版本：机器 v5 · 工艺 v7 · 源 v2；材料交换包 v1、安全导入冲突预览与原子回滚)</span><span class="pill">更新：2026-10-21（高反自动结构/全局搜索、材料谱向量复用与同预算验收、显式严格下界与跨类别冻结基准；活动光路材料校验与从零合成审计；优化目标上下限统一与角度范围显式确认；厚度编辑精度、零厚层与优化边界；冻结服务边界与单点归一化；研究证据与单层光谱反演；修正板不设数量上限、完整依赖快照与逐板遮挡；工程文件格式契约说明；优化多角网格与计算量人工顶值移除；TFCalc明文层表导入；外观逐光线精确 TMM 与独立波长 CPU 进程并行；Qt Quick 光谱极值与波长通带、场景图曲线预览；多孔厚盖、独立源采样、无固定最大网格与计算隔离；工艺环境、工作气体及零碰撞直达束；材料库、已设计源工艺选择、盖孔射线与快扫描空间分布；桌面仿真共享队列、逐批进度、无固定步数上限、100%快算默认与Å/s界面；五项上下文预算、硬限与安全压缩、后台流合并与固定设计绘图；平滑轮廓、全膜系目标选优与评分进度；凭据反馈与有界模型候选兼容探测；待决选项、模式放行、诊断未读摘要、结果队列身份修复、紧凑产物；计算量估算、后台串行队列、源板分组优化与跨段选区；完整设备回退、成功设备记忆、临时仿真资产包、可选 PDF、历史闭合与滚动高度缓存；批量膜系、物理层表导入、固定图表、工具原文归档与任务成本、视口文本增量渲染；批量工具契约、演示工作流、逐回合展示与复制、撤回确认、本地助手调试、实际生效参数快照、LPAC启动修复；容量自适应上下文、轮次关闭、插话与排队、剪贴板图片、系统语言与语气、开发访问；逐层修正板、轮廓优化、工艺快算、估时、上下文用量、请求续约、原生档位缓存、滚动跟随、二维 CAD 与加工图、模型 Token 上限、缓存命中统计、富文本与开发门禁；修正板视口设备路由、反向滚动与可选输入诊断）</span><span class="pill">单位：mm · s · rpm · nm · px；助手 Token / 字符 / 附件字节</span><span class="pill">离线单文件 HTML</span></div>
+<div class="meta"><span class="pill">版本：机器 v5 · 工艺 v7 · 源 v2；材料交换包 v1、安全导入冲突预览与原子回滚)</span><span class="pill">更新：2026-10-21（周期0显式时间/评价/取消统一预算；高反自动结构/全局搜索、材料谱向量复用与同预算验收、显式严格下界与跨类别冻结基准；活动光路材料校验与从零合成审计；优化目标上下限统一与角度范围显式确认；厚度编辑精度、零厚层与优化边界；冻结服务边界与单点归一化；研究证据与单层光谱反演；修正板不设数量上限、完整依赖快照与逐板遮挡；工程文件格式契约说明；优化多角网格与计算量人工顶值移除；TFCalc明文层表导入；外观逐光线精确 TMM 与独立波长 CPU 进程并行；Qt Quick 光谱极值与波长通带、场景图曲线预览；多孔厚盖、独立源采样、无固定最大网格与计算隔离；工艺环境、工作气体及零碰撞直达束；材料库、已设计源工艺选择、盖孔射线与快扫描空间分布；桌面仿真共享队列、逐批进度、无固定步数上限、100%快算默认与Å/s界面；五项上下文预算、硬限与安全压缩、后台流合并与固定设计绘图；平滑轮廓、全膜系目标选优与评分进度；凭据反馈与有界模型候选兼容探测；待决选项、模式放行、诊断未读摘要、结果队列身份修复、紧凑产物；计算量估算、后台串行队列、源板分组优化与跨段选区；完整设备回退、成功设备记忆、临时仿真资产包、可选 PDF、历史闭合与滚动高度缓存；批量膜系、物理层表导入、固定图表、工具原文归档与任务成本、视口文本增量渲染；批量工具契约、演示工作流、逐回合展示与复制、撤回确认、本地助手调试、实际生效参数快照、LPAC启动修复；容量自适应上下文、轮次关闭、插话与排队、剪贴板图片、系统语言与语气、开发访问；逐层修正板、轮廓优化、工艺快算、估时、上下文用量、请求续约、原生档位缓存、滚动跟随、二维 CAD 与加工图、模型 Token 上限、缓存命中统计、富文本与开发门禁；修正板视口设备路由、反向滚动与可选输入诊断）</span><span class="pill">单位：mm · s · rpm · nm · px；助手 Token / 字符 / 附件字节</span><span class="pill">离线单文件 HTML</span></div>
 <p class="source">补充更新：2026-10-05——通过服务接口执行的非 CPU 沉积仿真使用一次任务一个短生命周期计算进程；Windows 子进程关闭管道时把 WinError 109 视作 EOF，避免计算完成后误记失败。</p>
 <p class="source">cub 接口补齐更新：2026-10-05。三路径提交、材料业务工具、机器工程检查和 AI 资产导出契约；未覆盖在线模型及实机校准。</p>
 <p class="source">GUI接线更新：2026-10-20。14t从零合成与14u物理结构已进入现有优化页/参数侧栏；入口与状态边界见<a href="film-synthesis-gui-guide.md">使用指南</a>、<a href="film-synthesis-gui-stage-report-20261020.md">同源GUI验收</a>。原GUI接线无数值公式变更；后续显式未知k近似策略见<a href="#film-synthesis-unknown-k-20261020">14v</a>，默认严格且不会静默回退。</p>
@@ -66,6 +66,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#film-synthesis-parallel-20261020">14w 从零合成的有界CPU候选并行（2026-10-20）</a>
 <a href="#film-cancel-best-20261020">14x 取消时应用完整最好候选</a>
 <a href="#film-synthesis-global-20261021">14z 默认反射/谐振腔/AR匹配与全局厚度搜索（2026-10-21）</a>
+<a href="#film-synthesis-run-budgets-20261021">14ab 周期0统一运行预算（2026-10-21）</a>
 <a href="#film-synthesis-ar-clusters-20261021">14aa 真实均匀层AR簇、光学预算与云端对照（2026-10-21）</a>
 <a href="#film-synthesis-gpu-forward-20261020">14y 从零合成GPU前向分组与惰性CPU导数</a>
 <a href="#film-classic-global-20261019">14s 经典起点与固定拓扑厚度全局搜索（2026-10-19）</a>
@@ -2828,6 +2829,25 @@ return the best complete candidate with matching audit; report remaining gap</pr
 <p><strong>同入口实验与计时：</strong><code>tools/run_film_synthesis_benchmarks.py</code>复用GUI请求构造→材料冻结→持久任务序列化/解码→正式execute_job。运行前固化suite/catalog/源/请求哈希；编译与导入后、execute_job前起计墙钟，不能直接与包含导入的旧工具耗时比较。每个训练Cartesian点与审计dense/offset必备点须存在，偏振/角度/原始边界和元数据完整；当前处方须与训练和审计的物理设计匹配才计成功。首次时间只取匹配且原始边界全过的checkpoint，否则用终端时刻。Windows子进程CPU使用GetProcessTimes的kernel+user之和（FILETIME单位100ns，乘10<sup>−7</sup>为秒）；轮询仅观察自身后代，可能漏短命进程，报告为采样下界而非全部CPU或并发证明。心跳只表示存活；墙钟到期协作取消并保留最好完整解，不把额外等待当隐式预算。进程清理校验PID创建身份，避免误判复用PID。统计、采样和验收规则均是本项目约定；不是连续域证明。</p>
 <p><strong>汇总统计口径：</strong>每run按objective_index分组原始审计条件，记录min(actual)、max(actual)及各自波长/角度/偏振；R下界性能看minR，R上界看maxR，T下界看minT。另列“距最近原始边界的最小余量”，它同时考虑上下界，因此R≥.99且上界1时，最近边界点可能是最大R，不能将其冒称minR。类型和运算是本项目统计约定，最值只覆盖已保存有限审计点；成功计数仍来自全部原始条件、完整网格及处方匹配，不由汇总单点推断。</p>
 <p class="source"><strong>来源：</strong>DE方法参考<a href="https://doi.org/10.1023/A:1008202821328">Storn &amp; Price (1997)</a>；可重放种群、best1bin和并行延迟更新的公开实现说明见<a href="https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.differential_evolution.html">SciPy官方DE文档</a>；局部数值接口参考<a href="https://docs.scipy.org/doc/scipy/reference/optimize.minimize-lbfgsb.html">SciPy L-BFGS-B</a>及<a href="https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html">SLSQP官方文档</a>。本文自有提案器不是调用SciPy顶层优化器；本项目候选估计/阈值/调度与缓存安排未找到外部依据，仅为本项目实现。</p>
+</section>
+
+<section id="film-synthesis-run-budgets-20261021">
+<h2>14ab 从零合成周期0与统一运行预算</h2>
+<p class="source">2026-10-21。预算、停止优先级和测试工作量均为<strong>本项目约定</strong>，未找到外部依据，仅为本项目实现；不是算法效率或物理可达性证明。本节与<a href="film-auto-synthesis-contract.md">核心契约</a>、<a href="film-synthesis-execution-contract.md">执行契约</a>共同说明边界。</p>
+<p><strong>用途与输入输出：</strong>输入为冻结的 <code>FilmSynthesisRequest</code>、可选取消事件、可空的 <code>max_seconds</code> 与 <code>max_evaluations</code>；输出仍为同一 <code>FilmSynthesisResult</code>，明确区分正常达标、评价耗尽、时间耗尽和用户取消。周期0包含材料与相位准备、自动结构提案、局部精修与初次全局种群，不因 <code>max_cycles=1</code> 被全部跳过。</p>
+<p><strong>坐标、单位与默认：</strong>物理层序、nm/角度/R-T单位沿用14t，不改变TMM。运行时间为单调时钟差，单位秒，非CPU时间；<code>max_seconds=None</code>、<code>max_evaluations=None</code> 仍无调用方上限；有限时间须为正有限实数。<code>max_cycles</code> 保持外层迭代含义，不能折算为秒、候选数或层数。</p>
+<div class="formula">deadline = monotonic(t_enter) + max_seconds<br>training admission: N &lt; B − 1；audit admission: N &lt; B<br>stop = caller_cancelled OR monotonic(now) ≥ deadline；None 项不参与限制</div>
+<p>逻辑评价计数N包含基线、零针、候选、精修和一次完整审计；B为显式 <code>max_evaluations</code>。内部波长分块、审计物理调用和worker投机工作继续分别计数，预算不被改称严格物理调用总量。完整并行批仅在剩余额度足够时提交，结果按原顺序由父进程接收；预算或停止后不能提升未消费的投机结果。</p>
+<div class="figure"><svg viewBox="0 0 900 230" role="img" aria-label="同一预算闸门覆盖周期0和后续搜索；停止后仅收束并保留已完整提交结果">
+<defs><marker id="budget-arrow-20261021" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="none" stroke="#276c67"/></marker></defs>
+<g fill="#eef7f5" stroke="#276c67"><rect x="12" y="50" width="145" height="68" rx="8"/><rect x="207" y="50" width="190" height="68" rx="8"/><rect x="455" y="50" width="190" height="68" rx="8"/><rect x="703" y="50" width="185" height="68" rx="8"/><rect x="250" y="164" width="390" height="48" rx="8"/></g>
+<g class="svgtext" text-anchor="middle"><text x="84" y="78">调用进入</text><text x="84" y="100">建立单调截止时间</text><text x="302" y="78">统一停止 / 评价闸门</text><text x="302" y="100">取消、时间、审计保留</text><text x="550" y="78">周期0与后续搜索</text><text x="550" y="100">结构 / 全局 / 局部 / 物理</text><text x="795" y="78">父进程完整提交</text><text x="795" y="100">同处方评分与审计归属</text><text x="445" y="194">停止：不新开审计；收束自有worker，保留已提交候选</text></g>
+<g stroke="#276c67" fill="none" marker-end="url(#budget-arrow-20261021)"><path d="M157 84 H207"/><path d="M397 84 H455"/><path d="M645 84 H703"/><path d="M795 50 V18 H302 V50"/><path d="M302 118 V164"/></g></svg>
+<p class="caption">图14ab：所有阶段重复经过同一停止边界。时间限额约束新工作准入；收束、不可分割的单次本机调用和操作系统调度仍可能使返回壁钟超过限额，不承诺硬实时抢占。</p></div>
+<p><strong>停止与归属：</strong>取消和截止时间在材料/相位采样、惰性提案、局部步骤、物理调用和并行等待边界协作检查。时间到期为 <code>not_found/time_limit</code>，不是光学不可行结论，不借用用户取消状态触发应用。仅能返回父进程已完整提交的训练候选，以及属于该处方的既有完整审计；未完成评价不入档，截止后不新开最终审计。已写入的审计checkpoint保持原身份。</p>
+<p><strong>实现与入口：</strong><code>coat_sim/core/film_auto_synthesis.py</code> 管理运行预算、候选提交与返回；既有 <code>film_synthesis_parallel.py</code>、前向与审计核通过统一取消接口接收运行停止信号。请求的GUI适配、配置保存、冻结JSON、typed job与CLI沿同一可空时间字段路由，不给旧请求插入有限默认。</p>
+<p><strong>定向验收边界：</strong>两进程GUI契约测试保留4001波长×3角度、6材料及真实两worker、提交/消费/清理/历史记录断言；先验证默认不限评估，再显式设置8次逻辑评价预算，覆盖完整四候选结构并行批。此测试验证预算与并行接线，不证明其99.9999%宽带高反目标达标。光学质量、达标率与时间的同预算大规模对照另行在云端执行，不能把减少测试工作量称为求解器加速。</p>
+<p><strong>来源：</strong><a href="https://docs.python.org/3.12/library/time.html#time.monotonic">Python 3.12 官方 time.monotonic 文档</a>仅支持单调计时性质；预算策略、审计预留、检查位置及测试的8次额度是本项目约定，未找到外部效率依据。</p>
 </section>
 
 <section id="film-synthesis-ar-clusters-20261021">

@@ -1,6 +1,6 @@
 # 自动膜系合成核心契约
 
-日期：2026-10-20。当前真值为 `coat_sim/core/film_auto_synthesis.py` 类型与签名。图解、公式、默认与来源见 [14t](algorithms.html#film-synthesis-audit-20261020)；独审见[审计契约](film-synthesis-audit-contract.md)；可组合起点见[物理结构契约](film-physical-structures-contract.md)；统一JSON、CLI与助手准备边界见[执行契约](film-synthesis-execution-contract.md)。2026-10-19报告仅作此前阶段记录，不代替当前文件和测试。
+日期：2026-10-21。当前真值为 `coat_sim/core/film_auto_synthesis.py` 类型与签名。图解、公式、默认与来源见 [14t](algorithms.html#film-synthesis-audit-20261020)；独审见[审计契约](film-synthesis-audit-contract.md)；可组合起点见[物理结构契约](film-physical-structures-contract.md)；统一JSON、CLI与助手准备边界见[执行契约](film-synthesis-execution-contract.md)。2026-10-19报告仅作此前阶段记录，不代替当前文件和测试。
 
 ## 输入、物理边界与唯一状态所有者
 
@@ -39,3 +39,11 @@
 ## 验证边界
 
 有限密网格、错位点和局部极值复核不是连续证书，continuous_certificate=false；仍使用同一物理内核，不是独立实验或独立求解器证明。离散谱线不扩为窗口，只验证规定角度/偏振。研究两轮的KKT正交评分、额外相位辅助与复响应多样性没有稳定优势，未包装为新验证算法。阶段证据和未达到目标的差距见2026-10-20阶段记录；无生产工艺、实机校准、量产良率或商业软件排名结论。
+
+## Cycle-0 unified explicit budgets (2026-10-21)
+
+`max_cycles` counts outer search iterations; it does not disable the initial structural priors/global stage or mean one candidate evaluation. `max_evaluations` remains the parent-owned logical evaluation count, including audit; training admission reserves one audit slot. Complete worker batches require sufficient remaining slots; speculative physical work retains separate consumed/discarded/unknown accounting.
+
+`max_seconds` is optional, positive and finite, measured in seconds with a monotonic clock from entry into the core synthesis call. `None` remains unlimited, including old JSON/configuration defaults. The same cooperative stop signal covers cycle-0 freezing/phase preparation, proposal generation, local/global search, physical chunks, and parent worker startup/waits. Queue/adaptor preparation before core entry is outside this search clock. Indivisible calls and owned-worker cleanup may exceed the deadline; this is not hard real-time preemption.
+
+An expired time budget yields `not_found` / `time_limit`, not a user cancellation or infeasibility certificate. No new final audit starts after expiry. Retain only a complete parent-committed training candidate and an already complete audit of that exact design; never promote late/unconsumed worker outcomes. Explicit cancellation keeps its established semantics. See [algorithm 14ab](algorithms.html#film-synthesis-run-budgets-20261021).
