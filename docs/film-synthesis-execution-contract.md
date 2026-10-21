@@ -1,6 +1,6 @@
 # Film synthesis execution contract
 
-Updated: 2026-10-20
+Updated: 2026-10-21
 
 ## Purpose and boundary
 
@@ -12,7 +12,15 @@ The wire format is versioned JSON (`schema_version: 1`). Request parsing and val
 
 A request contains `schema_version`, `kind`, `request_id`, `request`, and `physical_structures`. The request object matches frozen `FilmSynthesisRequest`: a bare substrate `environment`, target `objectives`, explicitly selected `candidate_materials`, optional `seed_designs` containing real layer sequences, and optional physical constraints and budgets. `physical_structures` is an array of strict physical-structure spec mappings; each is expanded using the same frozen material snapshot and becomes another seed design. `null`/omitted cycle and evaluation budgets mean no caller-imposed limit; the adapter must never insert a small default. The environment remains a bare substrate. Each seed design is validated by the core against the same environment, material snapshot, and objective/constraint contract.
 
+`strict_lower_bound_objective_indices` is appended to the frozen request and defaults to empty; no new GUI toggle is introduced in this phase. Typed CLI/assistant requests can opt in. The user's strict R > 0.99 benchmark explicitly selects objective 0; a GUI range R ≥ 0.99 keeps its displayed inclusive semantics. Invalid indices fail before computation.
+
 Inputs and outputs use nanometres for wavelengths, layer thicknesses, and geometric positions, and dimensionless refractive index, error, and fractions. Angles follow the existing design schema's degree convention. Input values are copied when frozen and are not mutable shared GUI state. Only a fully frozen request with its material snapshot is accepted by offline execution; the CLI does not read a live catalog.
+
+## Default automatic reflector search (2026-10-21)
+
+The GUI default bare-environment route now supplies automatic periodic/chirped/multistack and objective-derived single/coupled/matched-cavity proposals, fixed-topology thickness DE and analytic interior refinement without requiring `physical_structures` or a user prescription. `structure_search_seed` is a nonnegative integer (default 0 when absent in an old request). Explicit real seed designs keep their existing path. The core remains the unique owner of candidate budgets, ordered commits, cancellation and independent audit; proposal/refinement helpers may not perform separate uncounted physical work.
+
+`performance.search` records structural proposals/skips, global population generations/box provenance, local refinement diagnostics and consumed feasible candidates by layer count. Proposal boxes, quantum counts and layer estimates are project search conventions, not manufacturing caps or global-coverage certificates. The new automatic reflector ranking prioritizes original raw violation before cost and records zero layer penalty. Range interior guidance does not rewrite saved targets. Ordinary range bounds remain inclusive with the existing normalized tolerance, for all routes and R/T metrics. Optional `strict_lower_bound_objective_indices` (default empty tuple; JSON array) explicitly requires actual > lower_bound for every corresponding training and independent audit point, in addition to ordinary tolerance. Entries are unique non-boolean integers indexing range objectives with a lower bound. No objective is implicitly made strict merely because it requests positive R. Old payloads remain inclusive. Archive selection, cancelled best-candidate handoff, per-objective review and serialized matching-audit validation share the same strict predicate. Completed audit status is never inferred from mean loss or worker heartbeat.
 
 ## Result and progress
 
@@ -78,3 +86,49 @@ The optional typed request integer `cpu_workers` defaults to1 for omitted legacy
 ## Active user cancellation candidate handoff (2026-10-20)
 
 The new [cancel/apply contract](film-optimization-cancel-apply-contract.md) defines a complete parent-committed training candidate as distinct from an audited checkpoint. A current trusted typed cancellation reply must survive scheduler cancellation handling without fallback checkpoint replay or overwrite. No complete candidate means no automatic source change. Explicit crash/historical recovery retains its existing strict physical replay and remains outside active automatic apply. Candidate provenance, unmatched audit nulls, generation/version guards and one-shot UI application are defined by that contract; cancellation never waits for a new audit solely to make a candidate applicable.
+
+## Reproducible suite runner (2026-10-21)
+
+`tools/run_film_synthesis_benchmarks.py` consumes the pinned representative-suite-v2.1 manifest and reuses GUI `build_synthesis_request`, material freezing, durable JobSpec roundtrip and `execute_job`. References are not injected as seeds. Outputs are exclusively new directories below system Temp, with frozen request/source identities, progress/heartbeats, atomic checkpoints and terminal results. No live project or scheduler database is opened.
+
+The suite wall budget starts after compilation/import/request writes and before execute_job; old HR tooling included import, so raw times across these tools are not directly comparable. Independent runner success additionally requires complete training/dense/offset conditions, metadata, unchanged source hashes, current-candidate training/audit design matching and every original raw bound. The executor's completed state alone is insufficient. Raw quality success and valid execution/cleanup are distinct summary fields. Windows descendant CPU measurements are explicitly sampled lower bounds; no unknown work is silently treated as zero.
+
+Example: `.venv/Scripts/python.exe tools/run_film_synthesis_benchmarks.py --suite benchmarks/film_synthesis/20261021/representative-suite-v2.1.json --case ar_w_visible --seed 0 --workers 2 --output <NEW_DIRECTORY_BELOW_TEMP>`. Omit seed for frozen 0/1/2. `--preflight` compiles without optimizing; the default frozen suite budget remains 120 seconds per run, not a product default.
+
+## Finite local-search diagnostics (2026-10-21)
+
+Strict JSON remains mandatory. A retained initial best can have a lower original error than its phase-coordinate roundtrip re-evaluation by one ULP. Its guide diagnostic is computed from already cached initial responses without a new physical evaluation; missing compact-worker responses produce explicit unavailable/null diagnostics with a reason. An internal infinity sentinel may never enter checkpoints, progress or final results. Nonfinite physical actuals or Jacobians are errors and are not converted to null. This preserves original candidate identity, optical ordering and physical work accounting.
+
+
+### Coupled-cavity scheduling and refinement guide (2026-10-21)
+
+Positive transmission pass bands between positive reflection stops select generic cavity proposals from frozen q/n/k and the original objectives. No benchmark prescription, fixed wavelength or fabricated optical constant is injected. A persistent iterator consumes 512 proposals per rotation, then resumes its remaining sequence; this is scheduling granularity, never a lifetime cap. Separate topology/phase basins survive selection. Explicit manufacturing limits apply before scoring.
+
+Cavity structure DE uses one absolute log(nm) coordinate for each symmetric group (temporary asymmetric seeds are projected by their group geometric mean; the original incumbent is retained). The epoch box is ±log(8)·(epoch+1), intersected with explicit thickness limits. Population max(24,min(64,4×groups)); initial plus four mutated generations per scheduling quantum. Parent evaluation alone owns physical accounting, feasibility, archive and audit. Full-thickness DE remains distinct. Exhausted insertion branches do not terminate pending structural or continuous work, and selection never loops over an entirely blocked branch set.
+
+Range interior guidance uses min(width×0.1,max(width×0.001,8ulp(bound),acceptable_error×normalization_scale)). This changes the optimization guide only; saved bounds, ordinary inclusive/tolerant acceptance, explicit strict indices, candidate identity and physical work counts are unchanged. This project numerical convention avoids floating-point boundary stagnation under an explicitly zero acceptance tolerance. It is not a new product tolerance or manufacturing guarantee.
+
+
+### AR matching family (2026-10-21)
+
+`film_synthesis_matching.py` adds pure-reflection-ceiling/low-value AR thin buried-layer and terminal matching proposals, using real frozen material pairs and q. The helper performs no response evaluation. On the automatic no-seed route with at least two allowed materials and room for three layers, the first cycle retains ordinary growth; the second cycle starts an independent layer-count/material/profile scan. Single-material cases retain their original route. Declared strict indices and physical acceptance bounds do not change. Automatic matching ranking, like automatic reflection, prioritizes original maximum violation before legacy cost/RMS tie-breaks.
+
+The first template sweeps every material pair, layer-pair count and representative wavelength before detailed fraction grids. Explicit manufacturing minimum is used exactly; absent minimum uses a QW/16 search proposal without creating a manufacturing floor. At epoch zero, m=1..1+ceil(log2(hi/lo)); fractions 1/32..1 and terminal quarters .5/1/1.5 are project conventions, expanded later. A persistent 512-proposal quantum resumes the same iterator. Deferred and remaining matching work participate in all-growth-blocked scheduling, with closure in the owner's finally. Ordinary physical layer/total limits remain hard. No reference qualification prescription is read or injected.
+
+
+## Homogeneous-layer AR cluster integration (2026-10-21)
+
+`FilmSynthesisRequest.ar_structure_mode` is a strict string enum: `clustered` (new automatic default, including legacy payloads which omit the field) or `v23_matching` (explicit noncluster ablation). The GUI request constructor uses the dataclass default; request freezing and durable IO carry the chosen mode without reading current UI state. It changes proposal scheduling and parameter search, not target bounds, manufacturing limits, optical materials or result application. The core remains the unique budget/archive/audit/cancellation owner. No new window or system dependency is introduced.
+
+Only automatic no-seed AR requests without positive reflection objectives enter the new default. Non-QW alternating two-material and one/two/three-cluster real homogeneous-layer proposals share a persistent round-robin stage with the existing v23 matching stream. Both are evaluated by full joint TMM. The low-dimensional structure population is scored before analytic full-layer refinement; later fixed-topology thickness DE releases individual layer thicknesses. A directly audited raw solution can stop without running unnecessary DE. HR, BPF and mixed HR/AR retain their existing route, and explicit user seed designs retain their prior path. `v23_matching` preserves its original deferred first growth cycle and three-parameter structure mapping for the same-source control.
+
+Cluster parameters describe phase budgets (nm of real phase index times physical nm at a declared in-domain reference wavelength/angle), high-material optical shares, relative envelope increments and real boundary-layer thicknesses. Cluster budget allocation includes boundary contributions in its proposal total. It is a search coordinate, not a manufactured effective index or a new hard optical-thickness constraint. Only user-allowed real material references are used; a third lower-index outer layer is optional only when a distinct permitted source material qualifies. All source k/domain policies remain strict, including explicit unknown-k=0 opt-in.
+
+Parameter boxes do not guarantee feasibility of coupled internal layers. Parent feasibility checks apply to every mapped candidate before a physical call. No clipping silently alters parameters to satisfy layer/total limits. Pending cluster work participates in insertion-exhaustion decisions and all generators are closed on completion/cancellation/failure; queued results never replace the best complete candidate after cancellation. Population boxes and stage quanta are project search conventions, not total search budgets or global-optimum certificates.
+
+The portable cloud runner accepts only frozen public requests. Export uses the existing GUI constructor/freeze/JobSpec preflight; cloud runtime intentionally invokes the same pure core without Qt. Both mode runs use identical materials/targets/caps/seeds and the frozen 120-second budget. Explicit shortened smoke runs are labeled nonconfirmatory. Worst raw per-condition bounds plus independent dense/offset/extremum audit decide acceptance. Uniform-lambda and uniform-log-lambda trapezoidal means use only the fixed dense audit grid and are reported separately; extrema points never change those means. R/T summaries stay metric-specific; mixed metrics have no top-level aggregate mean. Checkpoint first-pass timing requires matching candidate/training/audit physical identities and source hashes. One-second heartbeat records mark 30/120-second progress gaps as diagnostic stalled/unresponsive states only. SIGINT and SIGTERM request cooperative cancellation; original handlers are restored.
+
+
+## Git-source execution identity (2026-10-21)
+
+The existing cloud CLI also accepts the source-owned eight-request JSON with `--repo-root` and an exact `--expect-commit`. HEAD and every declared core/dependency/request input must match committed regular blobs; UTF-8 hashes normalize CRLF to LF only. Missing/untracked, escaped, mismatched or altered inputs reject before calculation; unrelated dirty files remain untouched. Runtime reads use Git only in this research CLI, not in product core/GUI. Git SHA and canonical hashes are recorded before/after execution; target/audit/cancel/work semantics are unchanged. See [Git handoff](film-synthesis-git-handoff-20261021.md). No Library file is read.

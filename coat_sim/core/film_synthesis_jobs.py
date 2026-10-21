@@ -11,7 +11,7 @@ from typing import Any, Mapping
 from pydantic import BaseModel, ConfigDict
 
 from .film_auto_synthesis import (FilmSynthesisResult, FilmSynthesisTrace, _feasible,
-                                  _proxy, synthesize_film_design)
+                                  _proxy, strict_lower_bounds_pass, synthesize_film_design)
 from .film_optimization_structure import evaluate_frozen_structure_candidate
 from .film_synthesis_io import (
     RESULT_KIND, SCHEMA_VERSION, film_synthesis_request_from_payload,
@@ -386,7 +386,9 @@ def _validate_completed_cancel_candidate(value: Mapping[str, Any]) -> None:
                 or number(validation["max_error"]) < 0 or number(validation["weighted_rms_error"]) < 0
                 or not equal(quality["audit_max_normalized_error"], validation["max_error"])
                 or quality["targets_met"] is not (max(training["max_error"], validation["max_error"])
-                                                   <= request.acceptable_normalized_error)):
+                                                   <= request.acceptable_normalized_error
+                    and strict_lower_bounds_pass(request, training)
+                    and strict_lower_bounds_pass(request, validation))):
             raise ValueError("cancel candidate audit belongs to another design or quality")
         import numpy as np
         audit = validation.get("audit")

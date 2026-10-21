@@ -7,7 +7,7 @@ import math
 from typing import Any, Mapping, cast
 
 from .film_auto_synthesis import (FilmSynthesisRequest, _validated,
-                                  freeze_film_synthesis_request)
+                                  freeze_film_synthesis_request, strict_lower_bounds_pass)
 from .film_optimization import FilmOptimizationObjective
 from .film_optimization_needle import FilmNeedleMaterialReference, _candidate_payload_from_materials
 from .film_physical_structures import structure_spec_from_mapping, structure_spec_to_mapping
@@ -57,6 +57,10 @@ def film_synthesis_request_from_payload(payload: Mapping[str, Any], *, require_f
         data["candidate_materials"] = tuple(FilmNeedleMaterialReference(**item)
                                              for item in data["candidate_materials"])
         data["seed_designs"] = tuple(deepcopy(item) for item in data.get("seed_designs", ()))
+        strict_indices = data.get("strict_lower_bound_objective_indices", ())
+        if not isinstance(strict_indices, (tuple, list)):
+            raise ValueError("strict_lower_bound_objective_indices must be an array")
+        data["strict_lower_bound_objective_indices"] = tuple(strict_indices)
         request = _validated(FilmSynthesisRequest(**data))
     except (KeyError, TypeError, ValueError) as exc:
         raise FilmSynthesisPayloadError(f"invalid synthesis request: {exc}") from exc
@@ -214,6 +218,9 @@ def film_synthesis_result_to_payload(request_id: str, result: Any, *, audit: Map
     physical_targets_met = (training_max <= epsilon and audit_max <= epsilon
                             if audit_available and training_max is not None and epsilon is not None
                             else None)
+    if physical_targets_met is not None:
+        physical_targets_met = (physical_targets_met and strict_lower_bounds_pass(frozen, training)
+                                and strict_lower_bounds_pass(frozen, validation))
     best_candidate_audit = {
         "available": audit_available,
         "targets_met": physical_targets_met,
@@ -236,6 +243,14 @@ def film_synthesis_result_to_payload(request_id: str, result: Any, *, audit: Map
         warnings.append("The audit samples the stated domain and is not a continuous-spectrum certificate.")
     objectives = tuple(frozen.objectives)
     per_objective = deepcopy(audit_metadata.get("objective_status", []))
+    for status in per_objective:
+        index = status["objective_index"]
+        if index in frozen.strict_lower_bound_objective_indices:
+            errors = [row for row in body.get("validation_score", {}).get("errors", ()) if row["objective_index"] == index]
+            strict_pass = bool(errors) and all(row["actual"] > objectives[index].lower_bound for row in errors)
+            status["strict_lower_bound"] = True
+            status["strict_lower_bound_met"] = strict_pass
+            status["targets_met"] = status["targets_met"] and strict_pass
     if (not audit_available and result.candidate_design is not None
             and result.candidate_provenance.get("selection") == "completed_training_at_cancel"):
         # Present saved training evidence without claiming an independent audit.
@@ -253,7 +268,9 @@ def film_synthesis_result_to_payload(request_id: str, result: Any, *, audit: Map
                 "worst_wavelength_nm": worst["wavelength_nm"], "worst_angle_deg": worst["angle_deg"],
                 "worst_actual": worst["actual"], "max_normalized_error": None,
                 "training_max_normalized_error": worst["normalized_violation"],
-                "training_targets_met": worst["normalized_violation"] <= frozen.acceptable_normalized_error})
+                "training_targets_met": (worst["normalized_violation"] <= frozen.acceptable_normalized_error
+                    and (index not in frozen.strict_lower_bound_objective_indices
+                         or all(row["actual"] > objective.lower_bound for row in conditions)))})
     review = {"absorption_assumption": deepcopy(absorption), "termination": {"state": result.state, "reason": result.termination_reason},
         "targets_met": result.targets_met,
         "per_objective": per_objective,

@@ -1,0 +1,1120 @@
+{
+  "schema_version": 1,
+  "qualification_id": "film-synthesis-ar-qualification-v2-20261021",
+  "matrix_revision": "v1.1 (objectives and caps unchanged)",
+  "source_revision": "4d5071c",
+  "status": "V/W/broad references independently qualify at actual 1nm sampled audit (V conditional on unknown-k zero); ultrabroad 400-900 exploratory search did not qualify",
+  "protocol": {
+    "protocol_id": "film_synthesis_ar_reference_construction_v2_1_20261021",
+    "sha256": "73373090403b2d9fdc96655298ff757a08339a7b03672d1556b5519da117c213",
+    "script_sha256": "815c076400a01f4d9bc4e476aec38b9340b52876f8a204bd5cf7e6f90c714a9e",
+    "material_catalog_sha256": "c70ac5f83fc217e72a97e0f42a5f421c9bcc22dd2ab236ac65e22d975e97396a",
+    "reference_evidence_sha256": "d74f10c7e7f1a3dad625fe99363d096ac0a7345eb609921c40013866d3d669d6",
+    "raw_evidence_location": "local Temp only; not copied into repository",
+    "stricter_audit_protocol_sha256": "ce0f32c74165d9b9555c89e50cf1c7f027f03cf3bf054bad08dfba41d6f4a642",
+    "stricter_audit_script_sha256": "7e5802fdb3c76d4d480f0b5e749835957f360d49402ecf98bfc4d8bebdaf7ee4",
+    "stricter_audit_evidence_sha256": "b0d1178223a18c094ff4a26fb526483253ee59dece642fe066a9d3ccbd91cab2"
+  },
+  "resource_limits": {
+    "max_worker_processes": 1,
+    "math_threads": 1,
+    "process_priority": "verified_below_normal",
+    "note": "construction-only CPU time recorded per case; default seed benchmark runners remain parent-owned"
+  },
+  "training_grid": {
+    "step_nm": 5,
+    "endpoints_inclusive": true
+  },
+  "audit_method": "existing core synthesis audit; dense + shifted offset + extrema; finite model evidence only",
+  "cases": [
+    {
+      "case_id": "ar_v_visible",
+      "source_matrix_case": "ar_v_visible",
+      "qualification_status": "qualified_conditional_unknown_k_zero",
+      "reference_qualification_gate": "passed",
+      "assumptions": {
+        "incident_medium": "constant n=1.0 (air model)",
+        "substrate": {
+          "material_id": "builtin_zns_literature_20261004",
+          "optical_set_id": "ri_zns_amotchkina_nk",
+          "model": "single-sided semi-infinite optical substrate"
+        },
+        "angle_deg": 0,
+        "polarizations": [
+          "s",
+          "p"
+        ],
+        "use_k": true,
+        "assume_lossless": true,
+        "unknown_k_policy": "explicit zero only for YbF3 n-only in conditional V case; source ZnS k preserved"
+      },
+      "frozen_objectives": [
+        {
+          "wavelength_nm": [
+            540,
+            560
+          ],
+          "metric": "R",
+          "max": 0.002,
+          "inclusive": true
+        }
+      ],
+      "manufacturing_caps": {
+        "max_layers": 20,
+        "minimum_nonzero_thickness_nm": 10,
+        "max_layer_thickness_nm": 350,
+        "max_total_thickness_nm": 3000
+      },
+      "prescription": {
+        "layer_order": "substrate_outward",
+        "front_layers": [
+          {
+            "material_id": "builtin_research_YbF3_film",
+            "optical_set_id": "ri_ybf3_amotchkina_n",
+            "thickness_nm": 90.85653797204274,
+            "material_source": {
+              "source": "refractiveindex.info Amotchkina YbF3 n-only set; no k source",
+              "doi": "https://doi.org/10.1364/AO.59.000A40"
+            }
+          }
+        ],
+        "total_thickness_nm": 90.85653797204274,
+        "layer_count": 1
+      },
+      "construction": {
+        "kind": "fixed existing quarter-wave analytic candidate; no optimization in this run"
+      },
+      "independent_audit": {
+        "implementation": "coat_sim.core.film_synthesis_audit.audit_frozen_synthesis_candidate",
+        "validation_samples_multiplier": 5,
+        "dense_grid_step_nm": 1.0,
+        "offset_grid_phase_nm": 0.5,
+        "offset_grid_spacing_nm": 1.0,
+        "training_step_nm": 5,
+        "inclusive_endpoints": true,
+        "extrema_method": "core bracketed bounded scalar extrema (xatol 1e-10); sampled evidence, not continuous certificate",
+        "physical_evaluations": 32,
+        "dense_points": 42,
+        "offset_points": 40,
+        "completed_extrema": 2,
+        "per_band_polarization": [
+          {
+            "band_nm": [
+              540,
+              560
+            ],
+            "polarization": "s",
+            "metric": "R",
+            "max_allowed": 0.002,
+            "worst_sampled_R": 0.0006086363502518395,
+            "worst_wavelength_nm": 540.0,
+            "worst_angle_deg": 0.0,
+            "targets_met": true
+          },
+          {
+            "band_nm": [
+              540,
+              560
+            ],
+            "polarization": "p",
+            "metric": "R",
+            "max_allowed": 0.002,
+            "worst_sampled_R": 0.0006086363502518393,
+            "worst_wavelength_nm": 540.0,
+            "worst_angle_deg": 0.0,
+            "targets_met": true
+          }
+        ],
+        "all_targets_met": true,
+        "continuous_certificate": false,
+        "evidence_sha256": "b0d1178223a18c094ff4a26fb526483253ee59dece642fe066a9d3ccbd91cab2",
+        "audit_protocol_sha256": "ce0f32c74165d9b9555c89e50cf1c7f027f03cf3bf054bad08dfba41d6f4a642",
+        "audit_script_sha256": "7e5802fdb3c76d4d480f0b5e749835957f360d49402ecf98bfc4d8bebdaf7ee4"
+      },
+      "audit_history": [
+        {
+          "run_id": "original_validation_multiplier4",
+          "validation_samples_multiplier": 4,
+          "dense_grid_step_nm_by_band": [
+            1.25
+          ],
+          "offset_grid_phase_nm_by_band": [
+            0.625
+          ],
+          "offset_grid_spacing_nm_by_band": [
+            1.25
+          ],
+          "claimed_dense_grid_step_nm_in_initial_json": 1,
+          "actual_dense_grid_step_nm_by_band": [
+            1.25
+          ],
+          "prior_reference_evidence_sha256": "d74f10c7e7f1a3dad625fe99363d096ac0a7345eb609921c40013866d3d669d6",
+          "per_band_polarization": [
+            {
+              "band_nm": [
+                540,
+                560
+              ],
+              "polarization": "s",
+              "metric": "R",
+              "max_allowed": 0.002,
+              "worst_sampled_R": 0.0006086363502518395,
+              "worst_wavelength_nm": 540.0,
+              "worst_angle_deg": 0,
+              "targets_met": true
+            },
+            {
+              "band_nm": [
+                540,
+                560
+              ],
+              "polarization": "p",
+              "metric": "R",
+              "max_allowed": 0.002,
+              "worst_sampled_R": 0.0006086363502518393,
+              "worst_wavelength_nm": 540.0,
+              "worst_angle_deg": 0,
+              "targets_met": true
+            }
+          ],
+          "physical_evaluations": 40,
+          "dense_points": 34,
+          "offset_points": 32,
+          "completed_extrema": 2,
+          "note": "Correction: the initial qualification JSON labelled this run 1 nm; with validation_samples_multiplier=4 it was actually 1.25 nm dense and 0.625 nm offset phase."
+        },
+        {
+          "run_id": "stricter_actual_1nm_grid",
+          "validation_samples_multiplier": 5,
+          "dense_grid_step_nm": 1.0,
+          "offset_grid_phase_nm": 0.5,
+          "offset_grid_spacing_nm": 1.0,
+          "reference_evidence_sha256": "b0d1178223a18c094ff4a26fb526483253ee59dece642fe066a9d3ccbd91cab2",
+          "protocol_sha256": "ce0f32c74165d9b9555c89e50cf1c7f027f03cf3bf054bad08dfba41d6f4a642",
+          "script_sha256": "7e5802fdb3c76d4d480f0b5e749835957f360d49402ecf98bfc4d8bebdaf7ee4",
+          "physical_evaluations": 32,
+          "dense_points": 42,
+          "offset_points": 40,
+          "completed_extrema": 2,
+          "per_band_polarization": [
+            {
+              "band_nm": [
+                540,
+                560
+              ],
+              "polarization": "s",
+              "metric": "R",
+              "max_allowed": 0.002,
+              "worst_sampled_R": 0.0006086363502518395,
+              "worst_wavelength_nm": 540.0,
+              "worst_angle_deg": 0.0,
+              "targets_met": true
+            },
+            {
+              "band_nm": [
+                540,
+                560
+              ],
+              "polarization": "p",
+              "metric": "R",
+              "max_allowed": 0.002,
+              "worst_sampled_R": 0.0006086363502518393,
+              "worst_wavelength_nm": 540.0,
+              "worst_angle_deg": 0.0,
+              "targets_met": true
+            }
+          ],
+          "all_targets_met": true
+        }
+      ]
+    },
+    {
+      "case_id": "ar_w_visible",
+      "source_matrix_case": "ar_w_visible",
+      "qualification_status": "qualified_true_nk",
+      "reference_qualification_gate": "passed",
+      "assumptions": {
+        "incident_medium": "constant n=1.0 (air model)",
+        "substrate": {
+          "material_id": "builtin_zns_literature_20261004",
+          "optical_set_id": "ri_zns_amotchkina_nk",
+          "model": "single-sided semi-infinite optical substrate"
+        },
+        "angle_deg": 0,
+        "polarizations": [
+          "s",
+          "p"
+        ],
+        "use_k": true,
+        "assume_lossless": false,
+        "unknown_k_policy": "strict source n and k; no unknown-k substitution"
+      },
+      "frozen_objectives": [
+        {
+          "wavelength_nm": [
+            445,
+            455
+          ],
+          "metric": "R",
+          "max": 0.005,
+          "inclusive": true
+        },
+        {
+          "wavelength_nm": [
+            645,
+            655
+          ],
+          "metric": "R",
+          "max": 0.005,
+          "inclusive": true
+        }
+      ],
+      "manufacturing_caps": {
+        "max_layers": 20,
+        "minimum_nonzero_thickness_nm": 10,
+        "max_layer_thickness_nm": 350,
+        "max_total_thickness_nm": 3000
+      },
+      "prescription": {
+        "layer_order": "substrate_outward",
+        "front_layers": [
+          {
+            "material_id": "builtin_research_MgF2_film",
+            "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+            "thickness_nm": 17.056627110899193,
+            "material_source": {
+              "source": "repository material optical set; n/k arrays sourced from Rodriguez-de Marcos",
+              "doi": "https://doi.org/10.1364/OME.7.000989"
+            }
+          },
+          {
+            "material_id": "builtin_zns_literature_20261004",
+            "optical_set_id": "ri_zns_amotchkina_nk",
+            "thickness_nm": 24.9703498959314,
+            "material_source": {
+              "source": "refractiveindex.info Amotchkina ZnS; source n and k retained; domains covering 445–655 nm",
+              "doi": "https://doi.org/10.1364/AO.59.000A40"
+            }
+          },
+          {
+            "material_id": "builtin_research_MgF2_film",
+            "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+            "thickness_nm": 101.52988038832412,
+            "material_source": {
+              "source": "repository material optical set; n/k arrays sourced from Rodriguez-de Marcos",
+              "doi": "https://doi.org/10.1364/OME.7.000989"
+            }
+          }
+        ],
+        "total_thickness_nm": 143.5568573951547,
+        "layer_count": 3
+      },
+      "construction": {
+        "kind": "deterministic bounded SLSQP reference construction only; not a default algorithm claim",
+        "optimizer_success": true,
+        "optimizer_message": "Optimization terminated successfully",
+        "nfev": 101,
+        "nit": 25,
+        "training_worst_R": 0.002761839955546435,
+        "construction_seconds": 0.06872439384460449,
+        "phase_coordinate": "d_i=q_i*550/(4 Re(n_i(550 nm)))",
+        "initial_phase_q": 0.6,
+        "layer_counts_searched": [
+          3,
+          5,
+          7
+        ],
+        "low_index_materials_searched": [
+          "ri_mgf2_rodriguez_de_marcos",
+          "ri_sio2_rodriguez_de_marcos"
+        ],
+        "high_index_material": "ri_zns_amotchkina_nk"
+      },
+      "independent_audit": {
+        "implementation": "coat_sim.core.film_synthesis_audit.audit_frozen_synthesis_candidate",
+        "validation_samples_multiplier": 5,
+        "dense_grid_step_nm": 1.0,
+        "offset_grid_phase_nm": 0.5,
+        "offset_grid_spacing_nm": 1.0,
+        "training_step_nm": 5,
+        "inclusive_endpoints": true,
+        "extrema_method": "core bracketed bounded scalar extrema (xatol 1e-10); sampled evidence, not continuous certificate",
+        "physical_evaluations": 47,
+        "dense_points": 44,
+        "offset_points": 40,
+        "completed_extrema": 2,
+        "per_band_polarization": [
+          {
+            "band_nm": [
+              445,
+              455
+            ],
+            "polarization": "s",
+            "metric": "R",
+            "max_allowed": 0.005,
+            "worst_sampled_R": 0.0017187423038927797,
+            "worst_wavelength_nm": 455.0,
+            "worst_angle_deg": 0.0,
+            "targets_met": true
+          },
+          {
+            "band_nm": [
+              445,
+              455
+            ],
+            "polarization": "p",
+            "metric": "R",
+            "max_allowed": 0.005,
+            "worst_sampled_R": 0.0017187423038927607,
+            "worst_wavelength_nm": 455.0,
+            "worst_angle_deg": 0.0,
+            "targets_met": true
+          },
+          {
+            "band_nm": [
+              645,
+              655
+            ],
+            "polarization": "s",
+            "metric": "R",
+            "max_allowed": 0.005,
+            "worst_sampled_R": 0.002761839955546421,
+            "worst_wavelength_nm": 655.0,
+            "worst_angle_deg": 0.0,
+            "targets_met": true
+          },
+          {
+            "band_nm": [
+              645,
+              655
+            ],
+            "polarization": "p",
+            "metric": "R",
+            "max_allowed": 0.005,
+            "worst_sampled_R": 0.002761839955546435,
+            "worst_wavelength_nm": 655.0,
+            "worst_angle_deg": 0.0,
+            "targets_met": true
+          }
+        ],
+        "all_targets_met": true,
+        "continuous_certificate": false,
+        "evidence_sha256": "b0d1178223a18c094ff4a26fb526483253ee59dece642fe066a9d3ccbd91cab2",
+        "audit_protocol_sha256": "ce0f32c74165d9b9555c89e50cf1c7f027f03cf3bf054bad08dfba41d6f4a642",
+        "audit_script_sha256": "7e5802fdb3c76d4d480f0b5e749835957f360d49402ecf98bfc4d8bebdaf7ee4"
+      },
+      "audit_history": [
+        {
+          "run_id": "original_validation_multiplier4",
+          "validation_samples_multiplier": 4,
+          "dense_grid_step_nm_by_band": [
+            1.25,
+            1.25
+          ],
+          "offset_grid_phase_nm_by_band": [
+            0.625,
+            0.625
+          ],
+          "offset_grid_spacing_nm_by_band": [
+            1.25,
+            1.25
+          ],
+          "claimed_dense_grid_step_nm_in_initial_json": 1,
+          "actual_dense_grid_step_nm_by_band": [
+            1.25,
+            1.25
+          ],
+          "prior_reference_evidence_sha256": "d74f10c7e7f1a3dad625fe99363d096ac0a7345eb609921c40013866d3d669d6",
+          "per_band_polarization": [
+            {
+              "band_nm": [
+                445,
+                455
+              ],
+              "polarization": "s",
+              "metric": "R",
+              "max_allowed": 0.005,
+              "worst_sampled_R": 0.0017187423038927797,
+              "worst_wavelength_nm": 455.0,
+              "worst_angle_deg": 0,
+              "targets_met": true
+            },
+            {
+              "band_nm": [
+                445,
+                455
+              ],
+              "polarization": "p",
+              "metric": "R",
+              "max_allowed": 0.005,
+              "worst_sampled_R": 0.0017187423038927607,
+              "worst_wavelength_nm": 455.0,
+              "worst_angle_deg": 0,
+              "targets_met": true
+            },
+            {
+              "band_nm": [
+                645,
+                655
+              ],
+              "polarization": "s",
+              "metric": "R",
+              "max_allowed": 0.005,
+              "worst_sampled_R": 0.002761839955546421,
+              "worst_wavelength_nm": 655.0,
+              "worst_angle_deg": 0,
+              "targets_met": true
+            },
+            {
+              "band_nm": [
+                645,
+                655
+              ],
+              "polarization": "p",
+              "metric": "R",
+              "max_allowed": 0.005,
+              "worst_sampled_R": 0.002761839955546435,
+              "worst_wavelength_nm": 655.0,
+              "worst_angle_deg": 0,
+              "targets_met": true
+            }
+          ],
+          "physical_evaluations": 41,
+          "dense_points": 36,
+          "offset_points": 32,
+          "completed_extrema": 2,
+          "note": "Correction: the initial qualification JSON labelled this run 1 nm; with validation_samples_multiplier=4 it was actually 1.25 nm dense and 0.625 nm offset phase."
+        },
+        {
+          "run_id": "stricter_actual_1nm_grid",
+          "validation_samples_multiplier": 5,
+          "dense_grid_step_nm": 1.0,
+          "offset_grid_phase_nm": 0.5,
+          "offset_grid_spacing_nm": 1.0,
+          "reference_evidence_sha256": "b0d1178223a18c094ff4a26fb526483253ee59dece642fe066a9d3ccbd91cab2",
+          "protocol_sha256": "ce0f32c74165d9b9555c89e50cf1c7f027f03cf3bf054bad08dfba41d6f4a642",
+          "script_sha256": "7e5802fdb3c76d4d480f0b5e749835957f360d49402ecf98bfc4d8bebdaf7ee4",
+          "physical_evaluations": 47,
+          "dense_points": 44,
+          "offset_points": 40,
+          "completed_extrema": 2,
+          "per_band_polarization": [
+            {
+              "band_nm": [
+                445,
+                455
+              ],
+              "polarization": "s",
+              "metric": "R",
+              "max_allowed": 0.005,
+              "worst_sampled_R": 0.0017187423038927797,
+              "worst_wavelength_nm": 455.0,
+              "worst_angle_deg": 0.0,
+              "targets_met": true
+            },
+            {
+              "band_nm": [
+                445,
+                455
+              ],
+              "polarization": "p",
+              "metric": "R",
+              "max_allowed": 0.005,
+              "worst_sampled_R": 0.0017187423038927607,
+              "worst_wavelength_nm": 455.0,
+              "worst_angle_deg": 0.0,
+              "targets_met": true
+            },
+            {
+              "band_nm": [
+                645,
+                655
+              ],
+              "polarization": "s",
+              "metric": "R",
+              "max_allowed": 0.005,
+              "worst_sampled_R": 0.002761839955546421,
+              "worst_wavelength_nm": 655.0,
+              "worst_angle_deg": 0.0,
+              "targets_met": true
+            },
+            {
+              "band_nm": [
+                645,
+                655
+              ],
+              "polarization": "p",
+              "metric": "R",
+              "max_allowed": 0.005,
+              "worst_sampled_R": 0.002761839955546435,
+              "worst_wavelength_nm": 655.0,
+              "worst_angle_deg": 0.0,
+              "targets_met": true
+            }
+          ],
+          "all_targets_met": true
+        }
+      ]
+    },
+    {
+      "case_id": "transmit_broad_visible",
+      "source_matrix_case": "transmit_broad_visible",
+      "qualification_status": "qualified_true_nk",
+      "reference_qualification_gate": "passed",
+      "assumptions": {
+        "incident_medium": "constant n=1.0 (air model)",
+        "substrate": {
+          "material_id": "builtin_zns_literature_20261004",
+          "optical_set_id": "ri_zns_amotchkina_nk",
+          "model": "single-sided semi-infinite optical substrate"
+        },
+        "angle_deg": 0,
+        "polarizations": [
+          "s",
+          "p"
+        ],
+        "use_k": true,
+        "assume_lossless": false,
+        "unknown_k_policy": "strict source n and k; no unknown-k substitution"
+      },
+      "frozen_objectives": [
+        {
+          "wavelength_nm": [
+            450,
+            650
+          ],
+          "metric": "R",
+          "max": 0.01,
+          "inclusive": true
+        }
+      ],
+      "manufacturing_caps": {
+        "max_layers": 20,
+        "minimum_nonzero_thickness_nm": 10,
+        "max_layer_thickness_nm": 350,
+        "max_total_thickness_nm": 3000
+      },
+      "prescription": {
+        "layer_order": "substrate_outward",
+        "front_layers": [
+          {
+            "material_id": "builtin_research_MgF2_film",
+            "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+            "thickness_nm": 13.405229920310719,
+            "material_source": {
+              "source": "repository material optical set; n/k arrays sourced from Rodriguez-de Marcos",
+              "doi": "https://doi.org/10.1364/OME.7.000989"
+            }
+          },
+          {
+            "material_id": "builtin_zns_literature_20261004",
+            "optical_set_id": "ri_zns_amotchkina_nk",
+            "thickness_nm": 27.33954585036279,
+            "material_source": {
+              "source": "refractiveindex.info Amotchkina ZnS; source n and k retained; domains covering 445–655 nm",
+              "doi": "https://doi.org/10.1364/AO.59.000A40"
+            }
+          },
+          {
+            "material_id": "builtin_research_MgF2_film",
+            "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+            "thickness_nm": 99.99155080336274,
+            "material_source": {
+              "source": "repository material optical set; n/k arrays sourced from Rodriguez-de Marcos",
+              "doi": "https://doi.org/10.1364/OME.7.000989"
+            }
+          }
+        ],
+        "total_thickness_nm": 140.73632657403624,
+        "layer_count": 3
+      },
+      "construction": {
+        "kind": "deterministic bounded SLSQP reference construction only; not a default algorithm claim",
+        "optimizer_success": true,
+        "optimizer_message": "Optimization terminated successfully",
+        "nfev": 124,
+        "nit": 31,
+        "training_worst_R": 0.0033592716446843858,
+        "construction_seconds": 0.18916797637939453,
+        "phase_coordinate": "d_i=q_i*550/(4 Re(n_i(550 nm)))",
+        "initial_phase_q": 0.6,
+        "layer_counts_searched": [
+          3,
+          5,
+          7
+        ],
+        "low_index_materials_searched": [
+          "ri_mgf2_rodriguez_de_marcos",
+          "ri_sio2_rodriguez_de_marcos"
+        ],
+        "high_index_material": "ri_zns_amotchkina_nk"
+      },
+      "independent_audit": {
+        "implementation": "coat_sim.core.film_synthesis_audit.audit_frozen_synthesis_candidate",
+        "validation_samples_multiplier": 5,
+        "dense_grid_step_nm": 1.0,
+        "offset_grid_phase_nm": 0.5,
+        "offset_grid_spacing_nm": 1.0,
+        "training_step_nm": 5,
+        "inclusive_endpoints": true,
+        "extrema_method": "core bracketed bounded scalar extrema (xatol 1e-10); sampled evidence, not continuous certificate",
+        "physical_evaluations": 32,
+        "dense_points": 402,
+        "offset_points": 400,
+        "completed_extrema": 2,
+        "per_band_polarization": [
+          {
+            "band_nm": [
+              450,
+              650
+            ],
+            "polarization": "s",
+            "metric": "R",
+            "max_allowed": 0.01,
+            "worst_sampled_R": 0.003359271644684384,
+            "worst_wavelength_nm": 450.0,
+            "worst_angle_deg": 0.0,
+            "targets_met": true
+          },
+          {
+            "band_nm": [
+              450,
+              650
+            ],
+            "polarization": "p",
+            "metric": "R",
+            "max_allowed": 0.01,
+            "worst_sampled_R": 0.0033592716446843858,
+            "worst_wavelength_nm": 450.0,
+            "worst_angle_deg": 0.0,
+            "targets_met": true
+          }
+        ],
+        "all_targets_met": true,
+        "continuous_certificate": false,
+        "evidence_sha256": "b0d1178223a18c094ff4a26fb526483253ee59dece642fe066a9d3ccbd91cab2",
+        "audit_protocol_sha256": "ce0f32c74165d9b9555c89e50cf1c7f027f03cf3bf054bad08dfba41d6f4a642",
+        "audit_script_sha256": "7e5802fdb3c76d4d480f0b5e749835957f360d49402ecf98bfc4d8bebdaf7ee4"
+      },
+      "audit_history": [
+        {
+          "run_id": "original_validation_multiplier4",
+          "validation_samples_multiplier": 4,
+          "dense_grid_step_nm_by_band": [
+            1.25
+          ],
+          "offset_grid_phase_nm_by_band": [
+            0.625
+          ],
+          "offset_grid_spacing_nm_by_band": [
+            1.25
+          ],
+          "claimed_dense_grid_step_nm_in_initial_json": 1,
+          "actual_dense_grid_step_nm_by_band": [
+            1.25
+          ],
+          "prior_reference_evidence_sha256": "d74f10c7e7f1a3dad625fe99363d096ac0a7345eb609921c40013866d3d669d6",
+          "per_band_polarization": [
+            {
+              "band_nm": [
+                450,
+                650
+              ],
+              "polarization": "s",
+              "metric": "R",
+              "max_allowed": 0.01,
+              "worst_sampled_R": 0.003359271644684384,
+              "worst_wavelength_nm": 450.0,
+              "worst_angle_deg": 0,
+              "targets_met": true
+            },
+            {
+              "band_nm": [
+                450,
+                650
+              ],
+              "polarization": "p",
+              "metric": "R",
+              "max_allowed": 0.01,
+              "worst_sampled_R": 0.0033592716446843858,
+              "worst_wavelength_nm": 450.0,
+              "worst_angle_deg": 0,
+              "targets_met": true
+            }
+          ],
+          "physical_evaluations": 44,
+          "dense_points": 322,
+          "offset_points": 320,
+          "completed_extrema": 2,
+          "note": "Correction: the initial qualification JSON labelled this run 1 nm; with validation_samples_multiplier=4 it was actually 1.25 nm dense and 0.625 nm offset phase."
+        },
+        {
+          "run_id": "stricter_actual_1nm_grid",
+          "validation_samples_multiplier": 5,
+          "dense_grid_step_nm": 1.0,
+          "offset_grid_phase_nm": 0.5,
+          "offset_grid_spacing_nm": 1.0,
+          "reference_evidence_sha256": "b0d1178223a18c094ff4a26fb526483253ee59dece642fe066a9d3ccbd91cab2",
+          "protocol_sha256": "ce0f32c74165d9b9555c89e50cf1c7f027f03cf3bf054bad08dfba41d6f4a642",
+          "script_sha256": "7e5802fdb3c76d4d480f0b5e749835957f360d49402ecf98bfc4d8bebdaf7ee4",
+          "physical_evaluations": 32,
+          "dense_points": 402,
+          "offset_points": 400,
+          "completed_extrema": 2,
+          "per_band_polarization": [
+            {
+              "band_nm": [
+                450,
+                650
+              ],
+              "polarization": "s",
+              "metric": "R",
+              "max_allowed": 0.01,
+              "worst_sampled_R": 0.003359271644684384,
+              "worst_wavelength_nm": 450.0,
+              "worst_angle_deg": 0.0,
+              "targets_met": true
+            },
+            {
+              "band_nm": [
+                450,
+                650
+              ],
+              "polarization": "p",
+              "metric": "R",
+              "max_allowed": 0.01,
+              "worst_sampled_R": 0.0033592716446843858,
+              "worst_wavelength_nm": 450.0,
+              "worst_angle_deg": 0.0,
+              "targets_met": true
+            }
+          ],
+          "all_targets_met": true
+        }
+      ]
+    }
+  ],
+  "exploratory_cases": [
+    {
+      "case_id": "ar_ultrabroad_400_900_exploratory",
+      "qualification_status": "candidate_failed_frozen_threshold",
+      "reference_qualification_gate": "not_passed",
+      "claim": "The frozen search did not produce a qualifying reference prescription; this exploratory candidate is not a pass and does not alter any other matrix case.",
+      "frozen_request": {
+        "wavelength_nm": [
+          400,
+          900
+        ],
+        "metric": "R",
+        "max": 0.02,
+        "step_nm": 5,
+        "inclusive": true,
+        "angle_deg": [
+          0
+        ],
+        "polarizations": [
+          "s",
+          "p"
+        ]
+      },
+      "environment": {
+        "incident_medium": {
+          "kind": "constant",
+          "n": 1.0,
+          "role": "air model"
+        },
+        "substrate": {
+          "material_id": "builtin_zns_literature_20261004",
+          "optical_set_id": "ri_zns_amotchkina_nk",
+          "model": "semi-infinite"
+        },
+        "use_k": true,
+        "assume_lossless": false
+      },
+      "material_candidates": [
+        {
+          "material_id": "builtin_research_MgF2_film",
+          "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+          "source_domain_nm_checked": [
+            400,
+            900
+          ],
+          "source_n_and_k_required": true,
+          "unknown_k_policy": "forbidden"
+        },
+        {
+          "material_id": "builtin_zns_literature_20261004",
+          "optical_set_id": "ri_zns_amotchkina_nk",
+          "source_domain_nm_checked": [
+            400,
+            900
+          ],
+          "source_n_and_k_required": true,
+          "unknown_k_policy": "forbidden"
+        },
+        {
+          "material_id": "builtin_research_SiO2_film",
+          "optical_set_id": "ri_sio2_rodriguez_de_marcos",
+          "source_domain_nm_checked": [
+            400,
+            900
+          ],
+          "source_n_and_k_required": true,
+          "unknown_k_policy": "forbidden"
+        }
+      ],
+      "manufacturing_caps": {
+        "max_layers": 32,
+        "minimum_nonzero_thickness_nm": 10,
+        "max_layer_thickness_nm": 500,
+        "max_total_thickness_nm": 5000
+      },
+      "training_grid_nm": 5,
+      "audit_grid_nm": 1,
+      "offset_phase_nm": 0.5,
+      "prescription_candidate": {
+        "layer_order": "substrate_outward",
+        "front_layers": [
+          {
+            "material_id": "builtin_research_MgF2_film",
+            "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+            "thickness_nm": 38.146884423337134
+          },
+          {
+            "material_id": "builtin_zns_literature_20261004",
+            "optical_set_id": "ri_zns_amotchkina_nk",
+            "thickness_nm": 10.000027605561746
+          },
+          {
+            "material_id": "builtin_research_MgF2_film",
+            "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+            "thickness_nm": 205.14677034109323
+          },
+          {
+            "material_id": "builtin_zns_literature_20261004",
+            "optical_set_id": "ri_zns_amotchkina_nk",
+            "thickness_nm": 200.24370834614297
+          },
+          {
+            "material_id": "builtin_research_MgF2_film",
+            "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+            "thickness_nm": 25.146099739025633
+          },
+          {
+            "material_id": "builtin_zns_literature_20261004",
+            "optical_set_id": "ri_zns_amotchkina_nk",
+            "thickness_nm": 52.395601912399584
+          },
+          {
+            "material_id": "builtin_research_MgF2_film",
+            "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+            "thickness_nm": 10.0
+          },
+          {
+            "material_id": "builtin_zns_literature_20261004",
+            "optical_set_id": "ri_zns_amotchkina_nk",
+            "thickness_nm": 426.909274133792
+          },
+          {
+            "material_id": "builtin_research_MgF2_film",
+            "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+            "thickness_nm": 100.85185556436639
+          }
+        ],
+        "layer_count": 9,
+        "total_thickness_nm": 1068.8402220657188
+      },
+      "reference_search": {
+        "protocol_sha256": "8e3865bc329f6d1799cebdc614293a0db813e3bff2d6b77910f23938d92f2b8a",
+        "search_result_sha256": "81b27717cbed2e08239512ea6ad26a8d31cfa0a3df048a920d71b79c7adee936",
+        "budget_s": 300,
+        "wall_elapsed_s": 13.06634099999792,
+        "budget_exceeded": false,
+        "global_search": "SciPy differential_evolution, seeds 0/1/2, 9-layer MgF2/ZnS architecture, 12 generations, popsize 5, total global nfev 1755; below-normal priority, one worker/math thread",
+        "global_seed_results": [
+          {
+            "seed": 0,
+            "success": false,
+            "message": "Maximum number of iterations has been exceeded.",
+            "nfev": 585,
+            "best_maxR": 0.5742773391037643,
+            "nit": 12
+          },
+          {
+            "seed": 1,
+            "success": false,
+            "message": "Maximum number of iterations has been exceeded.",
+            "nfev": 585,
+            "best_maxR": 0.6334891011751491,
+            "nit": 12
+          },
+          {
+            "seed": 2,
+            "success": false,
+            "message": "Maximum number of iterations has been exceeded.",
+            "nfev": 585,
+            "best_maxR": 0.45337940440697205,
+            "nit": 12
+          }
+        ],
+        "local_results": [
+          {
+            "source_global_seed": 2,
+            "success": false,
+            "message": "Positive directional derivative for linesearch",
+            "nfev": 370,
+            "nit": 30,
+            "maxR": 0.30847225932676964,
+            "q": [
+              0.33356221642963363,
+              0.14441162963443116,
+              1.7938348686345957,
+              2.891744041808955,
+              0.21988135834177377,
+              0.7566513370061339,
+              0.08744153591363024,
+              6.16504937940617,
+              0.8818641150287793
+            ],
+            "thickness_nm": [
+              38.146884423337134,
+              10.000027605561746,
+              205.14677034109323,
+              200.24370834614297,
+              25.146099739025633,
+              52.395601912399584,
+              10.0,
+              426.909274133792,
+              100.85185556436639
+            ]
+          },
+          {
+            "source_global_seed": 0,
+            "success": false,
+            "message": "Positive directional derivative for linesearch",
+            "nfev": 10,
+            "nit": 5,
+            "maxR": 0.5742773391037643,
+            "q": [
+              2.5166189256988374,
+              6.019701992186055,
+              0.263898715914894,
+              3.446756471831778,
+              1.4890900610891902,
+              3.6277252395788095,
+              0.3137555315879059,
+              0.14492389551156926,
+              3.2431397447982144
+            ],
+            "thickness_nm": [
+              287.80589217744415,
+              416.8444484111212,
+              30.180018358272903,
+              238.67648301746243,
+              170.29550608077474,
+              251.2079714979673,
+              35.88174982399849,
+              10.035500322861148,
+              370.8923580667205
+            ]
+          },
+          {
+            "source_global_seed": 1,
+            "success": false,
+            "message": "Positive directional derivative for linesearch",
+            "nfev": 82,
+            "nit": 10,
+            "maxR": 0.6334891007472936,
+            "q": [
+              2.199110379258697,
+              3.2232827949269924,
+              2.856963736425232,
+              6.222243218659299,
+              1.4385596308829518,
+              5.058776666071331,
+              0.14881203025534956,
+              5.684827183645862,
+              0.5593108529225624
+            ],
+            "thickness_nm": [
+              251.4949395937936,
+              223.20167019372138,
+              326.72844850840426,
+              430.86975829180045,
+              164.51673862452267,
+              350.3035485379189,
+              17.0184602432347,
+              393.65547576199117,
+              63.963978569065596
+            ]
+          }
+        ],
+        "total_nfev_including_local_and_audit": 2734,
+        "audit_implementation": "coat_sim.core.film_synthesis_audit.audit_frozen_synthesis_candidate",
+        "audit_multiplier": 5,
+        "audit_dense_grid_nm": 1,
+        "audit_offset_phase_nm": 0.5,
+        "audit_result": {
+          "all_targets_met": false,
+          "objective_status": [
+            {
+              "objective_index": 0,
+              "metric": "R",
+              "wavelength_min_nm": 400.0,
+              "wavelength_max_nm": 900.0,
+              "discrete_line": false,
+              "worst_wavelength_nm": 420.8102163660876,
+              "worst_angle_deg": 0.0,
+              "worst_actual": 0.3092574143640471,
+              "max_normalized_error": 14.462870718202353,
+              "targets_met": false
+            },
+            {
+              "objective_index": 1,
+              "metric": "R",
+              "wavelength_min_nm": 400.0,
+              "wavelength_max_nm": 900.0,
+              "discrete_line": false,
+              "worst_wavelength_nm": 420.8102162651494,
+              "worst_angle_deg": 0.0,
+              "worst_actual": 0.30925741436404697,
+              "max_normalized_error": 14.462870718202348,
+              "targets_met": false
+            }
+          ],
+          "metadata": {
+            "physical_evaluations": 362,
+            "wavelength_points": 2361,
+            "dense_points": 1002,
+            "offset_points": 1000,
+            "extra_points": 1359,
+            "unique_condition_points": 2361,
+            "bracket_count": 22,
+            "completed_extrema": 22,
+            "local_coordinate": "lambda=a+(b-a)*t; t in [0,1]",
+            "extrema_xatol": 1e-10,
+            "continuous_certificate": false,
+            "rms_measure": "fixed_dense_grid_only",
+            "absorption_assumption": {
+              "assume_unknown_k_zero": false,
+              "policy": "strict",
+              "scope": "candidate_active_materials",
+              "affected_materials": [],
+              "used_affected_materials": [],
+              "conditional_on_assumption": false,
+              "known_k_preserved": true,
+              "source_records_unchanged": true,
+              "wavelength_extrapolation": "error",
+              "measured_absorption_validated": false,
+              "claim": "Finite sampled R/T model evidence using source k; not an experimental certificate."
+            }
+          },
+          "worst_by_pol": []
+        },
+        "sources_catalog_sha256": "c70ac5f83fc217e72a97e0f42a5f421c9bcc22dd2ab236ac65e22d975e97396a",
+        "only_true_nk_candidates": true
+      }
+    }
+  ],
+  "updated_utc": "2026-10-21T02:16:55.725723+00:00"
+}

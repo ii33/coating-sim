@@ -1,0 +1,266 @@
+{
+  "note": "Qualification evidence is independent physical feasibility only; does not qualify default optimizer. Targets and caps were frozen before search. All designs stored substrate-outward; TMM formal audit uses incident-to-substrate reversal.",
+  "exploratory": [
+    {
+      "attempt_count": 3036,
+      "best_training_min_R": 0.8237731498319645,
+      "elapsed_s": 300.004008999997,
+      "qualification_conclusion": "Not qualified; search result alone does not establish physical infeasibility.",
+      "evidence": {
+        "frozen_protocol_sha256": "f17e2d3b16e1cc28e82caebc957dc7cffdec5c21d064d22552ced63c6b33073d",
+        "temp_file": "hr-broad-search-v1_1-result.json",
+        "sha256": "8626000bdeaaef252c73d666c784f86d958e437f6882d0bf8d53aa3618f5628c"
+      },
+      "formal_audited_candidates": 0,
+      "caps": {
+        "min_layer_nm": 10,
+        "max_layers": 32,
+        "max_layer_nm": 500,
+        "max_total_nm": 5000
+      },
+      "resource_limits": {
+        "workers": 1,
+        "math_threads": 1,
+        "priority": "BelowNormal"
+      },
+      "budget_s": 300,
+      "case_id": "hr_broad_400_700_zns_mgf2",
+      "status": "reference_search_not_qualified_within_budget",
+      "materials": [
+        "ZnS Amotchkina nk",
+        "MgF2 Rodriguez-de Marcos nk",
+        "SiO2 Rodriguez-de Marcos nk"
+      ],
+      "best_configuration": {
+        "parameters": [
+          400.00002588771304,
+          799.9999320729453,
+          1.4999999351571849,
+          0.9367896895253119
+        ],
+        "seed": 2,
+        "low_material": "ri_mgf2_rodriguez_de_marcos",
+        "objective_gap": 0.1562268501680355,
+        "layers": 28,
+        "pairs": 14,
+        "family": "global_de"
+      },
+      "frozen_target": "R>=0.98 over 400-700 nm at 0 and 30 deg, s and p"
+    },
+    {
+      "attempt_count": 120,
+      "caps": {
+        "max_total_nm": 12000,
+        "min_layer_nm": 10,
+        "max_layer_nm": 1000,
+        "max_layers": 64
+      },
+      "budget_s": 300,
+      "evidence": {
+        "search_script_sha256": "7b4403acb6473adcac7c6526da26a3d9478250245ca0efb42a135cb000b76e98",
+        "sha256": "f032bca0a48058a9dac5ea32ad9db23dcf3cdf681814cc5d522d91c5d6f3ca89",
+        "frozen_protocol_sha256": "ff8e85757a74a93c0964018766bb62d542a3c9bcb67e1cc3a5d84612a1253d49",
+        "temp_file": "hr-ultrabroad-search-v1-result.json"
+      },
+      "elapsed_s": 300.0039361999952,
+      "frozen_target": "R>=0.95 over 400-1000 nm at 0 and 30 deg, s and p",
+      "best_configuration": {
+        "family": "global_de_then_local",
+        "pairs": 20,
+        "parameters": [
+          404.525752690587,
+          999.996772702842,
+          1.45471321011782,
+          1.04069044374579
+        ],
+        "layers": 40,
+        "objective_gap": 0.3056689126824688,
+        "low_material": "ri_mgf2_rodriguez_de_marcos",
+        "seed": 0
+      },
+      "qualification_conclusion": "Not qualified; search result alone does not establish physical infeasibility.",
+      "status": "reference_search_not_qualified_within_budget",
+      "best_training_min_R": 0.6443310873175312,
+      "materials": [
+        "ZnS Amotchkina nk",
+        "MgF2 Rodriguez-de Marcos nk"
+      ],
+      "case_id": "hr_ultrabroad_400_1000_zns_mgf2",
+      "formal_audited_candidates": 0,
+      "resource_limits": {
+        "workers": 1,
+        "math_threads": 1,
+        "priority": "BelowNormal"
+      }
+    }
+  ],
+  "created_utc": "2026-10-21",
+  "qualification_id": "ultrabroad_qualification_v3",
+  "schema_version": 1,
+  "cases": [
+    {
+      "category": "ultrabroad_antireflection",
+      "prescription": {
+        "layers": [
+          {
+            "material_id": "builtin_research_MgF2_film",
+            "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+            "thickness_nm": 10.0
+          },
+          {
+            "material_id": "builtin_zns_literature_20261004",
+            "optical_set_id": "ri_zns_amotchkina_nk",
+            "thickness_nm": 11.682586575203254
+          },
+          {
+            "material_id": "builtin_research_MgF2_film",
+            "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+            "thickness_nm": 10.0
+          },
+          {
+            "material_id": "builtin_zns_literature_20261004",
+            "optical_set_id": "ri_zns_amotchkina_nk",
+            "thickness_nm": 10.0
+          },
+          {
+            "material_id": "builtin_research_MgF2_film",
+            "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+            "thickness_nm": 10.0
+          },
+          {
+            "material_id": "builtin_zns_literature_20261004",
+            "optical_set_id": "ri_zns_amotchkina_nk",
+            "thickness_nm": 10.000000000000009
+          },
+          {
+            "material_id": "builtin_research_MgF2_film",
+            "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+            "thickness_nm": 100.58928146845733
+          }
+        ],
+        "layer_order": "substrate_outward",
+        "total_thickness_nm": 162.2718680436606
+      },
+      "materials": [
+        {
+          "k_policy": "measured tabulated k retained; no lossless substitution",
+          "material_id": "builtin_zns_literature_20261004",
+          "role": "substrate_and_high_index_films",
+          "source": "Amotchkina et al. ZnS optical constants, catalog record",
+          "source_domain_nm": [
+            400,
+            1000
+          ],
+          "optical_set_id": "ri_zns_amotchkina_nk"
+        },
+        {
+          "k_policy": "tabulated nk retained",
+          "material_id": "builtin_research_MgF2_film",
+          "role": "low_index_films",
+          "source": "Rodriguez-de Marcos et al. MgF2 optical constants, catalog record",
+          "source_domain_nm": [
+            29.9919,
+            2001.46
+          ],
+          "optical_set_id": "ri_mgf2_rodriguez_de_marcos"
+        }
+      ],
+      "qualification": {
+        "projection_history": [
+          {
+            "worst_R": 0.02007914509,
+            "attempt": "10.01 nm projection",
+            "status": "failed",
+            "reason": "unchanged frozen threshold exceeded"
+          },
+          {
+            "attempt": "sub-10 floating-point value projected to exact 10.0 nm",
+            "status": "passed",
+            "note": "Only the numerical underflow below min was clamped to exact manufacturing bound; all remaining thicknesses unchanged. Not 10.01 nm."
+          }
+        ],
+        "training_grid_step_nm": 5.0,
+        "training_worst_R": 0.01999958957600149,
+        "formal_audit": {
+          "offset_phase_nm": 0.5,
+          "worst_by_polarization": [
+            {
+              "polarization": "s",
+              "worst_R": 0.019999589576001484,
+              "wavelength_nm": 400.0
+            },
+            {
+              "polarization": "p",
+              "worst_R": 0.01999958957600149,
+              "wavelength_nm": 400.0
+            }
+          ],
+          "offset_points": 1000,
+          "dense_points": 1002,
+          "dense_step_nm": 1.0,
+          "all_targets_met": true,
+          "extrema_count": 6
+        },
+        "evidence": {
+          "preregistration_id": "ultrabroad_AR_400_900_reference_search_v2_2",
+          "audit_request_multiplier": 5,
+          "audit_temp_path": "ultrabroad-projected-10nm-official-audit.json",
+          "audit_service": "audit_frozen_synthesis_candidate",
+          "audit_sha256": "1ed7c016f4fa98f5a5099c45f86ba4e15c6c7992154393cb847a425c91683da0",
+          "embedded_audit_sha256": "5f0879da293a69beaecd14e5d3867bffed83ee765e8e4cbe00d89940f0125ebc",
+          "preregistration_sha256": "18ed59836ade86c13a5cca4eb410f38972fc358c83b7b1cf4a3789ba5018ce37"
+        }
+      },
+      "case_id": "ar_ultrabroad_400_900_zns_mgf2_7layer",
+      "request": {
+        "substrate": {
+          "sides": "single",
+          "model": "semi_infinite",
+          "material_id": "builtin_zns_literature_20261004",
+          "optical_set_id": "ri_zns_amotchkina_nk"
+        },
+        "optical_policy": {
+          "allow_unknown_k": false,
+          "assume_lossless": false,
+          "use_k": true
+        },
+        "objectives": [
+          {
+            "wavelength_min_nm": 400.0,
+            "mode": "range",
+            "upper_bound": 0.02,
+            "angles_deg": [
+              0.0
+            ],
+            "metric": "R",
+            "polarizations": [
+              "s",
+              "p"
+            ],
+            "wavelength_max_nm": 900.0,
+            "inclusive": true
+          }
+        ],
+        "audit": {
+          "offset_grid_nm": 0.5,
+          "dense_grid_step_nm": 1.0,
+          "include_global_extrema": true
+        },
+        "training_grid_step_nm": 5.0,
+        "incident_medium": {
+          "kind": "constant",
+          "n": 1.0
+        },
+        "manufacturing_caps": {
+          "max_layer_thickness_nm": 500.0,
+          "max_layers": 32,
+          "max_total_thickness_nm": 5000.0,
+          "min_layer_thickness_nm": 10.0
+        }
+      },
+      "must_pass_qualification": null,
+      "reference_status": "qualified_reachable"
+    }
+  ],
+  "status": "qualified_ar_reference_hr_pending"
+}

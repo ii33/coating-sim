@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from coat_sim.core import film_auto_synthesis as synthesis
+from coat_sim.core import film_synthesis_global as global_search
 from coat_sim.core.film_auto_synthesis import (
     FilmSynthesisRequest, freeze_film_synthesis_request, synthesize_film_design,
 )
@@ -52,7 +53,9 @@ def setup_problem(*, upper=.005, low=520., high=580., samples=5, materials=('low
     target = FilmOptimizationObjective(low, high, samples, mode='range', upper_bound=upper)
     request = FilmSynthesisRequest(environment, (target,),
         tuple(FilmNeedleMaterialReference(m, 'nk') for m in materials),
-        max_cycles=4, max_evaluations=300)
+        # Keep analytical needle/growth counter contracts on the explicit
+        # v23 route. GUI/default-cluster behavior has separate durable tests.
+        max_cycles=4, max_evaluations=300, ar_structure_mode="v23_matching")
     return service, request
 
 
@@ -105,7 +108,10 @@ def test_exact_monochromatic_quarter_wave_and_deterministic_replay():
     assert first.validation_score['max_error'] < 1e-20
 
 
-def test_multilayer_reflector_is_synthesized_without_starting_design():
+def test_multilayer_reflector_is_synthesized_without_starting_design(monkeypatch):
+    # Keep this regression focused on the established multi-cycle needle route;
+    # the GUI-to-job test covers the separate automatic structural-prior route.
+    monkeypatch.setattr(global_search, 'iter_reflector_proposals', lambda *args, **kwargs: iter(()))
     service, request = setup_problem(materials=('low', 'high'), low=540, high=560)
     request = replace(request, objectives=(replace(request.objectives[0], upper_bound=None, lower_bound=.9),),
                       max_cycles=8, max_evaluations=1800, position_samples=1)
@@ -203,7 +209,11 @@ def test_validation_failure_cannot_be_reported_as_success(monkeypatch):
     assert result.termination_reason == 'validation_targets_not_met'
 
 
-def test_real_between_node_violation_is_caught_on_independent_dense_grid():
+def test_real_between_node_violation_is_caught_on_independent_dense_grid(monkeypatch):
+    # This regression exercises continued needle/growth after a failed audit.
+    # Default matching-family recovery has its own GUI-to-executor regression.
+    from coat_sim.core import film_synthesis_matching as matching
+    monkeypatch.setattr(matching, 'iter_matching_proposals', lambda *args, **kwargs: iter(()))
     service, request = setup_problem(upper=.05, low=450, high=700, samples=2)
     service.materials.records['glass']['optical_sets'][0]['n'] = [1.5, 3., 1.5]
     # Preserve the original leakage guarantee on the original bare candidate.

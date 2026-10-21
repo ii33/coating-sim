@@ -1,0 +1,453 @@
+{
+  "schema_version": 1,
+  "qualification_run_id": "filter-splitter-qualification-20261021-v2",
+  "status": "frozen_before_optimization",
+  "source_revision": "4d5071c26b7a5b29ee14de7d5310062648686bc5",
+  "purpose": "Added narrow, physically reachable reference cases for qualification of the synthesis search. These cases do not replace, qualify, or relax the existing broad splitter and wide bandpass cases in central qualification matrix v1.",
+  "frozen_physics": {
+    "angle_deg": [
+      0.0
+    ],
+    "polarizations": [
+      "s",
+      "p"
+    ],
+    "first_surface": "front",
+    "layer_order": "substrate_outward",
+    "incident_medium": {
+      "kind": "constant",
+      "n": 1.0,
+      "role": "mathematical air model"
+    },
+    "substrate_model": {
+      "material_id": "builtin_research_SiO2_film",
+      "optical_set_id": "ri_sio2_rodriguez_de_marcos",
+      "sides": "single",
+      "role": "semi-infinite substrate optical model using sourced deposited-film n/k",
+      "limitation": "The source is thin-film optical data used as a semi-infinite model; it is not a bulk-material measurement."
+    },
+    "films": [
+      {
+        "material_id": "builtin_zns_literature_20261004",
+        "catalog_material_id": "ZnS_film",
+        "optical_set_id": "ri_zns_amotchkina_nk",
+        "use_source_n": true,
+        "use_source_k": true,
+        "assume_lossless": false,
+        "source_domain_um": [
+          0.4,
+          1.0
+        ],
+        "source": "Amotchkina et al., Applied Optics 59, A40-A47 (2020), https://doi.org/10.1364/AO.59.000A40; refractiveindex.info dataset pinned in catalog to database commit c5c2f188e848453def5970e347399d653df2ffc2"
+      },
+      {
+        "material_id": "builtin_research_MgF2_film",
+        "catalog_material_id": "MgF2_film",
+        "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+        "use_source_n": true,
+        "use_source_k": true,
+        "assume_lossless": false,
+        "source_domain_um": [
+          0.0299919,
+          2.00146
+        ],
+        "source": "Rodríguez-de Marcos et al., Optical Materials Express 7, 989-1006 (2017), https://doi.org/10.1364/OME.7.000989; refractiveindex.info dataset pinned in catalog to database commit c5c2f188e848453def5970e347399d653df2ffc2"
+      }
+    ],
+    "caps": {
+      "max_layers": 32,
+      "min_nonzero_layer_thickness_nm": 10.0,
+      "max_layer_thickness_nm": 500.0,
+      "max_total_thickness_nm": 5000.0
+    },
+    "unknown_k_policy": "strict source-domain n/k; no unknown-k-zero opt-in",
+    "training_sampling": {
+      "ordinary_band_step_nm": 5.0,
+      "narrow_passband_max_step_nm": 0.1,
+      "include_band_endpoints": true
+    },
+    "independent_audit": {
+      "method": "audit_frozen_synthesis_candidate",
+      "ordinary_dense_step_nm": 1.0,
+      "narrow_passband_max_step_nm": 0.025,
+      "include_endpoints": true,
+      "offset_sampling": true,
+      "bracketed_power_extrema": true,
+      "certificate_scope": "sampled points and located extrema only; not a continuous-spectrum certificate",
+      "note": "For the validated 50/50 splitter request, validation_samples_multiplier=5 gives dense spacing 1.0 nm and offset spacing 0.5 nm per objective. For the BPF audit, six requested samples over the 0.5 nm pass band with multiplier=5 gives 0.02 nm dense spacing and 0.01 nm offset spacing; stopband objectives sampled every 5 nm with multiplier=5 give 1.0 nm dense spacing."
+    },
+    "qualification_execution_limits": {
+      "max_workers": 2,
+      "math_threads": 1,
+      "process_priority": "below_normal",
+      "reference_search_is_not_default-success-evidence": true
+    }
+  },
+  "cases": [
+    {
+      "case_id": "splitter_50_50_540_560_normal",
+      "objective": [
+        {
+          "wavelength_nm": [
+            540.0,
+            560.0
+          ],
+          "sampling_step_nm": 5.0,
+          "metric": "R",
+          "mode": "range",
+          "lower": 0.45,
+          "upper": 0.55,
+          "angle_deg": [
+            0.0
+          ],
+          "polarizations": [
+            "s",
+            "p"
+          ]
+        },
+        {
+          "wavelength_nm": [
+            540.0,
+            560.0
+          ],
+          "sampling_step_nm": 5.0,
+          "metric": "T",
+          "mode": "range",
+          "lower": 0.43,
+          "upper": 1.0,
+          "angle_deg": [
+            0.0
+          ],
+          "polarizations": [
+            "s",
+            "p"
+          ]
+        }
+      ],
+      "reference_search_family": "low-finesse H/L/H or equivalent multilayer splitter, full physical evaluation and independent audit",
+      "relation_to_existing_matrix": "narrow added reference only; does not satisfy or replace the existing broad 450-650 nm at 45 degree splitter target",
+      "status": "verified_reachable_reference",
+      "reference_search": {
+        "training_540_560_5nm": {
+          "T_max": 0.496180424382987,
+          "T_min": 0.491405727335507,
+          "R_max": 0.5022824778340971,
+          "R_min": 0.49712083860386685
+        },
+        "independent_audit": {
+          "all_objectives_targets_met": true,
+          "offset_points": 64,
+          "method": "audit_frozen_synthesis_candidate",
+          "continuous_spectrum_certificate": false,
+          "known_k_preserved": true,
+          "assume_unknown_k_zero": false,
+          "wavelength_points": 208,
+          "physical_evaluations": 81,
+          "dense_points": 68,
+          "bracketed_extrema": 4,
+          "validation_samples_multiplier": 5,
+          "actual_dense_step_nm": 1.0,
+          "actual_offset_step_nm": 0.5
+        },
+        "software_check": "CoatSim FilmDesignService.simulate followed by audit_frozen_synthesis_candidate",
+        "prescription": {
+          "front_layers_substrate_outward": [
+            {
+              "thickness_nm": 19.084697986293165,
+              "material_id": "builtin_zns_literature_20261004",
+              "optical_set_id": "ri_zns_amotchkina_nk"
+            },
+            {
+              "thickness_nm": 296.86009802071027,
+              "material_id": "builtin_research_MgF2_film",
+              "optical_set_id": "ri_mgf2_rodriguez_de_marcos"
+            },
+            {
+              "thickness_nm": 72.87064490589697,
+              "material_id": "builtin_zns_literature_20261004",
+              "optical_set_id": "ri_zns_amotchkina_nk"
+            },
+            {
+              "thickness_nm": 198.13750014244485,
+              "material_id": "builtin_research_MgF2_film",
+              "optical_set_id": "ri_mgf2_rodriguez_de_marcos"
+            }
+          ]
+        },
+        "method": "SciPy differential_evolution exploratory search, seed=5101, one worker, alternating ZnS/MgF2 stack, real catalog n and k"
+      }
+    },
+    {
+      "case_id": "narrow_bpf_550_center",
+      "objective": [
+        {
+          "wavelength_nm": [
+            549.75,
+            550.25
+          ],
+          "sampling_step_nm": 0.1,
+          "metric": "T",
+          "mode": "range",
+          "lower": 0.95,
+          "upper": 1.0,
+          "angle_deg": [
+            0.0
+          ],
+          "polarizations": [
+            "s",
+            "p"
+          ]
+        },
+        {
+          "wavelength_nm": [
+            500.0,
+            520.0
+          ],
+          "sampling_step_nm": 5.0,
+          "metric": "R",
+          "mode": "range",
+          "lower": 0.95,
+          "upper": 1.0,
+          "angle_deg": [
+            0.0
+          ],
+          "polarizations": [
+            "s",
+            "p"
+          ]
+        },
+        {
+          "wavelength_nm": [
+            580.0,
+            600.0
+          ],
+          "sampling_step_nm": 5.0,
+          "metric": "R",
+          "mode": "range",
+          "lower": 0.95,
+          "upper": 1.0,
+          "angle_deg": [
+            0.0
+          ],
+          "polarizations": [
+            "s",
+            "p"
+          ]
+        }
+      ],
+      "unconstrained_regions": "No objectives outside the three listed wavelength bands.",
+      "reference_search_family": "coupled-cavity or equivalent multilayer bandpass; include all passband endpoints",
+      "exploratory_candidate": {
+        "pair_count_each_side": 3,
+        "type": "symmetric quarter-wave reflectors with half-wave MgF2 cavity",
+        "T_passband_min_549_75_550_25": 0.863431953696336,
+        "status": "candidate failure only; no target relaxation and no infeasibility claim",
+        "R_stopband_min_500_520_and_580_600": 0.9717101710403788,
+        "layer_count": 13,
+        "caveat": "Exploratory direct sourced-n/k calculation; use official engine audit before qualifying."
+      },
+      "source_variants": [
+        {
+          "overrides_frozen_film_high": {
+            "assume_lossless": false,
+            "use_source_k": true,
+            "source": "Jolivet et al., Applied Surface Science 608 (2023) 155214, http://dx.doi.org/10.1016/j.apsusc.2022.155214; catalog database commit c5c2f188e848453def5970e347399d653df2ffc2",
+            "material_id": "builtin_research_TiO2_film",
+            "source_domain_nm": [
+              206.64,
+              826.56
+            ],
+            "visible_k": "catalog source reports k=0 through the visible band; this is source data, not an unknown-k-zero assumption",
+            "use_source_n": true,
+            "optical_set_id": "ri_tio2_jolivet_amorphous"
+          },
+          "retained_low_material": {
+            "assume_lossless": false,
+            "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+            "use_source_k": true,
+            "material_id": "builtin_research_MgF2_film"
+          },
+          "cavity": "TiO2 half-wave cavity is permitted search seed; all per-layer/total/layer-count caps unchanged",
+          "variant_id": "narrow_bpf_550_center_TiO2_MgF2_v2b",
+          "scope": "This source variant only applies to 500–600 nm BPF; source domain does not cover HR 850 nm case.",
+          "same_objectives_as_case_id": "narrow_bpf_550_center",
+          "exploratory_scan": {
+            "best_3pair_min_T_549_75_550_25": 0.8957213617716531,
+            "layers_at_best_3pair": 13,
+            "four_pair_min_T": 0.7274473153881257,
+            "four_pair_min_R_stopbands": 0.9972934541288996,
+            "best_2pair_min_T_549_75_550_25": 0.9422668743290609,
+            "best_2pair_min_R_stopbands": 0.9494859823379173,
+            "layers_at_best_2pair": 9,
+            "method": "one-dimensional TiO2 cavity-thickness scan using catalog complex n+ik; quarter-wave H/L reflectors at 550nm; frozen objectives unchanged",
+            "status": "no scanned quarter-wave cavity candidate meets both frozen thresholds; not a global infeasibility claim",
+            "best_3pair_cavity_thickness_nm": 112.25,
+            "best_3pair_min_R_stopbands": 0.9867943926669437,
+            "best_2pair_cavity_thickness_nm": 224.5,
+            "not_independent_engine_audit": true
+          },
+          "status": "verified_reachable_reference",
+          "qualification": {
+            "official_engine": "FilmDesignService.simulate",
+            "search_elapsed_s": 50.2,
+            "max_individual_layer_nm": 440.0398518248867,
+            "minimum_layer_nm": 61.67504224677853,
+            "global_evaluations": 10080,
+            "maximum_total_nm": 5000,
+            "global_iterations": 167,
+            "minimum_allowed_layer_nm": 10,
+            "training_response": {
+              "R_stop_580_600_min": 0.9503065100652187,
+              "R_stop_500_520_min": 0.9502228363796775,
+              "T_pass_max": 0.9524530805590475,
+              "T_pass_min": 0.9500870257364884
+            },
+            "budget_limit_s": 300,
+            "audit_counts": {
+              "bracketed_extrema": 6,
+              "completed_extrema": 6,
+              "physical_evaluations": 123,
+              "wavelength_points": 382,
+              "dense_points": 136,
+              "offset_points": 130
+            },
+            "continuous_spectrum_certificate": false,
+            "prescription_substrate_outward": [
+              {
+                "thickness_nm": 61.67504224677853,
+                "optical_set_id": "ri_tio2_jolivet_amorphous",
+                "material_id": "builtin_research_TiO2_film",
+                "material": "TiO2"
+              },
+              {
+                "thickness_nm": 93.10571517261806,
+                "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+                "material_id": "builtin_research_MgF2_film",
+                "material": "MgF2"
+              },
+              {
+                "thickness_nm": 440.0398518248867,
+                "optical_set_id": "ri_tio2_jolivet_amorphous",
+                "material_id": "builtin_research_TiO2_film",
+                "material": "TiO2"
+              },
+              {
+                "thickness_nm": 287.02992630041854,
+                "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+                "material_id": "builtin_research_MgF2_film",
+                "material": "MgF2"
+              },
+              {
+                "thickness_nm": 168.4255667010994,
+                "optical_set_id": "ri_tio2_jolivet_amorphous",
+                "material_id": "builtin_research_TiO2_film",
+                "material": "TiO2 cavity"
+              },
+              {
+                "thickness_nm": 287.02992630041854,
+                "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+                "material_id": "builtin_research_MgF2_film",
+                "material": "MgF2"
+              },
+              {
+                "thickness_nm": 440.0398518248867,
+                "optical_set_id": "ri_tio2_jolivet_amorphous",
+                "material_id": "builtin_research_TiO2_film",
+                "material": "TiO2"
+              },
+              {
+                "thickness_nm": 93.10571517261806,
+                "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+                "material_id": "builtin_research_MgF2_film",
+                "material": "MgF2"
+              },
+              {
+                "thickness_nm": 61.67504224677853,
+                "optical_set_id": "ri_tio2_jolivet_amorphous",
+                "material_id": "builtin_research_TiO2_film",
+                "material": "TiO2"
+              }
+            ],
+            "validation_samples_multiplier": 5,
+            "independent_audit": "audit_frozen_synthesis_candidate",
+            "training_grids": {
+              "stopband_step_nm": 5,
+              "passband_step_nm": 0.1
+            },
+            "total_thickness_nm": 1932.155177408467,
+            "audit_grids": {
+              "stopband_offset_step_nm": 0.5,
+              "stopband_dense_step_nm": 1.0,
+              "passband_offset_step_nm": 0.01,
+              "passband_dense_step_nm": 0.02
+            },
+            "audit_targets_met": true,
+            "audit_worst_actual": {
+              "R_stop_580_600_min": 0.9775039643507588,
+              "R_stop_500_520_min": 0.9563469704315971,
+              "T_pass_min": 0.9500870257364884
+            },
+            "assume_unknown_k_zero": false,
+            "optimizer": "SciPy differential_evolution global search (seed 5511, symmetric five-parameter stack, TiO2-center termination) plus bounded Powell local refinement",
+            "strict_source_k": true,
+            "max_layers": 9,
+            "budget_recording_note": "Authorized 300 s allowance and actual elapsed 50.2 s are documented in this result, but the allowance was not persisted in the qualification JSON before the search began. The script capped each topology at 139 s; this is a provenance limitation, not an optical target or audit limitation."
+          }
+        }
+      ],
+      "status": "verified_reachable_TiO2_MgF2_source_variant"
+    },
+    {
+      "case_id": "mixed_hr_680_720_ar_520_540",
+      "status": "frozen_not_optimized",
+      "objective": [
+        {
+          "wavelength_nm": [
+            680.0,
+            720.0
+          ],
+          "sampling_step_nm": 5.0,
+          "metric": "R",
+          "mode": "range",
+          "lower": 0.95,
+          "upper": 1.0,
+          "angle_deg": [
+            0.0
+          ],
+          "polarizations": [
+            "s",
+            "p"
+          ]
+        },
+        {
+          "wavelength_nm": [
+            520.0,
+            540.0
+          ],
+          "sampling_step_nm": 5.0,
+          "metric": "R",
+          "mode": "range",
+          "lower": 0.0,
+          "upper": 0.02,
+          "angle_deg": [
+            0.0
+          ],
+          "polarizations": [
+            "s",
+            "p"
+          ]
+        }
+      ],
+      "reference_search_family": "periodic HR plus matching AR cap or equivalent multilayer"
+    }
+  ],
+  "qualification_result": null,
+  "result_policy": "After freezing this file, optimization may add result/evidence fields only. Do not change target values, wavelengths, materials, caps, or audit grids to obtain a pass. Record any failed objective and its gap explicitly.",
+  "source_catalog": {
+    "complex_index": "n+ik; k>=0; source values retained",
+    "catalog_file": "data/optical_catalog.json",
+    "dataset_id": "sourced_optical_constants_20261006_v1",
+    "repository_commit": "c5c2f188e848453def5970e347399d653df2ffc2",
+    "wavelength_unit": "um"
+  }
+}

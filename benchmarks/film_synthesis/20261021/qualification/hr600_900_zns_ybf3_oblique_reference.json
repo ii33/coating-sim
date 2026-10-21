@@ -1,0 +1,322 @@
+{
+  "case_id": "hr_600_900_zns_ybf3_oblique",
+  "reference_status": "verified_reachable_conditional_on_explicit_unknown_k_zero",
+  "purpose": "Exploratory feasibility reference, not a default-solver acceptance run or an experimental coating measurement.",
+  "objectives": [
+    {
+      "wavelength_min_nm": 600.0,
+      "wavelength_max_nm": 900.0,
+      "wavelength_samples": 301,
+      "angles_deg": [
+        40.0,
+        50.0
+      ],
+      "polarization": "unpolarized",
+      "metric": "R",
+      "mode": "range",
+      "target_value": null,
+      "lower_bound": 0.99,
+      "upper_bound": 1.0,
+      "weight": 1.0,
+      "normalization_scale": 1.0
+    }
+  ],
+  "strict_acceptance": {
+    "metric": "R",
+    "lower_bound_exclusive": 0.99
+  },
+  "incident_medium": {
+    "kind": "material",
+    "material_id": "builtin_ideal_air",
+    "optical_set_id": "ideal_air_n1_k0"
+  },
+  "substrate": {
+    "material_id": "builtin_research_ZnS_substrate",
+    "optical_set_id": "ri_zns_debenham_n",
+    "thickness": {
+      "value": 1.0,
+      "unit": "mm"
+    },
+    "sides": "single",
+    "mode": "auto"
+  },
+  "constraints": {
+    "max_layers": null,
+    "max_layer_thickness_nm": null,
+    "max_total_thickness_nm": null,
+    "minimum_nonzero_thickness_nm": null
+  },
+  "absorption": {
+    "use_k": true,
+    "assume_unknown_k_zero": true,
+    "known_ZnS_k_retained": true
+  },
+  "layers": [
+    {
+      "material_id": "builtin_research_YbF3_film",
+      "optical_set_id": "ri_ybf3_amotchkina_n",
+      "thickness_nm": 187.34918695826886
+    },
+    {
+      "material_id": "builtin_zns_literature_20261004",
+      "optical_set_id": "ri_zns_amotchkina_nk",
+      "thickness_nm": 113.80490091215431
+    },
+    {
+      "material_id": "builtin_research_YbF3_film",
+      "optical_set_id": "ri_ybf3_amotchkina_n",
+      "thickness_nm": 164.46556119756505
+    },
+    {
+      "material_id": "builtin_zns_literature_20261004",
+      "optical_set_id": "ri_zns_amotchkina_nk",
+      "thickness_nm": 106.81878752923515
+    },
+    {
+      "material_id": "builtin_research_YbF3_film",
+      "optical_set_id": "ri_ybf3_amotchkina_n",
+      "thickness_nm": 206.23053398752884
+    },
+    {
+      "material_id": "builtin_zns_literature_20261004",
+      "optical_set_id": "ri_zns_amotchkina_nk",
+      "thickness_nm": 113.92115776901421
+    },
+    {
+      "material_id": "builtin_research_YbF3_film",
+      "optical_set_id": "ri_ybf3_amotchkina_n",
+      "thickness_nm": 176.33748663048152
+    },
+    {
+      "material_id": "builtin_zns_literature_20261004",
+      "optical_set_id": "ri_zns_amotchkina_nk",
+      "thickness_nm": 115.63665707737476
+    },
+    {
+      "material_id": "builtin_research_YbF3_film",
+      "optical_set_id": "ri_ybf3_amotchkina_n",
+      "thickness_nm": 176.47107432047463
+    },
+    {
+      "material_id": "builtin_zns_literature_20261004",
+      "optical_set_id": "ri_zns_amotchkina_nk",
+      "thickness_nm": 90.9013356061058
+    },
+    {
+      "material_id": "builtin_research_YbF3_film",
+      "optical_set_id": "ri_ybf3_amotchkina_n",
+      "thickness_nm": 161.8829093136432
+    },
+    {
+      "material_id": "builtin_zns_literature_20261004",
+      "optical_set_id": "ri_zns_amotchkina_nk",
+      "thickness_nm": 107.62100349472563
+    },
+    {
+      "material_id": "builtin_research_YbF3_film",
+      "optical_set_id": "ri_ybf3_amotchkina_n",
+      "thickness_nm": 159.83716621902582
+    },
+    {
+      "material_id": "builtin_zns_literature_20261004",
+      "optical_set_id": "ri_zns_amotchkina_nk",
+      "thickness_nm": 83.56252935981878
+    },
+    {
+      "material_id": "builtin_research_YbF3_film",
+      "optical_set_id": "ri_ybf3_amotchkina_n",
+      "thickness_nm": 144.62178023965467
+    },
+    {
+      "material_id": "builtin_zns_literature_20261004",
+      "optical_set_id": "ri_zns_amotchkina_nk",
+      "thickness_nm": 98.56052882506414
+    },
+    {
+      "material_id": "builtin_research_YbF3_film",
+      "optical_set_id": "ri_ybf3_amotchkina_n",
+      "thickness_nm": 173.1964956039068
+    },
+    {
+      "material_id": "builtin_zns_literature_20261004",
+      "optical_set_id": "ri_zns_amotchkina_nk",
+      "thickness_nm": 94.38600553229428
+    },
+    {
+      "material_id": "builtin_research_YbF3_film",
+      "optical_set_id": "ri_ybf3_amotchkina_n",
+      "thickness_nm": 143.45228873143628
+    },
+    {
+      "material_id": "builtin_zns_literature_20261004",
+      "optical_set_id": "ri_zns_amotchkina_nk",
+      "thickness_nm": 85.54059402172093
+    },
+    {
+      "material_id": "builtin_research_YbF3_film",
+      "optical_set_id": "ri_ybf3_amotchkina_n",
+      "thickness_nm": 158.6311648441111
+    },
+    {
+      "material_id": "builtin_zns_literature_20261004",
+      "optical_set_id": "ri_zns_amotchkina_nk",
+      "thickness_nm": 101.96713276329743
+    },
+    {
+      "material_id": "builtin_research_YbF3_film",
+      "optical_set_id": "ri_ybf3_amotchkina_n",
+      "thickness_nm": 161.61265674119295
+    },
+    {
+      "material_id": "builtin_zns_literature_20261004",
+      "optical_set_id": "ri_zns_amotchkina_nk",
+      "thickness_nm": 85.10762508657136
+    },
+    {
+      "material_id": "builtin_research_YbF3_film",
+      "optical_set_id": "ri_ybf3_amotchkina_n",
+      "thickness_nm": 130.44493950200632
+    },
+    {
+      "material_id": "builtin_zns_literature_20261004",
+      "optical_set_id": "ri_zns_amotchkina_nk",
+      "thickness_nm": 78.68669392008456
+    },
+    {
+      "material_id": "builtin_research_YbF3_film",
+      "optical_set_id": "ri_ybf3_amotchkina_n",
+      "thickness_nm": 146.99057279393824
+    },
+    {
+      "material_id": "builtin_zns_literature_20261004",
+      "optical_set_id": "ri_zns_amotchkina_nk",
+      "thickness_nm": 100.87434911335572
+    },
+    {
+      "material_id": "builtin_research_YbF3_film",
+      "optical_set_id": "ri_ybf3_amotchkina_n",
+      "thickness_nm": 165.90461917601658
+    },
+    {
+      "material_id": "builtin_zns_literature_20261004",
+      "optical_set_id": "ri_zns_amotchkina_nk",
+      "thickness_nm": 85.11219402536338
+    },
+    {
+      "material_id": "builtin_research_YbF3_film",
+      "optical_set_id": "ri_ybf3_amotchkina_n",
+      "thickness_nm": 128.69241091483758
+    },
+    {
+      "material_id": "builtin_zns_literature_20261004",
+      "optical_set_id": "ri_zns_amotchkina_nk",
+      "thickness_nm": 73.89864046089191
+    },
+    {
+      "material_id": "builtin_research_YbF3_film",
+      "optical_set_id": "ri_ybf3_amotchkina_n",
+      "thickness_nm": 130.00373574121966
+    },
+    {
+      "material_id": "builtin_zns_literature_20261004",
+      "optical_set_id": "ri_zns_amotchkina_nk",
+      "thickness_nm": 77.27534488148335
+    },
+    {
+      "material_id": "builtin_research_YbF3_film",
+      "optical_set_id": "ri_ybf3_amotchkina_n",
+      "thickness_nm": 132.79875561616393
+    },
+    {
+      "material_id": "builtin_zns_literature_20261004",
+      "optical_set_id": "ri_zns_amotchkina_nk",
+      "thickness_nm": 75.34192588275437
+    },
+    {
+      "material_id": "builtin_research_YbF3_film",
+      "optical_set_id": "ri_ybf3_amotchkina_n",
+      "thickness_nm": 126.49462326558161
+    },
+    {
+      "material_id": "builtin_zns_literature_20261004",
+      "optical_set_id": "ri_zns_amotchkina_nk",
+      "thickness_nm": 70.45479784905717
+    },
+    {
+      "material_id": "builtin_research_YbF3_film",
+      "optical_set_id": "ri_ybf3_amotchkina_n",
+      "thickness_nm": 123.43072017788693
+    },
+    {
+      "material_id": "builtin_zns_literature_20261004",
+      "optical_set_id": "ri_zns_amotchkina_nk",
+      "thickness_nm": 71.9245958992247
+    },
+    {
+      "material_id": "builtin_research_YbF3_film",
+      "optical_set_id": "ri_ybf3_amotchkina_n",
+      "thickness_nm": 130.845913630789
+    },
+    {
+      "material_id": "builtin_zns_literature_20261004",
+      "optical_set_id": "ri_zns_amotchkina_nk",
+      "thickness_nm": 74.95524889257125
+    },
+    {
+      "material_id": "builtin_research_YbF3_film",
+      "optical_set_id": "ri_ybf3_amotchkina_n",
+      "thickness_nm": 130.47438281340638
+    },
+    {
+      "material_id": "builtin_zns_literature_20261004",
+      "optical_set_id": "ri_zns_amotchkina_nk",
+      "thickness_nm": 68.97407216661347
+    },
+    {
+      "material_id": "builtin_research_YbF3_film",
+      "optical_set_id": "ri_ybf3_amotchkina_n",
+      "thickness_nm": 118.38032599502085
+    },
+    {
+      "material_id": "builtin_zns_literature_20261004",
+      "optical_set_id": "ri_zns_amotchkina_nk",
+      "thickness_nm": 61.946642101576295
+    },
+    {
+      "material_id": "builtin_research_YbF3_film",
+      "optical_set_id": "ri_ybf3_amotchkina_n",
+      "thickness_nm": 107.05388144180861
+    },
+    {
+      "material_id": "builtin_zns_literature_20261004",
+      "optical_set_id": "ri_zns_amotchkina_nk",
+      "thickness_nm": 52.63119660345316
+    }
+  ],
+  "layer_order": "substrate_outward",
+  "layer_count": 48,
+  "total_thickness_nm": 5675.507145629772,
+  "independent_audit": {
+    "worst_condition": {
+      "objective_index": 0,
+      "wavelength_nm": 900.0,
+      "angle_deg": 50.0,
+      "polarization": "unpolarized",
+      "metric": "R",
+      "actual": 0.9900157846259562,
+      "target_value": null,
+      "lower_bound": 0.99,
+      "upper_bound": 1.0,
+      "normalized_violation": 0.0,
+      "weighted_normalized_violation": 0.0
+    },
+    "continuous_certificate": false,
+    "physical_evaluations": 877,
+    "wavelength_points": 3277,
+    "source_evidence_sha256": "8920c4fd382cf030992cb7c3152d082dd1d55d7d60832b37232969bcdbcaf7c2"
+  },
+  "exploratory_work": {
+    "candidate_evaluations": 115,
+    "elapsed_including_audit_s": 32.3751185000001
+  }
+}

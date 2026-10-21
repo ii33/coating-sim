@@ -126,17 +126,37 @@ def test_raw_growth_parallel_keeps_current_serial_decisions_and_actual_work(real
     _assert_closed(actual.performance, require_workers=True)
 
 
-@pytest.mark.parametrize("cap", [3, 5, 9])
-def test_finite_evaluation_cap_keeps_partial_scan_and_growth_serial(real_pool, cap):
+@pytest.mark.parametrize("cap, full_needle_fits", [(3, False), (5, True), (9, True)])
+def test_finite_cap_parallelizes_only_full_scan_and_keeps_partial_growth_serial(
+        real_pool, cap, full_needle_fits):
     _service, request = _problem(cap=cap)
     serial = synthesize_film_design(None, request)
     actual = synthesize_film_design(None, replace(request, cpu_workers=2))
     _assert_equivalent(serial, actual)
     assert actual.evaluations <= cap
-    assert actual.performance["backend"] == "serial"
-    assert actual.performance["submitted_tasks"] == 0
-    assert actual.performance["worker_pids"] == []
-    _assert_closed(actual.performance)
+    performance = actual.performance
+    decisions = performance["batch_decisions"]
+    needle = [row for row in decisions if row["phase"] == "needle"]
+    assert len(needle) == 1 and needle[0]["candidate_count"] == 2
+    assert needle[0]["budget_allows"] is full_needle_fits
+    assert needle[0]["parallel_selected"] is full_needle_fits
+    growth = [row for row in decisions if row["phase"] == "growth"]
+    assert len(growth) == (1 if full_needle_fits else 0)
+    assert all(row["candidate_count"] == 8 and row["budget_allows"] is False
+               and row["parallel_selected"] is False for row in growth)
+    expected_tasks = 2 if full_needle_fits else 0
+    assert performance["backend"] == ("headless_process" if full_needle_fits else "serial")
+    assert performance["parallel_batches"] == int(full_needle_fits)
+    for name in ("submitted_tasks", "completed_tasks", "consumed_tasks"):
+        assert performance[name] == expected_tasks
+    for name in ("discarded_tasks", "cancelled_tasks", "error_tasks", "unknown_tasks"):
+        assert performance[name] == 0
+    assert performance["actual_work_complete"] is True
+    for name in ("training_physical_evaluations", "training_wavelength_points"):
+        assert performance[name] == serial.performance[name]
+    if not full_needle_fits:
+        assert performance["worker_pids"] == []
+    _assert_closed(performance, require_workers=full_needle_fits)
 
 
 def _tasks(request, count=7):

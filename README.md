@@ -18,6 +18,12 @@
 
 从裸片起步的自动合成已接入现有优化页，物理结构与组合段已接入参数生成器；操作见[GUI指南](docs/film-synthesis-gui-guide.md)，接口见[执行契约](docs/film-synthesis-execution-contract.md)、[结构参数](docs/film-physical-structures-contract.md)及[算法图解14t/14u](docs/algorithms.html#film-synthesis-audit-20261020)。默认不设搜索总量预算，支持进度、取消和已审计候选；当前能力范围与未支持项以契约为准。本轮同源GUI验收见[阶段报告](docs/film-synthesis-gui-stage-report-20261020.md)。角度输入、两膜料结构与动态候选行的后续修复见[交互修复验收](docs/film-synthesis-gui-repair-report-20261020.md)。仅n材料的显式无损近似见[未知k策略](docs/film-synthesis-unknown-k-contract.md)及[算法14v](docs/algorithms.html#film-synthesis-unknown-k-20261020)。
 
+2026-10-21：默认高反结构/全局搜索接入及19进程调度修复见[同请求三次确认结果](docs/film-synthesis-hr-results-20261021.md)；[冻结验收协议](docs/film-synthesis-hr-acceptance-20261021.md)与[多类指标矩阵](docs/film-synthesis-benchmark-matrix-20261021.md)分别记录已通过范围和待核验参考，不以单例推断全面达标。 [扩展验证阶段](docs/film-synthesis-extension-results-20261021.md)记录腔/AR薄匹配默认接入、8类24次有限审计通过、真实DE和19worker证据，也明确保留零容差密审计HR失败与困难类别待验证；完整数值及材料/过渡带/制造界在冻结矩阵中。
+
+2026-10-21：真实均匀层超宽带增透结构已接入默认纯AR合成，包括非QW交替层、1/2/3簇与全膜光程预算扫描；见[落地与云端同预算协议](docs/film-synthesis-ar-clusters-stage-20261021.md)及[算法14aa](docs/algorithms.html#film-synthesis-ar-clusters-20261021)。新结构的云端多种子对照尚待执行，不能由本地回归推断性能优于v23。
+
+Git同提交云端交接入口与CPU命令见[Git交接指南](docs/film-synthesis-git-handoff-20261021.md)。
+
 ## 快速开始
 
 ### 使用独立安装器

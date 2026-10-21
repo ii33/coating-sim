@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
+from itertools import islice
 import hashlib
 import json
 import math
@@ -64,6 +65,9 @@ class FilmSynthesisRequest:
     cpu_workers: int = 1
     forward_backend: str = "cpu"
     forward_device: Mapping[str, Any] | None = None
+    structure_search_seed: int = 0
+    strict_lower_bound_objective_indices: tuple[int, ...] = ()
+    ar_structure_mode: str = "clustered"
 
 
 @dataclass(frozen=True)
@@ -87,6 +91,9 @@ class FilmSynthesisTrace:
     position_nm: float | None = None
     sensitivity: float | None = None
     message: str = ""
+    weighted_rms_error: float | None = None
+    layer_penalty: float | None = None
+    candidate_rank: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -110,6 +117,18 @@ class FilmSynthesisResult:
     audit_wavelength_points: int = 0
     performance: Mapping[str, Any] = field(default_factory=dict)
     candidate_provenance: Mapping[str, Any] = field(default_factory=dict)
+
+
+def strict_lower_bounds_pass(request, score):
+    """Explicit strict lower checks for in-memory or JSON condition scores."""
+    indices = set(request.strict_lower_bound_objective_indices)
+    if not indices:
+        return True
+    def field(row, key):
+        return row[key] if isinstance(row, Mapping) else getattr(row, key)
+    errors = [row for row in score.get("errors", ()) if field(row, "objective_index") in indices]
+    return (indices <= {field(row, "objective_index") for row in errors}
+            and all(field(row, "actual") > request.objectives[field(row, "objective_index")].lower_bound for row in errors))
 
 
 def _number(value, name, *, zero=False):
@@ -140,6 +159,10 @@ def _validated(request):
         raise ValueError("automatic synthesis supports single-sided front incidence only")
     if not design["use_k"]:
         raise ValueError("automatic synthesis requires use_k=True to retain absorption")
+    if type(request.ar_structure_mode) is not str or request.ar_structure_mode not in {"clustered", "v23_matching"}:
+        raise ValueError("ar_structure_mode must be clustered or v23_matching")
+    if type(request.structure_search_seed) is not int or request.structure_search_seed < 0:
+        raise ValueError("structure_search_seed must be a nonnegative integer")
     if type(request.cpu_workers) is not int or request.cpu_workers < 0:
         raise ValueError("cpu_workers must be a nonnegative integer (0=auto, 1=serial)")
     if type(request.design_revision) is not int or request.design_revision < 0:
@@ -149,6 +172,15 @@ def _validated(request):
     objectives = _normalize_objectives(request.objectives)
     if not objectives:
         raise ValueError("at least one objective is required")
+    strict_indices = request.strict_lower_bound_objective_indices
+    if not isinstance(strict_indices, (tuple, list)):
+        raise ValueError("strict_lower_bound_objective_indices must be a sequence")
+    if any(type(index) is not int or index < 0 or index >= len(objectives) for index in strict_indices):
+        raise ValueError("strict_lower_bound_objective_indices must contain valid nonboolean objective indices")
+    if len(set(strict_indices)) != len(strict_indices):
+        raise ValueError("strict_lower_bound_objective_indices must be unique")
+    if any(objectives[index].mode != "range" or objectives[index].lower_bound is None for index in strict_indices):
+        raise ValueError("strict lower bounds require range objectives with an explicit lower_bound")
     if not isinstance(request.candidate_materials, (tuple, list)) or not request.candidate_materials:
         raise ValueError("explicit candidate materials are required")
     refs = set()
@@ -205,6 +237,7 @@ def _validated(request):
             raise ValueError("seed layer count exceeds the explicit request constraint")
         seeds.append(seed)
     return replace(request, environment=design, objectives=objectives, seed_designs=tuple(seeds), forward_device=forward_device,
+                   strict_lower_bound_objective_indices=tuple(strict_indices),
                    candidate_materials=tuple(request.candidate_materials),
                    growth_quarter_wave_fractions=tuple(float(v) for v in request.growth_quarter_wave_fractions),
                    **numeric)
@@ -434,6 +467,14 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
     to make the cancellation candidate available.
     """
     request = _validated(request)
+    from .film_synthesis_global import reflector_objectives
+    automatic_reflector_route = not request.seed_designs and bool(reflector_objectives(request))
+    from .film_synthesis_matching import matching_objectives
+    automatic_matching_route = (not request.seed_designs and len(request.candidate_materials) >= 2
+        and (request.max_layers is None or request.max_layers >= 3)
+        and bool(matching_objectives(request)))
+    automatic_cluster_route = (automatic_matching_route and not automatic_reflector_route
+        and request.ar_structure_mode == "clustered")
     from .film_synthesis_parallel import EvaluationTask, InfrastructureFailure, OrderedEvaluationExecutor
     execution = OrderedEvaluationExecutor(request.cpu_workers, cancel_event)
     forward = None
@@ -446,14 +487,29 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
     completed_training_validation = None
     fully_scored_evaluations = 0
     candidate_provenance = {}
+    search_diagnostics = {"structural_proposals": [], "global_search": [], "layer_distribution": {}, "local_refinement": []}
     audited_signatures = set()
+    cavity_stream = [None]
+    cavity_stream_epoch = [None]
+    matching_stream = [None]
+    matching_stream_epoch = [None]
+    cluster_stream = [None]
+    cluster_stream_epoch = [None]
+    matching_deferred = [automatic_matching_route]
+    search_diagnostics["ar_structure_mode"] = request.ar_structure_mode
+    search_diagnostics["automatic_cluster_route"] = automatic_cluster_route
     validation = None
     audit_physical_evaluations = audit_wavelength_points = 0
     trace = []
+    stage_times = {}
+    last_stage_time = __import__("time").perf_counter()
+    last_stage = "initialization"
     reason, state = "search_exhausted", "not_found"
 
     def performance():
         result = execution.diagnostics()
+        result["stage_wall_seconds"] = dict(stage_times)
+        result["search"] = deepcopy(search_diagnostics)
         if forward is not None:
             work = forward.diagnostics()
             result["forward"] = work
@@ -475,9 +531,15 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             raise _ObserverFailure(exc) from exc
 
     def emit(stage, message, design=None, score=None, **kwargs):
+        nonlocal last_stage_time, last_stage
+        now = __import__("time").perf_counter()
+        stage_times[last_stage] = stage_times.get(last_stage, 0.0) + now - last_stage_time
+        last_stage_time, last_stage = now, stage
         layers = len(design["front_layers"]) if design is not None else 0
         error = score["max_error"] if score is not None else None
-        trace.append(FilmSynthesisTrace(stage, cycle, evaluations, layers, error, message=message, **kwargs))
+        trace.append(FilmSynthesisTrace(stage, cycle, evaluations, layers, error, weighted_rms_error=None if score is None else score["weighted_rms_error"],
+            layer_penalty=None, candidate_rank=() if design is None or score is None else rank({"design": design, "score": score}),
+            message=message, **kwargs))
         if progress_callback:
             observe(progress_callback, FilmSynthesisProgress(stage, cycle, evaluations, layers,
                 (audited_best[1]["score"]["max_error"] if audited_best is not None else
@@ -542,16 +604,18 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         value = execution.serial(physical_call, task, fallback=True)
             # Expose the same synthesis ordering used by the archive; the
             # underlying physical evaluator keeps its legacy score semantics.
-            value["score"]["key"] = _synthesis_candidate_rank(value, request.acceptable_normalized_error)
+            value["score"]["key"] = rank(value)
             _check_cancel(cancel_event)
             # This parent-owned commit boundary excludes zero probes, partial
             # scores and unconsumed speculative worker results. It performs no
             # extra physical work and does not change the search archive.
             if not holdout and not zero_ids and feasible(value["design"]):
                 fully_scored_evaluations += 1
+                distribution = search_diagnostics["layer_distribution"]
+                layer_key = str(len(value["design"]["front_layers"]))
+                distribution[layer_key] = distribution.get(layer_key, 0) + 1
                 if (completed_training_best is None or
-                        _synthesis_candidate_rank(value, request.acceptable_normalized_error) <
-                        _synthesis_candidate_rank(completed_training_best, request.acceptable_normalized_error)):
+                        rank(value) < rank(completed_training_best)):
                     completed_training_best = {"design": deepcopy(value["design"]),
                                                "score": deepcopy(value["score"])}
                     completed_training_validation = None
@@ -562,8 +626,30 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             failures += 1
             raise
 
+    def strict_lower_pass(score):
+        return strict_lower_bounds_pass(request, score)
+
     def rank(candidate):
-        return _synthesis_candidate_rank(candidate, request.acceptable_normalized_error)
+        legacy = _synthesis_candidate_rank(candidate, request.acceptable_normalized_error)
+        strict_indices = set(request.strict_lower_bound_objective_indices)
+        if not (automatic_reflector_route or automatic_matching_route) and not strict_indices:
+            return legacy
+        score = candidate["score"]
+        # Raw optical merit guides automatic structural search. Only explicitly
+        # selected strict lower bounds change feasibility; ordinary saved range
+        # objectives keep their inclusive/tolerance acceptance semantics.
+        slack_indices = strict_indices
+        if not slack_indices and automatic_reflector_route:
+            slack_indices = {i for i, objective in enumerate(request.objectives)
+                             if objective.metric == "R" and objective.mode == "range"
+                             and objective.lower_bound is not None}
+        slacks = [error.actual - request.objectives[error.objective_index].lower_bound
+                  for error in score.get("errors", ()) if error.objective_index in slack_indices]
+        slack = min(slacks, default=0.0) if score["max_error"] == 0 else 0.0
+        optical = (score["max_error"], -slack, *legacy)
+        if strict_indices:
+            return (0 if strict_lower_pass(score) and score["max_error"] <= request.acceptable_normalized_error else 1, *optical)
+        return optical
 
     def audit_archive(value):
         nonlocal audited_best, completed_training_validation
@@ -597,16 +683,20 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
     def targets_verified():
         return (audited_best is not None
                 and audited_best[0]["score"]["max_error"] <= request.acceptable_normalized_error
-                and audited_best[1]["score"]["max_error"] <= request.acceptable_normalized_error)
+                and audited_best[1]["score"]["max_error"] <= request.acceptable_normalized_error
+                and strict_lower_pass(audited_best[0]["score"])
+                and strict_lower_pass(audited_best[1]["score"]))
 
-    def archive(value):
+    def archive(value, *, audit_eligible=True):
         nonlocal best
         if feasible(value["design"]) and (best is None or rank(value) < rank(best)):
             best = deepcopy(value)
             emit("incumbent", "已保存独立评分的候选，等待最终密网格验证", value["design"], value["score"])
         # A training-feasible candidate may be better on audit even when it
         # loses the training cost tie-break. Audit it before discarding it.
-        if feasible(value["design"]) and value["score"]["max_error"] <= request.acceptable_normalized_error:
+        if (audit_eligible and feasible(value["design"])
+                and value["score"]["max_error"] <= request.acceptable_normalized_error
+                and strict_lower_pass(value["score"])):
             audit_archive(value)
 
 
@@ -624,7 +714,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             ds = np.where(ds < minimum / 2, 0.0, np.maximum(ds, minimum))
         return ds
 
-    def polish(value, protected_id=None):
+    def polish(value, protected_id=None, *, max_steps=None):
         """Projected analytic gradient with backtracking to numerical stationarity."""
         if forward is not None and value["design"]["front_layers"] and value.get("gradient_by_layer_id") is None:
             # The same already scored candidate gets analytic CPU derivatives;
@@ -636,7 +726,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 variable_ids=tuple(r["id"] for r in task.design["front_layers"]),
                 with_jacobian=True, cancel_event=cancel_event), task)
             forward.record_refresh(value)
-            value["score"]["key"] = _synthesis_candidate_rank(value, request.acceptable_normalized_error)
+            value["score"]["key"] = rank(value)
             _check_cancel(cancel_event)
         # A complete feasible proposal is already a valid incumbent even when
         # the remaining budget cannot pay for any additional refinement.
@@ -650,8 +740,12 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             value = evaluate(design, jacobian=True)
         archive(value)
         step = 0.25
+        local_trials = 0
         while True:
             _check_cancel(cancel_event)
+            if max_steps is not None and local_trials >= max_steps:
+                emit("local_quantum_complete", f"Completed {local_trials} local trial scheduling quantum; continue global/structural search", value["design"], value["score"])
+                return value
             if value["score"]["max_error"] <= request.acceptable_normalized_error:
                 break
             rows = design["front_layers"]
@@ -682,6 +776,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             if not feasible(trial):
                 step *= 0.5
                 continue
+            local_trials += 1
             candidate = evaluate(trial, jacobian=True)
             archive(candidate)
             improvement = value["smooth_loss"] - candidate["smooth_loss"]
@@ -696,6 +791,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     break
             else:
                 step *= 0.5
+        if max_steps is not None:
+            return value
         # Explicit deletion trials can remove nonzero layers without a hidden
         # manufacturing threshold. Every deletion receives a full-grid score.
         for layer in tuple(design["front_layers"]):
@@ -709,6 +806,18 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 archive(value)
                 emit("deletion", "完整评分后删除冗余层", design, value["score"])
         return value
+
+    def interior_refine(value):
+        from .film_synthesis_refinement import refine_synthesis_candidate
+        def local_progress(stage, candidate, details):
+            emit(stage, json.dumps(details, sort_keys=True), candidate["design"], candidate["score"])
+        refined, details = refine_synthesis_candidate(request, value,
+            evaluate=evaluate, archive=archive, quarter_nm=quarter,
+            cancel_check=lambda: _check_cancel(cancel_event), progress=local_progress,
+            max_iterations=64)
+        search_diagnostics["local_refinement"].append(details)
+        emit("interior_local_complete", json.dumps(details, sort_keys=True), refined["design"], refined["score"])
+        return refined
 
     def replace_materials(value):
         """Try physical thickness and reference optical-thickness preservation.
@@ -786,7 +895,351 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             working = evaluate(request.environment, gpu_forward=forward is not None)
             archive(working)
             assert best is not None  # The scored bare substrate is always feasible.
+            if automatic_reflector_route:
+                # Retain a physically audited checkpoint before the potentially
+                # long automatic prior scan. Its audit belongs only to this
+                # exact bare design, never to a later cancellation candidate.
+                audit_archive(working)
+            # Automatic structural priors and true fixed-topology population
+            # search share this parent evaluator, archive, audit and cancellation.
+            from .film_synthesis_global import (
+                iter_reflector_proposals, iter_bandpass_proposals, bandpass_objectives,
+                DifferentialEvolutionProposals, structured_thickness_design,
+                symmetric_thickness_parameters, symmetric_thickness_design,
+            )
+            from .film_synthesis_matching import iter_matching_proposals
+            from .film_synthesis_ar_clusters import (
+                iter_ar_cluster_proposals, ar_cluster_parameters, ar_cluster_design,
+            )
+            has_bandpass = bool(bandpass_objectives(request))
+
+            def coverage_key(metadata):
+                if metadata["family"] == "ar_cluster":
+                    return (metadata["family"], metadata["variant"], metadata["cluster_count"],
+                        tuple(metadata["pair_counts"]), tuple(metadata["high"]), tuple(metadata["low"]),
+                        tuple(metadata["third_material"] or ()), metadata["boundary_variant"], metadata["first_role"])
+                if metadata["family"] == "matching":
+                    return (metadata["family"], metadata["variant"],
+                        tuple(metadata["high"]), tuple(metadata["low"]), metadata["pairs"],
+                        metadata["first_role"], metadata["reverse"], metadata["thin_mode"],
+                        metadata.get("thin_quarter_fraction"))
+                if metadata["family"] != "coupled_cavity":
+                    return metadata["family"]
+                order = metadata["inner_phase_orders"]["high"]
+                return (metadata["family"], metadata["variant"],
+                    tuple(metadata["high"]), tuple(metadata["low"]),
+                    metadata["mirror_pairs"], metadata["cavity_count"],
+                    metadata["matching_quarters"], metadata["reverse"],
+                    int(order).bit_length() - 1, metadata["cavity_quarters"] % 2)
+
+            def choose_structural_candidates(values):
+                keepers = {}
+                for value, metadata in values:
+                    key = coverage_key(metadata)
+                    if key not in keepers or rank(value) < rank(keepers[key][0]):
+                        keepers[key] = (value, metadata)
+                ordered = sorted(keepers.values(), key=lambda row: rank(row[0]))
+                if not (has_bandpass or automatic_matching_route):
+                    return ordered
+                # Preserve phase/topology basins before revisiting another
+                # mirror count from the same class. No lifetime work cap.
+                buckets = {}
+                for row in ordered:
+                    meta = row[1]
+                    key = ((meta["family"], meta["variant"], meta["cavity_count"],
+                            int(meta["inner_phase_orders"]["high"]).bit_length() - 1)
+                           if meta["family"] == "coupled_cavity" else
+                           (meta["family"], meta["variant"], meta["pairs"], meta["thin_mode"])
+                           if meta["family"] == "matching" else
+                           (meta["family"], meta["variant"], meta["cluster_count"])
+                           if meta["family"] == "ar_cluster" else (meta["family"],))
+                    buckets.setdefault(key, []).append(row)
+                result = []
+                while any(buckets.values()):
+                    for rows in buckets.values():
+                        if rows:
+                            result.append(rows.pop(0))
+                return result
+            def structural_report(event):
+                search_diagnostics["structural_proposals"].append(deepcopy(event))
+                emit(event["stage"], json.dumps(event, sort_keys=True))
+
+            def scan_structural_proposals(epoch=0):
+                # A bounded parent-owned chunk limits prepared designs and
+                # speculative physical work. Keep only one complete best per
+                # family, rather than retaining every full evaluated design.
+                chunk_size = min(64, max(2, 2 * execution.workers))
+                search_diagnostics["structure_batch_policy"] = dict(
+                    cpu_chunk_size=chunk_size, maximum_chunk_size=64,
+                    policy="min(64,max(2,2*effective_requested_workers)); ordered parent consumption",
+                    gpu_policy="unchanged selected-device single forward")
+                def merged_proposals():
+                    if has_bandpass:
+                        if cavity_stream[0] is None:
+                            cavity_stream[0] = iter_bandpass_proposals(request, epoch=epoch,
+                                cancel_check=lambda: _check_cancel(cancel_event), report=structural_report)
+                            cavity_stream_epoch[0] = epoch
+                        count = 0
+                        try:
+                            # This is a scheduling quantum. Keep the live lazy
+                            # iterator for the next rotation instead of dropping
+                            # unexplored phase orders or adding a total budget.
+                            while count < 512:
+                                try:
+                                    proposal = next(cavity_stream[0])
+                                except StopIteration:
+                                    cavity_stream[0] = None
+                                    break
+                                count += 1
+                                yield proposal
+                        finally:
+                            search_diagnostics["bandpass_structure_schedule"] = dict(
+                                proposal_quantum=512, current_epoch=cavity_stream_epoch[0],
+                                latest_consumed=count, pending=cavity_stream[0] is not None,
+                                policy="persistent lazy cavity iterator; quantum is not a total budget")
+                    if automatic_matching_route and (epoch > 0 or automatic_cluster_route):
+                        matching_deferred[0] = False
+                        ar_epoch = max(0, epoch - (0 if automatic_cluster_route else 1))
+                        if matching_stream[0] is None:
+                            matching_stream[0] = iter_matching_proposals(request, epoch=ar_epoch,
+                                cancel_check=lambda: _check_cancel(cancel_event), report=structural_report)
+                            matching_stream_epoch[0] = ar_epoch
+                        if automatic_cluster_route and cluster_stream[0] is None:
+                            cluster_stream[0] = iter_ar_cluster_proposals(request, epoch=ar_epoch,
+                                cancel_check=lambda: _check_cancel(cancel_event), report=structural_report)
+                            cluster_stream_epoch[0] = ar_epoch
+                        streams = [matching_stream, cluster_stream] if automatic_cluster_route else [matching_stream]
+                        counts = [0] * len(streams)
+                        try:
+                            # Interleave real noncluster/cluster structures so a
+                            # long first family cannot consume every stage slot.
+                            while sum(counts) < 512 and any(s[0] is not None for s in streams):
+                                for index, stream in enumerate(streams):
+                                    if stream[0] is None:
+                                        continue
+                                    try:
+                                        proposal = next(stream[0])
+                                    except StopIteration:
+                                        stream[0] = None
+                                        continue
+                                    counts[index] += 1
+                                    yield proposal
+                                    if sum(counts) >= 512:
+                                        break
+                        finally:
+                            search_diagnostics["matching_structure_schedule"] = dict(
+                                proposal_quantum=512, current_epoch=matching_stream_epoch[0],
+                                latest_consumed=counts[0], pending=matching_stream[0] is not None,
+                                policy="persistent lazy AR iterator; v23 mode defers first cycle; no total budget")
+                            if automatic_cluster_route:
+                                search_diagnostics["cluster_structure_schedule"] = dict(
+                                    shared_proposal_quantum=512, current_epoch=cluster_stream_epoch[0],
+                                    latest_consumed=counts[1], pending=cluster_stream[0] is not None,
+                                    noncluster_control_retained=True,
+                                    policy="round-robin persistent noncluster/cluster iterators; initial global screening")
+                    yield from iter_reflector_proposals(request, epoch=epoch,
+                        cancel_check=lambda: _check_cancel(cancel_event), report=structural_report)
+                proposals = merged_proposals()
+                keepers = {}
+                sample_points = sum(o.wavelength_samples * len(o.angles_deg) for o in request.objectives)
+                def commit(proposal, value):
+                    entry = dict(proposal.provenance, layer_count=len(proposal.design["front_layers"]),
+                                 max_error=value["score"]["max_error"], rms=value["score"]["weighted_rms_error"])
+                    search_diagnostics["structural_proposals"].append(entry)
+                    emit("structure_proposal", json.dumps(entry, sort_keys=True), value["design"], value["score"])
+                    archive(value)
+                    key = coverage_key(proposal.provenance)
+                    if key not in keepers or rank(value) < rank(keepers[key][0]):
+                        keepers[key] = (value, proposal.provenance)
+                    if targets_verified():
+                        emit("structure_targets_verified", "Structural prior passed physical audit; thickness global search not needed", value["design"], value["score"])
+                try:
+                    while not targets_verified():
+                        _check_cancel(cancel_event)
+                        remaining = None if request.max_evaluations is None else request.max_evaluations - evaluations - 1
+                        if remaining is not None and remaining <= 0:
+                            raise _Stopped("evaluation_limit")
+                        count = chunk_size if remaining is None else min(chunk_size, remaining)
+                        # GPU candidates retain the explicitly selected device;
+                        # they are never silently routed through CPU workers.
+                        if forward is not None:
+                            count = 1
+                        chunk = list(islice(proposals, count))
+                        if not chunk:
+                            break
+                        if forward is not None:
+                            proposal = chunk[0]
+                            commit(proposal, evaluate(proposal.design, gpu_forward=True))
+                        else:
+                            tasks = [EvaluationTask(p.design, False, (), p) for p in chunk]
+                            work = sum(sample_points * max(1, len(p.design["front_layers"])) for p in chunk)
+                            fits = remaining is None or len(tasks) <= remaining
+                            with execution.batch(tasks, count=len(tasks), work=work,
+                                    budget_allows=fits, phase="structure") as batch:
+                                for task, outcome in batch:
+                                    commit(task.context, evaluate(task.design, outcome=outcome))
+                                    if targets_verified():
+                                        break
+                    return list(keepers.values())
+                finally:
+                    close = getattr(proposals, "close", None)
+                    if close is not None:
+                        close()
+            structural_values = scan_structural_proposals()
+            # A stage quantum schedules population search, without claiming
+            # exhaustive coverage. Subsequent cycles alternate expanded
+            # structural enumeration/global epochs with ordinary needle growth.
+            selected = choose_structural_candidates(structural_values)
+            if selected and not targets_verified() and not automatic_cluster_route:
+                prior, prior_metadata = selected[0]
+                emit("structural_local_refinement", "64 analytic interior local iterations before global population; scheduling quantum, not a search stop", prior["design"], prior["score"])
+                selected[0] = (interior_refine(prior), prior_metadata)
+                audit_archive(best)
+            def global_epoch(selected, epoch):
+                if not selected or targets_verified():
+                    return selected
+                explored_values = []
+                next_selected = []
+                for seed_value, metadata in selected:
+                    if targets_verified():
+                        break
+                    for parameterization in ("structure", "thickness"):
+                        ds = np.array([r["thickness"]["value"] for r in seed_value["design"]["front_layers"]])
+                        expansion = 1 + .25 * epoch
+                        lower = np.maximum(ds * .35 / expansion, request.minimum_nonzero_thickness_nm or np.finfo(float).tiny)
+                        upper = ds * 2.0 * expansion
+                        if request.max_layer_thickness_nm is not None:
+                            upper = np.minimum(upper, request.max_layer_thickness_nm)
+                        initial = ds
+                        population_size = max(12, min(32, 2 * len(ds)))
+                        symmetric_basis = None
+                        if parameterization == "structure":
+                            population_size = 24
+                            if metadata["family"] == "ar_cluster":
+                                initial, lower, upper = ar_cluster_parameters(
+                                    seed_value["design"], metadata, epoch=epoch,
+                                    minimum_nm=request.minimum_nonzero_thickness_nm,
+                                    maximum_nm=request.max_layer_thickness_nm)
+                                population_size = max(24, min(64, 4 * len(initial)))
+                            elif metadata["family"] == "coupled_cavity":
+                                # Local/full-layer refinement may improve an
+                                # asymmetric stack. Retain that scored best;
+                                # mirror-mean projection is only another real
+                                # candidate, evaluated by the parent below.
+                                symmetric_basis = deepcopy(seed_value["design"])
+                                for group in metadata["symmetry_groups"]:
+                                    mean = float(np.exp(np.mean(np.log(ds[list(group)]))))
+                                    for index in group:
+                                        symmetric_basis["front_layers"][index]["thickness"] = dict(value=mean, unit="nm")
+                                initial, lower, upper = symmetric_thickness_parameters(
+                                    symmetric_basis, metadata["symmetry_groups"], epoch=epoch,
+                                    minimum_nm=request.minimum_nonzero_thickness_nm,
+                                    maximum_nm=request.max_layer_thickness_nm)
+                                population_size = max(24, min(64, 4 * len(initial)))
+                            else:
+                                initial = np.zeros(3)
+                                upper = np.log([1.2, 1.2, 1.15]) * expansion
+                                lower = -upper
+                        global_record = dict(family=metadata["family"], layer_count=len(ds),
+                            parameterization=parameterization, dimension=len(initial),
+                            lower_parameters=lower.tolist(), upper_parameters=upper.tolist(),
+                            bound_source="project proposal box: [0.35/expansion, 2*expansion] times current topology thickness; expansion=1+0.25*epoch; intersect explicit layer bounds; not manufacturing limits",
+                            population_size=population_size, stage_generations=4, completed_generations=0,
+                            seed=request.structure_search_seed + epoch, epoch=epoch, expansion=expansion, coverage_complete=False, stop_reason="stage_quantum")
+                        if parameterization == "structure":
+                            global_record["bound_source"] = "project log-parameter box: uniform scale/ramp +/-log(1.2), HL ratio +/-log(1.15), times epoch expansion; not manufacturing limits"
+                            global_record["mapping"] = "d_i'=d_i*exp(a+b*t_pair+c*s_HL); t_pair in [-1,1], s_HL +/-1"
+                            if metadata["family"] == "ar_cluster":
+                                global_record["bound_source"] = "project cluster log-phase-budget/logit-fraction/envelope/boundary box; physical limits checked by parent; no manufacturing optical cap"
+                                global_record["mapping"] = metadata["parameter_model"]
+                                global_record["cluster_count"] = metadata["cluster_count"]
+                                global_record["pair_counts"] = metadata["pair_counts"]
+                                global_record["parameter_coordinates"] = metadata["parameter_coordinates"]
+                            if symmetric_basis is not None:
+                                global_record["bound_source"] = "project symmetric log(nm) groups, +/-log(8)*(epoch+1); intersect explicit layer bounds; not manufacturing limits"
+                                global_record["mapping"] = "d_i=exp(x_group(i)); symmetric phase/topology parameters; original asymmetric incumbent retained"
+                                global_record["symmetry_groups"] = metadata["symmetry_groups"]
+                                global_record["symmetry_seed_projection"] = symmetric_basis != seed_value["design"]
+                        search_diagnostics["global_search"].append(global_record)
+                        evolution = DifferentialEvolutionProposals(initial, lower, upper, seed=request.structure_search_seed + epoch, population_size=population_size)
+                        global_best = seed_value
+                        for generation in range(5):
+                            _check_cancel(cancel_event)
+                            points = evolution.proposals()
+                            tasks = []
+                            losses = np.full(len(points), np.inf)
+                            for index, point in enumerate(points):
+                                if parameterization == "structure":
+                                    if metadata["family"] == "ar_cluster":
+                                        trial = ar_cluster_design(seed_value["design"], point, metadata)
+                                    elif symmetric_basis is not None:
+                                        trial = symmetric_thickness_design(symmetric_basis, point,
+                                            symmetry_groups=metadata["symmetry_groups"])
+                                    else:
+                                        trial = structured_thickness_design(seed_value["design"], point, high_pair=metadata["high"])
+                                else:
+                                    trial = deepcopy(seed_value["design"])
+                                    for row, thickness in zip(trial["front_layers"], point, strict=True):
+                                        row["thickness"] = dict(value=float(thickness), unit="nm")
+                                if feasible(trial):
+                                    tasks.append(EvaluationTask(trial, False, (), index))
+                            sample_points = sum(o.wavelength_samples * len(o.angles_deg) for o in request.objectives)
+                            limit = request.max_evaluations
+                            fits = limit is None or len(tasks) <= limit - evaluations - 1
+                            prefix = "structure_global" if parameterization == "structure" else "global"
+                            emit(prefix + ("_initial_population" if generation == 0 else "_generation"),
+                                 json.dumps(dict(global_record, generation=generation, feasible_population=len(tasks)), sort_keys=True), global_best["design"], global_best["score"])
+                            with execution.batch(tasks, count=len(tasks),
+                                    work=len(tasks) * sample_points * max(1, len(ds)),
+                                    budget_allows=fits, phase="structure_global" if parameterization == "structure" else "global") as batch:
+                                for task, outcome in batch:
+                                    value = evaluate(task.design, outcome=outcome)
+                                    # Worst normalized error is the common primary merit;
+                                    # exact shared rank retains every scored incumbent.
+                                    losses[task.context] = value["score"]["max_error"]
+                                    archive(value, audit_eligible=False)
+                                    if rank(value) < rank(global_best):
+                                        global_best = value
+                                    emit(prefix + "_proposal", "Population proposal: " + parameterization + "; no layer penalty", value["design"], value["score"])
+                            evolution.accept(losses)
+                            global_record["completed_generations"] = evolution.generations
+                            if (global_best["score"]["max_error"] <= request.acceptable_normalized_error
+                                    and strict_lower_pass(global_best["score"])):
+                                audit_archive(global_best)
+                            if targets_verified():
+                                global_record["stop_reason"] = "validated_targets_met"
+                                break
+                        if parameterization == "structure" and not targets_verified():
+                            global_best = interior_refine(global_best)
+                            archive(global_best, audit_eligible=False)
+                            if (global_best["score"]["max_error"] <= request.acceptable_normalized_error
+                                    and strict_lower_pass(global_best["score"])):
+                                audit_archive(global_best)
+                        seed_value = global_best
+                        if targets_verified():
+                            break
+                    explored_values.append(global_best)
+                    next_selected.append((global_best, metadata))
+                    emit("global_complete", json.dumps(global_record, sort_keys=True), global_best["design"], global_best["score"])
+                if explored_values and not targets_verified():
+                    # One shared local refinement/audit at the stage boundary;
+                    # rejected structures do not each trigger an expensive audit.
+                    refined = interior_refine(min(explored_values, key=rank))
+                    archive(refined)
+                    # Feed the refined topology back into the next population.
+                    matching = next((i for i, (v, _m) in enumerate(next_selected) if [r["id"] for r in v["design"]["front_layers"]] == [r["id"] for r in refined["design"]["front_layers"]]), None)
+                    if matching is not None:
+                        next_selected[matching] = (refined, next_selected[matching][1])
+                    if audited_best is None or epoch % 2 == 1 or (best["score"]["max_error"] <= request.acceptable_normalized_error and strict_lower_pass(best["score"])):
+                        audit_archive(best)
+                    else:
+                        emit("audit_deferred", "Keep prior audited incumbent; defer nonpassing stage audit to every second global epoch", best["design"], best["score"])
+                return next_selected
+            selected = global_epoch(selected, 0)
             branches = [working]
+            if structural_values and not targets_verified():
+                # Retain one globally explored branch in addition to bare growth.
+                branches.append(best)
             blocked_branches = set()
             if request.seed_designs:
                 audit_archive(working)
@@ -801,10 +1254,29 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 _check_cancel(cancel_event)
                 if request.max_cycles is not None and cycle >= request.max_cycles:
                     raise _Stopped("cycle_limit")
-                branch_index = (cycle % len(branches))
+                growth_available = len(blocked_branches) < len(branches)
+                cycle += 1
+                continuous_available = (bool(selected) or cavity_stream[0] is not None
+                    or matching_stream[0] is not None or cluster_stream[0] is not None
+                    or matching_deferred[0])
+                if continuous_available and (not growth_available or cycle % 2 == 0):
+                    # Alternate continuous global epochs with real structural
+                    # growth; increasing proposal families also revisit layer
+                    # counts independently of the greedy working branch.
+                    extra = scan_structural_proposals(epoch=cycle // 2)
+                    selected = choose_structural_candidates((*selected, *extra))
+                    selected = global_epoch(selected, cycle // 2)
+                    if (not growth_available and not selected and cavity_stream[0] is None
+                            and matching_stream[0] is None and cluster_stream[0] is None
+                            and not matching_deferred[0]):
+                        raise _Stopped("no_feasible_growth")
+                    emit("search_rotation", "Completed structural/thickness epoch; retain remaining proposals even when insertion branches are exhausted", best["design"], best["score"])
+                    continue
+                if not growth_available:
+                    raise _Stopped("no_feasible_growth")
+                branch_index = ((cycle - 1) % len(branches))
                 while branch_index in blocked_branches:
                     branch_index = (branch_index + 1) % len(branches)
-                cycle += 1
                 working = branches[branch_index]
                 previous = best["score"]["weighted_rms_error"]
                 if working["design"]["front_layers"]:
@@ -890,7 +1362,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         or evaluations < request.max_evaluations - 1) if forward is not None else
                         execution.batch(growth_tasks(), count=growth_count,
                             work=growth_count * sample_points * max(1, len(design["front_layers"]) + 1),
-                            budget_allows=request.max_evaluations is None, phase="growth"))
+                            budget_allows=request.max_evaluations is None or growth_count <= request.max_evaluations - evaluations - 1, phase="growth"))
                     with growth_batch as batch:
                         for task, outcome in batch:
                             interface, ref, growth_id = task.context
@@ -909,9 +1381,12 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         branches[branch_index] = working
                         blocked_branches.add(branch_index)
                         audit_archive(best)
-                        if len(blocked_branches) == len(branches):
+                        if (len(blocked_branches) == len(branches)
+                                and not selected and cavity_stream[0] is None
+                                and matching_stream[0] is None and cluster_stream[0] is None
+                                and not matching_deferred[0]):
                             raise _Stopped("no_feasible_growth")
-                        emit("branch_exhausted", "No feasible insertion remains in this branch; continue another explicit starting branch", working["design"], working["score"])
+                        emit("branch_exhausted", "No feasible insertion remains in this branch; continue other growth branches or structural/thickness search", working["design"], working["score"])
                         continue
                     working = polish(grown, protected_id=grown_protected_id)
                     emit("growth_restart", "增加光学厚度后重新开始针插周期（工作分支可暂时变差）", working["design"], working["score"])
@@ -927,10 +1402,16 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             reason = "training_targets_met"
         except _Stopped as exc:
             reason = str(exc)
+            if search_diagnostics["global_search"]:
+                search_diagnostics["global_search"][-1]["stop_reason"] = reason
         except _StructureCancelled:
             state, reason = "cancelled", "cancelled"
+            if search_diagnostics["global_search"]:
+                search_diagnostics["global_search"][-1]["stop_reason"] = reason
         except (ValueError, ArithmeticError, RuntimeError) as exc:
             state, reason = "failed", f"numerical_failure: {exc}"
+            if search_diagnostics["global_search"]:
+                search_diagnostics["global_search"][-1]["stop_reason"] = reason
 
         if best is not None and state != "cancelled":
             try:
@@ -938,7 +1419,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 if audited_best is not None:
                     validated_training, validation = audited_best
                     if state != "failed" and validated_training["score"]["max_error"] <= request.acceptable_normalized_error:
-                        if validation["score"]["max_error"] <= request.acceptable_normalized_error:
+                        if (validation["score"]["max_error"] <= request.acceptable_normalized_error
+                                and (not request.strict_lower_bound_objective_indices or targets_verified())):
                             state, reason = "completed", "validated_targets_met"
                         else:
                             reason = "validation_targets_not_met"
@@ -976,3 +1458,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         execution.close()
         if forward is not None:
             forward.close()
+        if cavity_stream[0] is not None:
+            cavity_stream[0].close()
+        if matching_stream[0] is not None:
+            matching_stream[0].close()
+        if cluster_stream[0] is not None:
+            cluster_stream[0].close()

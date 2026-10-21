@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "kind": "ar_cluster_local_integration_not_cloud_confirmation",
+  "created_utc": "2026-10-21T04:36:07.378999+00:00",
+  "head": "4d5071c26b7a5b29ee14de7d5310062648686bc5",
+  "source_hashes": {
+    "coat_sim/core/film_auto_synthesis.py": "7b1dc16aa39508f6687315475443845457f3b1dbc42fc6527b2d87f29ae76b19",
+    "coat_sim/core/film_synthesis_ar_clusters.py": "de060a8b68a14fa7093ed3f1972150226efd0f96c229972e667bf7dbbea6367a",
+    "tools/export_film_synthesis_cloud.py": "5e8b2b5ae7dab81ddaeff54da03f7aa4c8f622b9596bb4eb24d9c3e61c9c8812",
+    "tools/run_film_synthesis_cloud.py": "031cda437bac017c26c008770c8541ee8b7eb3076ecf877aec14386cd436ae48",
+    "tests/test_film_synthesis_ar_cluster_pipeline.py": "6c50e53a135ad1ad09c8ffddd64559928c75f387866bbc951f59c671bd30589d",
+    "tests/test_film_synthesis_ar_clusters.py": "26e8b711008ea28aaeabd48ab0f6c7bdb615f784a43d30bbdd7406b2392ee312",
+    "tests/test_film_synthesis_cloud_bundle.py": "0849a3fe2857e010a3dd9342671cff744eb90d607f7a9b9b474f9e8bc016e65f"
+  },
+  "regression": {
+    "modules": 26,
+    "passed": 399,
+    "seconds": 75.52,
+    "warnings": 28,
+    "warning_kind": "existing PurePath.is_reserved deprecation",
+    "ruff": "passed focused changed algorithm and runner files",
+    "independent_review": "accepted final core and cloud fixes"
+  },
+  "bundle": {
+    "archive_sha256": "5c9aa5a338dbc9ce8f502420f2a9cdf5dcc28eb1c774bbd99a695416b149dcc9",
+    "archive_bytes": 1020833,
+    "bundle_source_sha256": "da0b39f10a46228acdaad202683b9116475f591113985125e39054d7246380db",
+    "bundle_source_file_count": 103,
+    "case_count": 8,
+    "paired_preflight_pass": true
+  },
+  "smoke": {
+    "budget_seconds": 5,
+    "elapsed_seconds": 5.0292837000015425,
+    "state": "cancelled",
+    "terminal_error": null,
+    "source_unchanged": true,
+    "logical_evaluations": 300,
+    "layer_count": 7,
+    "training_worst_R": 0.026171814602578943,
+    "audit_completed": false,
+    "confirmation_eligible": false,
+    "actual_work_complete": false,
+    "physical_evaluations": null,
+    "known_physical_evaluations": 598,
+    "wavelength_points": null,
+    "known_wavelength_points": 60398,
+    "serial_unknown_work": 1,
+    "worker_unknown_tasks": 0,
+    "actual_worker_pids": [],
+    "backend": "serial",
+    "cleanup_complete": true,
+    "active_worker_pids": [],
+    "heartbeat_file_present": true,
+    "progress_file_present": true,
+    "interpretation": "short cooperative cancellation only; no audited optical success or search performance claim"
+  },
+  "bounded_bundle_ipc": {
+    "tasks": 2,
+    "actual_workers": 2,
+    "completed_tasks": 2,
+    "unknown_tasks": 0,
+    "physical_evaluations": 4,
+    "wavelength_points": 404,
+    "cleanup_complete": true,
+    "test_work_estimate": 200000,
+    "interpretation": "explicit bounded executor transport test; not evidence default search used workers"
+  },
+  "confirmation_status": "pending parent cloud 8 cases x 3 seeds x 2 modes, 120 seconds each; no new long local search",
+  "publication_status": "no commit or push; prior denied GPU4d push not retried",
+  "public_export": {
+    "original_record_sha256": "3bab3ceb84e3ffa1764c94c90c368961bf9f59de0fd71cd8b65be230ad38b4fb",
+    "omitted": "personal Library routing IDs only; numerical evidence unchanged"
+  }
+}

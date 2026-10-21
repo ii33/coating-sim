@@ -1,0 +1,743 @@
+{
+  "schema_version": 1,
+  "qualification_run_id": "film-synthesis-reference-qualification-20261021-v1_1",
+  "request_and_reference_prescriptions": {
+    "request_kind": "reference qualification template; not an optimizer request",
+    "matrix_revision": "v1.1",
+    "source_revision": "runtime repository HEAD not mutated by this subtask",
+    "angle_deg": [
+      0.0
+    ],
+    "polarizations": [
+      "s",
+      "p"
+    ],
+    "incident_medium": {
+      "kind": "constant",
+      "n": 1.0,
+      "role": "air model"
+    },
+    "substrate_model": {
+      "material_id": "builtin_research_SiO2_film",
+      "optical_set_id": "ri_sio2_rodriguez_de_marcos",
+      "role": "semi-infinite substrate model from sourced SiO2 thin-film n/k",
+      "sides": "single",
+      "assumption": "source set measured on deposited SiO2 film; use here as an optical model only"
+    },
+    "cases": [
+      {
+        "case_id": "ar_single_550",
+        "qualification_status": "verified_reachable_added_case",
+        "frozen_v1_relation": "v1 ar_v_visible 540-560 nm max R <= 0.002 unchanged; this narrower reference does not qualify or replace it",
+        "objective": {
+          "wavelength_nm": [
+            550,
+            550
+          ],
+          "metric": "R",
+          "max": 0.03,
+          "angle_deg": [
+            0
+          ],
+          "polarizations": [
+            "s",
+            "p"
+          ]
+        },
+        "prescription": {
+          "schema_version": 1,
+          "id": "reference-added-single-line-ar-mgf2-on-sio2-at-550-nm",
+          "name": "Added single-line AR MgF2 on SiO2 at 550 nm",
+          "layer_order": "substrate_outward",
+          "front_layers": [
+            {
+              "id": "layer-01",
+              "material_id": "builtin_research_MgF2_film",
+              "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+              "thickness": {
+                "value": 96.64186903761922,
+                "unit": "nm"
+              },
+              "note": "quarter-wave, d=lambda0/(4 Re(n_MgF2(lambda0))); MgF2 source has measured k"
+            }
+          ],
+          "back_layers": [],
+          "reference_wavelength_nm": 550.0,
+          "substrate": {
+            "material_id": "builtin_research_SiO2_film",
+            "optical_set_id": "ri_sio2_rodriguez_de_marcos",
+            "thickness": {
+              "value": 1.0,
+              "unit": "mm"
+            },
+            "sides": "single",
+            "mode": "auto"
+          },
+          "incident_medium": {
+            "kind": "constant",
+            "n": 1.0
+          },
+          "exit_medium": {
+            "kind": "constant",
+            "n": 1.0
+          },
+          "assume_lossless": false,
+          "use_k": true,
+          "note": "",
+          "first_surface": "front",
+          "expression": {
+            "text": "",
+            "symbols": {},
+            "in_sync": true
+          }
+        },
+        "by_polarization": [
+          {
+            "polarization": "s",
+            "R": 0.02557824733424297,
+            "T": 0.9730834980146242,
+            "A": 0.0013382546511327975
+          },
+          {
+            "polarization": "p",
+            "R": 0.02557824733424294,
+            "T": 0.973083498014624,
+            "A": 0.0013382546511330196
+          }
+        ],
+        "reference_wavelength_optical_values": {
+          "MgF2_n": 1.4227787745544964,
+          "MgF2_k": 0.0006217853294653959,
+          "SiO2_n": 1.4661364520547946,
+          "SiO2_k": 0.001924068493150685
+        },
+        "qualification_note": "single-layer quarter-wave analytical design; thin-film SiO2 n/k optical set is used as semi-infinite substrate model. This is an explicit optical model, not proof of bulk substrate-specific data."
+      },
+      {
+        "case_id": "hr_periodic_680_720",
+        "qualification_status": "verified_reachable_added_case",
+        "frozen_v1_relation": "v1 high reflector 600-900 nm multi-angle max requirement unchanged; this 680-720 nm normal-incidence case is additional",
+        "objective": {
+          "wavelength_nm": [
+            680,
+            720
+          ],
+          "metric": "R",
+          "min": 0.99,
+          "angle_deg": [
+            0
+          ],
+          "polarizations": [
+            "s",
+            "p"
+          ]
+        },
+        "prescription": {
+          "schema_version": 1,
+          "id": "reference-added-periodic-hr-zns-mgf2-8-pairs-700-nm",
+          "name": "Added periodic HR ZnS MgF2 8 pairs 700 nm",
+          "layer_order": "substrate_outward",
+          "front_layers": [
+            {
+              "id": "layer-01",
+              "material_id": "builtin_zns_literature_20261004",
+              "optical_set_id": "ri_zns_amotchkina_nk",
+              "thickness": {
+                "value": 74.9702483192175,
+                "unit": "nm"
+              },
+              "note": "QW ZnS, pair 1; d=lambda0/(4 Re(n_ZnS(lambda0)))"
+            },
+            {
+              "id": "layer-02",
+              "material_id": "builtin_research_MgF2_film",
+              "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+              "thickness": {
+                "value": 123.2145092193413,
+                "unit": "nm"
+              },
+              "note": "QW MgF2, pair 1; d=lambda0/(4 Re(n_MgF2(lambda0)))"
+            },
+            {
+              "id": "layer-03",
+              "material_id": "builtin_zns_literature_20261004",
+              "optical_set_id": "ri_zns_amotchkina_nk",
+              "thickness": {
+                "value": 74.9702483192175,
+                "unit": "nm"
+              },
+              "note": "QW ZnS, pair 2; d=lambda0/(4 Re(n_ZnS(lambda0)))"
+            },
+            {
+              "id": "layer-04",
+              "material_id": "builtin_research_MgF2_film",
+              "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+              "thickness": {
+                "value": 123.2145092193413,
+                "unit": "nm"
+              },
+              "note": "QW MgF2, pair 2; d=lambda0/(4 Re(n_MgF2(lambda0)))"
+            },
+            {
+              "id": "layer-05",
+              "material_id": "builtin_zns_literature_20261004",
+              "optical_set_id": "ri_zns_amotchkina_nk",
+              "thickness": {
+                "value": 74.9702483192175,
+                "unit": "nm"
+              },
+              "note": "QW ZnS, pair 3; d=lambda0/(4 Re(n_ZnS(lambda0)))"
+            },
+            {
+              "id": "layer-06",
+              "material_id": "builtin_research_MgF2_film",
+              "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+              "thickness": {
+                "value": 123.2145092193413,
+                "unit": "nm"
+              },
+              "note": "QW MgF2, pair 3; d=lambda0/(4 Re(n_MgF2(lambda0)))"
+            },
+            {
+              "id": "layer-07",
+              "material_id": "builtin_zns_literature_20261004",
+              "optical_set_id": "ri_zns_amotchkina_nk",
+              "thickness": {
+                "value": 74.9702483192175,
+                "unit": "nm"
+              },
+              "note": "QW ZnS, pair 4; d=lambda0/(4 Re(n_ZnS(lambda0)))"
+            },
+            {
+              "id": "layer-08",
+              "material_id": "builtin_research_MgF2_film",
+              "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+              "thickness": {
+                "value": 123.2145092193413,
+                "unit": "nm"
+              },
+              "note": "QW MgF2, pair 4; d=lambda0/(4 Re(n_MgF2(lambda0)))"
+            },
+            {
+              "id": "layer-09",
+              "material_id": "builtin_zns_literature_20261004",
+              "optical_set_id": "ri_zns_amotchkina_nk",
+              "thickness": {
+                "value": 74.9702483192175,
+                "unit": "nm"
+              },
+              "note": "QW ZnS, pair 5; d=lambda0/(4 Re(n_ZnS(lambda0)))"
+            },
+            {
+              "id": "layer-10",
+              "material_id": "builtin_research_MgF2_film",
+              "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+              "thickness": {
+                "value": 123.2145092193413,
+                "unit": "nm"
+              },
+              "note": "QW MgF2, pair 5; d=lambda0/(4 Re(n_MgF2(lambda0)))"
+            },
+            {
+              "id": "layer-11",
+              "material_id": "builtin_zns_literature_20261004",
+              "optical_set_id": "ri_zns_amotchkina_nk",
+              "thickness": {
+                "value": 74.9702483192175,
+                "unit": "nm"
+              },
+              "note": "QW ZnS, pair 6; d=lambda0/(4 Re(n_ZnS(lambda0)))"
+            },
+            {
+              "id": "layer-12",
+              "material_id": "builtin_research_MgF2_film",
+              "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+              "thickness": {
+                "value": 123.2145092193413,
+                "unit": "nm"
+              },
+              "note": "QW MgF2, pair 6; d=lambda0/(4 Re(n_MgF2(lambda0)))"
+            },
+            {
+              "id": "layer-13",
+              "material_id": "builtin_zns_literature_20261004",
+              "optical_set_id": "ri_zns_amotchkina_nk",
+              "thickness": {
+                "value": 74.9702483192175,
+                "unit": "nm"
+              },
+              "note": "QW ZnS, pair 7; d=lambda0/(4 Re(n_ZnS(lambda0)))"
+            },
+            {
+              "id": "layer-14",
+              "material_id": "builtin_research_MgF2_film",
+              "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+              "thickness": {
+                "value": 123.2145092193413,
+                "unit": "nm"
+              },
+              "note": "QW MgF2, pair 7; d=lambda0/(4 Re(n_MgF2(lambda0)))"
+            },
+            {
+              "id": "layer-15",
+              "material_id": "builtin_zns_literature_20261004",
+              "optical_set_id": "ri_zns_amotchkina_nk",
+              "thickness": {
+                "value": 74.9702483192175,
+                "unit": "nm"
+              },
+              "note": "QW ZnS, pair 8; d=lambda0/(4 Re(n_ZnS(lambda0)))"
+            },
+            {
+              "id": "layer-16",
+              "material_id": "builtin_research_MgF2_film",
+              "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+              "thickness": {
+                "value": 123.2145092193413,
+                "unit": "nm"
+              },
+              "note": "QW MgF2, pair 8; d=lambda0/(4 Re(n_MgF2(lambda0)))"
+            }
+          ],
+          "back_layers": [],
+          "reference_wavelength_nm": 700.0,
+          "substrate": {
+            "material_id": "builtin_research_SiO2_film",
+            "optical_set_id": "ri_sio2_rodriguez_de_marcos",
+            "thickness": {
+              "value": 1.0,
+              "unit": "mm"
+            },
+            "sides": "single",
+            "mode": "auto"
+          },
+          "incident_medium": {
+            "kind": "constant",
+            "n": 1.0
+          },
+          "exit_medium": {
+            "kind": "constant",
+            "n": 1.0
+          },
+          "assume_lossless": false,
+          "use_k": true,
+          "note": "",
+          "first_surface": "front",
+          "expression": {
+            "text": "",
+            "symbols": {},
+            "in_sync": true
+          }
+        },
+        "layer_order": "front_layers are stored substrate-outward; substrate/SiO2 then ZnS/MgF2 repeated eight pairs, then air",
+        "qwave_optical_values_at_700nm": {
+          "ZnS_n": 2.334259308504136,
+          "ZnS_k": 0.000254,
+          "MgF2_n": 1.420287278736568,
+          "MgF2_k": 0.0004876730706610225
+        },
+        "dense_1nm_extrema": [
+          {
+            "polarization": "s",
+            "min_R": 0.9911140920012388,
+            "at_nm": 680.0,
+            "max_T": 0.002299512011252022,
+            "max_A": 0.006686827826577233
+          },
+          {
+            "polarization": "p",
+            "min_R": 0.9911140920012388,
+            "at_nm": 680.0,
+            "max_T": 0.002299512011252032,
+            "max_A": 0.00668682782657723
+          }
+        ],
+        "offset_half_nm": [
+          {
+            "polarization": "s",
+            "min_R": 0.9911460392184519,
+            "max_R": 0.9927742100478913
+          },
+          {
+            "polarization": "p",
+            "min_R": 0.9911460392184519,
+            "max_R": 0.9927742100478916
+          }
+        ],
+        "extremum_neighbor_min_R": {
+          "s": 0.9911140920012388,
+          "p": 0.9911140920012388
+        },
+        "qualification_note": "true source n and k used for ZnS and MgF2 films and SiO2 semi-infinite substrate optical model; all sampled audit points satisfy the added case threshold."
+      },
+      {
+        "case_id": "ar_v_visible_conditional_ybf3",
+        "qualifies_matrix_case": "ar_v_visible",
+        "qualification_status": "verified_reachable_conditional_on_unknown_k_zero",
+        "objective": {
+          "wavelength_nm": [
+            540,
+            560
+          ],
+          "metric": "R",
+          "max": 0.002,
+          "angle_deg": [
+            0
+          ],
+          "polarizations": [
+            "s",
+            "p"
+          ]
+        },
+        "environment": {
+          "schema_version": 1,
+          "id": "qualification-ar-v-visible-conditional-environment-20261021-v11",
+          "name": "V-AR conditional bare ZnS substrate",
+          "layer_order": "substrate_outward",
+          "front_layers": [],
+          "back_layers": [],
+          "reference_wavelength_nm": 550.0,
+          "substrate": {
+            "material_id": "builtin_zns_literature_20261004",
+            "optical_set_id": "ri_zns_amotchkina_nk",
+            "thickness": {
+              "value": 1.0,
+              "unit": "mm"
+            },
+            "sides": "single",
+            "mode": "auto"
+          },
+          "incident_medium": {
+            "kind": "constant",
+            "n": 1.0
+          },
+          "exit_medium": {
+            "kind": "constant",
+            "n": 1.0
+          },
+          "assume_lossless": true,
+          "use_k": true,
+          "note": "",
+          "first_surface": "front",
+          "expression": {
+            "text": "",
+            "symbols": {},
+            "in_sync": true
+          }
+        },
+        "prescription": {
+          "schema_version": 1,
+          "id": "qualification-ar-v-visible-ybf3-conditional-20261021-v11",
+          "name": "V-AR single-layer YbF3 conditional on unknown k zero",
+          "layer_order": "substrate_outward",
+          "front_layers": [
+            {
+              "id": "ar-ybf3-quarterwave",
+              "material_id": "builtin_research_YbF3_film",
+              "optical_set_id": "ri_ybf3_amotchkina_n",
+              "thickness": {
+                "value": 90.85653797204274,
+                "unit": "nm"
+              },
+              "note": "quarter-wave based on catalog source n at 550 nm; unknown k set to zero only by explicit assume_lossless opt-in"
+            }
+          ],
+          "back_layers": [],
+          "reference_wavelength_nm": 550.0,
+          "substrate": {
+            "material_id": "builtin_zns_literature_20261004",
+            "optical_set_id": "ri_zns_amotchkina_nk",
+            "thickness": {
+              "value": 1.0,
+              "unit": "mm"
+            },
+            "sides": "single",
+            "mode": "auto"
+          },
+          "incident_medium": {
+            "kind": "constant",
+            "n": 1.0
+          },
+          "exit_medium": {
+            "kind": "constant",
+            "n": 1.0
+          },
+          "assume_lossless": true,
+          "use_k": true,
+          "note": "",
+          "first_surface": "front",
+          "expression": {
+            "text": "",
+            "symbols": {},
+            "in_sync": true
+          }
+        },
+        "optical_values_at_550nm": {
+          "YbF3_n": 1.513374855228468,
+          "YbF3_k": null,
+          "ZnS_n": 2.385770586693215,
+          "ZnS_k": 0.000699,
+          "film_thickness_nm": 90.85653797204274
+        },
+        "unknown_k_policy": {
+          "assume_lossless": true,
+          "scope": "YbF3 film only",
+          "substitution": "k=0 only for YbF3 because source k is absent; ZnS source k retained",
+          "conditional_on_assumption": true
+        },
+        "independent_audit_summary": [
+          {
+            "grid": "dense_1nm",
+            "polarization": "s",
+            "max_R": 0.0006086363502518395,
+            "max_at_nm": 540.0,
+            "min_R": 0.0004168389433809762,
+            "min_at_nm": 550.0
+          },
+          {
+            "grid": "dense_1nm",
+            "polarization": "p",
+            "max_R": 0.0006086363502518393,
+            "max_at_nm": 540.0,
+            "min_R": 0.0004168389433809785,
+            "min_at_nm": 550.0
+          },
+          {
+            "grid": "offset_half_nm",
+            "polarization": "s",
+            "max_R": 0.0005891808535595567,
+            "max_at_nm": 540.5,
+            "min_R": 0.00041697829061926615,
+            "min_at_nm": 549.5
+          },
+          {
+            "grid": "offset_half_nm",
+            "polarization": "p",
+            "max_R": 0.0005891808535595555,
+            "max_at_nm": 540.5,
+            "min_R": 0.0004169782906192673,
+            "min_at_nm": 549.5
+          },
+          {
+            "grid": "edge_extremum_neighbor",
+            "polarization": "s",
+            "max_R": 0.0006086363502518395,
+            "samples": [
+              {
+                "wavelength_nm": 540.0,
+                "R": 0.0006086363502518395
+              },
+              {
+                "wavelength_nm": 540.5,
+                "R": 0.0005891808535595567
+              },
+              {
+                "wavelength_nm": 541.0,
+                "R": 0.0005708085544703206
+              },
+              {
+                "wavelength_nm": 559.0,
+                "R": 0.000569498488689987
+              },
+              {
+                "wavelength_nm": 559.5,
+                "R": 0.0005861873354257964
+              },
+              {
+                "wavelength_nm": 560.0,
+                "R": 0.0006036975880109252
+              }
+            ]
+          },
+          {
+            "grid": "edge_extremum_neighbor",
+            "polarization": "p",
+            "max_R": 0.0006086363502518393,
+            "samples": [
+              {
+                "wavelength_nm": 540.0,
+                "R": 0.0006086363502518393
+              },
+              {
+                "wavelength_nm": 540.5,
+                "R": 0.0005891808535595555
+              },
+              {
+                "wavelength_nm": 541.0,
+                "R": 0.0005708085544703219
+              },
+              {
+                "wavelength_nm": 559.0,
+                "R": 0.0005694984886899819
+              },
+              {
+                "wavelength_nm": 559.5,
+                "R": 0.0005861873354258016
+              },
+              {
+                "wavelength_nm": 560.0,
+                "R": 0.0006036975880109275
+              }
+            ]
+          }
+        ],
+        "max_normalized_violation": 0.0,
+        "targets_met_under_explicit_assumption": true,
+        "note": "Conditionally satisfies the frozen V-AR objective using the catalog n-only YbF3 set. No source n was modified. Do not interpret as unconditional measured absorption evidence."
+      }
+    ],
+    "material_references": [
+      {
+        "role": "semi_infinite_substrate_optical_model",
+        "material_id": "builtin_research_SiO2_film",
+        "optical_set_id": "ri_sio2_rodriguez_de_marcos",
+        "wavelength_domain_um": [
+          0.0299714,
+          1.51066
+        ],
+        "wavelength_unit": "um",
+        "n_and_k_source_present": true,
+        "source_summary": "L. V. Rodríguez-de Marcos, J. I. Larruquert, J. A. Méndez, J. A. Aznárez.",
+        "source_doi_or_url": [
+          "https://doi.org/10.1364/OME.6.003622",
+          "https://refractiveindex.info/?shelf=main&book=SiO2&page=Rodriguez-de_Marcos"
+        ],
+        "raw_numeric_sha256": "3e5678fce64edcb36fef1e8d5ca822328b7fd389c87b489d606638ed96753d72"
+      },
+      {
+        "role": "low_index_film",
+        "material_id": "builtin_research_MgF2_film",
+        "optical_set_id": "ri_mgf2_rodriguez_de_marcos",
+        "wavelength_domain_um": [
+          0.0299919,
+          2.00146
+        ],
+        "wavelength_unit": "um",
+        "n_and_k_source_present": true,
+        "source_summary": "L. V. Rodríguez-de Marcos, J. I. Larruquert, J. A. Méndez, J. A. Aznárez.",
+        "source_doi_or_url": [
+          "https://doi.org/10.1364/OME.7.000989",
+          "https://refractiveindex.info/?shelf=main&book=MgF2&page=Rodriguez-de_Marcos"
+        ],
+        "raw_numeric_sha256": "de4aa1fb47aeacc35010db68a8b291ebaefc573f131cf37dff62b582c2a294cd"
+      },
+      {
+        "role": "high_index_film",
+        "material_id": "builtin_zns_literature_20261004",
+        "optical_set_id": "ri_zns_amotchkina_nk",
+        "wavelength_domain_um": [
+          0.4,
+          1.0
+        ],
+        "wavelength_unit": "um",
+        "n_and_k_source_present": true,
+        "source_summary": "T. Amotchkina, M. Trubetskov, D. Hahner, V. Pervak.",
+        "source_doi_or_url": [
+          "https://doi.org/10.1364/AO.59.000A40",
+          "https://refractiveindex.info/?shelf=main&book=ZnS&page=Amotchkina"
+        ],
+        "raw_numeric_sha256": "9533878df7b2b03b702089832074dc9e23c4e22ff0c1107c66a63b219bc43670"
+      },
+      {
+        "role": "single_layer_film_conditional_n_only",
+        "material_id": "builtin_research_YbF3_film",
+        "optical_set_id": "ri_ybf3_amotchkina_n",
+        "wavelength_domain_um": [
+          0.4,
+          12.0
+        ],
+        "wavelength_unit": "um",
+        "n_source_present": true,
+        "k_source_present": false,
+        "k_known_at_sample": false,
+        "source_summary": "T. Amotchkina, M. Trubetskov, D. Hahner, V. Pervak.",
+        "source_doi_or_url": [
+          "https://doi.org/10.1364/AO.59.000A40",
+          "https://refractiveindex.info/?shelf=main&book=YbF3&page=Amotchkina"
+        ],
+        "raw_numeric_sha256": "bb7a7a83b4ab2b11bcd1c7bd899bef22bad25c9c6f6c73a4d19869d3ffc57161"
+      }
+    ],
+    "assume_lossless": false,
+    "unknown_k_policy": "strict source n/k required; extrapolation error; no unknown k zero substitution",
+    "request_sha256": "9f0a5f699e973e2449a42bb79b2ef2c5b25a04c55eed301e3bead90ec5b92bf5",
+    "audit_evidence": {
+      "public_response_sha256": "5bbff1053b49b57540a06a09690a293cca292fa04444d6511ac53f5bc0a391c6",
+      "private_local_temp_evidence": "[private local evidence path omitted]",
+      "response_count": 34,
+      "response_bytes": 781940,
+      "no_material_arrays_embedded": true
+    }
+  },
+  "public_proof_summary": {
+    "evidence_kind": "deterministic sampled TMM response summary; raw responses retained in local temp evidence",
+    "response_sha256": "5bbff1053b49b57540a06a09690a293cca292fa04444d6511ac53f5bc0a391c6",
+    "request_sha256": "9f0a5f699e973e2449a42bb79b2ef2c5b25a04c55eed301e3bead90ec5b92bf5",
+    "response_count": 34,
+    "cases": [
+      {
+        "case_id": "ar_single_550",
+        "qualification_status": "verified_reachable_added_case",
+        "objective": {
+          "wavelength_nm": [
+            550,
+            550
+          ],
+          "metric": "R",
+          "max": 0.03,
+          "angle_deg": [
+            0
+          ],
+          "polarizations": [
+            "s",
+            "p"
+          ]
+        }
+      },
+      {
+        "case_id": "hr_periodic_680_720",
+        "qualification_status": "verified_reachable_added_case",
+        "objective": {
+          "wavelength_nm": [
+            680,
+            720
+          ],
+          "metric": "R",
+          "min": 0.99,
+          "angle_deg": [
+            0
+          ],
+          "polarizations": [
+            "s",
+            "p"
+          ]
+        }
+      },
+      {
+        "case_id": "ar_v_visible_conditional_ybf3",
+        "qualification_status": "verified_reachable_conditional_on_unknown_k_zero",
+        "objective": {
+          "wavelength_nm": [
+            540,
+            560
+          ],
+          "metric": "R",
+          "max": 0.002,
+          "angle_deg": [
+            0
+          ],
+          "polarizations": [
+            "s",
+            "p"
+          ]
+        }
+      }
+    ],
+    "local_temp_evidence_file": "[private local evidence path omitted]"
+  },
+  "public_export": {
+    "original_evidence_sha256": "f073070685a165db20d1c21dcc33c5d39af6130199f225f971ba41df47639053",
+    "local_path_strings_omitted": 2,
+    "policy": "All numeric evidence, failures, recipes and source attribution retained; only absolute local evidence path strings omitted. Original local JSON is unchanged."
+  }
+}

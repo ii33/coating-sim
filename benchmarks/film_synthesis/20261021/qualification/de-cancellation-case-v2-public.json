@@ -1,0 +1,1082 @@
+{
+  "schema_version": 2,
+  "case_id": "natural-production-de-cancellation-and-finite-budget-v2",
+  "status": "both_production_de_fault_contracts_verified",
+  "protocol": {
+    "wall_budget_each_s": 120,
+    "cpu_workers": 2,
+    "math_threads": 1,
+    "priority": "below_normal",
+    "cancellation": "Set only the cooperative cancellation Event after a validation_complete event following a naturally observed structure_global_generation. No proposal or solver is patched.",
+    "finite_budget_selection": {
+      "measured_original_global_entry_evaluations": 235,
+      "measured_population_size": 24,
+      "formula": "entry + 2*population + 1 reserved final audit",
+      "max_evaluations": 284
+    },
+    "sources_unchanged_from_success": true,
+    "original_success_directory": "[private local evidence path omitted]",
+    "original_success_request_sha256": "cc273b3fa16404b76d7cb082cd75eb509e6b0b854d1fefc74b9b33ce222afccc"
+  },
+  "cases": [
+    {
+      "kind": "cancel",
+      "folder": "[private local evidence path omitted]",
+      "frozen_job_sha256": "cc273b3fa16404b76d7cb082cd75eb509e6b0b854d1fefc74b9b33ce222afccc",
+      "source_hashes": {
+        "coat_sim\\core\\film_auto_synthesis.py": "54860af779b215f2b202cfef6bcd366f701f6b5a95d767fc120dda4afe083e2f",
+        "coat_sim\\core\\film_batch_de.py": "f90feae39810678e8d72c849a2b45efa1b6fff2fbd8e3471e326baba814ced79",
+        "coat_sim\\core\\film_classic_global.py": "6a8becbf6ee30fcf8c2bd7c387e77bc8ff297b685db37a0e8a5e6b74bd55e02b",
+        "coat_sim\\core\\film_classic_local.py": "39dda9a1dfd1369317d63817eff797f314b5cb93419a60e74da1520bd622a917",
+        "coat_sim\\core\\film_compute.py": "07a5a1c07d8583f3635186df18d71676766d9d6f44a4b4a4357ecaa35b7817eb",
+        "coat_sim\\core\\film_design.py": "f43648816d4a1a3a9f3502fee17262237e3b2cda1564d6536f263567d2eb39bf",
+        "coat_sim\\core\\film_design_reference_recipes.py": "07ac564545ba6e3e0e65dff36699530c968b0be3944083886eb934ec5820b5ab",
+        "coat_sim\\core\\film_design_service.py": "7a8c1a51289288b167a1061009b1cb45a62f6703d419351e96e76c405d4d83a4",
+        "coat_sim\\core\\film_design_session.py": "b8885dcf579b1a06b2cfc598b8394540567b7205b257b6135479881a22012e09",
+        "coat_sim\\core\\film_design_store.py": "cd110f5c938f6b8fd4d36416eb12255524f019bcd4da4f12baba4c34c8f769cf",
+        "coat_sim\\core\\film_design_templates.py": "65062f4db5c0436ea21bbf345694036e48951c48fb9377fc530324f4afebd03d",
+        "coat_sim\\core\\film_evaluation_executor.py": "cbfd149fabaa36e49e637acc276112c0a64ab47dde746265b57c894b4c9b598d",
+        "coat_sim\\core\\film_expression_store.py": "76b7aed23595c827ee7d6487cfdb2a6abd565f9f6923d70bebc8a25517b460f9",
+        "coat_sim\\core\\film_materials.py": "95ffa4dbe7935cb75cb64ab2863aea8b46894a6f81cfba238a8ac12fde960162",
+        "coat_sim\\core\\film_optics.py": "2d5e9c8ef54c44cb62b381740a6120238ec4b68401cdde226114f7ad2c752917",
+        "coat_sim\\core\\film_optics_batch.py": "846a1aab70ff5d2233401a48f821cc836a09a09a73ce31a3b804a870a1d3908f",
+        "coat_sim\\core\\film_optics_gpu.py": "6bf8669d9809598dfe044ad136d654e349053f3dd0d7fe1bc39a7b3c0ff2bf64",
+        "coat_sim\\core\\film_optimization.py": "2d79a2909be187bdf066696bc2231970333a9615c83ccf944c767422819568d8",
+        "coat_sim\\core\\film_optimization_batch_forward.py": "9c2fb0297a69d869af87a2b5a707c3967591e2f54a6fceb3908744e812e4ad06",
+        "coat_sim\\core\\film_optimization_derivatives.py": "2af5f48f1b54c77fcddc71d9732b161c8e19f89e7a79477f8a296e2391302ef9",
+        "coat_sim\\core\\film_optimization_forward_cache.py": "8c318ce5f1b33f035884819cb893f355311628576b5cafa2b033413b5e6223d5",
+        "coat_sim\\core\\film_optimization_job.py": "def652a696fa51ca9b856128f5356b4cb3e7d43af56248ce786fc700ef0c6e9c",
+        "coat_sim\\core\\film_optimization_needle.py": "cf84c53ebdfa4f989e7bafcc50f0a0d260bbd1bd7398caa374e97b53bf05c768",
+        "coat_sim\\core\\film_optimization_preview.py": "463829ea3ef9bf6e5a9e2d1e9aef0af8eab971eeeec49b83d6978834513f99c5",
+        "coat_sim\\core\\film_optimization_scoring.py": "92fcdaf2660a1ff8dea286075343358534cccd444c9c88ed25b87cdbb343593d",
+        "coat_sim\\core\\film_optimization_solvers.py": "d1f89cdc7444fea0a7e6004f6c422cfa737e4e548aa175b488c3e2382671c9f0",
+        "coat_sim\\core\\film_optimization_structure.py": "a9dd4750b26f30034b7cfec2c464fe179c88aebcd9e879694c8e94ae34b02dac",
+        "coat_sim\\core\\film_performance.py": "21554b13c7ace28be00a2935d5447d9234ea85ade91b7c43eddef4264f49e3d8",
+        "coat_sim\\core\\film_physical_generator.py": "7b126215898764864996c3182bd225494624af8c4a7c16bf43a4835e85ac7c4d",
+        "coat_sim\\core\\film_physical_structures.py": "641423ea127a2918b7d94a12cd8686e8e3e0c6c1a95f81e20177d13767166d0c",
+        "coat_sim\\core\\film_process_import.py": "62ed1f8713f875bae7027a5595c0484d85a5efdd8197a8166e6cd97140ffa5fc",
+        "coat_sim\\core\\film_result_service.py": "7d3620d2eb91ca827882f055b77f2773f5b78e6cf16188b9032bfa1b9a1f9eed",
+        "coat_sim\\core\\film_spectrum_analysis.py": "6e37b6bf8fcc9b47f29dd5fd94ef6acfbea294321ff0456262a595a551dbc35b",
+        "coat_sim\\core\\film_stack.py": "fbca16433b9ead48f9b6e7ce8a906f3f4a2977eefd51f11376e2ea2cb6bf8fea",
+        "coat_sim\\core\\film_stack_schema.py": "93ae7cb643065c6420a4aebec6f360bafad3526fdbd1c4952fb3336149517920",
+        "coat_sim\\core\\film_structure_payload_contract.py": "dab0afba77e59aca2fbaf6d51243591682adb900ac608bf92dbd98b4d2184799",
+        "coat_sim\\core\\film_synthesis_absorption.py": "a3740ccba861a6520cd2cdd3f3b22c8c124e1cbbb795dafdcbd33b0d4a5dee00",
+        "coat_sim\\core\\film_synthesis_audit.py": "55b5cf71b094a295296bfd46556d733c40f709c3faeda2c4b27ffbcb6b4ece12",
+        "coat_sim\\core\\film_synthesis_forward.py": "b1a90c539641627da01ccde3d44ae46b2cf300a7860c392846cfa197be8ef649",
+        "coat_sim\\core\\film_synthesis_global.py": "6155a2d4dd13d1bdc6c1eec42991279c8836a9469a7205e06b168d0b0b2f23af",
+        "coat_sim\\core\\film_synthesis_io.py": "21028988b2207c432782b6874f8006f98a4f102d7640b287016405bc85abd3ec",
+        "coat_sim\\core\\film_synthesis_jobs.py": "39db70f098cbc23755fcad6c23454e48de21e8ac6762a64f45cdfe153446b363",
+        "coat_sim\\core\\film_synthesis_parallel.py": "5110858e8839b34ea3a295cf027d05e1d08588e23d2b581f7a52f1ee695df79f",
+        "coat_sim\\core\\film_synthesis_refinement.py": "dd5c535620b2c8e0006c7fdda577dc45251593dcdee61d9b84e5c7920c3d09ee",
+        "coat_sim\\core\\film_xpu_execution.py": "187808876f8f3ba77273411ab8869c2cee4f8883c1d0bdc8cd825731438911e5"
+      },
+      "status": "verified_complete_best_with_unmatched_audit_rejected",
+      "result": {
+        "wall_budget_s": 120.0,
+        "wall_including_cleanup_s": 17.462792299993453,
+        "state": "cancelled",
+        "reason": "cancelled",
+        "strict_original_targets_pass": false,
+        "successful_reference_qualification": false,
+        "logical_evaluations": 390,
+        "validation_evaluations": 3,
+        "complete_result_contract": true,
+        "cancel_provenance": {
+          "selection": "completed_training_at_cancel",
+          "training_complete": true,
+          "frozen_at_cancel": true,
+          "fully_scored_evaluations": 387,
+          "validation_matches_candidate": false
+        },
+        "returned_audit_matches_candidate": true,
+        "returned_audit_available": false,
+        "checkpoint_available": true,
+        "returned_candidate_matches_checkpoint": false,
+        "layer_count": 14,
+        "physical_work": {
+          "training": 1548,
+          "known_training": 1548,
+          "training_points": 465948,
+          "audit": 104,
+          "audit_points": 36101,
+          "actual_work_complete": true,
+          "unknown_tasks": 0,
+          "incomplete_calls": 0
+        },
+        "global_stages": [
+          {
+            "family": "chirped",
+            "layer_count": 14,
+            "parameterization": "structure",
+            "dimension": 3,
+            "lower_parameters": [
+              -0.1823215567939546,
+              -0.1823215567939546,
+              -0.13976194237515863
+            ],
+            "upper_parameters": [
+              0.1823215567939546,
+              0.1823215567939546,
+              0.13976194237515863
+            ],
+            "bound_source": "project log-parameter box: uniform scale/ramp +/-log(1.2), HL ratio +/-log(1.15), times epoch expansion; not manufacturing limits",
+            "population_size": 24,
+            "stage_generations": 4,
+            "completed_generations": 4,
+            "seed": 0,
+            "epoch": 0,
+            "expansion": 1.0,
+            "coverage_complete": false,
+            "stop_reason": "cancelled",
+            "mapping": "d_i'=d_i*exp(a+b*t_pair+c*s_HL); t_pair in [-1,1], s_HL +/-1"
+          }
+        ],
+        "accounting_crosscheck": {
+          "expected_calls_per_complete_training_candidate": 4,
+          "expected_points_per_complete_training_candidate": 1204,
+          "completed_training_candidates": 387,
+          "calls_equal_complete_candidate_product": true,
+          "points_equal_complete_candidate_product": true,
+          "incomplete_work_policy": "Null exact totals remain unknown; known totals are lower bounds, never imputed zero."
+        },
+        "batch_decisions": [
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 101136,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure_global",
+            "candidate_count": 24,
+            "estimated_work": 404544,
+            "budget_allows": true,
+            "parallel_selected": true
+          },
+          {
+            "phase": "structure_global",
+            "candidate_count": 24,
+            "estimated_work": 404544,
+            "budget_allows": true,
+            "parallel_selected": true
+          },
+          {
+            "phase": "structure_global",
+            "candidate_count": 24,
+            "estimated_work": 404544,
+            "budget_allows": true,
+            "parallel_selected": true
+          },
+          {
+            "phase": "structure_global",
+            "candidate_count": 24,
+            "estimated_work": 404544,
+            "budget_allows": true,
+            "parallel_selected": true
+          },
+          {
+            "phase": "structure_global",
+            "candidate_count": 24,
+            "estimated_work": 404544,
+            "budget_allows": true,
+            "parallel_selected": true
+          }
+        ],
+        "requested_workers": 2,
+        "effective_workers": 2,
+        "submitted": 120,
+        "consumed": 120,
+        "completed": 120,
+        "discarded": 0,
+        "fallback_events": [],
+        "cleanup_complete": true,
+        "active_worker_pids": [],
+        "cpu": {
+          "root_pid": 34696,
+          "samples": 17,
+          "max_active_children": 2,
+          "max_summed_cores": 1.8694581292839836,
+          "sampled_core_seconds": 17.34375,
+          "child_sampled_core_seconds": 1.625
+        },
+        "heartbeat_count": 17,
+        "unresponsive_observed": false,
+        "trace_stage_counts": {
+          "audit_incumbent": 3,
+          "audit_progress": 208,
+          "cancelled": 1,
+          "freezing": 1,
+          "incumbent": 83,
+          "interior_local_complete": 2,
+          "interior_local_trial": 110,
+          "structural_local_refinement": 1,
+          "structure_global_generation": 4,
+          "structure_global_initial_population": 1,
+          "structure_global_proposal": 120,
+          "structure_proposal": 156,
+          "structure_skipped": 1,
+          "validation": 3,
+          "validation_complete": 3
+        },
+        "artifacts": {
+          "frozen-job.json": {
+            "path": "[private local evidence path omitted]",
+            "sha256": "cc273b3fa16404b76d7cb082cd75eb509e6b0b854d1fefc74b9b33ce222afccc"
+          },
+          "result.json": {
+            "path": "[private local evidence path omitted]",
+            "sha256": "2f69e7451171e4482f09797a346d755c5cab95428182562335670a4cf1a68ba8"
+          },
+          "progress.jsonl": {
+            "path": "[private local evidence path omitted]",
+            "sha256": "6e071d7671f9b548c93b81570d89c71fc0e8764d9873d6f0b607aac0148587e5"
+          },
+          "cpu.jsonl": {
+            "path": "[private local evidence path omitted]",
+            "sha256": "fee46e7701730f137977d44ce225bc38289aec4553b4cab5d6c5bca84416fd43"
+          }
+        },
+        "cancellation_trigger": {
+          "trigger": {
+            "stage": "validation_complete",
+            "status": "Independent physical candidate audit completed",
+            "cycle": 0,
+            "evaluations": 390,
+            "layer_count": 14,
+            "best_max_normalized_error": 0.0,
+            "heartbeat_sequence": 17,
+            "score_scope": "audited",
+            "stalled": false,
+            "unresponsive": false
+          },
+          "policy": "cooperative event after committed post-DE independent audit"
+        },
+        "candidate_equals_training_design": true,
+        "candidate_equals_audit_design": false,
+        "training_and_audit_designs_equal": false,
+        "frozen_max_evaluations": null,
+        "logical_budget_not_exceeded": true,
+        "verification": "complete committed best retained; unrelated helper-candidate audit deliberately not attached",
+        "method_limit": "Original experiment assertion incorrectly assumed any post-DE validation_complete audit must match the parent best. It failed; the production result correctly reports validation_matches_candidate=false and omits unrelated audit. No cancellation retry was run.",
+        "math_thread_environment_observed": [
+          {
+            "OMP_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            "OPENBLAS_NUM_THREADS": "1",
+            "BLIS_NUM_THREADS": "1",
+            "VECLIB_MAXIMUM_THREADS": "1",
+            "NUMEXPR_NUM_THREADS": "1"
+          },
+          {
+            "OMP_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            "OPENBLAS_NUM_THREADS": "1",
+            "BLIS_NUM_THREADS": "1",
+            "VECLIB_MAXIMUM_THREADS": "1",
+            "NUMEXPR_NUM_THREADS": "1"
+          }
+        ],
+        "worker_pids_created": [
+          35352,
+          26564
+        ],
+        "logical_budget_reserved_audit_slot": {
+          "reserved": 1,
+          "unused": null,
+          "explanation": "One logical audit slot is reserved before training; if the selected best already has a matching completed audit, hash deduplication leaves that slot unspent."
+        },
+        "artifact_hashes": {
+          "frozen-job.json": "cc273b3fa16404b76d7cb082cd75eb509e6b0b854d1fefc74b9b33ce222afccc",
+          "result.json": "2f69e7451171e4482f09797a346d755c5cab95428182562335670a4cf1a68ba8",
+          "progress.jsonl": "6e071d7671f9b548c93b81570d89c71fc0e8764d9873d6f0b607aac0148587e5",
+          "cpu.jsonl": "fee46e7701730f137977d44ce225bc38289aec4553b4cab5d6c5bca84416fd43",
+          "freeze-record.json": "f3058d72db8bcdac985482a4b1be0f6bb67b1dae28cf0d848eb2d8791ae02ba4"
+        }
+      }
+    },
+    {
+      "kind": "finite_budget",
+      "folder": "[private local evidence path omitted]",
+      "frozen_job_sha256": "ac953538e89bdda88fbf277dfd3857cd6e3d2d9db33c1f379d1765db6df5ee0a",
+      "source_hashes": {
+        "coat_sim\\core\\film_auto_synthesis.py": "54860af779b215f2b202cfef6bcd366f701f6b5a95d767fc120dda4afe083e2f",
+        "coat_sim\\core\\film_batch_de.py": "f90feae39810678e8d72c849a2b45efa1b6fff2fbd8e3471e326baba814ced79",
+        "coat_sim\\core\\film_classic_global.py": "6a8becbf6ee30fcf8c2bd7c387e77bc8ff297b685db37a0e8a5e6b74bd55e02b",
+        "coat_sim\\core\\film_classic_local.py": "39dda9a1dfd1369317d63817eff797f314b5cb93419a60e74da1520bd622a917",
+        "coat_sim\\core\\film_compute.py": "07a5a1c07d8583f3635186df18d71676766d9d6f44a4b4a4357ecaa35b7817eb",
+        "coat_sim\\core\\film_design.py": "f43648816d4a1a3a9f3502fee17262237e3b2cda1564d6536f263567d2eb39bf",
+        "coat_sim\\core\\film_design_reference_recipes.py": "07ac564545ba6e3e0e65dff36699530c968b0be3944083886eb934ec5820b5ab",
+        "coat_sim\\core\\film_design_service.py": "7a8c1a51289288b167a1061009b1cb45a62f6703d419351e96e76c405d4d83a4",
+        "coat_sim\\core\\film_design_session.py": "b8885dcf579b1a06b2cfc598b8394540567b7205b257b6135479881a22012e09",
+        "coat_sim\\core\\film_design_store.py": "cd110f5c938f6b8fd4d36416eb12255524f019bcd4da4f12baba4c34c8f769cf",
+        "coat_sim\\core\\film_design_templates.py": "65062f4db5c0436ea21bbf345694036e48951c48fb9377fc530324f4afebd03d",
+        "coat_sim\\core\\film_evaluation_executor.py": "cbfd149fabaa36e49e637acc276112c0a64ab47dde746265b57c894b4c9b598d",
+        "coat_sim\\core\\film_expression_store.py": "76b7aed23595c827ee7d6487cfdb2a6abd565f9f6923d70bebc8a25517b460f9",
+        "coat_sim\\core\\film_materials.py": "95ffa4dbe7935cb75cb64ab2863aea8b46894a6f81cfba238a8ac12fde960162",
+        "coat_sim\\core\\film_optics.py": "2d5e9c8ef54c44cb62b381740a6120238ec4b68401cdde226114f7ad2c752917",
+        "coat_sim\\core\\film_optics_batch.py": "846a1aab70ff5d2233401a48f821cc836a09a09a73ce31a3b804a870a1d3908f",
+        "coat_sim\\core\\film_optics_gpu.py": "6bf8669d9809598dfe044ad136d654e349053f3dd0d7fe1bc39a7b3c0ff2bf64",
+        "coat_sim\\core\\film_optimization.py": "2d79a2909be187bdf066696bc2231970333a9615c83ccf944c767422819568d8",
+        "coat_sim\\core\\film_optimization_batch_forward.py": "9c2fb0297a69d869af87a2b5a707c3967591e2f54a6fceb3908744e812e4ad06",
+        "coat_sim\\core\\film_optimization_derivatives.py": "2af5f48f1b54c77fcddc71d9732b161c8e19f89e7a79477f8a296e2391302ef9",
+        "coat_sim\\core\\film_optimization_forward_cache.py": "8c318ce5f1b33f035884819cb893f355311628576b5cafa2b033413b5e6223d5",
+        "coat_sim\\core\\film_optimization_job.py": "def652a696fa51ca9b856128f5356b4cb3e7d43af56248ce786fc700ef0c6e9c",
+        "coat_sim\\core\\film_optimization_needle.py": "cf84c53ebdfa4f989e7bafcc50f0a0d260bbd1bd7398caa374e97b53bf05c768",
+        "coat_sim\\core\\film_optimization_preview.py": "463829ea3ef9bf6e5a9e2d1e9aef0af8eab971eeeec49b83d6978834513f99c5",
+        "coat_sim\\core\\film_optimization_scoring.py": "92fcdaf2660a1ff8dea286075343358534cccd444c9c88ed25b87cdbb343593d",
+        "coat_sim\\core\\film_optimization_solvers.py": "d1f89cdc7444fea0a7e6004f6c422cfa737e4e548aa175b488c3e2382671c9f0",
+        "coat_sim\\core\\film_optimization_structure.py": "a9dd4750b26f30034b7cfec2c464fe179c88aebcd9e879694c8e94ae34b02dac",
+        "coat_sim\\core\\film_performance.py": "21554b13c7ace28be00a2935d5447d9234ea85ade91b7c43eddef4264f49e3d8",
+        "coat_sim\\core\\film_physical_generator.py": "7b126215898764864996c3182bd225494624af8c4a7c16bf43a4835e85ac7c4d",
+        "coat_sim\\core\\film_physical_structures.py": "641423ea127a2918b7d94a12cd8686e8e3e0c6c1a95f81e20177d13767166d0c",
+        "coat_sim\\core\\film_process_import.py": "62ed1f8713f875bae7027a5595c0484d85a5efdd8197a8166e6cd97140ffa5fc",
+        "coat_sim\\core\\film_result_service.py": "7d3620d2eb91ca827882f055b77f2773f5b78e6cf16188b9032bfa1b9a1f9eed",
+        "coat_sim\\core\\film_spectrum_analysis.py": "6e37b6bf8fcc9b47f29dd5fd94ef6acfbea294321ff0456262a595a551dbc35b",
+        "coat_sim\\core\\film_stack.py": "fbca16433b9ead48f9b6e7ce8a906f3f4a2977eefd51f11376e2ea2cb6bf8fea",
+        "coat_sim\\core\\film_stack_schema.py": "93ae7cb643065c6420a4aebec6f360bafad3526fdbd1c4952fb3336149517920",
+        "coat_sim\\core\\film_structure_payload_contract.py": "dab0afba77e59aca2fbaf6d51243591682adb900ac608bf92dbd98b4d2184799",
+        "coat_sim\\core\\film_synthesis_absorption.py": "a3740ccba861a6520cd2cdd3f3b22c8c124e1cbbb795dafdcbd33b0d4a5dee00",
+        "coat_sim\\core\\film_synthesis_audit.py": "55b5cf71b094a295296bfd46556d733c40f709c3faeda2c4b27ffbcb6b4ece12",
+        "coat_sim\\core\\film_synthesis_forward.py": "b1a90c539641627da01ccde3d44ae46b2cf300a7860c392846cfa197be8ef649",
+        "coat_sim\\core\\film_synthesis_global.py": "6155a2d4dd13d1bdc6c1eec42991279c8836a9469a7205e06b168d0b0b2f23af",
+        "coat_sim\\core\\film_synthesis_io.py": "21028988b2207c432782b6874f8006f98a4f102d7640b287016405bc85abd3ec",
+        "coat_sim\\core\\film_synthesis_jobs.py": "39db70f098cbc23755fcad6c23454e48de21e8ac6762a64f45cdfe153446b363",
+        "coat_sim\\core\\film_synthesis_parallel.py": "5110858e8839b34ea3a295cf027d05e1d08588e23d2b581f7a52f1ee695df79f",
+        "coat_sim\\core\\film_synthesis_refinement.py": "dd5c535620b2c8e0006c7fdda577dc45251593dcdee61d9b84e5c7920c3d09ee",
+        "coat_sim\\core\\film_xpu_execution.py": "187808876f8f3ba77273411ab8869c2cee4f8883c1d0bdc8cd825731438911e5"
+      },
+      "status": "verified_exact_accounting_under_finite_budget",
+      "result": {
+        "wall_budget_s": 120.0,
+        "wall_including_cleanup_s": 14.855955199993332,
+        "state": "not_found",
+        "reason": "evaluation_limit",
+        "strict_original_targets_pass": false,
+        "successful_reference_qualification": false,
+        "logical_evaluations": 283,
+        "validation_evaluations": 2,
+        "complete_result_contract": true,
+        "cancel_provenance": {},
+        "returned_audit_matches_candidate": true,
+        "returned_audit_available": true,
+        "checkpoint_available": true,
+        "returned_candidate_matches_checkpoint": true,
+        "layer_count": 14,
+        "physical_work": {
+          "training": 1124,
+          "known_training": 1124,
+          "training_points": 338324,
+          "audit": 52,
+          "audit_points": 24050,
+          "actual_work_complete": true,
+          "unknown_tasks": 0,
+          "incomplete_calls": 0
+        },
+        "global_stages": [
+          {
+            "family": "chirped",
+            "layer_count": 14,
+            "parameterization": "structure",
+            "dimension": 3,
+            "lower_parameters": [
+              -0.1823215567939546,
+              -0.1823215567939546,
+              -0.13976194237515863
+            ],
+            "upper_parameters": [
+              0.1823215567939546,
+              0.1823215567939546,
+              0.13976194237515863
+            ],
+            "bound_source": "project log-parameter box: uniform scale/ramp +/-log(1.2), HL ratio +/-log(1.15), times epoch expansion; not manufacturing limits",
+            "population_size": 24,
+            "stage_generations": 4,
+            "completed_generations": 1,
+            "seed": 0,
+            "epoch": 0,
+            "expansion": 1.0,
+            "coverage_complete": false,
+            "stop_reason": "evaluation_limit",
+            "mapping": "d_i'=d_i*exp(a+b*t_pair+c*s_HL); t_pair in [-1,1], s_HL +/-1"
+          }
+        ],
+        "accounting_crosscheck": {
+          "expected_calls_per_complete_training_candidate": 4,
+          "expected_points_per_complete_training_candidate": 1204,
+          "completed_training_candidates": 281,
+          "calls_equal_complete_candidate_product": true,
+          "points_equal_complete_candidate_product": true,
+          "incomplete_work_policy": "Null exact totals remain unknown; known totals are lower bounds, never imputed zero."
+        },
+        "batch_decisions": [
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 67424,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 101136,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure",
+            "candidate_count": 4,
+            "estimated_work": 134848,
+            "budget_allows": true,
+            "parallel_selected": false
+          },
+          {
+            "phase": "structure_global",
+            "candidate_count": 24,
+            "estimated_work": 404544,
+            "budget_allows": true,
+            "parallel_selected": true
+          },
+          {
+            "phase": "structure_global",
+            "candidate_count": 24,
+            "estimated_work": 404544,
+            "budget_allows": true,
+            "parallel_selected": true
+          },
+          {
+            "phase": "structure_global",
+            "candidate_count": 24,
+            "estimated_work": 404544,
+            "budget_allows": false,
+            "parallel_selected": false
+          }
+        ],
+        "requested_workers": 2,
+        "effective_workers": 2,
+        "submitted": 48,
+        "consumed": 48,
+        "completed": 48,
+        "discarded": 0,
+        "fallback_events": [],
+        "cleanup_complete": true,
+        "active_worker_pids": [],
+        "cpu": {
+          "root_pid": 14556,
+          "samples": 14,
+          "max_active_children": 0,
+          "max_summed_cores": 1.0183327418131927,
+          "sampled_core_seconds": 13.640625,
+          "child_sampled_core_seconds": 0.0
+        },
+        "heartbeat_count": 14,
+        "unresponsive_observed": false,
+        "trace_stage_counts": {
+          "audit_incumbent": 2,
+          "audit_progress": 104,
+          "freezing": 1,
+          "incumbent": 62,
+          "interior_local_complete": 1,
+          "interior_local_trial": 76,
+          "not_found": 1,
+          "structural_local_refinement": 1,
+          "structure_global_generation": 2,
+          "structure_global_initial_population": 1,
+          "structure_global_proposal": 48,
+          "structure_proposal": 156,
+          "structure_skipped": 1,
+          "validation": 2,
+          "validation_complete": 2
+        },
+        "artifacts": {
+          "frozen-job.json": {
+            "path": "[private local evidence path omitted]",
+            "sha256": "ac953538e89bdda88fbf277dfd3857cd6e3d2d9db33c1f379d1765db6df5ee0a"
+          },
+          "result.json": {
+            "path": "[private local evidence path omitted]",
+            "sha256": "5b19b851feaec7ace7f3ccbc6e9d9b380cfd7ee8b554536fd59a365f7fbfbfe6"
+          },
+          "progress.jsonl": {
+            "path": "[private local evidence path omitted]",
+            "sha256": "cfda5fd6ac602f08757cf4020c9324028693e23b370276124dcedf4a17866880"
+          },
+          "cpu.jsonl": {
+            "path": "[private local evidence path omitted]",
+            "sha256": "7dcece42a8af343690aa8b61bda56d8b466c8e4399454d39bd33af57a1124531"
+          }
+        },
+        "cancellation_trigger": [],
+        "candidate_equals_training_design": true,
+        "candidate_equals_audit_design": true,
+        "training_and_audit_designs_equal": true,
+        "frozen_max_evaluations": 284,
+        "logical_budget_not_exceeded": true,
+        "math_thread_environment_observed": [
+          {
+            "OMP_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            "OPENBLAS_NUM_THREADS": "1",
+            "BLIS_NUM_THREADS": "1",
+            "VECLIB_MAXIMUM_THREADS": "1",
+            "NUMEXPR_NUM_THREADS": "1"
+          },
+          {
+            "OMP_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            "OPENBLAS_NUM_THREADS": "1",
+            "BLIS_NUM_THREADS": "1",
+            "VECLIB_MAXIMUM_THREADS": "1",
+            "NUMEXPR_NUM_THREADS": "1"
+          }
+        ],
+        "worker_pids_created": [
+          34896,
+          35580
+        ],
+        "logical_budget_reserved_audit_slot": {
+          "reserved": 1,
+          "unused": 1,
+          "explanation": "One logical audit slot is reserved before training; if the selected best already has a matching completed audit, hash deduplication leaves that slot unspent."
+        },
+        "artifact_hashes": {
+          "frozen-job.json": "ac953538e89bdda88fbf277dfd3857cd6e3d2d9db33c1f379d1765db6df5ee0a",
+          "result.json": "5b19b851feaec7ace7f3ccbc6e9d9b380cfd7ee8b554536fd59a365f7fbfbfe6",
+          "progress.jsonl": "cfda5fd6ac602f08757cf4020c9324028693e23b370276124dcedf4a17866880",
+          "cpu.jsonl": "7dcece42a8af343690aa8b61bda56d8b466c8e4399454d39bd33af57a1124531",
+          "freeze-record.json": "e031b18d1f7572afa102ea525c919aa29dc5537910af05aa523e2f2e46628d49"
+        }
+      }
+    }
+  ],
+  "coverage_limitations": [
+    "The cancellation observer fires after a naturally completed post-DE helper-candidate audit. That audit differed from the parent best, so returning the complete parent best without an unrelated audit is correct; a final-parent-best cancellation timing was not rerun.",
+    "The measured finite limit284 permits initial24 plus one24-member evolution; it stops before the next training call with283 logical evaluations because the already matching audit reuses its reserved slot.",
+    "These runs exercise genuine three-parameter structural DE. Per-layer thickness DE remains unexercised by this case because the unrestricted natural run passed after structural DE plus refinement.",
+    "All optical qualification is sampled dense/offset/local-extremum evidence, not a continuous-spectrum certificate."
+  ],
+  "public_export": {
+    "original_evidence_sha256": "74cd58603e0dfc13be19985477174837f85ada11b6fe8bbbaaff8e8ceca9b417",
+    "local_path_strings_omitted": 11,
+    "policy": "All numeric evidence, failures, recipes and source attribution retained; only absolute local evidence path strings omitted. Original local JSON is unchanged."
+  }
+}

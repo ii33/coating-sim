@@ -288,7 +288,7 @@ class OrderedEvaluationExecutor:
     def eligible(self, count: int, work: int, budget_allows: bool) -> bool:
         reason = ("requested_serial" if self.workers <= 1 else "finite_budget_serial" if not budget_allows
                   else "pool_unavailable" if self.disabled or self.closed else
-                  "small_batch" if count < 2 * self.workers or work < MIN_PARALLEL_WORK else "parallel")
+                  "small_batch" if count < 2 or work < MIN_PARALLEL_WORK else "parallel")
         self.selection_reasons[reason] = self.selection_reasons.get(reason, 0) + 1
         return reason == "parallel"
 
@@ -404,18 +404,25 @@ class OrderedEvaluationExecutor:
         if message not in self.fallback_events:
             self.fallback_events.append(str(message))
 
-    def _ensure_pool(self):
-        if self.children:
+    def _ensure_pool(self, count=None):
+        target = min(self.workers, self.workers if count is None else count)
+        if len(self.children) >= target:
             return
         self.check_cancel()
         started = time.perf_counter()
-        self.temporary = TemporaryDirectory(prefix="coat-synthesis-workers-")
-        self.cancel_path = Path(self.temporary.name) / "cancel"
+        if self.temporary is None:
+            self.temporary = TemporaryDirectory(prefix="coat-synthesis-workers-")
+            self.cancel_path = Path(self.temporary.name) / "cancel"
         try:
-            for index in range(self.workers):
+            for index in range(len(self.children), target):
                 self.check_cancel()
                 stderr = TemporaryFile(mode="w+b")
                 env = dict(os.environ, **THREAD_ENVIRONMENT)
+                # Bind child imports even when PYTHONSAFEPATH omits cwd.
+                # Preserve the rest of the user's path and safe-path choice.
+                source_root = str(Path(__file__).resolve().parents[2])
+                inherited_path = env.get("PYTHONPATH", "")
+                env["PYTHONPATH"] = source_root + (os.pathsep + inherited_path if inherited_path else "")
                 job = _WindowsWorkerJob() if os.name == "nt" else None
                 try:
                     process = subprocess.Popen([sys.executable, "-m", "coat_sim.core.film_synthesis_parallel", "--worker"],
@@ -492,7 +499,7 @@ class OrderedEvaluationExecutor:
         self.batch_decisions.append(decision)
         parallel = self.eligible(count, work, budget_allows)
         if parallel:
-            self._ensure_pool()
+            self._ensure_pool(count)
             parallel = not (self.disabled or self.closed)
         decision["parallel_selected"] = parallel
         tokens: list[int] = []

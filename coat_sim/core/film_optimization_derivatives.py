@@ -320,8 +320,17 @@ def simulate_with_thickness_jacobian(
             return complex(n, 0.0)
         return complex(n, k)
 
+    # This call has one immutable wavelength grid, k policy and material set.
+    # Repeated films share the sampled index vector; thickness/Jacobian columns
+    # remain independent. No array is changed after it enters this local cache.
+    sampled_series = {}
+
     def index_series(reference):
-        return np.asarray([evaluate(reference, wave) for wave in waves], dtype=complex)
+        key = (reference["material_id"], reference["optical_set_id"])
+        if key not in sampled_series:
+            sampled_series[key] = np.asarray(
+                [evaluate(reference, wave) for wave in waves], dtype=complex)
+        return sampled_series[key]
 
     def medium(reference):
         if reference.get("kind", "constant") == "constant":

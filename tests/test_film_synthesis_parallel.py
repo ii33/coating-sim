@@ -60,14 +60,20 @@ def test_real_headless_growth_preserves_full_semantics(monkeypatch, workers):
     print("real ordered", workers, result.evaluations, result.validation_score["max_error"], performance)
 
 
-def test_finite_growth_budget_never_speculates(monkeypatch):
+def test_finite_growth_parallelizes_only_complete_budgeted_batch(monkeypatch):
     monkeypatch.setattr(parallel, "MIN_PARALLEL_WORK", 0)
     service, request = setup_problem()
-    result = synthesis.synthesize_film_design(service, replace(request, cpu_workers=2, max_cycles=1))
+    request = replace(request, max_cycles=1, max_evaluations=300)
+    serial = synthesis.synthesize_film_design(service, replace(request, cpu_workers=1))
+    result = synthesis.synthesize_film_design(service, replace(request, cpu_workers=2))
+    assert semantic(result) == semantic(serial)
     decisions = [row for row in result.performance["batch_decisions"] if row["phase"] == "growth"]
-    assert decisions and all(not row["parallel_selected"] and not row["budget_allows"] for row in decisions)
-    assert result.targets_met and result.performance["submitted_tasks"] == 0
-    print("finite growth", result.evaluations, result.performance)
+    assert decisions and any(row["budget_allows"] and row["parallel_selected"] for row in decisions)
+    assert result.performance["submitted_tasks"] > 0
+    assert result.performance["submitted_tasks"] <= result.evaluations <= request.max_evaluations
+    assert result.performance["completed_tasks"] + result.performance["unknown_tasks"] == result.performance["submitted_tasks"]
+    assert result.performance["active_worker_pids"] == [] and result.performance["cleanup_complete"]
+    print("finite budgeted growth", result.evaluations, result.performance)
 
 
 def test_parent_exception_closes_owned_real_workers(monkeypatch):
@@ -141,3 +147,29 @@ def test_idle_writer_is_reaped_after_worker_exits_before_close():
     assert executor.diagnostics()["cleanup_complete"]
     assert all(child.writer is not None and not child.writer.is_alive() for child in executor.children)
     print("idle writer fault cleanup", executor.diagnostics())
+
+
+def test_owned_workers_bind_source_with_safe_path_and_foreign_pythonpath(monkeypatch, tmp_path):
+    foreign = tmp_path / "coat_sim"
+    foreign.mkdir()
+    (foreign / "__init__.py").write_text(
+        "raise RuntimeError('foreign checkout must not be imported')\n", encoding="utf-8")
+    monkeypatch.setenv("PYTHONSAFEPATH", "1")
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path))
+    service, request = setup_problem()
+    frozen = synthesis.freeze_film_synthesis_request(service, request)
+    executor = parallel.OrderedEvaluationExecutor(2)
+    executor.configure(synthesis._proxy(frozen))
+    try:
+        with executor.batch([parallel.EvaluationTask(frozen.environment)] * 2,
+                            count=2, work=200000, budget_allows=True) as values:
+            for _, outcome in values:
+                executor.take(outcome)
+    finally:
+        executor.close()
+    performance = executor.diagnostics()
+    assert performance["effective_workers"] == 2
+    assert performance["completed_tasks"] == 2 and performance["unknown_tasks"] == 0
+    assert performance["serial_fallback_tasks"] == 0
+    assert performance["cleanup_complete"] and performance["active_worker_pids"] == []
+    assert all(not row["qt_imported"] for row in performance["workers"])
