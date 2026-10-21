@@ -41,6 +41,7 @@ class _SearchDiagnostics(TypedDict):
     ar_structure_mode: NotRequired[str]
     automatic_cluster_route: NotRequired[bool]
     ar_simple_start: NotRequired[dict[str, object]]
+    hr_minimax_start: NotRequired[dict[str, object]]
     structure_batch_policy: NotRequired[dict[str, object]]
     bandpass_structure_schedule: NotRequired[dict[str, object]]
     matching_structure_schedule: NotRequired[dict[str, object]]
@@ -1059,6 +1060,63 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 # long automatic prior scan. Its audit belongs only to this
                 # exact bare design, never to a later cancellation candidate.
                 audit_archive(working)
+            # Add a source-derived pure-HR prefix before the much larger classic
+            # structural sweep. All physical calls and final audits retain the
+            # existing parent budget, provenance and cancellation boundaries.
+            from .film_synthesis_hr_priors import (
+                pure_hr_prior_eligible, iter_dual_substack_hr_proposals,
+            )
+            if not targets_verified() and pure_hr_prior_eligible(request):
+                from .film_synthesis_hr_minimax import refine_hr_minimax
+                hr_runs: list[dict[str, object]] = []
+                hr_start: dict[str, object] = dict(
+                    runs=hr_runs, completed_priors=0, audited_pass=False,
+                    scheduling="source-admittance two-substack priors; staged minimum-R refinement; original audit; then unchanged classic search",
+                    soft_method="L-BFGS-B", coordinate_scale_nm=100.0,
+                    betas=[100.0, 400.0, 1500.0], max_iterations_per_stage=180)
+                search_diagnostics["hr_minimax_start"] = hr_start
+                initial_evaluations = evaluations
+                initial_audit_calls = audit_physical_evaluations
+                def hr_report(event):
+                    search_diagnostics["structural_proposals"].append(deepcopy(event))
+                    emit(event["stage"], json.dumps(event, sort_keys=True))
+                def hr_progress(stage, candidate, details):
+                    hr_start["latest_optimizer_progress"] = deepcopy(details)
+                    hr_start["evaluations_used"] = evaluations - initial_evaluations
+                    emit(stage, json.dumps(details, sort_keys=True), candidate["design"], candidate["score"])
+                for proposal in iter_dual_substack_hr_proposals(request,
+                        cancel_check=check_training_admission, report=hr_report):
+                    check_training_admission()
+                    entry: dict[str, object] = dict(proposal.provenance,
+                        layer_count=len(proposal.design["front_layers"]), state="evaluating_prior")
+                    hr_runs.append(entry)
+                    raw_hr = evaluate(proposal.design, jacobian=True)
+                    entry["initial_training_min_R"] = min(error.actual for error in raw_hr["score"]["errors"])
+                    emit("hr_minimax_prior", json.dumps(entry, sort_keys=True), raw_hr["design"], raw_hr["score"])
+                    archive(raw_hr, audit_eligible=False)
+                    if (raw_hr["score"]["max_error"] <= request.acceptable_normalized_error
+                            and strict_lower_pass(raw_hr["score"])):
+                        audit_archive(raw_hr, allow_feedback_repair=False)
+                    if not targets_verified():
+                        entry["state"] = "refining"
+                        refined_hr, hr_details = refine_hr_minimax(request, raw_hr,
+                            evaluate=evaluate, archive=archive,
+                            cancel_check=check_training_admission, progress=hr_progress,
+                            max_iterations=180, soft_method="L-BFGS-B", coordinate_scale_nm=100.0)
+                        entry["optimizer"] = hr_details
+                        entry["final_training_min_R"] = min(error.actual for error in refined_hr["score"]["errors"])
+                        archive(refined_hr, audit_eligible=False)
+                        audit_archive(refined_hr)
+                    entry["state"] = "completed"
+                    hr_start["completed_priors"] = len(hr_runs)
+                    hr_start["evaluations_used"] = evaluations - initial_evaluations
+                    hr_start["audit_physical_evaluations_used"] = audit_physical_evaluations - initial_audit_calls
+                    if targets_verified():
+                        hr_start["audited_pass"] = True
+                        assert audited_best is not None
+                        passed_hr = audited_best[0]
+                        emit("hr_minimax_targets_verified", "Generated HR prior and full thickness refinement passed original independent audit", passed_hr["design"], passed_hr["score"])
+                        break
             # Automatic structural priors and true fixed-topology population
             # search share this parent evaluator, archive, audit and cancellation.
             from .film_synthesis_global import (

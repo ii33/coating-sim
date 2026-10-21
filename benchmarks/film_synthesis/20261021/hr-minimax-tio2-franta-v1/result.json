@@ -1,0 +1,1236 @@
+{
+  "schema_version": 1,
+  "kind": "production_hr_no_seed_acceptance_result",
+  "source_base_commit": "43938d5e54e8e253290fc53ddd8e69d643a73ff6",
+  "production_source_hashes": {
+    "coat_sim/core/film_auto_synthesis.py": "63de3666f0320fe4160a75ba066dd345ceb566c25e1ae773ff605f83b0bce6e5",
+    "coat_sim/core/film_synthesis_hr_priors.py": "43128381c1455d02eaba388ab76844206534ee71953fc092aed0c6bbf4dcc067",
+    "coat_sim/core/film_synthesis_hr_minimax.py": "c557a1c4bb6e0722a118cbba21eb1a6a3b9b2c3600d5dde631365383bfeed394"
+  },
+  "research_material_commit": "3f670f4fbf5c2731c719e59792705bd25207beb9",
+  "entrypoint": "production build_synthesis_request -> freeze_film_synthesis_request -> canonical_parameters -> build_job_payload -> deserialize_job_payload -> execute_job",
+  "answer_seed_count": 0,
+  "software_generated_prior": {
+    "family": "dual_substack_hr",
+    "variant": "edge_anchored",
+    "epoch": 0,
+    "high": [
+      "builtin_research_TiO2_film",
+      "rii_tio2_franta"
+    ],
+    "low": [
+      "research_mgf2_franta_2017_c51389d0430c",
+      "ri_mgf2_franta_2017_c51389d0430c"
+    ],
+    "pairs": 16,
+    "pair_counts": [
+      8,
+      8
+    ],
+    "layer_count": 32,
+    "contrast": 1.5791937382786243,
+    "fractional_stopband": 0.28838297184360234,
+    "fraction": 0.3333333333333333,
+    "centers_nm": [
+      438.4510629124803,
+      638.6117486865144
+    ],
+    "reverse": false,
+    "material_order": "HL",
+    "center_order": "low_then_high",
+    "order_scope": "incident_to_substrate",
+    "stored_material_order": "LH",
+    "storage_order": "substrate_outward",
+    "phase_angle_deg": 15.0,
+    "witness_conditions": [
+      {
+        "wavelength_nm": 400.0,
+        "angle_deg": 0.0,
+        "polarization": "p",
+        "high_admittance_real": 2.566421587083431,
+        "low_admittance_real": 1.3898927474860476,
+        "ratio": 1.846488940765693
+      },
+      {
+        "wavelength_nm": 400.0,
+        "angle_deg": 0.0,
+        "polarization": "s",
+        "high_admittance_real": 2.5664215870834313,
+        "low_admittance_real": 1.3898927474860476,
+        "ratio": 1.8464889407656933
+      },
+      {
+        "wavelength_nm": 400.0,
+        "angle_deg": 30.0,
+        "polarization": "p",
+        "high_admittance_real": 2.616559419876234,
+        "low_admittance_real": 1.4896188682228213,
+        "ratio": 1.7565294557512559
+      },
+      {
+        "wavelength_nm": 400.0,
+        "angle_deg": 30.0,
+        "polarization": "s",
+        "high_admittance_real": 2.517244482131238,
+        "low_admittance_real": 1.2968430319488609,
+        "ratio": 1.941055640595447
+      },
+      {
+        "wavelength_nm": 529.150262212918,
+        "angle_deg": 0.0,
+        "polarization": "p",
+        "high_admittance_real": 2.361472519143239,
+        "low_admittance_real": 1.3842903139689835,
+        "ratio": 1.7059084321499849
+      },
+      {
+        "wavelength_nm": 529.150262212918,
+        "angle_deg": 0.0,
+        "polarization": "s",
+        "high_admittance_real": 2.361472519143239,
+        "low_admittance_real": 1.3842903139689835,
+        "ratio": 1.7059084321499849
+      },
+      {
+        "wavelength_nm": 529.150262212918,
+        "angle_deg": 30.0,
+        "polarization": "p",
+        "high_admittance_real": 2.4162545658557826,
+        "low_admittance_real": 1.4845096270939921,
+        "ratio": 1.6276449285045942
+      },
+      {
+        "wavelength_nm": 529.150262212918,
+        "angle_deg": 30.0,
+        "polarization": "s",
+        "high_admittance_real": 2.3079325073902663,
+        "low_admittance_real": 1.2908368112772222,
+        "ratio": 1.7879351496853237
+      },
+      {
+        "wavelength_nm": 700.0,
+        "angle_deg": 0.0,
+        "polarization": "p",
+        "high_admittance_real": 2.28273485070858,
+        "low_admittance_real": 1.3809671553629548,
+        "ratio": 1.6529972069528451
+      },
+      {
+        "wavelength_nm": 700.0,
+        "angle_deg": 0.0,
+        "polarization": "s",
+        "high_admittance_real": 2.28273485070858,
+        "low_admittance_real": 1.3809671553629548,
+        "ratio": 1.6529972069528451
+      },
+      {
+        "wavelength_nm": 700.0,
+        "angle_deg": 30.0,
+        "polarization": "p",
+        "high_admittance_real": 2.339546317970121,
+        "low_admittance_real": 1.4814815062022137,
+        "ratio": 1.5791937382786243
+      },
+      {
+        "wavelength_nm": 700.0,
+        "angle_deg": 30.0,
+        "polarization": "s",
+        "high_admittance_real": 2.227302942717834,
+        "low_admittance_real": 1.2872724203490307,
+        "ratio": 1.7302498736933427
+      }
+    ],
+    "optical_sources": [
+      {
+        "material_id": "builtin_research_TiO2_film",
+        "optical_set_id": "rii_tio2_franta",
+        "source": "Refractiveindex.info public database record.\nSource ID: rii:main/TiO2/Franta\nRII viewer: https://refractiveindex.info/?shelf=main&book=TiO2&page=Franta\nPinned raw source URL: https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/TiO2/nk/Franta.yml\nPinned repository commit: c5c2f188e848453def5970e347399d653df2ffc2\nRaw source SHA256: 2380783119baf079dfb5ed0eb846ef1f08dd17d719194d1e91610c34760ec174\nDatabase license: CC0-1.0; the referenced paper's rights remain separate.\nUpstream references: D. Franta, D. Nečas, I. Ohlídal. A. Giglia.\nDispersion model for optical thin films applicable in wide spectral range\n<a href=\"https://doi.org/10.1117/12.2190104\"><i>Proc. SPIE</i> <b>9628</b>, 96281U (2015)</a>\n(Numerical data kindly provided by Daniel Franta)\nOriginal RII record comments/conditions and source bytes are in this import's provenance.json and source_audit.json."
+      },
+      {
+        "material_id": "research_mgf2_franta_2017_c51389d0430c",
+        "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+        "source": "https://doi.org/10.1016/j.apsusc.2016.09.149\nhttps://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/MgF2/nk/Franta.yml\nRaw byte SHA256: c51389d0430c21d8959388605266bc160abe14a04242cfa7ba8d1812bde2e58e\nCC0-1.0 database; paper rights separate."
+      }
+    ],
+    "search_convention": true,
+    "source_scope": "frozen optical source IDs only; dual-stack layout and width proxy are project conventions",
+    "incident_scope": "real propagating incident medium; full passive film n+ik retained",
+    "state": "completed",
+    "initial_training_min_R": 0.06150490945727881,
+    "optimizer": {
+      "method": "analytic_hr_softmin_epigraph",
+      "betas": [
+        100.0,
+        400.0,
+        1500.0
+      ],
+      "stages": [
+        {
+          "stage": "soft_min",
+          "method": "L-BFGS-B",
+          "beta": 100.0,
+          "message": "STOP: TOTAL NO. OF ITERATIONS REACHED LIMIT",
+          "iterations": 180,
+          "success": false
+        },
+        {
+          "stage": "soft_min",
+          "method": "L-BFGS-B",
+          "beta": 400.0,
+          "message": "STOP: TOTAL NO. OF ITERATIONS REACHED LIMIT",
+          "iterations": 180,
+          "success": false
+        },
+        {
+          "stage": "soft_min",
+          "method": "L-BFGS-B",
+          "beta": 1500.0,
+          "message": "STOP: TOTAL NO. OF ITERATIONS REACHED LIMIT",
+          "iterations": 180,
+          "success": false
+        },
+        {
+          "stage": "epigraph",
+          "method": "SLSQP",
+          "message": "Optimization terminated successfully",
+          "iterations": 110,
+          "success": true,
+          "optimizer_t": 0.9874180480198407
+        }
+      ],
+      "max_iterations_per_stage": 180,
+      "physical_candidates": 727,
+      "cache_hits": 731,
+      "rejected_infeasible_trials": 2,
+      "sampled_min_reflectance": 0.9874180480196894,
+      "training_conditions": 1204,
+      "thickness_bounds_source": "full explicit layer/total nm bounds; positive float lower bound if unset",
+      "soft_method": "L-BFGS-B",
+      "coordinate_scale_nm": 100.0,
+      "scale_nm": [
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0
+      ],
+      "cache_scope": "one most recent thickness point shared across beta and epigraph t",
+      "acceptance_scope": "original sampled R only; independent original audit required"
+    },
+    "final_training_min_R": 0.9874180480196894
+  },
+  "state": "completed",
+  "termination_reason": "validated_targets_met",
+  "targets_met": true,
+  "validation_complete": true,
+  "training_min_R": 0.9874180480196894,
+  "audited_min_condition": {
+    "objective_index": 1,
+    "wavelength_nm": 402.5050927534933,
+    "angle_deg": 30.0,
+    "polarization": "p",
+    "metric": "R",
+    "actual": 0.9873549464177916,
+    "target_value": null,
+    "lower_bound": 0.98,
+    "upper_bound": null,
+    "normalized_violation": 0.0,
+    "weighted_normalized_violation": 0.0
+  },
+  "per_condition_audited_min_R": [
+    {
+      "objective_index": 0,
+      "wavelength_nm": 400.0,
+      "angle_deg": 0.0,
+      "polarization": "s",
+      "metric": "R",
+      "actual": 0.9874180480196894,
+      "target_value": null,
+      "lower_bound": 0.98,
+      "upper_bound": null,
+      "normalized_violation": 0.0,
+      "weighted_normalized_violation": 0.0
+    },
+    {
+      "objective_index": 0,
+      "wavelength_nm": 602.5441386029237,
+      "angle_deg": 30.0,
+      "polarization": "s",
+      "metric": "R",
+      "actual": 0.995261928234016,
+      "target_value": null,
+      "lower_bound": 0.98,
+      "upper_bound": null,
+      "normalized_violation": 0.0,
+      "weighted_normalized_violation": 0.0
+    },
+    {
+      "objective_index": 1,
+      "wavelength_nm": 400.0,
+      "angle_deg": 0.0,
+      "polarization": "p",
+      "metric": "R",
+      "actual": 0.9874180480196894,
+      "target_value": null,
+      "lower_bound": 0.98,
+      "upper_bound": null,
+      "normalized_violation": 0.0,
+      "weighted_normalized_violation": 0.0
+    },
+    {
+      "objective_index": 1,
+      "wavelength_nm": 402.5050927534933,
+      "angle_deg": 30.0,
+      "polarization": "p",
+      "metric": "R",
+      "actual": 0.9873549464177916,
+      "target_value": null,
+      "lower_bound": 0.98,
+      "upper_bound": null,
+      "normalized_violation": 0.0,
+      "weighted_normalized_violation": 0.0
+    }
+  ],
+  "layer_count": 32,
+  "total_thickness_nm": 2569.646212160644,
+  "candidate_design": {
+    "schema_version": 1,
+    "id": "research-lowk-tio2-bulk-sio2-0a631b7",
+    "name": "Frozen TiO2 MgF2 on bulk fused silica",
+    "layer_order": "substrate_outward",
+    "front_layers": [
+      {
+        "id": "auto-hr-dual-1-0",
+        "material_id": "research_mgf2_franta_2017_c51389d0430c",
+        "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+        "thickness": {
+          "value": 136.8909500389625,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-1",
+        "material_id": "builtin_research_TiO2_film",
+        "optical_set_id": "rii_tio2_franta",
+        "thickness": {
+          "value": 74.15559560592787,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-2",
+        "material_id": "research_mgf2_franta_2017_c51389d0430c",
+        "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+        "thickness": {
+          "value": 132.77046561801404,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-3",
+        "material_id": "builtin_research_TiO2_film",
+        "optical_set_id": "rii_tio2_franta",
+        "thickness": {
+          "value": 65.16917257323766,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-4",
+        "material_id": "research_mgf2_franta_2017_c51389d0430c",
+        "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+        "thickness": {
+          "value": 123.8063501408228,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-5",
+        "material_id": "builtin_research_TiO2_film",
+        "optical_set_id": "rii_tio2_franta",
+        "thickness": {
+          "value": 70.50214227108343,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-6",
+        "material_id": "research_mgf2_franta_2017_c51389d0430c",
+        "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+        "thickness": {
+          "value": 114.4645781586761,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-7",
+        "material_id": "builtin_research_TiO2_film",
+        "optical_set_id": "rii_tio2_franta",
+        "thickness": {
+          "value": 67.60754292746468,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-8",
+        "material_id": "research_mgf2_franta_2017_c51389d0430c",
+        "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+        "thickness": {
+          "value": 120.25499305296205,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-9",
+        "material_id": "builtin_research_TiO2_film",
+        "optical_set_id": "rii_tio2_franta",
+        "thickness": {
+          "value": 61.88041149431947,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-10",
+        "material_id": "research_mgf2_franta_2017_c51389d0430c",
+        "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+        "thickness": {
+          "value": 119.02713089774413,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-11",
+        "material_id": "builtin_research_TiO2_film",
+        "optical_set_id": "rii_tio2_franta",
+        "thickness": {
+          "value": 68.2549793394154,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-12",
+        "material_id": "research_mgf2_franta_2017_c51389d0430c",
+        "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+        "thickness": {
+          "value": 109.4562889546813,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-13",
+        "material_id": "builtin_research_TiO2_film",
+        "optical_set_id": "rii_tio2_franta",
+        "thickness": {
+          "value": 62.25980361049558,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-14",
+        "material_id": "research_mgf2_franta_2017_c51389d0430c",
+        "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+        "thickness": {
+          "value": 138.68471397113615,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-15",
+        "material_id": "builtin_research_TiO2_film",
+        "optical_set_id": "rii_tio2_franta",
+        "thickness": {
+          "value": 145.498058311647,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-16",
+        "material_id": "research_mgf2_franta_2017_c51389d0430c",
+        "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+        "thickness": {
+          "value": 78.93500305238366,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-17",
+        "material_id": "builtin_research_TiO2_film",
+        "optical_set_id": "rii_tio2_franta",
+        "thickness": {
+          "value": 41.181663155526586,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-18",
+        "material_id": "research_mgf2_franta_2017_c51389d0430c",
+        "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+        "thickness": {
+          "value": 10.0,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-19",
+        "material_id": "builtin_research_TiO2_film",
+        "optical_set_id": "rii_tio2_franta",
+        "thickness": {
+          "value": 35.22847070987863,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-20",
+        "material_id": "research_mgf2_franta_2017_c51389d0430c",
+        "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+        "thickness": {
+          "value": 96.51955719919009,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-21",
+        "material_id": "builtin_research_TiO2_film",
+        "optical_set_id": "rii_tio2_franta",
+        "thickness": {
+          "value": 47.41259402447752,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-22",
+        "material_id": "research_mgf2_franta_2017_c51389d0430c",
+        "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+        "thickness": {
+          "value": 81.88480180549179,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-23",
+        "material_id": "builtin_research_TiO2_film",
+        "optical_set_id": "rii_tio2_franta",
+        "thickness": {
+          "value": 42.356005110653406,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-24",
+        "material_id": "research_mgf2_franta_2017_c51389d0430c",
+        "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+        "thickness": {
+          "value": 87.54851735769066,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-25",
+        "material_id": "builtin_research_TiO2_film",
+        "optical_set_id": "rii_tio2_franta",
+        "thickness": {
+          "value": 48.19705105689221,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-26",
+        "material_id": "research_mgf2_franta_2017_c51389d0430c",
+        "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+        "thickness": {
+          "value": 93.1428574201358,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-27",
+        "material_id": "builtin_research_TiO2_film",
+        "optical_set_id": "rii_tio2_franta",
+        "thickness": {
+          "value": 48.28375385716421,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-28",
+        "material_id": "research_mgf2_franta_2017_c51389d0430c",
+        "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+        "thickness": {
+          "value": 89.42584524255778,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-29",
+        "material_id": "builtin_research_TiO2_film",
+        "optical_set_id": "rii_tio2_franta",
+        "thickness": {
+          "value": 43.51106594719706,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-30",
+        "material_id": "research_mgf2_franta_2017_c51389d0430c",
+        "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+        "thickness": {
+          "value": 77.72772075843997,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      },
+      {
+        "id": "auto-hr-dual-1-31",
+        "material_id": "builtin_research_TiO2_film",
+        "optical_set_id": "rii_tio2_franta",
+        "thickness": {
+          "value": 37.60812849637455,
+          "unit": "nm"
+        },
+        "note": "Project edge-anchored dual-substack HR prior"
+      }
+    ],
+    "back_layers": [],
+    "reference_wavelength_nm": 550.0,
+    "substrate": {
+      "material_id": "builtin_research_fused_silica_method_demonstrator",
+      "optical_set_id": "ri_sio2_malitson",
+      "thickness": {
+        "value": 1.0,
+        "unit": "mm"
+      },
+      "sides": "single",
+      "mode": "auto"
+    },
+    "incident_medium": {
+      "kind": "constant",
+      "n": 1.0
+    },
+    "exit_medium": {
+      "kind": "constant",
+      "n": 1.0
+    },
+    "assume_lossless": true,
+    "use_k": true,
+    "note": "Research model: preserve all known film k; only missing Malitson substrate k is explicitly assumed zero. Bulk semi-infinite substrate, no rear surface. No experimental/manufacturing certificate.\n显式无损假设（仅未知 k 按 0 计算）：builtin_research_fused_silica_method_demonstrator/ri_sio2_malitson；保留已知 k；此结果不是实测吸收验证。",
+    "first_surface": "front",
+    "expression": {
+      "text": "",
+      "symbols": {},
+      "in_sync": true
+    }
+  },
+  "wall_seconds": 115.19922010001028,
+  "cpu_seconds": 113.578125,
+  "evaluations": 731,
+  "validation_evaluations": 2,
+  "audit_physical_evaluations_cumulative": 748,
+  "audit_wavelength_points_cumulative": 48750,
+  "audit_metadata_of_candidate": {
+    "physical_evaluations": 745,
+    "wavelength_points": 24746,
+    "dense_points": 12004,
+    "offset_points": 12000,
+    "extra_points": 12742,
+    "unique_condition_points": 24746,
+    "bracket_count": 36,
+    "completed_extrema": 36,
+    "local_coordinate": "lambda=a+(b-a)*t; t in [0,1]",
+    "extrema_xatol": 1e-10,
+    "continuous_certificate": false,
+    "rms_measure": "fixed_dense_grid_only",
+    "objective_status": [
+      {
+        "objective_index": 0,
+        "metric": "R",
+        "wavelength_min_nm": 400.0,
+        "wavelength_max_nm": 700.0,
+        "discrete_line": false,
+        "worst_wavelength_nm": 400.0,
+        "worst_angle_deg": 0.0,
+        "worst_actual": 0.9874180480196894,
+        "max_normalized_error": 0.0,
+        "targets_met": true
+      },
+      {
+        "objective_index": 1,
+        "metric": "R",
+        "wavelength_min_nm": 400.0,
+        "wavelength_max_nm": 700.0,
+        "discrete_line": false,
+        "worst_wavelength_nm": 400.0,
+        "worst_angle_deg": 0.0,
+        "worst_actual": 0.9874180480196894,
+        "max_normalized_error": 0.0,
+        "targets_met": true
+      }
+    ],
+    "absorption_assumption": {
+      "assume_unknown_k_zero": true,
+      "policy": "unknown_k_zero",
+      "scope": "candidate_active_materials",
+      "affected_materials": [
+        {
+          "material_id": "builtin_research_fused_silica_method_demonstrator",
+          "optical_set_id": "ri_sio2_malitson",
+          "reason": "no_k_source",
+          "assumed_k": 0.0
+        }
+      ],
+      "used_affected_materials": [
+        {
+          "material_id": "builtin_research_fused_silica_method_demonstrator",
+          "optical_set_id": "ri_sio2_malitson",
+          "reason": "no_k_source",
+          "assumed_k": 0.0
+        }
+      ],
+      "conditional_on_assumption": true,
+      "known_k_preserved": true,
+      "source_records_unchanged": true,
+      "wavelength_extrapolation": "error",
+      "measured_absorption_validated": false,
+      "claim": "Finite sampled R/T model evidence conditional on explicit unknown-k=0; not measured absorption or a continuous certificate."
+    }
+  },
+  "best_candidate_audit": {
+    "available": true,
+    "targets_met": true,
+    "training_max_normalized_error": 0.0,
+    "audit_max_normalized_error": 0.0,
+    "acceptable_normalized_error": 0.0,
+    "continuous_certificate": false,
+    "absorption_assumption": {
+      "assume_unknown_k_zero": true,
+      "policy": "unknown_k_zero",
+      "scope": "request_material_pool",
+      "affected_materials": [
+        {
+          "material_id": "builtin_research_fused_silica_method_demonstrator",
+          "optical_set_id": "ri_sio2_malitson",
+          "reason": "no_k_source",
+          "assumed_k": 0.0
+        }
+      ],
+      "used_affected_materials": [
+        {
+          "material_id": "builtin_research_fused_silica_method_demonstrator",
+          "optical_set_id": "ri_sio2_malitson",
+          "reason": "no_k_source",
+          "assumed_k": 0.0
+        }
+      ],
+      "conditional_on_assumption": true,
+      "known_k_preserved": true,
+      "source_records_unchanged": true,
+      "wavelength_extrapolation": "error",
+      "measured_absorption_validated": false,
+      "claim": "Finite sampled R/T model evidence conditional on explicit unknown-k=0; not measured absorption or a continuous certificate."
+    }
+  },
+  "performance": {
+    "version": 1,
+    "recorded": true,
+    "backend": "serial",
+    "requested_workers": 1,
+    "effective_workers": 1,
+    "worker_pids": [],
+    "launcher_pids": [],
+    "active_worker_pids": [],
+    "cleanup_complete": true,
+    "execution_state": "closed",
+    "actual_work_complete": true,
+    "parallel_batches": 0,
+    "submitted_tasks": 0,
+    "started_tasks": 0,
+    "completed_tasks": 0,
+    "consumed_tasks": 0,
+    "discarded_tasks": 0,
+    "error_tasks": 0,
+    "cancelled_tasks": 0,
+    "unknown_tasks": 0,
+    "serial_fallback_tasks": 0,
+    "fallback_events": [],
+    "serial_evaluator_invocations": 729,
+    "worker_evaluator_invocations": 0,
+    "training_evaluator_invocations": 729,
+    "known_worker_evaluator_invocations": 0,
+    "known_training_evaluator_invocations": 729,
+    "training_physical_evaluations": 2916,
+    "training_wavelength_points": 877716,
+    "known_training_physical_evaluations": 2916,
+    "known_training_wavelength_points": 877716,
+    "worker_training_physical_evaluations": 0,
+    "worker_training_wavelength_points": 0,
+    "incomplete_physical_calls": 0,
+    "serial_unknown_work": 0,
+    "startup_seconds": 0.0,
+    "initialization_seconds": 0.0,
+    "ipc_seconds": 0.0,
+    "ipc_bytes": 0,
+    "worker_compute_seconds": 0.0,
+    "worker_cpu_seconds": 0.0,
+    "known_worker_cpu_seconds": 0.0,
+    "unrecorded_worker_cpu_tasks": 0,
+    "worker_cpu_by_pid": [],
+    "worker_cpu_scope": "process_time deltas inside physical evaluator; received replies only; unreceived work unknown; excludes startup/IPC",
+    "selection_reasons": {},
+    "batch_decisions": [],
+    "adaptive_parallel": {
+      "cold_work_threshold": 200000,
+      "discovery_worker_cap": 2,
+      "observed_serial_work": 28049588,
+      "serial_cost_samples": [
+        {
+          "jacobian": false,
+          "zero_probe": false,
+          "samples": 1,
+          "work": 1204,
+          "seconds": 0.02407450001919642
+        },
+        {
+          "jacobian": true,
+          "zero_probe": false,
+          "samples": 728,
+          "work": 28048384,
+          "seconds": 89.65310309972847
+        }
+      ],
+      "policy": "cold threshold or accumulated-work discovery; warm measured savings exceed IPC",
+      "limitations": "point-times-layer proxy; finite samples; no future-work prediction or speedup guarantee"
+    },
+    "workers": [],
+    "counter_scope": "training_evaluations_only_audit_reported_separately",
+    "stage_wall_seconds": {
+      "initialization": 1.170000177808106e-05,
+      "freezing": 0.12539800000377,
+      "incumbent": 0.2746148000296671,
+      "validation": 0.5279872000101022,
+      "audit_progress": 12.800233799993293,
+      "audit_incumbent": 1.0426302000123542,
+      "validation_complete": 0.3235467999766115,
+      "audit_feedback_added": 0.09986030001891777,
+      "hr_minimax_prior": 0.01137579997885041,
+      "hr_minimax_trial": 99.41470769996522,
+      "hr_minimax_targets_verified": 0.003726700000697747
+    },
+    "search": {
+      "structural_proposals": [],
+      "global_search": [],
+      "layer_distribution": {
+        "0": 1,
+        "32": 728
+      },
+      "local_refinement": [],
+      "ar_structure_mode": "clustered",
+      "automatic_cluster_route": false,
+      "hr_minimax_start": {
+        "runs": [
+          {
+            "family": "dual_substack_hr",
+            "variant": "edge_anchored",
+            "epoch": 0,
+            "high": [
+              "builtin_research_TiO2_film",
+              "rii_tio2_franta"
+            ],
+            "low": [
+              "research_mgf2_franta_2017_c51389d0430c",
+              "ri_mgf2_franta_2017_c51389d0430c"
+            ],
+            "pairs": 16,
+            "pair_counts": [
+              8,
+              8
+            ],
+            "layer_count": 32,
+            "contrast": 1.5791937382786243,
+            "fractional_stopband": 0.28838297184360234,
+            "fraction": 0.3333333333333333,
+            "centers_nm": [
+              438.4510629124803,
+              638.6117486865144
+            ],
+            "reverse": false,
+            "material_order": "HL",
+            "center_order": "low_then_high",
+            "order_scope": "incident_to_substrate",
+            "stored_material_order": "LH",
+            "storage_order": "substrate_outward",
+            "phase_angle_deg": 15.0,
+            "witness_conditions": [
+              {
+                "wavelength_nm": 400.0,
+                "angle_deg": 0.0,
+                "polarization": "p",
+                "high_admittance_real": 2.566421587083431,
+                "low_admittance_real": 1.3898927474860476,
+                "ratio": 1.846488940765693
+              },
+              {
+                "wavelength_nm": 400.0,
+                "angle_deg": 0.0,
+                "polarization": "s",
+                "high_admittance_real": 2.5664215870834313,
+                "low_admittance_real": 1.3898927474860476,
+                "ratio": 1.8464889407656933
+              },
+              {
+                "wavelength_nm": 400.0,
+                "angle_deg": 30.0,
+                "polarization": "p",
+                "high_admittance_real": 2.616559419876234,
+                "low_admittance_real": 1.4896188682228213,
+                "ratio": 1.7565294557512559
+              },
+              {
+                "wavelength_nm": 400.0,
+                "angle_deg": 30.0,
+                "polarization": "s",
+                "high_admittance_real": 2.517244482131238,
+                "low_admittance_real": 1.2968430319488609,
+                "ratio": 1.941055640595447
+              },
+              {
+                "wavelength_nm": 529.150262212918,
+                "angle_deg": 0.0,
+                "polarization": "p",
+                "high_admittance_real": 2.361472519143239,
+                "low_admittance_real": 1.3842903139689835,
+                "ratio": 1.7059084321499849
+              },
+              {
+                "wavelength_nm": 529.150262212918,
+                "angle_deg": 0.0,
+                "polarization": "s",
+                "high_admittance_real": 2.361472519143239,
+                "low_admittance_real": 1.3842903139689835,
+                "ratio": 1.7059084321499849
+              },
+              {
+                "wavelength_nm": 529.150262212918,
+                "angle_deg": 30.0,
+                "polarization": "p",
+                "high_admittance_real": 2.4162545658557826,
+                "low_admittance_real": 1.4845096270939921,
+                "ratio": 1.6276449285045942
+              },
+              {
+                "wavelength_nm": 529.150262212918,
+                "angle_deg": 30.0,
+                "polarization": "s",
+                "high_admittance_real": 2.3079325073902663,
+                "low_admittance_real": 1.2908368112772222,
+                "ratio": 1.7879351496853237
+              },
+              {
+                "wavelength_nm": 700.0,
+                "angle_deg": 0.0,
+                "polarization": "p",
+                "high_admittance_real": 2.28273485070858,
+                "low_admittance_real": 1.3809671553629548,
+                "ratio": 1.6529972069528451
+              },
+              {
+                "wavelength_nm": 700.0,
+                "angle_deg": 0.0,
+                "polarization": "s",
+                "high_admittance_real": 2.28273485070858,
+                "low_admittance_real": 1.3809671553629548,
+                "ratio": 1.6529972069528451
+              },
+              {
+                "wavelength_nm": 700.0,
+                "angle_deg": 30.0,
+                "polarization": "p",
+                "high_admittance_real": 2.339546317970121,
+                "low_admittance_real": 1.4814815062022137,
+                "ratio": 1.5791937382786243
+              },
+              {
+                "wavelength_nm": 700.0,
+                "angle_deg": 30.0,
+                "polarization": "s",
+                "high_admittance_real": 2.227302942717834,
+                "low_admittance_real": 1.2872724203490307,
+                "ratio": 1.7302498736933427
+              }
+            ],
+            "optical_sources": [
+              {
+                "material_id": "builtin_research_TiO2_film",
+                "optical_set_id": "rii_tio2_franta",
+                "source": "Refractiveindex.info public database record.\nSource ID: rii:main/TiO2/Franta\nRII viewer: https://refractiveindex.info/?shelf=main&book=TiO2&page=Franta\nPinned raw source URL: https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/TiO2/nk/Franta.yml\nPinned repository commit: c5c2f188e848453def5970e347399d653df2ffc2\nRaw source SHA256: 2380783119baf079dfb5ed0eb846ef1f08dd17d719194d1e91610c34760ec174\nDatabase license: CC0-1.0; the referenced paper's rights remain separate.\nUpstream references: D. Franta, D. Nečas, I. Ohlídal. A. Giglia.\nDispersion model for optical thin films applicable in wide spectral range\n<a href=\"https://doi.org/10.1117/12.2190104\"><i>Proc. SPIE</i> <b>9628</b>, 96281U (2015)</a>\n(Numerical data kindly provided by Daniel Franta)\nOriginal RII record comments/conditions and source bytes are in this import's provenance.json and source_audit.json."
+              },
+              {
+                "material_id": "research_mgf2_franta_2017_c51389d0430c",
+                "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+                "source": "https://doi.org/10.1016/j.apsusc.2016.09.149\nhttps://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/MgF2/nk/Franta.yml\nRaw byte SHA256: c51389d0430c21d8959388605266bc160abe14a04242cfa7ba8d1812bde2e58e\nCC0-1.0 database; paper rights separate."
+              }
+            ],
+            "search_convention": true,
+            "source_scope": "frozen optical source IDs only; dual-stack layout and width proxy are project conventions",
+            "incident_scope": "real propagating incident medium; full passive film n+ik retained",
+            "state": "completed",
+            "initial_training_min_R": 0.06150490945727881,
+            "optimizer": {
+              "method": "analytic_hr_softmin_epigraph",
+              "betas": [
+                100.0,
+                400.0,
+                1500.0
+              ],
+              "stages": [
+                {
+                  "stage": "soft_min",
+                  "method": "L-BFGS-B",
+                  "beta": 100.0,
+                  "message": "STOP: TOTAL NO. OF ITERATIONS REACHED LIMIT",
+                  "iterations": 180,
+                  "success": false
+                },
+                {
+                  "stage": "soft_min",
+                  "method": "L-BFGS-B",
+                  "beta": 400.0,
+                  "message": "STOP: TOTAL NO. OF ITERATIONS REACHED LIMIT",
+                  "iterations": 180,
+                  "success": false
+                },
+                {
+                  "stage": "soft_min",
+                  "method": "L-BFGS-B",
+                  "beta": 1500.0,
+                  "message": "STOP: TOTAL NO. OF ITERATIONS REACHED LIMIT",
+                  "iterations": 180,
+                  "success": false
+                },
+                {
+                  "stage": "epigraph",
+                  "method": "SLSQP",
+                  "message": "Optimization terminated successfully",
+                  "iterations": 110,
+                  "success": true,
+                  "optimizer_t": 0.9874180480198407
+                }
+              ],
+              "max_iterations_per_stage": 180,
+              "physical_candidates": 727,
+              "cache_hits": 731,
+              "rejected_infeasible_trials": 2,
+              "sampled_min_reflectance": 0.9874180480196894,
+              "training_conditions": 1204,
+              "thickness_bounds_source": "full explicit layer/total nm bounds; positive float lower bound if unset",
+              "soft_method": "L-BFGS-B",
+              "coordinate_scale_nm": 100.0,
+              "scale_nm": [
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+                100.0
+              ],
+              "cache_scope": "one most recent thickness point shared across beta and epigraph t",
+              "acceptance_scope": "original sampled R only; independent original audit required"
+            },
+            "final_training_min_R": 0.9874180480196894
+          }
+        ],
+        "completed_priors": 1,
+        "audited_pass": true,
+        "scheduling": "source-admittance two-substack priors; staged minimum-R refinement; original audit; then unchanged classic search",
+        "soft_method": "L-BFGS-B",
+        "coordinate_scale_nm": 100.0,
+        "betas": [
+          100.0,
+          400.0,
+          1500.0
+        ],
+        "max_iterations_per_stage": 180,
+        "latest_optimizer_progress": {
+          "physical_candidates": 727,
+          "sampled_min_reflectance": 0.9874180480196894
+        },
+        "evaluations_used": 729,
+        "audit_physical_evaluations_used": 745
+      }
+    },
+    "audit_feedback": {
+      "revision": 1,
+      "points": [
+        {
+          "objective_index": 0,
+          "wavelength_nm": 699.95,
+          "angle_deg": 0.0,
+          "polarization": "s"
+        },
+        {
+          "objective_index": 0,
+          "wavelength_nm": 699.95,
+          "angle_deg": 30.0,
+          "polarization": "s"
+        },
+        {
+          "objective_index": 1,
+          "wavelength_nm": 699.95,
+          "angle_deg": 0.0,
+          "polarization": "p"
+        },
+        {
+          "objective_index": 1,
+          "wavelength_nm": 699.95,
+          "angle_deg": 30.0,
+          "polarization": "p"
+        }
+      ],
+      "parent_evaluator_invocations": 0,
+      "physical_evaluations": 0,
+      "wavelength_points": 0,
+      "repair_stages": 0,
+      "local_stages": 0,
+      "scope": "fixed-snapshot local repair only; original training/audit/global population scores unchanged"
+    }
+  },
+  "cancel_requested": false,
+  "criteria": {
+    "min_R": 0.98,
+    "band_nm": [
+      400.0,
+      700.0
+    ],
+    "angles_deg": [
+      0.0,
+      30.0
+    ],
+    "polarizations": [
+      "s",
+      "p"
+    ],
+    "maximum_layers": 32,
+    "layer_thickness_nm": [
+      10.0,
+      500.0
+    ],
+    "maximum_total_nm": 5000.0,
+    "training_step_nm": 1.0,
+    "wall_cap_seconds": 300.0,
+    "max_logical_evaluations": 4000
+  },
+  "limits": [
+    "one sourced-material target and one deterministic generated prior, not a convergence-rate guarantee",
+    "finite dense/offset/locally-refined-extremum evidence, not a continuous certificate",
+    "film k are source model values, not measured ultralow loss qualification",
+    "analytic Jacobian runs on parent CPU; no universal parallel or full-GPU claim",
+    "observed software runtime is not the much shorter research-engine runtime",
+    "shared evaluation budget counts logical candidate/audit admission; physical calls and wavelength work are separate actual counters"
+  ],
+  "timing_from_existing_progress": {
+    "baseline_and_bare_audit_seconds": 1.7412353999970946,
+    "generation_and_initial_jacobian_combined_seconds": 0.21346110000740737,
+    "optimization_including_archiving_and_progress_seconds": 99.69895209997776,
+    "final_independent_audit_seconds": 12.855241200013552,
+    "post_audit_typed_result_and_local_recording_combined_seconds": 0.690330300014466,
+    "scope": "milestone intervals from existing progress log, not isolated profiling; pure generation/serialization/archive costs not separately attributed; request construction and source downloads preceded timing"
+  },
+  "environment": {
+    "cpu": "Intel Core Ultra 7 265K",
+    "physical_cores": 20,
+    "logical_processors": 20,
+    "os": "Windows",
+    "python": "3.13.16",
+    "numpy": "2.5.4",
+    "scipy": "1.18.1",
+    "effective_workers": 1,
+    "comparison_scope": "research hardware/runtime not fully matched; no controlled hardware speed comparison"
+  },
+  "validation": {
+    "integrated_regression": "321 passed in 87.30s",
+    "post_test_type_narrowing": "4 pipeline/stop cases passed in 2.13s after explicit optional-snapshot assertion and added time-limit boundary; production source unchanged",
+    "independent_review": "Sol6.1 cross-review of priors, minimax and parent integration ACCEPT; actual optical acceptance separate",
+    "static": "Ruff and owned Linux mypy: 0 current, 0 new diagnostics; baseline unchanged"
+  }
+}

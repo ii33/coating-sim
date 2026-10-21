@@ -76157,6 +76157,8 @@
     "coat_sim/core/film_synthesis_feedback.py",
     "coat_sim/core/film_synthesis_forward.py",
     "coat_sim/core/film_synthesis_global.py",
+    "coat_sim/core/film_synthesis_hr_minimax.py",
+    "coat_sim/core/film_synthesis_hr_priors.py",
     "coat_sim/core/film_synthesis_io.py",
     "coat_sim/core/film_synthesis_jobs.py",
     "coat_sim/core/film_synthesis_matching.py",

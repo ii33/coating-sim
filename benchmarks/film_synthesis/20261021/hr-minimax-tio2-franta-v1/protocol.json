@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "kind": "production_hr_no_seed_acceptance",
+  "research_commit": "3f670f4fbf5c2731c719e59792705bd25207beb9",
+  "research_url": "https://github.com/ii33/coating-research-library/tree/3f670f4fbf5c2731c719e59792705bd25207beb9/manual_studies/2026-10-21_coating_sim_lowk_tio2_bulk_sio2",
+  "material_container_blob_sha1": "3ee3f057a2fc3c080d28c823a218ea640f893c8c",
+  "source_snapshot_sha256": "5cfe30256a5ab64123f936c6e3af10d84b342b9189f42bd93e9a57fe78aa948e",
+  "request_sha256": "42badb13f9ea2cdab96f3659eb629fd3225fac2c4ae730d2ce56ee065971d816",
+  "request_builder": "production UI build_synthesis_request -> freeze_film_synthesis_request -> existing CLI and typed job contracts",
+  "answer_seed_policy": "source seed_designs removed before decoding; no optimized candidate read; production generates all starting thicknesses from sources and goals",
+  "seed_count": 0,
+  "band_nm": [
+    400.0,
+    700.0
+  ],
+  "training_step_nm": 1.0,
+  "angles_deg": [
+    0.0,
+    30.0
+  ],
+  "polarizations": [
+    "s",
+    "p"
+  ],
+  "minimum_R": 0.98,
+  "max_layers": 32,
+  "minimum_layer_nm": 10.0,
+  "maximum_layer_nm": 500.0,
+  "maximum_total_nm": 5000.0,
+  "max_seconds": 300.0,
+  "max_evaluations": 4000,
+  "evaluation_budget_semantics": "shared logical candidate/audit admission; actual physical spectral calls and wavelength points recorded separately",
+  "max_iterations_per_optimizer_stage": 180,
+  "betas": [
+    100,
+    400,
+    1500
+  ],
+  "soft_method": "L-BFGS-B",
+  "coordinate_scale_nm": 100.0,
+  "final_method": "SLSQP epigraph",
+  "independent_audit": "unchanged production dense/offset/bracketed-extremum audit; source validation_samples_multiplier=10 gives 0.1 nm dense mesh, finite evidence only",
+  "absorption": "known TiO2 and MgF2 film source k retained; only n-only Malitson semi-infinite bulk SiO2 assumes k=0; no extrapolation",
+  "source_identities": [
+    [
+      "builtin_research_TiO2_film",
+      "rii_tio2_franta"
+    ],
+    [
+      "research_mgf2_franta_2017_c51389d0430c",
+      "ri_mgf2_franta_2017_c51389d0430c"
+    ]
+  ],
+  "scope": "one sourced-material target; not universal convergence, continuous certificate or manufacturing qualification",
+  "status": "frozen before production search"
+}
