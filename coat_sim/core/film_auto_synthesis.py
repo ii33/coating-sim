@@ -40,6 +40,7 @@ class _SearchDiagnostics(TypedDict):
     local_refinement: list[dict[str, object]]
     ar_structure_mode: NotRequired[str]
     automatic_cluster_route: NotRequired[bool]
+    ar_simple_start: NotRequired[dict[str, object]]
     structure_batch_policy: NotRequired[dict[str, object]]
     bandpass_structure_schedule: NotRequired[dict[str, object]]
     matching_structure_schedule: NotRequired[dict[str, object]]
@@ -950,6 +951,40 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             working = evaluate(request.environment, gpu_forward=forward is not None)
             archive(working)
             assert best is not None  # The scored bare substrate is always feasible.
+            if automatic_cluster_route and not targets_verified():
+                # Try one physically legal homogeneous layer per allowed material
+                # before preparing the much larger multicluster prior sweep.
+                # This is an additive scheduling prefix, not a V-band special
+                # case or a replacement for the persistent complex families.
+                simple_start: dict[str, object] = dict(
+                    attempted=0, feasible=0, audited_pass=False,
+                    policy="one legal reference-quarter-wave layer per allowed material; full shared objective and audit; then unchanged complex search")
+                search_diagnostics["ar_simple_start"] = simple_start
+                feasible_simple_count = 0
+                for material_index, ref in enumerate(request.candidate_materials):
+                    check_training_admission()
+                    simple_start["attempted"] = material_index + 1
+                    thickness = legal_growth_thickness(request.environment,
+                        quarter[(ref.material_id, ref.optical_set_id)])
+                    if thickness is None:
+                        continue
+                    layer_id, split_id = _proposal_layer_ids(request.environment,
+                        f"ar-simple-{material_index}", "ar-simple-unused",
+                        reserved_ids=reserved_layer_ids)
+                    trial = _insert_at_site(request.environment,
+                        {"kind": "interface", "interface": 0}, ref, thickness,
+                        layer_id, split_id)
+                    if not feasible(trial):
+                        continue
+                    feasible_simple_count += 1
+                    simple_start["feasible"] = feasible_simple_count
+                    raw = evaluate(trial, gpu_forward=forward is not None)
+                    emit("ar_simple_start", "Scored legal homogeneous-layer prior before multicluster screening", trial, raw["score"], material_id=ref.material_id)
+                    archive(raw)
+                    if targets_verified():
+                        simple_start["audited_pass"] = True
+                        emit("ar_simple_targets_verified", "Simple prior passed the same independent physical audit; complex search remains available for unmet targets", trial, raw["score"])
+                        break
             if automatic_reflector_route:
                 # Retain a physically audited checkpoint before the potentially
                 # long automatic prior scan. Its audit belongs only to this
@@ -1143,7 +1178,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     close = getattr(proposals, "close", None)
                     if close is not None:
                         close()
-            structural_values = scan_structural_proposals()
+            structural_values = [] if targets_verified() else scan_structural_proposals()
             # A stage quantum schedules population search, without claiming
             # exhaustive coverage. Subsequent cycles alternate expanded
             # structural enumeration/global epochs with ordinary needle growth.

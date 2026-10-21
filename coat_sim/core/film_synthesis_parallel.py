@@ -26,7 +26,7 @@ from typing import Any, Callable, Iterable, Mapping
 from . import film_optimization_structure as physical
 from .film_performance import available_cpu_workers
 
-MIN_PARALLEL_WORK = 200_000  # Project heuristic; includes startup amortization.
+MIN_PARALLEL_WORK = 200_000  # Project cold-start/discovery heuristic, not a work budget.
 STARTUP_TIMEOUT_SECONDS = 20.0
 CLOSE_GRACE_SECONDS = 0.5
 MAX_FRAME_BYTES = 256 * 1024**2
@@ -211,12 +211,17 @@ def _worker_main():
 
         physical.simulate_with_thickness_jacobian = observed
         before = time.perf_counter()
+        cpu_elapsed: float | None = None
         try:
             design = command["design"]
-            value = physical.evaluate_frozen_structure_candidate(request, design,
-                variable_ids=tuple(row["id"] for row in design["front_layers"]) if command["jacobian"] else (),
-                with_jacobian=command["jacobian"], zero_thickness_layer_ids=command["zero_ids"],
-                derived_validation_grid=False, cancel_event=cancel)
+            cpu_before = time.process_time()
+            try:
+                value = physical.evaluate_frozen_structure_candidate(request, design,
+                    variable_ids=tuple(row["id"] for row in design["front_layers"]) if command["jacobian"] else (),
+                    with_jacobian=command["jacobian"], zero_thickness_layer_ids=command["zero_ids"],
+                    derived_validation_grid=False, cancel_event=cancel)
+            finally:
+                cpu_elapsed = time.process_time() - cpu_before
             value = dict(value)
             value.pop("responses", None)  # Full J matrices are unused by synthesis decisions.
             reply: dict[str, Any] = {"status": "ok", "value": value}
@@ -230,7 +235,7 @@ def _worker_main():
         finally:
             physical.simulate_with_thickness_jacobian = original
         reply.update(kind="result", token=token, work=work,
-                     elapsed_seconds=time.perf_counter() - before)
+                     elapsed_seconds=time.perf_counter() - before, cpu_seconds=cpu_elapsed)
         _write_frame(sys.stdout.buffer, reply)
 
 
@@ -248,12 +253,28 @@ class _Child:
         self.ready = False
 
 
+@dataclass
+class _SerialCost:
+    work: int = 0
+    seconds: float = 0.0
+    samples: int = 0
+
+
+@dataclass
+class _WorkerCPUCost:
+    completed_tasks: int = 0
+    known_cpu_seconds: float = 0.0
+    cpu_samples: int = 0
+    unrecorded_completed_tasks: int = 0
+
+
 class OrderedEvaluationExecutor:
     """Run-scoped pool; callers consume outcomes in the original proposal order."""
 
     def __init__(self, requested_workers: int, cancel_event=None):
         self.requested_workers = requested_workers
         available = available_cpu_workers()
+        self.available_workers = available
         self.workers = min(8 if requested_workers == 0 else requested_workers, available)
         self.cancel_event = cancel_event
         self.request = None
@@ -277,6 +298,13 @@ class OrderedEvaluationExecutor:
         self.cancel_path: Path | None = None
         self.worker_records: list[dict] = []
         self.batch_decisions: list[dict] = []
+        self.serial_observed_work = 0
+        self.known_worker_cpu_seconds = 0.0
+        self.unrecorded_worker_cpu_tasks = 0
+        self.worker_cpu_by_pid: dict[int, _WorkerCPUCost] = {}
+        self.serial_costs: dict[tuple[bool, bool], _SerialCost] = {}
+        self._last_selection: dict[str, object] = {}
+        self._selected_workers = 0
 
     def configure(self, request):
         self.request = request
@@ -285,25 +313,91 @@ class OrderedEvaluationExecutor:
         if self.cancel_event is not None and self.cancel_event.is_set():
             raise physical._StructureCancelled()
 
-    def eligible(self, count: int, work: int, budget_allows: bool) -> bool:
-        reason = ("requested_serial" if self.workers <= 1 else "finite_budget_serial" if not budget_allows
-                  else "pool_unavailable" if self.disabled or self.closed else
-                  "small_batch" if count < 2 or work < MIN_PARALLEL_WORK else "parallel")
+    def eligible(self, count: int, work: int, budget_allows: bool, *, phase: str = "") -> bool:
+        """Choose only from completed observations; never prepare or score work.
+
+        Cold discovery uses the existing work threshold cumulatively across
+        completed serial calls. It predicts neither future work nor speedup.
+        Warm small batches compare measured serial cost with observed IPC cost;
+        forward/Jacobian/zero-probe samples are kept distinct. This coarse proxy
+        is local to one run and is not a hardware calibration certificate.
+        """
+        warm_workers = sum(child.ready for child in self.children)
+        cap = min(self.workers, max(0, count))
+        kind = {"needle": (True, True), "growth": (True, False),
+                "structure": (False, False), "structure_global": (False, False),
+                "global": (False, False)}.get(phase)
+        sample = self.serial_costs.get(kind) if kind is not None else None
+        serial_estimate = (work * sample.seconds / sample.work
+                           if sample is not None and sample.work > 0 else None)
+        ipc_estimate = (count * self.ipc_seconds / len(self.finished) if self.finished else None)
+        saved_estimate = (serial_estimate * (1 - 1 / min(cap, warm_workers))
+                          if serial_estimate is not None and min(cap, warm_workers) >= 2 else None)
+        target = cap
+        if self.workers <= 1:
+            reason = "requested_serial" if self.requested_workers == 1 else "available_cpu_serial"
+        elif not budget_allows:
+            reason = "finite_budget_serial"
+        elif self.disabled or self.closed:
+            reason = "pool_unavailable"
+        elif count < 2:
+            reason = "insufficient_candidates"
+        elif work >= MIN_PARALLEL_WORK:
+            reason = "warm_work_threshold" if warm_workers else "cold_work_threshold"
+        elif warm_workers >= 2:
+            target = min(cap, warm_workers)
+            if saved_estimate is None or ipc_estimate is None:
+                reason = "warm_insufficient_cost_samples"
+            else:
+                reason = "warm_measured_reuse" if saved_estimate > ipc_estimate else "warm_ipc_cost_serial"
+        elif self.serial_observed_work + work >= MIN_PARALLEL_WORK:
+            # A bounded discovery pool avoids auto-opening a large pool merely
+            # because many prior small serial calls accumulated work.
+            target = min(2, cap)
+            reason = "cold_accumulated_work_discovery"
+        else:
+            reason = "cold_work_below_threshold"
+        parallel = reason in {"cold_work_threshold", "warm_work_threshold",
+                              "cold_accumulated_work_discovery", "warm_measured_reuse"}
+        self._selected_workers = target if parallel else 0
         self.selection_reasons[reason] = self.selection_reasons.get(reason, 0) + 1
-        return reason == "parallel"
+        self._last_selection = {
+            "selection_reason": reason, "pool_temperature": "warm" if warm_workers else "cold",
+            "requested_worker_limit": self.requested_workers, "available_cpu_limit": self.available_workers,
+            "effective_worker_limit": self.workers, "candidate_worker_cap": cap,
+            "ready_pool_workers": warm_workers, "selected_worker_cap": self._selected_workers,
+            "cold_work_threshold": MIN_PARALLEL_WORK,
+            "observed_serial_work": self.serial_observed_work,
+            "cost_sample_kind": None if kind is None else {"jacobian": kind[0], "zero_probe": kind[1]},
+            "serial_cost_samples": sample.samples if sample is not None else 0,
+            "estimated_serial_seconds": serial_estimate, "estimated_ipc_seconds": ipc_estimate,
+            "estimated_parallel_savings_before_ipc_seconds": saved_estimate,
+            "estimate_scope": "run-local completed physical callbacks; point-times-layer proxy; no speedup guarantee",
+        }
+        return parallel
 
     def serial(self, callback: Callable, task: EvaluationTask, *, fallback=False):
         self.serial_invocations += 1
         self.fallback_tasks += int(fallback)
+        started = time.perf_counter()
         try:
             value = callback()
         except BaseException:
             self.serial_unknown += 1
             raise
+        elapsed = time.perf_counter() - started
         limit = min(10001, 1_000_000 // (len(task.design.get("front_layers", ())) +
                                        len(task.design.get("back_layers", ())) + 3))
         responses = value.get("responses", ())
-        self.serial_points += sum(len(row["wavelength_nm"]) for row in responses)
+        points = sum(len(row["wavelength_nm"]) for row in responses)
+        self.serial_points += points
+        work = points * max(1, len(task.design.get("front_layers", ())) + len(task.design.get("back_layers", ())))
+        if work > 0 and math.isfinite(elapsed) and elapsed >= 0:
+            sample = self.serial_costs.setdefault((task.jacobian, bool(task.zero_ids)), _SerialCost())
+            sample.work += work
+            sample.seconds += elapsed
+            sample.samples += 1
+            self.serial_observed_work += work
         self.serial_calls += sum(math.ceil(len(row["wavelength_nm"]) / limit) for row in responses)
         return value
 
@@ -374,6 +468,23 @@ class OrderedEvaluationExecutor:
             self.worker_points += int(work.get("wavelength_points", 0))
             self.worker_incomplete += int(work.get("incomplete_calls", 0))
             self.worker_elapsed += float(reply.get("elapsed_seconds", 0.))
+            cpu_seconds = reply.get("cpu_seconds")
+            measured_cpu: float | None = None
+            if (isinstance(cpu_seconds, (int, float)) and not isinstance(cpu_seconds, bool)
+                    and math.isfinite(cpu_seconds) and cpu_seconds >= 0):
+                measured_cpu = float(cpu_seconds)
+            if measured_cpu is not None:
+                self.known_worker_cpu_seconds += measured_cpu
+            else:
+                self.unrecorded_worker_cpu_tasks += 1
+            if child.actual_pid is not None:
+                cpu_sample = self.worker_cpu_by_pid.setdefault(child.actual_pid, _WorkerCPUCost())
+                cpu_sample.completed_tasks += 1
+                if measured_cpu is not None:
+                    cpu_sample.known_cpu_seconds += measured_cpu
+                    cpu_sample.cpu_samples += 1
+                else:
+                    cpu_sample.unrecorded_completed_tasks += 1
             status = reply["status"]
             outcome = self.outcomes[token]
             if status == "ok":
@@ -497,10 +608,18 @@ class OrderedEvaluationExecutor:
     def batch(self, tasks: Iterable[EvaluationTask], *, count: int, work: int, budget_allows: bool, phase: str = ""):
         decision = {"phase": phase, "candidate_count": count, "estimated_work": work, "budget_allows": budget_allows}
         self.batch_decisions.append(decision)
-        parallel = self.eligible(count, work, budget_allows)
+        parallel = self.eligible(count, work, budget_allows, phase=phase)
+        decision.update(self._last_selection)
+        decision["eligibility_reason"] = self._last_selection["selection_reason"]
+        decision["pool_eligible"] = parallel
+        startup_before = self.startup_seconds
+        selected_workers = self._selected_workers
         if parallel:
-            self._ensure_pool(count)
+            self._ensure_pool(selected_workers)
             parallel = not (self.disabled or self.closed)
+            if not parallel:
+                decision["selection_reason"] = "startup_unavailable_serial"
+        decision["startup_seconds_in_batch"] = self.startup_seconds - startup_before
         decision["parallel_selected"] = parallel
         tokens: list[int] = []
 
@@ -513,7 +632,7 @@ class OrderedEvaluationExecutor:
             self.parallel_batches += 1
             pending: deque = deque()
             tail: Iterable[EvaluationTask] = ()
-            for child in self.children:
+            for child in self.children[:selected_workers]:
                 try:
                     task = next(iterator)
                 except StopIteration:
@@ -648,7 +767,25 @@ class OrderedEvaluationExecutor:
             "incomplete_physical_calls": self.worker_incomplete, "serial_unknown_work": self.serial_unknown,
             "startup_seconds": self.startup_seconds, "initialization_seconds": self.initialization_seconds,
             "ipc_seconds": self.ipc_seconds, "ipc_bytes": self.ipc_bytes, "worker_compute_seconds": self.worker_elapsed,
+            "worker_cpu_seconds": (None if unknown or self.unrecorded_worker_cpu_tasks
+                                   else self.known_worker_cpu_seconds),
+            "known_worker_cpu_seconds": self.known_worker_cpu_seconds,
+            "unrecorded_worker_cpu_tasks": self.unrecorded_worker_cpu_tasks,
+            "worker_cpu_by_pid": [dict(pid=pid, completed_tasks=sample.completed_tasks,
+                known_cpu_seconds=sample.known_cpu_seconds, cpu_samples=sample.cpu_samples,
+                unrecorded_completed_tasks=sample.unrecorded_completed_tasks)
+                for pid, sample in sorted(self.worker_cpu_by_pid.items())],
+            "worker_cpu_scope": "process_time deltas inside physical evaluator; received replies only; unreceived work unknown; excludes startup/IPC",
             "selection_reasons": dict(self.selection_reasons), "batch_decisions": list(self.batch_decisions),
+            "adaptive_parallel": {
+                "cold_work_threshold": MIN_PARALLEL_WORK, "discovery_worker_cap": 2,
+                "observed_serial_work": self.serial_observed_work,
+                "serial_cost_samples": [dict(jacobian=jacobian, zero_probe=zero_probe,
+                    samples=sample.samples, work=sample.work, seconds=sample.seconds)
+                    for (jacobian, zero_probe), sample in self.serial_costs.items()],
+                "policy": "cold threshold or accumulated-work discovery; warm measured savings exceed IPC",
+                "limitations": "point-times-layer proxy; finite samples; no future-work prediction or speedup guarantee",
+            },
             "workers": list(self.worker_records),
             "counter_scope": "training_evaluations_only_audit_reported_separately"}
 

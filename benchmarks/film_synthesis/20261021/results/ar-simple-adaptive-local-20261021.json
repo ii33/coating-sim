@@ -1,0 +1,933 @@
+{
+  "schema_version": 1,
+  "kind": "film_synthesis_local_targeted_comparison",
+  "base_commit": "9e3559a7b22b19d674739e05e7b5e293363d6a3e",
+  "scope": "bounded local paired diagnostic, not the historical cloud confirmation and not a hardware throughput benchmark",
+  "protocol": {
+    "workers": 2,
+    "max_seconds": 25,
+    "request_manifest": "benchmarks/film_synthesis/20261021/cloud-requests.json",
+    "v_seeds": [
+      0,
+      1,
+      2
+    ],
+    "w_and_ultrabroad_seeds": [
+      0
+    ],
+    "mode_control": "unchanged v23_matching for V, same process per phase",
+    "full_original_objectives_constraints_and_source_nk": true,
+    "success": "training and independent dense/offset/extrema audit raw bounds; finite evidence",
+    "cold_and_warm_process_effects": "First case of each phase includes lazy imports; no timing confidence intervals claimed",
+    "unmeasured": "Full 120-second cloud/multiseed W/ultrabroad and general finite-budget regression matrix pending"
+  },
+  "before": [
+    {
+      "case": "ar_v_visible",
+      "seed": 0,
+      "mode": "clustered",
+      "wall_seconds": 5.664239799996722,
+      "first_audited_pass_seconds": 5.646195799999987,
+      "state": "completed",
+      "reason": "validated_targets_met",
+      "targets_met": true,
+      "layers": 3,
+      "worst_R": 0.0013521806715826516,
+      "evaluations": 522,
+      "request_base_sha256": "1eabe3c9d4d977fb8e10cb8ac99569d8e7cc03a423ec7a836a9020fbfe2e32a5",
+      "performance": {
+        "requested_workers": 2,
+        "effective_workers": 1,
+        "worker_pids": [],
+        "submitted_tasks": 0,
+        "completed_tasks": 0,
+        "consumed_tasks": 0,
+        "parallel_batches": 0,
+        "startup_seconds": 0.0,
+        "worker_compute_seconds": 0.0,
+        "unknown_tasks": 0,
+        "cleanup_complete": true,
+        "selection_reasons": {
+          "small_batch": 129
+        }
+      },
+      "complex_global_generations": 0,
+      "ar_simple_start": null
+    },
+    {
+      "case": "ar_v_visible",
+      "seed": 0,
+      "mode": "v23_matching",
+      "wall_seconds": 0.1439892000053078,
+      "first_audited_pass_seconds": 0.13440409999748226,
+      "state": "completed",
+      "reason": "validated_targets_met",
+      "targets_met": true,
+      "layers": 1,
+      "worst_R": 0.0013447305105752092,
+      "evaluations": 11,
+      "request_base_sha256": "1eabe3c9d4d977fb8e10cb8ac99569d8e7cc03a423ec7a836a9020fbfe2e32a5",
+      "performance": {
+        "requested_workers": 2,
+        "effective_workers": 1,
+        "worker_pids": [],
+        "submitted_tasks": 0,
+        "completed_tasks": 0,
+        "consumed_tasks": 0,
+        "parallel_batches": 0,
+        "startup_seconds": 0.0,
+        "worker_compute_seconds": 0.0,
+        "unknown_tasks": 0,
+        "cleanup_complete": true,
+        "selection_reasons": {
+          "small_batch": 1
+        }
+      },
+      "complex_global_generations": 0,
+      "ar_simple_start": null
+    },
+    {
+      "case": "ar_v_visible",
+      "seed": 1,
+      "mode": "clustered",
+      "wall_seconds": 6.964613800009829,
+      "first_audited_pass_seconds": 6.926276700003655,
+      "state": "completed",
+      "reason": "validated_targets_met",
+      "targets_met": true,
+      "layers": 3,
+      "worst_R": 0.0019074009400086825,
+      "evaluations": 581,
+      "request_base_sha256": "1eabe3c9d4d977fb8e10cb8ac99569d8e7cc03a423ec7a836a9020fbfe2e32a5",
+      "performance": {
+        "requested_workers": 2,
+        "effective_workers": 1,
+        "worker_pids": [],
+        "submitted_tasks": 0,
+        "completed_tasks": 0,
+        "consumed_tasks": 0,
+        "parallel_batches": 0,
+        "startup_seconds": 0.0,
+        "worker_compute_seconds": 0.0,
+        "unknown_tasks": 0,
+        "cleanup_complete": true,
+        "selection_reasons": {
+          "small_batch": 132
+        }
+      },
+      "complex_global_generations": 3,
+      "ar_simple_start": null
+    },
+    {
+      "case": "ar_v_visible",
+      "seed": 1,
+      "mode": "v23_matching",
+      "wall_seconds": 0.15506469999672845,
+      "first_audited_pass_seconds": 0.1455805000005057,
+      "state": "completed",
+      "reason": "validated_targets_met",
+      "targets_met": true,
+      "layers": 1,
+      "worst_R": 0.0013447305105752092,
+      "evaluations": 11,
+      "request_base_sha256": "1eabe3c9d4d977fb8e10cb8ac99569d8e7cc03a423ec7a836a9020fbfe2e32a5",
+      "performance": {
+        "requested_workers": 2,
+        "effective_workers": 1,
+        "worker_pids": [],
+        "submitted_tasks": 0,
+        "completed_tasks": 0,
+        "consumed_tasks": 0,
+        "parallel_batches": 0,
+        "startup_seconds": 0.0,
+        "worker_compute_seconds": 0.0,
+        "unknown_tasks": 0,
+        "cleanup_complete": true,
+        "selection_reasons": {
+          "small_batch": 1
+        }
+      },
+      "complex_global_generations": 0,
+      "ar_simple_start": null
+    },
+    {
+      "case": "ar_v_visible",
+      "seed": 2,
+      "mode": "clustered",
+      "wall_seconds": 6.053047599998536,
+      "first_audited_pass_seconds": 6.033146899993881,
+      "state": "completed",
+      "reason": "validated_targets_met",
+      "targets_met": true,
+      "layers": 3,
+      "worst_R": 0.0019833307555613177,
+      "evaluations": 527,
+      "request_base_sha256": "1eabe3c9d4d977fb8e10cb8ac99569d8e7cc03a423ec7a836a9020fbfe2e32a5",
+      "performance": {
+        "requested_workers": 2,
+        "effective_workers": 1,
+        "worker_pids": [],
+        "submitted_tasks": 0,
+        "completed_tasks": 0,
+        "consumed_tasks": 0,
+        "parallel_batches": 0,
+        "startup_seconds": 0.0,
+        "worker_compute_seconds": 0.0,
+        "unknown_tasks": 0,
+        "cleanup_complete": true,
+        "selection_reasons": {
+          "small_batch": 130
+        }
+      },
+      "complex_global_generations": 1,
+      "ar_simple_start": null
+    },
+    {
+      "case": "ar_v_visible",
+      "seed": 2,
+      "mode": "v23_matching",
+      "wall_seconds": 0.13774639999610372,
+      "first_audited_pass_seconds": 0.12771420000353828,
+      "state": "completed",
+      "reason": "validated_targets_met",
+      "targets_met": true,
+      "layers": 1,
+      "worst_R": 0.0013447305105752092,
+      "evaluations": 11,
+      "request_base_sha256": "1eabe3c9d4d977fb8e10cb8ac99569d8e7cc03a423ec7a836a9020fbfe2e32a5",
+      "performance": {
+        "requested_workers": 2,
+        "effective_workers": 1,
+        "worker_pids": [],
+        "submitted_tasks": 0,
+        "completed_tasks": 0,
+        "consumed_tasks": 0,
+        "parallel_batches": 0,
+        "startup_seconds": 0.0,
+        "worker_compute_seconds": 0.0,
+        "unknown_tasks": 0,
+        "cleanup_complete": true,
+        "selection_reasons": {
+          "small_batch": 1
+        }
+      },
+      "complex_global_generations": 0,
+      "ar_simple_start": null
+    },
+    {
+      "case": "ar_w_visible",
+      "seed": 0,
+      "mode": "clustered",
+      "wall_seconds": 12.88532880001003,
+      "first_audited_pass_seconds": 12.863482000000658,
+      "state": "completed",
+      "reason": "validated_targets_met",
+      "targets_met": true,
+      "layers": 5,
+      "worst_R": 0.004995008481579206,
+      "evaluations": 547,
+      "request_base_sha256": "427c0d4fe8843cd1bc124ca8bfb9de2952c008c47a0e7ee738bff1934a601bf7",
+      "performance": {
+        "requested_workers": 2,
+        "effective_workers": 1,
+        "worker_pids": [],
+        "submitted_tasks": 0,
+        "completed_tasks": 0,
+        "consumed_tasks": 0,
+        "parallel_batches": 0,
+        "startup_seconds": 0.0,
+        "worker_compute_seconds": 0.0,
+        "unknown_tasks": 0,
+        "cleanup_complete": true,
+        "selection_reasons": {
+          "small_batch": 133
+        }
+      },
+      "complex_global_generations": 4,
+      "ar_simple_start": null
+    },
+    {
+      "case": "ar_ultrabroad_visible",
+      "seed": 0,
+      "mode": "clustered",
+      "wall_seconds": 9.988024499994935,
+      "first_audited_pass_seconds": 9.954578299992136,
+      "state": "completed",
+      "reason": "validated_targets_met",
+      "targets_met": true,
+      "layers": 7,
+      "worst_R": 0.019980009379347446,
+      "evaluations": 535,
+      "request_base_sha256": "1004f86c857651f08822cc89a8b1038e0b8826a969189c872d20ea9097ccb4c0",
+      "performance": {
+        "requested_workers": 2,
+        "effective_workers": 1,
+        "worker_pids": [],
+        "submitted_tasks": 0,
+        "completed_tasks": 0,
+        "consumed_tasks": 0,
+        "parallel_batches": 0,
+        "startup_seconds": 0.0,
+        "worker_compute_seconds": 0.0,
+        "unknown_tasks": 0,
+        "cleanup_complete": true,
+        "selection_reasons": {
+          "small_batch": 133
+        }
+      },
+      "complex_global_generations": 4,
+      "ar_simple_start": null
+    }
+  ],
+  "after_simple_prefix": [
+    {
+      "case": "ar_v_visible",
+      "seed": 0,
+      "mode": "clustered",
+      "wall_seconds": 0.5048937000101432,
+      "first_audited_pass_seconds": 0.503237299999455,
+      "state": "completed",
+      "reason": "validated_targets_met",
+      "targets_met": true,
+      "layers": 1,
+      "worst_R": 0.0006086363502518395,
+      "evaluations": 3,
+      "request_base_sha256": "1eabe3c9d4d977fb8e10cb8ac99569d8e7cc03a423ec7a836a9020fbfe2e32a5",
+      "performance": {
+        "requested_workers": 2,
+        "effective_workers": 1,
+        "worker_pids": [],
+        "submitted_tasks": 0,
+        "completed_tasks": 0,
+        "consumed_tasks": 0,
+        "parallel_batches": 0,
+        "startup_seconds": 0.0,
+        "worker_compute_seconds": 0.0,
+        "unknown_tasks": 0,
+        "cleanup_complete": true,
+        "selection_reasons": {}
+      },
+      "complex_global_generations": 0,
+      "ar_simple_start": {
+        "attempted": 1,
+        "feasible": 1,
+        "audited_pass": true,
+        "policy": "one legal reference-quarter-wave layer per allowed material; full shared objective and audit; then unchanged complex search"
+      }
+    },
+    {
+      "case": "ar_v_visible",
+      "seed": 0,
+      "mode": "v23_matching",
+      "wall_seconds": 0.11229539998748805,
+      "first_audited_pass_seconds": 0.10340369999175891,
+      "state": "completed",
+      "reason": "validated_targets_met",
+      "targets_met": true,
+      "layers": 1,
+      "worst_R": 0.0013447305105752092,
+      "evaluations": 11,
+      "request_base_sha256": "1eabe3c9d4d977fb8e10cb8ac99569d8e7cc03a423ec7a836a9020fbfe2e32a5",
+      "performance": {
+        "requested_workers": 2,
+        "effective_workers": 1,
+        "worker_pids": [],
+        "submitted_tasks": 0,
+        "completed_tasks": 0,
+        "consumed_tasks": 0,
+        "parallel_batches": 0,
+        "startup_seconds": 0.0,
+        "worker_compute_seconds": 0.0,
+        "unknown_tasks": 0,
+        "cleanup_complete": true,
+        "selection_reasons": {
+          "cold_work_below_threshold": 1
+        }
+      },
+      "complex_global_generations": 0,
+      "ar_simple_start": null
+    },
+    {
+      "case": "ar_v_visible",
+      "seed": 1,
+      "mode": "clustered",
+      "wall_seconds": 0.0482927999983076,
+      "first_audited_pass_seconds": 0.04750049998983741,
+      "state": "completed",
+      "reason": "validated_targets_met",
+      "targets_met": true,
+      "layers": 1,
+      "worst_R": 0.0006086363502518395,
+      "evaluations": 3,
+      "request_base_sha256": "1eabe3c9d4d977fb8e10cb8ac99569d8e7cc03a423ec7a836a9020fbfe2e32a5",
+      "performance": {
+        "requested_workers": 2,
+        "effective_workers": 1,
+        "worker_pids": [],
+        "submitted_tasks": 0,
+        "completed_tasks": 0,
+        "consumed_tasks": 0,
+        "parallel_batches": 0,
+        "startup_seconds": 0.0,
+        "worker_compute_seconds": 0.0,
+        "unknown_tasks": 0,
+        "cleanup_complete": true,
+        "selection_reasons": {}
+      },
+      "complex_global_generations": 0,
+      "ar_simple_start": {
+        "attempted": 1,
+        "feasible": 1,
+        "audited_pass": true,
+        "policy": "one legal reference-quarter-wave layer per allowed material; full shared objective and audit; then unchanged complex search"
+      }
+    },
+    {
+      "case": "ar_v_visible",
+      "seed": 1,
+      "mode": "v23_matching",
+      "wall_seconds": 0.11349099999642931,
+      "first_audited_pass_seconds": 0.10464009999122936,
+      "state": "completed",
+      "reason": "validated_targets_met",
+      "targets_met": true,
+      "layers": 1,
+      "worst_R": 0.0013447305105752092,
+      "evaluations": 11,
+      "request_base_sha256": "1eabe3c9d4d977fb8e10cb8ac99569d8e7cc03a423ec7a836a9020fbfe2e32a5",
+      "performance": {
+        "requested_workers": 2,
+        "effective_workers": 1,
+        "worker_pids": [],
+        "submitted_tasks": 0,
+        "completed_tasks": 0,
+        "consumed_tasks": 0,
+        "parallel_batches": 0,
+        "startup_seconds": 0.0,
+        "worker_compute_seconds": 0.0,
+        "unknown_tasks": 0,
+        "cleanup_complete": true,
+        "selection_reasons": {
+          "cold_work_below_threshold": 1
+        }
+      },
+      "complex_global_generations": 0,
+      "ar_simple_start": null
+    },
+    {
+      "case": "ar_v_visible",
+      "seed": 2,
+      "mode": "clustered",
+      "wall_seconds": 0.050009200000204146,
+      "first_audited_pass_seconds": 0.04925090000324417,
+      "state": "completed",
+      "reason": "validated_targets_met",
+      "targets_met": true,
+      "layers": 1,
+      "worst_R": 0.0006086363502518395,
+      "evaluations": 3,
+      "request_base_sha256": "1eabe3c9d4d977fb8e10cb8ac99569d8e7cc03a423ec7a836a9020fbfe2e32a5",
+      "performance": {
+        "requested_workers": 2,
+        "effective_workers": 1,
+        "worker_pids": [],
+        "submitted_tasks": 0,
+        "completed_tasks": 0,
+        "consumed_tasks": 0,
+        "parallel_batches": 0,
+        "startup_seconds": 0.0,
+        "worker_compute_seconds": 0.0,
+        "unknown_tasks": 0,
+        "cleanup_complete": true,
+        "selection_reasons": {}
+      },
+      "complex_global_generations": 0,
+      "ar_simple_start": {
+        "attempted": 1,
+        "feasible": 1,
+        "audited_pass": true,
+        "policy": "one legal reference-quarter-wave layer per allowed material; full shared objective and audit; then unchanged complex search"
+      }
+    },
+    {
+      "case": "ar_v_visible",
+      "seed": 2,
+      "mode": "v23_matching",
+      "wall_seconds": 0.11068759999761824,
+      "first_audited_pass_seconds": 0.10176710000087041,
+      "state": "completed",
+      "reason": "validated_targets_met",
+      "targets_met": true,
+      "layers": 1,
+      "worst_R": 0.0013447305105752092,
+      "evaluations": 11,
+      "request_base_sha256": "1eabe3c9d4d977fb8e10cb8ac99569d8e7cc03a423ec7a836a9020fbfe2e32a5",
+      "performance": {
+        "requested_workers": 2,
+        "effective_workers": 1,
+        "worker_pids": [],
+        "submitted_tasks": 0,
+        "completed_tasks": 0,
+        "consumed_tasks": 0,
+        "parallel_batches": 0,
+        "startup_seconds": 0.0,
+        "worker_compute_seconds": 0.0,
+        "unknown_tasks": 0,
+        "cleanup_complete": true,
+        "selection_reasons": {
+          "cold_work_below_threshold": 1
+        }
+      },
+      "complex_global_generations": 0,
+      "ar_simple_start": null
+    },
+    {
+      "case": "ar_w_visible",
+      "seed": 0,
+      "mode": "clustered",
+      "wall_seconds": 11.159079800010659,
+      "first_audited_pass_seconds": 11.136830800009193,
+      "state": "completed",
+      "reason": "validated_targets_met",
+      "targets_met": true,
+      "layers": 5,
+      "worst_R": 0.004995008481579206,
+      "evaluations": 549,
+      "request_base_sha256": "427c0d4fe8843cd1bc124ca8bfb9de2952c008c47a0e7ee738bff1934a601bf7",
+      "performance": {
+        "requested_workers": 2,
+        "effective_workers": 1,
+        "worker_pids": [],
+        "submitted_tasks": 0,
+        "completed_tasks": 0,
+        "consumed_tasks": 0,
+        "parallel_batches": 0,
+        "startup_seconds": 0.0,
+        "worker_compute_seconds": 0.0,
+        "unknown_tasks": 0,
+        "cleanup_complete": true,
+        "selection_reasons": {
+          "cold_work_below_threshold": 133
+        }
+      },
+      "complex_global_generations": 4,
+      "ar_simple_start": {
+        "attempted": 2,
+        "feasible": 2,
+        "audited_pass": false,
+        "policy": "one legal reference-quarter-wave layer per allowed material; full shared objective and audit; then unchanged complex search"
+      }
+    },
+    {
+      "case": "ar_ultrabroad_visible",
+      "seed": 0,
+      "mode": "clustered",
+      "wall_seconds": 9.878316300004371,
+      "first_audited_pass_seconds": 9.781268300008378,
+      "state": "completed",
+      "reason": "validated_targets_met",
+      "targets_met": true,
+      "layers": 7,
+      "worst_R": 0.019980009379347446,
+      "evaluations": 538,
+      "request_base_sha256": "1004f86c857651f08822cc89a8b1038e0b8826a969189c872d20ea9097ccb4c0",
+      "performance": {
+        "requested_workers": 2,
+        "effective_workers": 2,
+        "worker_pids": [
+          38860,
+          26440
+        ],
+        "submitted_tasks": 4,
+        "completed_tasks": 4,
+        "consumed_tasks": 4,
+        "parallel_batches": 1,
+        "startup_seconds": 0.38303799999994226,
+        "worker_compute_seconds": 0.05781640000350308,
+        "unknown_tasks": 0,
+        "cleanup_complete": true,
+        "selection_reasons": {
+          "cold_work_below_threshold": 43,
+          "cold_accumulated_work_discovery": 1,
+          "warm_ipc_cost_serial": 89
+        }
+      },
+      "complex_global_generations": 4,
+      "ar_simple_start": {
+        "attempted": 3,
+        "feasible": 3,
+        "audited_pass": false,
+        "policy": "one legal reference-quarter-wave layer per allowed material; full shared objective and audit; then unchanged complex search"
+      }
+    }
+  ],
+  "known_limits": [
+    "Additional feasible single-layer proposals consume shared evaluations, so finite-budget downstream coverage can change",
+    "Historical cloud v23 Rmax 0.041804% differs from this local control 0.134473%; cross-host timing and optical-margin numbers are not pooled",
+    "This stage does not claim adaptive scheduling speedup; actual process completion is tested separately",
+    "No average spectral error substitutes for worst raw R; no continuous certificate or manufacturing robustness claim"
+  ],
+  "final_verified_source_hashes": {
+    "coat_sim/core/film_auto_synthesis.py": "21adb172ec8ba04291df6dffb7a15a1ad5ba887dd9b5944f5a9bae1721ab3e8f",
+    "coat_sim/core/film_synthesis_parallel.py": "48ae4d6ad439e9d68ed40df4e875a3d3a05dc02804e8954dd775d8d46218c413"
+  },
+  "after_final_cpu_instrumentation": [
+    {
+      "case": "ar_v_visible",
+      "seed": 0,
+      "mode": "clustered",
+      "wall_seconds": 0.4631853999890154,
+      "first_audited_pass_seconds": 0.4617561999912141,
+      "state": "completed",
+      "reason": "validated_targets_met",
+      "targets_met": true,
+      "layers": 1,
+      "worst_R": 0.0006086363502518395,
+      "evaluations": 3,
+      "request_base_sha256": "1eabe3c9d4d977fb8e10cb8ac99569d8e7cc03a423ec7a836a9020fbfe2e32a5",
+      "performance": {
+        "requested_workers": 2,
+        "effective_workers": 1,
+        "worker_pids": [],
+        "submitted_tasks": 0,
+        "completed_tasks": 0,
+        "consumed_tasks": 0,
+        "parallel_batches": 0,
+        "startup_seconds": 0.0,
+        "worker_compute_seconds": 0.0,
+        "worker_cpu_seconds": 0.0,
+        "known_worker_cpu_seconds": 0.0,
+        "worker_cpu_by_pid": [],
+        "unknown_tasks": 0,
+        "cleanup_complete": true,
+        "selection_reasons": {}
+      },
+      "complex_global_generations": 0,
+      "ar_simple_start": {
+        "attempted": 1,
+        "feasible": 1,
+        "audited_pass": true,
+        "policy": "one legal reference-quarter-wave layer per allowed material; full shared objective and audit; then unchanged complex search"
+      }
+    },
+    {
+      "case": "ar_v_visible",
+      "seed": 0,
+      "mode": "v23_matching",
+      "wall_seconds": 0.10541439999360591,
+      "first_audited_pass_seconds": 0.09767389998887666,
+      "state": "completed",
+      "reason": "validated_targets_met",
+      "targets_met": true,
+      "layers": 1,
+      "worst_R": 0.0013447305105752092,
+      "evaluations": 11,
+      "request_base_sha256": "1eabe3c9d4d977fb8e10cb8ac99569d8e7cc03a423ec7a836a9020fbfe2e32a5",
+      "performance": {
+        "requested_workers": 2,
+        "effective_workers": 1,
+        "worker_pids": [],
+        "submitted_tasks": 0,
+        "completed_tasks": 0,
+        "consumed_tasks": 0,
+        "parallel_batches": 0,
+        "startup_seconds": 0.0,
+        "worker_compute_seconds": 0.0,
+        "worker_cpu_seconds": 0.0,
+        "known_worker_cpu_seconds": 0.0,
+        "worker_cpu_by_pid": [],
+        "unknown_tasks": 0,
+        "cleanup_complete": true,
+        "selection_reasons": {
+          "cold_work_below_threshold": 1
+        }
+      },
+      "complex_global_generations": 0,
+      "ar_simple_start": null
+    },
+    {
+      "case": "ar_v_visible",
+      "seed": 1,
+      "mode": "clustered",
+      "wall_seconds": 0.04413810001278762,
+      "first_audited_pass_seconds": 0.043444900002214126,
+      "state": "completed",
+      "reason": "validated_targets_met",
+      "targets_met": true,
+      "layers": 1,
+      "worst_R": 0.0006086363502518395,
+      "evaluations": 3,
+      "request_base_sha256": "1eabe3c9d4d977fb8e10cb8ac99569d8e7cc03a423ec7a836a9020fbfe2e32a5",
+      "performance": {
+        "requested_workers": 2,
+        "effective_workers": 1,
+        "worker_pids": [],
+        "submitted_tasks": 0,
+        "completed_tasks": 0,
+        "consumed_tasks": 0,
+        "parallel_batches": 0,
+        "startup_seconds": 0.0,
+        "worker_compute_seconds": 0.0,
+        "worker_cpu_seconds": 0.0,
+        "known_worker_cpu_seconds": 0.0,
+        "worker_cpu_by_pid": [],
+        "unknown_tasks": 0,
+        "cleanup_complete": true,
+        "selection_reasons": {}
+      },
+      "complex_global_generations": 0,
+      "ar_simple_start": {
+        "attempted": 1,
+        "feasible": 1,
+        "audited_pass": true,
+        "policy": "one legal reference-quarter-wave layer per allowed material; full shared objective and audit; then unchanged complex search"
+      }
+    },
+    {
+      "case": "ar_v_visible",
+      "seed": 1,
+      "mode": "v23_matching",
+      "wall_seconds": 0.10807310001109727,
+      "first_audited_pass_seconds": 0.10021270001016092,
+      "state": "completed",
+      "reason": "validated_targets_met",
+      "targets_met": true,
+      "layers": 1,
+      "worst_R": 0.0013447305105752092,
+      "evaluations": 11,
+      "request_base_sha256": "1eabe3c9d4d977fb8e10cb8ac99569d8e7cc03a423ec7a836a9020fbfe2e32a5",
+      "performance": {
+        "requested_workers": 2,
+        "effective_workers": 1,
+        "worker_pids": [],
+        "submitted_tasks": 0,
+        "completed_tasks": 0,
+        "consumed_tasks": 0,
+        "parallel_batches": 0,
+        "startup_seconds": 0.0,
+        "worker_compute_seconds": 0.0,
+        "worker_cpu_seconds": 0.0,
+        "known_worker_cpu_seconds": 0.0,
+        "worker_cpu_by_pid": [],
+        "unknown_tasks": 0,
+        "cleanup_complete": true,
+        "selection_reasons": {
+          "cold_work_below_threshold": 1
+        }
+      },
+      "complex_global_generations": 0,
+      "ar_simple_start": null
+    },
+    {
+      "case": "ar_v_visible",
+      "seed": 2,
+      "mode": "clustered",
+      "wall_seconds": 0.044570999991265126,
+      "first_audited_pass_seconds": 0.04390469999634661,
+      "state": "completed",
+      "reason": "validated_targets_met",
+      "targets_met": true,
+      "layers": 1,
+      "worst_R": 0.0006086363502518395,
+      "evaluations": 3,
+      "request_base_sha256": "1eabe3c9d4d977fb8e10cb8ac99569d8e7cc03a423ec7a836a9020fbfe2e32a5",
+      "performance": {
+        "requested_workers": 2,
+        "effective_workers": 1,
+        "worker_pids": [],
+        "submitted_tasks": 0,
+        "completed_tasks": 0,
+        "consumed_tasks": 0,
+        "parallel_batches": 0,
+        "startup_seconds": 0.0,
+        "worker_compute_seconds": 0.0,
+        "worker_cpu_seconds": 0.0,
+        "known_worker_cpu_seconds": 0.0,
+        "worker_cpu_by_pid": [],
+        "unknown_tasks": 0,
+        "cleanup_complete": true,
+        "selection_reasons": {}
+      },
+      "complex_global_generations": 0,
+      "ar_simple_start": {
+        "attempted": 1,
+        "feasible": 1,
+        "audited_pass": true,
+        "policy": "one legal reference-quarter-wave layer per allowed material; full shared objective and audit; then unchanged complex search"
+      }
+    },
+    {
+      "case": "ar_v_visible",
+      "seed": 2,
+      "mode": "v23_matching",
+      "wall_seconds": 0.10519280000880826,
+      "first_audited_pass_seconds": 0.09742060001008213,
+      "state": "completed",
+      "reason": "validated_targets_met",
+      "targets_met": true,
+      "layers": 1,
+      "worst_R": 0.0013447305105752092,
+      "evaluations": 11,
+      "request_base_sha256": "1eabe3c9d4d977fb8e10cb8ac99569d8e7cc03a423ec7a836a9020fbfe2e32a5",
+      "performance": {
+        "requested_workers": 2,
+        "effective_workers": 1,
+        "worker_pids": [],
+        "submitted_tasks": 0,
+        "completed_tasks": 0,
+        "consumed_tasks": 0,
+        "parallel_batches": 0,
+        "startup_seconds": 0.0,
+        "worker_compute_seconds": 0.0,
+        "worker_cpu_seconds": 0.0,
+        "known_worker_cpu_seconds": 0.0,
+        "worker_cpu_by_pid": [],
+        "unknown_tasks": 0,
+        "cleanup_complete": true,
+        "selection_reasons": {
+          "cold_work_below_threshold": 1
+        }
+      },
+      "complex_global_generations": 0,
+      "ar_simple_start": null
+    },
+    {
+      "case": "ar_w_visible",
+      "seed": 0,
+      "mode": "clustered",
+      "wall_seconds": 9.039176799997222,
+      "first_audited_pass_seconds": 9.023325700007263,
+      "state": "completed",
+      "reason": "validated_targets_met",
+      "targets_met": true,
+      "layers": 5,
+      "worst_R": 0.004995008481579206,
+      "evaluations": 549,
+      "request_base_sha256": "427c0d4fe8843cd1bc124ca8bfb9de2952c008c47a0e7ee738bff1934a601bf7",
+      "performance": {
+        "requested_workers": 2,
+        "effective_workers": 1,
+        "worker_pids": [],
+        "submitted_tasks": 0,
+        "completed_tasks": 0,
+        "consumed_tasks": 0,
+        "parallel_batches": 0,
+        "startup_seconds": 0.0,
+        "worker_compute_seconds": 0.0,
+        "worker_cpu_seconds": 0.0,
+        "known_worker_cpu_seconds": 0.0,
+        "worker_cpu_by_pid": [],
+        "unknown_tasks": 0,
+        "cleanup_complete": true,
+        "selection_reasons": {
+          "cold_work_below_threshold": 133
+        }
+      },
+      "complex_global_generations": 4,
+      "ar_simple_start": {
+        "attempted": 2,
+        "feasible": 2,
+        "audited_pass": false,
+        "policy": "one legal reference-quarter-wave layer per allowed material; full shared objective and audit; then unchanged complex search"
+      }
+    },
+    {
+      "case": "ar_ultrabroad_visible",
+      "seed": 0,
+      "mode": "clustered",
+      "wall_seconds": 7.68704850001086,
+      "first_audited_pass_seconds": 7.61369260000356,
+      "state": "completed",
+      "reason": "validated_targets_met",
+      "targets_met": true,
+      "layers": 7,
+      "worst_R": 0.019980009379347446,
+      "evaluations": 538,
+      "request_base_sha256": "1004f86c857651f08822cc89a8b1038e0b8826a969189c872d20ea9097ccb4c0",
+      "performance": {
+        "requested_workers": 2,
+        "effective_workers": 2,
+        "worker_pids": [
+          21480,
+          30172
+        ],
+        "submitted_tasks": 4,
+        "completed_tasks": 4,
+        "consumed_tasks": 4,
+        "parallel_batches": 1,
+        "startup_seconds": 0.28999279999698047,
+        "worker_compute_seconds": 0.05651110000326298,
+        "worker_cpu_seconds": 0.0625,
+        "known_worker_cpu_seconds": 0.0625,
+        "worker_cpu_by_pid": [
+          {
+            "pid": 21480,
+            "completed_tasks": 2,
+            "known_cpu_seconds": 0.03125,
+            "cpu_samples": 2,
+            "unrecorded_completed_tasks": 0
+          },
+          {
+            "pid": 30172,
+            "completed_tasks": 2,
+            "known_cpu_seconds": 0.03125,
+            "cpu_samples": 2,
+            "unrecorded_completed_tasks": 0
+          }
+        ],
+        "unknown_tasks": 0,
+        "cleanup_complete": true,
+        "selection_reasons": {
+          "cold_work_below_threshold": 43,
+          "cold_accumulated_work_discovery": 1,
+          "warm_ipc_cost_serial": 89
+        }
+      },
+      "complex_global_generations": 4,
+      "ar_simple_start": {
+        "attempted": 3,
+        "feasible": 3,
+        "audited_pass": false,
+        "policy": "one legal reference-quarter-wave layer per allowed material; full shared objective and audit; then unchanged complex search"
+      }
+    }
+  ],
+  "regression": {
+    "summary": "138 passed in 29.09s",
+    "scope": "targeted algorithms/budgets/cancel/parallel/default GUI request to frozen typed-job; no full-suite or long research run",
+    "gui_real_two_worker_evaluation_budget": 8,
+    "gui_real_two_worker_consumed": 4,
+    "adaptive_real_two_worker_evidence": {
+      "worker_pids": [
+        37060,
+        27800
+      ],
+      "observed_serial_work": 128128,
+      "submitted": 2,
+      "consumed": 2,
+      "startup_seconds": 0.2965064999880269,
+      "worker_compute_seconds": 0.060419199988245964,
+      "worker_cpu_seconds": 0.0625,
+      "worker_cpu_by_pid": [
+        {
+          "pid": 27800,
+          "completed_tasks": 1,
+          "known_cpu_seconds": 0.03125,
+          "cpu_samples": 1,
+          "unrecorded_completed_tasks": 0
+        },
+        {
+          "pid": 37060,
+          "completed_tasks": 1,
+          "known_cpu_seconds": 0.03125,
+          "cpu_samples": 1,
+          "unrecorded_completed_tasks": 0
+        }
+      ],
+      "actual_work_complete": true
+    },
+    "static": "changed-file Ruff/mypy new=0 resolved=0",
+    "independent_review": "Sol6.1 ACCEPT, including CPU unknown/exception boundaries",
+    "full_ci": "not a prerequisite; no unfinished CI claimed passed"
+  }
+}
