@@ -73,6 +73,12 @@ def pytest_unconfigure(config: pytest.Config) -> None:
     _CONFIG = None
 
 
+def record_qt_disposal(test_id: str, phase: str, label: str) -> None:
+    """Persist primitive-only teardown evidence outside pytest FD capture."""
+    if _CONFIG is not None:
+        _emit(_CONFIG, "qt_disposal", nodeid=test_id, phase=phase, object=label)
+
+
 def pytest_runtest_logstart(nodeid: str, location: object) -> None:
     if _CONFIG is not None:
         _emit(_CONFIG, "node_start", nodeid=nodeid)

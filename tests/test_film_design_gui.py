@@ -12,7 +12,7 @@ import json
 import io
 import weakref
 from unittest import mock
-from PySide6.QtCore import QCoreApplication, QEvent, QThread, QTimer, Qt, QPoint, QPointF, QObject
+from PySide6.QtCore import QCoreApplication, QEvent, QThread, QTimer, Qt, QPoint, QPointF, QObject, QUrl
 from PySide6.QtGui import QColor
 from types import SimpleNamespace
 from PySide6.QtTest import QTest
@@ -24,6 +24,7 @@ from coat_sim.ui.film_design import FilmDesignWindow, FilmSimulationWindow, Film
 from coat_sim.ui import film_design as film_ui
 import shiboken6
 from shiboken6 import isValid
+from tools.pytest_qt_diagnostics import record_qt_disposal as _qt_disposal_trace
 
 
 _APP: QApplication
@@ -95,6 +96,17 @@ class FilmDesignGuiTests(unittest.TestCase):
                 # completion callback before its signal object can be deleted.
                 executor.shutdown(wait=True, cancel_futures=True)
             _APP.processEvents()
+            # Unload each scene while its Python host and QWidget are still
+            # fully alive. Parent QObject child deletion order must not leave
+            # WindowChrome bindings evaluating against a host in destruction.
+            # The default engine stays owned by its QQuickWidget throughout.
+            for label, chrome in (("simulation", self.simulation._titlebar_widget),
+                                  ("design", self.window._titlebar_widget)):
+                _qt_disposal_trace(self.id(), "unload_begin", label)
+                chrome.setSource(QUrl())
+                self.assertIsNone(chrome.rootObject(), "test-owned QML scene was not unloaded")
+                self.assertTrue(isValid(chrome.engine()), "unloading must preserve the widget-owned engine")
+                _qt_disposal_trace(self.id(), "unload_end", label)
             # _CalculationSignals has no QObject parent, so window deletion alone
             # does not destroy it. No calculation can emit through it after join.
             self._delete_qt_graph(
@@ -112,17 +124,26 @@ class FilmDesignGuiTests(unittest.TestCase):
             name: weakref.ref(value) for name, value in objects.items()
         }
         destroyed: set[str] = set()
+        test_id = self.id()
+
+        def receipt(label: str) -> None:
+            destroyed.add(label)
+            _qt_disposal_trace(test_id, "destroyed", label)
+
         for name, value in objects.items():
             # The receipt captures only a label, never the QObject being watched.
-            value.destroyed.connect(lambda *_args, label=name: destroyed.add(label))
+            value.destroyed.connect(lambda *_args, label=name: receipt(label))
         # Destroy only the test-owned roots synchronously. Qt deletes each
         # parent-owned child (chrome host, Quick widget, and its QML engine)
         # exactly once; deleting those wrappers again would double-delete.
         # A global DeferredDelete dispatch can crash while a QQuickWidget
         # engine is being torn down, so do not rely on deleteLater here.
         for root in roots:
+            label = next(name for name, value in objects.items() if value is root)
+            _qt_disposal_trace(test_id, "delete_begin", label)
             if isValid(root):
                 shiboken6.delete(root)
+            _qt_disposal_trace(test_id, "delete_end", label)
         _APP.processEvents()
         self.assertEqual(destroyed, expected, "test-owned Qt graph was not destroyed")
         still_alive: list[str] = []

@@ -107,3 +107,32 @@ def test_unittest_failure_is_flushed_before_teardown_and_stays_failed(tmp_path):
     failure = next(row for row in rows if row["event"] == "exception_before_unittest_cleanup")
     assert failure["exception_type"] == "AssertionError"
     assert failure["arguments"] == ["Original diagnostic assertion"]
+
+
+def test_disposal_evidence_is_flushed_before_abrupt_process_exit(tmp_path):
+    project = Path(__file__).resolve().parents[1]
+    events = tmp_path / "disposal-events.jsonl"
+    probe = tmp_path / "test_disposal_probe.py"
+    probe.write_text(
+        "import os\n"
+        "from tools.pytest_qt_diagnostics import record_qt_disposal\n"
+        "def test_abrupt_exit():\n"
+        "    record_qt_disposal('probe', 'delete_begin', 'simulation')\n"
+        "    os._exit(73)\n",
+        encoding="utf8",
+    )
+    env = os.environ.copy()
+    env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+    env["PYTHONPATH"] = str(project)
+    env.pop("PYTEST_ADDOPTS", None)
+    env.pop("PYTEST_PLUGINS", None)
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-c", str(project / "pytest.ini"),
+         str(probe), "-p", "tools.pytest_qt_diagnostics", "--qt-diagnostic-log", str(events),
+         "-q", "-o", f"cache_dir={tmp_path / 'cache'}"],
+        cwd=project, env=env, capture_output=True, text=True, timeout=30, check=False,
+    )
+    assert result.returncode == 73, result.stdout + result.stderr
+    rows = [json.loads(line) for line in events.read_text().splitlines()]
+    assert rows[-1] == {"event": "qt_disposal", "nodeid": "probe",
+                        "phase": "delete_begin", "object": "simulation"}
