@@ -7,7 +7,7 @@ budget is involved. See docs/film-auto-synthesis-contract.md and algorithms.html
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from itertools import islice
 import hashlib
 import json
@@ -519,6 +519,13 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         and request.ar_structure_mode == "clustered")
     from .film_synthesis_parallel import EvaluationTask, InfrastructureFailure, OrderedEvaluationExecutor
     execution = OrderedEvaluationExecutor(request.cpu_workers, cancel_event)
+    from .film_synthesis_feedback import (
+        SparseFeedbackRegistry, augment_feedback_guide, restore_feedback_base,
+        feedback_candidate_key,
+    )
+    feedback_registry = SparseFeedbackRegistry(request)
+    feedback_work = dict(parent_evaluator_invocations=0, physical_evaluations=0,
+                         wavelength_points=0, repair_stages=0, local_stages=0)
     forward = None
     reserved_layer_ids = {row["id"] for design in (request.environment, *request.seed_designs)
                           for side in ("front_layers", "back_layers") for row in design[side]}
@@ -553,6 +560,11 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         result = execution.diagnostics()
         result["stage_wall_seconds"] = dict(stage_times)
         result["search"] = deepcopy(search_diagnostics)
+        feedback_snapshot = feedback_registry.snapshot()
+        result["audit_feedback"] = dict(revision=feedback_snapshot.revision,
+            points=[asdict(point) for point in feedback_snapshot.points],
+            **feedback_work,
+            scope="fixed-snapshot local repair only; original training/audit/global population scores unchanged")
         if forward is not None:
             work = forward.diagnostics()
             result["forward"] = work
@@ -703,7 +715,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             return (0 if strict_lower_pass(score) and score["max_error"] <= request.acceptable_normalized_error else 1, *optical)
         return optical
 
-    def audit_archive(value):
+    def audit_archive(value, *, allow_feedback_repair=True):
         nonlocal audited_best, completed_training_validation
         signature = hashlib.sha256(json.dumps(value["design"], sort_keys=True, allow_nan=False).encode("utf-8")).digest()
         _check_cancel(cancel_event)
@@ -732,6 +744,23 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                                   deepcopy(audited["score"]), checkpoint_audit)
         emit("validation_complete", "Independent physical candidate audit completed", value["design"], audited["score"])
         _check_cancel(cancel_event)
+        added = feedback_registry.record_audit(audited["score"])
+        if added:
+            snapshot = feedback_registry.snapshot()
+            emit("audit_feedback_added", json.dumps(dict(revision=snapshot.revision,
+                added=added, points=[asdict(point) for point in snapshot.points]),
+                sort_keys=True), value["design"], audited["score"])
+        if (allow_feedback_repair and feedback_registry.snapshot().points
+                and value["design"]["front_layers"]
+                and not targets_verified()):
+            check_training_admission()
+            feedback_work["repair_stages"] += 1
+            emit("audit_feedback_repair", "One fixed-snapshot local repair followed by original independent audit", value["design"], audited["score"])
+            repaired = interior_refine(value)
+            # One repair invocation has a fixed condition snapshot. Its new
+            # independent audit may register later points but never recurse.
+            archive(repaired, audit_eligible=False)
+            audit_archive(repaired, allow_feedback_repair=False)
 
     def targets_verified():
         return (audited_best is not None
@@ -863,12 +892,52 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
     def interior_refine(value):
         check_training_admission()
         from .film_synthesis_refinement import refine_synthesis_candidate
+        snapshot = feedback_registry.snapshot()
         def local_progress(stage, candidate, details):
+            candidate = restore_feedback_base(candidate)
             emit(stage, json.dumps(details, sort_keys=True), candidate["design"], candidate["score"])
+        def point_evaluation(design, objectives):
+            # Sparse guide points belong to an already admitted candidate.
+            # They add physical work, not another logical candidate, and still
+            # observe the same elapsed-time/cancel boundary on every call.
+            _check_cancel(cancel_event)
+            proxy = _proxy(request)
+            proxy = replace(proxy, base_request=replace(proxy.base_request, objectives=objectives))
+            task = EvaluationTask(design, True)
+            extra = execution.serial(lambda: evaluate_frozen_structure_candidate(
+                proxy, design, variable_ids=tuple(r["id"] for r in design["front_layers"]),
+                with_jacobian=True, derived_validation_grid=False,
+                cancel_event=cancel_event), task)
+            # Completed physical work remains counted even if cancellation is
+            # observed before publishing the assembled guide.
+            feedback_work["parent_evaluator_invocations"] += 1
+            feedback_work["physical_evaluations"] += len(extra["responses"])
+            feedback_work["wavelength_points"] += sum(len(r["wavelength_nm"]) for r in extra["responses"])
+            _check_cancel(cancel_event)
+            return extra
+        def guide(value):
+            return augment_feedback_guide(request, value, snapshot,
+                evaluate_points=lambda objectives: point_evaluation(value["design"], objectives))
+        def guided_evaluate(design, **kwargs):
+            return guide(evaluate(design, **kwargs))
+        def guided_archive(candidate, **kwargs):
+            archive(restore_feedback_base(candidate), **kwargs)
+        if snapshot.points:
+            feedback_work["local_stages"] += 1
+            # Workers may omit response matrices; refresh through the normal
+            # budget boundary rather than compare a partial initial guide loss.
+            if not value.get("responses"):
+                value = evaluate(value["design"], jacobian=True)
+            value = guide(value)
         refined, details = refine_synthesis_candidate(request, value,
-            evaluate=evaluate, archive=archive, quarter_nm=quarter,
+            evaluate=guided_evaluate if snapshot.points else evaluate,
+            archive=guided_archive if snapshot.points else archive, quarter_nm=quarter,
             cancel_check=check_training_admission, progress=local_progress,
-            max_iterations=64)
+            max_iterations=64,
+            candidate_key=feedback_candidate_key if snapshot.points else None)
+        details.update(feedback_revision=snapshot.revision,
+                       feedback_points=len(snapshot.points), cache_scope="one invocation with immutable feedback snapshot")
+        refined = restore_feedback_base(refined)
         search_diagnostics["local_refinement"].append(details)
         emit("interior_local_complete", json.dumps(details, sort_keys=True), refined["design"], refined["score"])
         return refined

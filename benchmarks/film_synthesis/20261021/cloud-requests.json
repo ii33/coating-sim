@@ -76154,6 +76154,7 @@
     "coat_sim/core/film_synthesis_absorption.py",
     "coat_sim/core/film_synthesis_ar_clusters.py",
     "coat_sim/core/film_synthesis_audit.py",
+    "coat_sim/core/film_synthesis_feedback.py",
     "coat_sim/core/film_synthesis_forward.py",
     "coat_sim/core/film_synthesis_global.py",
     "coat_sim/core/film_synthesis_io.py",

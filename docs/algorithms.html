@@ -66,6 +66,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#film-synthesis-parallel-20261020">14w 从零合成的有界CPU候选并行（2026-10-20）</a>
 <a href="#film-cancel-best-20261020">14x 取消时应用完整最好候选</a>
 <a href="#film-synthesis-global-20261021">14z 默认反射/谐振腔/AR匹配与全局厚度搜索（2026-10-21）</a>
+<a href="#film-synthesis-audit-feedback-20261021">14ad HR层数边界与固定审计反馈（2026-10-21）</a>
 <a href="#film-synthesis-adaptive-start-20261021">14ac 简单AR优先与运行内并行测量（2026-10-21）</a>
 <a href="#film-synthesis-run-budgets-20261021">14ab 周期0统一运行预算（2026-10-21）</a>
 <a href="#film-synthesis-ar-clusters-20261021">14aa 真实均匀层AR簇、光学预算与云端对照（2026-10-21）</a>
@@ -2830,6 +2831,23 @@ return the best complete candidate with matching audit; report remaining gap</pr
 <p><strong>同入口实验与计时：</strong><code>tools/run_film_synthesis_benchmarks.py</code>复用GUI请求构造→材料冻结→持久任务序列化/解码→正式execute_job。运行前固化suite/catalog/源/请求哈希；编译与导入后、execute_job前起计墙钟，不能直接与包含导入的旧工具耗时比较。每个训练Cartesian点与审计dense/offset必备点须存在，偏振/角度/原始边界和元数据完整；当前处方须与训练和审计的物理设计匹配才计成功。首次时间只取匹配且原始边界全过的checkpoint，否则用终端时刻。Windows子进程CPU使用GetProcessTimes的kernel+user之和（FILETIME单位100ns，乘10<sup>−7</sup>为秒）；轮询仅观察自身后代，可能漏短命进程，报告为采样下界而非全部CPU或并发证明。心跳只表示存活；墙钟到期协作取消并保留最好完整解，不把额外等待当隐式预算。进程清理校验PID创建身份，避免误判复用PID。统计、采样和验收规则均是本项目约定；不是连续域证明。</p>
 <p><strong>汇总统计口径：</strong>每run按objective_index分组原始审计条件，记录min(actual)、max(actual)及各自波长/角度/偏振；R下界性能看minR，R上界看maxR，T下界看minT。另列“距最近原始边界的最小余量”，它同时考虑上下界，因此R≥.99且上界1时，最近边界点可能是最大R，不能将其冒称minR。类型和运算是本项目统计约定，最值只覆盖已保存有限审计点；成功计数仍来自全部原始条件、完整网格及处方匹配，不由汇总单点推断。</p>
 <p class="source"><strong>来源：</strong>DE方法参考<a href="https://doi.org/10.1023/A:1008202821328">Storn &amp; Price (1997)</a>；可重放种群、best1bin和并行延迟更新的公开实现说明见<a href="https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.differential_evolution.html">SciPy官方DE文档</a>；局部数值接口参考<a href="https://docs.scipy.org/doc/scipy/reference/optimize.minimize-lbfgsb.html">SciPy L-BFGS-B</a>及<a href="https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html">SLSQP官方文档</a>。本文自有提案器不是调用SciPy顶层优化器；本项目候选估计/阈值/调度与缓存安排未找到外部依据，仅为本项目实现。</p>
+</section>
+
+<section id="film-synthesis-audit-feedback-20261021">
+<h2>14ad HR层数边界与固定审计反馈</h2>
+<p><strong>日期、用途与输入输出：</strong>2026-10-21。输入为当前冻结的全部R/T目标、nm波段、角度（度）、偏振、真实n/k、制造限制，以及父入口已完成的独立审计；输出为额外合法经典初值、运行内失败条件记录和经过重新审计的局部修复候选。均复用原TMM，不注入研究案例的层厚，不更改已保存工程或既有5nm冻结基准。</p>
+<h3>显式层数边界也是候选</h3>
+<p>反射初值原先只按中心反射和带宽估算对数，max_layers只过滤，可能遗漏合法32层。现在保留原估算次序，仅当用户明确给出层数上限L时，在原对数序列后追加floor(min(L,MAX_LAYERS)/2)，正数且去重；周期、多膜堆和啁啾仍逐一通过原最薄、单层最厚和总厚限制。L=32增加32层配对拓扑；L=31的配对边界为30层。不枚举所有中间层数；未设L时保持原调度，不自动扫描格式上限。该边界起点不保证任何波段或角度光学达标。</p>
+<div class="formula">Pepoch=原估算对数序列；显式L时：Pepoch←ordered_unique(Pepoch∪{⌊min(L,MAX_LAYERS)/2⌋})<br>对每个P展开真实均匀层，只有满足全部显式厚度约束才提交完整评分。</div>
+<h3>只把完成审计的失败点交给固定局部guide</h3>
+<p>反馈点身份为(original objective_index, λnm, angle_deg, polarization)。先验证原metric、上下限或目标值、归一化和条件身份，再从每个目标×角度×偏振选一个新的最坏失败点。原训练点和已录点只按最多4 ULP数值重合去重，不用1nm容差吞掉窄陷波；严格下界相等也算失败。记录随运行累积，每次局部精修开始冻结不可变快照。</p>
+<div class="formula">Fnew = 每个原条件组中，训练网格外且尚未记录的最大失败点<br>guide key=(严格条件失败标志, max(原训练最大违反量, 反馈点最大违反量), 内部guide损失)<br>Lguide=Σ原训练条件 w(rinterior/s)² + Σ固定反馈点 w(rinterior/s)²；dL/dd沿原解析TMM导数（d以nm计）。</div>
+<figure class="figure"><svg viewBox="0 0 960 270" role="img" aria-labelledby="audit-feedback-title"><title id="audit-feedback-title">合法层数边界候选与独立审计反馈的分离工作流</title><g fill="#e9f4f1" stroke="#087f78"><rect x="12" y="20" width="205" height="60" rx="8"/><rect x="270" y="20" width="260" height="60" rx="8"/><rect x="585" y="20" width="350" height="60" rx="8"/><rect x="12" y="140" width="190" height="65" rx="8"/><rect x="245" y="140" width="195" height="65" rx="8"/><rect x="485" y="140" width="205" height="65" rx="8"/><rect x="735" y="140" width="200" height="65" rx="8"/></g><g class="svgtext" text-anchor="middle"><text x="115" y="45">原估算＋显式偶数边界</text><text x="115" y="66">32→32，31→30</text><text x="400" y="45">原厚度过滤 / 全部目标TMM</text><text x="400" y="66">没有制造上限就不新增全层数扫描</text><text x="760" y="45">训练档案与独立审计档案保持分开</text><text x="760" y="66">正常结果按原审计比较保留</text><text x="108" y="166">已完成独立审计</text><text x="108" y="189">网格外坏点</text><text x="342" y="166">冻结条件快照</text><text x="342" y="189">每次调用新局部缓存</text><text x="588" y="166">局部guide＋解析导数</text><text x="588" y="189">全部停止闸门 / 物理计量</text><text x="835" y="166">恢复原训练评分</text><text x="835" y="189">再做原独立审计</text><text x="475" y="246">单次修复后的审计不递归修复；新坏点留给后续独立局部调用</text></g><g stroke="#276c67" fill="none"><path d="M217 50 H270 M530 50 H585 M202 173 H245 M440 173 H485 M690 173 H735"/></g></svg><figcaption>图14ad：上排补候选覆盖，下排补局部优化约束。guide不是训练或审计证据；任一原条件失败均不能宣布达标。图不表示找到云端宽带HR解。</figcaption></figure>
+<p><strong>缓存、档案与停止边界：</strong>每个局部调用保持一份快照并创建新缓存，下一版本不得复用上次guide损失。完整失败审计对有层候选最多触发一次局部修复，再按原请求审计；内层审计可记新点但不递归修复。原全局DE父代损失与rank保持原训练语义，本阶段没有把可变反馈接入整个DE群体。临时guide响应和分数在归档、trace和传输前恢复为精确原base，原训练RMS/条件数保持；正常终态继续使用最好原审计候选，不能被训练冠军覆盖。取消/超时仍保留已完整提交训练候选及属于该处方的既有审计，历史审计checkpoint不冒充当前候选。</p>
+<p><strong>工作量与默认：</strong>现有局部64次迭代上限是单次阶段调度量，不是整次运行预算。反馈补点属于已经准入候选的额外物理工作，由父执行器单独计量，训练逻辑候选计数不重复增加；缺响应的初值刷新仍占正常逻辑评价。统一评价/时间/取消预算贯穿，补点中断不发布半成品guide。performance.audit_feedback给出快照版本、点表、额外物理调用/点数及局部修复次数；CPU补点在父入口执行，不据此宣称GPU全路径或并行提速。</p>
+<p><strong>默认光谱步长与兼容：</strong>当前优化/合成目标与仿真新建界面本已为400–700nm、1nm、301点，用户可编辑；非整除跨度用ceil(跨度/期望步长)+1保证实际步长不大于所选值。保存的显式step/count和旧range-only的301点兼容含义不变。本次只新增默认契约回归，未无意义修改生产值，也未将5nm冻结实验改成1nm。1nm是采样默认，不是连续谱精度证书；加密、偏移、极值审计及本节反馈仍保留。</p>
+<p><strong>实现：</strong><code>core/film_synthesis_global.py</code>边界对数；<code>core/film_synthesis_feedback.py</code>条件登记/快照/guide恢复；<code>core/film_auto_synthesis.py</code>审计、修复准入和计量；<code>core/film_synthesis_refinement.py</code>独立局部候选key。定向回归为<code>tests/test_film_synthesis_hr_layer_boundary.py</code>、<code>tests/test_film_synthesis_feedback.py</code>、<code>tests/test_film_synthesis_feedback_integration.py</code>、<code>tests/test_film_default_wavelength_step.py</code>。</p>
+<p class="source"><strong>依据与局限：</strong>边界候选、最坏新点选择、4 ULP去重、固定快照和局部repair均为<strong>本项目约定</strong>，未找到外部依据，仅为本项目实现。TMM、原独立极值审计和解析导数沿用本页既有物理章节。本节有限点/局部搜索不保证所有窄陷波可发现、全局最优、制造鲁棒性或连续达标；云端32层400–700nm高反案例未在本阶段证明求解。</p>
 </section>
 
 <section id="film-synthesis-adaptive-start-20261021">

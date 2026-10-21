@@ -99,7 +99,7 @@ def interior_loss_gradient(request, value, layer_ids):
 
 def refine_synthesis_candidate(request, initial, *, evaluate, archive, quarter_nm,
                                cancel_check=lambda: None, progress=lambda *args: None,
-                               max_iterations=64):
+                               max_iterations=64, candidate_key=None):
     """Refine through parent callbacks; stop/cancel exceptions propagate intact.
 
     Each layer has a trust interval d0 +/- quarter_nm/2, intersected with
@@ -132,7 +132,9 @@ def refine_synthesis_candidate(request, initial, *, evaluate, archive, quarter_n
     # ULP. Associate the guide with the original retained candidate rather
     # than borrowing a recomputed candidate's loss or exporting a sentinel.
     initial_loss = interior_loss(request, initial) if initial.get('responses') else None
-    best_key = (float(initial['score']['max_error']), math.inf if initial_loss is None else initial_loss)
+    key_function = (lambda value, loss: (float(value['score']['max_error']), loss)) if candidate_key is None else candidate_key
+    best_loss = initial_loss
+    best_key = key_function(initial, math.inf if initial_loss is None else initial_loss)
     best_loss_source = ('initial_cached_responses' if initial_loss is not None
                         else 'initial_responses_unavailable_without_additional_physical_evaluation')
     cache: dict[tuple[float, ...], tuple[float, NDArray[np.float64]]] = {}
@@ -146,7 +148,7 @@ def refine_synthesis_candidate(request, initial, *, evaluate, archive, quarter_n
         reason='running', iterations=0, physical_candidates=0)
 
     def objective(point):
-        nonlocal best, best_key, calls, best_loss_source
+        nonlocal best, best_key, calls, best_loss_source, best_loss
         cancel_check()
         key = tuple(float(x) for x in point)
         if key in cache:
@@ -164,9 +166,9 @@ def refine_synthesis_candidate(request, initial, *, evaluate, archive, quarter_n
         calls += 1
         loss, gradient = interior_loss_gradient(request, value, ids)
         archive(value, audit_eligible=False)
-        current_key = (float(value['score']['max_error']), loss)
+        current_key = key_function(value, loss)
         if current_key < best_key:
-            best, best_key = value, current_key
+            best, best_key, best_loss = value, current_key, loss
             best_loss_source = 'parent_evaluated_candidate_responses'
         progress('interior_local_trial', value, dict(loss=loss, physical_candidates=calls))
         cancel_check()
@@ -188,7 +190,7 @@ def refine_synthesis_candidate(request, initial, *, evaluate, archive, quarter_n
     cancel_check()
     diagnostics.update(reason=str(outcome.message), iterations=int(outcome.nit),
                        physical_candidates=calls,
-                       interior_loss=None if best is initial and initial_loss is None else best_key[1],
+                       interior_loss=best_loss,
                        interior_loss_source=best_loss_source,
                        original_max_error=best['score']['max_error'])
     return best, diagnostics

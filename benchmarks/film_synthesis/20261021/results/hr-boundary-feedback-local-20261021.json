@@ -1,0 +1,198 @@
+{
+  "schema_version": 1,
+  "kind": "hr_boundary_and_fixed_feedback_targeted_evidence",
+  "base_commit": "438da3958b0c938bdc7686084ebcf674960f7241",
+  "production_source_hashes": {
+    "coat_sim/core/film_auto_synthesis.py": "204e14a22e7d83d771a4ceb6114ce33fda09fd3205c77b50d4016d9c89a627c8",
+    "coat_sim/core/film_synthesis_global.py": "006c2307e1f4a8f5ff1a04074bf6787e74d146a0e9e0e918fbec642c546e7a4b",
+    "coat_sim/core/film_synthesis_refinement.py": "06aad8c416c3e54adcb50b8f7687df8e68c9ef30e9aec9cccf0fb8e96c8bde33",
+    "coat_sim/core/film_synthesis_feedback.py": "3156e3885d803fe4c93e9d69dbc68a729b35a99c2abe1ab1ad3ce0a7d2152b42"
+  },
+  "hr_topology_only": [
+    {
+      "explicit_max_layers": 32,
+      "substrate": "SiO2",
+      "pairs": [
+        [
+          "ZnS",
+          "nk",
+          "MgF2",
+          "nk"
+        ]
+      ],
+      "objectives": [
+        {
+          "lo_nm": 400.0,
+          "hi_nm": 700.0,
+          "R_lower": 0.98,
+          "angles_deg": [
+            0.0,
+            30.0
+          ],
+          "polarization": "s"
+        },
+        {
+          "lo_nm": 400.0,
+          "hi_nm": 700.0,
+          "R_lower": 0.98,
+          "angles_deg": [
+            0.0,
+            30.0
+          ],
+          "polarization": "p"
+        }
+      ],
+      "layer_count_distribution": {
+        "12": 30,
+        "24": 30,
+        "32": 30
+      },
+      "edge_families": [
+        "chirped",
+        "multistack",
+        "periodic"
+      ],
+      "physical_optimizer_run": false
+    },
+    {
+      "explicit_max_layers": 31,
+      "substrate": "SiO2",
+      "pairs": [
+        [
+          "ZnS",
+          "nk",
+          "MgF2",
+          "nk"
+        ]
+      ],
+      "objectives": [
+        {
+          "lo_nm": 400.0,
+          "hi_nm": 700.0,
+          "R_lower": 0.98,
+          "angles_deg": [
+            0.0,
+            30.0
+          ],
+          "polarization": "s"
+        },
+        {
+          "lo_nm": 400.0,
+          "hi_nm": 700.0,
+          "R_lower": 0.98,
+          "angles_deg": [
+            0.0,
+            30.0
+          ],
+          "polarization": "p"
+        }
+      ],
+      "layer_count_distribution": {
+        "12": 30,
+        "24": 30,
+        "30": 30
+      },
+      "edge_families": [
+        "chirped",
+        "multistack",
+        "periodic"
+      ],
+      "physical_optimizer_run": false
+    }
+  ],
+  "synthetic_notch_regression": {
+    "purpose": "feedback and audited-incumbent protection only; synthetic refractive-index table is not a real-material prescription or physical-realizability claim",
+    "training_band_nm": [
+      450.0,
+      700.0
+    ],
+    "training_samples": 2,
+    "angles_deg": [
+      0.0,
+      20.0
+    ],
+    "polarizations": [
+      "s",
+      "p"
+    ],
+    "R_lower": 0.05,
+    "seed_layers": 1,
+    "seed_thickness_nm": 5.0,
+    "independent_bare_min_R": 0.0,
+    "state": "completed",
+    "targets_met": true,
+    "original_training_condition_count": 8,
+    "training_max_error": 0.0,
+    "audit_max_error": 0.0,
+    "audit_min_R": 0.0510032243390712,
+    "audit_worst_condition": {
+      "objective_index": 1,
+      "wavelength_nm": 575.0,
+      "angle_deg": 20.0,
+      "polarization": "p"
+    },
+    "layers": 1,
+    "thickness_nm": [
+      12.26240074790112
+    ],
+    "evaluations": 11,
+    "validation_evaluations": 3,
+    "audit_feedback": {
+      "revision": 1,
+      "points": [
+        {
+          "objective_index": 0,
+          "wavelength_nm": 575.0,
+          "angle_deg": 0.0,
+          "polarization": "s"
+        },
+        {
+          "objective_index": 0,
+          "wavelength_nm": 575.0,
+          "angle_deg": 20.0,
+          "polarization": "s"
+        },
+        {
+          "objective_index": 1,
+          "wavelength_nm": 575.0,
+          "angle_deg": 0.0,
+          "polarization": "p"
+        },
+        {
+          "objective_index": 1,
+          "wavelength_nm": 575.0,
+          "angle_deg": 20.0,
+          "polarization": "p"
+        }
+      ],
+      "parent_evaluator_invocations": 6,
+      "physical_evaluations": 24,
+      "wavelength_points": 24,
+      "repair_stages": 1,
+      "local_stages": 1,
+      "scope": "fixed-snapshot local repair only; original training/audit/global population scores unchanged"
+    },
+    "cleanup_complete": true,
+    "wall_seconds_diagnostic_only": 0.29945299999963026
+  },
+  "validation": {
+    "integrated": "187 passed in 69.69s",
+    "completed_feedback_cancellation": "6 affected integration cases passed in 3.53s before final integrated run",
+    "review": "Sol6.1 independent ACCEPT fixed snapshot/identity/strict/budget/cancel/recursive boundaries",
+    "default_sampling": "new GUI defaults already 1nm; only contract regressions added, saved configuration behavior unchanged",
+    "frozen_requests_unchanged": {
+      "entries_unchanged": true,
+      "only_manifest_metadata_change": "git_source_paths adds new feedback module",
+      "before_entries_sha256": "37468e35176bb9a3c3ee6f88ba12c0bd2849800b9a59e200865347305c660508",
+      "after_entries_sha256": "37468e35176bb9a3c3ee6f88ba12c0bd2849800b9a59e200865347305c660508"
+    }
+  },
+  "limits": [
+    "No production 32-layer 400-700nm R>=98% search was run or solved locally",
+    "No 407.702180nm cloud prescription was read or injected",
+    "Local repair uses fixed feedback snapshots; global DE parent scores are not feedback-augmented",
+    "Sparse/finite audit does not prove continuous spectral behavior or manufacturing robustness",
+    "Extra guide physics is parent-serial and separately counted; no GPU or general speedup claim",
+    "CI is not a prerequisite and unfinished CI is not reported as passed"
+  ]
+}

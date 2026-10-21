@@ -76,8 +76,15 @@ def iter_reflector_proposals(request, *, epoch=0, cancel_check=lambda: None, rep
                 # all requested conditions are evaluated without approximation.
                 fractional_stopband = 4 / math.pi * math.asin((contrast - 1) / (contrast + 1))
                 bandwidth_factor = max(1, math.ceil(((hi - lo) / center) / fractional_stopband))
-                for multiplier in sorted({1, 2, 2 * bandwidth_factor}):
-                    count_now = count * (multiplier + epoch)
+                pair_counts = [count * (multiplier + epoch)
+                               for multiplier in sorted({1, 2, 2 * bandwidth_factor})]
+                # An explicit layer boundary is a useful additional topology,
+                # not a request to enumerate all counts or the format ceiling.
+                if request.max_layers is not None:
+                    boundary_pairs = min(request.max_layers, MAX_LAYERS) // 2
+                    if boundary_pairs > 0 and boundary_pairs not in pair_counts:
+                        pair_counts.append(boundary_pairs)
+                for count_now in pair_counts:
                     if 2 * count_now > (request.max_layers if request.max_layers is not None else MAX_LAYERS):
                         report(dict(stage='structure_skipped', reason='explicit max_layers or existing format MAX_LAYERS', layer_count=2 * count_now))
                         continue
