@@ -18,11 +18,11 @@ from typing import TYPE_CHECKING, Any, Callable, Generator, Mapping, NotRequired
 import numpy as np
 
 from .film_design import MAX_LAYERS, physical_thickness_nm, validate_design
-from .film_optimization import FilmOptimizationObjective, FilmOptimizationRequest, freeze_film_optimization_request
+from .film_optimization import FilmConditionError, FilmOptimizationObjective, FilmOptimizationRequest, freeze_film_optimization_request
 from .film_optimization_needle import FilmNeedleMaterialReference, _candidate_payload_from_materials, _normalize_objectives
 from .film_optimization_structure import (
     FilmStructureOptimizationRequest, _StructureCancelled, _insert_at_site,
-    _site_records, evaluate_frozen_structure_candidate,
+    _site_records, _PreparedStructureEvaluator, evaluate_frozen_structure_candidate,
 )
 from .optical_constants import UNITS_TO_UM, prepare_optical_set
 from .film_synthesis_absorption import (annotate_synthesis_design, assumes_unknown_k_zero,
@@ -263,6 +263,27 @@ def _validated(request):
                    candidate_materials=tuple(request.candidate_materials),
                    growth_quarter_wave_fractions=tuple(float(v) for v in request.growth_quarter_wave_fractions),
                    **numeric)
+
+
+def _copy_internal_candidate(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Copy mutable candidate data, sharing only checked frozen scalar errors.
+
+    This is for parent-owned internal archives only. Observer/checkpoint/result
+    boundaries keep their existing independent copies. A malformed/custom error
+    or a mutable field falls back to ordinary deepcopy semantics.
+    """
+    memo: dict[int, Any] = {}
+    scalar_types = (bool, int, float, str, type(None))
+    for score in (value, value.get("score")):
+        if not isinstance(score, Mapping):
+            continue
+        errors = score.get("errors")
+        if type(errors) is tuple and all(
+                type(error) is FilmConditionError
+                and all(type(field) in scalar_types for field in vars(error).values())
+                for error in errors):
+            memo[id(errors)] = errors
+    return deepcopy(dict(value), memo)
 
 
 def _proxy(request):
@@ -611,6 +632,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         if request.max_evaluations is not None and evaluations >= request.max_evaluations - 1:
             raise _Stopped("evaluation_limit")
 
+    prepared_training: list[_PreparedStructureEvaluator | None] = [None]
+
     def evaluate(design, *, jacobian=False, zero_ids=(), holdout=False, outcome=None, gpu_forward=False):
         nonlocal evaluations, validation_evaluations, failures
         nonlocal audit_physical_evaluations, audit_wavelength_points
@@ -646,7 +669,11 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             else:
                 task = EvaluationTask(design, jacobian, tuple(zero_ids))
                 def physical_call():
-                    return evaluate_frozen_structure_candidate(_proxy(request), design,
+                    prepared = prepared_training[0]
+                    if prepared is None:
+                        prepared = _PreparedStructureEvaluator(_proxy(request))
+                        prepared_training[0] = prepared
+                    return prepared.evaluate(design, evaluator=evaluate_frozen_structure_candidate,
                         variable_ids=ids, with_jacobian=jacobian, zero_thickness_layer_ids=zero_ids,
                         derived_validation_grid=False, cancel_event=cancel_event)
                 if forward is not None and (outcome is not None or gpu_forward):
@@ -682,7 +709,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 if (completed_training_best is None or
                         rank(value) < rank(completed_training_best)):
                     completed_training_best = {"design": deepcopy(value["design"]),
-                                               "score": deepcopy(value["score"])}
+                                               "score": _copy_internal_candidate(value["score"])}
                     completed_training_validation = None
             return value
         except _StructureCancelled:
@@ -728,9 +755,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         if (completed_training_best is not None and
                 completed_training_best["design"] == value["design"]):
             completed_training_validation = {"design": deepcopy(audited["design"]),
-                                             "score": deepcopy(audited["score"])}
+                                             "score": _copy_internal_candidate(audited["score"])}
         if audited_best is None or rank(audited) < rank(audited_best[1]):
-            audited_best = (deepcopy(value), deepcopy(audited))
+            audited_best = (_copy_internal_candidate(value), _copy_internal_candidate(audited))
             emit("audit_incumbent", "Saved best audited candidate", value["design"], audited["score"])
             if snapshot_callback:
                 checkpoint_audit = deepcopy(audited.get("audit", {}))
@@ -773,7 +800,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
     def archive(value, *, audit_eligible=True):
         nonlocal best
         if feasible(value["design"]) and (best is None or rank(value) < rank(best)):
-            best = deepcopy(value)
+            best = _copy_internal_candidate(value)
             emit("incumbent", "已保存独立评分的候选，等待最终密网格验证", value["design"], value["score"])
         # A training-feasible candidate may be better on audit even when it
         # loses the training cost tie-break. Audit it before discarding it.

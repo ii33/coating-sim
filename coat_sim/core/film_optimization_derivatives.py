@@ -12,10 +12,14 @@ or incoherent calculation branch are rejected explicitly.
 """
 from __future__ import annotations
 
+from collections import OrderedDict
 from collections.abc import Mapping, Sequence
+from copy import deepcopy
 import hashlib
 import json
 import math
+from threading import RLock
+from typing import Any
 
 import numpy as np
 
@@ -90,85 +94,183 @@ def _checked_material_rows(materials, design):
     return result
 
 
+_MAX_PREPARED_SERIES_BYTES = 32 * 1024**2
+_MAX_PREPARED_SERIES_ENTRIES = 64
+
+
+def _source_sampler(rows, reference):
+    key = (reference["material_id"], reference["optical_set_id"])
+    material = rows.get(key[0])
+    if material is None:
+        raise ValueError("frozen materials do not contain material ID " + str(key[0]))
+    record = next((row for row in material.get("optical_sets", [])
+                   if row.get("id") == key[1]), None)
+    if record is None:
+        raise ValueError(f"frozen material {key[0]} does not contain optical set {key[1]}")
+    return prepare_optical_set(record, k_sampling_policy="source_only_zero_defaults")
+
+
+def _sample_index(sampler, key, wave, *, use_k, extrapolation_policy):
+    n, k, _details = sampler(float(wave), "nm", extrapolation_policy=extrapolation_policy,
+                             include_k=use_k)
+    if k is None:
+        raise ValueError(f"{key[0]}/{key[1]} has no calculable k sample")
+    return complex(n, k if use_k else 0.)
+
+
+def _sample_index_series(sampler, key, waves, *, use_k, extrapolation_policy):
+    """Use the existing vector sampler, preserving scalar failure diagnostics."""
+    evaluate_many = getattr(sampler, "evaluate_many", None)
+    if callable(evaluate_many):
+        try:
+            batch = evaluate_many(waves, "nm", extrapolation_policy=extrapolation_policy,
+                                  include_k=use_k)
+        except (ValueError, ArithmeticError):
+            # Recover the same first failing source query as the scalar path.
+            # If all scalar queries succeed, preserve the original vector error.
+            for wave in waves:
+                _sample_index(sampler, key, wave, use_k=use_k,
+                              extrapolation_policy=extrapolation_policy)
+            raise
+        if batch is not None and batch[0] is not None:
+            return np.asarray(batch[0], dtype=complex)
+    return np.asarray([_sample_index(sampler, key, wave, use_k=use_k,
+                       extrapolation_policy=extrapolation_policy) for wave in waves], dtype=complex)
+
+
+class _PreparedMaterialData:
+    """Run-owned, independently checked optical data; never a candidate cache.
+
+    Ordinary public material mappings are still verified on every simulation.
+    Only an actual instance carries this private capability. Its sources have
+    no mutable aliases to constructor inputs; cached arrays are bytes-backed
+    read-only. Angle, polarization, topology and variable columns are not
+    cached here: the existing per-call checks and recurrence still own them.
+    """
+
+    def __init__(self, materials: Any, design: Mapping[str, Any]):
+        self.__rows = _checked_material_rows(deepcopy(materials), design)
+        self.__samplers: dict[tuple[str, str], Any] = {}
+        self.__series: OrderedDict[tuple[Any, ...], np.ndarray] = OrderedDict()
+        self.__series_bytes = 0
+        self.__lock = RLock()
+
+    def _sampler(self, reference):
+        key = (reference["material_id"], reference["optical_set_id"])
+        with self.__lock:
+            if key not in self.__samplers:
+                self.__samplers[key] = _source_sampler(self.__rows, reference)
+            return self.__samplers[key]
+
+    def _index_series(self, reference, waves, *, use_k, extrapolation_policy):
+        pair = (reference["material_id"], reference["optical_set_id"])
+        waves = np.asarray(waves, dtype=np.float64)
+        # Oversized arrays are evaluated normally, simply not retained. Cache
+        # capacity is a memory policy, never a wavelength or search-work limit.
+        retained_bytes = waves.nbytes + waves.size * np.dtype(np.complex128).itemsize
+        cacheable = (retained_bytes <= _MAX_PREPARED_SERIES_BYTES
+                     and _MAX_PREPARED_SERIES_ENTRIES > 0)
+        key = (pair, waves.shape, waves.tobytes(), use_k, extrapolation_policy) if cacheable else None
+        with self.__lock:
+            if key is not None and key in self.__series:
+                self.__series.move_to_end(key)
+                return self.__series[key]
+            values = _sample_index_series(self._sampler(reference), pair, waves,
+                use_k=use_k, extrapolation_policy=extrapolation_policy)
+            values = np.frombuffer(np.asarray(values, dtype=np.complex128).tobytes(), dtype=np.complex128)
+            if key is not None:
+                while self.__series and (len(self.__series) >= _MAX_PREPARED_SERIES_ENTRIES
+                        or self.__series_bytes + retained_bytes > _MAX_PREPARED_SERIES_BYTES):
+                    old_key, old_values = self.__series.popitem(last=False)
+                    self.__series_bytes -= len(old_key[2]) + old_values.nbytes
+                self.__series[key] = values
+                self.__series_bytes += retained_bytes
+            return values
+
+
 def _analytic_one_polarization(waves, indices, thickness_nm, layer_ids,
                                variable_columns, angle_deg, polarization):
-    """Return analytic dR/dd and dT/dd by forward differentiation.
+    """Differentiate the same scalar recurrence with two linear layer sweeps.
 
-    ``r`` and ``t`` are differentiated through each scalar Möbius update in
-    the coherent stack recurrence. Only propagation phase depends on layer
-    thickness. For p_j = exp(2*pi*i*q_j*d_j/lambda),
-
-        dp_j/dd_j = (2*pi*i*q_j/lambda) p_j.
-
-    For D = 1 + r_i*r*p_j**2 and N_r = r_i + r*p_j**2,
-
-        dr_new = (dN_r*D - N_r*dD) / D**2.
-
-    The transmitted amplitude update is differentiated by the same quotient
-    rule. Power derivatives then use d|z|^2/dd = 2 Re(conj(z)*dz/dd).
+    For p=exp(alpha*d), z=p*p, alpha=2*pi*i*q/lambda and D=1+ri*r*z,
+    each inward layer maps (r,t) to F=(ri+r*z)/D, G=ti*p*t/D.
+    Store its state Jacobian [[a,0],[c,e]] and selected local thickness
+    partials [b,f]. An outward sweep carries [[A,0],[B,E]]; each selected
+    final derivative is [A*b, B*b+E*f], then B'=B*a+E*c using OLD E.
+    Work/storage are O(wavelengths*(layers+variables)), rather than propagating
+    every variable through every layer. Power projections retain the original
+    flux definitions and d|amplitude|^2/dd=2*Re(conj(amplitude)*derivative).
     """
     wavelength_count = waves.size
     variable_count = len(variable_columns)
     beta = _beta(None, indices[:, 0], angle_deg)
     q = _longitudinal_many(indices, beta)
 
-    # film_optics uses a separate normalized-field solution at an exact
-    # internal q=0. Its derivative is not represented by this recurrence.
+    # Preserve the original critical-layer domain: the value solver's separate
+    # normalized-field branch is not represented by this analytic recurrence.
     if indices.shape[1] > 2 and np.any(q[:, 1:-1] == 0):
         raise ValueError("analytic thickness Jacobian does not support an exact internal critical layer (q=0)")
 
     r, t = _interface_many(
         indices[:, -2], indices[:, -1], q[:, -2], q[:, -1], polarization,
     )
-    dr = np.zeros((wavelength_count, variable_count), dtype=complex)
-    dt = np.zeros((wavelength_count, variable_count), dtype=complex)
+    layer_count = indices.shape[1] - 2
+    if variable_count:
+        transfer_a = np.empty((wavelength_count, layer_count), dtype=complex)
+        transfer_c = np.empty_like(transfer_a)
+        transfer_e = np.empty_like(transfer_a)
+        local_b = np.zeros((wavelength_count, variable_count), dtype=complex)
+        local_f = np.zeros_like(local_b)
 
-    # Traverse from the exit interface toward the incident medium, exactly as
-    # film_optics._coherent_regular_many does.
+    # Traverse exit to incident, exactly as the original power-value recurrence.
     for index in range(indices.shape[1] - 3, -1, -1):
         layer_index = index + 1
-        layer_position = layer_index - 1
-        phase = np.exp(2j * math.pi * q[:, layer_index] * thickness_nm[layer_position] / waves)
+        position = layer_index - 1
+        phase = np.exp(2j * math.pi * q[:, layer_index] * thickness_nm[position] / waves)
         phase_squared = phase * phase
         ri, ti = _interface_many(
-            indices[:, index], indices[:, layer_index],
-            q[:, index], q[:, layer_index], polarization,
+            indices[:, index], indices[:, layer_index], q[:, index], q[:, layer_index], polarization,
         )
-
-        dphase = np.zeros((wavelength_count, variable_count), dtype=complex)
-        column = variable_columns.get(layer_ids[layer_position])
-        if column is not None:
-            dphase[:, column] = phase * (2j * math.pi * q[:, layer_index] / waves)
-        dphase_squared = 2.0 * phase[:, None] * dphase
-
         denominator = 1.0 + ri * r * phase_squared
         if np.any(denominator == 0):
             raise ValueError("singular coherent stack in analytic thickness Jacobian")
-        ddenominator = ri[:, None] * (
-            dr * phase_squared[:, None] + r[:, None] * dphase_squared
-        )
-
         numerator_r = ri + r * phase_squared
-        dnumerator_r = dr * phase_squared[:, None] + r[:, None] * dphase_squared
-        dr = (dnumerator_r * denominator[:, None] -
-              numerator_r[:, None] * ddenominator) / denominator[:, None]**2
-
         numerator_t = ti * phase * t
-        dnumerator_t = ti[:, None] * (
-            dphase * t[:, None] + phase[:, None] * dt
-        )
-        dt = (dnumerator_t * denominator[:, None] -
-              numerator_t[:, None] * ddenominator) / denominator[:, None]**2
-
+        if variable_count:
+            denominator_squared = denominator * denominator
+            a = phase_squared * (1.0 - ri * ri) / denominator_squared
+            transfer_a[:, position] = a
+            transfer_c[:, position] = -numerator_t * ri * phase_squared / denominator_squared
+            transfer_e[:, position] = ti * phase / denominator
+            column = variable_columns.get(layer_ids[position])
+            if column is not None:
+                alpha = 2j * math.pi * q[:, layer_index] / waves
+                local_b[:, column] = 2.0 * alpha * r * a
+                local_f[:, column] = (numerator_t * alpha * (1.0 - ri * r * phase_squared)
+                                      / denominator_squared)
         r = numerator_r / denominator
         t = numerator_t / denominator
 
     incident_flux = _flux_many(indices[:, 0], q[:, 0], polarization)
     exit_flux = _flux_many(indices[:, -1], q[:, -1], polarization)
     transmission_scale = np.maximum(0.0, exit_flux) / incident_flux
-    jacobian_r = 2.0 * np.real(np.conjugate(r)[:, None] * dr)
-    jacobian_t = (2.0 * transmission_scale[:, None] *
-                  np.real(np.conjugate(t)[:, None] * dt))
+    jacobian_r = np.zeros((wavelength_count, variable_count), dtype=float)
+    jacobian_t = np.zeros_like(jacobian_r)
+    if variable_count:
+        chain_a = np.ones(wavelength_count, dtype=complex)
+        chain_b = np.zeros(wavelength_count, dtype=complex)
+        chain_e = np.ones(wavelength_count, dtype=complex)
+        for position, identifier in enumerate(layer_ids):
+            column = variable_columns.get(identifier)
+            if column is not None:
+                dr = chain_a * local_b[:, column]
+                dt = chain_b * local_b[:, column] + chain_e * local_f[:, column]
+                jacobian_r[:, column] = 2.0 * np.real(np.conjugate(r) * dr)
+                jacobian_t[:, column] = 2.0 * transmission_scale * np.real(np.conjugate(t) * dt)
+            # RHS evaluation preserves old E for B; no in-place overwrite.
+            chain_b = chain_b * transfer_a[:, position] + chain_e * transfer_c[:, position]
+            chain_a = chain_a * transfer_a[:, position]
+            chain_e = chain_e * transfer_e[:, position]
     return jacobian_r, jacobian_t
 
 
@@ -266,7 +368,8 @@ def simulate_with_thickness_jacobian(
     if substrate.get("mode") not in ("auto", "coherent"):
         raise ValueError("analytic thickness Jacobian requires coherent substrate handling")
 
-    rows_by_id = _checked_material_rows(materials, design)
+    prepared_materials = materials if type(materials) is _PreparedMaterialData else None
+    rows_by_id = None if prepared_materials is not None else _checked_material_rows(materials, design)
     use_k = design.get("use_k", True)
     waves = np.linspace(normalized["wavelength_min_nm"],
                         normalized["wavelength_max_nm"], normalized["samples"])
@@ -296,29 +399,18 @@ def simulate_with_thickness_jacobian(
 
     prepared = {}
 
+    def sampler(reference):
+        key = (reference["material_id"], reference["optical_set_id"])
+        if prepared_materials is not None:
+            return prepared_materials._sampler(reference)
+        if key not in prepared:
+            prepared[key] = _source_sampler(rows_by_id, reference)
+        return prepared[key]
+
     def evaluate(reference, wavelength_nm, purpose="spectrum"):
         key = (reference["material_id"], reference["optical_set_id"])
-        if key not in prepared:
-            material = rows_by_id.get(key[0])
-            if material is None:
-                raise ValueError("frozen materials do not contain material ID " + str(key[0]))
-            record = next((row for row in material.get("optical_sets", [])
-                           if row.get("id") == key[1]), None)
-            if record is None:
-                raise ValueError(f"frozen material {key[0]} does not contain optical set {key[1]}")
-            prepared[key] = prepare_optical_set(
-                record, k_sampling_policy="source_only_zero_defaults",
-            )
-        n, k, _details = prepared[key](
-            float(wavelength_nm), "nm",
-            extrapolation_policy=normalized["extrapolation_policy"],
-            include_k=use_k,
-        )
-        if k is None:
-            raise ValueError(f"{key[0]}/{key[1]} has no calculable k sample")
-        if not use_k:
-            return complex(n, 0.0)
-        return complex(n, k)
+        return _sample_index(sampler(reference), key, wavelength_nm, use_k=use_k,
+                             extrapolation_policy=normalized["extrapolation_policy"])
 
     # This call has one immutable wavelength grid, k policy and material set.
     # Repeated films share the sampled index vector; thickness/Jacobian columns
@@ -328,8 +420,12 @@ def simulate_with_thickness_jacobian(
     def index_series(reference):
         key = (reference["material_id"], reference["optical_set_id"])
         if key not in sampled_series:
-            sampled_series[key] = np.asarray(
-                [evaluate(reference, wave) for wave in waves], dtype=complex)
+            if prepared_materials is not None:
+                sampled_series[key] = prepared_materials._index_series(reference, waves,
+                    use_k=use_k, extrapolation_policy=normalized["extrapolation_policy"])
+            else:
+                sampled_series[key] = _sample_index_series(sampler(reference), key, waves,
+                    use_k=use_k, extrapolation_policy=normalized["extrapolation_policy"])
         return sampled_series[key]
 
     def medium(reference):

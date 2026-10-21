@@ -67,6 +67,8 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#film-cancel-best-20261020">14x 取消时应用完整最好候选</a>
 <a href="#film-synthesis-global-20261021">14z 默认反射/谐振腔/AR匹配与全局厚度搜索（2026-10-21）</a>
 <a href="#film-synthesis-audit-feedback-20261021">14ad HR层数边界与固定审计反馈（2026-10-21）</a>
+<a href="#film-bidirectional-jacobian-20261021">14ag 双向链式解析厚度Jacobian（2026-10-21）</a>
+<a href="#film-prepared-static-optics-20261021">14af 运行内静态光学准备与精确网格复用（2026-10-21）</a>
 <a href="#film-synthesis-hr-dual-minimax-20261021">14ae 双堆HR先验与固定训练网格极小极大精修（2026-10-21）</a>
 <a href="#film-synthesis-adaptive-start-20261021">14ac 简单AR优先与运行内并行测量（2026-10-21）</a>
 <a href="#film-synthesis-run-budgets-20261021">14ab 周期0统一运行预算（2026-10-21）</a>
@@ -2851,6 +2853,32 @@ return the best complete candidate with matching audit; report remaining gap</pr
 <p class="source"><strong>依据与局限：</strong>边界候选、最坏新点选择、4 ULP去重、固定快照和局部repair均为<strong>本项目约定</strong>，未找到外部依据，仅为本项目实现。TMM、原独立极值审计和解析导数沿用本页既有物理章节。本节有限点/局部搜索不保证所有窄陷波可发现、全局最优、制造鲁棒性或连续达标；云端32层400–700nm高反案例未在本阶段证明求解。</p>
 </section>
 
+<section id="film-bidirectional-jacobian-20261021">
+<h2>14ag 双向链式解析厚度Jacobian</h2>
+<p class="source">更新：2026-10-21。此项由同机profile中解析梯度热点触发，重用原复数相干反射/透射幅度递推及功率值求解器。下式是对现有光学递推的直接链式求导；具体手工双向实现为本项目实现，外部自动微分文献不构成本项目光学精度或速度证明。</p>
+<p><strong>输入、输出与域：</strong>波长λ与每层物理厚度d均为nm；输入真实复折射率N=n+ik、原被动纵向q分支、角度（deg）、s/p与按ID排列的厚度变量。输出两种功率的Jacobian，形状[波长,变量]，单位fraction/nm；unpolarized仍分别求s/p再均值，nm/μm/QW和零厚探针沿用原转换。支持透明入射、单面front、半无限相干基底；背面/非相干或精确内部q=0继续明确拒绝，奇异分母和非有限导数继续失败。</p>
+<div class="formula">p=exp(αd), α=2πiq/λ, z=p², D=1+rᵢ r z<br>F=(rᵢ+r z)/D，G=tᵢ p t/D<br>a=∂F/∂r=z(1−rᵢ²)/D²；b=∂F/∂d=2αr z(1−rᵢ²)/D²<br>c=∂G/∂r=−tᵢ p t rᵢ z/D²；e=∂G/∂t=tᵢ p/D；f=∂G/∂d=tᵢ p t α(1−rᵢ r z)/D²</div>
+<p><strong>两次有序遍历：</strong>先从出射端向入射端按原层序计算幅度并保存每层局部系数a/b/c/e/f；再从入射端向出射端传播最终幅度对当前状态的灵敏度。初始化A=1、B=0、E=1；当前层的最终幅度导数为∂r₀/∂d=A b，∂t₀/∂d=B b+E f；随后同时更新(A,B,E)←(A a, B a+E c, E e)，右侧必须使用更新前的值。只给选中变量ID写列，输出列序保持调用者顺序。</p>
+<div class="formula">∂R/∂d=2 Re(conj(r₀) ∂r₀/∂d)<br>∂T/∂d=2 S Re(conj(t₀) ∂t₀/∂d)，S=max(0,flux_exit)/flux_incident<br>工作量：原逐层传播完整[W,V]导数约O(W L V) → 局部系数与链传播O(W L+W V)</div>
+<figure class="figure"><svg viewBox="0 0 960 215" role="img" aria-labelledby="bidirectional-jac-title"><title id="bidirectional-jac-title">先计算局部光学递推系数，再反向组合每个厚度变量的导数</title><g fill="#e9f4f1" stroke="#087f78"><rect x="10" y="28" width="220" height="65" rx="8"/><rect x="270" y="28" width="220" height="65" rx="8"/><rect x="530" y="28" width="220" height="65" rx="8"/><rect x="790" y="28" width="160" height="65" rx="8"/><rect x="110" y="137" width="690" height="58" rx="8"/></g><g class="svgtext" text-anchor="middle"><text x="120" y="54">入射端 / 最终r₀,t₀</text><text x="120" y="78">A=1,B=0,E=1</text><text x="380" y="54">层1局部系数</text><text x="380" y="78">a,b,c,e,f</text><text x="640" y="54">层L局部系数</text><text x="640" y="78">a,b,c,e,f</text><text x="870" y="54">出射界面</text><text x="870" y="78">原Fresnel幅度</text><text x="455" y="161">先 ← 原幅度递推与局部系数；后 → 链式灵敏度与ID列</text><text x="455" y="185">R/T值仍经原coherent_rta；独立审计继续完整运行</text></g><g fill="none" stroke="#276c67"><path d="M790 48 H750 M530 48 H490 M270 48 H230 M230 78 H270 M490 78 H530 M750 78 H790"/></g></svg><figcaption>图14ag：每层只传播少量复数灵敏度，而非所有变量的完整矩阵；完整R与T导数都保留，不因当前目标纯HR而删掉透射计算。</figcaption></figure>
+<p><strong>实现、默认与近似：</strong><code>film_optimization_derivatives.py::_analytic_one_polarization</code>为原解析入口的默认实现；没有新增用户精度、层数、搜索时间或评价预算限制。返回值继续由原<code>coherent_rta</code>计算，梯度与独立有限差分及小型稠密链式参考对照。浮点运算次序改变可产生舍入差异，必须重新以原目标和独立加密/偏移/极值审计验收，不能把梯度一致性当作连续谱或全局收敛证明。</p>
+<p class="source"><strong>参考：</strong>原相干递推、被动分支与通量定义见本页TMM章节；一般前向/反向链式自动微分背景见<a href="https://jmlr.org/papers/v18/17-468.html">Baydin et al., Automatic Differentiation in Machine Learning: a Survey, JMLR 18(153),2018</a>。本项目没有引入自动微分库，具体手工复数系数按上述公式实现并定向验证，不引用该综述暗示项目成绩已获外部验证。</p>
+</section>
+
+<section id="film-prepared-static-optics-20261021">
+<h2>14af 运行内静态光学准备与精确网格复用</h2>
+<p class="source">更新：2026-10-21。此项只减少相同冻结输入的重复准备工作，不改变TMM、解析厚度递推、目标评分、制造约束或有限审计条件。缓存的所有权、准入和容量为<strong>本项目约定</strong>，未找到外部依据，仅为本项目实现。</p>
+<p><strong>用途与输入输出：</strong>生产从零合成在一个父运行内重复评价厚度候选；输入为完整验真的冻结材料/环境、候选层表、原目标网格与角度偏振及变量ID，输出仍为原R/T、fraction/nm的厚度Jacobian、逐条件评分与响应。每次仍经过原物理计量入口；命中准备缓存不减少逻辑或物理评价计数。训练与每次独立审计各自持有私有上下文，候选、score、审计结果和已审计最好解不进入光学缓存。</p>
+<p><strong>所有权与验真：</strong><code>_PreparedStructureEvaluator</code>构造时独立深复制请求并完整验证快照摘要，<code>_PreparedMaterialData</code>另持独立材料副本和已验证sampler。只在其同步bound调用期间准入相同私有request，禁止重入、并发分享或将context挂到任意公共请求；finally清除活动状态。普通<code>evaluate_frozen_structure_candidate</code>与<code>simulate_with_thickness_jacobian</code>直接调用仍逐次检查传入快照，不能用可变dict中的SHA或伪标记跳过校验。外部原请求后续变化不污染已捕获的运行快照；新请求必须新建owner。</p>
+<div class="formula">K=(material_id, optical_set_id, exact_float64_wave_bytes, shape, use_k, extrapolation_policy)<br>cached: N(λ)=n(λ)+i k(λ)；not cached: d、R/T、∂R/∂d、∂T/∂d、score<br>for candidate: cancel_check → validate candidate/variables/settings → sample-or-reuse N → original TMM/Jacobian → original score/archive</div>
+<p><strong>坐标与采样：</strong>网格仍为nm，厚度变量为物理nm，存储的nm/μm/QW转换和变量ID顺序不变。键使用完整float64网格内容而非端点/样本数或近似波长：训练1 nm、加密0.1 nm、偏移和极值点不会串用。每次重新按当前层序与端口装配光学栈，换材、换端口、use_k、外推策略和网格均按键或新上下文隔离；QW参考波长仍独立求样。缓存数组只读且无可变外部别名，LRU最多64项、波长键与复数数组合计32 MiB（sampler/材料源另计）；超限只逐次求样而不保留，不拒绝波长或搜索请求。容量为本项目约定，只影响性能，不是搜索/预算上限。</p>
+<p><strong>表格批采样：</strong>使用已有<code>prepare_optical_set.evaluate_many</code>，保留左侧插入点、源单位换算、四ULP端点规则与原线性插值运算顺序。公式材料仍按原标量接口计算。批采样失败返回原标量路径以保留首个失败波长和诊断；已知k、未知k的显式假设及严格合成来源域检查沿用原合同。缓存命中仍经过上层取消检查；数值异常与观察者异常不转成成功。</p>
+<figure class="figure"><svg viewBox="0 0 960 230" role="img" aria-labelledby="prepared-optics-title"><title id="prepared-optics-title">训练与审计分别拥有准备态且只缓存静态材料光学数据</title><g fill="#e9f4f1" stroke="#087f78"><rect x="12" y="28" width="210" height="68" rx="8"/><rect x="270" y="28" width="260" height="68" rx="8"/><rect x="580" y="28" width="360" height="68" rx="8"/><rect x="270" y="145" width="260" height="60" rx="8"/><rect x="580" y="145" width="360" height="60" rx="8"/></g><g class="svgtext" text-anchor="middle"><text x="117" y="55">独立复制 / 摘要验真</text><text x="117" y="79">捕获真实n/k与策略</text><text x="400" y="55">训练owner：sampler / N(λ)</text><text x="400" y="79">精确网格键 / 有界只读数组</text><text x="760" y="55">逐候选原TMM / Jacobian / 评分</text><text x="760" y="79">全部物理计数、预算、取消与档案</text><text x="400" y="170">独立审计新owner</text><text x="400" y="192">不复用训练分数或审计结论</text><text x="760" y="170">原加密、偏移与局部极值审计</text><text x="760" y="192">有限点证据，不是连续谱证书</text></g><g fill="none" stroke="#276c67"><path d="M222 62 H270 M530 62 H580 M760 96 V145 M530 175 H580"/></g></svg><figcaption>图14af：复用的是不随厚度变化的材料准备结果；候选响应、逐项验收和独立审计继续计算，审计缓存与训练分开。</figcaption></figure>
+<p><strong>内部档案拷贝：</strong><code>film_auto_synthesis.py::_copy_internal_candidate</code>只在父进程私有档案内共享已检查的精确tuple：每项须为精确<code>FilmConditionError</code>且字段全为内置不可变标量。设计、response/Jacobian列表、score其它可变字段继续deepcopy；自定义错误或可变字段全回原deepcopy。此规则为本项目约定。外部observer、checkpoint与terminal边界仍使用原独立复制；不将Python frozen dataclass描述成可抵御反射强改的安全隔离。</p>
+<p><strong>实现与边界：</strong><code>film_optimization_structure.py::_PreparedStructureEvaluator</code>、<code>film_optimization_derivatives.py::_PreparedMaterialData</code>与<code>index_series</code>；默认入口在<code>film_auto_synthesis.py</code>的串行物理评价内惰性创建，<code>film_synthesis_audit.py</code>为每次审计另建owner。公共入口和worker被计量的<code>simulate_with_thickness_jacobian</code>符号保持。未合并四个角度/偏振为同一物理条件，不宣称新增多进程加速；解析递推、SLSQP顺序依赖和仍需复制的档案不是缓存命中可消除的工作。</p>
+<p class="source"><strong>参考：</strong><a href="https://docs.python.org/3.13/library/copy.html">Python 3.13深拷贝与别名语义</a>；<a href="https://numpy.org/doc/stable/reference/generated/numpy.searchsorted.html">NumPy searchsorted的批插入点接口</a>。这些来源说明接口，不验证本项目缓存策略或速度。性能证据应使用同机、相同冻结请求的低干扰重复计时，单独profile含探针开销；自身时间百分比与累计时间不得混加，不把研究优化段与完整正式路径直接当作同一总耗时。</p>
+</section>
+
 <section id="film-synthesis-hr-dual-minimax-20261021">
 <h2>14ae 双堆HR先验与固定训练网格极小极大精修</h2>
 <p><strong>日期、用途与输入输出：</strong>2026-10-21。输入为已冻结的无seed单面基底请求、正权重反射率范围目标、允许材料的真实复折射率、目标波段/角度/偏振及显式厚度约束；输出只是可供父执行器完整评分的双子堆候选，及可选的局部minimax精修候选。每个候选仍由原TMM按全部用户条件评分、归档并独立审计。此先验不替换原HR结构搜索、目标或连续谱证书。</p>
@@ -3063,6 +3091,7 @@ for start in starts:
 </section>
 <section id="film-solver-gradient">
 <h2>14i-7 解析厚度Jacobian、TRF与L-BFGS-B</h2>
+<p><strong>2026-10-21实现更新：</strong>解析厚度导数默认改用<a href="#film-bidirectional-jacobian-20261021">14ag双向链式组合</a>，输入/输出、支持域、原R/T值求解器与预算合同不变；静态材料准备复用见<a href="#film-prepared-static-optics-20261021">14af</a>。下列商法则仍是同一数学导数，不再要求每层推进完整多变量矩阵。</p>
 <p>输入冻结单面front相干设计、材料和nm变量；输出与service一致的R/T及按变量顺序排列的Jacobian，单位nm⁻¹。符号、复折射率、导纳和传播方向沿用14章光学实现。当前代码采用与光学内核相同的稳定复振幅递推，逐层对传播因子和振幅商法则解析求导，不求有限差分。QW只用于初始厚度换算，优化变量仍是物理nm。</p>
 <div class="formula">pⱼ=exp(2πiqⱼdⱼ/λ)；∂pⱼ/∂dⱼ=(2πiqⱼ/λ)pⱼ<br>D=1+r_interface·r·pⱼ²；N=r_interface+r·pⱼ²；∂(N/D)=(∂N·D−N·∂D)/D²；∂|r|²=2Re(conj(r)∂r)</div>
 <figure class="figure"><svg viewBox="0 0 760 120" role="img" aria-label="复振幅解析递推"><rect x="10" y="30" width="210" height="50" fill="#e3f1ed"/><rect x="245" y="30" width="220" height="50" fill="#fff2dd"/><rect x="490" y="30" width="210" height="50" fill="#e3f1ed"/><text x="40" y="61" class="svgtext">已求r/t及其导数</text><text x="280" y="61" class="svgtext">本层phase与导数</text><text x="520" y="61" class="svgtext">商法则更新r/t</text><text x="25" y="107" class="svgtext">从出射界面逐层向入射端递推→R/T功率导数→带权残差Jacobian</text></svg><figcaption>解析导数与原谱值必须同时对照；中心差分只作为验证手段。</figcaption></figure>

@@ -18,7 +18,7 @@ from .optical_constants import prepare_optical_set
 from .film_synthesis_absorption import (assumes_unknown_k_zero, sample_synthesis_optical,
                                         synthesis_absorption_assumption)
 from .film_optimization_structure import (
-    FilmStructureOptimizationRequest, _StructureCancelled,
+    FilmStructureOptimizationRequest, _StructureCancelled, _PreparedStructureEvaluator,
     evaluate_frozen_structure_candidate,
 )
 
@@ -56,6 +56,10 @@ def audit_frozen_synthesis_candidate(
     )
     proxy = FilmStructureOptimizationRequest(base, min_thickness_nm=0.0,
                                              max_thickness_nm=np.finfo(float).max)
+    # A distinct owner per audit; no training grid/cache or candidate score is reused.
+    if cancel_event is not None and cancel_event.is_set():
+        raise _StructureCancelled()
+    prepared = _PreparedStructureEvaluator(proxy)
     physical = points = dense_points = offset_points = 0
     bracket_count = completed_extrema = 0
     # This public helper also rejects ordinary frozen snapshots that never went
@@ -115,9 +119,9 @@ def audit_frozen_synthesis_candidate(
                     if not np.isfinite(n) or n <= 0 or k is None or not np.isfinite(k) or k < 0 or (not details.get('k_known') and not assumed):
                         raise ValueError(f'{context}: explicit finite passive n/k source data required; unknown k cannot be zero')
                 checked_waves.add(wavelength)
-        value = evaluate_frozen_structure_candidate(
-            replace(proxy, base_request=replace(base, objectives=objectives)),
-            design, cancel_event=cancel_event,
+        value = prepared.evaluate(
+            design, objectives=objectives, evaluator=evaluate_frozen_structure_candidate,
+            cancel_event=cancel_event,
         )
         check()
         physical += 1

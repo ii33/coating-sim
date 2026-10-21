@@ -1,0 +1,2494 @@
+{
+  "schema_version": 1,
+  "kind": "coat_sim.hr_runtime_performance",
+  "protocol": "protocol.json",
+  "base_commit": "ce5ab332241560e43152513622d5c01546239b1c",
+  "implementation_identity": "This commit plus final optimized canonical source hashes below; no historical file replacement.",
+  "research_library_commit": "3f670f4fbf5c2731c719e59792705bd25207beb9",
+  "environment": {
+    "cpu": "Intel Core Ultra 7 265K",
+    "physical_cores": 20,
+    "logical_processors": 20,
+    "os": "Windows11",
+    "python": "3.13.16",
+    "numpy": "2.5.4",
+    "scipy": "1.18.1",
+    "blas": "OpenBLAS0.3.34.106.0",
+    "runtime_thread_probe": {
+      "paired_environment": 1,
+      "default_environment": 20
+    },
+    "probe_note": "Read-only OpenBLAS get_num_threads reports configured pool size, not observed active CPU utilization."
+  },
+  "baseline_runs": [
+    {
+      "state": "completed",
+      "termination_reason": "validated_targets_met",
+      "targets_met": true,
+      "wall_seconds": 100.30472210000153,
+      "cpu_seconds": 99.140625,
+      "evaluations": 735,
+      "validation_evaluations": 2,
+      "audit_physical_evaluations": 756,
+      "audit_wavelength_points": 48758,
+      "min_audited_condition": {
+        "objective_index": 1,
+        "wavelength_nm": 402.5050927958021,
+        "angle_deg": 30.0,
+        "polarization": "p",
+        "metric": "R",
+        "actual": 0.9873549465293822,
+        "target_value": null,
+        "lower_bound": 0.98,
+        "upper_bound": null,
+        "normalized_violation": 0.0,
+        "weighted_normalized_violation": 0.0
+      },
+      "min_training_R": 0.9874180480193034,
+      "layers": 32,
+      "total_thickness_nm": 2569.6458679867465,
+      "cancel_requested": false,
+      "progress_calls": 2556,
+      "run": "coating-hr-performance-ce5-baseline-1b",
+      "role": "confirmatory_baseline",
+      "source_base_commit": "ce5ab332241560e43152513622d5c01546239b1c",
+      "request_sha256_canonical": "f9865f384892b80688a5493e4310f128b102bbbf64fecbe62ed29d0f4f3214d3",
+      "runtime_canonical_source_hashes": {
+        "coat_sim/core/film_auto_synthesis.py": "63de3666f0320fe4160a75ba066dd345ceb566c25e1ae773ff605f83b0bce6e5",
+        "coat_sim/core/film_optimization_structure.py": "a9dd4750b26f30034b7cfec2c464fe179c88aebcd9e879694c8e94ae34b02dac",
+        "coat_sim/core/film_optimization_derivatives.py": "2af5f48f1b54c77fcddc71d9732b161c8e19f89e7a79477f8a296e2391302ef9",
+        "coat_sim/core/film_synthesis_audit.py": "55b5cf71b094a295296bfd46556d733c40f709c3faeda2c4b27ffbcb6b4ece12"
+      },
+      "thread_environment": {
+        "OPENBLAS_NUM_THREADS": "1",
+        "OMP_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "VECLIB_MAXIMUM_THREADS": "1",
+        "NUMEXPR_NUM_THREADS": "1"
+      },
+      "summary_evidence_sha256": "d67e3a338de859c5830943ddfb29e9098be61f8b2c5b50a23b264e843123009d",
+      "work": {
+        "backend": "serial",
+        "requested_workers": 1,
+        "effective_workers": 1,
+        "cleanup_complete": true,
+        "actual_work_complete": true,
+        "serial_evaluator_invocations": 733,
+        "training_evaluator_invocations": 733,
+        "training_physical_evaluations": 2932,
+        "training_wavelength_points": 882532,
+        "incomplete_physical_calls": 0,
+        "serial_unknown_work": 0,
+        "parallel_batches": 0
+      },
+      "training_evaluator_timing": [
+        {
+          "jacobian": false,
+          "zero_probe": false,
+          "samples": 1,
+          "work": 1204,
+          "seconds": 0.02772230000118725
+        },
+        {
+          "jacobian": true,
+          "zero_probe": false,
+          "samples": 732,
+          "work": 28202496,
+          "seconds": 75.93867529981071
+        }
+      ],
+      "milestones": [
+        {
+          "elapsed_seconds": 2.3172535999910906,
+          "stage": "validation_complete",
+          "evaluations": 2
+        },
+        {
+          "elapsed_seconds": 2.5955000999965705,
+          "stage": "hr_minimax_prior",
+          "evaluations": 3
+        },
+        {
+          "elapsed_seconds": 99.75552669999888,
+          "stage": "validation_complete",
+          "evaluations": 735
+        },
+        {
+          "elapsed_seconds": 99.8898782999895,
+          "stage": "hr_minimax_targets_verified",
+          "evaluations": 735
+        },
+        {
+          "elapsed_seconds": 99.89214129999164,
+          "stage": "completed",
+          "evaluations": 735
+        }
+      ],
+      "phase_wall_seconds_note": "Baseline harness did not capture validation start; evaluator cost is exact, remaining phases are not separately attributed."
+    },
+    {
+      "state": "completed",
+      "termination_reason": "validated_targets_met",
+      "targets_met": true,
+      "wall_seconds": 104.63828290000674,
+      "cpu_seconds": 103.71875,
+      "evaluations": 735,
+      "validation_evaluations": 2,
+      "audit_physical_evaluations": 756,
+      "audit_wavelength_points": 48758,
+      "min_audited_condition": {
+        "objective_index": 1,
+        "wavelength_nm": 402.5050927958021,
+        "angle_deg": 30.0,
+        "polarization": "p",
+        "metric": "R",
+        "actual": 0.9873549465293822,
+        "target_value": null,
+        "lower_bound": 0.98,
+        "upper_bound": null,
+        "normalized_violation": 0.0,
+        "weighted_normalized_violation": 0.0
+      },
+      "min_training_R": 0.9874180480193034,
+      "layers": 32,
+      "total_thickness_nm": 2569.6458679867465,
+      "cancel_requested": false,
+      "progress_calls": 2561,
+      "run": "coating-hr-performance-ce5-baseline-2",
+      "role": "confirmatory_baseline",
+      "source_base_commit": "ce5ab332241560e43152513622d5c01546239b1c",
+      "request_sha256_canonical": "f9865f384892b80688a5493e4310f128b102bbbf64fecbe62ed29d0f4f3214d3",
+      "runtime_canonical_source_hashes": {
+        "coat_sim/core/film_auto_synthesis.py": "63de3666f0320fe4160a75ba066dd345ceb566c25e1ae773ff605f83b0bce6e5",
+        "coat_sim/core/film_optimization_structure.py": "a9dd4750b26f30034b7cfec2c464fe179c88aebcd9e879694c8e94ae34b02dac",
+        "coat_sim/core/film_optimization_derivatives.py": "2af5f48f1b54c77fcddc71d9732b161c8e19f89e7a79477f8a296e2391302ef9",
+        "coat_sim/core/film_synthesis_audit.py": "55b5cf71b094a295296bfd46556d733c40f709c3faeda2c4b27ffbcb6b4ece12"
+      },
+      "thread_environment": {
+        "OPENBLAS_NUM_THREADS": "1",
+        "OMP_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "VECLIB_MAXIMUM_THREADS": "1",
+        "NUMEXPR_NUM_THREADS": "1"
+      },
+      "summary_evidence_sha256": "60fda97c317a422ca20774dc386740f2a84ce38ab9c99dbd231e969ebf62c4aa",
+      "work": {
+        "backend": "serial",
+        "requested_workers": 1,
+        "effective_workers": 1,
+        "cleanup_complete": true,
+        "actual_work_complete": true,
+        "serial_evaluator_invocations": 733,
+        "training_evaluator_invocations": 733,
+        "training_physical_evaluations": 2932,
+        "training_wavelength_points": 882532,
+        "incomplete_physical_calls": 0,
+        "serial_unknown_work": 0,
+        "parallel_batches": 0
+      },
+      "training_evaluator_timing": [
+        {
+          "jacobian": false,
+          "zero_probe": false,
+          "samples": 1,
+          "work": 1204,
+          "seconds": 0.02299880000646226
+        },
+        {
+          "jacobian": true,
+          "zero_probe": false,
+          "samples": 732,
+          "work": 28202496,
+          "seconds": 83.05940549948718
+        }
+      ],
+      "milestones": [
+        {
+          "elapsed_seconds": 2.069572700012941,
+          "stage": "validation_complete",
+          "evaluations": 2
+        },
+        {
+          "elapsed_seconds": 2.4663282000110485,
+          "stage": "hr_minimax_prior",
+          "evaluations": 3
+        },
+        {
+          "elapsed_seconds": 104.22950120002497,
+          "stage": "validation_complete",
+          "evaluations": 735
+        },
+        {
+          "elapsed_seconds": 104.35349970002426,
+          "stage": "hr_minimax_targets_verified",
+          "evaluations": 735
+        },
+        {
+          "elapsed_seconds": 104.35519300002488,
+          "stage": "completed",
+          "evaluations": 735
+        }
+      ],
+      "phase_wall_seconds_note": "Baseline harness did not capture validation start; evaluator cost is exact, remaining phases are not separately attributed."
+    }
+  ],
+  "optimized_runs": [
+    {
+      "state": "completed",
+      "termination_reason": "validated_targets_met",
+      "targets_met": true,
+      "wall_seconds": 26.290762599994196,
+      "cpu_seconds": 25.9375,
+      "evaluations": 754,
+      "validation_evaluations": 2,
+      "audit_physical_evaluations": 773,
+      "audit_wavelength_points": 48775,
+      "min_audited_condition": {
+        "objective_index": 1,
+        "wavelength_nm": 402.50509240715303,
+        "angle_deg": 30.0,
+        "polarization": "p",
+        "metric": "R",
+        "actual": 0.9873549455679516,
+        "target_value": null,
+        "lower_bound": 0.98,
+        "upper_bound": null,
+        "normalized_violation": 0.0,
+        "weighted_normalized_violation": 0.0
+      },
+      "min_training_R": 0.9874180480202731,
+      "layers": 32,
+      "total_thickness_nm": 2569.6454496228444,
+      "cancel_requested": false,
+      "progress_calls": 2551,
+      "run": "coating-hr-performance-optimized-2",
+      "role": "confirmatory_final_optimized",
+      "source_base_commit": "ce5ab332241560e43152513622d5c01546239b1c",
+      "request_sha256_canonical": "f9865f384892b80688a5493e4310f128b102bbbf64fecbe62ed29d0f4f3214d3",
+      "runtime_canonical_source_hashes": {
+        "coat_sim/core/film_auto_synthesis.py": "5cdb28fb582c7c744696edd20b146889249fecd92306ee3dd0ca93667b60505d",
+        "coat_sim/core/film_optimization_structure.py": "91bfcf0a99e5904b4c2545d19c3437b561dcc32ed4e19ab7bd06f5b1328be2b8",
+        "coat_sim/core/film_optimization_derivatives.py": "c5792fa799bc334d91b66079dfe6dcea351ce4cdaf0480c45be3814c7c5dc1a3",
+        "coat_sim/core/film_synthesis_audit.py": "ffe0c325eb1b3c5e2e9fe247345f17eeab7e0629a0db3fc5ea76f238cee0821c"
+      },
+      "thread_environment": {
+        "OPENBLAS_NUM_THREADS": "1",
+        "OMP_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "VECLIB_MAXIMUM_THREADS": "1",
+        "NUMEXPR_NUM_THREADS": "1"
+      },
+      "summary_evidence_sha256": "3563b8c2166137fd0eb9592f9d7c08bdafdf4c3117d35fa2188834071eb8a0d1",
+      "work": {
+        "backend": "serial",
+        "requested_workers": 1,
+        "effective_workers": 1,
+        "cleanup_complete": true,
+        "actual_work_complete": true,
+        "serial_evaluator_invocations": 752,
+        "training_evaluator_invocations": 752,
+        "training_physical_evaluations": 3008,
+        "training_wavelength_points": 905408,
+        "incomplete_physical_calls": 0,
+        "serial_unknown_work": 0,
+        "parallel_batches": 0
+      },
+      "training_evaluator_timing": [
+        {
+          "jacobian": false,
+          "zero_probe": false,
+          "samples": 1,
+          "work": 1204,
+          "seconds": 0.015126299986150116
+        },
+        {
+          "jacobian": true,
+          "zero_probe": false,
+          "samples": 751,
+          "work": 28934528,
+          "seconds": 16.322089699679054
+        }
+      ],
+      "milestones": [
+        {
+          "elapsed_seconds": 0.18852920000790618,
+          "stage": "validation",
+          "evaluations": 1
+        },
+        {
+          "elapsed_seconds": 1.5071868000086397,
+          "stage": "validation_complete",
+          "evaluations": 2
+        },
+        {
+          "elapsed_seconds": 1.7262515999900643,
+          "stage": "hr_minimax_prior",
+          "evaluations": 3
+        },
+        {
+          "elapsed_seconds": 22.62945409998065,
+          "stage": "validation",
+          "evaluations": 753
+        },
+        {
+          "elapsed_seconds": 25.853188699984457,
+          "stage": "validation_complete",
+          "evaluations": 754
+        },
+        {
+          "elapsed_seconds": 25.977046999993036,
+          "stage": "hr_minimax_targets_verified",
+          "evaluations": 754
+        },
+        {
+          "elapsed_seconds": 25.978680500003975,
+          "stage": "completed",
+          "evaluations": 754
+        }
+      ],
+      "phase_wall_seconds": {
+        "empty_and_initial_audit_through_complete": 1.5071868000086397,
+        "generated_prior_and_initial_jacobian": 0.21906479998142458,
+        "optimization_including_archive_progress": 20.903202499990584,
+        "final_original_audit_including_archive": 3.2237346000038087,
+        "post_audit_typed_result_and_recording": 0.4375739000097383
+      }
+    },
+    {
+      "state": "completed",
+      "termination_reason": "validated_targets_met",
+      "targets_met": true,
+      "wall_seconds": 29.648206599988043,
+      "cpu_seconds": 29.4375,
+      "evaluations": 754,
+      "validation_evaluations": 2,
+      "audit_physical_evaluations": 773,
+      "audit_wavelength_points": 48775,
+      "min_audited_condition": {
+        "objective_index": 1,
+        "wavelength_nm": 402.50509240715303,
+        "angle_deg": 30.0,
+        "polarization": "p",
+        "metric": "R",
+        "actual": 0.9873549455679516,
+        "target_value": null,
+        "lower_bound": 0.98,
+        "upper_bound": null,
+        "normalized_violation": 0.0,
+        "weighted_normalized_violation": 0.0
+      },
+      "min_training_R": 0.9874180480202731,
+      "layers": 32,
+      "total_thickness_nm": 2569.6454496228444,
+      "cancel_requested": false,
+      "progress_calls": 2554,
+      "run": "coating-hr-performance-optimized-3",
+      "role": "confirmatory_final_optimized",
+      "source_base_commit": "ce5ab332241560e43152513622d5c01546239b1c",
+      "request_sha256_canonical": "f9865f384892b80688a5493e4310f128b102bbbf64fecbe62ed29d0f4f3214d3",
+      "runtime_canonical_source_hashes": {
+        "coat_sim/core/film_auto_synthesis.py": "5cdb28fb582c7c744696edd20b146889249fecd92306ee3dd0ca93667b60505d",
+        "coat_sim/core/film_optimization_structure.py": "91bfcf0a99e5904b4c2545d19c3437b561dcc32ed4e19ab7bd06f5b1328be2b8",
+        "coat_sim/core/film_optimization_derivatives.py": "c5792fa799bc334d91b66079dfe6dcea351ce4cdaf0480c45be3814c7c5dc1a3",
+        "coat_sim/core/film_synthesis_audit.py": "ffe0c325eb1b3c5e2e9fe247345f17eeab7e0629a0db3fc5ea76f238cee0821c"
+      },
+      "thread_environment": {
+        "OPENBLAS_NUM_THREADS": "1",
+        "OMP_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "VECLIB_MAXIMUM_THREADS": "1",
+        "NUMEXPR_NUM_THREADS": "1"
+      },
+      "summary_evidence_sha256": "5eadce15d02aabf73493324202ae3713f505295952fef3d25b994ca7bef1d70a",
+      "work": {
+        "backend": "serial",
+        "requested_workers": 1,
+        "effective_workers": 1,
+        "cleanup_complete": true,
+        "actual_work_complete": true,
+        "serial_evaluator_invocations": 752,
+        "training_evaluator_invocations": 752,
+        "training_physical_evaluations": 3008,
+        "training_wavelength_points": 905408,
+        "incomplete_physical_calls": 0,
+        "serial_unknown_work": 0,
+        "parallel_batches": 0
+      },
+      "training_evaluator_timing": [
+        {
+          "jacobian": false,
+          "zero_probe": false,
+          "samples": 1,
+          "work": 1204,
+          "seconds": 0.015045200008898973
+        },
+        {
+          "jacobian": true,
+          "zero_probe": false,
+          "samples": 751,
+          "work": 28934528,
+          "seconds": 18.90148570050951
+        }
+      ],
+      "milestones": [
+        {
+          "elapsed_seconds": 0.1805502999923192,
+          "stage": "validation",
+          "evaluations": 1
+        },
+        {
+          "elapsed_seconds": 1.389530000014929,
+          "stage": "validation_complete",
+          "evaluations": 2
+        },
+        {
+          "elapsed_seconds": 1.6150712000089698,
+          "stage": "hr_minimax_prior",
+          "evaluations": 3
+        },
+        {
+          "elapsed_seconds": 25.88632150000194,
+          "stage": "validation",
+          "evaluations": 753
+        },
+        {
+          "elapsed_seconds": 29.149683099996764,
+          "stage": "validation_complete",
+          "evaluations": 754
+        },
+        {
+          "elapsed_seconds": 29.286447699996643,
+          "stage": "hr_minimax_targets_verified",
+          "evaluations": 754
+        },
+        {
+          "elapsed_seconds": 29.288650100002997,
+          "stage": "completed",
+          "evaluations": 754
+        }
+      ],
+      "phase_wall_seconds": {
+        "empty_and_initial_audit_through_complete": 1.389530000014929,
+        "generated_prior_and_initial_jacobian": 0.22554119999404065,
+        "optimization_including_archive_progress": 24.27125029999297,
+        "final_original_audit_including_archive": 3.2633615999948233,
+        "post_audit_typed_result_and_recording": 0.4985234999912791
+      }
+    }
+  ],
+  "default_environment_run": {
+    "state": "completed",
+    "termination_reason": "validated_targets_met",
+    "targets_met": true,
+    "wall_seconds": 30.328769699990517,
+    "cpu_seconds": 30.046875,
+    "evaluations": 747,
+    "validation_evaluations": 2,
+    "audit_physical_evaluations": 771,
+    "audit_wavelength_points": 48773,
+    "min_audited_condition": {
+      "objective_index": 1,
+      "wavelength_nm": 402.50509239887145,
+      "angle_deg": 30.0,
+      "polarization": "p",
+      "metric": "R",
+      "actual": 0.987354947531884,
+      "target_value": null,
+      "lower_bound": 0.98,
+      "upper_bound": null,
+      "normalized_violation": 0.0,
+      "weighted_normalized_violation": 0.0
+    },
+    "min_training_R": 0.9874180480110512,
+    "layers": 32,
+    "total_thickness_nm": 2569.642811111484,
+    "cancel_requested": false,
+    "progress_calls": 2522,
+    "run": "coating-hr-performance-optimized-default-1",
+    "role": "supplementary_normal_environment",
+    "source_base_commit": "ce5ab332241560e43152513622d5c01546239b1c",
+    "request_sha256_canonical": "f9865f384892b80688a5493e4310f128b102bbbf64fecbe62ed29d0f4f3214d3",
+    "runtime_canonical_source_hashes": {
+      "coat_sim/core/film_auto_synthesis.py": "5cdb28fb582c7c744696edd20b146889249fecd92306ee3dd0ca93667b60505d",
+      "coat_sim/core/film_optimization_structure.py": "91bfcf0a99e5904b4c2545d19c3437b561dcc32ed4e19ab7bd06f5b1328be2b8",
+      "coat_sim/core/film_optimization_derivatives.py": "c5792fa799bc334d91b66079dfe6dcea351ce4cdaf0480c45be3814c7c5dc1a3",
+      "coat_sim/core/film_synthesis_audit.py": "ffe0c325eb1b3c5e2e9fe247345f17eeab7e0629a0db3fc5ea76f238cee0821c"
+    },
+    "thread_environment": {
+      "OPENBLAS_NUM_THREADS": null,
+      "OMP_NUM_THREADS": null,
+      "MKL_NUM_THREADS": null,
+      "VECLIB_MAXIMUM_THREADS": null,
+      "NUMEXPR_NUM_THREADS": null
+    },
+    "summary_evidence_sha256": "424592b512c011a656fad5ae2a69cbba6c5d7acf37217e505340e1ddfcb6f1b8",
+    "work": {
+      "backend": "serial",
+      "requested_workers": 1,
+      "effective_workers": 1,
+      "cleanup_complete": true,
+      "actual_work_complete": true,
+      "serial_evaluator_invocations": 745,
+      "training_evaluator_invocations": 745,
+      "training_physical_evaluations": 2980,
+      "training_wavelength_points": 896980,
+      "incomplete_physical_calls": 0,
+      "serial_unknown_work": 0,
+      "parallel_batches": 0
+    },
+    "training_evaluator_timing": [
+      {
+        "jacobian": false,
+        "zero_probe": false,
+        "samples": 1,
+        "work": 1204,
+        "seconds": 0.014909700024873018
+      },
+      {
+        "jacobian": true,
+        "zero_probe": false,
+        "samples": 744,
+        "work": 28664832,
+        "seconds": 19.598620200093137
+      }
+    ],
+    "milestones": [
+      {
+        "elapsed_seconds": 0.18385889998171479,
+        "stage": "validation",
+        "evaluations": 1
+      },
+      {
+        "elapsed_seconds": 1.4562377999827731,
+        "stage": "validation_complete",
+        "evaluations": 2
+      },
+      {
+        "elapsed_seconds": 1.6754312999837566,
+        "stage": "hr_minimax_prior",
+        "evaluations": 3
+      },
+      {
+        "elapsed_seconds": 26.49283989999094,
+        "stage": "validation",
+        "evaluations": 746
+      },
+      {
+        "elapsed_seconds": 29.83682409999892,
+        "stage": "validation_complete",
+        "evaluations": 747
+      },
+      {
+        "elapsed_seconds": 29.99636299998383,
+        "stage": "hr_minimax_targets_verified",
+        "evaluations": 747
+      },
+      {
+        "elapsed_seconds": 29.99839520000387,
+        "stage": "completed",
+        "evaluations": 747
+      }
+    ],
+    "phase_wall_seconds": {
+      "empty_and_initial_audit_through_complete": 1.4562377999827731,
+      "generated_prior_and_initial_jacobian": 0.21919350000098348,
+      "optimization_including_archive_progress": 24.817408600007184,
+      "final_original_audit_including_archive": 3.3439842000079807,
+      "post_audit_typed_result_and_recording": 0.4919455999915954
+    }
+  },
+  "exploratory_prior_variant": {
+    "state": "completed",
+    "termination_reason": "validated_targets_met",
+    "targets_met": true,
+    "wall_seconds": 60.10725200001616,
+    "cpu_seconds": 59.421875,
+    "evaluations": 735,
+    "validation_evaluations": 2,
+    "audit_physical_evaluations": 756,
+    "audit_wavelength_points": 48758,
+    "min_audited_condition": {
+      "objective_index": 1,
+      "wavelength_nm": 402.5050927958021,
+      "angle_deg": 30.0,
+      "polarization": "p",
+      "metric": "R",
+      "actual": 0.9873549465293822,
+      "target_value": null,
+      "lower_bound": 0.98,
+      "upper_bound": null,
+      "normalized_violation": 0.0,
+      "weighted_normalized_violation": 0.0
+    },
+    "min_training_R": 0.9874180480193034,
+    "layers": 32,
+    "total_thickness_nm": 2569.6458679867465,
+    "cancel_requested": false,
+    "progress_calls": 2517,
+    "run": "coating-hr-performance-optimized-1",
+    "role": "exploratory_static_preparation_only_not_final",
+    "source_base_commit": "ce5ab332241560e43152513622d5c01546239b1c",
+    "request_sha256_canonical": "f9865f384892b80688a5493e4310f128b102bbbf64fecbe62ed29d0f4f3214d3",
+    "runtime_canonical_source_hashes": {
+      "coat_sim/core/film_auto_synthesis.py": "0312ce69c310827b8783e6d2473f8a29d4e3010765f9002ca5081402d0ac8b84",
+      "coat_sim/core/film_optimization_structure.py": "91bfcf0a99e5904b4c2545d19c3437b561dcc32ed4e19ab7bd06f5b1328be2b8",
+      "coat_sim/core/film_optimization_derivatives.py": "1aef8cb6567aaf3f2e4b4d42de9823184a6d3a476f16f0e4f0689610c1df3d8d",
+      "coat_sim/core/film_synthesis_audit.py": "ffe0c325eb1b3c5e2e9fe247345f17eeab7e0629a0db3fc5ea76f238cee0821c"
+    },
+    "thread_environment": {
+      "OPENBLAS_NUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "VECLIB_MAXIMUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1"
+    },
+    "summary_evidence_sha256": "59f8a72f6b55555c6d7b773cd1c7d2d9c9b76ad314c43d1830e3b1bdcd49a443",
+    "work": {
+      "backend": "serial",
+      "requested_workers": 1,
+      "effective_workers": 1,
+      "cleanup_complete": true,
+      "actual_work_complete": true,
+      "serial_evaluator_invocations": 733,
+      "training_evaluator_invocations": 733,
+      "training_physical_evaluations": 2932,
+      "training_wavelength_points": 882532,
+      "incomplete_physical_calls": 0,
+      "serial_unknown_work": 0,
+      "parallel_batches": 0
+    },
+    "training_evaluator_timing": [
+      {
+        "jacobian": false,
+        "zero_probe": false,
+        "samples": 1,
+        "work": 1204,
+        "seconds": 0.01616420000209473
+      },
+      {
+        "jacobian": true,
+        "zero_probe": false,
+        "samples": 732,
+        "work": 28202496,
+        "seconds": 45.396532699407544
+      }
+    ],
+    "milestones": [
+      {
+        "elapsed_seconds": 1.9850852999952622,
+        "stage": "validation_complete",
+        "evaluations": 2
+      },
+      {
+        "elapsed_seconds": 2.050868400023319,
+        "stage": "validation_complete",
+        "evaluations": 2
+      },
+      {
+        "elapsed_seconds": 2.2616099000151735,
+        "stage": "hr_minimax_prior",
+        "evaluations": 3
+      },
+      {
+        "elapsed_seconds": 59.617677700007334,
+        "stage": "validation_complete",
+        "evaluations": 735
+      },
+      {
+        "elapsed_seconds": 59.694743500003824,
+        "stage": "validation_complete",
+        "evaluations": 735
+      },
+      {
+        "elapsed_seconds": 59.76662090001628,
+        "stage": "hr_minimax_targets_verified",
+        "evaluations": 735
+      },
+      {
+        "elapsed_seconds": 59.769056500023,
+        "stage": "completed",
+        "evaluations": 735
+      }
+    ],
+    "phase_wall_seconds_note": "Baseline harness did not capture validation start; evaluator cost is exact, remaining phases are not separately attributed.",
+    "exclusion_note": "Earlier source variant without bidirectional Jacobian/internal error sharing; beginning overlapped final static checking, excluded from confirmation and speed ratio."
+  },
+  "same_host_research_runs": [
+    {
+      "run": "research-samehost-ce5ab33-1",
+      "passed": true,
+      "completed": true,
+      "source_commit": "ce5ab332241560e43152513622d5c01546239b1c",
+      "research_source": {
+        "sha256": "10f4f43c1cbb67d0bd355d990e5cefdec80d7687bab8ce6943d31c6bdb12d910",
+        "git_blob_sha1": "3d6725ddce41abbacdd8da1394bb1736be9e3b1f",
+        "declared_research_commit": "0a631b7428486ab08fe0f27aa8938c50783f5280",
+        "import_scope": "functions imported only; historical __main__ checkout guard not executed; current production helpers loaded"
+      },
+      "source_files": [
+        {
+          "name": "TiO2-Franta.yml",
+          "sha256": "2380783119baf079dfb5ed0eb846ef1f08dd17d719194d1e91610c34760ec174",
+          "pinned_url": "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/TiO2/nk/Franta.yml"
+        },
+        {
+          "name": "MgF2-Franta.yml",
+          "sha256": "c51389d0430c21d8959388605266bc160abe14a04242cfa7ba8d1812bde2e58e",
+          "pinned_url": "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/MgF2/nk/Franta.yml"
+        }
+      ],
+      "nk_equivalence": [
+        {
+          "label": "H",
+          "material_reference": [
+            "builtin_research_TiO2_film",
+            "rii_tio2_franta"
+          ],
+          "points": 305,
+          "max_abs_nk_difference": 4.440900047699198e-16
+        },
+        {
+          "label": "L",
+          "material_reference": [
+            "research_mgf2_franta_2017_c51389d0430c",
+            "ri_mgf2_franta_2017_c51389d0430c"
+          ],
+          "points": 305,
+          "max_abs_nk_difference": 2.220446049250313e-16
+        },
+        {
+          "label": "S",
+          "material_reference": [
+            "builtin_research_fused_silica_method_demonstrator",
+            "ri_sio2_malitson"
+          ],
+          "points": 305,
+          "max_abs_nk_difference": 0.0
+        }
+      ],
+      "interface_equivalence": {
+        "wavelengths": 5,
+        "conditions": 20,
+        "max_abs_R_difference": 8.43769498715119e-15,
+        "max_abs_Jac_per_nm_difference": 1.6826817716975029e-15
+      },
+      "recipe_differences": {
+        "research_best_total_nm_tolerance": 1e-05,
+        "production_best_total_nm_tolerance": 0.0,
+        "research_epigraph_t_bounds": [
+          0.0,
+          1.0
+        ],
+        "production_epigraph_t_bounds": [
+          null,
+          1.0
+        ],
+        "research_soft_no_total_guard": true,
+        "production_soft_total_guard_and_penalty": true,
+        "research_checks_deadline_in_optical_pair_only": true,
+        "stopping_scope_difference": "research 300s covers optimize only; frozen production max_seconds covers whole run including setup/audits; compare optimizer stage separately and report full phase times, never claim identical wall-stop scope",
+        "logical_budget_difference": "original research has no max_evaluations; production frozen request has 4000; report calls and whether either cap binds rather than silently imposing a new research cap",
+        "research_optimization_seconds": 300.0,
+        "research_max_iterations_per_stage": 180,
+        "timing_scope": "setup/probes/bare audit/optimize/final audit separately; never compare native research matrix-audit time to production audit",
+        "production_frozen_limits": {
+          "max_seconds": 300.0,
+          "max_evaluations": 4000,
+          "max_cycles": null
+        }
+      },
+      "stages": [
+        {
+          "stage": "production_generated_first_prior",
+          "wall_seconds": 0.0013956000038888305,
+          "parent_cpu_seconds": 0.0
+        },
+        {
+          "stage": "original_research_import",
+          "wall_seconds": 0.4740538000187371,
+          "parent_cpu_seconds": 0.453125
+        },
+        {
+          "stage": "five_wavelength_production_interface_probe",
+          "wall_seconds": 0.026789299998199567,
+          "parent_cpu_seconds": 0.015625
+        },
+        {
+          "stage": "five_wavelength_research_interface_probe",
+          "wall_seconds": 0.0002628999936860055,
+          "parent_cpu_seconds": 0.0
+        },
+        {
+          "stage": "research_optimizer_stage",
+          "method": "L-BFGS-B",
+          "options": {
+            "maxiter": 180,
+            "ftol": 2e-13,
+            "gtol": 1e-09,
+            "maxls": 25
+          },
+          "success": false,
+          "iterations": 180,
+          "message": "STOP: TOTAL NO. OF ITERATIONS REACHED LIMIT",
+          "wall_seconds": 0.48743199999444187,
+          "parent_cpu_seconds": 0.484375,
+          "optical_calls": 209
+        },
+        {
+          "stage": "research_optimizer_stage",
+          "method": "L-BFGS-B",
+          "options": {
+            "maxiter": 180,
+            "ftol": 2e-13,
+            "gtol": 1e-09,
+            "maxls": 25
+          },
+          "success": false,
+          "iterations": 180,
+          "message": "STOP: TOTAL NO. OF ITERATIONS REACHED LIMIT",
+          "wall_seconds": 0.47281189999193884,
+          "parent_cpu_seconds": 0.453125,
+          "optical_calls": 202
+        },
+        {
+          "stage": "research_optimizer_stage",
+          "method": "L-BFGS-B",
+          "options": {
+            "maxiter": 180,
+            "ftol": 2e-13,
+            "gtol": 1e-09,
+            "maxls": 25
+          },
+          "success": false,
+          "iterations": 180,
+          "message": "STOP: TOTAL NO. OF ITERATIONS REACHED LIMIT",
+          "wall_seconds": 0.6371988999890164,
+          "parent_cpu_seconds": 0.609375,
+          "optical_calls": 205
+        },
+        {
+          "stage": "research_optimizer_stage",
+          "method": "SLSQP",
+          "options": {
+            "maxiter": 180,
+            "ftol": 1e-11
+          },
+          "success": true,
+          "iterations": 105,
+          "message": "Optimization terminated successfully",
+          "wall_seconds": 1.0810474999889266,
+          "parent_cpu_seconds": 1.078125,
+          "optical_calls": 112
+        }
+      ],
+      "optimizer_wall_seconds": 2.699388299981365,
+      "optimizer_cpu_seconds": 2.65625,
+      "optimizer_calls": 732,
+      "bare_audit": {
+        "wall_seconds": 0.30118330000550486,
+        "parent_cpu_seconds": 0.3125,
+        "min_R": 0.021326005406829406,
+        "worst": {
+          "wavelength_nm": 700.0,
+          "angle_deg": 30.0,
+          "polarization": "p"
+        },
+        "score_max_error": 0.9586739945931706,
+        "physical_work": {
+          "physical_evaluations": 3,
+          "wavelength_points": 24004,
+          "dense_points": 12004,
+          "offset_points": 12000,
+          "extra_points": 12000,
+          "unique_condition_points": 24004,
+          "bracket_count": 0,
+          "completed_extrema": 0,
+          "local_coordinate": "lambda=a+(b-a)*t; t in [0,1]",
+          "extrema_xatol": 1e-10,
+          "continuous_certificate": false,
+          "rms_measure": "fixed_dense_grid_only",
+          "objective_status": [
+            {
+              "objective_index": 0,
+              "metric": "R",
+              "wavelength_min_nm": 400.0,
+              "wavelength_max_nm": 700.0,
+              "discrete_line": false,
+              "worst_wavelength_nm": 700.0,
+              "worst_angle_deg": 0.0,
+              "worst_actual": 0.03438543047264539,
+              "max_normalized_error": 0.9456145695273546,
+              "targets_met": false
+            },
+            {
+              "objective_index": 1,
+              "metric": "R",
+              "wavelength_min_nm": 400.0,
+              "wavelength_max_nm": 700.0,
+              "discrete_line": false,
+              "worst_wavelength_nm": 700.0,
+              "worst_angle_deg": 30.0,
+              "worst_actual": 0.021326005406829406,
+              "max_normalized_error": 0.9586739945931706,
+              "targets_met": false
+            }
+          ],
+          "absorption_assumption": {
+            "assume_unknown_k_zero": true,
+            "policy": "unknown_k_zero",
+            "scope": "candidate_active_materials",
+            "affected_materials": [
+              {
+                "material_id": "builtin_research_fused_silica_method_demonstrator",
+                "optical_set_id": "ri_sio2_malitson",
+                "reason": "no_k_source",
+                "assumed_k": 0.0
+              }
+            ],
+            "used_affected_materials": [
+              {
+                "material_id": "builtin_research_fused_silica_method_demonstrator",
+                "optical_set_id": "ri_sio2_malitson",
+                "reason": "no_k_source",
+                "assumed_k": 0.0
+              }
+            ],
+            "conditional_on_assumption": true,
+            "known_k_preserved": true,
+            "source_records_unchanged": true,
+            "wavelength_extrapolation": "error",
+            "measured_absorption_validated": false,
+            "claim": "Finite sampled R/T model evidence conditional on explicit unknown-k=0; not measured absorption or a continuous certificate."
+          }
+        },
+        "physical_constraints_pass": true
+      },
+      "final_audit": {
+        "wall_seconds": 11.60991249998915,
+        "parent_cpu_seconds": 11.421875,
+        "min_R": 0.9873549889573231,
+        "worst": {
+          "wavelength_nm": 403.50221180834427,
+          "angle_deg": 30.0,
+          "polarization": "p"
+        },
+        "score_max_error": 0.0,
+        "physical_work": {
+          "physical_evaluations": 751,
+          "wavelength_points": 24752,
+          "dense_points": 12004,
+          "offset_points": 12000,
+          "extra_points": 12748,
+          "unique_condition_points": 24752,
+          "bracket_count": 36,
+          "completed_extrema": 36,
+          "local_coordinate": "lambda=a+(b-a)*t; t in [0,1]",
+          "extrema_xatol": 1e-10,
+          "continuous_certificate": false,
+          "rms_measure": "fixed_dense_grid_only",
+          "objective_status": [
+            {
+              "objective_index": 0,
+              "metric": "R",
+              "wavelength_min_nm": 400.0,
+              "wavelength_max_nm": 700.0,
+              "discrete_line": false,
+              "worst_wavelength_nm": 400.0,
+              "worst_angle_deg": 0.0,
+              "worst_actual": 0.9874201677774233,
+              "max_normalized_error": 0.0,
+              "targets_met": true
+            },
+            {
+              "objective_index": 1,
+              "metric": "R",
+              "wavelength_min_nm": 400.0,
+              "wavelength_max_nm": 700.0,
+              "discrete_line": false,
+              "worst_wavelength_nm": 400.0,
+              "worst_angle_deg": 0.0,
+              "worst_actual": 0.9874201677774228,
+              "max_normalized_error": 0.0,
+              "targets_met": true
+            }
+          ],
+          "absorption_assumption": {
+            "assume_unknown_k_zero": true,
+            "policy": "unknown_k_zero",
+            "scope": "candidate_active_materials",
+            "affected_materials": [
+              {
+                "material_id": "builtin_research_fused_silica_method_demonstrator",
+                "optical_set_id": "ri_sio2_malitson",
+                "reason": "no_k_source",
+                "assumed_k": 0.0
+              }
+            ],
+            "used_affected_materials": [
+              {
+                "material_id": "builtin_research_fused_silica_method_demonstrator",
+                "optical_set_id": "ri_sio2_malitson",
+                "reason": "no_k_source",
+                "assumed_k": 0.0
+              }
+            ],
+            "conditional_on_assumption": true,
+            "known_k_preserved": true,
+            "source_records_unchanged": true,
+            "wavelength_extrapolation": "error",
+            "measured_absorption_validated": false,
+            "claim": "Finite sampled R/T model evidence conditional on explicit unknown-k=0; not measured absorption or a continuous certificate."
+          }
+        },
+        "physical_constraints_pass": true
+      },
+      "production_source_snapshot_matches_after": true,
+      "request_identity_matches_after": true,
+      "summary_evidence_sha256": "d7ffe3f7acf01ec60fb05a91a1e9aa7ccda60cd65eb10096e326e7dd3bba5567"
+    },
+    {
+      "run": "research-samehost-ce5ab33-2",
+      "passed": true,
+      "completed": true,
+      "source_commit": "ce5ab332241560e43152513622d5c01546239b1c",
+      "research_source": {
+        "sha256": "10f4f43c1cbb67d0bd355d990e5cefdec80d7687bab8ce6943d31c6bdb12d910",
+        "git_blob_sha1": "3d6725ddce41abbacdd8da1394bb1736be9e3b1f",
+        "declared_research_commit": "0a631b7428486ab08fe0f27aa8938c50783f5280",
+        "import_scope": "functions imported only; historical __main__ checkout guard not executed; current production helpers loaded"
+      },
+      "source_files": [
+        {
+          "name": "TiO2-Franta.yml",
+          "sha256": "2380783119baf079dfb5ed0eb846ef1f08dd17d719194d1e91610c34760ec174",
+          "pinned_url": "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/TiO2/nk/Franta.yml"
+        },
+        {
+          "name": "MgF2-Franta.yml",
+          "sha256": "c51389d0430c21d8959388605266bc160abe14a04242cfa7ba8d1812bde2e58e",
+          "pinned_url": "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/MgF2/nk/Franta.yml"
+        }
+      ],
+      "nk_equivalence": [
+        {
+          "label": "H",
+          "material_reference": [
+            "builtin_research_TiO2_film",
+            "rii_tio2_franta"
+          ],
+          "points": 305,
+          "max_abs_nk_difference": 4.440900047699198e-16
+        },
+        {
+          "label": "L",
+          "material_reference": [
+            "research_mgf2_franta_2017_c51389d0430c",
+            "ri_mgf2_franta_2017_c51389d0430c"
+          ],
+          "points": 305,
+          "max_abs_nk_difference": 2.220446049250313e-16
+        },
+        {
+          "label": "S",
+          "material_reference": [
+            "builtin_research_fused_silica_method_demonstrator",
+            "ri_sio2_malitson"
+          ],
+          "points": 305,
+          "max_abs_nk_difference": 0.0
+        }
+      ],
+      "interface_equivalence": {
+        "wavelengths": 5,
+        "conditions": 20,
+        "max_abs_R_difference": 8.43769498715119e-15,
+        "max_abs_Jac_per_nm_difference": 1.6826817716975029e-15
+      },
+      "recipe_differences": {
+        "research_best_total_nm_tolerance": 1e-05,
+        "production_best_total_nm_tolerance": 0.0,
+        "research_epigraph_t_bounds": [
+          0.0,
+          1.0
+        ],
+        "production_epigraph_t_bounds": [
+          null,
+          1.0
+        ],
+        "research_soft_no_total_guard": true,
+        "production_soft_total_guard_and_penalty": true,
+        "research_checks_deadline_in_optical_pair_only": true,
+        "stopping_scope_difference": "research 300s covers optimize only; frozen production max_seconds covers whole run including setup/audits; compare optimizer stage separately and report full phase times, never claim identical wall-stop scope",
+        "logical_budget_difference": "original research has no max_evaluations; production frozen request has 4000; report calls and whether either cap binds rather than silently imposing a new research cap",
+        "research_optimization_seconds": 300.0,
+        "research_max_iterations_per_stage": 180,
+        "timing_scope": "setup/probes/bare audit/optimize/final audit separately; never compare native research matrix-audit time to production audit",
+        "production_frozen_limits": {
+          "max_seconds": 300.0,
+          "max_evaluations": 4000,
+          "max_cycles": null
+        }
+      },
+      "stages": [
+        {
+          "stage": "production_generated_first_prior",
+          "wall_seconds": 0.0015949000080581754,
+          "parent_cpu_seconds": 0.0
+        },
+        {
+          "stage": "original_research_import",
+          "wall_seconds": 0.42841589997988194,
+          "parent_cpu_seconds": 0.421875
+        },
+        {
+          "stage": "five_wavelength_production_interface_probe",
+          "wall_seconds": 0.026555699994787574,
+          "parent_cpu_seconds": 0.015625
+        },
+        {
+          "stage": "five_wavelength_research_interface_probe",
+          "wall_seconds": 0.00026290002278983593,
+          "parent_cpu_seconds": 0.0
+        },
+        {
+          "stage": "research_optimizer_stage",
+          "method": "L-BFGS-B",
+          "options": {
+            "maxiter": 180,
+            "ftol": 2e-13,
+            "gtol": 1e-09,
+            "maxls": 25
+          },
+          "success": false,
+          "iterations": 180,
+          "message": "STOP: TOTAL NO. OF ITERATIONS REACHED LIMIT",
+          "wall_seconds": 0.49992349999956787,
+          "parent_cpu_seconds": 0.5,
+          "optical_calls": 209
+        },
+        {
+          "stage": "research_optimizer_stage",
+          "method": "L-BFGS-B",
+          "options": {
+            "maxiter": 180,
+            "ftol": 2e-13,
+            "gtol": 1e-09,
+            "maxls": 25
+          },
+          "success": false,
+          "iterations": 180,
+          "message": "STOP: TOTAL NO. OF ITERATIONS REACHED LIMIT",
+          "wall_seconds": 0.48548840000876226,
+          "parent_cpu_seconds": 0.5,
+          "optical_calls": 202
+        },
+        {
+          "stage": "research_optimizer_stage",
+          "method": "L-BFGS-B",
+          "options": {
+            "maxiter": 180,
+            "ftol": 2e-13,
+            "gtol": 1e-09,
+            "maxls": 25
+          },
+          "success": false,
+          "iterations": 180,
+          "message": "STOP: TOTAL NO. OF ITERATIONS REACHED LIMIT",
+          "wall_seconds": 0.5774968000187073,
+          "parent_cpu_seconds": 0.578125,
+          "optical_calls": 205
+        },
+        {
+          "stage": "research_optimizer_stage",
+          "method": "SLSQP",
+          "options": {
+            "maxiter": 180,
+            "ftol": 1e-11
+          },
+          "success": true,
+          "iterations": 105,
+          "message": "Optimization terminated successfully",
+          "wall_seconds": 0.7007407999772113,
+          "parent_cpu_seconds": 0.703125,
+          "optical_calls": 112
+        }
+      ],
+      "optimizer_wall_seconds": 2.280383899982553,
+      "optimizer_cpu_seconds": 2.28125,
+      "optimizer_calls": 732,
+      "bare_audit": {
+        "wall_seconds": 0.299387500010198,
+        "parent_cpu_seconds": 0.296875,
+        "min_R": 0.021326005406829406,
+        "worst": {
+          "wavelength_nm": 700.0,
+          "angle_deg": 30.0,
+          "polarization": "p"
+        },
+        "score_max_error": 0.9586739945931706,
+        "physical_work": {
+          "physical_evaluations": 3,
+          "wavelength_points": 24004,
+          "dense_points": 12004,
+          "offset_points": 12000,
+          "extra_points": 12000,
+          "unique_condition_points": 24004,
+          "bracket_count": 0,
+          "completed_extrema": 0,
+          "local_coordinate": "lambda=a+(b-a)*t; t in [0,1]",
+          "extrema_xatol": 1e-10,
+          "continuous_certificate": false,
+          "rms_measure": "fixed_dense_grid_only",
+          "objective_status": [
+            {
+              "objective_index": 0,
+              "metric": "R",
+              "wavelength_min_nm": 400.0,
+              "wavelength_max_nm": 700.0,
+              "discrete_line": false,
+              "worst_wavelength_nm": 700.0,
+              "worst_angle_deg": 0.0,
+              "worst_actual": 0.03438543047264539,
+              "max_normalized_error": 0.9456145695273546,
+              "targets_met": false
+            },
+            {
+              "objective_index": 1,
+              "metric": "R",
+              "wavelength_min_nm": 400.0,
+              "wavelength_max_nm": 700.0,
+              "discrete_line": false,
+              "worst_wavelength_nm": 700.0,
+              "worst_angle_deg": 30.0,
+              "worst_actual": 0.021326005406829406,
+              "max_normalized_error": 0.9586739945931706,
+              "targets_met": false
+            }
+          ],
+          "absorption_assumption": {
+            "assume_unknown_k_zero": true,
+            "policy": "unknown_k_zero",
+            "scope": "candidate_active_materials",
+            "affected_materials": [
+              {
+                "material_id": "builtin_research_fused_silica_method_demonstrator",
+                "optical_set_id": "ri_sio2_malitson",
+                "reason": "no_k_source",
+                "assumed_k": 0.0
+              }
+            ],
+            "used_affected_materials": [
+              {
+                "material_id": "builtin_research_fused_silica_method_demonstrator",
+                "optical_set_id": "ri_sio2_malitson",
+                "reason": "no_k_source",
+                "assumed_k": 0.0
+              }
+            ],
+            "conditional_on_assumption": true,
+            "known_k_preserved": true,
+            "source_records_unchanged": true,
+            "wavelength_extrapolation": "error",
+            "measured_absorption_validated": false,
+            "claim": "Finite sampled R/T model evidence conditional on explicit unknown-k=0; not measured absorption or a continuous certificate."
+          }
+        },
+        "physical_constraints_pass": true
+      },
+      "final_audit": {
+        "wall_seconds": 9.093931800016435,
+        "parent_cpu_seconds": 9.078125,
+        "min_R": 0.9873549889573231,
+        "worst": {
+          "wavelength_nm": 403.50221180834427,
+          "angle_deg": 30.0,
+          "polarization": "p"
+        },
+        "score_max_error": 0.0,
+        "physical_work": {
+          "physical_evaluations": 751,
+          "wavelength_points": 24752,
+          "dense_points": 12004,
+          "offset_points": 12000,
+          "extra_points": 12748,
+          "unique_condition_points": 24752,
+          "bracket_count": 36,
+          "completed_extrema": 36,
+          "local_coordinate": "lambda=a+(b-a)*t; t in [0,1]",
+          "extrema_xatol": 1e-10,
+          "continuous_certificate": false,
+          "rms_measure": "fixed_dense_grid_only",
+          "objective_status": [
+            {
+              "objective_index": 0,
+              "metric": "R",
+              "wavelength_min_nm": 400.0,
+              "wavelength_max_nm": 700.0,
+              "discrete_line": false,
+              "worst_wavelength_nm": 400.0,
+              "worst_angle_deg": 0.0,
+              "worst_actual": 0.9874201677774233,
+              "max_normalized_error": 0.0,
+              "targets_met": true
+            },
+            {
+              "objective_index": 1,
+              "metric": "R",
+              "wavelength_min_nm": 400.0,
+              "wavelength_max_nm": 700.0,
+              "discrete_line": false,
+              "worst_wavelength_nm": 400.0,
+              "worst_angle_deg": 0.0,
+              "worst_actual": 0.9874201677774228,
+              "max_normalized_error": 0.0,
+              "targets_met": true
+            }
+          ],
+          "absorption_assumption": {
+            "assume_unknown_k_zero": true,
+            "policy": "unknown_k_zero",
+            "scope": "candidate_active_materials",
+            "affected_materials": [
+              {
+                "material_id": "builtin_research_fused_silica_method_demonstrator",
+                "optical_set_id": "ri_sio2_malitson",
+                "reason": "no_k_source",
+                "assumed_k": 0.0
+              }
+            ],
+            "used_affected_materials": [
+              {
+                "material_id": "builtin_research_fused_silica_method_demonstrator",
+                "optical_set_id": "ri_sio2_malitson",
+                "reason": "no_k_source",
+                "assumed_k": 0.0
+              }
+            ],
+            "conditional_on_assumption": true,
+            "known_k_preserved": true,
+            "source_records_unchanged": true,
+            "wavelength_extrapolation": "error",
+            "measured_absorption_validated": false,
+            "claim": "Finite sampled R/T model evidence conditional on explicit unknown-k=0; not measured absorption or a continuous certificate."
+          }
+        },
+        "physical_constraints_pass": true
+      },
+      "production_source_snapshot_matches_after": true,
+      "request_identity_matches_after": true,
+      "summary_evidence_sha256": "a5fc1abe3a6f5d08d47628e4248f5098961dafc0575756d9c08ee8c266e0b437"
+    }
+  ],
+  "profiles": {
+    "baseline": {
+      "total_profile_seconds": 216.67434330000003,
+      "total_calls": 684924102,
+      "primitive_calls": 633237240,
+      "self_time_categories": {
+        "other_numpy_builtin_io": {
+          "seconds": 55.24480489999995,
+          "percent": 25.49669889780621
+        },
+        "nk_sampling_validation": {
+          "seconds": 49.5553499,
+          "percent": 22.870889624152372
+        },
+        "deepcopy": {
+          "seconds": 45.68592580000001,
+          "percent": 21.085064850869216
+        },
+        "optics_jacobian_including_preparation": {
+          "seconds": 41.51662280000001,
+          "percent": 19.160839335055687
+        },
+        "json": {
+          "seconds": 16.890331800000006,
+          "percent": 7.795261562931897
+        },
+        "structure_scoring": {
+          "seconds": 3.3519147,
+          "percent": 1.5469827432955692
+        },
+        "orchestration_archive_audit": {
+          "seconds": 2.3818394999999994,
+          "percent": 1.0992715905926085
+        },
+        "design_settings_and_frozen_validation": {
+          "seconds": 1.9921396,
+          "percent": 0.9194164706624958
+        },
+        "scipy_optimizer": {
+          "seconds": 0.055414300000000014,
+          "percent": 0.025574924633912574
+        }
+      },
+      "top_self": [
+        {
+          "file": "film_optimization_derivatives.py",
+          "line": 93,
+          "function": "_analytic_one_polarization",
+          "primitive_calls": 3698,
+          "calls": 3698,
+          "self_seconds": 32.3147296,
+          "cumulative_seconds": 35.252946800000004
+        },
+        {
+          "file": "copy.py",
+          "line": 119,
+          "function": "deepcopy",
+          "primitive_calls": 8524,
+          "calls": 48594254,
+          "self_seconds": 29.579037900000003,
+          "cumulative_seconds": 62.49427180000001
+        },
+        {
+          "file": "encoder.py",
+          "line": 207,
+          "function": "iterencode",
+          "primitive_calls": 5984,
+          "calls": 5984,
+          "self_seconds": 16.662772800000003,
+          "cumulative_seconds": 17.091395300000002
+        },
+        {
+          "file": "optical_constants.py",
+          "line": 24,
+          "function": "_number",
+          "primitive_calls": 50142594,
+          "calls": 50142594,
+          "self_seconds": 13.491305100000002,
+          "cumulative_seconds": 19.758273600000003
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'get' of 'dict' objects>",
+          "primitive_calls": 101695363,
+          "calls": 101695363,
+          "self_seconds": 9.693670200000001,
+          "cumulative_seconds": 9.693670200000001
+        },
+        {
+          "file": "optical_constants.py",
+          "line": 795,
+          "function": "_evaluate_normalized_optical_set",
+          "primitive_calls": 2800226,
+          "calls": 2800226,
+          "self_seconds": 9.019291200000001,
+          "cumulative_seconds": 36.4149472
+        },
+        {
+          "file": "optical_constants.py",
+          "line": 594,
+          "function": "_normalized_endpoint",
+          "primitive_calls": 6500650,
+          "calls": 6500650,
+          "self_seconds": 8.0157617,
+          "cumulative_seconds": 12.8151411
+        },
+        {
+          "file": "copy.py",
+          "line": 192,
+          "function": "_deepcopy_list",
+          "primitive_calls": 47824,
+          "calls": 61352,
+          "self_seconds": 6.5364189,
+          "cumulative_seconds": 36.071043100000004
+        },
+        {
+          "file": "optical_constants.py",
+          "line": 440,
+          "function": "validate_optical_set",
+          "primitive_calls": 11090,
+          "calls": 11090,
+          "self_seconds": 6.509532,
+          "cumulative_seconds": 31.305402800000003
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method math.isfinite>",
+          "primitive_calls": 74661134,
+          "calls": 74661134,
+          "self_seconds": 4.667363900000001,
+          "cumulative_seconds": 4.667363900000001
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method builtins.isinstance>",
+          "primitive_calls": 59910060,
+          "calls": 60888332,
+          "self_seconds": 4.50884,
+          "cumulative_seconds": 5.3717213
+        },
+        {
+          "file": "copy.py",
+          "line": 218,
+          "function": "_deepcopy_dict",
+          "primitive_calls": 8527,
+          "calls": 1149375,
+          "self_seconds": 4.1316052,
+          "cumulative_seconds": 61.85410830000001
+        }
+      ],
+      "top_cumulative": [
+        {
+          "file": "threading.py",
+          "line": 641,
+          "function": "wait",
+          "primitive_calls": 429,
+          "calls": 430,
+          "self_seconds": 0.0361309,
+          "cumulative_seconds": 230.0399374
+        },
+        {
+          "file": "film_synthesis_jobs.py",
+          "line": 588,
+          "function": "execute_job",
+          "primitive_calls": 1,
+          "calls": 2,
+          "self_seconds": 0.0022959,
+          "cumulative_seconds": 218.7655674
+        },
+        {
+          "file": "threading.py",
+          "line": 1059,
+          "function": "join",
+          "primitive_calls": 1,
+          "calls": 1,
+          "self_seconds": 4.4e-06,
+          "cumulative_seconds": 218.765474
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'join' of '_thread._ThreadHandle' objects>",
+          "primitive_calls": 1,
+          "calls": 1,
+          "self_seconds": 0.0002423,
+          "cumulative_seconds": 218.76546810000002
+        },
+        {
+          "file": "threading.py",
+          "line": 1001,
+          "function": "_bootstrap",
+          "primitive_calls": 1,
+          "calls": 1,
+          "self_seconds": 0.0001675,
+          "cumulative_seconds": 218.76522290000003
+        },
+        {
+          "file": "threading.py",
+          "line": 1028,
+          "function": "_bootstrap_inner",
+          "primitive_calls": 1,
+          "calls": 1,
+          "self_seconds": 2.9e-06,
+          "cumulative_seconds": 218.76505540000002
+        },
+        {
+          "file": "threading.py",
+          "line": 984,
+          "function": "run",
+          "primitive_calls": 1,
+          "calls": 1,
+          "self_seconds": 6.5000000000000004e-06,
+          "cumulative_seconds": 218.76505020000002
+        },
+        {
+          "file": "film_synthesis_jobs.py",
+          "line": 622,
+          "function": "heartbeat",
+          "primitive_calls": 1,
+          "calls": 1,
+          "self_seconds": 0.00016470000000000002,
+          "cumulative_seconds": 218.7650203
+        },
+        {
+          "file": "film_auto_synthesis.py",
+          "line": 490,
+          "function": "synthesize_film_design",
+          "primitive_calls": 1,
+          "calls": 1,
+          "self_seconds": 0.0107617,
+          "cumulative_seconds": 217.61476820000001
+        },
+        {
+          "file": "film_auto_synthesis.py",
+          "line": 614,
+          "function": "evaluate",
+          "primitive_calls": 735,
+          "calls": 735,
+          "self_seconds": 0.11101670000000001,
+          "cumulative_seconds": 184.7642266
+        },
+        {
+          "file": "film_synthesis_hr_minimax.py",
+          "line": 101,
+          "function": "refine_hr_minimax",
+          "primitive_calls": 1,
+          "calls": 1,
+          "self_seconds": 0.0008365,
+          "cumulative_seconds": 172.21436150000002
+        },
+        {
+          "file": "_minimize.py",
+          "line": 54,
+          "function": "minimize",
+          "primitive_calls": 4,
+          "calls": 4,
+          "self_seconds": 0.0002809,
+          "cumulative_seconds": 172.01630880000002
+        },
+        {
+          "file": "film_synthesis_hr_minimax.py",
+          "line": 177,
+          "function": "data",
+          "primitive_calls": 1466,
+          "calls": 1466,
+          "self_seconds": 0.0471955,
+          "cumulative_seconds": 169.06755760000001
+        },
+        {
+          "file": "film_optimization_structure.py",
+          "line": 489,
+          "function": "evaluate_frozen_structure_candidate",
+          "primitive_calls": 1489,
+          "calls": 1489,
+          "self_seconds": 3.3519147,
+          "cumulative_seconds": 165.1519345
+        },
+        {
+          "file": "film_synthesis_parallel.py",
+          "line": 379,
+          "function": "serial",
+          "primitive_calls": 733,
+          "calls": 733,
+          "self_seconds": 0.014423700000000001,
+          "cumulative_seconds": 140.3777072
+        },
+        {
+          "file": "film_auto_synthesis.py",
+          "line": 648,
+          "function": "physical_call",
+          "primitive_calls": 733,
+          "calls": 733,
+          "self_seconds": 0.18061960000000002,
+          "cumulative_seconds": 140.147385
+        },
+        {
+          "file": "_lbfgsb_py.py",
+          "line": 272,
+          "function": "_minimize_lbfgsb",
+          "primitive_calls": 3,
+          "calls": 3,
+          "self_seconds": 0.006990100000000001,
+          "cumulative_seconds": 134.4102699
+        },
+        {
+          "file": "_differentiable_functions.py",
+          "line": 409,
+          "function": "fun_and_grad",
+          "primitive_calls": 617,
+          "calls": 617,
+          "self_seconds": 0.0022529,
+          "cumulative_seconds": 134.3825641
+        },
+        {
+          "file": "_differentiable_functions.py",
+          "line": 360,
+          "function": "_update_fun",
+          "primitive_calls": 739,
+          "calls": 739,
+          "self_seconds": 0.0021131,
+          "cumulative_seconds": 134.311315
+        },
+        {
+          "file": "_util.py",
+          "line": 541,
+          "function": "__call__",
+          "primitive_calls": 735,
+          "calls": 735,
+          "self_seconds": 0.0033968,
+          "cumulative_seconds": 134.3092019
+        }
+      ],
+      "qualification": {
+        "state": "completed",
+        "termination_reason": "validated_targets_met",
+        "targets_met": true,
+        "wall_seconds": 218.89549830000033,
+        "cpu_seconds": 217.0625,
+        "evaluations": 735,
+        "validation_evaluations": 2,
+        "audit_physical_evaluations": 756,
+        "audit_wavelength_points": 48758,
+        "min_audited_condition": {
+          "objective_index": 1,
+          "wavelength_nm": 402.5050927958021,
+          "angle_deg": 30.0,
+          "polarization": "p",
+          "metric": "R",
+          "actual": 0.9873549465293822,
+          "target_value": null,
+          "lower_bound": 0.98,
+          "upper_bound": null,
+          "normalized_violation": 0.0,
+          "weighted_normalized_violation": 0.0
+        },
+        "min_training_R": 0.9874180480193034,
+        "layers": 32,
+        "total_thickness_nm": 2569.6458679867465,
+        "cancel_requested": false,
+        "progress_calls": 2672,
+        "run": "coating-hr-performance-ce5-profile-1",
+        "role": "profile_not_benchmark",
+        "source_base_commit": "ce5ab332241560e43152513622d5c01546239b1c",
+        "request_sha256_canonical": "f9865f384892b80688a5493e4310f128b102bbbf64fecbe62ed29d0f4f3214d3",
+        "runtime_canonical_source_hashes": {
+          "coat_sim/core/film_auto_synthesis.py": "63de3666f0320fe4160a75ba066dd345ceb566c25e1ae773ff605f83b0bce6e5",
+          "coat_sim/core/film_optimization_structure.py": "a9dd4750b26f30034b7cfec2c464fe179c88aebcd9e879694c8e94ae34b02dac",
+          "coat_sim/core/film_optimization_derivatives.py": "2af5f48f1b54c77fcddc71d9732b161c8e19f89e7a79477f8a296e2391302ef9",
+          "coat_sim/core/film_synthesis_audit.py": "55b5cf71b094a295296bfd46556d733c40f709c3faeda2c4b27ffbcb6b4ece12"
+        },
+        "thread_environment": {
+          "OPENBLAS_NUM_THREADS": "1",
+          "OMP_NUM_THREADS": "1",
+          "MKL_NUM_THREADS": "1",
+          "VECLIB_MAXIMUM_THREADS": "1",
+          "NUMEXPR_NUM_THREADS": "1"
+        },
+        "summary_evidence_sha256": "6092158e2a9d848ba908634990aa15afd68b4b47470abe0d2ff8c68b829da7a5",
+        "work": {
+          "backend": "serial",
+          "requested_workers": 1,
+          "effective_workers": 1,
+          "cleanup_complete": true,
+          "actual_work_complete": true,
+          "serial_evaluator_invocations": 733,
+          "training_evaluator_invocations": 733,
+          "training_physical_evaluations": 2932,
+          "training_wavelength_points": 882532,
+          "incomplete_physical_calls": 0,
+          "serial_unknown_work": 0,
+          "parallel_batches": 0
+        },
+        "training_evaluator_timing": [
+          {
+            "jacobian": false,
+            "zero_probe": false,
+            "samples": 1,
+            "work": 1204,
+            "seconds": 0.07085310001275502
+          },
+          {
+            "jacobian": true,
+            "zero_probe": false,
+            "samples": 732,
+            "work": 28202496,
+            "seconds": 140.2823584000871
+          }
+        ],
+        "milestones": [
+          {
+            "elapsed_seconds": 7.6018296999973245,
+            "stage": "validation_complete",
+            "evaluations": 2
+          },
+          {
+            "elapsed_seconds": 8.238617399998475,
+            "stage": "validation_complete",
+            "evaluations": 2
+          },
+          {
+            "elapsed_seconds": 8.923340999986976,
+            "stage": "hr_minimax_prior",
+            "evaluations": 3
+          },
+          {
+            "elapsed_seconds": 216.74684649999836,
+            "stage": "validation_complete",
+            "evaluations": 735
+          },
+          {
+            "elapsed_seconds": 216.89277850001235,
+            "stage": "validation_complete",
+            "evaluations": 735
+          },
+          {
+            "elapsed_seconds": 217.54701330000535,
+            "stage": "hr_minimax_targets_verified",
+            "evaluations": 735
+          },
+          {
+            "elapsed_seconds": 217.55006680000224,
+            "stage": "completed",
+            "evaluations": 735
+          },
+          {
+            "elapsed_seconds": 217.9139667999989,
+            "stage": "completed",
+            "evaluations": 735
+          }
+        ],
+        "phase_wall_seconds_note": "Baseline harness did not capture validation start; evaluator cost is exact, remaining phases are not separately attributed."
+      },
+      "selected_functions": [
+        {
+          "file": "film_synthesis_jobs.py",
+          "line": 212,
+          "function": "_json_snapshot",
+          "calls": 10,
+          "self_seconds": 0.0011122,
+          "cumulative_seconds": 1.0008971
+        },
+        {
+          "file": "film_optimization_derivatives.py",
+          "line": 93,
+          "function": "_analytic_one_polarization",
+          "calls": 3698,
+          "self_seconds": 32.3147296,
+          "cumulative_seconds": 35.252946800000004
+        },
+        {
+          "file": "film_optimization_derivatives.py",
+          "line": 52,
+          "function": "_checked_material_rows",
+          "calls": 3698,
+          "self_seconds": 0.0913883,
+          "cumulative_seconds": 12.3080595
+        },
+        {
+          "file": "film_optimization.py",
+          "line": 155,
+          "function": "_checked_frozen_snapshot",
+          "calls": 1491,
+          "self_seconds": 0.0912416,
+          "cumulative_seconds": 27.172676600000003
+        },
+        {
+          "file": "film_synthesis_cli.py",
+          "line": 34,
+          "function": "_atomic_json",
+          "calls": 2,
+          "self_seconds": 0.0044097,
+          "cumulative_seconds": 0.18683650000000002
+        },
+        {
+          "file": "optical_constants.py",
+          "line": 769,
+          "function": "prepare_optical_set",
+          "calls": 11090,
+          "self_seconds": 0.035526,
+          "cumulative_seconds": 31.3470091
+        },
+        {
+          "file": "film_optimization_derivatives.py",
+          "line": 328,
+          "function": "index_series",
+          "calls": 121650,
+          "self_seconds": 1.0826761,
+          "cumulative_seconds": 70.8631513
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method scipy.optimize._slsqplib.slsqp>",
+          "calls": 229,
+          "self_seconds": 0.5141349000000001,
+          "cumulative_seconds": 0.5141349000000001
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method scipy.optimize._lbfgsb.setulb>",
+          "calls": 1160,
+          "self_seconds": 0.0174354,
+          "cumulative_seconds": 0.0174354
+        }
+      ]
+    },
+    "optimized": {
+      "total_profile_seconds": 64.15850460000009,
+      "total_calls": 169489192,
+      "primitive_calls": 151094526,
+      "self_time_categories": {
+        "other_numpy_builtin_io": {
+          "seconds": 25.904286600000027,
+          "percent": 40.3754525787373
+        },
+        "deepcopy": {
+          "seconds": 15.455064300000002,
+          "percent": 24.08887862389483
+        },
+        "optics_jacobian_including_preparation": {
+          "seconds": 12.883519599999994,
+          "percent": 20.080766658018362
+        },
+        "structure_scoring": {
+          "seconds": 3.3326151,
+          "percent": 5.19434659641365
+        },
+        "orchestration_archive_audit": {
+          "seconds": 3.2562505000000033,
+          "percent": 5.075321690088143
+        },
+        "design_settings_and_frozen_validation": {
+          "seconds": 1.8047572000000003,
+          "percent": 2.8129664356297948
+        },
+        "nk_sampling_validation": {
+          "seconds": 0.9829240000000005,
+          "percent": 1.5320244854958778
+        },
+        "json": {
+          "seconds": 0.49103110000000005,
+          "percent": 0.7653406248499118
+        },
+        "scipy_optimizer": {
+          "seconds": 0.0480562,
+          "percent": 0.07490230687203382
+        }
+      },
+      "top_self": [
+        {
+          "file": "copy.py",
+          "line": 119,
+          "function": "deepcopy",
+          "primitive_calls": 7109,
+          "calls": 15288259,
+          "self_seconds": 10.0796691,
+          "cumulative_seconds": 21.0559945
+        },
+        {
+          "file": "film_optimization_derivatives.py",
+          "line": 191,
+          "function": "_analytic_one_polarization",
+          "primitive_calls": 3791,
+          "calls": 3791,
+          "self_seconds": 6.1453829,
+          "cumulative_seconds": 8.8060142
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'get' of 'dict' objects>",
+          "primitive_calls": 32438219,
+          "calls": 32438219,
+          "self_seconds": 3.3936894000000004,
+          "cumulative_seconds": 3.3936894000000004
+        },
+        {
+          "file": "film_optimization_structure.py",
+          "line": 534,
+          "function": "evaluate_frozen_structure_candidate",
+          "primitive_calls": 1525,
+          "calls": 1525,
+          "self_seconds": 3.3124782,
+          "cumulative_seconds": 35.810996
+        },
+        {
+          "file": "copy.py",
+          "line": 192,
+          "function": "_deepcopy_list",
+          "primitive_calls": 45804,
+          "calls": 46012,
+          "self_seconds": 2.5727979000000003,
+          "cumulative_seconds": 16.329761700000002
+        },
+        {
+          "file": "film_optics.py",
+          "line": 166,
+          "function": "_interface_many",
+          "primitive_calls": 249438,
+          "calls": 249438,
+          "self_seconds": 2.3880117000000003,
+          "cumulative_seconds": 2.9581341
+        },
+        {
+          "file": "film_optics.py",
+          "line": 183,
+          "function": "_coherent_regular_many",
+          "primitive_calls": 3791,
+          "calls": 3791,
+          "self_seconds": 2.3609103,
+          "cumulative_seconds": 4.1791098
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method numpy.asarray>",
+          "primitive_calls": 189788,
+          "calls": 189788,
+          "self_seconds": 1.888589,
+          "cumulative_seconds": 1.888589
+        },
+        {
+          "file": "film_optimization_scoring.py",
+          "line": 8,
+          "function": "_finite_float",
+          "primitive_calls": 4921815,
+          "calls": 4921815,
+          "self_seconds": 1.5848507,
+          "cumulative_seconds": 2.3476052000000003
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'append' of 'list' objects>",
+          "primitive_calls": 14806229,
+          "calls": 14806229,
+          "self_seconds": 1.4359653000000001,
+          "cumulative_seconds": 1.4359653000000001
+        },
+        {
+          "file": "copy.py",
+          "line": 218,
+          "function": "_deepcopy_dict",
+          "primitive_calls": 7112,
+          "calls": 546452,
+          "self_seconds": 1.3436365000000001,
+          "cumulative_seconds": 21.035486000000002
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method builtins.id>",
+          "primitive_calls": 16684388,
+          "calls": 16684388,
+          "self_seconds": 1.2749906,
+          "cumulative_seconds": 1.2749906
+        }
+      ],
+      "top_cumulative": [
+        {
+          "file": "threading.py",
+          "line": 641,
+          "function": "wait",
+          "primitive_calls": 128,
+          "calls": 130,
+          "self_seconds": 0.042868300000000005,
+          "cumulative_seconds": 90.1222437
+        },
+        {
+          "file": "film_synthesis_jobs.py",
+          "line": 588,
+          "function": "execute_job",
+          "primitive_calls": 1,
+          "calls": 2,
+          "self_seconds": 0.0023227,
+          "cumulative_seconds": 65.54167580000001
+        },
+        {
+          "file": "threading.py",
+          "line": 1059,
+          "function": "join",
+          "primitive_calls": 1,
+          "calls": 1,
+          "self_seconds": 4.9000000000000005e-06,
+          "cumulative_seconds": 65.5415952
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<method 'join' of '_thread._ThreadHandle' objects>",
+          "primitive_calls": 1,
+          "calls": 1,
+          "self_seconds": 0.0003081,
+          "cumulative_seconds": 65.5415888
+        },
+        {
+          "file": "threading.py",
+          "line": 1001,
+          "function": "_bootstrap",
+          "primitive_calls": 1,
+          "calls": 1,
+          "self_seconds": 0.00015240000000000002,
+          "cumulative_seconds": 65.54127770000001
+        },
+        {
+          "file": "threading.py",
+          "line": 1028,
+          "function": "_bootstrap_inner",
+          "primitive_calls": 1,
+          "calls": 1,
+          "self_seconds": 5e-06,
+          "cumulative_seconds": 65.5411253
+        },
+        {
+          "file": "threading.py",
+          "line": 984,
+          "function": "run",
+          "primitive_calls": 1,
+          "calls": 1,
+          "self_seconds": 9.4e-06,
+          "cumulative_seconds": 65.5411146
+        },
+        {
+          "file": "film_synthesis_jobs.py",
+          "line": 622,
+          "function": "heartbeat",
+          "primitive_calls": 1,
+          "calls": 1,
+          "self_seconds": 0.00010460000000000001,
+          "cumulative_seconds": 65.54108450000001
+        },
+        {
+          "file": "film_auto_synthesis.py",
+          "line": 511,
+          "function": "synthesize_film_design",
+          "primitive_calls": 1,
+          "calls": 1,
+          "self_seconds": 0.005504,
+          "cumulative_seconds": 64.5328168
+        },
+        {
+          "file": "film_synthesis_hr_minimax.py",
+          "line": 101,
+          "function": "refine_hr_minimax",
+          "primitive_calls": 1,
+          "calls": 1,
+          "self_seconds": 0.0005256,
+          "cumulative_seconds": 49.06214730000001
+        },
+        {
+          "file": "_minimize.py",
+          "line": 54,
+          "function": "minimize",
+          "primitive_calls": 4,
+          "calls": 4,
+          "self_seconds": 0.0002198,
+          "cumulative_seconds": 49.0222349
+        },
+        {
+          "file": "film_synthesis_hr_minimax.py",
+          "line": 177,
+          "function": "data",
+          "primitive_calls": 1482,
+          "calls": 1482,
+          "self_seconds": 0.0357506,
+          "cumulative_seconds": 47.698958700000006
+        },
+        {
+          "file": "film_optimization_structure.py",
+          "line": 511,
+          "function": "evaluate",
+          "primitive_calls": 1525,
+          "calls": 1525,
+          "self_seconds": 0.0196674,
+          "cumulative_seconds": 35.9428999
+        },
+        {
+          "file": "film_optimization_structure.py",
+          "line": 534,
+          "function": "evaluate_frozen_structure_candidate",
+          "primitive_calls": 1525,
+          "calls": 1525,
+          "self_seconds": 3.3124782,
+          "cumulative_seconds": 35.810996
+        },
+        {
+          "file": "film_auto_synthesis.py",
+          "line": 637,
+          "function": "evaluate",
+          "primitive_calls": 754,
+          "calls": 754,
+          "self_seconds": 0.035343700000000006,
+          "cumulative_seconds": 35.1357724
+        },
+        {
+          "file": "_lbfgsb_py.py",
+          "line": 272,
+          "function": "_minimize_lbfgsb",
+          "primitive_calls": 3,
+          "calls": 3,
+          "self_seconds": 0.0065369,
+          "cumulative_seconds": 34.9207683
+        },
+        {
+          "file": "_differentiable_functions.py",
+          "line": 409,
+          "function": "fun_and_grad",
+          "primitive_calls": 607,
+          "calls": 607,
+          "self_seconds": 0.0024226,
+          "cumulative_seconds": 34.893896000000005
+        },
+        {
+          "file": "_differentiable_functions.py",
+          "line": 360,
+          "function": "_update_fun",
+          "primitive_calls": 758,
+          "calls": 758,
+          "self_seconds": 0.0020959,
+          "cumulative_seconds": 34.822377100000004
+        },
+        {
+          "file": "_util.py",
+          "line": 541,
+          "function": "__call__",
+          "primitive_calls": 754,
+          "calls": 754,
+          "self_seconds": 0.0034388,
+          "cumulative_seconds": 34.783761000000005
+        },
+        {
+          "file": "film_synthesis_hr_minimax.py",
+          "line": 231,
+          "function": "loss",
+          "primitive_calls": 607,
+          "calls": 607,
+          "self_seconds": 0.18352030000000003,
+          "cumulative_seconds": 34.5154845
+        }
+      ],
+      "qualification": {
+        "state": "completed",
+        "termination_reason": "validated_targets_met",
+        "targets_met": true,
+        "wall_seconds": 65.69218640000327,
+        "cpu_seconds": 65.171875,
+        "evaluations": 754,
+        "validation_evaluations": 2,
+        "audit_physical_evaluations": 773,
+        "audit_wavelength_points": 48775,
+        "min_audited_condition": {
+          "objective_index": 1,
+          "wavelength_nm": 402.50509240715303,
+          "angle_deg": 30.0,
+          "polarization": "p",
+          "metric": "R",
+          "actual": 0.9873549455679516,
+          "target_value": null,
+          "lower_bound": 0.98,
+          "upper_bound": null,
+          "normalized_violation": 0.0,
+          "weighted_normalized_violation": 0.0
+        },
+        "min_training_R": 0.9874180480202731,
+        "layers": 32,
+        "total_thickness_nm": 2569.6454496228444,
+        "cancel_requested": false,
+        "progress_calls": 2590,
+        "run": "coating-hr-performance-optimized-profile-1",
+        "role": "profile_not_benchmark",
+        "source_base_commit": "ce5ab332241560e43152513622d5c01546239b1c",
+        "request_sha256_canonical": "f9865f384892b80688a5493e4310f128b102bbbf64fecbe62ed29d0f4f3214d3",
+        "runtime_canonical_source_hashes": {
+          "coat_sim/core/film_auto_synthesis.py": "5cdb28fb582c7c744696edd20b146889249fecd92306ee3dd0ca93667b60505d",
+          "coat_sim/core/film_optimization_structure.py": "91bfcf0a99e5904b4c2545d19c3437b561dcc32ed4e19ab7bd06f5b1328be2b8",
+          "coat_sim/core/film_optimization_derivatives.py": "c5792fa799bc334d91b66079dfe6dcea351ce4cdaf0480c45be3814c7c5dc1a3",
+          "coat_sim/core/film_synthesis_audit.py": "ffe0c325eb1b3c5e2e9fe247345f17eeab7e0629a0db3fc5ea76f238cee0821c"
+        },
+        "thread_environment": {
+          "OPENBLAS_NUM_THREADS": "1",
+          "OMP_NUM_THREADS": "1",
+          "MKL_NUM_THREADS": "1",
+          "VECLIB_MAXIMUM_THREADS": "1",
+          "NUMEXPR_NUM_THREADS": "1"
+        },
+        "summary_evidence_sha256": "1e17b13d283b7bafc57e4a85c8d519b6f0713e15d94d1ad175813ecac341ddc2",
+        "work": {
+          "backend": "serial",
+          "requested_workers": 1,
+          "effective_workers": 1,
+          "cleanup_complete": true,
+          "actual_work_complete": true,
+          "serial_evaluator_invocations": 752,
+          "training_evaluator_invocations": 752,
+          "training_physical_evaluations": 3008,
+          "training_wavelength_points": 905408,
+          "incomplete_physical_calls": 0,
+          "serial_unknown_work": 0,
+          "parallel_batches": 0
+        },
+        "training_evaluator_timing": [
+          {
+            "jacobian": false,
+            "zero_probe": false,
+            "samples": 1,
+            "work": 1204,
+            "seconds": 0.05860819999361411
+          },
+          {
+            "jacobian": true,
+            "zero_probe": false,
+            "samples": 751,
+            "work": 28934528,
+            "seconds": 30.397294999740552
+          }
+        ],
+        "milestones": [
+          {
+            "elapsed_seconds": 0.7710917000076734,
+            "stage": "validation",
+            "evaluations": 1
+          },
+          {
+            "elapsed_seconds": 1.0755873000016436,
+            "stage": "validation",
+            "evaluations": 1
+          },
+          {
+            "elapsed_seconds": 4.847688499983633,
+            "stage": "validation_complete",
+            "evaluations": 2
+          },
+          {
+            "elapsed_seconds": 5.17066239999258,
+            "stage": "validation_complete",
+            "evaluations": 2
+          },
+          {
+            "elapsed_seconds": 6.076613799988991,
+            "stage": "hr_minimax_prior",
+            "evaluations": 3
+          },
+          {
+            "elapsed_seconds": 55.18897419999121,
+            "stage": "validation",
+            "evaluations": 753
+          },
+          {
+            "elapsed_seconds": 63.498149599996395,
+            "stage": "validation_complete",
+            "evaluations": 754
+          },
+          {
+            "elapsed_seconds": 64.23081320000347,
+            "stage": "validation_complete",
+            "evaluations": 754
+          },
+          {
+            "elapsed_seconds": 64.33703699999023,
+            "stage": "hr_minimax_targets_verified",
+            "evaluations": 754
+          },
+          {
+            "elapsed_seconds": 64.34013070000219,
+            "stage": "completed",
+            "evaluations": 754
+          },
+          {
+            "elapsed_seconds": 65.2442466999928,
+            "stage": "completed",
+            "evaluations": 754
+          }
+        ],
+        "phase_wall_seconds_note": "Baseline harness did not capture validation start; evaluator cost is exact, remaining phases are not separately attributed."
+      },
+      "selected_functions": [
+        {
+          "file": "film_optimization_derivatives.py",
+          "line": 56,
+          "function": "_checked_material_rows",
+          "calls": 3,
+          "self_seconds": 4.4800000000000005e-05,
+          "cumulative_seconds": 0.0090317
+        },
+        {
+          "file": "film_optimization_derivatives.py",
+          "line": 191,
+          "function": "_analytic_one_polarization",
+          "calls": 3791,
+          "self_seconds": 6.1453829,
+          "cumulative_seconds": 8.8060142
+        },
+        {
+          "file": "film_auto_synthesis.py",
+          "line": 268,
+          "function": "_copy_internal_candidate",
+          "calls": 444,
+          "self_seconds": 0.0032164000000000003,
+          "cumulative_seconds": 15.133557600000001
+        },
+        {
+          "file": "film_synthesis_jobs.py",
+          "line": 212,
+          "function": "_json_snapshot",
+          "calls": 10,
+          "self_seconds": 0.0012192000000000001,
+          "cumulative_seconds": 0.9120417000000001
+        },
+        {
+          "file": "film_synthesis_cli.py",
+          "line": 34,
+          "function": "_atomic_json",
+          "calls": 2,
+          "self_seconds": 0.0044708000000000005,
+          "cumulative_seconds": 0.1586751
+        },
+        {
+          "file": "film_optimization.py",
+          "line": 155,
+          "function": "_checked_frozen_snapshot",
+          "calls": 5,
+          "self_seconds": 0.00011460000000000001,
+          "cumulative_seconds": 0.0761787
+        },
+        {
+          "file": "optical_constants.py",
+          "line": 769,
+          "function": "prepare_optical_set",
+          "calls": 27,
+          "self_seconds": 8.09e-05,
+          "cumulative_seconds": 0.0774191
+        },
+        {
+          "file": "film_optimization_derivatives.py",
+          "line": 420,
+          "function": "index_series",
+          "calls": 124719,
+          "self_seconds": 0.0412521,
+          "cumulative_seconds": 0.9033960000000001
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method scipy.optimize._slsqplib.slsqp>",
+          "calls": 265,
+          "self_seconds": 0.4670553,
+          "cumulative_seconds": 0.4670553
+        },
+        {
+          "file": "~",
+          "line": 0,
+          "function": "<built-in method scipy.optimize._lbfgsb.setulb>",
+          "calls": 1150,
+          "self_seconds": 0.0177648,
+          "cumulative_seconds": 0.0177648
+        }
+      ]
+    },
+    "interpretation": "Profile includes probe overhead, not timing confirmation. Self-time categories are disjoint; cumulative times overlap/nest and are not added. Heartbeat thread wait entries are not CPU hotspots. Python/native attribution is profiler-dependent."
+  },
+  "comparison": {
+    "baseline_median_wall_seconds": 102.47150250000414,
+    "optimized_median_wall_seconds": 27.96948459999112,
+    "speedup_median": 3.663689337344338,
+    "wall_reduction_fraction": 0.7270510930588727,
+    "predeclared_half_wall_threshold_pass": true,
+    "all_original_audits_pass": true,
+    "profile_timing_excluded": true
+  },
+  "regression": {
+    "passed": 290,
+    "junit_sha256": "5ec5626fd7ac17f65ea35283116b7d3505c47fbcd907472ecc4c629045610a27",
+    "new_static_diagnostics": 0,
+    "static_baseline_changed": false,
+    "independent_reviews": [
+      "prepared optics ownership and contract",
+      "private internal immutable scalar records plus observer isolation",
+      "bidirectional complex R/T Jacobian and domain"
+    ]
+  },
+  "limitations": [
+    "Finite sampled/extremum audit is not a continuous spectral certificate.",
+    "This is one qualified material/target case; no TFCalc execution or timing was measured.",
+    "Research optimizer and full production have different responsibilities and stop scopes; their total times are not substituted.",
+    "This HR minimax trajectory is sequential; these runs do not validate19-worker utilization or universal parallel speedup.",
+    "Paired timing math-thread environment was process-only. Product defaults/system/GPU/user project settings were not changed.",
+    "Remaining complete scoring, response construction, archives and audits have real cost; full production still does more than the research optimizer."
+  ]
+}

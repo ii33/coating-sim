@@ -28,7 +28,7 @@ from .film_optimization import (
     _validate_optimization_controls,
     freeze_film_optimization_request,
 )
-from .film_optimization_derivatives import simulate_with_thickness_jacobian
+from .film_optimization_derivatives import _PreparedMaterialData, simulate_with_thickness_jacobian
 from .film_optimization_needle import (
     FilmNeedleMaterialReference,
     _candidate_payload_from_materials,
@@ -486,6 +486,51 @@ def film_structure_request_from_payload(payload: Mapping[str, Any]) -> FilmStruc
     return request
 
 
+class _PreparedStructureEvaluator:
+    """Run-owned static optics, never a candidate/score or a public trust token.
+
+    Construction independently copies and verifies the complete frozen input.
+    Its private request is used only during this synchronous bound call. A
+    caller cannot attach the context to an arbitrary public request. Normal
+    public evaluations continue checking every supplied snapshot independently.
+    Topologies, settings and variables are still checked for each candidate.
+    """
+
+    def __init__(self, request: FilmStructureOptimizationRequest):
+        if not isinstance(request, FilmStructureOptimizationRequest):
+            raise ValueError("request must be a FilmStructureOptimizationRequest")
+        owned = deepcopy(request)
+        frozen = owned.base_request.frozen_material_snapshot
+        if frozen is None:
+            raise ValueError("prepared structure evaluation requires a frozen snapshot")
+        payload = _checked_frozen_snapshot(frozen, owned.base_request.design_snapshot)
+        self.__request = owned
+        self.__materials = _PreparedMaterialData(payload, owned.base_request.design_snapshot)
+        self.__active_request: FilmStructureOptimizationRequest | None = None
+
+    def evaluate(self, design: Mapping[str, Any], *,
+                 evaluator: Callable[..., Mapping[str, Any]] | None = None,
+                 objectives: Sequence[FilmOptimizationObjective] | None = None,
+                 **kwargs: Any) -> Mapping[str, Any]:
+        if self.__active_request is not None:
+            raise RuntimeError("prepared structure evaluator cannot be shared concurrently")
+        request = self.__request
+        if objectives is not None:
+            request = replace(request, base_request=replace(
+                request.base_request, objectives=tuple(objectives)))
+        self.__active_request = request
+        try:
+            entry = evaluate_frozen_structure_candidate if evaluator is None else evaluator
+            return entry(request, design, _prepared=self, **kwargs)
+        finally:
+            self.__active_request = None
+
+    def _material_data_for(self, request: FilmStructureOptimizationRequest) -> _PreparedMaterialData:
+        if self.__active_request is None or request is not self.__active_request:
+            raise ValueError("prepared optics can only be used by their bound private evaluation")
+        return self.__materials
+
+
 def evaluate_frozen_structure_candidate(
     request: FilmStructureOptimizationRequest,
     design: Mapping[str, Any],
@@ -496,6 +541,7 @@ def evaluate_frozen_structure_candidate(
     zero_thickness_layer_ids: Sequence[str] = (),
     derived_validation_grid: bool = False,
     forward_responses: Sequence[Mapping[str, Any]] | None = None,
+    _prepared: _PreparedStructureEvaluator | None = None,
 ) -> Mapping[str, Any]:
     """Pure complete-grid score/Jacobian evaluation over a frozen snapshot.
 
@@ -511,7 +557,13 @@ def evaluate_frozen_structure_candidate(
     frozen = request.base_request.frozen_material_snapshot
     if frozen is None:
         raise ValueError("structure request must be frozen before candidate evaluation")
-    payload = _checked_frozen_snapshot(frozen, request.base_request.design_snapshot)
+    payload: Mapping[str, Any] | _PreparedMaterialData
+    if _prepared is None:
+        payload = _checked_frozen_snapshot(frozen, request.base_request.design_snapshot)
+    elif type(_prepared) is _PreparedStructureEvaluator:
+        payload = _prepared._material_data_for(request)
+    else:
+        raise ValueError("invalid private prepared structure context")
     zero_ids = tuple(zero_thickness_layer_ids)
     if zero_ids:
         candidate = deepcopy(dict(design))

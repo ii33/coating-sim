@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "stage": "hr-static-optics-preparation-performance",
+  "baseline_commit": "ce5ab332241560e43152513622d5c01546239b1c",
+  "case": "hr-minimax-tio2-franta-v1",
+  "request_sha256_canonical": "f9865f384892b80688a5493e4310f128b102bbbf64fecbe62ed29d0f4f3214d3",
+  "qualification": {
+    "unchanged_request": true,
+    "answer_seeds": 0,
+    "training_step_nm": 1,
+    "band_nm": [
+      400,
+      700
+    ],
+    "angles_deg": [
+      0,
+      30
+    ],
+    "polarizations": [
+      "s",
+      "p"
+    ],
+    "min_R": 0.98,
+    "max_layers": 32,
+    "layer_nm": [
+      10,
+      500
+    ],
+    "max_total_nm": 5000,
+    "max_seconds": 300,
+    "max_evaluations": 4000,
+    "independent_audit": "original dense+offset+bracketed extrema, no conditions removed"
+  },
+  "measurement": {
+    "repetitions_per_variant": 2,
+    "fresh_processes": true,
+    "sequential_owned_runs": true,
+    "math_threads_per_process": 1,
+    "timer_scope": "after typed job freeze, execute_job through result JSON serialization; Python imports and test harness identity checks excluded",
+    "low_interference_progress": "retain all progress/heartbeat/checkpoint callbacks, print at most every5s except milestones; no per-event JSONL in paired measurements",
+    "profile_separate": true,
+    "optimized_acceptance_frozen_before_first_optimized_run": {
+      "all_runs_audit_pass": true,
+      "median_wall_at_most_fraction_of_baseline": 0.5,
+      "numeric_parity_and_contract_regression": true
+    },
+    "research_scope_differences": "original recipe and current generated first prior; research optimizer-only deadline300s, no4000logical cap, soft total-bound trials tolerated internally and best-total tolerance1e-5nm, epigraph t>=0. Shared production audits reported separately; neither cap bound. Never compare optimizer-only time as formal end-to-end."
+  },
+  "no_tfcalc_measurement": true,
+  "environment_policy": "temporary per-process math-thread environment only; no system/user/program setting changes"
+}
