@@ -122,7 +122,7 @@ def test_mapping_does_not_clip_caller_trial_to_manufacturing_limits():
     {"max_total_thickness_nm": 1.}, {"minimum_nonzero_thickness_nm": 10000.}])
 def test_proposals_report_and_enforce_explicit_manufacturing_limits(limit):
     _, request = matching_request(**{"max_layers": 4, **limit})
-    events = []
+    events: list[dict[str, object]] = []
     assert list(clusters.iter_ar_cluster_proposals(request, report=events.append)) == []
     assert events and all(event["stage"] == "structure_skipped" for event in events)
 
@@ -143,6 +143,7 @@ def test_optional_third_layer_is_distinct_allowed_and_lower_than_the_low_materia
 
 def test_third_layer_crossing_with_low_material_at_band_edge_rejects_optional_branch():
     _, request = matching_request()
+    assert request.frozen_material_snapshot is not None
     snapshot = deepcopy(request.frozen_material_snapshot)
     low = next(m for m in snapshot["materials"] if m["id"] == "low")["optical_sets"][0]
     low["n"] = [2., 1., 1.]
@@ -152,6 +153,7 @@ def test_third_layer_crossing_with_low_material_at_band_edge_rejects_optional_br
 
 def test_unknown_k_opt_in_and_source_domain_rejection_do_not_modify_records():
     _, request = matching_request(max_layers=4)
+    assert request.frozen_material_snapshot is not None
     snapshot = deepcopy(request.frozen_material_snapshot)
     for material in snapshot["materials"]:
         material["optical_sets"][0].pop("k")
@@ -205,6 +207,7 @@ def test_mapping_rejects_invalid_coordinate_shapes_or_values(invalid):
 def test_generic_wavelength_scale_and_current_fixed_q_mapping():
     _, request = matching_request()
     original = next(clusters.iter_ar_cluster_proposals(request))
+    assert request.frozen_material_snapshot is not None
     snapshot = deepcopy(request.frozen_material_snapshot)
     for material in snapshot["materials"]:
         for optical in material["optical_sets"]:
@@ -228,6 +231,7 @@ def test_oblique_incident_material_q_and_real_source_tmm_are_preserved():
     proposal = next(clusters.iter_ar_cluster_proposals(oblique))
     assert proposal.provenance["phase_angle_deg"] == 30.
     slot = proposal.provenance["layer_slots"][0]
+    assert oblique.frozen_material_snapshot is not None
     record = next(m for m in oblique.frozen_material_snapshot["materials"] if m["id"] == slot["material"][0])
     n = record["optical_sets"][0]["n"][0]
     assert slot["q"] == pytest.approx(np.sqrt(n ** 2 - (1.5 * np.sin(np.deg2rad(30.))) ** 2))

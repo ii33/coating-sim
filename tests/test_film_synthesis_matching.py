@@ -117,7 +117,7 @@ def test_no_implicit_manufacturing_minimum_and_exact_physical_minimum_is_availab
 ])
 def test_manufacturing_caps_are_reported_and_never_bypassed(limit):
     _, request = matching_request(**limit)
-    events = []
+    events: list[dict[str, object]] = []
     assert list(matching.iter_matching_proposals(request, report=events.append)) == []
     assert events and all(e["stage"] == "structure_skipped" for e in events)
 
@@ -163,6 +163,7 @@ def test_cancellation_before_first_yield_and_while_iterator_is_suspended():
 
 def test_missing_k_requires_explicit_assumption_and_source_domain_remains_strict():
     _, request = matching_request()
+    assert request.frozen_material_snapshot is not None
     snapshot = deepcopy(request.frozen_material_snapshot)
     for material in snapshot["materials"]:
         for optical in material["optical_sets"]:
@@ -183,6 +184,7 @@ def test_missing_k_requires_explicit_assumption_and_source_domain_remains_strict
 
 def test_real_source_nk_caps_and_true_tmm_remain_intact():
     request = real_matching_request()
+    assert request.frozen_material_snapshot is not None
     before = deepcopy(request.frozen_material_snapshot)
     proposals = list(islice(matching.iter_matching_proposals(request), 144))
     assert {p.provenance["pairs"] for p in proposals} == {1, 2, 3}
@@ -211,6 +213,7 @@ def test_phase_thickness_uses_material_incident_index_at_midpoint_angle():
     proposal = next(matching.iter_matching_proposals(oblique))
     assert proposal.provenance["phase_angle_deg"] == 30.
     row = proposal.design["front_layers"][0]
+    assert oblique.frozen_material_snapshot is not None
     material = next(m for m in oblique.frozen_material_snapshot["materials"] if m["id"] == row["material_id"])
     n, k, _ = prepare_optical_set(material["optical_sets"][0], k_sampling_policy="source")(
         proposal.provenance["reference_wavelength_nm"], "nm", include_k=True, extrapolation_policy="error")

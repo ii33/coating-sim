@@ -40,6 +40,7 @@ class FilmSynthesisCloudBundleTests(unittest.TestCase):
         previous = _install_cooperative_signal_handlers(cancel_event)
         try:
             handler = signal.getsignal(signal.SIGTERM)
+            assert callable(handler)
             handler(signal.SIGTERM, None)
             self.assertTrue(cancel_event.is_set())
         finally:

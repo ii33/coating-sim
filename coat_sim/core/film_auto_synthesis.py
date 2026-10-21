@@ -12,7 +12,7 @@ from itertools import islice
 import hashlib
 import json
 import math
-from typing import Any, Callable, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Generator, Mapping, NotRequired, TypedDict
 
 import numpy as np
 
@@ -26,6 +26,23 @@ from .film_optimization_structure import (
 from .optical_constants import UNITS_TO_UM, prepare_optical_set
 from .film_synthesis_absorption import (annotate_synthesis_design, assumes_unknown_k_zero,
                                         sample_synthesis_optical)
+
+
+if TYPE_CHECKING:
+    from .film_synthesis_global import StructuralProposal
+
+
+class _SearchDiagnostics(TypedDict):
+    structural_proposals: list[dict[str, object]]
+    global_search: list[dict[str, object]]
+    layer_distribution: dict[str, int]
+    local_refinement: list[dict[str, object]]
+    ar_structure_mode: NotRequired[str]
+    automatic_cluster_route: NotRequired[bool]
+    structure_batch_policy: NotRequired[dict[str, object]]
+    bandpass_structure_schedule: NotRequired[dict[str, object]]
+    matching_structure_schedule: NotRequired[dict[str, object]]
+    cluster_structure_schedule: NotRequired[dict[str, object]]
 
 
 @dataclass(frozen=True)
@@ -487,13 +504,14 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
     completed_training_validation = None
     fully_scored_evaluations = 0
     candidate_provenance = {}
-    search_diagnostics = {"structural_proposals": [], "global_search": [], "layer_distribution": {}, "local_refinement": []}
+    search_diagnostics: _SearchDiagnostics = {"structural_proposals": [], "global_search": [],
+        "layer_distribution": {}, "local_refinement": []}
     audited_signatures = set()
-    cavity_stream = [None]
+    cavity_stream: list[Generator[StructuralProposal, None, None] | None] = [None]
     cavity_stream_epoch = [None]
-    matching_stream = [None]
+    matching_stream: list[Generator[StructuralProposal, None, None] | None] = [None]
     matching_stream_epoch = [None]
-    cluster_stream = [None]
+    cluster_stream: list[Generator[StructuralProposal, None, None] | None] = [None]
     cluster_stream_epoch = [None]
     matching_deferred = [automatic_matching_route]
     search_diagnostics["ar_structure_mode"] = request.ar_structure_mode
@@ -501,7 +519,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
     validation = None
     audit_physical_evaluations = audit_wavelength_points = 0
     trace = []
-    stage_times = {}
+    stage_times: dict[str, float] = {}
     last_stage_time = __import__("time").perf_counter()
     last_stage = "initialization"
     reason, state = "search_exhausted", "not_found"
@@ -933,7 +951,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     int(order).bit_length() - 1, metadata["cavity_quarters"] % 2)
 
             def choose_structural_candidates(values):
-                keepers = {}
+                keepers: dict[object, tuple[Mapping[str, Any], Mapping[str, Any]]] = {}
                 for value, metadata in values:
                     key = coverage_key(metadata)
                     if key not in keepers or rank(value) < rank(keepers[key][0]):
@@ -943,7 +961,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     return ordered
                 # Preserve phase/topology basins before revisiting another
                 # mirror count from the same class. No lifetime work cap.
-                buckets = {}
+                buckets: dict[object, list[tuple[Mapping[str, Any], Mapping[str, Any]]]] = {}
                 for row in ordered:
                     meta = row[1]
                     key = ((meta["family"], meta["variant"], meta["cavity_count"],
@@ -986,7 +1004,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                             # unexplored phase orders or adding a total budget.
                             while count < 512:
                                 try:
-                                    proposal = next(cavity_stream[0])
+                                    active_cavity = cavity_stream[0]
+                                    assert active_cavity is not None
+                                    proposal = next(active_cavity)
                                 except StopIteration:
                                     cavity_stream[0] = None
                                     break
@@ -1040,7 +1060,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     yield from iter_reflector_proposals(request, epoch=epoch,
                         cancel_check=lambda: _check_cancel(cancel_event), report=structural_report)
                 proposals = merged_proposals()
-                keepers = {}
+                keepers: dict[object, tuple[Mapping[str, Any], Mapping[str, Any]]] = {}
                 sample_points = sum(o.wavelength_samples * len(o.angles_deg) for o in request.objectives)
                 def commit(proposal, value):
                     entry = dict(proposal.provenance, layer_count=len(proposal.design["front_layers"]),
@@ -1230,6 +1250,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     matching = next((i for i, (v, _m) in enumerate(next_selected) if [r["id"] for r in v["design"]["front_layers"]] == [r["id"] for r in refined["design"]["front_layers"]]), None)
                     if matching is not None:
                         next_selected[matching] = (refined, next_selected[matching][1])
+                    assert best is not None  # The baseline was archived before global search.
                     if audited_best is None or epoch % 2 == 1 or (best["score"]["max_error"] <= request.acceptable_normalized_error and strict_lower_pass(best["score"])):
                         audit_archive(best)
                     else:
@@ -1239,8 +1260,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             branches = [working]
             if structural_values and not targets_verified():
                 # Retain one globally explored branch in addition to bare growth.
+                assert best is not None  # The baseline was archived before structural search.
                 branches.append(best)
-            blocked_branches = set()
+            blocked_branches: set[int] = set()
             if request.seed_designs:
                 audit_archive(working)
             for seed_design in request.seed_designs:

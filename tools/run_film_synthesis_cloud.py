@@ -6,6 +6,7 @@ import argparse
 from dataclasses import asdict, is_dataclass
 import hashlib
 import importlib.metadata
+from importlib import import_module
 import json
 import math
 import os
@@ -14,7 +15,17 @@ import signal
 import sys
 import threading
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any, Protocol, TypeGuard, cast
+
+if TYPE_CHECKING:
+    import numpy as np
+    from numpy.typing import ArrayLike
+
+
+class _ScalarTrapezoid(Protocol):
+    """SciPy boundary for the one-dimensional real spectra used here."""
+
+    def __call__(self, y: ArrayLike, *, x: ArrayLike) -> float | np.float64: ...
 
 THREAD_ENVIRONMENT = {name: "1" for name in (
     "OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "BLIS_NUM_THREADS",
@@ -77,7 +88,7 @@ def _mode_for_request(request: dict[str, Any], mode: str) -> None:
 def _mean_metrics(request: dict[str, Any], score: Any) -> dict[str, Any]:
     """Fixed dense-grid summaries; offsets/extrema never enter these means."""
     import numpy as np
-    from scipy.integrate import trapezoid
+    trapezoid = cast(_ScalarTrapezoid, import_module("scipy.integrate").trapezoid)
     body = _jsonable(score) if score is not None else {}
     rows = body.get("errors", []) if isinstance(body, dict) else []
     objectives = request["objectives"]
@@ -153,11 +164,15 @@ def _mean_metrics(request: dict[str, Any], score: Any) -> dict[str, Any]:
         "groups": groups}
 
 
+def _plain_number(value: object) -> TypeGuard[int | float]:
+    return type(value) in (int, float)
+
+
 def _raw_bounds(request: dict[str, Any], score: Any, *, scope: str) -> dict[str, Any]:
     body = _jsonable(score) if score is not None else {}
     rows = body.get("errors", []) if isinstance(body, dict) else []
     strict = set(request.get("strict_lower_bound_objective_indices", ()))
-    missing = []
+    missing: list[dict[str, int | float]] = []
     violating = []
     invalid = []
     seen_all: set[tuple[int, float, float]] = set()
@@ -184,17 +199,17 @@ def _raw_bounds(request: dict[str, Any], score: Any, *, scope: str) -> dict[str,
             waves.extend(offset_waves)
             offset_count += len(offset_waves) * len(objective["angles_deg"])
         dense_count += len(dense_waves) * len(objective["angles_deg"])
-        required = set()
+        required: set[tuple[float, float]] = set()
         for angle in objective["angles_deg"]:
             required.update((float(angle), wave) for wave in waves)
         required_total += len(required)
-        seen = set()
+        seen: set[tuple[float, float]] = set()
         for row in rows:
             if not isinstance(row, dict) or row.get("objective_index") != index:
                 continue
             angle, wave, actual = row.get("angle_deg"), row.get("wavelength_nm"), row.get("actual")
-            if (type(angle) not in (int, float) or type(wave) not in (int, float)
-                    or type(actual) not in (int, float)
+            if (not _plain_number(angle) or not _plain_number(wave)
+                    or not _plain_number(actual)
                     or not all(math.isfinite(float(value)) for value in (angle, wave, actual))):
                 violating.append({"objective_index": index, "reason": "non_numeric_condition"})
                 continue
@@ -226,12 +241,12 @@ def _raw_bounds(request: dict[str, Any], score: Any, *, scope: str) -> dict[str,
                 target = objective.get("target_value")
                 scale = objective.get("normalization_scale", 1.0)
                 tolerance = request.get("acceptable_normalized_error", 0.0)
-                if (type(target) not in (int, float) or type(scale) not in (int, float)
-                        or type(tolerance) not in (int, float) or scale <= 0 or tolerance < 0
+                if (not _plain_number(target) or not _plain_number(scale)
+                        or not _plain_number(tolerance) or scale <= 0 or tolerance < 0
                         or abs(float(actual) - float(target)) > float(tolerance) * float(scale)):
                     violating.append({"objective_index": index, "wavelength_nm": wave,
                         "angle_deg": angle, "actual": actual, "target_value": target,
-                        "value_tolerance": float(tolerance) * float(scale)})
+                        "value_tolerance": float(cast(float, tolerance)) * float(cast(float, scale))})
         missing.extend({"objective_index": index, "wavelength_nm": wave, "angle_deg": angle}
                        for angle, wave in sorted(required - seen))
     audit = body.get("audit") if scope == "audit" else None
@@ -289,8 +304,9 @@ def _source_fingerprint(bundle_root: Path, manifest: dict[str, Any]) -> dict[str
     if manifest.get("kind") == "film_synthesis_git_requests":
         _activate_git_root(bundle_root)
         from tools.film_synthesis_git_source import verify_git_source
-        identity = verify_git_source(bundle_root, manifest.get("_expected_commit"),
-            manifest.get("git_source_paths"), required_paths=(
+        # verify_git_source performs runtime validation of this JSON boundary.
+        identity = verify_git_source(bundle_root, cast(str, manifest.get("_expected_commit")),
+            cast(list[str], manifest.get("git_source_paths")), required_paths=(
                 manifest["_manifest_relative_path"], "tools/run_film_synthesis_cloud.py",
                 "tools/film_synthesis_git_source.py", "coat_sim/__init__.py", "coat_sim/core/__init__.py",
                 "coat_sim/core/film_auto_synthesis.py", "coat_sim/core/film_synthesis_parallel.py"))
@@ -322,7 +338,8 @@ class ProcessCPUObserver:
     def __init__(self):
         self.pid = os.getpid()
         self.rows: dict[tuple[int, str], dict[str, Any]] = {}
-        self.error = None
+        self.error: str | None = None
+        self.platform: str | None = None
         self.handles: dict[int, Any] = {}
         if os.name == "nt":
             self._init_windows()
@@ -337,7 +354,10 @@ class ProcessCPUObserver:
             import ctypes as c
             from ctypes import wintypes as w
             self.c, self.w = c, w
-            self.kernel = c.WinDLL("kernel32", use_last_error=True)
+            windows_library = getattr(c, "WinDLL", None)
+            if windows_library is None:
+                raise OSError("Windows DLL loader unavailable")
+            self.kernel = windows_library("kernel32", use_last_error=True)
             class Entry(c.Structure):
                 _fields_ = [("dwSize", w.DWORD), ("cntUsage", w.DWORD), ("th32ProcessID", w.DWORD),
                     ("dwDefaultHeapID", c.c_size_t), ("th32ModuleID", w.DWORD), ("cntThreads", w.DWORD),
@@ -387,7 +407,11 @@ class ProcessCPUObserver:
                 if expanded == owned:
                     break
                 owned = expanded
-            ticks = os.sysconf("SC_CLK_TCK")
+            system_config = getattr(os, "sysconf", None)
+            if system_config is None:
+                self.error = "Linux process clock observation unavailable"
+                return
+            ticks = system_config("SC_CLK_TCK")
             for pid in owned - {self.pid}:
                 row = processes.get(pid)
                 if not row:
@@ -475,7 +499,7 @@ def _install_cooperative_signal_handlers(cancel_event: threading.Event) -> dict[
     """Convert interrupt/termination signals into cooperative cancellation."""
     if threading.current_thread() is not threading.main_thread():
         return {}
-    previous = {}
+    previous: dict[int, Any] = {}
 
     def request_cancel(_signum, _frame):
         cancel_event.set()

@@ -5,8 +5,36 @@ conventions. Original objectives, physical scoring and acceptance stay owned by
 synthesis; no physical call, budget or cancellation owner is introduced here.
 """
 from copy import deepcopy
+from importlib import import_module
 import math
+from typing import Callable, Literal, Mapping, Protocol, Sequence, TypedDict, cast
+
 import numpy as np
+from numpy.typing import NDArray
+
+
+class _InequalityConstraint(TypedDict):
+    type: Literal["ineq"]
+    fun: Callable[[NDArray[np.float64]], float]
+    jac: Callable[[NDArray[np.float64]], NDArray[np.float64]]
+
+
+class _LocalMinimizerResult(Protocol):
+    @property
+    def message(self) -> str: ...
+
+    @property
+    def nit(self) -> int: ...
+
+
+class _LocalMinimizer(Protocol):
+    def __call__(self,
+                 fun: Callable[[NDArray[np.float64]], tuple[float, NDArray[np.float64]]],
+                 x0: NDArray[np.float64], *, jac: Literal[True],
+                 bounds: Sequence[tuple[float, float]],
+                 method: Literal["SLSQP", "L-BFGS-B"],
+                 constraints: tuple[_InequalityConstraint, ...],
+                 options: Mapping[str, int | float]) -> _LocalMinimizerResult: ...
 
 
 def interior_bounds(objective, acceptable):
@@ -80,7 +108,9 @@ def refine_synthesis_candidate(request, initial, *, evaluate, archive, quarter_n
     uses SLSQP's linear inequality. Returned best uses original worst violation,
     then the interior guide loss, independent of transient optimizer iterates.
     """
-    from scipy.optimize import minimize
+    # Describe only the external numerical interface used by this local stage.
+    # Resolve the live module attribute so existing SciPy monkeypatches remain visible.
+    minimize = cast(_LocalMinimizer, import_module("scipy.optimize").minimize)
     design = initial['design']
     rows = design['front_layers']
     if not rows:
@@ -105,10 +135,11 @@ def refine_synthesis_candidate(request, initial, *, evaluate, archive, quarter_n
     best_key = (float(initial['score']['max_error']), math.inf if initial_loss is None else initial_loss)
     best_loss_source = ('initial_cached_responses' if initial_loss is not None
                         else 'initial_responses_unavailable_without_additional_physical_evaluation')
-    cache = {}
+    cache: dict[tuple[float, ...], tuple[float, NDArray[np.float64]]] = {}
     calls = 0
     total_cap = request.max_total_thickness_nm
-    diagnostics = dict(method='SLSQP' if total_cap is not None else 'L-BFGS-B',
+    method: Literal['SLSQP', 'L-BFGS-B'] = 'SLSQP' if total_cap is not None else 'L-BFGS-B'
+    diagnostics = dict(method=method,
         max_iterations=max_iterations, lower_nm=low.tolist(), upper_nm=high.tolist(),
         bounds_source='project phase trust box d0 +/- quarter_nm/2 intersect explicit layer limits',
         interior_bounds=[interior_bounds(o, request.acceptable_normalized_error) for o in request.objectives],
@@ -142,7 +173,7 @@ def refine_synthesis_candidate(request, initial, *, evaluate, archive, quarter_n
         cache[key] = (loss, gradient * scales)
         return cache[key]
 
-    constraints = ()
+    constraints: tuple[_InequalityConstraint, ...] = ()
     if total_cap is not None:
         constraints = ({'type': 'ineq', 'fun': lambda x: total_cap - float(np.asarray(x) @ scales),
                         'jac': lambda x: -scales},)
@@ -153,7 +184,7 @@ def refine_synthesis_candidate(request, initial, *, evaluate, archive, quarter_n
     # evaluation boundary before comparing any transient solver iterate.
     objective(ds / scales)
     outcome = minimize(objective, ds / scales, jac=True, bounds=bounds,
-                       method=diagnostics['method'], constraints=constraints, options=options)
+                       method=method, constraints=constraints, options=options)
     cancel_check()
     diagnostics.update(reason=str(outcome.message), iterations=int(outcome.nit),
                        physical_candidates=calls,

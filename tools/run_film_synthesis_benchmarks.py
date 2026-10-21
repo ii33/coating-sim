@@ -23,13 +23,18 @@ import tempfile
 import threading
 import time
 import traceback
-from typing import Any
+from typing import Any, TypeGuard, TypedDict, cast
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 # Direct script execution needs the current repository import path above.
 from tools.run_film_synthesis_acceptance import AcceptanceService, atomic_json, jsonable, sha256_json, utc_now  # noqa: E402
+
+class AuditedCheckpoint(TypedDict):
+    elapsed_seconds: float
+    design_sha256: str
+
 
 SCHEMA_VERSION = 1
 THREAD_ENVIRONMENT = {name: "1" for name in (
@@ -44,14 +49,20 @@ def configure_process() -> dict[str, Any]:
     if os.name == "nt":
         import ctypes
         from ctypes import wintypes as w
-        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        windows_library = getattr(ctypes, "WinDLL", None)
+        if windows_library is None:
+            raise OSError("Windows DLL loader unavailable")
+        kernel = windows_library("kernel32", use_last_error=True)
         kernel.GetCurrentProcess.restype = w.HANDLE
         kernel.SetPriorityClass.argtypes = [w.HANDLE, w.DWORD]
         kernel.GetPriorityClass.argtypes = [w.HANDLE]
         kernel.GetPriorityClass.restype = w.DWORD
         handle = kernel.GetCurrentProcess()
         if not kernel.SetPriorityClass(handle, 0x4000):
-            raise OSError(ctypes.get_last_error(), "Cannot set benchmark process BelowNormal")
+            last_error = getattr(ctypes, "get_last_error", None)
+            if last_error is None:
+                raise OSError("Cannot set benchmark process BelowNormal")
+            raise OSError(last_error(), "Cannot set benchmark process BelowNormal")
         priority = "below_normal" if kernel.GetPriorityClass(handle) == 0x4000 else "verification_failed"
         if priority != "below_normal":
             raise RuntimeError("Benchmark process priority verification failed")
@@ -232,7 +243,7 @@ def raw_acceptance(request, score, *, scope="training"):
     objectives = request["objectives"]
     strict = set(request.get("strict_lower_bound_objective_indices", []))
     errors = score["errors"]
-    required = set()
+    required: set[tuple[int, float, float]] = set()
     dense_count = offset_count = 0
     for index, objective in enumerate(objectives):
         low, high = objective["wavelength_min_nm"], objective["wavelength_max_nm"]
@@ -247,22 +258,22 @@ def raw_acceptance(request, score, *, scope="training"):
             offset_count += len(offset) * len(objective["angles_deg"])
             waves += offset
         required.update((index, float(angle), wave) for angle in objective["angles_deg"] for wave in waves)
-    seen = set()
+    seen: set[tuple[int, float, float]] = set()
     invalid = []
     failed = []
-    def finite_number(value):
-        return type(value) in (int, float) and math.isfinite(value)
+    def finite_number(value: object) -> TypeGuard[int | float]:
+        return type(value) in (int, float) and math.isfinite(cast(int | float, value))
     for row in errors:
         if not isinstance(row, dict):
             invalid.append("condition_not_object")
             continue
-        index = row.get("objective_index")
-        if type(index) is not int or not 0 <= index < len(objectives):
+        row_index = row.get("objective_index")
+        if type(row_index) is not int or not 0 <= row_index < len(objectives):
             invalid.append("invalid_objective_index")
             continue
-        objective = objectives[index]
+        objective = objectives[row_index]
         angle, wave, actual = (row.get(key) for key in ("angle_deg", "wavelength_nm", "actual"))
-        if (not all(finite_number(value) for value in (angle, wave, actual))
+        if (not finite_number(angle) or not finite_number(wave) or not finite_number(actual)
                 or angle not in objective["angles_deg"]
                 or not objective["wavelength_min_nm"] <= wave <= objective["wavelength_max_nm"]
                 or row.get("metric") != objective["metric"]
@@ -270,12 +281,12 @@ def raw_acceptance(request, score, *, scope="training"):
                 or any(row.get(key) != objective.get(key) for key in ("target_value", "lower_bound", "upper_bound"))):
             invalid.append("condition_differs_from_frozen_objective")
             continue
-        point = (index, float(angle), float(wave))
+        point = (row_index, float(angle), float(wave))
         if point in seen:
             invalid.append("duplicate_condition")
         seen.add(point)
         lower, upper = objective.get("lower_bound"), objective.get("upper_bound")
-        passed = ((lower is None or (actual > lower if index in strict else actual >= lower))
+        passed = ((lower is None or (actual > lower if row_index in strict else actual >= lower))
             and (upper is None or actual <= upper))
         if not passed:
             failed.append({key: row[key] for key in ("objective_index", "wavelength_nm", "angle_deg", "actual")})
@@ -285,7 +296,7 @@ def raw_acceptance(request, score, *, scope="training"):
     if scope == "audit":
         audit = score.get("audit")
         metadata_valid = isinstance(audit, dict)
-        if metadata_valid:
+        if isinstance(audit, dict):
             integer_fields = ("dense_points", "offset_points", "unique_condition_points", "physical_evaluations",
                 "wavelength_points", "extra_points", "completed_extrema", "bracket_count")
             metadata_valid = (all(type(audit.get(name)) is int and audit[name] >= 0 for name in integer_fields)
@@ -347,7 +358,10 @@ class WindowsCPUObserver:
         import ctypes as c
         from ctypes import wintypes as w
         self.c, self.w = c, w
-        self.kernel = c.WinDLL("kernel32", use_last_error=True)
+        windows_library = getattr(c, "WinDLL", None)
+        if windows_library is None:
+            raise OSError("Windows DLL loader unavailable")
+        self.kernel = windows_library("kernel32", use_last_error=True)
         class Entry(c.Structure):
             _fields_ = [("dwSize", w.DWORD), ("cntUsage", w.DWORD), ("th32ProcessID", w.DWORD),
                 ("th32DefaultHeapID", c.c_size_t), ("th32ModuleID", w.DWORD), ("cntThreads", w.DWORD),
@@ -429,7 +443,7 @@ def execute_run(run, directory, provenance, cancel, stop_all):
     lock = threading.Lock()
     sequence = 0
     deadline_hit = threading.Event()
-    audited_success_checkpoints = []
+    audited_success_checkpoints: list[AuditedCheckpoint] = []
     observer = WindowsCPUObserver()
     stop_monitor = threading.Event()
     def event(kind, payload):
@@ -559,7 +573,7 @@ def main(argv=None):
             "state": "preflight_completed", "run_count": len(preflight["runs"]), **provenance})
         return 0
     stop_all = threading.Event()
-    active = [None]
+    active: list[threading.Event | None] = [None]
     def on_signal(signum, frame):
         stop_all.set()
         if active[0] is not None:

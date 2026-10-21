@@ -73,7 +73,7 @@ def _model(design, metadata):
     edges = tuple(metadata.get('boundary_layer_indices', ()))
     if metadata.get('parameter_model') != _MODEL or not clusters or len(slots) != len(rows):
         raise ValueError('a matching AR cluster parameter model is required')
-    groups = []
+    groups: list[int] = []
     for cluster in clusters:
         high, low = tuple(cluster['high_indices']), tuple(cluster['low_indices'])
         if not high or len(high) != len(low):
@@ -96,7 +96,7 @@ def _model(design, metadata):
 
 
 def _layout(clusters, edges):
-    layout = []
+    layout: list[tuple[str, int]] = []
     for index, cluster in enumerate(clusters):
         layout.extend((('log_optical_budget_nm', index), ('logit_high_share', index)))
         if len(cluster['high_indices']) >= 2:
@@ -108,7 +108,7 @@ def _layout(clusters, edges):
 
 
 def _current_parameters(rows, slots, clusters, edges):
-    initial = []
+    initial: list[float] = []
     for cluster in clusters:
         high, low = (_logsumexp([math.log(slots[i]['q']) + math.log(rows[i]['thickness']['value'])
             for i in cluster[key]]) for key in ('high_indices', 'low_indices'))
@@ -265,7 +265,8 @@ def iter_ar_cluster_proposals(request, *, epoch=0, cancel_check=lambda: None,
     for ref in references:
         optical = next(o for o in materials[ref[0]]['optical_sets'] if o['id'] == ref[1])
         for table in (optical, optical.get('k_data') or {}):
-            factor = UNITS_TO_UM.get(table.get('wavelength_unit'))
+            unit = table.get('wavelength_unit')
+            factor = UNITS_TO_UM.get(unit) if isinstance(unit, str) else None
             if factor is not None:
                 unit_nm = 1000 * factor
                 waves.update(float(w) * unit_nm for w in table.get('wavelengths', ())
@@ -355,12 +356,12 @@ def iter_ar_cluster_proposals(request, *, epoch=0, cancel_check=lambda: None,
             for pair_counts in _iter_pair_counts(max_pairs, layer_cap, uneven=use_uneven,
                     third=use_third, cancel_check=cancel_check):
                 for first_role in ('L', 'H'):
-                    for contrast, high, low, thirds in pairs:
+                    for contrast, high, low, lower_thirds in pairs:
                         cancel_check()
-                        options = thirds if use_third else (None,)
-                        for third in options:
+                        options = lower_thirds if use_third else (None,)
+                        for optional_third in options:
                             cancel_check()
-                            count = 2 * sum(pair_counts) + 2 + (third is not None)
+                            count = 2 * sum(pair_counts) + 2 + (optional_third is not None)
                             if count > layer_cap:
                                 report(dict(stage='structure_skipped', family='ar_cluster', reason='explicit max_layers or existing format MAX_LAYERS', layer_count=count))
                                 continue
@@ -375,10 +376,10 @@ def iter_ar_cluster_proposals(request, *, epoch=0, cancel_check=lambda: None,
                                 edge_ds = [minimum, minimum] if edge_variant == 'explicit_minimum' else [
                                     center * fraction / (4 * q) for q, fraction in zip(q_edges, edge_fractions, strict=True)]
                                 edge_refs = [substrate_ref, air_ref]
-                                if third is not None:
-                                    q3 = phase(third, center, angle)
+                                if optional_third is not None:
+                                    q3 = phase(optional_third, center, angle)
                                     q_edges.append(q3)
-                                    edge_refs.append(third)
+                                    edge_refs.append(optional_third)
                                     edge_ds.append(minimum if minimum is not None else center / (64 * q3))
                                 edge_budget = math.fsum(q * d for q, d in zip(q_edges, edge_ds, strict=True))
                                 total_budget = math.ldexp(center, budget_exponent)
@@ -427,9 +428,9 @@ def iter_ar_cluster_proposals(request, *, epoch=0, cancel_check=lambda: None,
                                 for row, (_, _, q) in zip(design['front_layers'], raw, strict=True)]
                             metadata = dict(family='ar_cluster', variant='non_qw' if k == 1 else 'clustered',
                                 epoch=epoch, high=high, low=low, contrast=contrast, cluster_count=k,
-                                pair_counts=tuple(pair_counts), third_material=third, first_role=first_role,
+                                pair_counts=tuple(pair_counts), third_material=optional_third, first_role=first_role,
                                 boundary_variant=edge_variant, boundary_layer_indices=tuple(edge_indices),
-                                boundary_roles=('substrate', 'incident', 'third_outer') if third is not None else ('substrate', 'incident'),
+                                boundary_roles=('substrate', 'incident', 'third_outer') if optional_third is not None else ('substrate', 'incident'),
                                 clusters=clusters, layer_slots=slots, parameter_model=_MODEL,
                                 parameter_coordinates=tuple(_layout(clusters, edge_indices)),
                                 initial_envelope=envelope, initial_high_share=share,

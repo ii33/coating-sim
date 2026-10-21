@@ -11,11 +11,14 @@ from tests.test_film_auto_synthesis import setup_problem
 def boundary_problem(metric='R', offset=0.):
     service, request = setup_problem(upper=.05,low=550.,high=550.,samples=1)
     bare = synthesize_film_design(service, request)
+    assert bare.training_score is not None
     actual_r = bare.training_score['errors'][0].actual
     # Use the production evaluator to obtain T, rather than assuming R+T=1.
     if metric == 'T':
         probe = replace(request, objectives=(replace(request.objectives[0],metric='T',upper_bound=1.),))
-        actual = synthesize_film_design(service,probe).training_score['errors'][0].actual
+        probe_result = synthesize_film_design(service,probe)
+        assert probe_result.training_score is not None
+        actual = probe_result.training_score['errors'][0].actual
     else:
         actual = actual_r
     objective=replace(request.objectives[0],metric=metric,lower_bound=actual+offset,upper_bound=1.)
@@ -29,12 +32,16 @@ def test_inclusive_equal_and_tolerated_lower_bounds_remain_completed_without_opt
     result=synthesize_film_design(service,request)
     assert result.state=='completed'
     assert result.evaluations==2
+    assert result.candidate_design is not None
     assert result.candidate_design['front_layers']==[]
+    assert result.training_score is not None
     assert result.training_score['errors'][0].actual==actual
     assert request.strict_lower_bound_objective_indices==()
     strict=synthesize_film_design(service,replace(request,strict_lower_bound_objective_indices=(0,),max_evaluations=2))
     assert strict.state=='not_found' and not strict.targets_met
     assert strict.validation_complete
+    assert strict.validation_score is not None
+    assert request.objectives[0].lower_bound is not None
     assert strict.validation_score['errors'][0].actual <= request.objectives[0].lower_bound
     assert strict.evaluations==2
 
@@ -44,7 +51,9 @@ def test_mixed_objectives_only_explicit_indices_are_strict():
     transmission=replace(request.objectives[0],metric='T',lower_bound=.9,upper_bound=1.)
     mixed=replace(request,objectives=(*request.objectives,transmission),strict_lower_bound_objective_indices=(1,),max_evaluations=2)
     result=synthesize_film_design(service,mixed)
+    assert result.candidate_design is not None
     assert result.state=='completed' and result.candidate_design['front_layers']==[]
+    assert result.training_score is not None
     assert result.training_score['errors'][0].actual==actual
     rejecting=synthesize_film_design(service,replace(mixed,strict_lower_bound_objective_indices=(0,)))
     assert rejecting.state=='not_found' and not rejecting.targets_met
@@ -94,6 +103,7 @@ def test_strict_cancel_retains_matching_completed_candidate_audit_without_succes
     assert result.state=='cancelled' and not result.targets_met
     assert snapshots and result.validation_complete
     assert result.candidate_design==snapshots[0][0]
+    assert result.validation_score is not None and result.training_score is not None
     assert result.validation_score['design']==result.training_score['design']
     assert result.candidate_provenance['selection']=='completed_training_at_cancel'
 

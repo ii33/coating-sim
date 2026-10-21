@@ -5,6 +5,7 @@ from copy import deepcopy
 from dataclasses import replace
 from itertools import islice, product
 import json
+from typing import Any
 from pathlib import Path
 
 import numpy as np
@@ -106,7 +107,7 @@ def test_value_goals_activate_and_equivalent_polarizations_do_not_duplicate_desi
 ])
 def test_explicit_caps_skip_and_report_without_clipping(limit):
     _, request = bandpass_request(**limit)
-    events = []
+    events: list[dict[str, Any]] = []
     assert list(global_search.iter_bandpass_proposals(request, report=events.append)) == []
     assert any("constraints" in event["reason"] or "max_layers" in event["reason"] for event in events)
 
@@ -154,7 +155,7 @@ def test_missing_k_or_outside_source_domain_are_reported_and_never_extrapolated(
                     optical.pop("k")
                 else:
                     optical.update(wavelength_min=530., wavelength_max=570., wavelengths=[530., 550., 570.])
-        events = []
+        events: list[dict[str, object]] = []
         assert list(global_search.iter_bandpass_proposals(replace(request,
             frozen_material_snapshot=snapshot), report=events.append)) == []
         assert events and all(e["stage"] == "structure_skipped" for e in events)

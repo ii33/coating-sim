@@ -159,7 +159,8 @@ def test_retained_initial_has_finite_or_explicitly_unavailable_guide_without_ext
     from copy import deepcopy
     import json
     from types import SimpleNamespace
-    import scipy.optimize
+    from importlib import import_module
+    scipy_optimize = import_module("scipy.optimize")
 
     request, _, _, quarter, _, initial = _physical_refinement_fixture()
     initial = deepcopy(initial)
@@ -185,7 +186,7 @@ def test_retained_initial_has_finite_or_explicitly_unavailable_guide_without_ext
         trial[0] += .01
         objective(trial)
         return SimpleNamespace(message="fixed regression trial schedule", nit=1)
-    monkeypatch.setattr(scipy.optimize, "minimize", solver)
+    monkeypatch.setattr(scipy_optimize, "minimize", solver)
     best, diagnostics = refine_synthesis_candidate(request, initial, evaluate=evaluate,
         archive=lambda value, *, audit_eligible: archived.append((value, audit_eligible)), quarter_nm=quarter)
     assert best is initial  # Every re-evaluated score is one ULP worse.
@@ -288,6 +289,7 @@ def test_numeric_guide_floor_preserves_default_physical_endpoints_value_mode_and
     assert interior_bounds(fixed_range, 0.) == (.5, .5)
     narrow = replace(high_r, lower_bound=.5, upper_bound=.500001)
     low_guide, high_guide = interior_bounds(narrow, 1.)
+    assert narrow.lower_bound is not None and narrow.upper_bound is not None
     width = narrow.upper_bound - narrow.lower_bound
     assert narrow.lower_bound < low_guide < high_guide < narrow.upper_bound
     assert low_guide - narrow.lower_bound == pytest.approx(width * .1, abs=1e-16)

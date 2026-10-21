@@ -64,7 +64,7 @@ def test_real_nk_oblique_reflector_proposals_use_multilayer_structure():
 ])
 def test_structural_proposals_never_bypass_explicit_manufacturing_limits(limit):
     _, request = real_reflector_request(**limit)
-    events = []
+    events: list[dict[str, object]] = []
     proposals = list(global_search.iter_reflector_proposals(request, report=events.append))
     assert proposals == []
     assert events and all(event["stage"] == "structure_skipped" for event in events)
@@ -106,6 +106,7 @@ def test_de_is_seeded_mutates_and_improves_a_multimodal_loss():
     assert np.any(changed_points != initial_points)
     first.accept(loss(changed_points))
     assert first.generations == 1
+    assert first.losses is not None
     assert float(np.min(first.losses)) < float(np.min(initial_losses))
 
 

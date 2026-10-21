@@ -35,18 +35,18 @@ def _mock_git(root: Path, commit: str, blobs: dict[str, bytes]):
                 requested = args[args.index("--") + 1:]
             else:
                 requested = list(blobs)
-            rows = []
+            text_rows: list[str] = []
             for path in requested:
                 if path in blob_ids:
-                    rows.append(f"100644 blob {blob_ids[path]}\t{path}\n")
-            return "".join(rows).encode("utf-8")
+                    text_rows.append(f"100644 blob {blob_ids[path]}\t{path}\n")
+            return "".join(text_rows).encode("utf-8")
         if args and args[0] == "cat-file" and "--batch" in args:
-            rows = []
+            blob_chunks: list[bytes] = []
             for oid in (input or b"").splitlines():
                 data = by_oid[oid.decode("ascii")]
-                rows.append(oid + b" blob " + str(len(data)).encode("ascii") + b"\n")
-                rows.append(data + b"\n")
-            return b"".join(rows)
+                blob_chunks.append(oid + b" blob " + str(len(data)).encode("ascii") + b"\n")
+                blob_chunks.append(data + b"\n")
+            return b"".join(blob_chunks)
         raise AssertionError(f"Unexpected git command: {args!r}")
 
     return git, blob_ids

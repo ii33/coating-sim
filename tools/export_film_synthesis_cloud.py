@@ -147,7 +147,7 @@ def build_bundle(suite_path: Path = DEFAULT_SUITE, *, case: str | None = None,
     source_identity = {"source_hashes": source_hashes,
                        "source_sha256": _sha(json.dumps(source_hashes, sort_keys=True,
                            separators=(",", ":")).encode())}
-    dependency_versions = {}
+    dependency_versions: dict[str, str | None] = {}
     for name in DEPENDENCIES:
         try:
             dependency_versions[name] = importlib.metadata.version(name)

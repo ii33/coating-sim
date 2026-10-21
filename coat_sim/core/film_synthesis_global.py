@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import math
 from itertools import product
 import numpy as np
+from numpy.typing import NDArray
 from .film_design import MAX_LAYERS
 from .optical_constants import prepare_optical_set
 from .film_synthesis_absorption import sample_synthesis_optical, assumes_unknown_k_zero
@@ -87,6 +88,7 @@ def iter_reflector_proposals(request, *, epoch=0, cancel_check=lambda: None, rep
                     for family, spacing, low_pad, high_pad in variants:
                         for reverse, direction in product((False, True), (1, -1) if family != "periodic" else (1,)):
                             cancel_check()
+                            centers: list[float] | NDArray[np.float64]
                             if family == 'periodic':
                                 centers = [center] * count_now
                             elif family == 'chirped':
