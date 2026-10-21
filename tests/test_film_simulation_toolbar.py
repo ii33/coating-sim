@@ -10,6 +10,7 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from tests import qt_test_guard  # noqa: F401
+from tests.qt_visual_lookup import find_visual_item
 
 from PySide6.QtCore import (
     QCoreApplication, QEvent, QMetaObject, QObject, QPoint, QPointF, QSettings, Qt,
@@ -56,7 +57,11 @@ class FilmSimulationToolbarTests(unittest.TestCase):
 
     @staticmethod
     def _item(window, name):
-        return window.findChild(QQuickItem, name)
+        item = window.findChild(QQuickItem, name)
+        if item is not None:
+            assert isinstance(item, QQuickItem), name
+            return item
+        return find_visual_item(window, name)
 
     @staticmethod
     def _object(window, name):

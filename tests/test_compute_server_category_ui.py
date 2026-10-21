@@ -20,6 +20,7 @@ from PySide6.QtTest import QTest
 
 from coat_sim.ui import settings, theme_service
 from tests.qt_test_guard import NoNetworkAccessManagerFactory
+from tests.qt_visual_lookup import find_visual_item
 
 
 QML = settings.PROJECT_ROOT / "coat_sim" / "ui" / "qml" / "SettingsWindow.qml"
@@ -40,15 +41,9 @@ def _settle() -> None:
 
 
 def _find(root: QQuickWindow | QQuickItem, name: str) -> QQuickItem:
-    content = root.contentItem() if isinstance(root, QQuickWindow) else root
-    assert content is not None
-    pending = [content]
-    while pending:
-        item = pending.pop()
-        if item.objectName() == name:
-            return item
-        pending.extend(item.childItems())
-    raise AssertionError(f"QML item not found: {name}")
+    item = find_visual_item(root, name, reverse_children=True)
+    assert item is not None, f"QML item not found: {name}"
+    return item
 
 
 def _invoke(target: QObject, method: str) -> None:
