@@ -181,3 +181,52 @@ def test_short_report_preserves_failure_without_opaque_argument_repr(tmp_path, t
     if traceback_style == "short":
         assert "Original opaque-argument assertion" in result.stdout
         assert "1 failed" in result.stdout
+
+
+def test_scene_missing_item_reports_failure_without_formatting_qt_argument(tmp_path):
+    project = Path(__file__).resolve().parents[1]
+    represented = tmp_path / "scene-repr-called.txt"
+    events = tmp_path / "scene-events.jsonl"
+    probe = tmp_path / "test_scene_lookup_probe.py"
+    probe.write_text(
+        "import os\nfrom pathlib import Path\nfrom types import SimpleNamespace\n"
+        "from PySide6.QtGui import QGuiApplication\n"
+        "from tests.test_film_synthesis_gui_review import _Scene\n"
+        f"REPRESENTED = Path({str(represented)!r})\n"
+        "APP = QGuiApplication.instance() or QGuiApplication([])\n"
+        "class OpaqueArgument:\n"
+        "    def __repr__(self):\n"
+        "        REPRESENTED.write_text('lookup assertion touched opaque object')\n"
+        "        os._exit(83)\n"
+        "def test_original_scene_lookup_failure():\n"
+        "    scene = _Scene.__new__(_Scene)\n"
+        "    scene.window = SimpleNamespace(findChildren=lambda *args: [])\n"
+        "    scene.evaluate = lambda *args: OpaqueArgument()\n"
+        "    scene.item('filmOptimizationCancelButton')\n",
+        encoding="utf8",
+    )
+    env = os.environ.copy()
+    env.update(PYTEST_DISABLE_PLUGIN_AUTOLOAD="1", PYTHONPATH=str(project),
+               QT_QPA_PLATFORM="offscreen", QT_QUICK_BACKEND="software",
+               QSG_RHI_BACKEND="software")
+    env.pop("PYTEST_ADDOPTS", None)
+    env.pop("PYTEST_PLUGINS", None)
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-c", str(project / "pytest.ini"),
+         str(probe), "-p", "tools.pytest_qt_diagnostics", "--qt-diagnostic-log", str(events),
+         "--tb=short", "-q", "-o", f"cache_dir={tmp_path / 'cache'}"],
+        cwd=project, env=env, capture_output=True, text=True, timeout=30, check=False,
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert not represented.exists()
+    assert "Missing QQuickItem 'filmOptimizationCancelButton'" in result.stdout
+    assert "result_type=OpaqueArgument" in result.stdout
+    assert "named_visual_candidates=0" in result.stdout
+    assert "1 failed" in result.stdout
+    rows = [json.loads(line) for line in events.read_text().splitlines()]
+    failure = next(row for row in rows if row["event"] == "exception_before_pytest_report")
+    assert failure["exception_type"] == "AssertionError"
+    assert failure["when"] == "call"
+    assert failure["arguments"] == [
+        "Missing QQuickItem 'filmOptimizationCancelButton'; "
+        "result_type=OpaqueArgument; named_visual_candidates=0"]

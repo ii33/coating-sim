@@ -113,7 +113,7 @@ def test_example_page_configurations_restore_without_guessing(example):
         synthesis = restored["synthesis"]
         assert synthesis == {
             "options": {key: None for key in (
-                "max_cycles", "max_evaluations", "max_layers",
+                "max_cycles", "max_evaluations", "max_layers", "max_seconds",
                 "minimum_nonzero_thickness_nm", "max_layer_thickness_nm",
                 "max_total_thickness_nm")},
             "cpu_workers": 0,

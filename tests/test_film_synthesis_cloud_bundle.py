@@ -86,7 +86,13 @@ class FilmSynthesisCloudBundleTests(unittest.TestCase):
         self.assertEqual(manifest["kind"], "film_synthesis_git_requests")
         self.assertEqual([entry["case"] for entry in manifest["entries"]], [entry["case"] for entry in fresh["entries"]])
         for stored, actual in zip(manifest["entries"], fresh["entries"], strict=True):
-            self.assertEqual(stored["request"], actual["request"])
+            # The historical frozen requests predate the optional deadline.
+            # Assert its exact current default, then compare every original
+            # field without changing the stored request or its identity hash.
+            current_request = dict(actual["request"])
+            self.assertIn("max_seconds", current_request)
+            self.assertIsNone(current_request.pop("max_seconds"))
+            self.assertEqual(stored["request"], current_request)
             self.assertEqual(stored["wall_seconds"], 120)
 
     def test_import_closure_is_core_only_and_contains_algorithm_branches(self):

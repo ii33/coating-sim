@@ -84,7 +84,14 @@ class _Scene:
             return null;
         })(contentItem)""" % json.dumps(name)
         result = self.evaluate(self.window, expression)
-        assert isinstance(result, QQuickItem), name
+        if not isinstance(result, QQuickItem):
+            # Pytest rewrites a failed isinstance assertion by formatting its
+            # arguments. A Qt wrapper's repr can fault before the original
+            # failure reaches the diagnostic hook. Keep the exact guard, but
+            # report only primitive evidence and never inspect/repr result.
+            raise AssertionError(
+                f"Missing QQuickItem {name!r}; result_type={type(result).__name__}; "
+                f"named_visual_candidates={len(candidates)}")
         return result
 
     def evaluate(self, owner, expression):
