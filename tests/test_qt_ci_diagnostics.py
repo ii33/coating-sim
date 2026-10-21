@@ -136,3 +136,48 @@ def test_disposal_evidence_is_flushed_before_abrupt_process_exit(tmp_path):
     rows = [json.loads(line) for line in events.read_text().splitlines()]
     assert rows[-1] == {"event": "qt_disposal", "nodeid": "probe",
                         "phase": "delete_begin", "object": "simulation"}
+
+
+@pytest.mark.parametrize("traceback_style", ["auto", "short"])
+def test_short_report_preserves_failure_without_opaque_argument_repr(tmp_path, traceback_style):
+    project = Path(__file__).resolve().parents[1]
+    events = tmp_path / "opaque-events.jsonl"
+    represented = tmp_path / "repr-called.txt"
+    probe = tmp_path / "test_opaque_probe.py"
+    probe.write_text(
+        "import os, pytest\nfrom pathlib import Path\n"
+        f"REPRESENTED = Path({str(represented)!r})\n"
+        "class OpaqueArgument:\n"
+        "    def __repr__(self):\n"
+        "        REPRESENTED.write_text('report touched opaque object')\n"
+        "        os._exit(83)\n"
+        "@pytest.fixture\ndef opaque_argument():\n"
+        "    return OpaqueArgument()\n"
+        "def test_original_assertion(opaque_argument):\n"
+        "    raise AssertionError('Original opaque-argument assertion')\n",
+        encoding="utf8",
+    )
+    env = os.environ.copy()
+    env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+    env["PYTHONPATH"] = str(project)
+    env.pop("PYTEST_ADDOPTS", None)
+    env.pop("PYTEST_PLUGINS", None)
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-c", str(project / "pytest.ini"),
+         str(probe), "-p", "tools.pytest_qt_diagnostics", "--qt-diagnostic-log", str(events),
+         f"--tb={traceback_style}", "-q", "-o", f"cache_dir={tmp_path / 'cache'}"],
+        cwd=project, env=env, capture_output=True, text=True, timeout=30, check=False,
+    )
+    # The control exits only its own child process when pytest formats a fixture
+    # argument. CI's short report must retain a real failure and skip that repr.
+    assert result.returncode == (83 if traceback_style == "auto" else 1), result.stdout + result.stderr
+    assert represented.exists() is (traceback_style == "auto")
+    rows = [json.loads(line) for line in events.read_text().splitlines()]
+    failure = next(row for row in rows if row["event"] == "exception_before_pytest_report")
+    assert failure["nodeid"].endswith("test_original_assertion")
+    assert failure["exception_type"] == "AssertionError"
+    assert failure["arguments"] == ["Original opaque-argument assertion"]
+    assert failure["when"] == "call"
+    if traceback_style == "short":
+        assert "Original opaque-argument assertion" in result.stdout
+        assert "1 failed" in result.stdout

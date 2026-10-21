@@ -1,7 +1,7 @@
 """Opt-in Qt CI evidence before unittest cleanup and pytest failure formatting.
 
-Only the Qt workflow loads this plugin. JSONL owns diagnostic evidence, not test
-state. Writes flush immediately; a logging failure never replaces a test error.
+The Qt and contract CI tiers load this plugin. JSONL owns diagnostic evidence,
+not test state. Writes flush immediately; a logging failure never replaces a test error.
 Exception arguments other than exact primitive types are recorded by type only.
 No Qt import, object property inspection, repr, retry, or outcome change occurs.
 """

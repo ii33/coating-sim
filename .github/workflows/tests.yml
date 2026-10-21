@@ -58,10 +58,10 @@ jobs:
         run: |
           mkdir -p "artifacts/test-ci/${{ matrix.tier }}"
           qt_diagnostics=()
-          if [[ "${{ matrix.tier }}" == "qt" ]]; then
+          if [[ "${{ matrix.tier }}" == "qt" || "${{ matrix.tier }}" == "contract" ]]; then
             export PYTHONUNBUFFERED=1
             qt_diagnostics=(-vv --tb=short -p tools.pytest_qt_diagnostics
-              --qt-diagnostic-log=artifacts/test-ci/qt/exceptions.jsonl)
+              --qt-diagnostic-log="artifacts/test-ci/${{ matrix.tier }}/exceptions.jsonl")
           fi
           set +e
           python tools/run_tests.py "${{ matrix.tier }}" \
