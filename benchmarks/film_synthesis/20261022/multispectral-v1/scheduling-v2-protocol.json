@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "protocol_id": "multispectral-scheduling-v2-20261022",
+  "baseline_commit": "1051fd612170c90a1d09939168f2444c3b0056b5",
+  "frozen_requests": [
+    "four-window-models/author_export-request.json",
+    "four-window-models/supplier_ybf3-request.json"
+  ],
+  "unchanged": [
+    "All original four windows, unpolarized thresholds and strict IR R<.03",
+    "1nm training,39..51deg inclusive at1deg",
+    "original dense/offset/local-extremum audit",
+    "300s,6000logical evaluations,64-layer exploratory cap",
+    "source n/k, no answer seeds, source branches separate"
+  ],
+  "scheduling": {
+    "failed_bare_initial_audit": "defer; original archive fully audits training-qualified bare",
+    "classic_initial_point_layer_work_quantum": 1000000,
+    "work_proxy": "sum(objective wavelength samples*angle count)*max(1,candidate layer count)",
+    "single_large_candidate_exception": "only before admitting any candidate in this slice",
+    "deferred_coverage": "save pending proposal and live epoch iterator; resume before expanded epochs",
+    "large_grid_refinement_order": "new source-derived batches before existing control; old control remains fallback, no target/constraint/budget change",
+    "small_grid_refinement_order": "existing control first; quick structural success can still exit before new route",
+    "source_prior_screen_point_layer_work_quantum": 1000000,
+    "source_refinement_interleaving": "screen one bounded batch, refine, then resume remaining live source stream; no full32 prerequisite"
+  },
+  "baseline_author_reported": {
+    "wall_seconds": 304.23,
+    "state": "not_found",
+    "termination_reason": "time_limit",
+    "logical_evaluations": 138,
+    "failed_evaluations": 0,
+    "new_multispectral_minimax_work": 0,
+    "returned_candidate_layers": 28,
+    "returned_total_thickness_nm": 3566.17,
+    "returned_training_worst_R": [
+      0.845014,
+      0.91821,
+      0.182571,
+      0.153766
+    ],
+    "returned_candidate_has_matching_audit": false,
+    "old_classic_epoch0_candidates": 234,
+    "new_source_derived_candidates": 32,
+    "source": "cloud baseline report; values rounded as reported; no local rerun of300s"
+  },
+  "scope": "scheduling fix only; no audit kernel or checkpoint-format changes; future independent angular replay still required for master acceptance"
+}

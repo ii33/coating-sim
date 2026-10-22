@@ -51,7 +51,9 @@ def test_cycle_zero_does_not_generate_priors_after_training_budget_is_spent(monk
         yield
 
     monkeypatch.setattr(global_search, "iter_reflector_proposals", proposals)
-    result = synthesis.synthesize_film_design(service, replace(request, max_evaluations=3))
+    # One complete bare training score plus the reserved final audit fills
+    # this budget; a failed bare design no longer has a pre-search audit.
+    result = synthesis.synthesize_film_design(service, replace(request, max_evaluations=2))
     assert calls == []
     assert result.termination_reason == "evaluation_limit"
     assert result.state == "not_found" and not result.targets_met
@@ -81,13 +83,14 @@ def test_all_skipped_lazy_startup_proposals_observe_stop_without_physical_work(m
     monkeypatch.setattr(global_search, "iter_reflector_proposals", proposals)
     result = synthesis.synthesize_film_design(service, request, cancel_event=cancelled)
     assert scans == [0]
-    assert result.cycles == 0 and result.evaluations == 2
+    assert result.cycles == 0 and result.evaluations == 1
     assert result.state == ("not_found" if stop == "deadline" else "cancelled")
     assert result.termination_reason == ("time_limit" if stop == "deadline" else "cancelled")
     assert result.candidate_design is not None and result.candidate_design["front_layers"] == []
-    assert result.validation_complete
-    assert result.training_score is not None and result.validation_score is not None
-    assert result.training_score["design"] == result.validation_score["design"]
+    assert not result.validation_complete and result.validation_evaluations == 0
+    assert result.training_score is not None and result.validation_score is None
+    assert result.training_score["design"] == result.candidate_design
+    assert result.candidate_provenance["validation_matches_candidate"] is False
     assert result.candidate_provenance["selection"] == (
         "completed_training_at_time_limit" if stop == "deadline" else "completed_training_at_cancel")
     assert result.performance["cleanup_complete"]
@@ -123,8 +126,8 @@ def test_time_limit_retains_unmatched_complete_training_without_starting_an_audi
     assert result.training_score is not None and result.candidate_design is not None
     assert len(result.candidate_design["front_layers"]) == 1
     assert result.validation_score is None and not result.validation_complete
-    assert result.validation_evaluations == 1 and stages.count("validation") == 1
-    assert len(snapshots) == 1 and snapshots[0][0]["front_layers"] == []
+    assert result.validation_evaluations == 0 and stages.count("validation") == 0
+    assert snapshots == []  # No unqualified bare checkpoint or post-deadline audit.
     assert result.candidate_provenance["validation_matches_candidate"] is False
     assert result.candidate_provenance["frozen_at_time_limit"] is True
     assert "frozen_at_cancel" not in result.candidate_provenance
@@ -205,7 +208,7 @@ def test_global_population_preparation_observes_the_same_deadline(monkeypatch):
     assert "structure_proposal" in stages and "interior_local_complete" in stages
     assert "structure_global_initial_population" not in stages
     assert result.state == "not_found" and result.termination_reason == "time_limit"
-    assert result.evaluations == 4 and result.validation_evaluations == 2
+    assert result.evaluations == 3 and result.validation_evaluations == 1
     assert result.validation_complete
     assert result.training_score is not None and result.validation_score is not None
     assert result.training_score["design"] == result.validation_score["design"]
@@ -261,6 +264,8 @@ def test_deadline_reaches_owned_worker_startup_before_any_submission(monkeypatch
     result = synthesis.synthesize_film_design(service, request)
     assert startups == [2]
     assert result.state == "not_found" and result.termination_reason == "time_limit"
-    assert result.evaluations == 2 and result.validation_complete
+    assert result.evaluations == 1 and not result.validation_complete
+    assert result.validation_evaluations == 0 and result.validation_score is None
+    assert result.candidate_provenance["validation_matches_candidate"] is False
     assert result.performance["submitted_tasks"] == 0
     assert result.performance["cleanup_complete"]

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field, replace
-from itertools import islice
 import hashlib
 import json
 import math
@@ -33,6 +32,10 @@ if TYPE_CHECKING:
     from .film_synthesis_global import StructuralProposal
 
 
+# Scheduling work proxy, not a request/physics budget or a feasibility bound.
+STRUCTURAL_PREFIX_POINT_LAYER_QUANTUM = 1_000_000
+
+
 class _SearchDiagnostics(TypedDict):
     structural_proposals: list[dict[str, object]]
     global_search: list[dict[str, object]]
@@ -44,6 +47,7 @@ class _SearchDiagnostics(TypedDict):
     hr_minimax_start: NotRequired[dict[str, object]]
     multispectral_start: NotRequired[dict[str, object]]
     structure_batch_policy: NotRequired[dict[str, object]]
+    multispectral_structure_schedule: NotRequired[dict[str, object]]
     bandpass_structure_schedule: NotRequired[dict[str, object]]
     matching_structure_schedule: NotRequired[dict[str, object]]
     cluster_structure_schedule: NotRequired[dict[str, object]]
@@ -562,6 +566,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
     search_diagnostics: _SearchDiagnostics = {"structural_proposals": [], "global_search": [],
         "layer_distribution": {}, "local_refinement": []}
     audited_signatures = set()
+    pending_structural_scans: dict[int, Generator[StructuralProposal, None, None]] = {}
+    pending_structural_proposals: dict[int, StructuralProposal] = {}
     cavity_stream: list[Generator[StructuralProposal, None, None] | None] = [None]
     cavity_stream_epoch = [None]
     matching_stream: list[Generator[StructuralProposal, None, None] | None] = [None]
@@ -1083,11 +1089,10 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         simple_start["audited_pass"] = True
                         emit("ar_simple_targets_verified", "Simple prior passed the same independent physical audit; complex search remains available for unmet targets", trial, raw["score"])
                         break
-            if automatic_reflector_route:
-                # Retain a physically audited checkpoint before the potentially
-                # long automatic prior scan. Its audit belongs only to this
-                # exact bare design, never to a later cancellation candidate.
-                audit_archive(working)
+            # archive(working) already fully audits a training-qualified bare
+            # substrate. An obvious training failure remains explicitly unaudited
+            # until it is selected for a final audit; it must not consume search
+            # time with dense certification before any layer proposal is tried.
             from .film_synthesis_multispectral_priors import (
                 multispectral_prior_eligible, iter_multispectral_hr_proposals,
             )
@@ -1110,83 +1115,127 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     policy="lower demand tiers before explicit layer boundary; original coherent R/T scoring; window-normalized search guide only; unchanged fallback")
                 search_diagnostics["multispectral_start"] = start
                 initial_work = evaluations
-                keepers: dict[int, tuple[Mapping[str, Any], Mapping[str, Any]]] = {}
                 signatures = set()
+                sample_points = sum(o.wavelength_samples * len(o.angles_deg) for o in request.objectives)
+                batches: list[dict[str, object]] = []
+                start["screening_batches"] = batches
                 def multi_report(event):
                     search_diagnostics["structural_proposals"].append(deepcopy(event))
                     emit(event["stage"], json.dumps(event, sort_keys=True))
-                # Keep one fully scored topology per demand tier. Candidate layer
-                # caps are explicit user bounds, never substituted for the demand.
-                for proposal in iter_multispectral_hr_proposals(request,
-                        cancel_check=check_training_admission, report=multi_report):
-                    check_training_admission()
-                    signature = tuple((r["material_id"], r["optical_set_id"],
-                        r["thickness"]["value"]) for r in proposal.design["front_layers"])
-                    if signature in signatures:
-                        continue
-                    signatures.add(signature)
-                    raw = evaluate(proposal.design)
-                    archive(raw, audit_eligible=False)
-                    metadata = proposal.provenance
-                    fraction = metadata["candidate_pair_budget"] / metadata["estimated_pair_demand"]
-                    tier = 0 if fraction <= .625 else 1 if fraction <= .875 else 2 if fraction <= 1.125 else 3
-                    if tier not in keepers or rank(raw) < rank(keepers[tier][0]):
-                        keepers[tier] = raw, metadata
-                    start["screened"] = len(signatures)
-                    emit("multispectral_prior", json.dumps(dict(
-                        tier=tier, layers=len(raw["design"]["front_layers"]),
-                        pair_budget=metadata["candidate_pair_budget"],
-                        estimated_pair_demand=metadata["estimated_pair_demand"]), sort_keys=True),
-                        raw["design"], raw["score"])
-                selected_multi = []
+                def refine_selected(selected_multi):
+                    for raw, metadata in selected_multi:
+                        check_training_admission()
+                        if targets_verified():
+                            break
+                        entry: dict[str, object] = dict(metadata,
+                            layer_count=len(raw["design"]["front_layers"]),
+                            total_thickness_nm=sum(r["thickness"]["value"] for r in raw["design"]["front_layers"]),
+                            initial_max_error=raw["score"]["max_error"], state="refining")
+                        runs.append(entry)
+                        if (raw["score"]["max_error"] <= request.acceptable_normalized_error
+                                and strict_lower_pass(raw["score"])):
+                            entry["state"] = "auditing_prior"
+                            audit_archive(raw, allow_feedback_repair=False)
+                            if targets_verified():
+                                entry["state"] = "completed"
+                                break
+                        entry["state"] = "refining"
+                        local_best = raw
+                        def multi_archive(value, *, audit_eligible=False):
+                            nonlocal local_best
+                            if rank(value) < rank(local_best):
+                                local_best = value
+                            archive(value, audit_eligible=audit_eligible)
+                        def multi_progress(stage, value, details):
+                            start["evaluations_used"] = evaluations - initial_work
+                            emit(stage, json.dumps(details, sort_keys=True), value["design"], value["score"])
+                        refined, details = refine_multispectral_minimax(request, raw,
+                            evaluate=evaluate, archive=multi_archive,
+                            cancel_check=check_training_admission, progress=multi_progress,
+                            max_iterations=48, soft_method="L-BFGS-B", coordinate_scale_nm=100.)
+                        entry["optimizer"] = details
+                        entry["final_max_error"] = refined["score"]["max_error"]
+                        entry["evaluations_used"] = evaluations - initial_work
+                        archive(refined, audit_eligible=False)
+                        # Keep both the helper's margin tie winner and the parent's
+                        # strict-rank champion. A guide never grants acceptance.
+                        for candidate in (refined, local_best):
+                            if (candidate["score"]["max_error"] <= request.acceptable_normalized_error
+                                    and strict_lower_pass(candidate["score"])):
+                                audit_archive(candidate)
+                            if targets_verified():
+                                break
+                        entry["state"] = "completed"
+                control = None
                 if existing:
                     original, original_metadata = min(existing, key=lambda row: rank(row[0]))
-                    selected_multi.append((original, dict(family=original_metadata["family"], demand_tier="existing")))
-                selected_multi.extend((value, dict(metadata, demand_tier=tier))
-                    for tier, (value, metadata) in sorted(keepers.items()))
-                for raw, metadata in selected_multi:
-                    check_training_admission()
-                    if targets_verified():
-                        break
-                    entry: dict[str, object] = dict(metadata,
-                        layer_count=len(raw["design"]["front_layers"]),
-                        total_thickness_nm=sum(r["thickness"]["value"] for r in raw["design"]["front_layers"]),
-                        initial_max_error=raw["score"]["max_error"], state="refining")
-                    runs.append(entry)
-                    if (raw["score"]["max_error"] <= request.acceptable_normalized_error
-                            and strict_lower_pass(raw["score"])):
-                        entry["state"] = "auditing_prior"
-                        audit_archive(raw, allow_feedback_repair=False)
-                        if targets_verified():
-                            entry["state"] = "completed"
-                            break
-                    entry["state"] = "refining"
-                    local_best = raw
-                    def multi_archive(value, *, audit_eligible=False):
-                        nonlocal local_best
-                        if rank(value) < rank(local_best):
-                            local_best = value
-                        archive(value, audit_eligible=audit_eligible)
-                    def multi_progress(stage, value, details):
-                        start["evaluations_used"] = evaluations - initial_work
-                        emit(stage, json.dumps(details, sort_keys=True), value["design"], value["score"])
-                    refined, details = refine_multispectral_minimax(request, raw,
-                        evaluate=evaluate, archive=multi_archive,
-                        cancel_check=check_training_admission, progress=multi_progress,
-                        max_iterations=48, soft_method="L-BFGS-B", coordinate_scale_nm=100.)
-                    entry["optimizer"] = details
-                    entry["final_max_error"] = refined["score"]["max_error"]
-                    entry["evaluations_used"] = evaluations - initial_work
-                    archive(refined, audit_eligible=False)
-                    # Keep both the helper's margin tie winner and the parent's
-                    # strict-rank champion. A guide never grants acceptance.
-                    for candidate in (refined, local_best):
-                        if (candidate["score"]["max_error"] <= request.acceptable_normalized_error
-                                and strict_lower_pass(candidate["score"])):
-                            audit_archive(candidate)
-                        if targets_verified():
-                            break
-                    entry["state"] = "completed"
+                    control = (original, dict(family=original_metadata["family"], demand_tier="existing"))
+                    original_work = sample_points * max(1, len(original["design"]["front_layers"]))
+                    start["source_first"] = original_work >= STRUCTURAL_PREFIX_POINT_LAYER_QUANTUM
+                source = iter_multispectral_hr_proposals(request,
+                    cancel_check=check_training_admission, report=multi_report)
+                source_exhausted = False
+                pending_source: StructuralProposal | None = None
+                try:
+                    while not source_exhausted and not targets_verified():
+                        keepers: dict[int, tuple[Mapping[str, Any], Mapping[str, Any]]] = {}
+                        batch_work = batch_count = 0
+                        while batch_work < STRUCTURAL_PREFIX_POINT_LAYER_QUANTUM:
+                            check_training_admission()
+                            if pending_source is not None:
+                                proposal, pending_source = pending_source, None
+                            else:
+                                try:
+                                    proposal = next(source)
+                                except StopIteration:
+                                    source_exhausted = True
+                                    break
+                            signature = tuple((r["material_id"], r["optical_set_id"],
+                                r["thickness"]["value"]) for r in proposal.design["front_layers"])
+                            if signature in signatures:
+                                continue
+                            item_work = sample_points * max(1, len(proposal.design["front_layers"]))
+                            if batch_count and batch_work + item_work > STRUCTURAL_PREFIX_POINT_LAYER_QUANTUM:
+                                pending_source = proposal
+                                break
+                            signatures.add(signature)
+                            raw = evaluate(proposal.design)
+                            archive(raw, audit_eligible=False)
+                            batch_count += 1
+                            batch_work += item_work
+                            metadata = proposal.provenance
+                            fraction = metadata["candidate_pair_budget"] / metadata["estimated_pair_demand"]
+                            tier = 0 if fraction <= .625 else 1 if fraction <= .875 else 2 if fraction <= 1.125 else 3
+                            if tier not in keepers or rank(raw) < rank(keepers[tier][0]):
+                                keepers[tier] = raw, metadata
+                            start["screened"] = len(signatures)
+                            emit("multispectral_prior", json.dumps(dict(
+                                tier=tier, layers=len(raw["design"]["front_layers"]),
+                                pair_budget=metadata["candidate_pair_budget"],
+                                estimated_pair_demand=metadata["estimated_pair_demand"]), sort_keys=True),
+                                raw["design"], raw["score"])
+                        batch_record: dict[str, object] = dict(
+                            batch=len(batches), admitted_candidates=batch_count,
+                            estimated_admitted_point_layer_work=batch_work,
+                            point_layer_work_quantum=STRUCTURAL_PREFIX_POINT_LAYER_QUANTUM,
+                            source_exhausted=source_exhausted, pending_candidate=pending_source is not None)
+                        batches.append(batch_record)
+                        emit("multispectral_screen_complete" if source_exhausted else "multispectral_screen_yield",
+                            json.dumps(batch_record, sort_keys=True))
+                        selected_multi = [(value, dict(metadata, demand_tier=tier))
+                            for tier, (value, metadata) in sorted(keepers.items())]
+                        if control is not None:
+                            if not start["source_first"]:
+                                selected_multi.insert(0, control)
+                                control = None
+                            elif source_exhausted:
+                                selected_multi.append(control)
+                                control = None
+                        refine_selected(selected_multi)
+                finally:
+                    close_source = getattr(source, "close", None)
+                    if close_source is not None:
+                        close_source()
                 start["evaluations_used"] = evaluations - initial_work
                 start["audited_pass"] = targets_verified()
                 if targets_verified():
@@ -1319,8 +1368,14 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 search_diagnostics["structural_proposals"].append(deepcopy(event))
                 emit(event["stage"], json.dumps(event, sort_keys=True))
 
-            def scan_structural_proposals(epoch=0):
+            def scan_structural_proposals(epoch=0, *, work_quantum=None):
                 check_training_admission()
+                requested_epoch = epoch
+                # Finish deferred coverage before opening an expanded epoch.
+                # The live merged generator also retains its cavity/AR progress.
+                if pending_structural_scans:
+                    epoch = min(pending_structural_scans)
+
                 # A bounded parent-owned chunk limits prepared designs and
                 # speculative physical work. Keep only one complete best per
                 # family, rather than retaining every full evaluated design.
@@ -1397,7 +1452,11 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                                     policy="round-robin persistent noncluster/cluster iterators; initial global screening")
                     yield from iter_reflector_proposals(request, epoch=epoch,
                         cancel_check=check_training_admission, report=structural_report)
-                proposals = merged_proposals()
+                if epoch not in pending_structural_scans:
+                    pending_structural_scans[epoch] = merged_proposals()
+                proposals = pending_structural_scans[epoch]
+                exhausted = yielded = False
+                stage_work = consumed = 0
                 keepers: dict[object, tuple[Mapping[str, Any], Mapping[str, Any]]] = {}
                 sample_points = sum(o.wavelength_samples * len(o.angles_deg) for o in request.objectives)
                 def commit(proposal, value):
@@ -1413,6 +1472,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         emit("structure_targets_verified", "Structural prior passed physical audit; thickness global search not needed", value["design"], value["score"])
                 try:
                     while not targets_verified():
+                        if work_quantum is not None and stage_work >= work_quantum:
+                            yielded = True
+                            break
                         check_training_admission()
                         remaining = None if request.max_evaluations is None else request.max_evaluations - evaluations - 1
                         if remaining is not None and remaining <= 0:
@@ -1422,9 +1484,32 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         # they are never silently routed through CPU workers.
                         if forward is not None:
                             count = 1
-                        chunk = list(islice(proposals, count))
+                        chunk: list[StructuralProposal] = []
+                        chunk_work = 0
+                        for _ in range(count):
+                            proposal = pending_structural_proposals.pop(epoch, None)
+                            if proposal is None:
+                                try:
+                                    proposal = next(proposals)
+                                except StopIteration:
+                                    exhausted = True
+                                    break
+                            item_work = sample_points * max(1, len(proposal.design["front_layers"]))
+                            if (work_quantum is not None and (consumed or chunk)
+                                    and stage_work + chunk_work + item_work > work_quantum):
+                                pending_structural_proposals[epoch] = proposal
+                                yielded = True
+                                break
+                            chunk.append(proposal)
+                            chunk_work += item_work
+                            # A candidate larger than the quantum is still one
+                            # complete admitted candidate, never partial physics.
+                            if work_quantum is not None and stage_work + chunk_work >= work_quantum:
+                                break
                         if not chunk:
                             break
+                        stage_work += chunk_work
+                        consumed += len(chunk)
                         if forward is not None:
                             proposal = chunk[0]
                             commit(proposal, evaluate(proposal.design, gpu_forward=True))
@@ -1440,10 +1525,25 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                                         break
                     return list(keepers.values())
                 finally:
-                    close = getattr(proposals, "close", None)
-                    if close is not None:
-                        close()
-            structural_values = [] if targets_verified() else scan_structural_proposals()
+                    if exhausted or targets_verified():
+                        proposals.close()
+                        pending_structural_scans.pop(epoch, None)
+                        pending_structural_proposals.pop(epoch, None)
+                    if work_quantum is not None or requested_epoch != epoch:
+                        schedule = dict(requested_epoch=requested_epoch, active_epoch=epoch,
+                            point_layer_work_quantum=work_quantum,
+                            estimated_admitted_point_layer_work=stage_work,
+                            admitted_candidates=consumed, yielded=yielded,
+                            pending=epoch in pending_structural_scans,
+                            pending_candidate=epoch in pending_structural_proposals,
+                            scope="initial classic screening slice, not a request budget; deferred iterator resumes before expanded epochs")
+                        search_diagnostics["multispectral_structure_schedule"] = schedule
+                        emit("structure_scan_yield" if yielded else "structure_scan_complete",
+                            json.dumps(schedule, sort_keys=True))
+            initial_scan_quantum = (STRUCTURAL_PREFIX_POINT_LAYER_QUANTUM
+                if multispectral_route and not separated_hr_only else None)
+            structural_values = ([] if targets_verified() else
+                scan_structural_proposals(work_quantum=initial_scan_quantum))
             # A stage quantum schedules population search, without claiming
             # exhaustive coverage. Subsequent cycles alternate expanded
             # structural enumeration/global epochs with ordinary needle growth.
@@ -1621,7 +1721,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     raise _Stopped("cycle_limit")
                 growth_available = len(blocked_branches) < len(branches)
                 cycle += 1
-                continuous_available = (bool(selected) or cavity_stream[0] is not None
+                continuous_available = (bool(selected) or bool(pending_structural_scans)
+                    or cavity_stream[0] is not None
                     or matching_stream[0] is not None or cluster_stream[0] is not None
                     or matching_deferred[0])
                 if continuous_available and (not growth_available or cycle % 2 == 0):
@@ -1631,7 +1732,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     extra = scan_structural_proposals(epoch=cycle // 2)
                     selected = choose_structural_candidates((*selected, *extra))
                     selected = global_epoch(selected, cycle // 2)
-                    if (not growth_available and not selected and cavity_stream[0] is None
+                    if (not growth_available and not selected and not pending_structural_scans and cavity_stream[0] is None
                             and matching_stream[0] is None and cluster_stream[0] is None
                             and not matching_deferred[0]):
                         raise _Stopped("no_feasible_growth")
@@ -1749,7 +1850,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         blocked_branches.add(branch_index)
                         audit_archive(best)
                         if (len(blocked_branches) == len(branches)
-                                and not selected and cavity_stream[0] is None
+                                and not selected and not pending_structural_scans and cavity_stream[0] is None
                                 and matching_stream[0] is None and cluster_stream[0] is None
                                 and not matching_deferred[0]):
                             raise _Stopped("no_feasible_growth")
@@ -1834,6 +1935,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         execution.close()
         if forward is not None:
             forward.close()
+        for pending_scan in pending_structural_scans.values():
+            pending_scan.close()
         if cavity_stream[0] is not None:
             cavity_stream[0].close()
         if matching_stream[0] is not None:

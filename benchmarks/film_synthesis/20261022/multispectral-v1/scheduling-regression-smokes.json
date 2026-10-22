@@ -1,0 +1,263 @@
+{
+  "schema_version": 1,
+  "runs": [
+    {
+      "case": "dual_rt_visible_nir",
+      "seed": 0,
+      "variant": "production",
+      "classification": "normal_entry_regression_smoke_not_300s_four_window_confirmation",
+      "state": "completed",
+      "termination_reason": "validated_targets_met",
+      "targets_met": true,
+      "error": null,
+      "total_seconds": 1.3816322999991826,
+      "cpu_seconds": 1.265625,
+      "parent_budget_seconds": 60.0,
+      "watchdog_grace_seconds": 60.0,
+      "cancel_requested": false,
+      "request_preparation_seconds": 0.08282409999810625,
+      "execution_seconds": 1.0083128000005672,
+      "audit_seconds": 0.3456751000012446,
+      "audit_calls": 1,
+      "hr_minimax_seconds": 0.0,
+      "general_minimax_seconds": 0.0,
+      "first_audited_success_seconds": 1.0559470000007423,
+      "evaluations": 114,
+      "validation_evaluations": 1,
+      "audit_physical_evaluations": 5,
+      "audit_wavelength_points": 3208,
+      "layers": 16,
+      "worst_audited": [
+        {
+          "objective_index": 0,
+          "metric": "R",
+          "wavelength_nm": [
+            650.0,
+            670.0
+          ],
+          "lower_bound": 0.9,
+          "upper_bound": null,
+          "actual_min": 0.9987933502851776,
+          "actual_max": 0.9993994629504028
+        },
+        {
+          "objective_index": 1,
+          "metric": "R",
+          "wavelength_nm": [
+            650.0,
+            670.0
+          ],
+          "lower_bound": 0.9,
+          "upper_bound": null,
+          "actual_min": 0.9935052116813811,
+          "actual_max": 0.9990870198056822
+        },
+        {
+          "objective_index": 2,
+          "metric": "T",
+          "wavelength_nm": [
+            1000.0,
+            1020.0
+          ],
+          "lower_bound": 0.85,
+          "upper_bound": null,
+          "actual_min": 0.874923738760546,
+          "actual_max": 0.9840946143870183
+        },
+        {
+          "objective_index": 3,
+          "metric": "T",
+          "wavelength_nm": [
+            1000.0,
+            1020.0
+          ],
+          "lower_bound": 0.85,
+          "upper_bound": null,
+          "actual_min": 0.874923738760546,
+          "actual_max": 0.9790977336204976
+        }
+      ],
+      "progress_records": 138,
+      "milestones": [
+        {
+          "stage": "validation",
+          "elapsed_seconds": 0.6325351000014052,
+          "evaluations": 113
+        },
+        {
+          "stage": "validation_complete",
+          "elapsed_seconds": 1.0569940999994287,
+          "evaluations": 114
+        },
+        {
+          "stage": "structure_targets_verified",
+          "elapsed_seconds": 1.0693524000016623,
+          "evaluations": 114
+        },
+        {
+          "stage": "completed",
+          "elapsed_seconds": 1.0701235999986238,
+          "evaluations": 114
+        }
+      ],
+      "base_request_canonical_sha256": "f9865f384892b80688a5493e4310f128b102bbbf64fecbe62ed29d0f4f3214d3",
+      "head_before": "1051fd612170c90a1d09939168f2444c3b0056b5",
+      "head_after": "1051fd612170c90a1d09939168f2444c3b0056b5",
+      "head_unchanged": true,
+      "runtime_sources_unchanged": true
+    },
+    {
+      "case": "three_ar_hr_ar",
+      "seed": 0,
+      "variant": "production",
+      "classification": "normal_entry_regression_smoke_not_300s_four_window_confirmation",
+      "state": "completed",
+      "termination_reason": "validated_targets_met",
+      "targets_met": true,
+      "error": null,
+      "total_seconds": 6.5937737000022025,
+      "cpu_seconds": 6.484375,
+      "parent_budget_seconds": 90.0,
+      "watchdog_grace_seconds": 60.0,
+      "cancel_requested": false,
+      "request_preparation_seconds": 0.0863123999988602,
+      "execution_seconds": 5.915000799999689,
+      "audit_seconds": 0.44901799999934155,
+      "audit_calls": 2,
+      "hr_minimax_seconds": 0.0,
+      "general_minimax_seconds": 2.9039377000008244,
+      "first_audited_success_seconds": 5.482418600000528,
+      "evaluations": 398,
+      "validation_evaluations": 2,
+      "audit_physical_evaluations": 87,
+      "audit_wavelength_points": 9697,
+      "layers": 8,
+      "worst_audited": [
+        {
+          "objective_index": 0,
+          "metric": "R",
+          "wavelength_nm": [
+            480.0,
+            500.0
+          ],
+          "lower_bound": null,
+          "upper_bound": 0.05,
+          "actual_min": 0.0066547138187401005,
+          "actual_max": 0.04421434258179243
+        },
+        {
+          "objective_index": 1,
+          "metric": "R",
+          "wavelength_nm": [
+            480.0,
+            500.0
+          ],
+          "lower_bound": null,
+          "upper_bound": 0.05,
+          "actual_min": 0.00937978248051662,
+          "actual_max": 0.04421434258179242
+        },
+        {
+          "objective_index": 2,
+          "metric": "R",
+          "wavelength_nm": [
+            650.0,
+            670.0
+          ],
+          "lower_bound": 0.9,
+          "upper_bound": null,
+          "actual_min": 0.90748120794294,
+          "actual_max": 0.9633798442818864
+        },
+        {
+          "objective_index": 3,
+          "metric": "R",
+          "wavelength_nm": [
+            650.0,
+            670.0
+          ],
+          "lower_bound": 0.9,
+          "upper_bound": null,
+          "actual_min": 0.9067891092171952,
+          "actual_max": 0.9315265464452617
+        },
+        {
+          "objective_index": 4,
+          "metric": "R",
+          "wavelength_nm": [
+            1000.0,
+            1020.0
+          ],
+          "lower_bound": null,
+          "upper_bound": 0.05,
+          "actual_min": 0.022769738203253443,
+          "actual_max": 0.03491455489449553
+        },
+        {
+          "objective_index": 5,
+          "metric": "R",
+          "wavelength_nm": [
+            1000.0,
+            1020.0
+          ],
+          "lower_bound": null,
+          "upper_bound": 0.05,
+          "actual_min": 0.022769738203253512,
+          "actual_max": 0.04358026708527815
+        }
+      ],
+      "progress_records": 632,
+      "milestones": [
+        {
+          "stage": "validation",
+          "elapsed_seconds": 5.040155400001822,
+          "evaluations": 396
+        },
+        {
+          "stage": "validation_complete",
+          "elapsed_seconds": 5.485888000002888,
+          "evaluations": 397
+        },
+        {
+          "stage": "multispectral_targets_verified",
+          "elapsed_seconds": 5.52293439999994,
+          "evaluations": 397
+        },
+        {
+          "stage": "validation",
+          "elapsed_seconds": 5.524209900002461,
+          "evaluations": 397
+        },
+        {
+          "stage": "validation_complete",
+          "elapsed_seconds": 5.890325300002587,
+          "evaluations": 398
+        },
+        {
+          "stage": "completed",
+          "elapsed_seconds": 5.9373454000015045,
+          "evaluations": 398
+        }
+      ],
+      "base_request_canonical_sha256": "f9865f384892b80688a5493e4310f128b102bbbf64fecbe62ed29d0f4f3214d3",
+      "head_before": "1051fd612170c90a1d09939168f2444c3b0056b5",
+      "head_after": "1051fd612170c90a1d09939168f2444c3b0056b5",
+      "head_unchanged": true,
+      "runtime_sources_unchanged": true
+    },
+    {
+      "case": "single_hr_tio2_franta",
+      "classification": "normal_CLI_regression_smoke",
+      "timing_scope": "CLI main call includes result serialization; not identical public-runner wall scope",
+      "cli_call_seconds": 26.329338700001244,
+      "exit_code": 0,
+      "state": "completed",
+      "targets_met": true,
+      "evaluations": 753,
+      "layers": 32,
+      "audit_min_R": 0.9873549455679516,
+      "validation_evaluations": 1,
+      "audit_physical_evaluations": 770
+    }
+  ]
+}

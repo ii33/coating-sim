@@ -61,7 +61,7 @@ def test_prefix_shares_parent_stop_and_preserves_complete_candidate(monkeypatch,
     assert result.performance['cleanup_complete']
     assert any(row.stage == 'multispectral_prior' for row in result.trace)
     if stop_mode in ('cancel', 'time_limit'):
-        assert result.validation_evaluations == 1
+        assert result.validation_evaluations == 0
         assert result.validation_score is None
     else:
         assert result.evaluations == 5

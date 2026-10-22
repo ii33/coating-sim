@@ -1,0 +1,170 @@
+{
+  "schema_version": 1,
+  "scope": "entry and stop diagnostics, not equal300s optical acceptance",
+  "runs": [
+    {
+      "classification": "entry_and_cancel_diagnostic_not_300s_confirmation",
+      "source_request": "author_export-request.json",
+      "request_wavelength_step_nm": 1,
+      "request_angles_deg": [
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51
+      ],
+      "max_seconds": 60,
+      "cancel_policy": "cooperative cancellation immediately after first completed multispectral minimax physical trial",
+      "total_seconds": 61.71660189999966,
+      "state": "not_found",
+      "termination_reason": "time_limit",
+      "joint_trials": [],
+      "evaluations": 26,
+      "validation_evaluations": 0,
+      "audit_physical_evaluations": 0,
+      "audit_wavelength_points": 0,
+      "checkpoint_count": 0,
+      "candidate_layers": 64,
+      "training_complete": true,
+      "validation_matches_candidate": false,
+      "validation_complete": false,
+      "targets_met": false,
+      "structure_schedule": {
+        "requested_epoch": 0,
+        "active_epoch": 0,
+        "point_layer_work_quantum": 1000000,
+        "estimated_admitted_point_layer_work": 1343888,
+        "admitted_candidates": 1,
+        "yielded": true,
+        "pending": true,
+        "pending_candidate": false,
+        "scope": "initial classic screening slice, not a request budget; deferred iterator resumes before expanded epochs"
+      },
+      "multispectral_start": {
+        "screened": 23,
+        "audited_pass": false,
+        "max_iterations_per_stage": 48,
+        "betas": [
+          100.0,
+          400.0,
+          1500.0
+        ],
+        "policy": "lower demand tiers before explicit layer boundary; original coherent R/T scoring; window-normalized search guide only; unchanged fallback"
+      },
+      "minimax_run_count": 0,
+      "core_sha256": "1f1784c0f742e839125755e69a6123b7c6064da57bcea62fb522dff6341036ac",
+      "core_unchanged": true,
+      "process": {
+        "priority": "below_normal",
+        "thread_environment": {
+          "OMP_NUM_THREADS": "1",
+          "MKL_NUM_THREADS": "1",
+          "OPENBLAS_NUM_THREADS": "1",
+          "BLIS_NUM_THREADS": "1",
+          "VECLIB_MAXIMUM_THREADS": "1",
+          "NUMEXPR_NUM_THREADS": "1"
+        }
+      },
+      "diagnostic_revision": "initial_classic_quantum_only"
+    },
+    {
+      "classification": "entry_and_cancel_diagnostic_not_300s_confirmation",
+      "source_request": "author_export-request.json",
+      "request_wavelength_step_nm": 1,
+      "request_angles_deg": [
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51
+      ],
+      "max_seconds": 60,
+      "cancel_policy": "cooperative cancellation immediately after first completed multispectral minimax physical trial",
+      "total_seconds": 12.893377500000497,
+      "state": "cancelled",
+      "termination_reason": "cancelled",
+      "joint_trials": [
+        {
+          "elapsed": 11.711394400001154,
+          "evaluations": 4
+        }
+      ],
+      "evaluations": 4,
+      "validation_evaluations": 0,
+      "audit_physical_evaluations": 0,
+      "audit_wavelength_points": 0,
+      "checkpoint_count": 0,
+      "candidate_layers": 46,
+      "training_complete": true,
+      "validation_matches_candidate": false,
+      "validation_complete": false,
+      "targets_met": false,
+      "structure_schedule": {
+        "requested_epoch": 0,
+        "active_epoch": 0,
+        "point_layer_work_quantum": 1000000,
+        "estimated_admitted_point_layer_work": 1343888,
+        "admitted_candidates": 1,
+        "yielded": true,
+        "pending": true,
+        "pending_candidate": false,
+        "scope": "initial classic screening slice, not a request budget; deferred iterator resumes before expanded epochs"
+      },
+      "multispectral_start": {
+        "screened": 1,
+        "audited_pass": false,
+        "max_iterations_per_stage": 48,
+        "betas": [
+          100.0,
+          400.0,
+          1500.0
+        ],
+        "policy": "lower demand tiers before explicit layer boundary; original coherent R/T scoring; window-normalized search guide only; unchanged fallback",
+        "screening_batches": [
+          {
+            "batch": 0,
+            "admitted_candidates": 1,
+            "estimated_admitted_point_layer_work": 4415632,
+            "point_layer_work_quantum": 1000000,
+            "source_exhausted": false,
+            "pending_candidate": false
+          }
+        ],
+        "source_first": true,
+        "evaluations_used": 2
+      },
+      "minimax_run_count": 1,
+      "core_sha256": "0185886d5eed4c664616ddf69c14b56c40419273f90b13f4092eb7e16cdd06ce",
+      "core_unchanged": true,
+      "process": {
+        "priority": "below_normal",
+        "thread_environment": {
+          "OMP_NUM_THREADS": "1",
+          "MKL_NUM_THREADS": "1",
+          "OPENBLAS_NUM_THREADS": "1",
+          "BLIS_NUM_THREADS": "1",
+          "VECLIB_MAXIMUM_THREADS": "1",
+          "NUMEXPR_NUM_THREADS": "1"
+        }
+      },
+      "diagnostic_revision": "classic_and_source_screening_quanta",
+      "core_hash_scope": "diagnostic worktree LF bytes; publication must match after CRLF-to-LF normalization"
+    }
+  ]
+}

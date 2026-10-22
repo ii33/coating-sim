@@ -56,7 +56,7 @@ def test_default_prefix_stop_keeps_completed_training_and_no_post_stop_audit(mon
     assert result.state == ('cancelled' if stop_mode == 'cancel' else 'not_found')
     assert result.termination_reason == ('cancelled' if stop_mode == 'cancel' else 'time_limit')
     assert not result.targets_met
-    assert result.evaluations == 4 and result.validation_evaluations == 1
+    assert result.evaluations == 3 and result.validation_evaluations == 0
     assert result.candidate_design is not None and result.training_score is not None
     assert len(result.candidate_design['front_layers']) == 8
     assert result.training_score['design'] in completed
@@ -85,8 +85,8 @@ def test_default_prefix_cannot_spend_beyond_parent_evaluation_admission(monkeypa
 
     monkeypatch.setattr(minimax, 'refine_hr_minimax', exhaust)
     result = synthesis.synthesize_film_design(None, request)
-    assert len(calls) == 1  # baseline, baseline audit, prior, trial, final audit
-    assert result.evaluations == 5 and result.validation_evaluations == 2
+    assert len(calls) == 2  # baseline, prior, two trials, reserved final audit
+    assert result.evaluations == 5 and result.validation_evaluations == 1
     assert result.state != 'failed' and not result.targets_met
     assert result.performance['cleanup_complete']
     assert any(row.stage == 'hr_minimax_prior' for row in result.trace)
