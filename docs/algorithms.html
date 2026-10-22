@@ -2876,6 +2876,7 @@ return the best complete candidate with matching audit; report remaining gap</pr
 <p><strong>实现、验证与限制：</strong><code>film_synthesis_multispectral_priors.py</code>、<code>film_synthesis_multispectral_minimax.py</code>和默认合成入口；训练默认1nm且用户可编辑，已保存工程与旧冻结基准不改写。协议及结果见<a href="film-synthesis-multispectral-stage-20261022.md">阶段记录</a>。四窗580–920/1044–1084nm HR、3–5/7–12μm AR、39–51°单面ZnS基片是新的主验收任务；AR单面最坏R&lt;3%已确定；材料来源资格及该四窗独立角度/波长审计待完成，不因三组研发回归通过而宣称该主任务达标。有限网格不是连续证书；低R亦不等于高T，已知吸收必须保留。</p>
 <p class="source"><strong>参考：</strong>TMM与解析导数沿用14ag及本页物理章节；有约束优化接口见<a href="https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html">SciPy官方SLSQP文档</a>。该接口文档不为本项目多窗收敛、先验估计、层数或速度提供证明；分窗先验、需求阶梯、权重guide及调度均仅为本项目实现。</p>
 <p><strong>终止诊断（2026-10-22，本项目约定）：</strong>暂停的结构迭代器在终止进度与结果诊断快照之前关闭；仅发布已生成提案的计数，不继续枚举或增加光学评价。未进入的结构族不补造诊断；<code>pending</code>表示终止时尚未穷尽的覆盖，不表示清理后仍有活动工作。取消、时间边界和观察回调异常均释放真实匹配/簇结构生成器；不改变候选、门限或审计资格。实现及回归：<code>film_auto_synthesis.py</code>、<code>test_film_synthesis_ar_simple_start.py</code>。</p>
+<p><strong>保留初值的有限诊断（2026-10-22，本项目约定）：</strong>厚度坐标往返的重算评分可能比原始已完成评分差一个ULP，此时仍保留原候选及排序。若内部最坏有符号违规哨兵尚未更新，导出的<code>max_signed_violation</code>从该保留候选已有完整响应按上述q公式计算；没有响应则为<code>null</code>，并以<code>max_signed_violation_source</code>明确说明无需额外物理评价而不可用。只取响应统计时仍严格验证原目标、角度、波长、重复项和实际数值有限性；不构造层厚导数，不将损坏响应当缺失。该诊断不授予达标资格，不增加光学调用，内部排名与独立审计不变，检查点继续使用严格JSON。</p>
 </section>
 
 <section id="film-bidirectional-jacobian-20261021">

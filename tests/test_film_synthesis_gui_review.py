@@ -90,39 +90,43 @@ class _Scene:
         if isinstance(result, QQuickItem):
             return result
         # Repeater delegates can have different QObject and visual parents.
-        # Traverse inside QML and transfer only the matched item through a
-        # QQuickItem-typed slot. QQmlExpression's QVariant return conversion is
-        # not used to recover native visual objects.
+        expression = """(function visit(item) {
+            if (item.objectName === %s) return item;
+            for (let i = 0; i < item.children.length; ++i) {
+                const found = visit(item.children[i]);
+                if (found !== null) return found;
+            }
+            return null;
+        })(contentItem)""" % json.dumps(name)
+        result = self.visual_item(self.window, expression, description=name,
+                                  named_candidates=len(candidates))
+        if result.objectName() != name:
+            raise AssertionError("QML visual lookup returned a different item")
+        return result
+
+    def visual_item(self, owner, expression, *, description=None, named_candidates=0):
+        # Every object-valued expression uses the typed slot; expression return
+        # values carry primitive diagnostics only.
         self._visual_lookup.item = None
         self._visual_lookup.evidence = ""
-        expression = """(function () {
-            function visit(item) {
-                if (item.objectName === %s) return item;
-                for (let i = 0; i < item.children.length; ++i) {
-                    const found = visit(item.children[i]);
-                    if (found !== null) return found;
-                }
-                return null;
-            }
-            const found = visit(contentItem);
+        query = """(function () {
+            const found = (%s);
             const evidence = JSON.stringify({found: found !== null,
                 objectName: found ? found.objectName : null,
                 visible: found ? found.visible : null});
             _guiReviewVisualLookup.capture(found, evidence);
             return evidence;
-        })()""" % json.dumps(name)
-        expression_result = self.evaluate(self.window, expression)
+        })()""" % expression
+        expression_result = self.evaluate(owner, query)
         result = self._visual_lookup.item
         if not isinstance(result, QQuickItem) or not isValid(result):
             # Report primitive evidence only: repr of an unexpected Qt wrapper
             # can itself fail while pytest formats the original lookup failure.
             raise AssertionError(
-                f"Missing QQuickItem {name!r}; result_type={type(result).__name__}; "
+                f"Missing QQuickItem {description or expression!r}; result_type={type(result).__name__}; "
                 f"expression_result_type={type(expression_result).__name__}; "
-                f"named_visual_candidates={len(candidates)}; "
+                f"named_visual_candidates={named_candidates}; "
                 f"qml_evidence={self._visual_lookup.evidence}")
-        if result.objectName() != name:
-            raise AssertionError("QML visual lookup returned a different item")
         return result
 
     def evaluate(self, owner, expression):
@@ -134,18 +138,29 @@ class _Scene:
         return _variant(result)
 
     def click(self, item):
-        parent = item.parentItem()
-        while parent is not None:
-            if parent.metaObject().indexOfProperty("contentY") >= 0:
-                content = parent.property("contentItem")
-                if isinstance(content, QQuickItem):
-                    point = item.mapToItem(content, QPointF(0, 0))
-                    maximum = max(0., float(parent.property("contentHeight")) - parent.height())
-                    parent.setProperty("contentY", min(maximum, max(0., point.y() - 15.)))
-            parent = parent.parentItem()
+        # Keep native ancestors and Flickable.contentItem inside QML. Python
+        # receives only coordinates, never generic wrappers for those objects.
+        self.evaluate(item, """(function () {
+            let ancestor = parent;
+            while (ancestor !== null) {
+                if ("contentY" in ancestor) {
+                    const content = ancestor.contentItem;
+                    if (!content) throw new Error("Scrollable ancestor has no contentItem");
+                    const point = mapToItem(content, 0, 0);
+                    const maximum = Math.max(0, ancestor.contentHeight - ancestor.height);
+                    ancestor.contentY = Math.min(maximum, Math.max(0, point.y - 15));
+                }
+                ancestor = ancestor.parent;
+            }
+            return true;
+        })()""")
         QTest.qWait(20)
         assert item.isVisible() and item.isEnabled(), item.objectName()
-        point = item.mapToScene(QPointF(item.width() / 2., item.height() / 2.)).toPoint()
+        coordinates = json.loads(self.evaluate(item, """(function () {
+            const point = mapToItem(null, width / 2, height / 2);
+            return JSON.stringify([point.x, point.y]);
+        })()"""))
+        point = QPointF(*coordinates).toPoint()
         assert 0 <= point.x() < self.window.width() and 0 <= point.y() < self.window.height()
         QTest.mouseClick(self.window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point)
         QTest.qWait(20)
@@ -160,7 +175,7 @@ class _Scene:
 
     def accept_dialog(self, dialog, standard_button=1024):
         assert dialog is not None and dialog.property("visible")
-        button = self.evaluate(dialog, f"standardButton({standard_button})")
+        button = self.visual_item(dialog, f"standardButton({standard_button})")
         assert isinstance(button, QQuickItem)
         self.click(button)
         _wait(lambda: not dialog.property("visible"))
@@ -357,6 +372,33 @@ def test_scene_lookup_preserves_visual_ownership_and_strict_item_checks(tmp_path
         scene.close()
 
 
+def test_scene_click_scrolls_real_flickable_without_python_parent_wrappers(tmp_path, monkeypatch):
+    harness = tmp_path / "Click.qml"
+    harness.write_text(
+        "import QtQuick\nimport QtQuick.Controls\n"
+        "Window { property var controller; width: 240; height: 180; "
+        "Flickable { objectName: 'scroll'; width: 220; height: 140; contentHeight: 600; "
+        "Button { objectName: 'target'; x: 10; y: 450; width: 140; height: 40; "
+        "property int clicks: 0; onClicked: clicks += 1 } } }\n",
+        encoding="utf8",
+    )
+    scene = _Scene(None, str(harness))
+    try:
+        target = scene.item("target")
+        scroll = scene.item("scroll")
+        assert float(scroll.property("contentY")) == 0.
+        # Reproduce the CI's unexpected parentItem conversion while retaining
+        # the actual QML ancestry, scrolling and native mouse event delivery.
+        with monkeypatch.context() as patch:
+            patch.setattr(target, "parentItem", lambda: scroll.metaObject())
+            scene.click(target)
+        assert target.property("clicks") == 1
+        assert float(scroll.property("contentY")) > 0.
+        assert isValid(target) and isValid(scroll)
+    finally:
+        scene.close()
+
+
 def test_qml_n0_grows_real_single_layer_and_freezes_current_targets_and_materials(gui):
     service, source, controller, scene = _optimizer(gui)
     before = source.session.snapshot()
@@ -379,13 +421,13 @@ def test_qml_n0_grows_real_single_layer_and_freezes_current_targets_and_material
     plotted = _variant(canvas.property("dataSnapshot"))
     assert plotted["wavelength_nm"] == [550.]
     assert plotted["candidate"][0] == pytest.approx(((1.5 - 1.23**2) / (1.5 + 1.23**2))**2, abs=1e-12)
-    rendered_objective = scene.evaluate(scene.item("filmSynthesisObjectiveAudit"), "itemAt(0)")
+    rendered_objective = scene.visual_item(scene.item("filmSynthesisObjectiveAudit"), "itemAt(0)")
     assert isinstance(rendered_objective, QQuickItem)
     assert "550" in str(rendered_objective.property("text")) and "R" in str(rendered_objective.property("text"))
     rows = controller.synthesisLayers
     assert len(rows) == 1 and rows[0]["material_id"] == "acceptance-film"
     assert rows[0]["thickness_nm"] == pytest.approx(550. / (4. * 1.23), rel=1e-7)
-    rendered = scene.evaluate(scene.item("filmSynthesisLayers"), "itemAt(0)")
+    rendered = scene.visual_item(scene.item("filmSynthesisLayers"), "itemAt(0)")
     assert isinstance(rendered, QQuickItem)
     displayed = str(rendered.property("text"))
     assert ("acceptance-film" in displayed or rows[0]["material_name"] in displayed) and "nm" in displayed, displayed

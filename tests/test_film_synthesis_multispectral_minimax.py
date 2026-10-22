@@ -1,6 +1,7 @@
 """Analytic mixed R/T fixtures: original scores, guide mass and parent boundaries."""
 from copy import deepcopy
 from dataclasses import replace
+import json
 from types import SimpleNamespace
 
 import numpy as np
@@ -436,3 +437,56 @@ def test_original_score_ties_prefer_margin_but_never_a_worse_original_score(monk
         assert detail["max_signed_violation"] < -.2
     else:
         assert best is initial
+
+
+@pytest.mark.parametrize("cached_responses", [False, True])
+def test_retained_initial_roundtrip_has_finite_or_explicitly_unavailable_statistic(monkeypatch, cached_responses):
+    request, initial, evaluate, calls = problem()
+    # A suboptimal original score can still beat every coordinate roundtrip by
+    # one ULP. Its physical identity and original ordering must be preserved.
+    original_key = dict(initial["score"])
+    expected_q = float(max(minimax._signed_bounds(request, initial, ())[0]))
+    for row in initial["responses"]:
+        row.pop("jacobian_values_by_layer_id")
+    if not cached_responses:
+        initial.pop("responses")
+    def roundtrip(design, **kwargs):
+        value = evaluate(design, **kwargs)
+        for key in ("max_error", "weighted_rms_error"):
+            value["score"][key] = float(np.nextafter(original_key[key], np.inf))
+        return value
+    def minimize(fun, x0, *, jac, constraints=(), **kwargs):
+        fun(x0)
+        jac(x0)
+        for constraint in constraints:
+            constraint["fun"](x0)
+            constraint["jac"](x0)
+        return SimpleNamespace(x=x0.copy(), message="cached roundtrip", nit=0, success=True)
+    monkeypatch.setattr(minimax.import_module("scipy.optimize"), "minimize", minimize)
+    best, details = minimax.refine_multispectral_minimax(request, initial, evaluate=roundtrip,
+        archive=lambda *args, **kwargs: None)
+    assert best is initial and best["score"] == original_key
+    assert len(calls) == details["physical_candidates"] == 1
+    if cached_responses:
+        assert details["max_signed_violation"] == expected_q
+        assert details["max_signed_violation_source"] == "retained_initial_cached_responses"
+    else:
+        assert details["max_signed_violation"] is None
+        assert "unavailable_without_additional_physical_evaluation" in details["max_signed_violation_source"]
+    json.dumps({"audit": {"synthesis_performance": {"search": {"multispectral_start": {
+        "runs": [{"optimizer": details}]}}}}}, allow_nan=False)
+
+
+@pytest.mark.parametrize("corruption", ["actual_inf", "duplicate", "missing", "wave"])
+def test_response_only_statistic_keeps_original_condition_validation(corruption):
+    request, initial, _, _ = problem()
+    if corruption == "actual_inf":
+        initial["responses"][0]["actual_values"][0] = float("inf")
+    elif corruption == "duplicate":
+        initial["responses"].append(deepcopy(initial["responses"][0]))
+    elif corruption == "missing":
+        initial["responses"].pop()
+    else:
+        initial["responses"][0]["wavelength_nm"][0] += .1
+    with pytest.raises(ValueError):
+        minimax._signed_bounds(request, initial, ())

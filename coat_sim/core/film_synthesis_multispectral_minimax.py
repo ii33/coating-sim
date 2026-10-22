@@ -59,6 +59,8 @@ def _signed_bounds(request: FilmSynthesisRequest, value: Value,
     Each original objective/angle row must occur once; wavelength vectors and
     layer IDs must exactly match. Each window's total guide mass is its weight,
     regardless of the number of wavelengths, angles or bounds in that window.
+    Empty ids requests response-only statistics, with an (N, 0) derivative;
+    no unavailable layer derivative is invented or used by the optimizer.
     """
     expected = {(i, float(angle)) for i, objective in enumerate(request.objectives)
                 for angle in objective.angles_deg}
@@ -80,13 +82,17 @@ def _signed_bounds(request: FilmSynthesisRequest, value: Value,
         if (not np.array_equal(np.asarray(row["wavelength_nm"], dtype=float), waves)
                 or actual.shape != waves.shape or not np.all(np.isfinite(actual))):
             raise ValueError("multispectral response grid/values differ from original conditions")
-        derivatives = row.get("jacobian_values_by_layer_id", {})
-        if set(derivatives) != set(ids):
-            raise ValueError("multispectral response requires exactly the optimized layer Jacobians")
-        columns = [np.asarray(derivatives[identifier], dtype=float) for identifier in ids]
-        if any(column.shape != waves.shape or not np.all(np.isfinite(column)) for column in columns):
-            raise ValueError("multispectral response Jacobian shape/values are invalid")
-        rows[key] = actual, np.column_stack(columns)
+        if ids:
+            derivatives = row.get("jacobian_values_by_layer_id", {})
+            if set(derivatives) != set(ids):
+                raise ValueError("multispectral response requires exactly the optimized layer Jacobians")
+            columns = [np.asarray(derivatives[identifier], dtype=float) for identifier in ids]
+            if any(column.shape != waves.shape or not np.all(np.isfinite(column)) for column in columns):
+                raise ValueError("multispectral response Jacobian shape/values are invalid")
+            jacobian = np.column_stack(columns)
+        else:
+            jacobian = np.empty((len(waves), 0))
+        rows[key] = actual, jacobian
     if set(rows) != expected:
         raise ValueError("multispectral response is missing original conditions")
     violations, jacobians, log_masses = [], [], []
@@ -325,10 +331,23 @@ def refine_multispectral_minimax(request: FilmSynthesisRequest, initial: Value, 
     data(endpoint[:-1])
     stages.append(dict(stage="epigraph", method="SLSQP", message=str(outcome.message),
                        iterations=int(outcome.nit), success=bool(outcome.success), optimizer_t=float(endpoint[-1])))
+    # Coordinate roundtrips can score one ULP worse than the retained initial
+    # value. Keep the original ranking/tie behavior, but never export its
+    # internal infinity sentinel as if it were an observed optical statistic.
+    diagnostic_signed: float | None = best_worst_signed
+    diagnostic_source = "parent_evaluated_candidate_responses"
+    if not math.isfinite(best_worst_signed):
+        if best.get("responses"):
+            q, _, _ = _signed_bounds(request, best, ())
+            diagnostic_signed = float(np.max(q))
+            diagnostic_source = "retained_initial_cached_responses"
+        else:
+            diagnostic_signed = None
+            diagnostic_source = "retained_initial_responses_unavailable_without_additional_physical_evaluation"
     return best, dict(method="analytic_multispectral_softmax_epigraph", betas=list(BETAS), stages=stages,
         max_iterations_per_stage=max_iterations, physical_candidates=calls, cache_hits=cache_hits,
         rejected_infeasible_trials=rejected, max_error=best_key[0], weighted_rms_error=best_key[1],
-        max_signed_violation=best_worst_signed,
+        max_signed_violation=diagnostic_signed, max_signed_violation_source=diagnostic_source,
         training_conditions=sum(o.wavelength_samples * len(o.angles_deg) for o in request.objectives),
         signed_bound_conditions=signed_conditions,
         thickness_bounds_source="full explicit layer/total nm bounds; positive float lower bound if unset",

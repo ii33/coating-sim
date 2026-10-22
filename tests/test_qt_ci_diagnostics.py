@@ -191,7 +191,7 @@ def test_scene_missing_item_reports_failure_without_formatting_qt_argument(tmp_p
     probe.write_text(
         "import os\nfrom pathlib import Path\nfrom types import SimpleNamespace\n"
         "from PySide6.QtGui import QGuiApplication\n"
-        "from tests.test_film_synthesis_gui_review import _Scene\n"
+        "from tests.test_film_synthesis_gui_review import _Scene, _VisualItemLookup\n"
         f"REPRESENTED = Path({str(represented)!r})\n"
         "APP = QGuiApplication.instance() or QGuiApplication([])\n"
         "class OpaqueArgument:\n"
@@ -201,6 +201,7 @@ def test_scene_missing_item_reports_failure_without_formatting_qt_argument(tmp_p
         "def test_original_scene_lookup_failure():\n"
         "    scene = _Scene.__new__(_Scene)\n"
         "    scene.window = SimpleNamespace(findChildren=lambda *args: [])\n"
+        "    scene._visual_lookup = _VisualItemLookup(None)\n"
         "    scene.evaluate = lambda *args: OpaqueArgument()\n"
         "    scene.item('filmOptimizationCancelButton')\n",
         encoding="utf8",
@@ -220,7 +221,7 @@ def test_scene_missing_item_reports_failure_without_formatting_qt_argument(tmp_p
     assert result.returncode == 1, result.stdout + result.stderr
     assert not represented.exists()
     assert "Missing QQuickItem 'filmOptimizationCancelButton'" in result.stdout
-    assert "result_type=OpaqueArgument" in result.stdout
+    assert "result_type=NoneType; expression_result_type=OpaqueArgument" in result.stdout
     assert "named_visual_candidates=0" in result.stdout
     assert "1 failed" in result.stdout
     rows = [json.loads(line) for line in events.read_text().splitlines()]
@@ -229,4 +230,5 @@ def test_scene_missing_item_reports_failure_without_formatting_qt_argument(tmp_p
     assert failure["when"] == "call"
     assert failure["arguments"] == [
         "Missing QQuickItem 'filmOptimizationCancelButton'; "
-        "result_type=OpaqueArgument; named_visual_candidates=0"]
+        "result_type=NoneType; expression_result_type=OpaqueArgument; "
+        "named_visual_candidates=0; qml_evidence="]
