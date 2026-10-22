@@ -813,6 +813,8 @@ def _stable_identifier(prefix: str, values: Sequence[Any], existing: set[str]) -
 
 def _site_records(design: Mapping[str, Any], frozen: Mapping[str, Any],
                   position_samples: int) -> list[dict[str, Any]]:
+    if type(position_samples) is not int or position_samples < 0:
+        raise ValueError("position_samples must be a nonnegative integer")
     layers = design["front_layers"]
     physical = [_physical_layer_thickness(layer, design, frozen) for layer in layers]
     sites: list[dict[str, Any]] = []
@@ -821,12 +823,17 @@ def _site_records(design: Mapping[str, Any], frozen: Mapping[str, Any],
         sites.append({
             "kind": "interface", "interface": interface, "host_index": None,
             "host_layer_id": "", "fraction": None, "position_nm": coordinate,
+            # Stable original neighbours let batch builders resolve interfaces
+            # after other insertions without reusing a shifted list index.
+            "left_layer_id": layers[interface - 1]["id"] if interface else None,
+            "right_layer_id": layers[interface]["id"] if interface < len(layers) else None,
         })
         if interface == len(layers):
             continue
         layer = layers[interface]
         thickness = physical[interface]
-        for sample_index in range(1, position_samples + 1):
+        interior_samples = range(1, position_samples + 1) if thickness > 0 else ()
+        for sample_index in interior_samples:
             fraction = sample_index / (position_samples + 1)
             sites.append({
                 "kind": "interior", "interface": interface, "host_index": interface,

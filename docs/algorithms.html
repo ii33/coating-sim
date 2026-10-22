@@ -12,6 +12,7 @@
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px solid #c8e0db;border-radius:8px;padding:16px;font-size:.88rem;line-height:1.5}</style>
 </head>
 <body>
+<p class="source">批量针插与独立敏感性补充：2026-10-22，见<a href="#film-batch-needle-20261022">14ai</a>、<a href="#film-sensitivity-20261022">14aj</a>。数学零厚、有限联合前向、名义验收和误差目标分别报告。</p>
 <p class="source">ITO 电学计算补充：2026-10-18，见<a href="#ito-electrical-20261018">膜厚、方阻、电阻率及矩形测量边界</a>。</p>
 <p class="source">单层光谱反演补充：2026-10-17，见<a href="#optical-constant-inversion">模型、背面与非唯一性</a>。</p>
 <p class="source">研究证据格式补充：2026-10-17，见<a href="#project-research-evidence">项目研究证据 v1</a>；不改变物理求解模型。</p>
@@ -229,6 +230,8 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#assistant-material-readiness-ito">材料有效域诊断与 ITO 条件光学数据（2026-10-18）</a>
 <a href="#local-optical-reference-import">本地 RII 与厂商 AGF 数据投影（2026-10-18）</a>
 <a href="#sourced-substrate-presets-20261019">H-K9L 与熔融石英基片预设（2026-10-19）</a>
+<a href="#film-batch-needle-20261022">14ai 原宿主锚点的解析批量针插</a>
+<a href="#film-sensitivity-20261022">14aj 独立膜厚敏感性与误差目标优化</a>
 </nav>
 <main>
 <section id="film-wavelength-workers-20261017"><h2>CPU wavelength workers and fair single-candidate timing — 2026-10-17</h2>
@@ -3057,6 +3060,42 @@ close/shutdown/history/late old operation: do not trigger automatic apply</pre>
 <figure><svg viewBox="0 0 720 150" role="img" aria-label="物理与观察者错误分流，验证工作保留且未知候选单计"><rect x="8" y="12" width="198" height="50" rx="8" fill="#e5f2ff" stroke="#347aaf"/><text x="18" y="34">物理RuntimeError</text><text x="18" y="52">→ 既有failed终态</text><rect x="220" y="12" width="225" height="50" rx="8" fill="#fff2df" stroke="#b77c25"/><text x="230" y="34">观察者/保存异常</text><text x="230" y="52">→ 清理后抛原异常</text><rect x="460" y="12" width="250" height="50" rx="8" fill="#e6f5ea" stroke="#398653"/><text x="470" y="34">已发生CPU/GPU验证工作</text><text x="470" y="52">→ 保留完成计数</text><path d="M108 65 V86 H585 V65" fill="none" stroke="#506070"/><rect x="140" y="98" width="445" height="38" rx="8" fill="#edf1f5" stroke="#506070"/><text x="150" y="122">失败批次N个未知候选 → unknown += N（唯一拥有者）</text></svg><figcaption>错误分类与计数归属独立记录；候选数与验证工作不混算，资源清理不追加物理审计。</figcaption></figure>
 </section>
 
+
+<section id="film-batch-needle-20261022">
+<h2>14ai 原宿主锚点的解析批量针插</h2>
+<p>更新：2026-10-22。实现 <code>film_synthesis_batch_needle.py</code>；输入为完整真实膜堆、冻结材料、候选材料/光学组及当前完整评价回调，输出解析扫描、同时重建的真实层表、实际层序 Jacobian ID、原宿主/界面锚点与清理诊断。此基础接口不独占外层搜索预算或验收，不声称等同 TFCalc 私有实现。</p>
+<p>坐标 z=0 在基片侧，front_layers 按基片向入射排列；厚度和位置 nm，宿主位置为其原厚的无量纲分数。对同一原宿主 H 与 0=f₀&lt;f₁&lt;…&lt;fₖ&lt;fₖ₊₁=1，一次重建全部分段：</p>
+<div class="formula">dⱼ=H(fⱼ₊₁−fⱼ)，最后一段=H−fsum(此前各段)；Σdⱼ=H；针层另加 tᵢ≥0。</div>
+<p>第一段保留原 layer_id，后续段使用稳定新 ID；所有针仍绑定原 host_id、fraction，界面绑定原左右邻层 ID。不能在上一根针插后的剩余宿主上重复解释原分数。返回的变量列按最终层表实际顺序，不按针提案顺序。零厚数学针可直接求解析导数，有限种子则必须完整联合前向及全厚度精修，禁止将各单针有限改善相加预测批量结果。</p>
+<figure class="figure"><svg viewBox="0 0 850 205" role="img" aria-label="同一原宿主同时插入三根针，保留全部原分数">
+<rect x="35" y="25" width="770" height="40" fill="#cae5dd"/><text x="48" y="51" class="svgtext">原宿主 H，固定 ID；原分数 0 → 1</text>
+<g fill="#cae5dd" stroke="#087f78"><rect x="35" y="105" width="150" height="40"/><rect x="195" y="105" width="240" height="40"/><rect x="445" y="105" width="145" height="40"/><rect x="600" y="105" width="205" height="40"/></g>
+<g stroke="#b56527" stroke-width="10"><path d="M190 94V157"/><path d="M440 94V157"/><path d="M595 94V157"/></g>
+<g class="svgtext"><text x="160" y="90">f₁</text><text x="414" y="90">f₂</text><text x="565" y="90">f₃</text><text x="45" y="182">Σ宿主分段=原 H；橙色为独立新针 t₁、t₂、t₃，列顺序跟随真实层表。</text></g>
+</svg><figcaption>图14ai：多个同宿主针由原处方一次构造，针有厚度后不会挤掉或重复缩短原宿主。有限针的电磁相互作用由联合计算处理。</figcaption></figure>
+<p>默认每宿主 3 内点、全部界面、多材料，低谷半步细化 1 轮；通用接口默认每批 1 针、零厚种子、seed=0、max_probes/max_layers=None。<code>max_probes</code> 是透明调度量，1/4 可保留给低谷细化；partial、资源跳过与拓扑等价跳过分别报告，不将扫描未完成称为驻点。混合路由可选择 genuine_only，跳过与同宿主/相邻膜层相同材料且同 optical_set 的厚度增长方向；bulk 不算相邻膜层，仍可插入同 bulk 材料的新膜层。该筛选是本项目搜索约定，不是无价值方向的数学证明。</p>
+<p>精确零层可清理；仅相邻 <strong>material_id 与 optical_set_id 都相同</strong> 才同源合并，bulk 基片永不并入膜层。用户要求删除正的近零层时标记不再代数等价，须完整重算和验收。数学零/近零不等于最终制造厚度。无70或104层隐性限制，仅用户显式层限及既有4096层文档表示边界。</p>
+<p>锚点指纹覆盖实际冻结材料内容、光学环境、层ID/顺序/物理厚度，不能只相信 metadata.sha256。它只绑定构造，不是 merit 缓存或通过凭证；每次扫描由当前评价器重新计算完整目标与网格。</p>
+<p class="source">来源：相干前向与厚度微分沿用 <a href="https://arxiv.org/abs/1603.02720">Byrnes, Multilayer optical calculations</a> 与本页既有解析 Jacobian 条目。原宿主批量构造、扫描量分配、等价方向筛选与清理协议未找到外部依据，仅为本项目实现；不声称外部来源验证了此调度策略。</p>
+</section>
+
+<section id="film-sensitivity-20261022">
+<h2>14aj 独立膜厚敏感性分析与真实误差目标优化</h2>
+<p>更新：2026-10-22。实现 <code>film_sensitivity.py</code>、<code>film_sensitivity_cli.py</code>。独立 request/result v1，普通厚度请求 v1 仍拒绝敏感性字段。输入原设计、原 R/T 目标及网格、冻结真实 n/k、逐层绝对 nm 或相对厚度误差、共模/独立模型、可选显式场景和优化变量；输出名义评分、一阶局部响应、完整有限扰动、用户所选误差目标以及真实终态/最优候选。不会暗加名义余量或固定 ±0.2% 门槛。</p>
+<div class="formula">aᵢ=绝对误差 nm，或 aᵢ=相对分数·dᵢ；Jᵢ=∂(R/T)/∂dᵢ。独立：s=√Σ(Jᵢaᵢ)²；共模：s=|ΣJᵢaᵢ|。</div>
+<p>独立模型的 s 是所声明单位幅度下的一阶响应组合，不自动假定高斯分布。<code>linear_sensitivity_norm</code> 为各目标条件 s/normalization_scale 的目标权重 RMS。有限场景要求显式 cᵢ∈[−1,1]、场景权重&gt;0；共模每列 c 相同：</p>
+<div class="formula">δdᵢ=aᵢcᵢ，d′=d+δd；线性预测 y+Jδd 与真实 y(d′) 分栏。负厚度明确失败，绝不夹到零。</div>
+<p><code>finite_scenario_worst</code> 是所有已列场景/原条件的 max(√目标权重·违规/scale)；<code>finite_scenario_expected</code> 是各场景完整目标加权 RMS 违规的场景权重 RMS。场景权重不改变 worst 目标；原始名义验收仍只看未加权 max 违规是否≤原 acceptable。有限场景不代表全部联合角点、概率良率或连续域误差上界。</p>
+<figure class="figure"><svg viewBox="0 0 850 195" role="img" aria-label="独立敏感性与原名义验收的并行报告">
+<g fill="#e9f4f1" stroke="#087f78"><rect x="20" y="55" width="190" height="55" rx="8"/><rect x="300" y="12" width="245" height="55" rx="8"/><rect x="300" y="120" width="245" height="55" rx="8"/><rect x="635" y="55" width="195" height="55" rx="8"/></g>
+<g class="svgtext"><text x="35" y="88">原处方、原目标、真实 n/k</text><text x="315" y="44">解析 J → 一阶局部响应尺度</text><text x="315" y="151">显式 δd → 完整有限前向</text><text x="650" y="88">用户所选误差目标</text></g>
+<g stroke="#50616a" fill="none" stroke-width="2"><path d="M210 82L300 40"/><path d="M210 82L300 146"/><path d="M545 40L635 82"/><path d="M545 146L635 82"/></g>
+</svg><figcaption>图14aj：原名义 max 验收独立保留；一阶预测不冒充有限扰动，优化所选误差目标也不冒充原目标通过。</figcaption></figure>
+<p>优化直接降低用户所选误差标量，不调用名义优化器冒充鲁棒优化，不强加未请求名义罚项。首版采用每变量17点确定性有限域扫，再有界坐标模式搜索；无改善步长减半至 min_step_fraction=1e−5，初始 .25，只有用户显式给定的迭代/评价限额会提前停止。该算法为局部搜索，不是全局最优证明；最优完整评分候选与末次探点、收敛/预算/失败/取消分开。每个名义候选连同完整有限场景算一次候选评价，物理前向与Jacobian调用另计。</p>
+<p>冻结缓存覆盖实际材料、光学环境、全部目标/原网格、误差与场景、变量层ID；不只用快照展示metadata。检查点含完整请求和已完成评分候选，加载/应用前可独立重放名义、线性及有限场景，验证层序/材料/未选层厚度保持。缓存最多32项且估计64MiB；完整结果保留估计超过256MiB则报告所需/限制字节并拒绝，不静默删场景或稀疏原网格。这些仅为本项目资源护栏。</p>
+<p>适用：已有单面、前表面、受支持相干或半无限基片固定层序 R/T；只研究膜厚误差。n/k、粗糙度、角度/波长误差、一般相关矩阵、相位/GD/GDD、一般各向异性和制造蒙特卡洛分布不支持。结果不是实镜制造或实测材料认证。CLI 通过 --request/--output，输出不覆盖已有文件；退出0=completed、3=partial预算、130=cancelled、2=failed。</p>
+<p class="source">来源：解析相干 TMM 与同页厚度 Jacobian 复用 <a href="https://arxiv.org/abs/1603.02720">Byrnes 原文</a>。一阶误差传播为所声明模型的代数定义；场景聚合、17点初始化、局部搜索与资源边界未找到外部依据，仅为本项目实现。不能援引来源声称制造分布或此搜索策略已获验证。</p>
+</section>
 
 </main>
 <article style="grid-column:2;max-width:1000px">
