@@ -60,6 +60,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <p class="source" style="grid-column:1/-1">结构合成更新：2026-10-12。新增14o至14o-2：实验性经典零厚敏感度针插、有界已有层增长与分组局部精修；独立结构请求与固定层序/有限试插分开，Dmax是硬约束。补充验证切片、真实求值计数与增长前局部边界检查。接口见 <a href="film-structure-optimization-contract.md">结构合成契约</a>，操作见 <a href="film-structure-optimization-guide.md">使用指南</a>，实际验收见 本轮状态 <span class="historical-reference">（历史验证记录，未随公开源码发布）</span>。</p>
 <p class="source">存储格式补充：2026-10-18。工程 BBS、助手精简记忆和可恢复文件清理均为非物理持久化契约，不改变仿真公式、坐标或数值精度。见<a href="#engineering-notes-storage-20261018">工程记录与助手工作区格式</a>。</p>
 <nav aria-label="章节目录">
+<a href="#film-multispectral-minimax-20261022">14ah 分窗高反先验与联合R/T门限精修（2026-10-22）</a>
 <a href="#film-synthesis-audit-20261020">14t 从零生长、最坏违规与独立极值审计（2026-10-20）</a>
 <a href="#film-physical-structures-20261020">14u 可展开的物理结构族（2026-10-20）</a>
 <a href="#film-synthesis-unknown-k-20261020">14v 显式未知 k 无损近似（2026-10-20）</a>
@@ -2851,6 +2852,23 @@ return the best complete candidate with matching audit; report remaining gap</pr
 <p><strong>默认光谱步长与兼容：</strong>当前优化/合成目标与仿真新建界面本已为400–700nm、1nm、301点，用户可编辑；非整除跨度用ceil(跨度/期望步长)+1保证实际步长不大于所选值。保存的显式step/count和旧range-only的301点兼容含义不变。本次只新增默认契约回归，未无意义修改生产值，也未将5nm冻结实验改成1nm。1nm是采样默认，不是连续谱精度证书；加密、偏移、极值审计及本节反馈仍保留。</p>
 <p><strong>实现：</strong><code>core/film_synthesis_global.py</code>边界对数；<code>core/film_synthesis_feedback.py</code>条件登记/快照/guide恢复；<code>core/film_auto_synthesis.py</code>审计、修复准入和计量；<code>core/film_synthesis_refinement.py</code>独立局部候选key。定向回归为<code>tests/test_film_synthesis_hr_layer_boundary.py</code>、<code>tests/test_film_synthesis_feedback.py</code>、<code>tests/test_film_synthesis_feedback_integration.py</code>、<code>tests/test_film_default_wavelength_step.py</code>。</p>
 <p class="source"><strong>依据与局限：</strong>边界候选、最坏新点选择、4 ULP去重、固定快照和局部repair均为<strong>本项目约定</strong>，未找到外部依据，仅为本项目实现。TMM、原独立极值审计和解析导数沿用本页既有物理章节。本节有限点/局部搜索不保证所有窄陷波可发现、全局最优、制造鲁棒性或连续达标；云端32层400–700nm高反案例未在本阶段证明求解。</p>
+</section>
+
+<section id="film-multispectral-minimax-20261022">
+<h2>14ah 分窗高反先验与联合R/T门限精修</h2>
+<p class="source">更新：2026-10-22。本阶段实现分离工作窗口的物理初值与全部原R/T条件的联合局部精修；不把单段高反的波长包络当作多窗口处方。初值估计、分配与调度均为<strong>本项目约定；未找到外部依据，仅为本项目实现</strong>，不构成可达性、最小层数或全局收敛定理。</p>
+<p><strong>输入输出和适用域：</strong>输入裸单面、无用户seed的冻结请求，允许材料的复数N=n+ik、所有原目标窗口、角度（deg）、s/p或非偏振、物理层数与厚度约束；输出合法候选层表与联合精修候选。波长、物理厚度均为nm；R/T是0–1功率比例，Jacobian为fraction/nm。要求至少一个R范围下界≥0.5，且存在分离高反窗口或其它混合约束；单段纯HR、纯AR及用户seed保留原路径。所有源域、已知k、显式未知k=0假设、基底及全膜相干TMM沿用原契约，不将薄膜和块体来源混同。</p>
+<h3>按工作窗口分配结构</h3>
+<p>只合并相交或接触的高反区间，保留对应原objective索引；间隙无约束且不引入额外采样。每个合并窗口分别在lo、√(lo·hi)、hi及原角度/s,p见证上排序材料；复数q取原被动分支，非正/交叉/非有限导纳对比度跳过该材料对。候选需对所有原窗口（含透射窗）通过材料源域检查。</p>
+<div class="formula">q=√(N²−n₀²sin²θ)，Yₛ=q，Yₚ=N²/q；ρ=min Re(Y_H)/Re(Y_L)&gt;1<br>δ=(4/π)asin((ρ−1)/(ρ+1))；K=max(1,ceil(log(hi/lo)/log(1+0.75δ)))<br>cⱼ=exp(log lo+(j+1/2)log(hi/lo)/K)，j=0…K−1<br>P=ceil(log((1+√Rₘᵢₙ)/(1−√Rₘᵢₙ))/(2logρ))；Rₘᵢₙ=1仅为有限估计向下取邻浮点值<br>d=c/[4Re q(N,θ_mid)]（nm），θ_mid为原角度极值中点</div>
+<p>每个中心至少一对高低材料，其余对数按当前需求/已分配数量最大的中心逐对分配。先验需求D是各中心P之和；有限阶梯为ceil(D/2)、ceil(3D/4)、D（后续epoch可加每中心一对）；只有用户显式给层数上限才额外列出边界档。可选空气/基底侧半个四分之一波匹配层及窗口间连接层先扣层数，再分配配对；所有层均计入最薄层、单层和总厚度。比较中心正反顺序、HL/LH及匹配变体；全膜一次相干评价，不相加独立膜堆性能。</p>
+<figure class="figure"><svg viewBox="0 0 960 270" role="img" aria-labelledby="multi-title"><title id="multi-title">分离窗口提案经全膜相干计算和联合门限精修后独立审计</title><g fill="#e9f4f1" stroke="#087f78"><rect x="20" y="20" width="210" height="54" rx="8"/><rect x="370" y="20" width="210" height="54" rx="8"/><rect x="720" y="20" width="210" height="54" rx="8"/><rect x="35" y="122" width="260" height="64" rx="8"/><rect x="350" y="122" width="260" height="64" rx="8"/><rect x="665" y="122" width="260" height="64" rx="8"/></g><g class="svgtext" text-anchor="middle"><text x="125" y="53">AR或T工作窗</text><text x="475" y="53">HR工作窗/独立分配</text><text x="825" y="53">另一HR/AR/T工作窗</text><text x="300" y="99">自由间隙</text><text x="650" y="99">自由间隙</text><text x="165" y="148">低层需求阶梯/端部变体</text><text x="165" y="173">全部层计入物理约束</text><text x="480" y="148">全膜相干TMM与解析J</text><text x="480" y="173">所有原R/T门限同时优化</text><text x="795" y="148">原评分/严格下界/独立审计</text><text x="795" y="173">保存已审计冠军，失败回退</text><text x="480" y="236">窗口权重仅改变搜索guide；最终仍按全部原条件验收</text></g><g fill="none" stroke="#276c67"><path d="M125 74 V122 M475 74 V122 M825 74 V122 M295 154 H350 M610 154 H665"/></g></svg><figcaption>图14ah：工作窗口之间不强加止带；各子结构通过完整相干膜系共同作用，不能从单个子堆的曲线推断最终四窗性能。</figcaption></figure>
+<h3>联合有符号违规、平滑延续和epigraph</h3>
+<div class="formula">下界qᵢ=(L−yᵢ)/s，∂qᵢ/∂d=−Jᵢ/s；上界qᵢ=(yᵢ−U)/s，∂qᵢ/∂d=Jᵢ/s<br>值目标同时使用两侧；s为原normalization_scale<br>log mᵢ=log w_window−log(N_λ N_θ N_bound)−log总质量<br>Fβ=q_max+logΣ exp[β(qᵢ−q_max)+log mᵢ]/β，β=100,400,1500<br>∂Fβ/∂d=Σ softmaxᵢ ∂qᵢ/∂d；先平移再乘β，并以log质量避免极端权重下溢<br>最后min t，t≥0，t−qᵢ(d)≥0；所有物理厚度及总厚度约束保留</div>
+<p>坐标x=d/100nm，无额外信赖盒。每个原窗口的guide总质量为其原权重，避免采样点数、角度数或双侧门限意外改变窗口权重。该guide是本项目搜索约定；原max_error、weighted_rms_error、严格下界与接受条件不变。先L-BFGS-B平滑延续再SLSQP epigraph；全局最优及连续波长/角度均不获保证。父级原评分优先，原评分完全相同时才用较小最坏有符号违规选择内部裕量；父级严格rank冠军仍单独保留。</p>
+<p><strong>默认路由、预算与档案：</strong><code>film_auto_synthesis.py</code>在分离纯HR上先运行本前缀，混合目标先保留原结构快速达标路径；未达标时筛选本先验并保留每需求档冠军，较低档先精修。每次默认精修48迭代/阶段为调度量子，不是请求总预算；组件通用上限180/阶段。原全局/needle结构搜索继续回退。每次物理评价、缓存命中前、优化阶段及候选生成均检查父级预算/取消；逻辑/物理工作保持原计数，缓存只复用同一最新厚度点响应/J，不跨请求。完成候选立即进入父档案；只有原训练与原独立加密/偏移/极值审计全部通过才接受。审计失败继续走原固定快照反馈修复，已审计最好解不被训练冠军覆盖。</p>
+<p><strong>实现、验证与限制：</strong><code>film_synthesis_multispectral_priors.py</code>、<code>film_synthesis_multispectral_minimax.py</code>和默认合成入口；训练默认1nm且用户可编辑，已保存工程与旧冻结基准不改写。协议及结果见<a href="film-synthesis-multispectral-stage-20261022.md">阶段记录</a>。四窗580–920/1044–1084nm HR、3–5/7–12μm AR、39–51°单面ZnS基片是新的主验收任务；AR单面最坏R&lt;3%已确定；材料来源资格及该四窗独立角度/波长审计待完成，不因三组研发回归通过而宣称该主任务达标。有限网格不是连续证书；低R亦不等于高T，已知吸收必须保留。</p>
+<p class="source"><strong>参考：</strong>TMM与解析导数沿用14ag及本页物理章节；有约束优化接口见<a href="https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html">SciPy官方SLSQP文档</a>。该接口文档不为本项目多窗收敛、先验估计、层数或速度提供证明；分窗先验、需求阶梯、权重guide及调度均仅为本项目实现。</p>
 </section>
 
 <section id="film-bidirectional-jacobian-20261021">

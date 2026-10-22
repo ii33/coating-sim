@@ -42,6 +42,7 @@ class _SearchDiagnostics(TypedDict):
     automatic_cluster_route: NotRequired[bool]
     ar_simple_start: NotRequired[dict[str, object]]
     hr_minimax_start: NotRequired[dict[str, object]]
+    multispectral_start: NotRequired[dict[str, object]]
     structure_batch_policy: NotRequired[dict[str, object]]
     bandpass_structure_schedule: NotRequired[dict[str, object]]
     matching_structure_schedule: NotRequired[dict[str, object]]
@@ -1087,6 +1088,116 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 # long automatic prior scan. Its audit belongs only to this
                 # exact bare design, never to a later cancellation candidate.
                 audit_archive(working)
+            from .film_synthesis_multispectral_priors import (
+                multispectral_prior_eligible, iter_multispectral_hr_proposals,
+            )
+            multispectral_route = multispectral_prior_eligible(request)
+            separated_hr_only = multispectral_route and all(
+                o.metric == "R" and o.mode == "range"
+                and o.lower_bound is not None and o.lower_bound >= .5
+                and (o.upper_bound is None or o.upper_bound >= 1.)
+                for o in request.objectives)
+
+            def multispectral_prefix(existing=()):
+                # This finite scheduling prefix shares the parent physical work,
+                # original score, strict acceptance, archive and independent audit.
+                # Mixed targets retain the existing fast structural screen first.
+                from .film_synthesis_multispectral_minimax import refine_multispectral_minimax
+                runs: list[dict[str, object]] = []
+                start: dict[str, object] = dict(
+                    runs=runs, screened=0, audited_pass=False,
+                    max_iterations_per_stage=48, betas=[100., 400., 1500.],
+                    policy="lower demand tiers before explicit layer boundary; original coherent R/T scoring; window-normalized search guide only; unchanged fallback")
+                search_diagnostics["multispectral_start"] = start
+                initial_work = evaluations
+                keepers: dict[int, tuple[Mapping[str, Any], Mapping[str, Any]]] = {}
+                signatures = set()
+                def multi_report(event):
+                    search_diagnostics["structural_proposals"].append(deepcopy(event))
+                    emit(event["stage"], json.dumps(event, sort_keys=True))
+                # Keep one fully scored topology per demand tier. Candidate layer
+                # caps are explicit user bounds, never substituted for the demand.
+                for proposal in iter_multispectral_hr_proposals(request,
+                        cancel_check=check_training_admission, report=multi_report):
+                    check_training_admission()
+                    signature = tuple((r["material_id"], r["optical_set_id"],
+                        r["thickness"]["value"]) for r in proposal.design["front_layers"])
+                    if signature in signatures:
+                        continue
+                    signatures.add(signature)
+                    raw = evaluate(proposal.design)
+                    archive(raw, audit_eligible=False)
+                    metadata = proposal.provenance
+                    fraction = metadata["candidate_pair_budget"] / metadata["estimated_pair_demand"]
+                    tier = 0 if fraction <= .625 else 1 if fraction <= .875 else 2 if fraction <= 1.125 else 3
+                    if tier not in keepers or rank(raw) < rank(keepers[tier][0]):
+                        keepers[tier] = raw, metadata
+                    start["screened"] = len(signatures)
+                    emit("multispectral_prior", json.dumps(dict(
+                        tier=tier, layers=len(raw["design"]["front_layers"]),
+                        pair_budget=metadata["candidate_pair_budget"],
+                        estimated_pair_demand=metadata["estimated_pair_demand"]), sort_keys=True),
+                        raw["design"], raw["score"])
+                selected_multi = []
+                if existing:
+                    original, original_metadata = min(existing, key=lambda row: rank(row[0]))
+                    selected_multi.append((original, dict(family=original_metadata["family"], demand_tier="existing")))
+                selected_multi.extend((value, dict(metadata, demand_tier=tier))
+                    for tier, (value, metadata) in sorted(keepers.items()))
+                for raw, metadata in selected_multi:
+                    check_training_admission()
+                    if targets_verified():
+                        break
+                    entry: dict[str, object] = dict(metadata,
+                        layer_count=len(raw["design"]["front_layers"]),
+                        total_thickness_nm=sum(r["thickness"]["value"] for r in raw["design"]["front_layers"]),
+                        initial_max_error=raw["score"]["max_error"], state="refining")
+                    runs.append(entry)
+                    if (raw["score"]["max_error"] <= request.acceptable_normalized_error
+                            and strict_lower_pass(raw["score"])):
+                        entry["state"] = "auditing_prior"
+                        audit_archive(raw, allow_feedback_repair=False)
+                        if targets_verified():
+                            entry["state"] = "completed"
+                            break
+                    entry["state"] = "refining"
+                    local_best = raw
+                    def multi_archive(value, *, audit_eligible=False):
+                        nonlocal local_best
+                        if rank(value) < rank(local_best):
+                            local_best = value
+                        archive(value, audit_eligible=audit_eligible)
+                    def multi_progress(stage, value, details):
+                        start["evaluations_used"] = evaluations - initial_work
+                        emit(stage, json.dumps(details, sort_keys=True), value["design"], value["score"])
+                    refined, details = refine_multispectral_minimax(request, raw,
+                        evaluate=evaluate, archive=multi_archive,
+                        cancel_check=check_training_admission, progress=multi_progress,
+                        max_iterations=48, soft_method="L-BFGS-B", coordinate_scale_nm=100.)
+                    entry["optimizer"] = details
+                    entry["final_max_error"] = refined["score"]["max_error"]
+                    entry["evaluations_used"] = evaluations - initial_work
+                    archive(refined, audit_eligible=False)
+                    # Keep both the helper's margin tie winner and the parent's
+                    # strict-rank champion. A guide never grants acceptance.
+                    for candidate in (refined, local_best):
+                        if (candidate["score"]["max_error"] <= request.acceptable_normalized_error
+                                and strict_lower_pass(candidate["score"])):
+                            audit_archive(candidate)
+                        if targets_verified():
+                            break
+                    entry["state"] = "completed"
+                start["evaluations_used"] = evaluations - initial_work
+                start["audited_pass"] = targets_verified()
+                if targets_verified():
+                    assert audited_best is not None
+                    value = audited_best[0]
+                    emit("multispectral_targets_verified", "Source-derived multiwindow topology and joint R/T refinement passed original independent audit", value["design"], value["score"])
+                elif best is not None:
+                    audit_archive(best)
+
+            if separated_hr_only and not targets_verified():
+                multispectral_prefix()
             # Add a source-derived pure-HR prefix before the much larger classic
             # structural sweep. All physical calls and final audits retain the
             # existing parent budget, provenance and cancellation boundaries.
@@ -1337,6 +1448,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             # exhaustive coverage. Subsequent cycles alternate expanded
             # structural enumeration/global epochs with ordinary needle growth.
             selected = choose_structural_candidates(structural_values)
+            if multispectral_route and not separated_hr_only and not targets_verified():
+                multispectral_prefix(selected)
             if selected and not targets_verified() and not automatic_cluster_route:
                 prior, prior_metadata = selected[0]
                 emit("structural_local_refinement", "64 analytic interior local iterations before global population; scheduling quantum, not a search stop", prior["design"], prior["score"])

@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "classification": "explicit_source_model_research_not_process_qualification",
+  "source_repository_commit": "78fb88a9610ba2cdc3da26480dc70424b6cbf337",
+  "materials": [
+    {
+      "material_id": "model_zns_film_amotchkina2020_original_export",
+      "file": "ZnS_film_Amotchkina_2020_masked_nk.csv",
+      "sha256": "c7a552138eb68c17fd6e031c750bfe048aab5154a6443dc208f3a771d076611b",
+      "source": "https://github.com/ii33/coating-research-library/blob/78fb88a9610ba2cdc3da26480dc70424b6cbf337/manual_studies/2026-10-22_four_window_material_qualification/ZnS_film_Amotchkina_2020_masked_nk.csv",
+      "caution": "Author export zeros retained as explicit model values, not measured absorption bounds; conservative masked column is not used."
+    },
+    {
+      "material_id": "model_ybf3_film_amotchkina2020_original_export",
+      "file": "YbF3_film_Amotchkina_2020_masked_nk.csv",
+      "sha256": "ed4ec21bd76bf00ab8cae9df4684d371f5530db8965bf9fa4fab6001898ccf2b",
+      "source": "https://github.com/ii33/coating-research-library/blob/78fb88a9610ba2cdc3da26480dc70424b6cbf337/manual_studies/2026-10-22_four_window_material_qualification/YbF3_film_Amotchkina_2020_masked_nk.csv",
+      "caution": "Author export zeros retained as explicit model values, not measured absorption bounds; conservative masked column is not used."
+    },
+    {
+      "material_id": "model_ybf3_film_merck2019_sparse",
+      "file": "YbF3_film_Merck_2019_sparse_nk.csv",
+      "sha256": "755c9e63994602d9130956ab83272f34c7da993173c4361543576462f4e89e41",
+      "source": "https://github.com/ii33/coating-research-library/blob/78fb88a9610ba2cdc3da26480dc70424b6cbf337/manual_studies/2026-10-22_four_window_material_qualification/YbF3_film_Merck_2019_sparse_nk.csv",
+      "caution": "Sparse full supplier n/k pair, unresolved water features; not actual-process certification."
+    },
+    {
+      "material_id": "model_zns_bulk_querry1987_screening",
+      "file": "ZnS_bulk_Querry_1987_nk_screening_only.csv",
+      "sha256": "f0872de79468785b693d5ff860b3a5ab0d8ae33100b3a0f2cec4bc60576cd286",
+      "source": "https://github.com/ii33/coating-research-library/blob/78fb88a9610ba2cdc3da26480dc70424b6cbf337/manual_studies/2026-10-22_four_window_material_qualification/ZnS_bulk_Querry_1987_nk_screening_only.csv",
+      "caution": "Bulk CVD boundary screening; DK approximately K at many low-loss points; not deposited film or specified ZnS grade."
+    }
+  ],
+  "branches": [
+    {
+      "id": "author_export",
+      "file": "author_export-request.json",
+      "request_bytes_sha256": "4f9ce18e5ad34d3d20e223d55286d2c456a0c39c55bc7c0ee927e9bbde4f38c5",
+      "status": "freeze_and_normal_job_roundtrip_passed_no_optimization_run",
+      "layer_limit": 64,
+      "limit_scope": "declared exploratory protocol; not user manufacturing constraint or feasibility bound",
+      "max_seconds": 300,
+      "max_evaluations": 6000,
+      "training_angles_deg": [
+        39.0,
+        40.0,
+        41.0,
+        42.0,
+        43.0,
+        44.0,
+        45.0,
+        46.0,
+        47.0,
+        48.0,
+        49.0,
+        50.0,
+        51.0
+      ],
+      "training_wavelength_step_nm": 1,
+      "independent_audit_current_scope": "production 0.1nm dense/offset/extrema at all 13 training angles; additional 0.5deg angular replay required before master acceptance",
+      "candidate_materials": [
+        "model_zns_film_amotchkina2020_original_export",
+        "model_ybf3_film_amotchkina2020_original_export"
+      ],
+      "substrate": "model_zns_bulk_querry1987_screening"
+    },
+    {
+      "id": "supplier_ybf3",
+      "file": "supplier_ybf3-request.json",
+      "request_bytes_sha256": "573a8c616456fe28fd31979981f2270da6718819717d3de345bc6989111b26b6",
+      "status": "freeze_and_normal_job_roundtrip_passed_no_optimization_run",
+      "layer_limit": 64,
+      "limit_scope": "declared exploratory protocol; not user manufacturing constraint or feasibility bound",
+      "max_seconds": 300,
+      "max_evaluations": 6000,
+      "training_angles_deg": [
+        39.0,
+        40.0,
+        41.0,
+        42.0,
+        43.0,
+        44.0,
+        45.0,
+        46.0,
+        47.0,
+        48.0,
+        49.0,
+        50.0,
+        51.0
+      ],
+      "training_wavelength_step_nm": 1,
+      "independent_audit_current_scope": "production 0.1nm dense/offset/extrema at all 13 training angles; additional 0.5deg angular replay required before master acceptance",
+      "candidate_materials": [
+        "model_zns_film_amotchkina2020_original_export",
+        "model_ybf3_film_merck2019_sparse"
+      ],
+      "substrate": "model_zns_bulk_querry1987_screening"
+    }
+  ],
+  "training_step_nm": 1,
+  "source_extrapolation": false,
+  "unknown_k_zero": false,
+  "hr_acceptance": "unpolarized R>=.99 each point",
+  "ar_acceptance": "unpolarized R<.03 each point; inclusive nextafter(.03,-inf) at zero tolerance",
+  "back_surface": false,
+  "whole_piece_transmission_acceptance": false,
+  "confirmation_requirements": [
+    "Independent angular replay at 0.5deg covering39..51, wavelengths dense/offset/extrema; finite evidence only.",
+    "Report s,p separately without imposing new separate s/p constraints.",
+    "Separate branch results, actual layers/thickness, optimizer/audit/total time and physical workload.",
+    "If 64-layer exploratory protocol fails, report budget exhaustion/gap; do not infer infeasibility or silently increase constraints."
+  ]
+}

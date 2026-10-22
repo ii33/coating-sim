@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "protocol_id": "user-four-window-zns-single-surface-20261022",
+  "status": "source_model_requests_preflighted_no_optimization_or_master_acceptance",
+  "user_specification": {
+    "high_reflection_intervals_nm": [
+      [
+        580,
+        920
+      ],
+      [
+        1044,
+        1084
+      ]
+    ],
+    "high_reflection_minimum": 0.99,
+    "high_reflection_comparison": ">=",
+    "antireflection_intervals_nm": [
+      [
+        3000,
+        5000
+      ],
+      [
+        7000,
+        12000
+      ]
+    ],
+    "antireflection_maximum": 0.03,
+    "antireflection_comparison": "<",
+    "angle_interval_deg": [
+      39,
+      51
+    ],
+    "polarization": "unpolarized",
+    "substrate_material": "ZnS",
+    "surface_scope": "single front surface; no back surface or whole-piece transmission acceptance"
+  },
+  "sampling_plan": {
+    "training_wavelength_step_nm": 1,
+    "training_angles_deg": [
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51
+    ],
+    "independent_audit_wavelength_step_nm": 0.1,
+    "independent_audit_offset_nm": 0.05,
+    "independent_audit_angles_deg": [
+      39.0,
+      39.5,
+      40.0,
+      40.5,
+      41.0,
+      41.5,
+      42.0,
+      42.5,
+      43.0,
+      43.5,
+      44.0,
+      44.5,
+      45.0,
+      45.5,
+      46.0,
+      46.5,
+      47.0,
+      47.5,
+      48.0,
+      48.5,
+      49.0,
+      49.5,
+      50.0,
+      50.5,
+      51.0
+    ],
+    "local_wavelength_extrema": true,
+    "continuous_certificate": false
+  },
+  "numeric_representation": {
+    "acceptable_normalized_error": 0,
+    "hr_lower_bound": 0.99,
+    "ar_exclusive_upper_bound": 0.03,
+    "ar_float_inclusive_upper_bound": 0.029999999999999995,
+    "note": "Executable request must use nextafter(.03,-inf) with zero tolerance, or an equivalent explicit strict-upper contract; never inclusive .03 or a window average."
+  },
+  "unresolved": {
+    "film_source_identity": "Two explicit source-model branches frozen in manifest; actual-process qualification remains separate.",
+    "zns_bulk_source_identity": "Querry1987 CVD bulk boundary screening; not user ZnS grade certification.",
+    "source_qualification": "Export/model zero k is not a measurement; keep n/k from one declared source branch, no silent model splicing.",
+    "physical_constraints": "No user layer/thickness limits supplied by this target message. Do not silently inherit the old exploratory cap as a user requirement.",
+    "research_budget": "Freeze explicitly before confirmation experiments; exhaustion is not infeasibility."
+  },
+  "notes": [
+    "Old three Franta cases remain development regressions, not qualification of this four-window target.",
+    "No source extrapolation, unknown-k clearing, user project mutation or manufacturing guarantee."
+  ],
+  "source_model_manifest": "four-window-models/manifest.json"
+}

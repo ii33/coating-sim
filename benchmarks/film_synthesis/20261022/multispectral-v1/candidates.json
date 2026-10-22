@@ -1,0 +1,3401 @@
+{
+  "schema_version": 1,
+  "candidates": {
+    "baseline:dual_hr_570_930_1034_1094:0": {
+      "terminal_candidate_design": {
+        "schema_version": 1,
+        "id": "benchmark-dual_hr_570_930_1034_1094",
+        "name": "dual_hr_570_930_1034_1094",
+        "layer_order": "substrate_outward",
+        "front_layers": [
+          {
+            "id": "auto-hr-dual-1-0",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 197.38266486053172,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-1",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 119.65958070683533,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-2",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 205.00001956115494,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-3",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 103.0669649182428,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-4",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 218.85983970523966,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-5",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 108.50601019263586,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-6",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 253.17998375958845,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-7",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 162.6247564804844,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-8",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 243.60512040384302,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-9",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 106.9489939321713,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-10",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 201.31615493037276,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-11",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 103.76565161693311,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-12",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 206.8418599131556,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-13",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 112.68343834679504,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-14",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 226.43712231374096,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-15",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 115.14400463373693,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-16",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 195.37987898449558,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-17",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 97.3434753060323,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-18",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 246.5129785270081,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-19",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 178.02200695116736,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-20",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 223.8805567039807,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-21",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 110.33355818890915,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-22",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 203.39488037825458,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-23",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 117.50356409243217,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-24",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 218.77983037804208,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-25",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 104.129501190673,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-26",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 193.14756498478067,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-27",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 104.1472029816487,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-28",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 205.79976611024776,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-29",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 125.82735935557079,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-30",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 243.52436395416373,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-31",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 145.44318242769373,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-32",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 225.83791069110245,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-33",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 134.01647004449083,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-34",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 208.9693916626634,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-35",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 108.98715731972202,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-36",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 191.28206729633817,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-37",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 101.83832603970104,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-38",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 235.10883434836649,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-39",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 96.75430955306221,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-40",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 222.00464881473937,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-41",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 95.72905515569991,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-42",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 186.045919362615,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-43",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 101.58990121401399,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-44",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 219.20344340096452,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-45",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 167.27215007082808,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-46",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 224.63766888891868,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-47",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 91.32710040408907,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-48",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 183.1121720213909,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-49",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 91.58923157960105,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-50",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 163.4274807230233,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-51",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 86.37879080225771,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-52",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 200.50349522589747,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-53",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 76.19853326980198,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-54",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 78.9016096287295,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-55",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 10.000796105697676,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-56",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 104.95082499308523,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-57",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 74.16350017522835,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-58",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 171.4383331718698,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-59",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 103.80562380054667,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-60",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 177.28406217727166,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-61",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 85.34681231885149,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-62",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 113.88739846867195,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-63",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 52.47811320424981,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-64",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 126.71451830095907,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-65",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 142.3546144693725,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-66",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 137.4175068013279,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-67",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 10.060835271499496,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-68",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 10.000016472443454,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-69",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 75.85003255912297,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-70",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 147.04241319316728,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-71",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 102.04971865617493,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-72",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 182.67183056262311,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-73",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 91.22291990373272,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-74",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 148.33860246948166,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-75",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 93.44915375165168,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-76",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 94.988146297406,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-77",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 45.43173219924749,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-78",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 125.40356871507379,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-79",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 82.66059974188677,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-80",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 139.90835166837738,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-81",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 78.70166589754568,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-82",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 124.74421750267757,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-83",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 71.18388837648251,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-84",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 135.23224696582042,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-85",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 72.96714325579987,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-86",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 138.23255808544494,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-87",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 73.29701886829515,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-88",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 132.58637379194187,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-89",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 63.445611366569665,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-90",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 126.72739770419088,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-91",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 68.06378469525063,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-92",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 141.1688159001776,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-93",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 78.34848787046087,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-94",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 154.80563811001295,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-95",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 82.75658874158431,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          }
+        ],
+        "back_layers": [],
+        "reference_wavelength_nm": 550.0,
+        "substrate": {
+          "material_id": "builtin_research_fused_silica_method_demonstrator",
+          "optical_set_id": "ri_sio2_malitson",
+          "thickness": {
+            "value": 1.0,
+            "unit": "mm"
+          },
+          "sides": "single",
+          "mode": "auto"
+        },
+        "incident_medium": {
+          "kind": "constant",
+          "n": 1.0
+        },
+        "exit_medium": {
+          "kind": "constant",
+          "n": 1.0
+        },
+        "assume_lossless": true,
+        "use_k": true,
+        "note": "显式无损假设（仅未知 k 按 0 计算）：builtin_research_fused_silica_method_demonstrator/ri_sio2_malitson；保留已知 k；此结果不是实测吸收验证。",
+        "first_surface": "front",
+        "expression": {
+          "text": "",
+          "symbols": {},
+          "in_sync": true
+        }
+      },
+      "checkpoint_design": null
+    },
+    "baseline:dual_hr_570_930_1034_1094:1": {
+      "terminal_candidate_design": {
+        "schema_version": 1,
+        "id": "benchmark-dual_hr_570_930_1034_1094",
+        "name": "dual_hr_570_930_1034_1094",
+        "layer_order": "substrate_outward",
+        "front_layers": [
+          {
+            "id": "auto-hr-dual-1-0",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 197.38266486053172,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-1",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 119.65958070683533,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-2",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 205.00001956115494,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-3",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 103.0669649182428,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-4",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 218.85983970523966,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-5",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 108.50601019263586,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-6",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 253.17998375958845,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-7",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 162.6247564804844,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-8",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 243.60512040384302,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-9",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 106.9489939321713,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-10",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 201.31615493037276,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-11",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 103.76565161693311,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-12",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 206.8418599131556,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-13",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 112.68343834679504,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-14",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 226.43712231374096,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-15",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 115.14400463373693,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-16",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 195.37987898449558,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-17",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 97.3434753060323,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-18",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 246.5129785270081,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-19",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 178.02200695116736,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-20",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 223.8805567039807,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-21",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 110.33355818890915,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-22",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 203.39488037825458,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-23",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 117.50356409243217,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-24",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 218.77983037804208,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-25",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 104.129501190673,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-26",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 193.14756498478067,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-27",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 104.1472029816487,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-28",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 205.79976611024776,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-29",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 125.82735935557079,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-30",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 243.52436395416373,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-31",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 145.44318242769373,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-32",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 225.83791069110245,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-33",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 134.01647004449083,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-34",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 208.9693916626634,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-35",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 108.98715731972202,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-36",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 191.28206729633817,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-37",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 101.83832603970104,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-38",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 235.10883434836649,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-39",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 96.75430955306221,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-40",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 222.00464881473937,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-41",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 95.72905515569991,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-42",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 186.045919362615,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-43",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 101.58990121401399,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-44",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 219.20344340096452,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-45",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 167.27215007082808,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-46",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 224.63766888891868,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-47",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 91.32710040408907,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-48",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 183.1121720213909,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-49",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 91.58923157960105,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-50",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 163.4274807230233,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-51",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 86.37879080225771,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-52",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 200.50349522589747,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-53",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 76.19853326980198,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-54",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 78.9016096287295,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-55",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 10.000796105697676,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-56",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 104.95082499308523,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-57",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 74.16350017522835,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-58",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 171.4383331718698,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-59",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 103.80562380054667,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-60",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 177.28406217727166,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-61",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 85.34681231885149,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-62",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 113.88739846867195,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-63",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 52.47811320424981,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-64",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 126.71451830095907,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-65",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 142.3546144693725,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-66",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 137.4175068013279,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-67",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 10.060835271499496,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-68",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 10.000016472443454,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-69",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 75.85003255912297,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-70",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 147.04241319316728,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-71",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 102.04971865617493,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-72",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 182.67183056262311,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-73",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 91.22291990373272,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-74",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 148.33860246948166,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-75",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 93.44915375165168,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-76",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 94.988146297406,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-77",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 45.43173219924749,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-78",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 125.40356871507379,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-79",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 82.66059974188677,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-80",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 139.90835166837738,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-81",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 78.70166589754568,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-82",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 124.74421750267757,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-83",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 71.18388837648251,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-84",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 135.23224696582042,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-85",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 72.96714325579987,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-86",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 138.23255808544494,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-87",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 73.29701886829515,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-88",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 132.58637379194187,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-89",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 63.445611366569665,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-90",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 126.72739770419088,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-91",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 68.06378469525063,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-92",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 141.1688159001776,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-93",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 78.34848787046087,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-94",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 154.80563811001295,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          },
+          {
+            "id": "auto-hr-dual-1-95",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 82.75658874158431,
+              "unit": "nm"
+            },
+            "note": "Project edge-anchored dual-substack HR prior"
+          }
+        ],
+        "back_layers": [],
+        "reference_wavelength_nm": 550.0,
+        "substrate": {
+          "material_id": "builtin_research_fused_silica_method_demonstrator",
+          "optical_set_id": "ri_sio2_malitson",
+          "thickness": {
+            "value": 1.0,
+            "unit": "mm"
+          },
+          "sides": "single",
+          "mode": "auto"
+        },
+        "incident_medium": {
+          "kind": "constant",
+          "n": 1.0
+        },
+        "exit_medium": {
+          "kind": "constant",
+          "n": 1.0
+        },
+        "assume_lossless": true,
+        "use_k": true,
+        "note": "显式无损假设（仅未知 k 按 0 计算）：builtin_research_fused_silica_method_demonstrator/ri_sio2_malitson；保留已知 k；此结果不是实测吸收验证。",
+        "first_surface": "front",
+        "expression": {
+          "text": "",
+          "symbols": {},
+          "in_sync": true
+        }
+      },
+      "checkpoint_design": null
+    },
+    "baseline:dual_rt_visible_nir:0": {
+      "terminal_candidate_design": {
+        "schema_version": 1,
+        "id": "benchmark-dual_rt_visible_nir",
+        "name": "dual_rt_visible_nir",
+        "layer_order": "substrate_outward",
+        "front_layers": [
+          {
+            "id": "auto-hr-112-0",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 123.44041111971714,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-1",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 73.5662331076186,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-2",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 121.63754774127446,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-3",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 72.39894305298071,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-4",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 119.83457808524999,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-5",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 71.22986532465673,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-6",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 118.03149228617981,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-7",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 70.0585196187342,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-8",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 116.22827944821185,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-9",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 68.88449572401943,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-10",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 114.42493087243218,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-11",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 67.70835103506421,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-12",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 112.62142965020527,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-13",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 66.52941240363587,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-14",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 110.81776589036987,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-15",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 65.34727762567633,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          }
+        ],
+        "back_layers": [],
+        "reference_wavelength_nm": 550.0,
+        "substrate": {
+          "material_id": "builtin_research_fused_silica_method_demonstrator",
+          "optical_set_id": "ri_sio2_malitson",
+          "thickness": {
+            "value": 1.0,
+            "unit": "mm"
+          },
+          "sides": "single",
+          "mode": "auto"
+        },
+        "incident_medium": {
+          "kind": "constant",
+          "n": 1.0
+        },
+        "exit_medium": {
+          "kind": "constant",
+          "n": 1.0
+        },
+        "assume_lossless": true,
+        "use_k": true,
+        "note": "显式无损假设（仅未知 k 按 0 计算）：builtin_research_fused_silica_method_demonstrator/ri_sio2_malitson；保留已知 k；此结果不是实测吸收验证。",
+        "first_surface": "front",
+        "expression": {
+          "text": "",
+          "symbols": {},
+          "in_sync": true
+        }
+      },
+      "checkpoint_design": null
+    },
+    "baseline:dual_rt_visible_nir:1": {
+      "terminal_candidate_design": {
+        "schema_version": 1,
+        "id": "benchmark-dual_rt_visible_nir",
+        "name": "dual_rt_visible_nir",
+        "layer_order": "substrate_outward",
+        "front_layers": [
+          {
+            "id": "auto-hr-112-0",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 123.44041111971714,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-1",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 73.5662331076186,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-2",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 121.63754774127446,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-3",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 72.39894305298071,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-4",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 119.83457808524999,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-5",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 71.22986532465673,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-6",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 118.03149228617981,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-7",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 70.0585196187342,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-8",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 116.22827944821185,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-9",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 68.88449572401943,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-10",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 114.42493087243218,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-11",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 67.70835103506421,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-12",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 112.62142965020527,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-13",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 66.52941240363587,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-14",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 110.81776589036987,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-15",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 65.34727762567633,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          }
+        ],
+        "back_layers": [],
+        "reference_wavelength_nm": 550.0,
+        "substrate": {
+          "material_id": "builtin_research_fused_silica_method_demonstrator",
+          "optical_set_id": "ri_sio2_malitson",
+          "thickness": {
+            "value": 1.0,
+            "unit": "mm"
+          },
+          "sides": "single",
+          "mode": "auto"
+        },
+        "incident_medium": {
+          "kind": "constant",
+          "n": 1.0
+        },
+        "exit_medium": {
+          "kind": "constant",
+          "n": 1.0
+        },
+        "assume_lossless": true,
+        "use_k": true,
+        "note": "显式无损假设（仅未知 k 按 0 计算）：builtin_research_fused_silica_method_demonstrator/ri_sio2_malitson；保留已知 k；此结果不是实测吸收验证。",
+        "first_surface": "front",
+        "expression": {
+          "text": "",
+          "symbols": {},
+          "in_sync": true
+        }
+      },
+      "checkpoint_design": null
+    },
+    "baseline:three_ar_hr_ar:0": {
+      "terminal_candidate_design": {
+        "schema_version": 1,
+        "id": "benchmark-three_ar_hr_ar",
+        "name": "three_ar_hr_ar",
+        "layer_order": "substrate_outward",
+        "front_layers": [
+          {
+            "id": "auto-hr-3-0",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 86.38433465178417,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-3-1",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 128.53108024632752,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-3-2",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 74.52346192464137,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-3-3",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 137.61511664442915,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-3-4",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 76.13407559500025,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-3-5",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 117.05991804265923,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-3-6",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 92.48905081233016,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-3-7",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 207.11425065882818,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          }
+        ],
+        "back_layers": [],
+        "reference_wavelength_nm": 550.0,
+        "substrate": {
+          "material_id": "builtin_research_fused_silica_method_demonstrator",
+          "optical_set_id": "ri_sio2_malitson",
+          "thickness": {
+            "value": 1.0,
+            "unit": "mm"
+          },
+          "sides": "single",
+          "mode": "auto"
+        },
+        "incident_medium": {
+          "kind": "constant",
+          "n": 1.0
+        },
+        "exit_medium": {
+          "kind": "constant",
+          "n": 1.0
+        },
+        "assume_lossless": true,
+        "use_k": true,
+        "note": "显式无损假设（仅未知 k 按 0 计算）：builtin_research_fused_silica_method_demonstrator/ri_sio2_malitson；保留已知 k；此结果不是实测吸收验证。",
+        "first_surface": "front",
+        "expression": {
+          "text": "",
+          "symbols": {},
+          "in_sync": true
+        }
+      },
+      "checkpoint_design": null
+    },
+    "baseline:three_ar_hr_ar:1": {
+      "terminal_candidate_design": {
+        "schema_version": 1,
+        "id": "benchmark-three_ar_hr_ar",
+        "name": "three_ar_hr_ar",
+        "layer_order": "substrate_outward",
+        "front_layers": [
+          {
+            "id": "auto-hr-1-0",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 83.06537371466074,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-1-1",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 133.41912108305007,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-1-2",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 82.72201738739453,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-1-3",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 137.51275841299807,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-1-4",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 82.68846078746303,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-1-5",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 118.30783816135327,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-1-6",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 87.15698160948695,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-1-7",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 16.433246933335855,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          }
+        ],
+        "back_layers": [],
+        "reference_wavelength_nm": 550.0,
+        "substrate": {
+          "material_id": "builtin_research_fused_silica_method_demonstrator",
+          "optical_set_id": "ri_sio2_malitson",
+          "thickness": {
+            "value": 1.0,
+            "unit": "mm"
+          },
+          "sides": "single",
+          "mode": "auto"
+        },
+        "incident_medium": {
+          "kind": "constant",
+          "n": 1.0
+        },
+        "exit_medium": {
+          "kind": "constant",
+          "n": 1.0
+        },
+        "assume_lossless": true,
+        "use_k": true,
+        "note": "显式无损假设（仅未知 k 按 0 计算）：builtin_research_fused_silica_method_demonstrator/ri_sio2_malitson；保留已知 k；此结果不是实测吸收验证。",
+        "first_surface": "front",
+        "expression": {
+          "text": "",
+          "symbols": {},
+          "in_sync": true
+        }
+      },
+      "checkpoint_design": {
+        "schema_version": 1,
+        "id": "benchmark-three_ar_hr_ar",
+        "name": "three_ar_hr_ar",
+        "layer_order": "substrate_outward",
+        "front_layers": [
+          {
+            "id": "auto-hr-44-0",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 82.93988108921337,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-44-1",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 133.3909446704842,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-44-2",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 82.57492564402581,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-44-3",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 138.69048991801432,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-44-4",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 82.50362527821429,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-44-5",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 117.70862353695776,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-44-6",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 89.96521065436129,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-44-7",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 5.0,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          }
+        ],
+        "back_layers": [],
+        "reference_wavelength_nm": 550.0,
+        "substrate": {
+          "material_id": "builtin_research_fused_silica_method_demonstrator",
+          "optical_set_id": "ri_sio2_malitson",
+          "thickness": {
+            "value": 1.0,
+            "unit": "mm"
+          },
+          "sides": "single",
+          "mode": "auto"
+        },
+        "incident_medium": {
+          "kind": "constant",
+          "n": 1.0
+        },
+        "exit_medium": {
+          "kind": "constant",
+          "n": 1.0
+        },
+        "assume_lossless": true,
+        "use_k": true,
+        "note": "显式无损假设（仅未知 k 按 0 计算）：builtin_research_fused_silica_method_demonstrator/ri_sio2_malitson；保留已知 k；此结果不是实测吸收验证。",
+        "first_surface": "front",
+        "expression": {
+          "text": "",
+          "symbols": {},
+          "in_sync": true
+        }
+      }
+    },
+    "multispectral:dual_rt_visible_nir:0": {
+      "terminal_candidate_design": {
+        "schema_version": 1,
+        "id": "benchmark-dual_rt_visible_nir",
+        "name": "dual_rt_visible_nir",
+        "layer_order": "substrate_outward",
+        "front_layers": [
+          {
+            "id": "auto-hr-112-0",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 123.44041111971714,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-1",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 73.5662331076186,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-2",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 121.63754774127446,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-3",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 72.39894305298071,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-4",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 119.83457808524999,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-5",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 71.22986532465673,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-6",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 118.03149228617981,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-7",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 70.0585196187342,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-8",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 116.22827944821185,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-9",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 68.88449572401943,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-10",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 114.42493087243218,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-11",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 67.70835103506421,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-12",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 112.62142965020527,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-13",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 66.52941240363587,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-14",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 110.81776589036987,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-15",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 65.34727762567633,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          }
+        ],
+        "back_layers": [],
+        "reference_wavelength_nm": 550.0,
+        "substrate": {
+          "material_id": "builtin_research_fused_silica_method_demonstrator",
+          "optical_set_id": "ri_sio2_malitson",
+          "thickness": {
+            "value": 1.0,
+            "unit": "mm"
+          },
+          "sides": "single",
+          "mode": "auto"
+        },
+        "incident_medium": {
+          "kind": "constant",
+          "n": 1.0
+        },
+        "exit_medium": {
+          "kind": "constant",
+          "n": 1.0
+        },
+        "assume_lossless": true,
+        "use_k": true,
+        "note": "显式无损假设（仅未知 k 按 0 计算）：builtin_research_fused_silica_method_demonstrator/ri_sio2_malitson；保留已知 k；此结果不是实测吸收验证。",
+        "first_surface": "front",
+        "expression": {
+          "text": "",
+          "symbols": {},
+          "in_sync": true
+        }
+      },
+      "checkpoint_design": null
+    },
+    "multispectral:dual_rt_visible_nir:1": {
+      "terminal_candidate_design": {
+        "schema_version": 1,
+        "id": "benchmark-dual_rt_visible_nir",
+        "name": "dual_rt_visible_nir",
+        "layer_order": "substrate_outward",
+        "front_layers": [
+          {
+            "id": "auto-hr-112-0",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 123.44041111971714,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-1",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 73.5662331076186,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-2",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 121.63754774127446,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-3",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 72.39894305298071,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-4",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 119.83457808524999,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-5",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 71.22986532465673,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-6",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 118.03149228617981,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-7",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 70.0585196187342,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-8",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 116.22827944821185,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-9",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 68.88449572401943,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-10",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 114.42493087243218,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-11",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 67.70835103506421,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-12",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 112.62142965020527,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-13",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 66.52941240363587,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-14",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 110.81776589036987,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-112-15",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 65.34727762567633,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          }
+        ],
+        "back_layers": [],
+        "reference_wavelength_nm": 550.0,
+        "substrate": {
+          "material_id": "builtin_research_fused_silica_method_demonstrator",
+          "optical_set_id": "ri_sio2_malitson",
+          "thickness": {
+            "value": 1.0,
+            "unit": "mm"
+          },
+          "sides": "single",
+          "mode": "auto"
+        },
+        "incident_medium": {
+          "kind": "constant",
+          "n": 1.0
+        },
+        "exit_medium": {
+          "kind": "constant",
+          "n": 1.0
+        },
+        "assume_lossless": true,
+        "use_k": true,
+        "note": "显式无损假设（仅未知 k 按 0 计算）：builtin_research_fused_silica_method_demonstrator/ri_sio2_malitson；保留已知 k；此结果不是实测吸收验证。",
+        "first_surface": "front",
+        "expression": {
+          "text": "",
+          "symbols": {},
+          "in_sync": true
+        }
+      },
+      "checkpoint_design": null
+    },
+    "multispectral:three_ar_hr_ar:0": {
+      "terminal_candidate_design": {
+        "schema_version": 1,
+        "id": "benchmark-three_ar_hr_ar",
+        "name": "three_ar_hr_ar",
+        "layer_order": "substrate_outward",
+        "front_layers": [
+          {
+            "id": "auto-hr-44-0",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 81.3070285818048,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-44-1",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 130.5272011600432,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-44-2",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 78.41586133861104,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-44-3",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 131.96679228563022,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-44-4",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 77.14503789443263,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-44-5",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 127.02595906482937,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-44-6",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 84.7660543105355,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-44-7",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 234.99997447726992,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          }
+        ],
+        "back_layers": [],
+        "reference_wavelength_nm": 550.0,
+        "substrate": {
+          "material_id": "builtin_research_fused_silica_method_demonstrator",
+          "optical_set_id": "ri_sio2_malitson",
+          "thickness": {
+            "value": 1.0,
+            "unit": "mm"
+          },
+          "sides": "single",
+          "mode": "auto"
+        },
+        "incident_medium": {
+          "kind": "constant",
+          "n": 1.0
+        },
+        "exit_medium": {
+          "kind": "constant",
+          "n": 1.0
+        },
+        "assume_lossless": true,
+        "use_k": true,
+        "note": "显式无损假设（仅未知 k 按 0 计算）：builtin_research_fused_silica_method_demonstrator/ri_sio2_malitson；保留已知 k；此结果不是实测吸收验证。",
+        "first_surface": "front",
+        "expression": {
+          "text": "",
+          "symbols": {},
+          "in_sync": true
+        }
+      },
+      "checkpoint_design": null
+    },
+    "multispectral:three_ar_hr_ar:1": {
+      "terminal_candidate_design": {
+        "schema_version": 1,
+        "id": "benchmark-three_ar_hr_ar",
+        "name": "three_ar_hr_ar",
+        "layer_order": "substrate_outward",
+        "front_layers": [
+          {
+            "id": "auto-hr-44-0",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 81.3070285818048,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-44-1",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 130.5272011600432,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-44-2",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 78.41586133861104,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-44-3",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 131.96679228563022,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-44-4",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 77.14503789443263,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-44-5",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 127.02595906482937,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-44-6",
+            "material_id": "builtin_research_TiO2_film",
+            "optical_set_id": "rii_tio2_franta",
+            "thickness": {
+              "value": 84.7660543105355,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          },
+          {
+            "id": "auto-hr-44-7",
+            "material_id": "research_mgf2_franta_2017_c51389d0430c",
+            "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+            "thickness": {
+              "value": 234.99997447726992,
+              "unit": "nm"
+            },
+            "note": "Automatic reflector structural proposal"
+          }
+        ],
+        "back_layers": [],
+        "reference_wavelength_nm": 550.0,
+        "substrate": {
+          "material_id": "builtin_research_fused_silica_method_demonstrator",
+          "optical_set_id": "ri_sio2_malitson",
+          "thickness": {
+            "value": 1.0,
+            "unit": "mm"
+          },
+          "sides": "single",
+          "mode": "auto"
+        },
+        "incident_medium": {
+          "kind": "constant",
+          "n": 1.0
+        },
+        "exit_medium": {
+          "kind": "constant",
+          "n": 1.0
+        },
+        "assume_lossless": true,
+        "use_k": true,
+        "note": "显式无损假设（仅未知 k 按 0 计算）：builtin_research_fused_silica_method_demonstrator/ri_sio2_malitson；保留已知 k；此结果不是实测吸收验证。",
+        "first_surface": "front",
+        "expression": {
+          "text": "",
+          "symbols": {},
+          "in_sync": true
+        }
+      },
+      "checkpoint_design": null
+    }
+  }
+}

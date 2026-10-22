@@ -1,0 +1,312 @@
+{
+  "schema_version": 1,
+  "suite_id": "multispectral-franta-stage-v1-20261022",
+  "frozen_utc": "2026-10-22T09:22:08.302376+00:00",
+  "baseline_solver_commit": "924c989738926e7b3a9b6c1e7a8a86dd9fc457aa",
+  "base_frozen_request": "benchmarks/film_synthesis/20261021/hr-minimax-tio2-franta-v1/request.json",
+  "base_request_canonical_sha256": "f9865f384892b80688a5493e4310f128b102bbbf64fecbe62ed29d0f4f3214d3",
+  "candidate_materials": [
+    {
+      "material_id": "builtin_research_TiO2_film",
+      "optical_set_id": "rii_tio2_franta"
+    },
+    {
+      "material_id": "research_mgf2_franta_2017_c51389d0430c",
+      "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c"
+    }
+  ],
+  "substrate": {
+    "material_id": "builtin_research_fused_silica_method_demonstrator",
+    "optical_set_id": "ri_sio2_malitson",
+    "thickness": {
+      "value": 1.0,
+      "unit": "mm"
+    },
+    "sides": "single",
+    "mode": "auto"
+  },
+  "material_sources": [
+    {
+      "material_id": "builtin_research_TiO2_film",
+      "optical_set_id": "rii_tio2_franta",
+      "wavelength_unit": "nm",
+      "source_min": 114.114,
+      "source_max": 125124.0,
+      "known_k": true,
+      "source": "Refractiveindex.info public database record.\nSource ID: rii:main/TiO2/Franta\nRII viewer: https://refractiveindex.info/?shelf=main&book=TiO2&page=Franta\nPinned raw source URL: https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/TiO2/nk/Franta.yml\nPinned repository commit: c5c2f188e848453def5970e347399d653df2ffc2\nRaw source SHA256: 2380783119baf079dfb5ed0eb846ef1f08dd17d719194d1e91610c34760ec174\nDatabase license: CC0-1.0; the referenced paper's rights remain separate.\nUpstream references: D. Franta, D. Nečas, I. Ohlídal. A. Giglia.\nDispersion model for optical thin films applicable in wide spectral range\n<a href=\"https://doi.org/10.1117/12.2190104\"><i>Proc. SPIE</i> <b>9628</b>, 96281U (2015)</a>\n(Numerical data kindly provided by Daniel Franta)\nOriginal RII record comments/conditions and source bytes are in this import's provenance.json and source_audit.json."
+    },
+    {
+      "material_id": "research_mgf2_franta_2017_c51389d0430c",
+      "optical_set_id": "ri_mgf2_franta_2017_c51389d0430c",
+      "wavelength_unit": "um",
+      "source_min": 0.0275043,
+      "source_max": 125.141,
+      "known_k": true,
+      "source": "https://doi.org/10.1016/j.apsusc.2016.09.149\nhttps://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/MgF2/nk/Franta.yml\nRaw byte SHA256: c51389d0430c21d8959388605266bc160abe14a04242cfa7ba8d1812bde2e58e\nCC0-1.0 database; paper rights separate."
+    },
+    {
+      "material_id": "builtin_research_fused_silica_method_demonstrator",
+      "optical_set_id": "ri_sio2_malitson",
+      "wavelength_unit": "um",
+      "source_min": 0.21,
+      "source_max": 3.71,
+      "known_k": false,
+      "source": "1) I. H. Malitson.\nInterspecimen comparison of the refractive index of fused silica.\nJ. Opt. Soc. Am. 55, 1205-1208 (1965); \n2) C. Z. Tan.\nDetermination of refractive index of silica glass for infrared wavelengths by IR spectroscopy.\nJ. Non-Cryst. Solids 223, 158-163 (1998); \n* Sellmeier formula is reported in Ref. 1 for the 0.21–3.71 μm wavelength range. Ref. 2 verifies the validity of the formula up to 6.7 μm.\nhttps://doi.org/10.1364/JOSA.55.001205\nhttps://doi.org/10.1016/S0022-3093(97)00438-9\nhttps://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/c5c2f188e848453def5970e347399d653df2ffc2/database/data/main/SiO2/nk/Malitson.yml\nhttps://refractiveindex.info/?shelf=main&book=SiO2&page=Malitson\nhttps://opg.optica.org/josa/abstract.cfm?uri=josa-55-10-1205\n原始数值SHA256: 6f5dc13b9a76e26437e0b3e4719b4895964ebd85e09643c85a1a3c596394bcf3\n许可: CC0-1.0 (refractiveindex.info database); original paper rights remain separate"
+    }
+  ],
+  "defaults": {
+    "seeds": [
+      0,
+      1
+    ],
+    "cpu_workers": 1,
+    "math_threads": 1,
+    "forward_backend": "cpu",
+    "training_step_nm": 1.0,
+    "validation_samples_multiplier": 10,
+    "acceptable_normalized_error": 0.0,
+    "assume_unknown_k_zero": true,
+    "known_absorption_policy": "Retain both Franta film complex n/k; only Malitson n-only bulk substrate explicitly assumes unknown k=0; no extrapolation",
+    "max_cycles": null,
+    "stage_iteration_limit": 180,
+    "watchdog_grace_seconds": 60
+  },
+  "acceptance": "Every original bound on independent dense/offset/extremum audit. Report worst per objective and first audited success; finite evidence, not continuous guarantee. All new cases exploratory until a prescription is independently qualified. Old frozen benchmarks unchanged.",
+  "timing": "Same machine, one child process per case/seed/variant; timer begins before GUI-adapter construction and material freeze, ends after complete result JSON. Separate request preparation, all public audits and HR/general minimax calls; residual execution is explicitly unclassified. No profiling.",
+  "cases": [
+    {
+      "id": "dual_hr_570_930_1034_1094",
+      "objectives": [
+        {
+          "wavelength_min_nm": 570,
+          "wavelength_max_nm": 930,
+          "wavelength_samples": 361,
+          "angles_deg": [
+            40.0,
+            50.0
+          ],
+          "polarization": "unpolarized",
+          "metric": "R",
+          "lower_bound": 0.99,
+          "upper_bound": null,
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 1034,
+          "wavelength_max_nm": 1094,
+          "wavelength_samples": 61,
+          "angles_deg": [
+            40.0,
+            50.0
+          ],
+          "polarization": "unpolarized",
+          "metric": "R",
+          "lower_bound": 0.99,
+          "upper_bound": null,
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        }
+      ],
+      "max_layers": 96,
+      "max_total_thickness_nm": 14000.0,
+      "min_thickness_nm": 10.0,
+      "max_thickness_nm": 500.0,
+      "max_seconds": 180.0,
+      "max_evaluations": 6000,
+      "max_cycles": null,
+      "position_samples": 3,
+      "qualification": {
+        "status": "exploratory_no_independently_qualified_prescription",
+        "answer_seed_injected": false
+      },
+      "transition_semantics": "No objective is imposed in gaps; complete coherent stack evaluated for every original condition."
+    },
+    {
+      "id": "dual_rt_visible_nir",
+      "objectives": [
+        {
+          "wavelength_min_nm": 650,
+          "wavelength_max_nm": 670,
+          "wavelength_samples": 21,
+          "angles_deg": [
+            0.0,
+            30.0
+          ],
+          "polarization": "s",
+          "metric": "R",
+          "lower_bound": 0.9,
+          "upper_bound": null,
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 650,
+          "wavelength_max_nm": 670,
+          "wavelength_samples": 21,
+          "angles_deg": [
+            0.0,
+            30.0
+          ],
+          "polarization": "p",
+          "metric": "R",
+          "lower_bound": 0.9,
+          "upper_bound": null,
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 1000,
+          "wavelength_max_nm": 1020,
+          "wavelength_samples": 21,
+          "angles_deg": [
+            0.0,
+            30.0
+          ],
+          "polarization": "s",
+          "metric": "T",
+          "lower_bound": 0.85,
+          "upper_bound": null,
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 1000,
+          "wavelength_max_nm": 1020,
+          "wavelength_samples": 21,
+          "angles_deg": [
+            0.0,
+            30.0
+          ],
+          "polarization": "p",
+          "metric": "T",
+          "lower_bound": 0.85,
+          "upper_bound": null,
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        }
+      ],
+      "max_layers": 32,
+      "max_total_thickness_nm": 5000.0,
+      "min_thickness_nm": 5.0,
+      "max_thickness_nm": 500.0,
+      "max_seconds": 60.0,
+      "max_evaluations": 2000,
+      "max_cycles": null,
+      "position_samples": 3,
+      "qualification": {
+        "status": "exploratory_no_independently_qualified_prescription",
+        "answer_seed_injected": false
+      },
+      "transition_semantics": "No objective is imposed in gaps; complete coherent stack evaluated for every original condition."
+    },
+    {
+      "id": "three_ar_hr_ar",
+      "objectives": [
+        {
+          "wavelength_min_nm": 480,
+          "wavelength_max_nm": 500,
+          "wavelength_samples": 21,
+          "angles_deg": [
+            0.0,
+            30.0
+          ],
+          "polarization": "s",
+          "metric": "R",
+          "lower_bound": null,
+          "upper_bound": 0.05,
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 480,
+          "wavelength_max_nm": 500,
+          "wavelength_samples": 21,
+          "angles_deg": [
+            0.0,
+            30.0
+          ],
+          "polarization": "p",
+          "metric": "R",
+          "lower_bound": null,
+          "upper_bound": 0.05,
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 650,
+          "wavelength_max_nm": 670,
+          "wavelength_samples": 21,
+          "angles_deg": [
+            0.0,
+            30.0
+          ],
+          "polarization": "s",
+          "metric": "R",
+          "lower_bound": 0.9,
+          "upper_bound": null,
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 650,
+          "wavelength_max_nm": 670,
+          "wavelength_samples": 21,
+          "angles_deg": [
+            0.0,
+            30.0
+          ],
+          "polarization": "p",
+          "metric": "R",
+          "lower_bound": 0.9,
+          "upper_bound": null,
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 1000,
+          "wavelength_max_nm": 1020,
+          "wavelength_samples": 21,
+          "angles_deg": [
+            0.0,
+            30.0
+          ],
+          "polarization": "s",
+          "metric": "R",
+          "lower_bound": null,
+          "upper_bound": 0.05,
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 1000,
+          "wavelength_max_nm": 1020,
+          "wavelength_samples": 21,
+          "angles_deg": [
+            0.0,
+            30.0
+          ],
+          "polarization": "p",
+          "metric": "R",
+          "lower_bound": null,
+          "upper_bound": 0.05,
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        }
+      ],
+      "max_layers": 48,
+      "max_total_thickness_nm": 8000.0,
+      "min_thickness_nm": 5.0,
+      "max_thickness_nm": 500.0,
+      "max_seconds": 90.0,
+      "max_evaluations": 3000,
+      "max_cycles": null,
+      "position_samples": 3,
+      "qualification": {
+        "status": "exploratory_no_independently_qualified_prescription",
+        "answer_seed_injected": false
+      },
+      "transition_semantics": "No objective is imposed in gaps; complete coherent stack evaluated for every original condition."
+    }
+  ]
+}
