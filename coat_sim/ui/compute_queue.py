@@ -7,8 +7,10 @@ from datetime import datetime, timedelta, timezone
 import json
 import re
 import sqlite3
+from typing import TYPE_CHECKING
 from PySide6.QtCore import QObject, Property, QTimer, QUrl, Signal, Slot
 from PySide6.QtQml import QQmlComponent, QQmlContext
+from PySide6.QtQuick import QQuickWindow
 from coat_sim.core.compute_tasks import queue_job_is_recent
 from coat_sim.core.api import CoatService
 from coat_sim.core.geometric_raytrace_result import (
@@ -18,10 +20,13 @@ from coat_sim.core.geometric_raytrace_result import (
 from coat_sim.scheduler import SchedulerClient
 from coat_sim.scheduler.result_capability import (
     is_best_candidate_result, is_film_optimization_result,
-    is_geometric_raytrace_result, is_synthesis_result,
+    is_geometric_raytrace_result, is_synthesis_result, is_sensitivity_result,
     validate_film_optimization_result,
 )
 from coat_sim.ui.icons import window_icon
+
+if TYPE_CHECKING:
+    from coat_sim.ui.film_sensitivity_quick_controller import FilmSensitivityQuickController
 
 _MAX_RAYTRACE_RESULT_BYTES = 512 * 1024 * 1024
 
@@ -46,6 +51,33 @@ def _read_queue_result(service, store, job_id, asset_path=None):
     """Dispatch a queue result by its typed product kind."""
     job = store.read_job(job_id)
     result = _require_result_payload(job)
+    if is_sensitivity_result(result):
+        if job.get('kind') != 'film_sensitivity':
+            raise ValueError('Typed sensitivity result does not belong to a film_sensitivity queue job.')
+        from coat_sim.core.film_sensitivity import validate_film_sensitivity_result_payload
+        from coat_sim.core.film_sensitivity_jobs import (
+            deserialize_job_payload, result_matches_job, terminal_reply,
+        )
+        from coat_sim.scheduler.jobs import JobSpec
+        if not isinstance(job_id, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', job_id):
+            raise ValueError('Invalid sensitivity queue identity.')
+        root = Path(store.root).resolve()
+        directory = (root / 'artifacts/runtime/scheduler/jobs' / job_id).resolve()
+        spec_path = directory / 'spec.json'
+        if (not directory.is_relative_to(root) or spec_path.is_symlink()
+                or not spec_path.resolve().is_relative_to(directory)):
+            raise ValueError('Sensitivity queue input identity escaped its job directory.')
+        try:
+            spec = JobSpec.parse_frozen_json(spec_path.read_text(encoding='utf-8'))
+        except (OSError, TypeError, ValueError) as exc:
+            raise ValueError('Sensitivity queue input identity is unavailable or invalid.') from exc
+        if (spec.executor != 'film_sensitivity' or spec.fingerprint != job.get('input_digest')
+                or not result_matches_job(result, spec.parameters.get('payload'))):
+            raise ValueError('Sensitivity result is not bound to this frozen queue input identity.')
+        if job.get('state') in ('failed', 'cancelled'):
+            result = terminal_reply(result, job['state'])
+        return validate_film_sensitivity_result_payload(result,
+            expected_request=deserialize_job_payload(spec.parameters['payload']), replay=True), ''
     if is_synthesis_result(result):
         if job.get('kind') != 'film_synthesis':
             raise ValueError('Typed synthesis result does not belong to a film_synthesis queue job.')
@@ -135,6 +167,11 @@ def _annotate_result_availability(root, rows):
             row['resultAvailable'] = True
             row['resultUnavailableReason'] = ''
             continue
+        if is_sensitivity_result(result):
+            row['resultAvailable'] = row.get('kind') == 'film_sensitivity'
+            row['resultUnavailableReason'] = ('' if row['resultAvailable'] else
+                'Typed sensitivity result does not belong to this job kind.')
+            continue
         if is_synthesis_result(result):
             if row.get('kind') != 'film_synthesis':
                 row['resultAvailable'] = False
@@ -192,6 +229,11 @@ def _annotate_result_availability(root, rows):
         if is_film_optimization_result(result):
             row['resultAvailable'] = True
             row['resultUnavailableReason'] = ''
+            continue
+        if is_sensitivity_result(result):
+            row['resultAvailable'] = row.get('kind') == 'film_sensitivity'
+            row['resultUnavailableReason'] = ('' if row['resultAvailable'] else
+                'Typed sensitivity result does not belong to this job kind.')
             continue
         if is_synthesis_result(result):
             if row.get('kind') != 'film_synthesis':
@@ -652,6 +694,9 @@ class QueueResultViewer(QObject):
         self._closed, self._generation, self._loading_job, self._shown_job = False, 0, '', ''
         self._shown_kind, self._shown_film_result = '', None
         self._shown_raytrace_path = ''
+        self._sensitivity_window: QQuickWindow | None = None
+        self._sensitivity_controller: "FilmSensitivityQuickController | None" = None
+        self._sensitivity_component: QQmlComponent | None = None
         self._future = None
         self.loaded.connect(self._receive)
         self.bridge.showQueueRequested.connect(owner.showQueue if hasattr(owner, 'showQueue') else owner.show)
@@ -667,6 +712,9 @@ class QueueResultViewer(QObject):
         if self._future is not None:
             self._future.cancel()
         if self._shown_job == job_id:
+            if self._shown_kind == 'film_sensitivity' and self._shown_film_result is not None:
+                self._show_sensitivity_result(job_id, self._shown_film_result)
+                return
             if self._shown_kind == 'film_optimization' and self._shown_film_result is not None:
                 self.filmOptimizationResultReady.emit(job_id, deepcopy(self._shown_film_result))
                 return
@@ -735,6 +783,13 @@ class QueueResultViewer(QObject):
             self.availabilityChanged.emit(job_id, True, '')
             self.statusChanged.emit('Film synthesis candidate is ready for its read-only typed result view.')
             return
+        if is_sensitivity_result(loaded):
+            self._shown_job, self._shown_kind = job_id, 'film_sensitivity'
+            self._shown_film_result = deepcopy(loaded)
+            self._show_sensitivity_result(job_id, loaded)
+            self.availabilityChanged.emit(job_id, True, '')
+            self.statusChanged.emit('Opened a replay-validated sensitivity report; no source design is bound or modified.')
+            return
         if isinstance(loaded, _RayTraceQueueResult):
             self._shown_job = job_id
             self._shown_kind = 'geometric_raytrace'
@@ -758,6 +813,28 @@ class QueueResultViewer(QObject):
         except Exception as exc:
             self.statusChanged.emit('无法显示结果：' + str(exc))
 
+    def _show_sensitivity_result(self, job_id, payload):
+        from coat_sim.ui.film_sensitivity_quick_controller import FilmSensitivityQuickController
+        if self._sensitivity_window is None:
+            if self._sensitivity_controller is None:
+                self._sensitivity_controller = FilmSensitivityQuickController(self)
+            self._sensitivity_component = QQmlComponent(self.engine, QUrl.fromLocalFile(
+                str(Path(__file__).parent / 'qml/FilmSensitivityResultWindow.qml')))
+            created = self._sensitivity_component.createWithInitialProperties(
+                {'controller': self._sensitivity_controller})
+            if not isinstance(created, QQuickWindow):
+                if created is not None:
+                    created.deleteLater()
+                message = '\n'.join(error.toString() for error in self._sensitivity_component.errors())
+                raise ValueError(message or 'The sensitivity report did not create a Qt Quick window.')
+            self._sensitivity_window = created
+            self._sensitivity_window.setIcon(window_icon('film_optimization'))
+        assert self._sensitivity_controller is not None
+        self._sensitivity_controller.load_verified_history(payload, job_id)
+        self._sensitivity_window.showNormal()
+        self._sensitivity_window.raise_()
+        self._sensitivity_window.requestActivate()
+
     def shutdown(self):
         if self._closed:
             return
@@ -768,6 +845,11 @@ class QueueResultViewer(QObject):
         self.window.close()
         # Tear down QML bindings while their bridge is still alive.
         import shiboken6
+        if self._sensitivity_controller is not None:
+            self._sensitivity_controller.shutdown()
+        if self._sensitivity_window is not None:
+            self._sensitivity_window.close()
+            shiboken6.delete(self._sensitivity_window)
         shiboken6.delete(self.window)
         shiboken6.delete(self.engine)
 

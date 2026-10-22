@@ -22,6 +22,8 @@
 
 2026-10-21：真实均匀层超宽带增透结构已接入默认纯AR合成，包括非QW交替层、1/2/3簇与全膜光程预算扫描；见[落地与云端同预算协议](docs/film-synthesis-ar-clusters-stage-20261021.md)及[算法14aa](docs/algorithms.html#film-synthesis-ar-clusters-20261021)。新结构的云端多种子对照尚待执行，不能由本地回归推断性能优于v23。
 
+2026-10-22：默认混合结构广筛/解析批针/全原约束精修与独立膜厚敏感性已接入正式工作流；见[使用入口](docs/film-synthesis-gui-guide.md)、[敏感性边界](docs/film-sensitivity-contract.md)和[真实验收及未通过范围](docs/film-hybrid-integration-report-20261022.md)。复杂四窗口正式冷启动长测尚未达标，不以研究已知处方重放替代。
+
 Git同提交云端交接入口与CPU命令见[Git交接指南](docs/film-synthesis-git-handoff-20261021.md)。
 
 ## 快速开始

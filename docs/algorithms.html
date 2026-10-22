@@ -232,6 +232,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#sourced-substrate-presets-20261019">H-K9L 与熔融石英基片预设（2026-10-19）</a>
 <a href="#film-batch-needle-20261022">14ai 原宿主锚点的解析批量针插</a>
 <a href="#film-sensitivity-20261022">14aj 独立膜厚敏感性与误差目标优化</a>
+<a href="#film-hybrid-synthesis-20261022">14ak 统一混合合成与全原约束精修</a>
 </nav>
 <main>
 <section id="film-wavelength-workers-20261017"><h2>CPU wavelength workers and fair single-candidate timing — 2026-10-17</h2>
@@ -3095,6 +3096,34 @@ close/shutdown/history/late old operation: do not trigger automatic apply</pre>
 <p>冻结缓存覆盖实际材料、光学环境、全部目标/原网格、误差与场景、变量层ID；不只用快照展示metadata。检查点含完整请求和已完成评分候选，加载/应用前可独立重放名义、线性及有限场景，验证层序/材料/未选层厚度保持。缓存最多32项且估计64MiB；完整结果保留估计超过256MiB则报告所需/限制字节并拒绝，不静默删场景或稀疏原网格。这些仅为本项目资源护栏。</p>
 <p>适用：已有单面、前表面、受支持相干或半无限基片固定层序 R/T；只研究膜厚误差。n/k、粗糙度、角度/波长误差、一般相关矩阵、相位/GD/GDD、一般各向异性和制造蒙特卡洛分布不支持。结果不是实镜制造或实测材料认证。CLI 通过 --request/--output，输出不覆盖已有文件；退出0=completed、3=partial预算、130=cancelled、2=failed。</p>
 <p class="source">来源：解析相干 TMM 与同页厚度 Jacobian 复用 <a href="https://arxiv.org/abs/1603.02720">Byrnes 原文</a>。一阶误差传播为所声明模型的代数定义；场景聚合、17点初始化、局部搜索与资源边界未找到外部依据，仅为本项目实现。不能援引来源声称制造分布或此搜索策略已获验证。</p>
+</section>
+
+<section id="film-hybrid-synthesis-20261022">
+<h2>14ak 统一混合合成：真实结构广筛、档案、解析批针与全原约束精修</h2>
+<p>更新：2026-10-22。实现 <code>film_auto_synthesis.py</code>、<code>film_synthesis_archive.py</code> 与 <code>film_synthesis_refinement.py</code>；正式 GUI / CLI / job / MCP 沿用同一冻结请求与评价/取消/审计边界。默认 <code>search_strategy=hybrid</code>，历史独立路由仅以 <code>legacy</code> 显式重放。输入用户原材料、原目标、完整1nm或自选网格及显式约束；输出严格冠军、独立审计、探索终态/merit、层数/总厚、多目标Pareto档案与逐阶段真实工作量。不会嵌入研究89层处方作冷启动答案。</p>
+<p>每轮按多结构族轮转筛选真实先验：均匀层、分离窗口HR、终端匹配非QW占空剖面、反射堆栈、匹配/AR簇、腔和显式双子栈，以及用户显式真实起点。多谱结构对材料对比、带宽及角度估计的需求层级作无物理调用的前瞻重排，不把32层或最大层数作默认搜索中心；估计不是最低层数下界，先验也不保证可行。</p>
+<figure class="figure"><svg viewBox="0 0 900 245" role="img" aria-label="统一混合调度与严格冠军和真实探索终态两条独立支线">
+<g fill="#e9f4f1" stroke="#087f78"><rect x="12" y="20" width="180" height="50" rx="8"/><rect x="238" y="20" width="180" height="50" rx="8"/><rect x="464" y="20" width="180" height="50" rx="8"/><rect x="690" y="20" width="195" height="50" rx="8"/><rect x="238" y="145" width="265" height="65" rx="8"/><rect x="600" y="145" width="285" height="65" rx="8"/></g>
+<g class="svgtext"><text x="26" y="51">多结构族广筛</text><text x="250" y="51">实际设计多样档案</text><text x="478" y="51">局部 / DE厚度探索</text><text x="703" y="51">原锚点解析批针</text><text x="250" y="174">真实 SSE 终态 → 下轮盆地</text><text x="250" y="196">可暂时恶化严格 max</text><text x="612" y="174">清零 / 同源合并 / 实际删层</text><text x="612" y="196">全原约束 SLSQP + 独立审计</text></g>
+<g stroke="#50616a" fill="none" stroke-width="2"><path d="M192 45H238"/><path d="M418 45H464"/><path d="M644 45H690"/><path d="M790 70V145"/><path d="M600 177H503"/><path d="M320 145V70"/></g>
+</svg><figcaption>图14ak：档案保存完整实际设计与父代/操作谱系。探索终态、训练严格冠军、已审计冠军分别拥有身份；同一候选的未完成工作不冒充已完成审计。</figcaption></figure>
+<div class="formula">默认探索 SSE = Σ窗口 wₖ/(Σw) · mean原条件[(违规/scaleₖ)²]。point_count 可显式改为按原点数加权。严格验收始终 max原全部条件[违规/scale]。</div>
+<p>默认 equal_window 避免IR窗口只因采样点更多主导探索，同时保留用户目标权重。整个原波长×角度×偏振网格始终存在，不用稀疏活动集 t 判通过。解析SSE局部阶段返回求解器实际终态；调度片中断时保留最后已接受点而非最后线搜索试点。严格冠军不会被变差的探索终态覆盖，下轮也不会被强制重置到旧 max-best 而丢掉盆地。</p>
+<p>全局厚度探索采用6成员DE、最多8个常数/余弦log厚度坐标、系数盒±.35、每轮2代；这些均为可反复调度的本项目搜索设置，不是总预算或商业算法复制。批针由当前等窗/用户权重解析 guide 筛选，默认每批最多6针，低谷细化1轮，pre-local默认false。有限针插后联合优化全部真实层厚，清理只合并同 material_id+optical_set_id，相邻清理前后用全部原谱 allclose(atol=2e−11,rtol=2e−10)核查，正厚删层永远完整重算并将真实设计归档。</p>
+<p>共享档案默认容量32，存实际设计、窗口最坏违规、响应均值/极值签名、层数/总厚、父代与操作；保护训练严格冠军和精确设计绑定的已审计冠军。Pareto/结构族/响应多样性只用于保留与选父，不冒充验收。档案是一次冻结问题的运行私有对象，不跨材料/目标/网格复用评分；构造锚点和前向缓存各自还需实际内容及layer ID绑定。</p>
+<p>终末精修采用所有原有符号不等式的SLSQP上图：min t，qⱼ(d)≤t，并保留用户厚度和总厚约束。解析Jacobian覆盖原条件，返回候选按真实 max 和RMS独立保存；单独报告实际终点 max、optimizer_t、max−t可行性、solver success / iteration_limit / failure / stage_budget，求解器收敛不等于目标通过。不是存在漏谷问题的稀疏活动集大步法。</p>
+<p>调度量筛选32/global24/针扫描256/联合96/压缩16/minimax256是每轮片额，耗尽后仍能续下一轮，不是隐藏终生评价预算。每片分别不超过剩余预算/时间的25%/15%/25%/45%/15%/85%，最终独审留槽，避免旧全局前缀吃完预算令针从不执行。单次不可分光学调用仍可超过片额墙钟；记录中断、已完成探针和未执行阶段，不谎称needle已完成。用户max_cycles/max_evaluations/max_seconds为真正停止条件，均可None。</p>
+<p>max_layers默认None，不加70/104上限；既有4096文档表示边界保留。<code>max_working_set_bytes</code>默认<strong>0=自动</strong>，正整数仍为用户显式字节限额，None/JSON null为关闭估计检查。自动模式在冻结请求时调用<code>compute_resources.available_memory_bytes()</code>，取可用主机/容器内存的50%；既有测量器在Windows读取GlobalMemoryStatusEx，在Linux读取MemAvailable并取已知cgroup v1/v2剩余额度的较小值。0可用量不视作充足；未知、无效或异常测量透明回退1,610,612,736 bytes并记录依据，而不把回退值冒称已测内存。50%与回退额均为本项目保守约定，非硬件保证。</p>
+<figure class="figure"><svg viewBox="0 0 900 150" role="img" aria-label="自动或显式资源策略冻结为实际限额，再对完整计算工作量作透明阶段准入">
+<g fill="#e9f4f1" stroke="#087f78"><rect x="12" y="16" width="265" height="105" rx="8"/><rect x="320" y="28" width="250" height="80" rx="8"/><rect x="615" y="16" width="270" height="105" rx="8"/></g>
+<g class="svgtext"><text x="24" y="43">0 自动：可用内存 × 50%</text><text x="24" y="70">正整数：显式 bytes</text><text x="24" y="97">null：关闭估计检查</text><text x="332" y="56">冻结 v1 资源解析元数据</text><text x="332" y="84">重放复用同一 effective 值</text><text x="627" y="43">完整网格工作量 vs 限额</text><text x="627" y="70">足够 → 原计算；不足 → 记录</text><text x="627" y="97">resource_limited，不称不可行</text></g>
+<g stroke="#50616a" fill="none" stroke-width="2"><path d="M277 68H320"/><path d="M570 68H615"/></g>
+</svg><figcaption>图14ak-资源：输入单位为bytes，可用内存只在冻结时取样。未执行的完整约束阶段必须显式报告，不能因资源跳过就称目标通过。</figcaption></figure>
+<p>阶段估计仍为128MiB + 原条件数×层数×(Jac64 / forward32) bytes，全SLSQP另加16×符号约束数×(层数+1)。例如184,600个单边约束、106层的完整SLSQP估计1,702,579,328 bytes；已知可用9,225,568,256 bytes时自动限额为4,612,784,128，不再被旧固定1.5GiB挡住。超出时报告阶段、层数、requested/effective限额、依据和resource_limited，不称物理不可行。估计只控制混合阶段数值工作准入，不是进程RSS硬限；材料冻结、裸基片初始评分和保留结果仍有基本内存开销，其他程序可立即改变余量。</p>
+<p>新增派生<code>resource_guard_resolution</code>使用版本1，保存mode/requested_bytes/effective_bytes/available_bytes/basis。冻结自动请求重放复用已验证的实际限额，不重新测量另一台机器，保持数值准入策略确定；它记录的是冻结时余量，不承诺当前余量。显式将该字段设None可重新测量，改变请求策略会清除旧解析；旧版本正整数/null请求仍保持原义。GUI明确提供自动/显式字节/关闭，CLI沿--request JSON使用同一字段。独立密网格、错位/极值审计保留，continuous_certificate=false。</p>
+<p class="source">来源：<a href="https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html">SciPy官方SLSQP接口与Kraft来源</a>；相干前向沿用<a href="https://arxiv.org/abs/1603.02720">Byrnes原文</a>。等窗归一、多族调度、各片额、低维DE参数、档案多样性、终端占空剖面和资源估计均未找到外部依据，仅为本项目实现；不声称这些经验组合已由文献验证或保证冷启动找到可行解。</p>
+<p>固定上下界相等是合法用户约束。SciPy在所有厚度固定时可返回不带nit的成功结果；混合及兼容HR/多谱精修的迭代诊断按0记录，仍以实际完整物理评分验收，不把缺诊断当数值失败。</p>
+<p>简单AR兼容先验：当原请求允许1.0倍参考QW且属于纯AR组合路线，优先尝试该真实均匀单层，再试其余用户允许份额；仍保留多族后续广筛及完整独审。这是本项目调度约定，不增加隐性预算、不凭QW公式宣称通过；未允许1.0时不自行添加。</p>
 </section>
 
 </main>

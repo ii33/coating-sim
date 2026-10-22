@@ -249,6 +249,8 @@ def is_best_candidate_result(result) -> bool:
     """Return whether a terminal result explicitly advertises a verified candidate."""
     if is_film_optimization_result(result):
         return True
+    if is_sensitivity_result(result):
+        return isinstance(result.get("best_design"), dict) and isinstance(result.get("best_analysis"), dict)
     from coat_sim.core.film_synthesis_jobs import is_synthesis_result
     if is_synthesis_result(result):
         body = result.get("result", {})
@@ -333,6 +335,8 @@ def job_has_viewable_result(job) -> bool:
     result = job.get("result")
     if not isinstance(result, dict):
         return False
+    if is_sensitivity_result(result):
+        return job.get("kind") == "film_sensitivity" and job.get("state") in ("succeeded", "failed", "cancelled")
     if job.get("state") == "succeeded":
         from coat_sim.core.film_synthesis_jobs import is_synthesis_result
         if is_synthesis_result(result):
@@ -351,6 +355,11 @@ def job_has_viewable_result(job) -> bool:
             return True
         return _has_registered_result_artifact(result)
     return job.get("state") in ("failed", "cancelled") and is_best_candidate_result(result)
+
+
+def is_sensitivity_result(result) -> bool:
+    from coat_sim.core.film_sensitivity_jobs import is_sensitivity_result as check
+    return check(result)
 
 
 def is_appearance_render_result(result) -> bool:
@@ -391,10 +400,23 @@ def load_best_candidate_checkpoint(root, job_id, *, terminal_state="cancelled"):
         if pointer.is_symlink() or not pointer.resolve().is_relative_to(job_directory):
             raise ValueError("checkpoint pointer escaped its job directory")
         envelope = json.loads(pointer.read_text(encoding="utf-8"))
+        if isinstance(envelope, dict) and envelope.get("kind") == "coat_sim.film_sensitivity_checkpoint":
+            from .jobs import JobSpec
+            from .store import SchedulerStore
+            from coat_sim.core.film_sensitivity_jobs import validate_checkpoint
+            spec_path = job_directory / "spec.json"
+            if spec_path.is_symlink() or not spec_path.resolve().is_relative_to(job_directory):
+                raise ValueError("sensitivity job spec escaped its scheduler directory")
+            spec = JobSpec.parse_frozen_json(spec_path.read_text(encoding="utf-8"))
+            row = SchedulerStore(root).status(job_id)
+            if spec.executor != "film_sensitivity" or row.get("input_digest") != spec.fingerprint:
+                raise ValueError("sensitivity checkpoint job identity mismatch")
+            return validate_checkpoint(envelope, expected_job=spec.parameters["payload"],
+                                       terminal_state=terminal_state), ""
         if isinstance(envelope, dict) and envelope.get("kind") == "coat_sim.film_synthesis_audited_checkpoint":
             from .jobs import JobSpec
             from .store import SchedulerStore
-            from coat_sim.core.film_synthesis_jobs import validate_checkpoint
+            from coat_sim.core.film_synthesis_jobs import validate_checkpoint as validate_synthesis_checkpoint
             spec_path = job_directory / "spec.json"
             if spec_path.is_symlink() or not spec_path.resolve().is_relative_to(job_directory):
                 raise ValueError("film synthesis job spec escaped its scheduler directory")
@@ -404,7 +426,7 @@ def load_best_candidate_checkpoint(root, job_id, *, terminal_state="cancelled"):
                     or queue_record.get("input_digest") != spec.fingerprint
                     or spec.parameters.get("payload") != envelope.get("job")):
                 raise ValueError("audited synthesis checkpoint is not bound to this frozen job input")
-            recovered = validate_checkpoint(envelope, terminal_state=terminal_state)
+            recovered = validate_synthesis_checkpoint(envelope, terminal_state=terminal_state)
             business_root = queue_record.get("execution_project_root")
             recovered["execution_project_root"] = (
                 business_root if isinstance(business_root, str) and business_root else str(root))

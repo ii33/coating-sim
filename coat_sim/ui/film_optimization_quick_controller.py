@@ -45,6 +45,7 @@ from coat_sim.ui.film_synthesis_quick_adapter import (
     verify_synthesis_file_references,
 )
 from coat_sim.ui.film_synthesis_forward_probe import FilmSynthesisForwardProbe
+from coat_sim.ui.film_sensitivity_quick_controller import FilmSensitivityQuickController
 from coat_sim.ui.film_optimization_run_coordinator import (
     FilmOptimizationRunCoordinator,
     FilmOptimizationRunPreparationError,
@@ -1007,6 +1008,7 @@ class FilmOptimizationQuickController(QObject):
         self._progress_text = "尚未开始"
         self._error = ""
         self._result: FilmOptimizationResult | None = None
+        self._sensitivity_controller: FilmSensitivityQuickController | None = None
         self._result_terminal_state = ""
         self._result_application_eligible = False
         self._frozen_request: FilmOptimizationRequest | None = None
@@ -1286,6 +1288,38 @@ class FilmOptimizationQuickController(QObject):
     @Property(QObject, constant=True)
     def computeTarget(self):
         return self._compute_target
+
+    @Property(QObject, constant=True)
+    def sensitivityController(self):
+        if self._sensitivity_controller is None:
+            self._sensitivity_controller = FilmSensitivityQuickController(self)
+            self._sensitivity_controller.changed.connect(self.changed.emit)
+        return self._sensitivity_controller
+
+    def _apply_sensitivity_candidate(self, result, context) -> bool:
+        """Explicit fixed-topology apply, fenced by both source edit versions."""
+        if (self._busy or self._source_closed or self.session is None
+                or self._source_controller is None or context is None
+                or result.state not in {"completed", "partial"}
+                or not result.is_final or result.operation != "optimize"
+                or result.best_design is None):
+            return False
+        compute, operation = context["project_compute"], context["project_operation"]
+        if compute is not None and (compute.editing_frozen or not compute.accepts(operation)):
+            return False
+        if (self.session.snapshot().design_revision != context["revision"]
+                or self._source_edit_epoch() != context["epoch"]
+                or result.design_revision != context["revision"]):
+            return False
+        request = result.frozen_request
+        frozen = FilmOptimizationRequest(request.design_snapshot, request.design_revision,
+            (), request.objectives, frozen_material_snapshot=request.frozen_material_snapshot)
+        # A changed live optical-set definition cannot turn a replayed frozen
+        # robustness candidate into a different design at application time.
+        verify_synthesis_file_references(self.service, frozen, result.best_design)
+        apply = getattr(self._source_controller, "applyOptimizedDesign", None)
+        return bool(callable(apply) and apply(deepcopy(dict(result.best_design)),
+                    context["revision"], context["epoch"]))
 
     def _attach_source_observers(self) -> None:
         source_controller = self._source_controller
@@ -1814,6 +1848,8 @@ class FilmOptimizationQuickController(QObject):
         """Stop receiving source/session events before this window is destroyed."""
         if self._observers_detached:
             return
+        if self._sensitivity_controller is not None:
+            self._sensitivity_controller.detach()
         self._synthesis_forward_probe.cancel()
         if self._busy and self._pending_angle_preparation is not None:
             # Pre-submission preparation is local work even for project-owned
@@ -2355,7 +2391,8 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(bool, notify=changed)
     def busy(self) -> bool:
-        return self._busy
+        return bool(self._busy or (self._sensitivity_controller is not None
+                                   and self._sensitivity_controller.busy))
 
     @Property(float, notify=changed)
     def progress(self) -> float:
@@ -2450,7 +2487,7 @@ class FilmOptimizationQuickController(QObject):
                   or any(row.get("selected") for row in self._structure_material_options)))
         return (not self._initial_loading and not self._initial_load_failed
                 and not self._structure_material_error
-                and not self._busy and not self._source_closed and not self._source_stale
+                and not self.busy and not self._source_closed and not self._source_stale
                 and bool(self._objectives) and has_search_inputs
                 and not self._pending_edit_error
                 and not self._objective_bounds_invalid()
@@ -2460,7 +2497,7 @@ class FilmOptimizationQuickController(QObject):
     def canStartFromShortcut(self) -> bool:
         return (not self._initial_loading and not self._initial_load_failed
                 and not self._structure_material_error
-                and not self._busy and not self._source_closed
+                and not self.busy and not self._source_closed
                 and (self.session is not None or self._detached_source))
 
     def _record_pending_edit_error(self, key: str, message: str) -> None:
@@ -2500,7 +2537,7 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(bool, notify=changed)
     def canApply(self) -> bool:
-        return bool(self.session is not None and not self._source_closed and self._result and not self._busy
+        return bool(self.session is not None and not self._source_closed and self._result and not self.busy
                     and not self.candidateStale
                     and not self._candidate_applied
                     and self._result_application_eligible)
@@ -2884,7 +2921,7 @@ class FilmOptimizationQuickController(QObject):
 
     @Slot(str, "QVariant", result=bool)
     def setStructureOption(self, name: str, value) -> bool:
-        if self._busy or self._shutting_down:
+        if self.busy or self._shutting_down:
             return False
         error_key = f"structure_option:{name}"
         if not self._pending_edit_allows(error_key):
@@ -4237,7 +4274,7 @@ class FilmOptimizationQuickController(QObject):
         if self._pending_reuse_source is not None:
             self._pending_reuse_start = True
             return True
-        if self._busy or self._shutting_down:
+        if self.busy or self._shutting_down:
             return False
         if self._source_closed:
             self._error = "原设计窗口已关闭；不能开始或回写优化。"
@@ -5630,9 +5667,11 @@ class FilmOptimizationQuickController(QObject):
     def shutdown(self, timeout_ms: int = 5000) -> bool:
         """Cancel and wait for this window's private pool during test/teardown."""
         self.detach_observers()
+        sensitivity_done = (self._sensitivity_controller is None
+            or self._sensitivity_controller.shutdown(timeout_ms))
         self._synthesis_forward_probe.shutdown()
         self._pending_project_completion = None
         if self._project_compute is not None:
             self._project_compute.unregister_thaw_callback(self._on_project_unfrozen)
-        return self._run_coordinator.shutdown(timeout_ms)
+        return self._run_coordinator.shutdown(timeout_ms) and sensitivity_done
 

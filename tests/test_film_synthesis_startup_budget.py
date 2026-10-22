@@ -37,7 +37,8 @@ def test_wall_budget_rejects_nonpositive_nonfinite_and_boolean_values(value):
 def test_wall_budget_is_optional_float_and_appended_to_request():
     _, request = setup_problem()
     assert request.max_seconds is None
-    assert fields(type(request))[-1].name == "max_seconds"
+    names = [item.name for item in fields(type(request))]
+    assert names.index("max_seconds") == names.index("ar_structure_mode") + 1
     assert synthesis._validated(replace(request, max_seconds=2)).max_seconds == 2.
 
 

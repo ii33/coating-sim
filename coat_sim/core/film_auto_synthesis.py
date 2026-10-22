@@ -1,8 +1,10 @@
-"""GUI-independent synthesis from a bare substrate using analytic needles.
+"""GUI-independent unified hybrid synthesis and explicit legacy reproduction.
 
-The working growth branch may get worse; the separately scored incumbent never
-does. No random layer generation, application to a session, or implicit work
-budget is involved. See docs/film-auto-synthesis-contract.md and algorithms.html.
+Source-derived multi-family priors, a real shared diversity/Pareto design
+archive, global/local thickness exploration, analytic batch needles and
+full-original-constraint SLSQP share one physical evaluator and audit owner.
+The real exploration endpoint may get worse; its strict champion stays separate.
+No candidate is applied to a session. See the synthesis contract and algorithms.
 """
 from __future__ import annotations
 
@@ -35,6 +37,15 @@ if TYPE_CHECKING:
 # Scheduling work proxy, not a request/physics budget or a feasibility bound.
 STRUCTURAL_PREFIX_POINT_LAYER_QUANTUM = 1_000_000
 
+# Advisory numerical-work admission, not an OS memory quota or a layer bound.
+# 0 requests one conservative host/container headroom measurement at freeze;
+# positive integers and None retain their explicit-limit/off meanings.
+SYNTHESIS_WORKING_SET_FALLBACK_BYTES = 1_610_612_736
+_RESOURCE_RESOLUTION_KEYS = frozenset(("version", "mode", "requested_bytes",
+    "effective_bytes", "available_bytes", "basis"))
+_RESOURCE_FALLBACK_BASES = frozenset(("unknown_memory_fallback",
+    "invalid_memory_fallback", "memory_probe_error_fallback"))
+
 
 class _SearchDiagnostics(TypedDict):
     structural_proposals: list[dict[str, object]]
@@ -51,6 +62,8 @@ class _SearchDiagnostics(TypedDict):
     bandpass_structure_schedule: NotRequired[dict[str, object]]
     matching_structure_schedule: NotRequired[dict[str, object]]
     cluster_structure_schedule: NotRequired[dict[str, object]]
+    hybrid: NotRequired[dict[str, Any]]
+    design_archive: NotRequired[dict[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -65,6 +78,9 @@ class FilmSynthesisRequest:
     seed_designs are explicit additional real starting branches, with the same
     physical environment. Their materials are frozen even outside the insertion
     pool; positive physical thicknesses must satisfy every explicit constraint.
+    max_working_set_bytes uses 0=auto, positive=explicit bytes, None=off. Derived
+    resource_guard_resolution freezes its v1 policy for deterministic replay;
+    it is staged numerical admission, not a process memory isolation guarantee.
     """
 
     environment: Mapping[str, Any]
@@ -94,6 +110,14 @@ class FilmSynthesisRequest:
     strict_lower_bound_objective_indices: tuple[int, ...] = ()
     ar_structure_mode: str = "clustered"
     max_seconds: float | None = None
+    search_strategy: str = "hybrid"
+    objective_weighting: str = "equal_window"
+    archive_capacity: int = 32
+    needle_batch_size: int = 6
+    needle_pre_local: bool = False
+    needle_position_refinement_rounds: int = 1
+    max_working_set_bytes: int | None = 0
+    resource_guard_resolution: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -169,9 +193,111 @@ def _number(value, name, *, zero=False):
     return result
 
 
+def _checked_resource_guard_resolution(request: FilmSynthesisRequest) -> dict[str, Any] | None:
+    """Validate frozen v1 resource policy without sampling this replay host.
+
+    Changing the requested policy deliberately discards an otherwise valid old
+    resolution. A saved unchanged auto request retains its exact numerical cap,
+    even on another host; set the resolution to None to explicitly resample.
+    """
+    raw = request.resource_guard_resolution
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping) or set(raw) != _RESOURCE_RESOLUTION_KEYS:
+        raise ValueError("resource_guard_resolution must be a complete versioned object or None")
+    if type(raw["version"]) is not int or raw["version"] != 1:
+        raise ValueError("unsupported resource_guard_resolution version")
+    if type(raw["mode"]) is not str or type(raw["basis"]) is not str:
+        raise ValueError("resource_guard_resolution mode and basis must be strings")
+    requested, effective, available = (raw[name] for name in
+        ("requested_bytes", "effective_bytes", "available_bytes"))
+    for name, value in (("requested_bytes", requested), ("effective_bytes", effective),
+                        ("available_bytes", available)):
+        if value is not None and (type(value) is not int or value < 0):
+            raise ValueError(f"resource_guard_resolution {name} must be a nonnegative integer or None")
+    if requested is None:
+        valid = (raw["mode"] == "disabled" and effective is None and available is None
+                 and raw["basis"] == "disabled")
+    elif requested > 0:
+        valid = (raw["mode"] == "explicit" and effective == requested and available is None
+                 and raw["basis"] == "explicit_request")
+    elif available is not None:
+        valid = (raw["mode"] == "auto" and effective == available // 2
+                 and raw["basis"] == "half_available_memory_at_freeze")
+    else:
+        valid = (raw["mode"] == "auto" and effective == SYNTHESIS_WORKING_SET_FALLBACK_BYTES
+                 and raw["basis"] in _RESOURCE_FALLBACK_BASES)
+    if not valid:
+        raise ValueError("resource_guard_resolution is inconsistent with its versioned policy")
+    return deepcopy(dict(raw)) if requested == request.max_working_set_bytes else None
+
+
+def _resolve_synthesis_resource_guard(request: FilmSynthesisRequest) -> dict[str, Any]:
+    """Freeze an explicit/off policy or one allocation-free conservative sample.
+
+    One half of available host/container memory is a project heuristic, not an
+    allocation guarantee. Unknown measurements keep the old conservative byte
+    estimate, visibly labelled as fallback rather than inferred free memory.
+    """
+    existing = _checked_resource_guard_resolution(request)
+    if existing is not None:
+        return existing
+    requested = request.max_working_set_bytes
+    available = None
+    if requested is None:
+        mode, effective, basis = "disabled", None, "disabled"
+    elif requested > 0:
+        mode, effective, basis = "explicit", requested, "explicit_request"
+    else:
+        from .compute_resources import available_memory_bytes
+        mode, effective, basis = "auto", SYNTHESIS_WORKING_SET_FALLBACK_BYTES, "unknown_memory_fallback"
+        try:
+            measured = available_memory_bytes()
+        except (_StructureCancelled, _Stopped):
+            raise
+        except Exception:
+            basis = "memory_probe_error_fallback"
+        else:
+            if type(measured) is int and measured >= 0:
+                available, effective = measured, measured // 2
+                basis = "half_available_memory_at_freeze"
+            elif measured is not None:
+                basis = "invalid_memory_fallback"
+    return dict(version=1, mode=mode, requested_bytes=requested,
+                effective_bytes=effective, available_bytes=available, basis=basis)
+
+
+def _synthesis_working_set_estimate_bytes(request: FilmSynthesisRequest, layer_count: int,
+                                        *, jacobian=False, epigraph=False) -> int:
+    """Allocation-free estimate shared by actual admission and policy tests."""
+    count = max(1, layer_count)
+    points = sum(o.wavelength_samples * len(o.angles_deg) for o in request.objectives)
+    estimate = 128 * 1024**2 + points * count * (64 if jacobian else 32)
+    if epigraph:
+        constraints = sum(o.wavelength_samples * len(o.angles_deg) * (
+            2 if o.mode == "value" else int(o.lower_bound is not None) + int(o.upper_bound is not None))
+            for o in request.objectives)
+        estimate += 16 * constraints * (count + 1)
+    return estimate
+
+
 def _validated(request):
     if not isinstance(request, FilmSynthesisRequest):
         raise ValueError("request must be FilmSynthesisRequest")
+    if type(request.search_strategy) is not str or request.search_strategy not in {"hybrid", "legacy"}:
+        raise ValueError("search_strategy must be hybrid or legacy")
+    if type(request.objective_weighting) is not str or request.objective_weighting not in {"equal_window", "point_count"}:
+        raise ValueError("objective_weighting must be equal_window or point_count")
+    for field_name, minimum in (("archive_capacity", 2), ("needle_batch_size", 1),
+                                ("needle_position_refinement_rounds", 0)):
+        if type(getattr(request, field_name)) is not int or getattr(request, field_name) < minimum:
+            raise ValueError(f"{field_name} must be an integer >= {minimum}")
+    if type(request.needle_pre_local) is not bool:
+        raise ValueError("needle_pre_local must be boolean")
+    if request.max_working_set_bytes is not None and (type(request.max_working_set_bytes) is not int
+                                                     or request.max_working_set_bytes < 0):
+        raise ValueError("max_working_set_bytes must be 0 (auto), a positive integer, or None (off)")
+    resource_guard_resolution = _checked_resource_guard_resolution(request)
     if not isinstance(request.forward_backend, str) or request.forward_backend not in {"cpu", "cuda", "rocm", "xpu"}:
         raise ValueError("forward_backend must be cpu, cuda, rocm or xpu")
     forward_device = None
@@ -264,6 +390,7 @@ def _validated(request):
             raise ValueError("seed layer count exceeds the explicit request constraint")
         seeds.append(seed)
     return replace(request, environment=design, objectives=objectives, seed_designs=tuple(seeds), forward_device=forward_device,
+                   resource_guard_resolution=resource_guard_resolution,
                    strict_lower_bound_objective_indices=tuple(strict_indices),
                    candidate_materials=tuple(request.candidate_materials),
                    growth_quarter_wave_fractions=tuple(float(v) for v in request.growth_quarter_wave_fractions),
@@ -371,7 +498,10 @@ def freeze_film_synthesis_request(service: Any, request: FilmSynthesisRequest,
         if not _feasible(result, seed):
             raise ValueError("seed physical thicknesses violate the explicit request constraints")
         seeds.append(seed)
-    return replace(result, seed_designs=tuple(seeds))
+    _check_cancel(cancel_event)
+    resource_resolution = _resolve_synthesis_resource_guard(result)
+    _check_cancel(cancel_event)
+    return replace(result, seed_designs=tuple(seeds), resource_guard_resolution=resource_resolution)
 
 
 def _feasible(request, design):
@@ -565,6 +695,11 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
     candidate_provenance = {}
     search_diagnostics: _SearchDiagnostics = {"structural_proposals": [], "global_search": [],
         "layer_distribution": {}, "local_refinement": []}
+    from .film_synthesis_archive import SynthesisDesignArchive
+    design_archive = SynthesisDesignArchive(len(request.objectives),
+        capacity=request.archive_capacity, rank=lambda value: rank(value))
+    archive_context: dict[str, Any] = {}
+    hybrid_streams: list[Any] = []
     audited_signatures = set()
     pending_structural_scans: dict[int, Generator[StructuralProposal, None, None]] = {}
     pending_structural_proposals: dict[int, StructuralProposal] = {}
@@ -593,6 +728,11 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             pending_scan.close()
         pending_structural_scans.clear()
         pending_structural_proposals.clear()
+        for stream in hybrid_streams:
+            close = getattr(stream, "close", None)
+            if close is not None:
+                close()
+        hybrid_streams.clear()
         for stream in (cavity_stream, matching_stream, cluster_stream):
             if stream[0] is not None:
                 stream[0].close()
@@ -602,6 +742,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         result = execution.diagnostics()
         result["stage_wall_seconds"] = dict(stage_times)
         result["search"] = deepcopy(search_diagnostics)
+        result["search"]["design_archive"] = design_archive.snapshot()
         feedback_snapshot = feedback_registry.snapshot()
         result["audit_feedback"] = dict(revision=feedback_snapshot.revision,
             points=[asdict(point) for point in feedback_snapshot.points],
@@ -744,6 +885,16 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
     def rank(candidate):
         legacy = _synthesis_candidate_rank(candidate, request.acceptable_normalized_error)
         strict_indices = set(request.strict_lower_bound_objective_indices)
+        if request.search_strategy == "hybrid":
+            if not strict_indices:
+                return legacy
+            score = candidate["score"]
+            passed = strict_lower_pass(score) and score["max_error"] <= request.acceptable_normalized_error
+            rows = candidate["design"]["front_layers"]
+            cost = (len(rows), sum(row["thickness"]["value"] for row in rows))
+            if passed:
+                return (0, *cost, score["max_error"], score["weighted_rms_error"])
+            return (1, score["max_error"], score["weighted_rms_error"], *cost)
         if not (automatic_reflector_route or automatic_matching_route) and not strict_indices:
             return legacy
         score = candidate["score"]
@@ -772,6 +923,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         emit("validation", "Audit dense, offset and local-extremum physical responses", value["design"], value["score"])
         audited = evaluate(value["design"], holdout=True)
         audited_signatures.add(signature)
+        design_archive.mark_audited(value, audited)
         if (completed_training_best is not None and
                 completed_training_best["design"] == value["design"]):
             completed_training_validation = {"design": deepcopy(audited["design"]),
@@ -817,8 +969,12 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 and strict_lower_pass(audited_best[0]["score"])
                 and strict_lower_pass(audited_best[1]["score"]))
 
-    def archive(value, *, audit_eligible=True):
+    def archive(value, *, audit_eligible=True, provenance=None, parent_hash=None, operator=None):
         nonlocal best
+        if feasible(value["design"]):
+            design_archive.add(value, provenance=provenance or archive_context.get("provenance"),
+                parent_hash=parent_hash or archive_context.get("parent_hash"),
+                operator=operator or archive_context.get("operator", "evaluated"))
         if feasible(value["design"]) and (best is None or rank(value) < rank(best)):
             best = _copy_internal_candidate(value)
             emit("incumbent", "已保存独立评分的候选，等待最终密网格验证", value["design"], value["score"])
@@ -1038,6 +1194,503 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         thickness = min(max(lower, proposed), upper)
         return thickness if math.isfinite(thickness) and thickness > 0 and thickness >= lower else None
 
+    def run_hybrid(initial):
+        """One shared staged search; strict archive and real explorer are distinct."""
+        nonlocal cycle
+        frozen_snapshot = request.frozen_material_snapshot
+        assert frozen_snapshot is not None
+        from .film_synthesis_archive import physical_design_hash
+        from .film_synthesis_refinement import (
+            SynthesisStageBudget, SynthesisResourceGuard, synthesis_window_masses,
+            weighted_sse_loss_gradient, refine_synthesis_explorer,
+            refine_synthesis_full_minimax,
+        )
+        from .film_synthesis_batch_needle import (
+            scan_batch_needles, build_batch_needle_design, cleanup_batch_needle_design,
+        )
+        from .film_synthesis_global import (StructuralProposal, iter_reflector_proposals,
+            iter_bandpass_proposals, DifferentialEvolutionProposals)
+        from .film_synthesis_matching import iter_matching_proposals
+        from .film_synthesis_ar_clusters import iter_ar_cluster_proposals
+        from .film_synthesis_multispectral_priors import iter_multispectral_hr_proposals
+        from .film_synthesis_hr_priors import iter_dual_substack_hr_proposals
+
+        resource_resolution = _resolve_synthesis_resource_guard(request)
+        details: dict[str, Any] = dict(strategy="hybrid", objective_weighting=request.objective_weighting,
+            objective_masses=synthesis_window_masses(request).tolist(), stages=[], needle_scans=[],
+            exploration_endpoints=[], resource_skips=[], original_grid_points=sum(
+                o.wavelength_samples * len(o.angles_deg) for o in request.objectives),
+            max_working_set_bytes=resource_resolution["effective_bytes"],
+            requested_max_working_set_bytes=request.max_working_set_bytes,
+            effective_max_working_set_bytes=resource_resolution["effective_bytes"],
+            resource_guard_resolution=deepcopy(resource_resolution), resource_limited=False,
+            resource_guard_formula="128 MiB + points*layers*(64 Jacobian / 32 forward) bytes; full SLSQP adds 16*bound_conditions*(layers+1) bytes",
+            budget_policy="each rotation: <=25% remaining screening, <=15% local/global, <=25% scan, <=45% joint SSE, <=15% compression; remaining reserved for full-original SLSQP and final audit; stage expiry is not convergence",
+            strict_champion_role="original physical full-grid max violation; never overwritten by SSE endpoint",
+            no_implicit_layer_limit=True, schema_layer_limit=MAX_LAYERS)
+        search_diagnostics["hybrid"] = details
+        active_slice = None
+        explorer = initial
+        source_request = replace(request, seed_designs=())
+        seen_priors = set()
+        no_negative_rounds = 0
+        total_real_growth = 0
+
+        def begin_slice(stage, fraction, quantum):
+            nonlocal active_slice
+            check_training_admission()
+            remaining = (None if request.max_evaluations is None else
+                         max(0, request.max_evaluations - evaluations - 1))
+            cap = quantum if remaining is None else min(quantum, max(1, int(remaining * fraction)))
+            now = monotonic()
+            seconds = None if stop_event.deadline is None else max(0., stop_event.deadline - now)
+            record = dict(stage=stage, cycle=cycle, start_evaluations=evaluations,
+                admitted_evaluation_quantum=cap, remaining_training_evaluations=remaining,
+                wall_time_share=fraction, elapsed_seconds=0., evaluations_used=0, termination="running")
+            details["stages"].append(record)
+            active_slice = (record, evaluations + cap, None if seconds is None else now + fraction * seconds, now)
+            return record
+
+        def stage_check():
+            check_training_admission()
+            if active_slice is not None:
+                record, end_evaluations, deadline, _start = active_slice
+                if evaluations >= end_evaluations or (deadline is not None and monotonic() >= deadline):
+                    record["termination"] = "stage_budget"
+                    raise SynthesisStageBudget(record["stage"])
+
+        def end_slice(termination="quantum_complete"):
+            nonlocal active_slice
+            if active_slice is not None:
+                record, _end, _deadline, start = active_slice
+                record.update(evaluations_used=evaluations - record["start_evaluations"],
+                              elapsed_seconds=monotonic() - start)
+                if record["termination"] == "running":
+                    record["termination"] = termination
+            active_slice = None
+
+        def resource_check(design, *, jacobian=False, epigraph=False):
+            estimate = _synthesis_working_set_estimate_bytes(request, len(design["front_layers"]),
+                jacobian=jacobian, epigraph=epigraph)
+            limit = resource_resolution["effective_bytes"]
+            details["largest_estimated_working_set_bytes"] = max(estimate,
+                details.get("largest_estimated_working_set_bytes", 0))
+            if limit is not None and estimate > limit:
+                skip = dict(stage=None if active_slice is None else active_slice[0]["stage"],
+                    layer_count=len(design["front_layers"]), estimated_bytes=estimate, limit_bytes=limit,
+                    requested_limit_bytes=request.max_working_set_bytes,
+                    resource_policy=resource_resolution["mode"],
+                    jacobian=jacobian, full_epigraph=epigraph,
+                    reason="working_set_estimate_exceeds_resolved_resource_guard_not_layer_infeasibility")
+                details["resource_skips"].append(skip)
+                details["resource_limited"] = True
+                emit("hybrid_resource_guard", json.dumps(skip, sort_keys=True), design)
+                raise SynthesisResourceGuard(skip["reason"])
+
+        def hybrid_evaluate(design, **kwargs):
+            stage_check()
+            resource_check(design, jacobian=bool(kwargs.get("jacobian")))
+            if forward is not None and not kwargs.get("jacobian") and not kwargs.get("zero_ids"):
+                kwargs["gpu_forward"] = True
+            return evaluate(design, **kwargs)
+
+        def local_progress(stage, value, metadata):
+            emit(stage, json.dumps(metadata, sort_keys=True), value["design"], value["score"])
+
+        def score_sse(value):
+            return weighted_sse_loss_gradient(request, value, ())[0]
+
+        def same_spectrum(first, second):
+            a = {(r["objective_index"], r["angle_deg"]): r for r in first.get("responses", ())}
+            b = {(r["objective_index"], r["angle_deg"]): r for r in second.get("responses", ())}
+            return (bool(a) and a.keys() == b.keys() and all(
+                np.array_equal(a[key]["wavelength_nm"], b[key]["wavelength_nm"])
+                and np.allclose(a[key]["actual_values"], b[key]["actual_values"], atol=2e-11, rtol=2e-10)
+                for key in a))
+
+        def physical_cleanup(value):
+            cleaned = cleanup_batch_needle_design(value["design"], frozen_snapshot)
+            if cleaned.design == value["design"] or not feasible(cleaned.design):
+                return value
+            current = value
+            if not current.get("responses"):
+                zero_ids = tuple(row["id"] for row in current["design"]["front_layers"]
+                                 if row["thickness"]["value"] == 0.)
+                current = hybrid_evaluate(current["design"], zero_ids=zero_ids)
+            candidate = hybrid_evaluate(cleaned.design)
+            if not same_spectrum(current, candidate):
+                raise ValueError("exact-zero/same-optical-reference cleanup failed full-original spectral equivalence")
+            metadata = dict(family="compression", removed_exact_zero_ids=list(cleaned.removed_exact_zero_ids),
+                            merged_ids=dict(cleaned.merged_ids), full_original_spectral_equivalence=True)
+            archive(candidate, audit_eligible=False, provenance=metadata,
+                    parent_hash=physical_design_hash(value["design"]), operator="exact_zero_same_reference_merge")
+            emit("hybrid_cleanup", json.dumps(metadata, sort_keys=True), candidate["design"], candidate["score"])
+            return candidate
+
+        def report(event):
+            search_diagnostics["structural_proposals"].append(deepcopy(event))
+
+        def simple_priors():
+            fractions = request.growth_quarter_wave_fractions
+            if automatic_cluster_route and 1.0 in fractions:
+                # Preserve the cheap homogeneous AR prior before other allowed
+                # phase fractions, even with only one remaining training slot.
+                fractions = (1.0, *(fraction for fraction in fractions if fraction != 1.0))
+            for index, ref in enumerate(request.candidate_materials):
+                for fraction in fractions:
+                    thickness = legal_growth_thickness(request.environment,
+                        quarter[(ref.material_id, ref.optical_set_id)] * fraction)
+                    if thickness is None:
+                        continue
+                    ids = _proposal_layer_ids(request.environment, f"hybrid-simple-{index}", "unused",
+                                               reserved_ids=reserved_layer_ids)
+                    design = _insert_at_site(request.environment, dict(kind="interface", interface=0), ref, thickness, *ids)
+                    if feasible(design):
+                        yield StructuralProposal(design, dict(family="homogeneous", quarter_fraction=fraction))
+
+        def multispectral_priors():
+            source = iter_multispectral_hr_proposals(source_request,
+                cancel_check=check_training_admission, report=report)
+            hybrid_streams.append(source)
+            # Look ahead without physics to interleave actual estimated-demand
+            # scales, rather than spend the entire cold budget in the first
+            # under-demand tier. No fixed 32/70/104-layer search center.
+            while True:
+                chunk = []
+                for _ in range(32):
+                    try:
+                        chunk.append(next(source))
+                    except StopIteration:
+                        break
+                if not chunk:
+                    return
+                buckets: dict[float, list[StructuralProposal]] = {}
+                for proposal in chunk:
+                    meta = proposal.provenance
+                    ratio = meta["candidate_pair_budget"] / meta["estimated_pair_demand"]
+                    buckets.setdefault(round(ratio, 8), []).append(proposal)
+                tiers = sorted(buckets, key=lambda ratio: (abs(math.log(max(ratio, 1e-15))), ratio))
+                while any(buckets.values()):
+                    for tier in tiers:
+                        if not buckets[tier]:
+                            continue
+                        proposal = buckets[tier].pop(0)
+                        yield proposal
+                        # Non-QW terminal impedance profiles are additional real
+                        # physical families, not assumed optical improvements.
+                        if proposal.provenance.get("matching_end_layers"):
+                            continue
+                        for amplitude in (.0, .12):
+                            design = deepcopy(proposal.design)
+                            rows = design["front_layers"]
+                            for pair_index in range(len(rows) // 2):
+                                a, b = rows[2 * pair_index:2 * pair_index + 2]
+                                if (a["material_id"], a["optical_set_id"]) == (b["material_id"], b["optical_set_id"]):
+                                    continue
+                                z = pair_index / max(1, len(rows) // 2 - 1)
+                                high = tuple(proposal.provenance["windows"][0]["high"])
+                                duty = (.8 if z < .10 else .05 if z > .90 else
+                                        .5 + amplitude * math.sin(2 * math.pi * z))
+                                for row in (a, b):
+                                    fraction = duty if (row["material_id"], row["optical_set_id"]) == high else 1 - duty
+                                    row["thickness"]["value"] *= 2 * fraction
+                            if feasible(design):
+                                meta = dict(proposal.provenance, family="multispectral_matched_profile",
+                                    duty_amplitude=amplitude, substrate_high_duty=.8, incident_high_duty=.05,
+                                    rule="project terminal impedance/non-QW phase profile; full original scoring required")
+                                yield StructuralProposal(design, meta)
+
+        def seed_priors():
+            for index, design in enumerate(request.seed_designs):
+                yield StructuralProposal(deepcopy(dict(design)), dict(family="user_seed", seed_index=index))
+
+        streams = [iter(seed_priors()), iter(simple_priors()), iter(multispectral_priors()),
+            iter(iter_reflector_proposals(source_request, cancel_check=check_training_admission, report=report)),
+            iter(iter_matching_proposals(source_request, cancel_check=check_training_admission, report=report)),
+            iter(iter_ar_cluster_proposals(source_request, cancel_check=check_training_admission, report=report)),
+            iter(iter_bandpass_proposals(source_request, cancel_check=check_training_admission, report=report)),
+            iter(iter_dual_substack_hr_proposals(source_request, cancel_check=check_training_admission, report=report))]
+        hybrid_streams.extend(streams)
+        source_cursor = 0
+
+        while not targets_verified():
+            check_training_admission()
+            if request.max_cycles is not None and cycle >= request.max_cycles:
+                raise _Stopped("cycle_limit")
+            cycle += 1
+            emit("hybrid_rotation", "结构族广筛、共享多样档案、局部/全局、真实解析批针、压缩及原全约束复核", explorer["design"], explorer["score"])
+            begin_slice("engineering_prior_screen", .25, 32)
+            try:
+                misses = 0
+                while streams and misses < len(streams) and not targets_verified():
+                    stage_check()
+                    source_cursor %= len(streams)
+                    source = streams[source_cursor]
+                    try:
+                        proposal = next(source)
+                    except StopIteration:
+                        streams.pop(source_cursor)
+                        continue
+                    source_cursor += 1
+                    signature = physical_design_hash(proposal.design)
+                    if signature in seen_priors:
+                        misses += 1
+                        continue
+                    misses = 0
+                    seen_priors.add(signature)
+                    if not feasible(proposal.design):
+                        continue
+                    raw = hybrid_evaluate(proposal.design)
+                    archive(raw, audit_eligible=False, provenance=proposal.provenance, operator="engineering_prior")
+                    if (raw["score"]["max_error"] <= request.acceptable_normalized_error
+                            and strict_lower_pass(raw["score"])):
+                        audit_archive(raw, allow_feedback_repair=False)
+                    emit("structure_proposal", json.dumps(proposal.provenance, sort_keys=True), raw["design"], raw["score"])
+                    if (not explorer["design"]["front_layers"] or score_sse(raw) < score_sse(explorer)):
+                        explorer = raw
+            except (SynthesisStageBudget, SynthesisResourceGuard) as exc:
+                end_slice("resource_guard" if isinstance(exc, SynthesisResourceGuard) else "stage_budget")
+            finally:
+                end_slice()
+            if targets_verified():
+                break
+
+            # Low-dimensional global modes preserve real topologies and explore
+            # broad physical thickness basins; specialists get rotating turns.
+            begin_slice("local_global_exploration", .15, 24)
+            try:
+                parents = design_archive.select_parents(3)
+                for entry in parents:
+                    stage_check()
+                    if not entry.design["front_layers"]:
+                        continue
+                    archive_context.update(provenance=entry.provenance, parent_hash=entry.physical_hash,
+                                           operator="low_dimensional_global")
+                    n = len(entry.design["front_layers"])
+                    dimension = min(8, n)
+                    coordinates = np.linspace(0., 1., n)
+                    basis = np.column_stack([np.ones(n)] + [np.cos(math.pi * k * coordinates)
+                                                for k in range(1, dimension)])
+                    evolution = DifferentialEvolutionProposals(np.zeros(dimension),
+                        np.full(dimension, -.35), np.full(dimension, .35),
+                        seed=request.structure_search_seed + cycle + entry.insertion_index, population_size=6)
+                    for _generation in range(2):
+                        losses = np.full(len(evolution.population), np.inf)
+                        for index, point in enumerate(evolution.proposals()):
+                            stage_check()
+                            trial = deepcopy(entry.design)
+                            for row, delta in zip(trial["front_layers"], basis @ point, strict=True):
+                                row["thickness"]["value"] *= math.exp(float(delta))
+                            if not feasible(trial):
+                                continue
+                            value = hybrid_evaluate(trial)
+                            losses[index] = score_sse(value)
+                            archive(value, audit_eligible=False)
+                            if losses[index] < score_sse(explorer):
+                                explorer = value
+                            emit("hybrid_global_trial", "有界低维厚度群体探索，原网格完整评分", trial, value["score"])
+                        evolution.accept(losses)
+                if request.needle_pre_local and explorer["design"]["front_layers"]:
+                    explorer, local = refine_synthesis_explorer(request, explorer,
+                        evaluate=hybrid_evaluate, archive=archive, cancel_check=stage_check,
+                        progress=local_progress, max_iterations=24)
+                    search_diagnostics["local_refinement"].append(local)
+            except (SynthesisStageBudget, SynthesisResourceGuard) as exc:
+                end_slice("resource_guard" if isinstance(exc, SynthesisResourceGuard) else "stage_budget")
+            finally:
+                end_slice()
+
+            parent_hash = physical_design_hash(explorer["design"])
+            archive_context.update(parent_hash=parent_hash, operator="analytic_batch_needle",
+                                   provenance=dict(family="needle_exploration"))
+            begin_slice("analytic_needle_scan", .25, 256)
+            emit("needle_scan", "原全网格解析针扫描，已为有限生长和终末复核预留预算", explorer["design"], explorer["score"])
+            scan = None
+            try:
+                assert active_slice is not None
+                record = active_slice[0]
+                probe_quota = record["admitted_evaluation_quantum"]
+                def scan_stop_requested():
+                    # Whole-request limits/cancellation still propagate. Only
+                    # this scheduling slice ends gracefully with its shortlist.
+                    check_training_admission()
+                    assert active_slice is not None
+                    record, end_evaluations, deadline, _start = active_slice
+                    stopped = evaluations >= end_evaluations or (deadline is not None and monotonic() >= deadline)
+                    if stopped:
+                        record["termination"] = "stage_budget"
+                    return stopped
+                def resource_admit(design):
+                    try:
+                        resource_check(design, jacobian=True)
+                        return True
+                    except SynthesisResourceGuard:
+                        return False
+                def probe_evaluate(design, *, variable_ids=(), zero_ids=()):
+                    # A probe admitted just before a local deadline may finish;
+                    # do not throw away earlier probes at a second slice check.
+                    check_training_admission()
+                    resource_check(design, jacobian=bool(variable_ids))
+                    return evaluate(design, jacobian=bool(variable_ids), zero_ids=zero_ids)
+                def on_probe(proposal, explorer=explorer):
+                    emit("needle_probe", "P=d(显式等窗/用户权重SSE)/dd，d=0；不作为最坏点验收", explorer["design"],
+                        material_id=proposal.reference.material_id,
+                        position_nm=proposal.site["position_nm"], sensitivity=proposal.sensitivity)
+                scan = scan_batch_needles(explorer["design"], frozen_snapshot, request.candidate_materials,
+                    evaluate=probe_evaluate, position_samples=request.position_samples + 2 * min(2, no_negative_rounds),
+                    valley_refinement_rounds=request.needle_position_refinement_rounds,
+                    max_needles=request.needle_batch_size, max_layers=request.max_layers,
+                    seed=request.structure_search_seed + cycle, max_probes=probe_quota, genuine_only=True,
+                    gradient=lambda value, ids: weighted_sse_loss_gradient(request, value, ids)[1],
+                    on_probe=on_probe, stop_check=scan_stop_requested, admit=resource_admit)
+                details["needle_scans"].append(dict(cycle=cycle, parent_hash=parent_hash,
+                    probes=scan.probe_count, refined_probes=scan.refined_probe_count,
+                    selected=len(scan.selected), complete=scan.complete, stop_reason=scan.stop_reason,
+                    skipped=scan.skipped_probe_count, topology_equivalent_skips=scan.topology_equivalent_skip_count))
+                no_negative_rounds = no_negative_rounds + 1 if not scan.selected and scan.complete else 0
+                end_slice(scan.stop_reason)
+            except (SynthesisStageBudget, SynthesisResourceGuard) as exc:
+                details["needle_scans"].append(dict(cycle=cycle, parent_hash=parent_hash,
+                    complete=False, selected=0, stop_reason="resource_guard" if isinstance(exc, SynthesisResourceGuard) else "stage_budget"))
+                end_slice(details["needle_scans"][-1]["stop_reason"])
+            finally:
+                end_slice()
+
+            begin_slice("joint_needle_sse_growth", .45, 96)
+            inserted = False
+            try:
+                if scan is not None and scan.selected:
+                    proposals = list(scan.selected)
+                    thickness = max(request.minimum_nonzero_thickness_nm or 0., min(
+                        quarter[(p.reference.material_id, p.reference.optical_set_id)] * request.needle_seed_fraction
+                        for p in proposals))
+                    while proposals:
+                        build = build_batch_needle_design(explorer["design"], frozen_snapshot, proposals,
+                                                         seed_thickness_nm=thickness)
+                        if feasible(build.design):
+                            break
+                        proposals.pop()
+                    if proposals:
+                        value = hybrid_evaluate(build.design, jacobian=True)
+                        archive(value, audit_eligible=False)
+                        explorer, local = refine_synthesis_explorer(request, value,
+                            evaluate=hybrid_evaluate, archive=archive, cancel_check=stage_check,
+                            progress=local_progress, max_iterations=64)
+                        inserted = True
+                        total_real_growth += 1
+                        details["last_batch"] = dict(cycle=cycle, needle_ids=list(build.needle_ids),
+                            original_parent_hash=parent_hash, independent_layer_ids=list(build.layer_ids),
+                            raw_layer_count=len(build.layer_ids), anchors=deepcopy(build.anchors),
+                            optimizer=local)
+                        emit("needle_accepted", "真实批针联合厚度优化终态继续；严格最坏点冠军独立保留", explorer["design"], explorer["score"])
+                if not inserted:
+                    # Bare-interface power derivatives may vanish. Finite legal
+                    # optical-thickness starts remain genuine scored branches.
+                    design = explorer["design"]
+                    grown = None
+                    combinations = [(i, ref, fraction) for i in range(len(design["front_layers"]) + 1)
+                        for ref in request.candidate_materials for fraction in request.growth_quarter_wave_fractions]
+                    if combinations:
+                        offset = (cycle - 1) * 12 % len(combinations)
+                        combinations = combinations[offset:] + combinations[:offset]
+                    for index, (interface, ref, fraction) in enumerate(combinations[:12]):
+                        stage_check()
+                        if len(design["front_layers"]) >= (request.max_layers if request.max_layers is not None else MAX_LAYERS):
+                            break
+                        thickness = legal_growth_thickness(design, quarter[(ref.material_id, ref.optical_set_id)] * fraction)
+                        if thickness is None:
+                            continue
+                        ids = _proposal_layer_ids(design, f"hybrid-growth-{cycle}-{index}", "unused",
+                                                   reserved_ids=reserved_layer_ids)
+                        trial = _insert_at_site(design, dict(kind="interface", interface=interface), ref, thickness, *ids)
+                        if not feasible(trial):
+                            continue
+                        value = hybrid_evaluate(trial)
+                        archive(value, audit_eligible=False, operator="finite_optical_growth")
+                        emit("growth_trial", "有限正厚真实生长，工作分支允许最坏点暂时变差", trial, value["score"])
+                        if grown is None or score_sse(value) < score_sse(grown):
+                            grown = value
+                    if grown is not None:
+                        explorer, local = refine_synthesis_explorer(request, grown,
+                            evaluate=hybrid_evaluate, archive=archive, cancel_check=stage_check,
+                            progress=local_progress, max_iterations=48)
+                        total_real_growth += 1
+                        emit("growth_restart", "从真实SSE终态续接，不重置为严格冠军", explorer["design"], explorer["score"])
+                explorer = physical_cleanup(explorer)
+            except (SynthesisStageBudget, SynthesisResourceGuard) as exc:
+                end_slice("resource_guard" if isinstance(exc, SynthesisResourceGuard) else "stage_budget")
+            finally:
+                end_slice()
+            assert best is not None
+            endpoint = dict(cycle=cycle, physical_hash=physical_design_hash(explorer["design"]),
+                design=deepcopy(explorer["design"]), layer_count=len(explorer["design"]["front_layers"]),
+                max_error=explorer["score"]["max_error"], weighted_sse=score_sse(explorer),
+                strict_champion_hash=physical_design_hash(best["design"]),
+                strict_champion_max_error=best["score"]["max_error"])
+            details["exploration_endpoints"].append(endpoint)
+            emit("hybrid_exploration_terminal", json.dumps({k: v for k, v in endpoint.items() if k != "design"}, sort_keys=True), explorer["design"], explorer["score"])
+
+            begin_slice("deletion_and_same_reference_merge", .15, 16)
+            try:
+                explorer = physical_cleanup(explorer)
+                parents = design_archive.select_parents(2)
+                for entry in parents:
+                    rows = entry.design["front_layers"]
+                    if not rows:
+                        continue
+                    order = sorted(rows, key=lambda row: row["thickness"]["value"])
+                    offset = (cycle - 1) * 4 % len(order)
+                    order = order[offset:] + order[:offset]
+                    for row in order[:4]:
+                        stage_check()
+                        trial = deepcopy(entry.design)
+                        trial["front_layers"] = [r for r in trial["front_layers"] if r["id"] != row["id"]]
+                        value = hybrid_evaluate(trial)
+                        archive(value, audit_eligible=False, provenance=dict(entry.provenance,
+                            deleted_layer_id=row["id"]), parent_hash=entry.physical_hash, operator="physical_layer_deletion")
+                        emit("deletion", "删层后原全部条件真实重算，保存实际设计而不只记分数", trial, value["score"])
+                        if score_sse(value) < score_sse(explorer):
+                            explorer = value
+            except (SynthesisStageBudget, SynthesisResourceGuard) as exc:
+                end_slice("resource_guard" if isinstance(exc, SynthesisResourceGuard) else "stage_budget")
+            finally:
+                end_slice()
+
+            # Always start the terminal epigraph from the real exploration
+            # endpoint, even when its physical strict max has become worse.
+            begin_slice("full_original_slsqp_minimax", .85, 256)
+            try:
+                explorer = physical_cleanup(explorer)
+                resource_check(explorer["design"], jacobian=True, epigraph=True)
+                minimax_start = physical_design_hash(explorer["design"])
+                endpoint.update(physical_hash=minimax_start, design=deepcopy(explorer["design"]),
+                    layer_count=len(explorer["design"]["front_layers"]),
+                    max_error=explorer["score"]["max_error"], weighted_sse=score_sse(explorer),
+                    phase="actual_post_compression_minimax_input")
+                emit("hybrid_pre_minimax_terminal", json.dumps({k: v for k, v in endpoint.items() if k != "design"}, sort_keys=True), explorer["design"], explorer["score"])
+                archive_context.update(parent_hash=minimax_start, operator="full_original_slsqp_minimax")
+                refined, minimax_details = refine_synthesis_full_minimax(request, explorer,
+                    evaluate=hybrid_evaluate, archive=archive, cancel_check=stage_check,
+                    progress=local_progress, max_iterations=120)
+                minimax_details["initial_physical_hash"] = minimax_start
+                details["last_full_minimax"] = minimax_details
+                search_diagnostics["local_refinement"].append(minimax_details)
+                archive(refined, audit_eligible=False)
+                end_slice(minimax_details["termination"])
+            except (SynthesisStageBudget, SynthesisResourceGuard) as exc:
+                end_slice("resource_guard" if isinstance(exc, SynthesisResourceGuard) else "stage_budget")
+            finally:
+                end_slice()
+                archive_context.clear()
+            # Parent owns one independent audit and its original full-constraint
+            # acceptance. Audit feedback cannot consume the next scan reserve.
+            audit_archive(best, allow_feedback_repair=False)
+            details["completed_rotations"] = cycle
+            details["real_growth_rounds"] = total_real_growth
+            if not streams and not explorer["design"]["front_layers"] and details["resource_skips"]:
+                raise _Stopped("resource_limit")
+
+
     try:
         try:
             _check_cancel(cancel_event)
@@ -1068,6 +1721,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             working = evaluate(request.environment, gpu_forward=forward is not None)
             archive(working)
             assert best is not None  # The scored bare substrate is always feasible.
+            if request.search_strategy == "hybrid":
+                run_hybrid(working)
+                raise _Stopped("training_targets_met" if targets_verified() else "search_exhausted")
             if automatic_cluster_route and not targets_verified():
                 # Try one physically legal homogeneous layer per allowed material
                 # before preparing the much larger multicluster prior sweep.
@@ -1899,14 +2555,15 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         # A wall deadline, like cancellation, never admits a new final audit.
         if best is not None and state != "cancelled" and reason != "time_limit":
             try:
-                audit_archive(best)
+                audit_archive(best, allow_feedback_repair=request.search_strategy == "legacy")
                 if audited_best is not None:
                     validated_training, validation = audited_best
                     if state != "failed" and validated_training["score"]["max_error"] <= request.acceptable_normalized_error:
                         if (validation["score"]["max_error"] <= request.acceptable_normalized_error
                                 and (not request.strict_lower_bound_objective_indices or targets_verified())):
                             state, reason = "completed", "validated_targets_met"
-                        else:
+                        elif request.search_strategy != "hybrid" or reason not in {
+                                "cycle_limit", "evaluation_limit", "time_limit", "resource_limit"}:
                             reason = "validation_targets_not_met"
             except _StructureCancelled:
                 state, reason = (("not_found", "time_limit")

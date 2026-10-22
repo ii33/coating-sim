@@ -48,6 +48,7 @@ from coat_sim.core.appearance_compute import (APPEARANCE_TOOL_ARGUMENTS,
 from coat_sim.core.compute_tasks import ComputeTaskStore
 from coat_sim.core.mcp_contracts import (FILM_SYNTHESIS_ESTIMATE_INPUT_SCHEMA,
                                           FILM_SYNTHESIS_PLAN_INPUT_SCHEMA, FILM_SYNTHESIS_SUBMIT_INPUT_SCHEMA,
+                                          FILM_SENSITIVITY_PLAN_INPUT_SCHEMA, FILM_SENSITIVITY_SUBMIT_INPUT_SCHEMA,
                                           ITO_ELECTRICAL_INPUT_SCHEMA,
                                           tool_annotations, validate_mcp_arguments)
 from coat_sim.core.design_files import design_extension
@@ -118,6 +119,8 @@ class CapabilityMCPServer(MCPServer):
         schemas["estimate_compute_task"] = FILM_SYNTHESIS_ESTIMATE_INPUT_SCHEMA
         schemas["plan_film_synthesis"] = FILM_SYNTHESIS_PLAN_INPUT_SCHEMA
         schemas["submit_film_synthesis"] = FILM_SYNTHESIS_SUBMIT_INPUT_SCHEMA
+        schemas["plan_film_sensitivity"] = FILM_SENSITIVITY_PLAN_INPUT_SCHEMA
+        schemas["submit_film_sensitivity"] = FILM_SENSITIVITY_SUBMIT_INPUT_SCHEMA
         result = []
         for tool in registered:
             key = "input_schema" if "input_schema" in type(tool).model_fields else "inputSchema"
@@ -1206,6 +1209,31 @@ def submit_film_synthesis(payload: dict[str, Any], client_request_id: str | None
     from coat_sim.core.film_synthesis_jobs import submit_synthesis
     try:
         return submit_synthesis(service, payload, client_request_id)
+    except (ServiceError, OSError, ValueError, TypeError) as exc:
+        raise _error(exc) from exc
+
+
+@mcp.tool()
+def plan_film_sensitivity(payload: dict[str, Any]) -> dict[str, Any]:
+    """Read-only freeze a separate thickness-error analysis/optimization request.
+
+    Does not run a calculation, modify nominal targets, or enqueue work.
+    """
+    from coat_sim.core.film_sensitivity_jobs import prepare_sensitivity_payload
+    try:
+        request = prepare_sensitivity_payload(service.film_design_service, payload)
+        return {"ok": True, "request": request,
+                "execution": "Use coat_sim.film_sensitivity_cli or submit_film_sensitivity; no computation was performed."}
+    except (ValueError, TypeError, KeyError, ArithmeticError) as exc:
+        raise ToolError(f"invalid_arguments: {exc}") from exc
+
+
+@mcp.tool()
+def submit_film_sensitivity(payload: dict[str, Any], client_request_id: str | None = None) -> dict[str, Any]:
+    """Submit an independent frozen sensitivity task through confirmed durable scheduling."""
+    from coat_sim.core.film_sensitivity_jobs import submit_sensitivity
+    try:
+        return submit_sensitivity(service, payload, client_request_id)
     except (ServiceError, OSError, ValueError, TypeError) as exc:
         raise _error(exc) from exc
 
@@ -2452,7 +2480,7 @@ def close_window(window_type: UiWindowType, force: bool = False,
 
 
 @mcp.tool()
-def estimate_compute_task(kind: Literal["single_source", "process", "mask_optimization", "film_optimization", "film_synthesis", "mask_weights", "mask_field", "point_weights", "python_script"],
+def estimate_compute_task(kind: Literal["single_source", "process", "mask_optimization", "film_optimization", "film_synthesis", "film_sensitivity", "mask_weights", "mask_field", "point_weights", "python_script"],
                           parameters: dict[str, Any]) -> dict[str, Any]:
     """Describe workload and empirical duration; never execute physics or a script.
 

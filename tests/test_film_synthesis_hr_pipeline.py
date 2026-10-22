@@ -92,11 +92,12 @@ def test_default_prefix_cannot_spend_beyond_parent_evaluation_admission(monkeypa
     assert any(row.stage == 'hr_minimax_prior' for row in result.trace)
 
 
-def test_public_case_has_no_hidden_seed_and_uses_normal_typed_request_contract():
+def test_public_case_has_no_hidden_seed_and_uses_normal_typed_request_contract(monkeypatch):
     from coat_sim.core.film_synthesis_jobs import (
         build_job_payload, canonical_parameters, deserialize_job_payload,
     )
     from coat_sim.core.film_auto_synthesis import freeze_film_synthesis_request
+    from coat_sim.core import compute_resources
     from coat_sim.ui.film_synthesis_quick_adapter import (
         build_synthesis_request, synthesis_base_request,
     )
@@ -104,6 +105,12 @@ def test_public_case_has_no_hidden_seed_and_uses_normal_typed_request_contract()
         'benchmarks/film_synthesis/20261021/hr-minimax-tio2-franta-v1/request.json')
     payload = json.loads(path.read_text(encoding='utf8'))
     _, original, _ = film_synthesis_request_from_payload(payload)
+    assert original.max_working_set_bytes == 0 and original.resource_guard_resolution is None
+    available_bytes = 8 * 1024**3
+    monkeypatch.setattr(compute_resources, "available_memory_bytes", lambda: available_bytes)
+    expected_resolution = dict(version=1, mode="auto", requested_bytes=0,
+        effective_bytes=available_bytes // 2, available_bytes=available_bytes,
+        basis="half_available_memory_at_freeze")
     assert original.seed_designs == () and not payload['physical_structures']
     assert not original.environment['front_layers'] and not original.environment['back_layers']
     assert original.frozen_material_snapshot is not None
@@ -116,10 +123,14 @@ def test_public_case_has_no_hidden_seed_and_uses_normal_typed_request_contract()
         assume_unknown_k_zero=True, cpu_workers=1)
     rebuilt = freeze_film_synthesis_request(None, replace(rebuilt,
         frozen_material_snapshot=original.frozen_material_snapshot))
-    assert rebuilt == original
+    # Every original request field remains binding. The only addition is the
+    # canonical derived AUTO policy, not a seed or a changed physical budget.
+    assert rebuilt == replace(original, resource_guard_resolution=expected_resolution)
+    assert rebuilt.resource_guard_resolution == expected_resolution
     job = build_job_payload(canonical_parameters(None, {'payload': payload}))
     _, queued, _ = deserialize_job_payload(job)
-    assert queued == original and not queued.seed_designs
+    assert queued == replace(original, resource_guard_resolution=expected_resolution)
+    assert queued.resource_guard_resolution == expected_resolution and not queued.seed_designs
     assert all(o.wavelength_samples == 301 for o in queued.objectives)
     assert {(o.polarization, a) for o in queued.objectives for a in o.angles_deg} == {
         ('s', 0.), ('s', 30.), ('p', 0.), ('p', 30.)}

@@ -288,6 +288,7 @@ def scan_batch_needles(
     gradient: Callable[[Mapping[str, Any], Sequence[str]], Sequence[float]] | None = None,
     on_probe: Callable[[BatchNeedleProposal], None] | None = None,
     admit: Callable[[Mapping[str, Any]], bool] | None = None,
+    stop_check: Callable[[], bool] | None = None,
 ) -> BatchNeedleScan:
     """Scan every selected material/interface/interior and refine sampled valleys.
 
@@ -304,6 +305,10 @@ def scan_batch_needles(
     ``max_probes`` is an explicit scheduling quantum; a truncated scan returns
     accumulated proposals with ``complete=False`` and ``stop_reason=stage_budget``.
     A different cycle seed rotates its starting material/position.
+    ``stop_check`` may return True before a new physical probe to close a
+    local scheduling slice gracefully and retain its accumulated shortlist.
+    Exceptions from this hook still propagate (notably total-budget/cancel).
+    Selection itself never starts another optical call or rechecks the slice.
     ``genuine_only`` excludes same-source interior needles and interfaces
     matching either film neighbour: these are existing-layer thickness growth,
     not new topology. Such exclusions are reported separately, not as resource
@@ -312,6 +317,8 @@ def scan_batch_needles(
     position_samples = _count(position_samples, "position_samples", zero=True)
     valley_refinement_rounds = _count(valley_refinement_rounds, "valley_refinement_rounds", zero=True)
     max_needles = _count(max_needles, "max_needles")
+    if stop_check is not None and not callable(stop_check):
+        raise ValueError("stop_check must be callable or None")
     if max_probes is not None:
         max_probes = _count(max_probes, "max_probes")
     maximum = MAX_LAYERS if max_layers is None else min(MAX_LAYERS, _count(max_layers, "max_layers"))
@@ -346,6 +353,11 @@ def scan_batch_needles(
     def probe(site, ref, level):
         nonlocal stage_budget_reached
         nonlocal initial_count
+        if stage_budget_reached:
+            return
+        if stop_check is not None and stop_check():
+            stage_budget_reached = True
+            return
         key = (_anchor_key(site), ref.material_id, ref.optical_set_id)
         if key in probes or key in skipped or key in equivalent_skipped:
             return

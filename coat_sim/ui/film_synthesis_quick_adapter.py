@@ -20,11 +20,44 @@ SYNTHESIS_DEFAULT_OPTIONS = dict.fromkeys(("max_cycles", "max_evaluations", "max
     "max_total_thickness_nm"))
 
 
+SYNTHESIS_SEARCH_DEFAULTS = {
+    "search_strategy": "hybrid", "objective_weighting": "equal_window",
+    "archive_capacity": 32, "needle_batch_size": 6,
+    "needle_pre_local": False, "needle_position_refinement_rounds": 1,
+    "max_working_set_bytes": 0,
+}
+
+
 def synthesis_options(values: Mapping[str, Any]) -> dict[str, Any]:
-    if set(values) - set(SYNTHESIS_DEFAULT_OPTIONS):
+    if set(values) - (set(SYNTHESIS_DEFAULT_OPTIONS) | set(SYNTHESIS_SEARCH_DEFAULTS)):
         raise ValueError("Unknown synthesis constraint")
     result = dict(SYNTHESIS_DEFAULT_OPTIONS)
     for name, raw in values.items():
+        if name == "max_working_set_bytes" and (raw is None or (isinstance(raw, str) and not raw.strip())):
+            result[name] = None  # Explicit off, distinct from 0=auto and an omitted default.
+            continue
+        if name in {"search_strategy", "objective_weighting"}:
+            choices = ({"hybrid", "legacy"} if name == "search_strategy"
+                       else {"equal_window", "point_count"})
+            if raw not in choices:
+                raise ValueError(f"{name} must be one of {', '.join(sorted(choices))}")
+            result[name] = raw
+            continue
+        if name == "needle_pre_local":
+            if type(raw) is not bool:
+                raise ValueError("needle_pre_local must be an explicit boolean")
+            result[name] = raw
+            continue
+        if name in {"archive_capacity", "needle_batch_size", "needle_position_refinement_rounds", "max_working_set_bytes"}:
+            if isinstance(raw, bool):
+                raise ValueError(f"{name} requires an integer")
+            number = float(raw)
+            minimum = (0 if name in {"needle_position_refinement_rounds", "max_working_set_bytes"}
+                       else 2 if name == "archive_capacity" else 1)
+            if not math.isfinite(number) or not number.is_integer() or not minimum <= number <= (1 << 53) - 1:
+                raise ValueError(f"{name} requires an exactly representable integer >= {minimum}")
+            result[name] = int(number)
+            continue
         if raw is None or (isinstance(raw, str) and not raw.strip()):
             continue
         if isinstance(raw, bool):

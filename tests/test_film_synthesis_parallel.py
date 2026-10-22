@@ -45,6 +45,9 @@ def test_real_headless_growth_preserves_full_semantics(monkeypatch, workers):
     service, request = setup_problem()
     request = replace(request, max_cycles=1, max_evaluations=None,
                       growth_quarter_wave_fractions=(.25, .5, 1., 1.5, 2.))
+    # Resolve AUTO memory admission once, before varying only execution width.
+    # The full semantic comparison must retain that frozen replay metadata.
+    request = synthesis.freeze_film_synthesis_request(service, request)
     serial = synthesis.synthesize_film_design(service, request)
     result = synthesis.synthesize_film_design(service, replace(request, cpu_workers=workers))
     assert semantic(result) == semantic(serial)
@@ -64,12 +67,14 @@ def test_finite_growth_parallelizes_only_complete_budgeted_batch(monkeypatch):
     monkeypatch.setattr(parallel, "MIN_PARALLEL_WORK", 0)
     service, request = setup_problem()
     request = replace(request, max_cycles=1, max_evaluations=300)
+    request = synthesis.freeze_film_synthesis_request(service, request)
     serial = synthesis.synthesize_film_design(service, replace(request, cpu_workers=1))
     result = synthesis.synthesize_film_design(service, replace(request, cpu_workers=2))
     assert semantic(result) == semantic(serial)
     decisions = [row for row in result.performance["batch_decisions"] if row["phase"] == "growth"]
     assert decisions and any(row["budget_allows"] and row["parallel_selected"] for row in decisions)
     assert result.performance["submitted_tasks"] > 0
+    assert request.max_evaluations == 300
     assert result.performance["submitted_tasks"] <= result.evaluations <= request.max_evaluations
     assert result.performance["completed_tasks"] + result.performance["unknown_tasks"] == result.performance["submitted_tasks"]
     assert result.performance["active_worker_pids"] == [] and result.performance["cleanup_complete"]

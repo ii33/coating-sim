@@ -162,6 +162,67 @@ AppWindow {
         window.controller.selectObjective(selectedIndex)
     }
 
+    ThemeControls.ThemeDialogBase {
+        id: sensitivityDialog
+        objectName: "filmSensitivityDialog"
+        title: "独立膜厚敏感性分析 / 优化"
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(920, window.width - window.themeTokens.spaceLg * 2)
+        height: Math.min(780, window.height - window.themeTokens.spaceLg * 2)
+        standardButtons: Dialog.Close
+        closePolicy: Popup.CloseOnEscape
+        contentItem: FilmSensitivityPanel {
+            controller: window.controller.sensitivityController
+            themeTokens: window.themeTokens
+            onApplyRequested: sensitivityApplyDialog.open()
+            onSaveRequested: sensitivityReportDialog.open()
+        }
+    }
+    ThemeControls.ThemeDialogBase {
+        id: sensitivityApplyDialog
+        title: "应用独立误差目标候选？"
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(520, window.width - 40)
+        standardButtons: Dialog.Yes | Dialog.No
+        contentItem: Label {
+            text: "候选优化的是用户选择的误差目标，不保证原名义目标通过。确认把最优完整评分候选应用到来源设计？来源版本变化时会整次拒绝。"
+            color: window.themeTokens.colorText
+            wrapMode: Text.WordWrap
+        }
+        onAccepted: window.controller.sensitivityController.applyBest()
+    }
+    FileDialog {
+        id: sensitivityReportDialog
+        title: "保存完整敏感性报告"
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["JSON report (*.json)"]
+        defaultSuffix: "json"
+        onAccepted: window.controller.sensitivityController.saveReportUrl(selectedFile, false)
+    }
+    Connections {
+        target: window.controller.sensitivityController
+        function onOverwriteRequested(path) {
+            sensitivityOverwriteDialog.targetPath = path
+            sensitivityOverwriteDialog.open()
+        }
+    }
+    ThemeControls.ThemeDialogBase {
+        id: sensitivityOverwriteDialog
+        property string targetPath: ""
+        title: "覆盖已有敏感性报告？"
+        modal: true
+        anchors.centerIn: parent
+        standardButtons: Dialog.Yes | Dialog.No
+        contentItem: Label {
+            text: "确认替换：" + sensitivityOverwriteDialog.targetPath
+            color: window.themeTokens.colorText
+            wrapMode: Text.WordWrap
+        }
+        onAccepted: window.controller.sensitivityController.saveReport(targetPath, true)
+    }
+
     Shortcut {
         objectName: "filmOptimizationSimulationShortcut"
         sequence: "F5"
@@ -369,6 +430,16 @@ AppWindow {
                     enabled: window.controller.canStart && window.controller.computeTarget.canSubmit
                     primary: true
                     onClicked: window.startFromButton()
+                }
+                ThemeControls.ThemeButton {
+                    objectName: "filmSensitivityOpenButton"
+                    text: "敏感性…"
+                    enabled: !window.controller.busy
+                    onClicked: {
+                        window.commitActiveEditor()
+                        window.controller.sensitivityController.prepare()
+                        sensitivityDialog.open()
+                    }
                 }
                 ThemeControls.ThemeButton {
                     objectName: "filmOptimizationCancelButton"
@@ -1163,6 +1234,98 @@ AppWindow {
                                     Label {
                                         Layout.fillWidth: true
                                         text: "默认严格检查基片、入射介质和候选膜料。勾选后仅把未知消光系数 k 按 0 计算；已知吸收保留，折射率 n 与有效波段仍须合法。审计结果基于此假设，不代表真实吸收已验证。"
+                                        color: window.themeTokens.colorTextMuted
+                                        wrapMode: Text.WordWrap
+                                    }
+                                    ThemeControls.ThemeComboBox {
+                                        objectName: "filmSynthesisStrategyBox"
+                                        Layout.fillWidth: true
+                                        model: [{id: "hybrid", label: "统一混合：结构族广筛 / 多样档案 / 批量针 / 全约束精修"},
+                                                {id: "legacy", label: "历史独立路由（用于兼容重放）"}]
+                                        textRole: "label"
+                                        currentIndex: (window.controller.synthesisOptions.search_strategy ?? "hybrid") === "hybrid" ? 0 : 1
+                                        onActivated: window.controller.setSynthesisOption("search_strategy", model[currentIndex].id)
+                                    }
+                                    ThemeControls.ThemeComboBox {
+                                        objectName: "filmSynthesisWeightingBox"
+                                        Layout.fillWidth: true
+                                        model: [{id: "equal_window", label: "探索 merit：每窗口归一 / 保留用户目标权重"},
+                                                {id: "point_count", label: "探索 merit：按原始点数加权"}]
+                                        textRole: "label"
+                                        currentIndex: (window.controller.synthesisOptions.objective_weighting ?? "equal_window") === "equal_window" ? 0 : 1
+                                        onActivated: window.controller.setSynthesisOption("objective_weighting", model[currentIndex].id)
+                                    }
+                                    CheckBox {
+                                        objectName: "filmSynthesisNeedlePreLocalField"
+                                        text: "每次针扫描前先局部精修当前工作分支"
+                                        checked: window.controller.synthesisOptions.needle_pre_local ?? false
+                                        onToggled: window.controller.setSynthesisOption("needle_pre_local", checked)
+                                    }
+                                    Repeater {
+                                        model: [{key: "needle_batch_size", label: "一次最大针根数", fallback: 6},
+                                                {key: "needle_position_refinement_rounds", label: "针位置低谷细化轮数", fallback: 1},
+                                                {key: "archive_capacity", label: "共享候选档案容量", fallback: 32}]
+                                        delegate: RowLayout {
+                                            required property var modelData
+                                            Layout.fillWidth: true
+                                            Label { text: parent.modelData.label; color: window.themeTokens.colorText; Layout.preferredWidth: 155 }
+                                            ThemeControls.ThemeField {
+                                                Layout.fillWidth: true
+                                                text: String(window.controller.synthesisOptions[parent.modelData.key] ?? parent.modelData.fallback)
+                                                accessibleLabel: parent.modelData.label
+                                                onEditingFinished: window.controller.setSynthesisOption(parent.modelData.key, text)
+                                            }
+                                        }
+                                    }
+                                    ThemeControls.ThemeComboBox {
+                                        id: synthesisResourceGuardMode
+                                        objectName: "filmSynthesisResourceGuardModeBox"
+                                        Layout.fillWidth: true
+                                        readonly property var requestedBytes: window.controller.synthesisOptions.max_working_set_bytes
+                                        // QVariantMap null is exposed as undefined; key presence
+                                        // distinguishes explicit off from an omitted auto default.
+                                        readonly property bool hasConfiguredBytes: Object.prototype.hasOwnProperty.call(
+                                            window.controller.synthesisOptions, "max_working_set_bytes")
+                                        readonly property var configuredBytes: hasConfiguredBytes ? requestedBytes : 0
+                                        property double lastManualBytes: 1610612736
+                                        model: [{id: "auto", label: "数值护栏：自动，冻结时可用内存的50%"},
+                                                {id: "manual", label: "数值护栏：显式字节限额"},
+                                                {id: "off", label: "数值护栏：关闭估计检查，仍受系统资源限制"}]
+                                        textRole: "label"
+                                        readonly property int configuredModeIndex: hasConfiguredBytes && requestedBytes == null ? 2 : configuredBytes === 0 ? 0 : 1
+                                        currentIndex: configuredModeIndex
+                                        onConfiguredBytesChanged: if (configuredBytes > 0) lastManualBytes = configuredBytes
+                                        onActivated: function(index) {
+                                            window.controller.setSynthesisOption("max_working_set_bytes",
+                                                index === 0 ? 0 : index === 2 ? null : lastManualBytes)
+                                            // A pending edit in another field can refuse this
+                                            // operation. Never display a policy not committed
+                                            // by the controller; restore its live binding.
+                                            currentIndex = Qt.binding(function() {
+                                                return synthesisResourceGuardMode.configuredModeIndex
+                                            })
+                                        }
+                                    }
+                                    RowLayout {
+                                        visible: synthesisResourceGuardMode.currentIndex === 1
+                                        Layout.fillWidth: true
+                                        Label {
+                                            text: "显式工作集限额 bytes"
+                                            color: window.themeTokens.colorText
+                                            Layout.preferredWidth: 155
+                                        }
+                                        ThemeControls.ThemeField {
+                                            objectName: "filmSynthesisResourceGuardBytesField"
+                                            Layout.fillWidth: true
+                                            text: String(synthesisResourceGuardMode.configuredBytes ?? "")
+                                            accessibleLabel: "数值工作集显式限额（字节，0为自动，清空为关闭）"
+                                            inputMethodHints: Qt.ImhDigitsOnly
+                                            onEditingFinished: window.controller.setSynthesisOption("max_working_set_bytes", text)
+                                        }
+                                    }
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: "严格验收始终使用原始全部约束。护栏默认自动，0=自动、正整数=显式字节限额、关闭保存为null；可用内存未知时透明回退1.5GiB。它是阶段数值估计，不是层数上限或进程硬内存保证；超限会记录未执行阶段，不冒充收敛。冻结请求保存实际限额，重放不重新测量。"
                                         color: window.themeTokens.colorTextMuted
                                         wrapMode: Text.WordWrap
                                     }

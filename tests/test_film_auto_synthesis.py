@@ -55,7 +55,7 @@ def setup_problem(*, upper=.005, low=520., high=580., samples=5, materials=('low
         tuple(FilmNeedleMaterialReference(m, 'nk') for m in materials),
         # Keep analytical needle/growth counter contracts on the explicit
         # v23 route. GUI/default-cluster behavior has separate durable tests.
-        max_cycles=4, max_evaluations=300, ar_structure_mode="v23_matching")
+        max_cycles=4, max_evaluations=300, ar_structure_mode="v23_matching", search_strategy="legacy")
     return service, request
 
 

@@ -1,6 +1,7 @@
 """Public source-model jobs freeze the user's four windows without answer seeds."""
 import json
 import math
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -40,7 +41,13 @@ def test_four_window_jobs_keep_original_nk_and_strict_upper_boundary(branch):
     assert all(o['k'] is not None for m in snapshot['materials'] for o in m['optical_sets'])
     job = build_job_payload(canonical_parameters(None, {'payload':payload}))
     _, decoded, queued_structures = deserialize_job_payload(job)
-    assert not queued_structures and decoded == request
+    assert not queued_structures
+    # Canonical freezing adds only versioned execution-resource provenance;
+    # every original optical/grid/manufacturing field remains byte-value equal.
+    assert replace(decoded, resource_guard_resolution=request.resource_guard_resolution) == request
+    assert decoded.resource_guard_resolution is not None
+    assert decoded.resource_guard_resolution['version'] == 1
+    assert decoded.resource_guard_resolution['requested_bytes'] == request.max_working_set_bytes
 
 
 def test_public_runner_verifies_base_source_and_reserves_only_new_temp_directory(tmp_path):

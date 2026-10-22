@@ -286,7 +286,7 @@ def refine_multispectral_minimax(request: FilmSynthesisRequest, initial: Value, 
                            constraints=total_constraint(False) if soft_method == "SLSQP" else (), options=options)
         cancel_check()
         stages.append(dict(stage="soft_max", method=soft_method, beta=beta, message=str(outcome.message),
-                           iterations=int(outcome.nit), success=bool(outcome.success)))
+                           iterations=int(getattr(outcome, "nit", 0)), success=bool(outcome.success)))
         endpoint = np.asarray(outcome.x, dtype=float)
         if endpoint.shape != ds.shape or not np.all(np.isfinite(endpoint)):
             raise ValueError("multispectral minimax solver returned invalid endpoint")
@@ -330,7 +330,7 @@ def refine_multispectral_minimax(request: FilmSynthesisRequest, initial: Value, 
         raise ValueError("multispectral minimax solver returned invalid epigraph endpoint")
     data(endpoint[:-1])
     stages.append(dict(stage="epigraph", method="SLSQP", message=str(outcome.message),
-                       iterations=int(outcome.nit), success=bool(outcome.success), optimizer_t=float(endpoint[-1])))
+                       iterations=int(getattr(outcome, "nit", 0)), success=bool(outcome.success), optimizer_t=float(endpoint[-1])))
     # Coordinate roundtrips can score one ULP worse than the retained initial
     # value. Keep the original ranking/tie behavior, but never export its
     # internal infinity sentinel as if it were an observed optical statistic.

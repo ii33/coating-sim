@@ -218,3 +218,14 @@ def test_evaluator_must_return_same_physical_candidate():
     with pytest.raises(ValueError, match="another design"):
         minimax.refine_hr_minimax(request, initial, evaluate=foreign,
             archive=lambda *a, **k: None)
+
+
+@pytest.mark.parametrize('method', ['SLSQP', 'L-BFGS-B'])
+def test_all_fixed_explicit_bounds_accept_scipy_result_without_iteration_count(method):
+    request, initial, evaluate, _ = problem(total_cap=2.)
+    request = replace(request, minimum_nonzero_thickness_nm=1., max_layer_thickness_nm=1.)
+    best, detail = minimax.refine_hr_minimax(request, initial, evaluate=evaluate,
+        archive=lambda value, *, audit_eligible: None, soft_method=method)
+    assert best['design'] == initial['design']
+    assert all(stage['iterations'] == 0 for stage in detail['stages'][:-1])
+    assert detail['stages'][-1]['iterations'] >= 0

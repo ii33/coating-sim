@@ -242,7 +242,7 @@ def refine_hr_minimax(request: FilmSynthesisRequest, initial: Value, *,
                            options=options)
         cancel_check()
         stages.append(dict(stage="soft_min", method=soft_method, beta=beta, message=str(outcome.message),
-                           iterations=int(outcome.nit), success=bool(outcome.success)))
+                           iterations=int(getattr(outcome, "nit", 0)), success=bool(outcome.success)))
         # Continuation may follow a legal last iterate while retaining the
         # separately best physical candidate, never an infeasible endpoint.
         endpoint = np.asarray(outcome.x, dtype=float)
@@ -287,7 +287,7 @@ def refine_hr_minimax(request: FilmSynthesisRequest, initial: Value, *,
             or not np.all(np.isfinite(outcome.x))):
         raise ValueError("HR minimax solver returned invalid epigraph endpoint")
     stages.append(dict(stage="epigraph", method="SLSQP", message=str(outcome.message),
-                       iterations=int(outcome.nit), success=bool(outcome.success),
+                       iterations=int(getattr(outcome, "nit", 0)), success=bool(outcome.success),
                        optimizer_t=float(outcome.x[-1])))
     return best, dict(method="analytic_hr_softmin_epigraph", betas=list(BETAS), stages=stages,
         max_iterations_per_stage=max_iterations, physical_candidates=calls,

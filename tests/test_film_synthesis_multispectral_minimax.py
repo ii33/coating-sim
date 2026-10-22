@@ -490,3 +490,14 @@ def test_response_only_statistic_keeps_original_condition_validation(corruption)
         initial["responses"][0]["wavelength_nm"][0] += .1
     with pytest.raises(ValueError):
         minimax._signed_bounds(request, initial, ())
+
+
+@pytest.mark.parametrize('method', ['SLSQP', 'L-BFGS-B'])
+def test_all_fixed_explicit_bounds_accept_scipy_result_without_iteration_count(method):
+    request, initial, evaluate, _ = problem(total_cap=2.)
+    request = replace(request, minimum_nonzero_thickness_nm=1., max_layer_thickness_nm=1.)
+    best, detail = minimax.refine_multispectral_minimax(request, initial, evaluate=evaluate,
+        archive=lambda value, *, audit_eligible: None, soft_method=method)
+    assert best['design'] == initial['design']
+    assert all(stage['iterations'] == 0 for stage in detail['stages'][:-1])
+    assert detail['stages'][-1]['iterations'] >= 0

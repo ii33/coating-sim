@@ -19,6 +19,7 @@ from coat_sim.core.process_identity import _process_identity
 from coat_sim.core.compute_tasks import _compact_progress
 from .io import write_json, write_text
 from .store import SchedulerStore, FINAL
+from .result_capability import is_sensitivity_result
 from .lifecycle import (DEFAULT_IDLE_SECONDS, PREPARE_LEASE_SECONDS, acquire_start_gate,
                         publish_registration, remove_registration, current_start_epoch)
 
@@ -372,18 +373,25 @@ class Scheduler:
             outcome['result'] = None
             outcome.pop('result_unavailable_reason', None)
             return outcome
-        if (self.memory_status(job_id).get('kind') in ('film_synthesis', 'film_optimization')
+        if self.memory_status(job_id).get('kind') == 'film_sensitivity':
+            existing = (outcome or {}).get('result')
+            if isinstance(existing, dict) and is_sensitivity_result(existing) and self._bound_film_reply(job_id, existing):
+                if outcome.get('state') in ('failed', 'cancelled'):
+                    from coat_sim.core.film_sensitivity_jobs import terminal_reply
+                    return {**dict(outcome), 'result': terminal_reply(existing, outcome['state'])}
+                return dict(outcome)
+        if (self.memory_status(job_id).get('kind') in ('film_synthesis', 'film_optimization', 'film_sensitivity')
                 and (outcome or {}).get('state') == 'cancelled'):
             from .result_capability import is_film_optimization_result, is_synthesis_result
             existing = (outcome or {}).get('result')
-            if ((is_synthesis_result(existing) or is_film_optimization_result(existing))
+            if ((is_synthesis_result(existing) or is_film_optimization_result(existing) or is_sensitivity_result(existing))
                     and self._bound_film_reply(job_id, existing)):
                 return dict(outcome)
             if (outcome or {}).get('state') == 'cancelled':
                 return {**dict(outcome or {}), 'result': None,
                     'result_unavailable_reason': ('No complete current worker reply is available; '
                         'checkpoint retained for explicit review without cancellation replay.')}
-        if self.memory_status(job_id).get('kind') == 'film_synthesis':
+        if self.memory_status(job_id).get('kind') in ('film_synthesis', 'film_sensitivity'):
             from .result_capability import load_best_candidate_checkpoint
             candidate, reason = load_best_candidate_checkpoint(self.root, job_id,
                 terminal_state=(outcome or {}).get('state', 'cancelled'))
@@ -411,6 +419,12 @@ class Scheduler:
         if self.memory_status(job_id).get('kind') == 'appearance_render':
             outcome['result'] = None
             return outcome
+        if self.memory_status(job_id).get('kind') == 'film_sensitivity':
+            from .worker import _completed_film_cancel_reply
+            saved = _completed_film_cancel_reply((previous or {}).get('result'))
+            if saved is not None and self._bound_film_reply(job_id, saved):
+                outcome['result'] = saved
+                return outcome
         if self.memory_status(job_id).get('kind') == 'film_synthesis':
             from .result_capability import is_synthesis_result
             existing = (previous or {}).get('result')
@@ -567,7 +581,7 @@ class Scheduler:
                 artifacts = result.get('result_artifacts') or []
                 if not is_best_candidate_result(result):
                     raise ValueError('job_result_unavailable: no verified candidate is available')
-                if (not is_film_optimization_result(result) and not is_synthesis_result(result) and not any(
+                if (not is_film_optimization_result(result) and not is_synthesis_result(result) and not is_sensitivity_result(result) and not any(
                         isinstance(item, dict) and item.get('role') == 'bundle'
                         and item.get('artifact_id') for item in artifacts)):
                     raise ValueError('job_result_unavailable: candidate bundle is not registered')
@@ -681,7 +695,7 @@ class Scheduler:
                 outcome = self._attach_best_candidate_checkpoint(job_id, outcome)
             if outcome.get('state') == 'succeeded':
                 from .result_capability import is_synthesis_result
-                if is_synthesis_result(outcome.get('result')):
+                if is_synthesis_result(outcome.get('result')) or is_sensitivity_result(outcome.get('result')):
                     pass
                 else:
                     try: outcome['result'] = self.register_artifacts(job_id, outcome['result'])
@@ -691,7 +705,7 @@ class Scheduler:
             elif outcome.get('state') in ('failed', 'cancelled'):
                 from .result_capability import is_best_candidate_result, is_film_optimization_result, is_synthesis_result
                 if is_best_candidate_result(outcome.get('result')):
-                    if not is_film_optimization_result(outcome.get('result')) and not is_synthesis_result(outcome.get('result')):
+                    if not is_film_optimization_result(outcome.get('result')) and not is_synthesis_result(outcome.get('result')) and not is_sensitivity_result(outcome.get('result')):
                         try: outcome['result'] = self.register_artifacts(job_id, outcome['result'])
                         except Exception as exc:
                             outcome['result'] = None
@@ -701,6 +715,7 @@ class Scheduler:
                     and is_best_candidate_result(outcome.get('result'))
                     and not is_film_optimization_result(outcome.get('result'))
                     and not is_synthesis_result(outcome.get('result'))
+                    and not is_sensitivity_result(outcome.get('result'))
                     and not any(isinstance(item, dict) and item.get('role') == 'bundle'
                                 and item.get('artifact_id')
                                 for item in outcome['result'].get('result_artifacts', []))):
@@ -715,7 +730,8 @@ class Scheduler:
                     from .result_capability import is_best_candidate_result, is_film_optimization_result, is_synthesis_result
                     if (is_best_candidate_result(outcome.get('result'))
                             and not is_film_optimization_result(outcome.get('result'))
-                            and not is_synthesis_result(outcome.get('result'))):
+                            and not is_synthesis_result(outcome.get('result'))
+                            and not is_sensitivity_result(outcome.get('result'))):
                         try: outcome['result'] = self.register_artifacts(job_id, outcome['result'])
                         except Exception as exc:
                             outcome['result'] = None

@@ -47,3 +47,15 @@
 `max_seconds` is optional, positive and finite, measured in seconds with a monotonic clock from entry into the core synthesis call. `None` remains unlimited, including old JSON/configuration defaults. The same cooperative stop signal covers cycle-0 freezing/phase preparation, proposal generation, local/global search, physical chunks, and parent worker startup/waits. Queue/adaptor preparation before core entry is outside this search clock. Indivisible calls and owned-worker cleanup may exceed the deadline; this is not hard real-time preemption.
 
 An expired time budget yields `not_found` / `time_limit`, not a user cancellation or infeasibility certificate. No new final audit starts after expiry. Retain only a complete parent-committed training candidate and an already complete audit of that exact design; never promote late/unconsumed worker outcomes. Explicit cancellation keeps its established semantics. See [algorithm 14ab](algorithms.html#film-synthesis-run-budgets-20261021).
+
+## 默认统一混合路线（2026-10-22）
+
+默认 search_strategy=hybrid，legacy 仅显式重放历史独立路由。结构族按需求层级广筛，完整实际设计进入共享多样性/Pareto档案，再轮转局部/低维DE、解析批针、全厚联合SSE、实际删层/同源合并与全原约束SLSQP。详见算法14ak；原网格、默认1nm、材料来源和独立验收不变。
+
+objective_weighting=equal_window 默认将每窗口条件归一并保留用户目标权重；point_count 必须显式选择。该选项只改变探索merit，严格max验收仍检查用户原全部约束。真实SSE终态续接下一轮，即使max暂时恶化；训练严格冠军和已审计冠军分开保存。档案默认32项保护二者，删层赢家含实际设计、父代和操作而不只存分数。全SLSQP不使用稀疏活动集，不信任epigraph t直接验收。
+
+needle_batch_size=6、needle_position_refinement_rounds=1、needle_pre_local=false均为数值探索设置。针绑定原宿主ID/分数与原界面，实际构造序决定Jacobian列序；数学零/近零与最终制造厚度分开。只相邻同material_id+optical_set_id可合并，bulk不参与。max_layers仍None，不存在70/104目标层数或隐性上限。
+
+每轮调度片及已完成/未完成、实际调用量和预算停止写入performance.search.hybrid；旧全局前缀不再独占预算。max_working_set_bytes默认0=自动，冻结时取主机/cgroup可用内存的50%；未知/无效/异常测量透明回退1.5GiB并记录basis。正整数仍是显式字节限额，None/JSON null仍是关闭，GUI提供三种明确模式，CLI通过--request同一字段配置。派生resource_guard_resolution版本1保存requested/effective/available与依据；冻结重放不重新测量，清空该解析字段可显式重新采样，改变请求限额会清除旧解析。旧正整数/null请求语义不变。performance.search.hybrid含requested/effective限额、解析元数据、resource_limited及每个跳过阶段；时间耗尽且发生资源跳过须同时披露time_limit/resource_limited，未完成独审不能称完整合成验证通过。该估计只约束混合阶段工作准入，不是进程硬内存限额；冻结、初始裸基片评分和保存结果仍有基本开销。超出是透明资源跳过，不是物理不可行。phase1只新增可独立调用基础模块和独立敏感性CLI，phase2才启用此默认路线和正式窗口/作业接线。
+
+混合首版按父调度器顺序评价单个候选/导数探测；保留cpu_workers请求和现有legacy完整候选批并行能力，不把请求的工作进程数冒充已使用数。混合路线的实际后端、有效工作进程与真实调用计数以performance为准，不宣称其针扫描已经多进程并行。生产GUI渲染与普通优化设备选择没有为测试降级。
