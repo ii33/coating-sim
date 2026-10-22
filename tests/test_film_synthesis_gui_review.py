@@ -12,10 +12,11 @@ import time
 from typing import Any, cast
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QEvent, QObject, QPointF, QSettings, Qt, QUrl
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, QPointF, QSettings, Qt, QUrl, Slot
 from PySide6.QtQml import QQmlComponent, QQmlEngine, QQmlExpression
 from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtTest import QSignalSpy, QTest
+from shiboken6 import isValid
 
 from coat_sim.core.film_design_service import FilmDesignService
 from coat_sim.core.materials import default_material_profile
@@ -48,9 +49,25 @@ def _variant(value):
     return value.toVariant() if hasattr(value, "toVariant") else value
 
 
+class _VisualItemLookup(QObject):
+    """Keep item transfer typed instead of returning it in an expression QVariant."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.item: QQuickItem | None = None
+        self.evidence = ""
+
+    @Slot(QQuickItem, str)
+    def capture(self, item, evidence):
+        self.item = item
+        self.evidence = evidence
+
+
 class _Scene:
     def __init__(self, controller, filename):
         self.engine = QQmlEngine()
+        self._visual_lookup = _VisualItemLookup(self.engine)
+        self.engine.rootContext().setContextProperty("_guiReviewVisualLookup", self._visual_lookup)
         ThemeService.instance().attach_engine(self.engine, "Theme")
         self.component = QQmlComponent(
             self.engine, QUrl.fromLocalFile(str(ROOT / "coat_sim/ui/qml" / filename)))
@@ -73,25 +90,39 @@ class _Scene:
         if isinstance(result, QQuickItem):
             return result
         # Repeater delegates can have different QObject and visual parents.
-        # Keep the fallback in QML instead of wrapping every unrelated native
-        # child in Python; only the matched visual item crosses that boundary.
-        expression = """(function visit(item) {
-            if (item.objectName === %s) return item;
-            for (let i = 0; i < item.children.length; ++i) {
-                const found = visit(item.children[i]);
-                if (found !== null) return found;
+        # Traverse inside QML and transfer only the matched item through a
+        # QQuickItem-typed slot. QQmlExpression's QVariant return conversion is
+        # not used to recover native visual objects.
+        self._visual_lookup.item = None
+        self._visual_lookup.evidence = ""
+        expression = """(function () {
+            function visit(item) {
+                if (item.objectName === %s) return item;
+                for (let i = 0; i < item.children.length; ++i) {
+                    const found = visit(item.children[i]);
+                    if (found !== null) return found;
+                }
+                return null;
             }
-            return null;
-        })(contentItem)""" % json.dumps(name)
-        result = self.evaluate(self.window, expression)
-        if not isinstance(result, QQuickItem):
-            # Pytest rewrites a failed isinstance assertion by formatting its
-            # arguments. A Qt wrapper's repr can fault before the original
-            # failure reaches the diagnostic hook. Keep the exact guard, but
-            # report only primitive evidence and never inspect/repr result.
+            const found = visit(contentItem);
+            const evidence = JSON.stringify({found: found !== null,
+                objectName: found ? found.objectName : null,
+                visible: found ? found.visible : null});
+            _guiReviewVisualLookup.capture(found, evidence);
+            return evidence;
+        })()""" % json.dumps(name)
+        expression_result = self.evaluate(self.window, expression)
+        result = self._visual_lookup.item
+        if not isinstance(result, QQuickItem) or not isValid(result):
+            # Report primitive evidence only: repr of an unexpected Qt wrapper
+            # can itself fail while pytest formats the original lookup failure.
             raise AssertionError(
                 f"Missing QQuickItem {name!r}; result_type={type(result).__name__}; "
-                f"named_visual_candidates={len(candidates)}")
+                f"expression_result_type={type(expression_result).__name__}; "
+                f"named_visual_candidates={len(candidates)}; "
+                f"qml_evidence={self._visual_lookup.evidence}")
+        if result.objectName() != name:
+            raise AssertionError("QML visual lookup returned a different item")
         return result
 
     def evaluate(self, owner, expression):
@@ -135,6 +166,7 @@ class _Scene:
         _wait(lambda: not dialog.property("visible"))
 
     def close(self):
+        self._visual_lookup.item = None
         self.window.hide()
         self.window.deleteLater()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
@@ -254,7 +286,7 @@ def _preview_sampled_candidate(scene, source, controller):
     assert source.session.snapshot().design_revision == before.design_revision
 
 
-def test_scene_lookup_preserves_visual_ownership_and_strict_item_checks(tmp_path):
+def test_scene_lookup_preserves_visual_ownership_and_strict_item_checks(tmp_path, monkeypatch):
     harness = tmp_path / "Lookup.qml"
     harness.write_text(
         "import QtQuick\nWindow { property var controller; width: 200; height: 150 }\n",
@@ -280,6 +312,35 @@ def test_scene_lookup_preserves_visual_ownership_and_strict_item_checks(tmp_path
         assert target.parent() is None
         assert scene.window.findChildren(QObject, target.objectName()) == []
         assert scene.item(target.objectName()) is target
+        original_evaluate = scene.evaluate
+        with monkeypatch.context() as patch:
+            def evaluate_with_unexpected_return(owner, expression):
+                # Run the real QML traversal and typed callback first, then
+                # simulate the unexpected generic return type observed in CI.
+                evidence = original_evaluate(owner, expression)
+                assert isinstance(evidence, str)
+                return nonvisual.metaObject()
+
+            patch.setattr(scene, "evaluate", evaluate_with_unexpected_return)
+            assert scene.item(target.objectName()) is target
+            assert target.parent() is None and target.parentItem() is branch
+            assert isValid(target)
+            assert json.loads(scene._visual_lookup.evidence) == {
+                "found": True, "objectName": target.objectName(), "visible": True}
+            # A prior success must never mask an absent item, even when the
+            # generic return is anomalous and cannot be safely inspected.
+            with pytest.raises(AssertionError, match="expression_result_type=QMetaObject") as missing:
+                scene.item("absent_after_success")
+            assert '"found":false' in str(missing.value)
+        with monkeypatch.context() as patch:
+            def evaluate_with_wrong_item(owner, expression):
+                evidence = original_evaluate(owner, expression)
+                scene._visual_lookup.item = shown
+                return evidence
+
+            patch.setattr(scene, "evaluate", evaluate_with_wrong_item)
+            with pytest.raises(AssertionError, match="returned a different item"):
+                scene.item(target.objectName())
         for item in (hidden, shown):
             item.setParent(scene.window.contentItem())
             item.setObjectName("duplicate")

@@ -585,6 +585,19 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
     last_stage = "initialization"
     reason, state = "search_exhausted", "not_found"
 
+    def close_proposal_streams():
+        # Merged generators publish their consumed-family diagnostics on close.
+        # Finish that publication before taking the terminal result snapshot;
+        # do not exhaust pending candidates or admit any additional physics.
+        for pending_scan in pending_structural_scans.values():
+            pending_scan.close()
+        pending_structural_scans.clear()
+        pending_structural_proposals.clear()
+        for stream in (cavity_stream, matching_stream, cluster_stream):
+            if stream[0] is not None:
+                stream[0].close()
+                stream[0] = None
+
     def performance():
         result = execution.diagnostics()
         result["stage_wall_seconds"] = dict(stage_times)
@@ -1916,6 +1929,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             candidate_provenance["frozen_at_cancel" if state == "cancelled" else "frozen_at_time_limit"] = True
         elif audited_best is not None:
             best, validation = audited_best
+        close_proposal_streams()
         execution.close()
         if forward is not None:
             forward.close()
@@ -1935,11 +1949,4 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         execution.close()
         if forward is not None:
             forward.close()
-        for pending_scan in pending_structural_scans.values():
-            pending_scan.close()
-        if cavity_stream[0] is not None:
-            cavity_stream[0].close()
-        if matching_stream[0] is not None:
-            matching_stream[0].close()
-        if cluster_stream[0] is not None:
-            cluster_stream[0].close()
+        close_proposal_streams()

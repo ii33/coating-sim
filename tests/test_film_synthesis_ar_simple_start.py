@@ -62,6 +62,62 @@ def test_unmet_objective_retains_matching_and_cluster_search():
     assert result.performance["cleanup_complete"]
 
 
+@pytest.mark.parametrize("stop", ["cancel", "time_limit", "observer_failure"])
+def test_terminal_search_snapshot_follows_real_family_cleanup(monkeypatch, stop):
+    service, base = setup_problem(upper=.05)
+    request = replace(base, ar_structure_mode="clustered", max_evaluations=50,
+        max_seconds=60., objectives=(*base.objectives,
+            FilmOptimizationObjective(600., 640., 5, metric="R", mode="range", upper_bound=0.)))
+    generated, closed = {"matching": 0, "cluster": 0}, []
+    for name, module, attribute in (("matching", matching, "iter_matching_proposals"),
+                                    ("cluster", clusters, "iter_ar_cluster_proposals")):
+        original = getattr(module, attribute)
+        def track(*args, _name=name, _original=original, **kwargs):
+            try:
+                for proposal in _original(*args, **kwargs):
+                    generated[_name] += 1
+                    yield proposal
+            finally:
+                closed.append(_name)
+        monkeypatch.setattr(module, attribute, track)
+    clock, event, terminal = [0.], Event(), []
+    monkeypatch.setattr(synthesis, "monotonic", lambda: clock[0])
+    failure = RuntimeError("structure observer failure")
+    def observe(item):
+        if item.stage == "structure_proposal":
+            if stop == "cancel":
+                event.set()
+            elif stop == "time_limit":
+                clock[0] = 61.
+            else:
+                raise failure
+        elif item.stage in ("cancelled", "not_found"):
+            # Completion observers must see released streams, not deferred
+            # cleanup that only runs after the result snapshot was copied.
+            terminal.append(item.stage)
+            assert sorted(closed) == ["cluster", "matching"]
+    if stop == "observer_failure":
+        with pytest.raises(RuntimeError) as caught:
+            synthesis.synthesize_film_design(service, request, cancel_event=event, progress_callback=observe)
+        assert caught.value is failure
+    else:
+        result = synthesis.synthesize_film_design(service, request, cancel_event=event, progress_callback=observe)
+        assert result.termination_reason == ("cancelled" if stop == "cancel" else "time_limit")
+        assert terminal == [result.state]
+        assert result.evaluations == 4 and result.validation_evaluations == 0
+        assert not result.targets_met and not result.validation_complete
+        assert result.candidate_provenance["training_complete"]
+        assert result.performance["cleanup_complete"]
+        search = result.performance["search"]
+        for name in generated:
+            schedule = search[name + "_structure_schedule"]
+            assert schedule["latest_consumed"] == generated[name] == 1
+            assert schedule["pending"]
+        assert search["cluster_structure_schedule"]["noncluster_control_retained"]
+    assert generated == {"matching": 1, "cluster": 1}
+    assert sorted(closed) == ["cluster", "matching"]
+
+
 def test_simple_prefix_obeys_physical_thickness_and_cancellation():
     service, base = setup_problem(upper=0.)
     request = replace(base, ar_structure_mode="clustered",
