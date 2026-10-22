@@ -58,3 +58,14 @@ python -m coat_sim.film_synthesis_cli --request benchmarks/film_synthesis/202610
 ```
 
 结果路径须为新文件。要复刻低干扰计时，按上述typed job入口记录perf_counter/process_time，保留checkpoint回调但只约每5秒打印进度；整段cProfile另跑，不用其耗时算速度。公开JSON记录本轮各源码哈希、请求canonical SHA、完整阶段/计数/审计和口径差异。旧材料与八类冻结基准均未修改。
+
+
+## 2026-10-22 CI 诊断顺序与清理收尾
+
+`d36b204` 的 algorithm 与 quick 作业均有同一组 10 项原审计断言失败。原因是提前构造准备态时先报摘要不匹配，遮蔽了缺失材料、光学集及 k 来源有效域的上下文诊断。现先严格检查来源，再惰性创建一次独立准备态；来源有效但摘要损坏仍在任何 TMM 前拒绝，不自动重签摘要。请求与候选在观察者回调前独立复制，使严格来源采样、准备态和最终元数据对应同一输入。单次审计材料复用仍保留。
+
+相关回归 **361 项通过**（含全部原审计 36 项和新增 35 项），本轮 3 个 Python 文件的 Ruff/mypy 诊断均为 0，未改基线。独立 Sol6.1 只读审查接受审计修补。原冻结请求、材料、目标、1 nm 训练、300 秒/4000 次预算、全部独立审计与取消边界均保持。正式服务入口新进程单次检查 **29.204 秒**、CPU **28.609 秒**，审计 minR **0.9873549455679516**，32 层、总厚 **2569.6454496228444 nm**；754 次逻辑评价、2 次审计准入、773 次审计物理调用、48775 审计波长点，与修补前受控运行一致。仅在子进程临时设单数学线程；此次耗时处于上表既有波动范围，单次检查不宣称统计等价或新增提速。
+
+另一个独立问题是 Linux contract 在 `test_manual_calculation_reads_latest_unsaved_same_owner_on_every_start` 已通过后，于 paired fixture 的全局 DeferredDelete 清理发生 SIGSEGV（退出 139）。本机尚未复现该崩溃，但确认前序 layer-dropdown 测试只排队删除，未完成其 QML window/component/engine 原生销毁。补丁在该测试自己的清理边界逐个完成接收者定向删除，并断言销毁顺序、原生对象失效及不消费无关待删除对象；未改生产 GUI 或删除原全局清理。Windows 相邻测试带 CI 诊断插件 **13 项通过**，包括原设计交互/颜色断言。该隔离缺口真实存在，**是否消除 Linux SIGSEGV 仍待新 CI，不能称已证实崩溃根因或全套通过**。
+
+限定公开证据和源码身份见 [ci-followup-20261022.json](../benchmarks/film_synthesis/20261021/hr-runtime-performance-v1/ci-followup-20261022.json)。旧性能数据、冻结目标及材料均未改写；本轮没有重跑整套光学研究，也不将有限审计当连续谱保证。

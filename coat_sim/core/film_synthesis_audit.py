@@ -38,6 +38,10 @@ def audit_frozen_synthesis_candidate(
     """
     from scipy.optimize import minimize_scalar  # type: ignore[import-untyped]
 
+    # Capture all request values before any observer can change caller-owned
+    # inputs. Strict samplers, lazy prepared optics and final audit metadata
+    # must describe the same snapshot; cancellation remains a live event.
+    request = deepcopy(request)
     if request.frozen_material_snapshot is None:
         raise ValueError("synthesis audit requires a frozen material snapshot")
     design = validate_design(deepcopy(dict(design)))
@@ -59,7 +63,10 @@ def audit_frozen_synthesis_candidate(
     # A distinct owner per audit; no training grid/cache or candidate score is reused.
     if cancel_event is not None and cancel_event.is_set():
         raise _StructureCancelled()
-    prepared = _PreparedStructureEvaluator(proxy)
+    # Preserve public source diagnostics before snapshot preparation/digest errors.
+    # The first complete source-checked grid creates one private owner; no
+    # physical call can happen until that owner verifies the frozen snapshot.
+    prepared: _PreparedStructureEvaluator | None = None
     physical = points = dense_points = offset_points = 0
     bracket_count = completed_extrema = 0
     # This public helper also rejects ordinary frozen snapshots that never went
@@ -100,7 +107,7 @@ def audit_frozen_synthesis_candidate(
 
     def evaluate(objectives: tuple[FilmOptimizationObjective, ...], *, stage: str,
                  index: int | None = None) -> Mapping[str, Any]:
-        nonlocal physical, points
+        nonlocal physical, points, prepared
         check()
         emit(stage, index)
         for objective in objectives:
@@ -119,7 +126,13 @@ def audit_frozen_synthesis_candidate(
                     if not np.isfinite(n) or n <= 0 or k is None or not np.isfinite(k) or k < 0 or (not details.get('k_known') and not assumed):
                         raise ValueError(f'{context}: explicit finite passive n/k source data required; unknown k cannot be zero')
                 checked_waves.add(wavelength)
-        value = prepared.evaluate(
+        current = prepared
+        if current is None:
+            check()
+            current = _PreparedStructureEvaluator(proxy)
+            prepared = current
+        check()
+        value = current.evaluate(
             design, objectives=objectives, evaluator=evaluate_frozen_structure_candidate,
             cancel_event=cancel_event,
         )

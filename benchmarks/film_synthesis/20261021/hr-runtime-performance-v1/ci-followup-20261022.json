@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "date_utc": "2026-10-22",
+  "baseline_commit": "d36b2044ca8f8287a99e2090d66335e86ae2f973",
+  "scope": "CI source-context priority, callback-safe audit ownership and isolated QML test disposal; original optics, request, audit and budgets retained",
+  "source_identity": {
+    "request_canonical_sha256": "f9865f384892b80688a5493e4310f128b102bbbf64fecbe62ed29d0f4f3214d3",
+    "runtime_canonical_sha256": {
+      "coat_sim/core/film_synthesis_audit.py": "8bcbfdf5d345799ac1329fde8853131771081f684ce163d50edf2198a2408e79",
+      "coat_sim/core/film_optimization_structure.py": "91bfcf0a99e5904b4c2545d19c3437b561dcc32ed4e19ab7bd06f5b1328be2b8",
+      "coat_sim/core/film_optimization_derivatives.py": "c5792fa799bc334d91b66079dfe6dcea351ce4cdaf0480c45be3814c7c5dc1a3",
+      "coat_sim/core/film_auto_synthesis.py": "5cdb28fb582c7c744696edd20b146889249fecd92306ee3dd0ca93667b60505d"
+    }
+  },
+  "ci_evidence": {
+    "run_url": "https://github.com/ii33/coating-sim/actions/runs/39696217085",
+    "algorithm": {
+      "job_id": 119554110888,
+      "failures": 10,
+      "cause": "Eager prepared snapshot validation masked strict active material / optical-set / source-k-domain diagnostics."
+    },
+    "quick": {
+      "job_id": 119554111243,
+      "failures": 10,
+      "cause": "Same ten audit source-context assertions; no additional failed tests in completed log."
+    },
+    "contract": {
+      "job_id": 119554110743,
+      "exit_code": 139,
+      "passed_test_before_crash": "tests/test_film_manual_draft_sync.py::test_manual_calculation_reads_latest_unsaved_same_owner_on_every_start",
+      "location": "paired fixture global DeferredDelete drain, line 81",
+      "ci_crash_root_cause_confirmed": false,
+      "confirmed_cleanup_defect": "Earlier layer-dropdown tests queued QML window/component/engine deletion without confirming native destruction. Receiver-scoped cleanup now completes each owned graph before later global drains. Linux SIGSEGV elimination remains unverified."
+    }
+  },
+  "validation": {
+    "related_regression": {
+      "passed": 361,
+      "wall_seconds": 30.35,
+      "includes_original_audit_tests": 36,
+      "new_audit_tests": 35
+    },
+    "qt_neighbor_slice": {
+      "platform": "Windows",
+      "python": "3.13.16",
+      "pyside": "6.12",
+      "passed": 13,
+      "wall_seconds": 13.34,
+      "includes_original_assertions": true,
+      "linux_confirmation": "pending CI"
+    },
+    "scoped_static": {
+      "files": 3,
+      "ruff_diagnostics": 0,
+      "mypy_diagnostics": 0,
+      "new_diagnostics": 0,
+      "baseline_changed": false
+    },
+    "independent_audit_review": "ACCEPT; owned request captured before observers, source-context priority and full pre-TMM digest validation retained"
+  },
+  "formal_service_sanity": {
+    "case": "../hr-minimax-tio2-franta-v1/request.json",
+    "entry": "canonical_parameters -> build_job_payload -> deserialize_job_payload -> execute_job",
+    "answer_seeds": 0,
+    "training_step_nm": 1,
+    "max_seconds": 300,
+    "max_evaluations": 4000,
+    "thread_mode": "temporary child-process BLAS/OpenMP environment = 1; product/system settings unchanged",
+    "timing_scope": "typed job already frozen; execution through complete result JSON write; no profiler; progress, heartbeat and checkpoint retained",
+    "result": {
+      "state": "completed",
+      "termination_reason": "validated_targets_met",
+      "targets_met": true,
+      "wall_seconds": 29.203550499980338,
+      "cpu_seconds": 28.609375,
+      "evaluations": 754,
+      "validation_evaluations": 2,
+      "audit_physical_evaluations": 773,
+      "audit_wavelength_points": 48775,
+      "min_audited_condition": {
+        "objective_index": 1,
+        "wavelength_nm": 402.50509240715303,
+        "angle_deg": 30.0,
+        "polarization": "p",
+        "metric": "R",
+        "actual": 0.9873549455679516,
+        "target_value": null,
+        "lower_bound": 0.98,
+        "upper_bound": null,
+        "normalized_violation": 0.0,
+        "weighted_normalized_violation": 0.0
+      },
+      "min_training_R": 0.9874180480202731,
+      "layers": 32,
+      "total_thickness_nm": 2569.6454496228444,
+      "cancel_requested": false,
+      "progress_calls": 2554
+    },
+    "comparison": "Single repair sanity run within previous d36b204 controlled range 26.29076-29.64821 seconds. Identical audit minimum and work counters. No new speedup or statistical equivalence claim."
+  },
+  "limitations": [
+    "Finite sampled/offset/extremum audit is not a continuous-spectrum certificate.",
+    "Windows neighbor slice does not establish cause or resolution of Linux SIGSEGV.",
+    "Full new CI not yet completed. No broad optical benchmark rerun."
+  ]
+}

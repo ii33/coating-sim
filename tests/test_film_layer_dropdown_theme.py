@@ -2,11 +2,16 @@
 
 from pathlib import Path
 import pytest
-from PySide6.QtCore import QObject, QPoint, QPointF, Qt, QUrl
+from PySide6.QtCore import (
+    QCoreApplication, QEvent, QObject, QPoint, QPointF, QThread, Qt, QUrl,
+)
 from PySide6.QtGui import QColor, QGuiApplication
 from PySide6.QtQml import QQmlComponent, QQmlEngine
 from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtTest import QTest
+from shiboken6 import isValid
+
+from tools.pytest_qt_diagnostics import record_qt_disposal
 
 from coat_sim.ui.theme_service import ThemeEngineBridge
 from coat_sim.ui.theme_tokens import build_theme_snapshot
@@ -15,6 +20,52 @@ from tests.test_scoped_resource_libraries import qml
 
 ROOT = Path(__file__).resolve().parents[1]
 pytestmark = [pytest.mark.qt, pytest.mark.contract]
+
+
+def _dispose_qml_scene(app, window, component, engine, *, test_id):
+    """Finish this scene's deletion while its wrappers and engine remain held."""
+    assert QThread.currentThread() == app.thread()
+    owned = (("window", window), ("component", component), ("engine", engine))
+    destroyed = []
+
+    def receipt(label):
+        destroyed.append(label)
+        record_qt_disposal(test_id, "destroyed", label)
+
+    for label, value in owned:
+        assert isValid(value), f"{label} was destroyed before fixture cleanup"
+        # Capture only the label, never the QObject being destroyed.
+        value.destroyed.connect(lambda *_args, label=label: receipt(label))
+    window.close()
+    for index, (label, value) in enumerate(owned):
+        record_qt_disposal(test_id, "delete_begin", label)
+        value.deleteLater()
+        # processEvents alone does not dispatch DeferredDelete here. Finish the
+        # root before its component/engine, and leave unrelated fixtures alone.
+        QCoreApplication.sendPostedEvents(value, QEvent.Type.DeferredDelete)
+        assert not isValid(value), f"test left live C++ {label}"
+        assert destroyed == [name for name, _value in owned[:index + 1]]
+        record_qt_disposal(test_id, "delete_end", label)
+    app.processEvents()
+
+
+def test_qml_scene_cleanup_finishes_owned_graph_before_global_deferred_drain(request):
+    app = QGuiApplication.instance() or QGuiApplication([])
+    engine = QQmlEngine()
+    component = QQmlComponent(engine)
+    component.setData(b"import QtQuick; Window { width: 40; height: 40 }", QUrl())
+    window = component.create()
+    assert isinstance(window, QQuickWindow), component.errorString()
+    engine_child = QObject(engine)
+    unrelated = QObject()
+    unrelated.deleteLater()
+    try:
+        _dispose_qml_scene(app, window, component, engine, test_id=request.node.nodeid)
+        assert not isValid(engine_child), "engine-owned children must also be destroyed"
+        assert isValid(unrelated), "scene cleanup drained another fixture's deletion"
+    finally:
+        QCoreApplication.sendPostedEvents(unrelated, QEvent.Type.DeferredDelete)
+    assert not isValid(unrelated)
 
 
 def contrast(first, second):
@@ -78,7 +129,7 @@ def _check_pixels(window, row, foreground, background):
 @pytest.mark.parametrize("mode", ["light", "dark"])
 @pytest.mark.parametrize("window_width", [360, 760])
 def test_film_layer_dataset_menu_keeps_state_colors_paired_and_tooltip_transient(
-    mode, window_width
+    mode, window_width, request
 ):
     app = QGuiApplication.instance() or QGuiApplication([])
     engine = QQmlEngine()
@@ -309,8 +360,5 @@ Window {{
         assert window.findChild(QObject, "filmOpticalSetTooltip_optical-third") is None
 
     finally:
-        window.close()
-        window.deleteLater()
-        engine.deleteLater()
-        app.processEvents()
+        _dispose_qml_scene(app, window, component, engine, test_id=request.node.nodeid)
 
