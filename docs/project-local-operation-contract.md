@@ -58,11 +58,18 @@ It must not silently omit content and claim a complete export. Existing session
 recovery metadata and frozen film snapshots do not change these rules.
 
 The local store create/save/import/batch/template/material/simulation-asset
-paths share `project_operation_scope.py` and the common publisher. Resource
-exchange into an existing project is a separate integration boundary; until
-that path uses the same captured mutation contract, its stricter whole-target
-validation remains a stated limitation, not a compatibility fallback.
+paths share `project_operation_scope.py` and the common publisher. Selected
+resource exchange into an existing `.coatproj` now uses the same complete
+captured target, keeping unchanged rows, paths and raw byte digests intact.
+New, overwritten and explicitly reused roots, their dependencies and affected
+consumers must satisfy the current schema. Relevant unknown identities or
+references fail closed; a preview never guesses a conflicting target. Related
+binary resources retain envelope and payload validation, staging and aggregate
+quota checks. Preview cancellation, target changes and failed publication do
+not change the active target. Global-library and new-package exchange retain
+their separate strict target contracts.
 
 Tests: `test_project_mutation_capture.py`,
 `test_project_scoped_asset_operations.py`, `test_project_asset_scope_gui.py`,
-and the unchanged project/session/reference/transaction regression suites.
+`test_project_scoped_resource_exchange.py`, and the unchanged
+project/session/reference/transaction regression suites.

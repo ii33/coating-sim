@@ -435,7 +435,10 @@ class ProjectStore:
 
     def _read_record(self, row):
         target = self.root / managed_document_path(row["path"], row["kind"], row["id"])
-        data, content = read_json(target)
+        try:
+            data, content = read_json(target)
+        except ProjectError as exc:
+            raise ProjectError(exc.code, f"{row['kind']} {row['path']}: {exc}") from exc
         if _digest(content) != row["sha256"]:
             raise ProjectError("integrity_error", "Project document digest does not match: " + row["id"])
         try:

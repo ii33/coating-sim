@@ -134,6 +134,22 @@ def test_full_project_export_refuses_unsupported_document_with_exact_path(tmp_pa
     assert (store.root / row["path"]).read_bytes() == raw
 
 
+def test_full_project_export_parse_failure_names_the_actual_document(tmp_path):
+    from coat_sim.project_package import export_project
+    from tests.test_project_mutation_capture import _rewrite
+
+    store, _films, _film_id, source_id, _process, _configuration, _raw = legacy_project(tmp_path)
+    _rewrite(store, source_id, content=b"not JSON")
+    row = store._index()[source_id]
+    before = store.project_file.read_bytes()
+    destination = tmp_path / "whole.cproject"
+    with pytest.raises(ProjectError) as rejected:
+        export_project(store, destination)
+    assert row["kind"] in str(rejected.value) and row["path"] in str(rejected.value)
+    assert rejected.value.code == "invalid_json"
+    assert not destination.exists() and store.project_file.read_bytes() == before
+
+
 def test_same_content_simulation_save_keeps_revision_and_returns_current_receipt(tmp_path):
     from tests.test_project_simulation_resources import ray
 

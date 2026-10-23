@@ -25,6 +25,7 @@ from .project_dependencies import (
 )
 from .project_store import ProjectStore, _PreparedProject, _manifest
 from .project_paths import PROJECT_TYPED_DIRECTORY_BY_KIND
+from .project_operation_scope import OpaqueDocument, ScopedRecords, prepare_publication
 
 
 def _preview_document_path(kind: str, identity: str) -> str:
@@ -162,16 +163,83 @@ def _selection(snapshot: dict, identities: Sequence[str]) -> tuple[list[str], li
     return selected, sorted(closure)
 
 
-def _business_key(kind: str, data: dict) -> tuple[str, str] | None:
+def _business_key(kind: str, data: dict, *, fold_template_ids=False) -> tuple[str, str] | None:
     if kind == "binary_asset":
         return kind, data["role"] + ":" + data["sha256"] + ":" + str(data["size"])
     if kind in {"material_profile", "optical_material"}:
         return kind, data["material"]["id"].casefold()
     if kind == "expression_template":
-        return kind, data["template_id"]
+        identity = data["template_id"]
+        return kind, identity.casefold() if fold_template_ids else identity
     if kind == "film":
         return kind, data["id"]
     return None
+
+
+def _business_index(snapshot: dict, kinds: set[str], *, fold_template_ids=False,
+                    conflict_keys: set[tuple[str, str]] | None = None) -> dict[tuple[str, str], str]:
+    """Confirm relevant identities without accepting unrelated document schemas."""
+    current = {}
+    for identity, row in _index(snapshot).items():
+        kind = row["kind"]
+        if kind not in kinds:
+            continue
+        document = snapshot["documents"][identity]
+        try:
+            if isinstance(document, OpaqueDocument):
+                raise ValueError("opaque identity")
+            if kind == "binary_asset":
+                from .project_binary_assets import ROLE_SUFFIXES
+                digest, size = document["sha256"], document["size"]
+                if (document["role"] not in ROLE_SUFFIXES or type(size) is not int or size <= 0
+                        or not isinstance(digest, str) or len(digest) != 64
+                        or any(char not in "0123456789abcdef" for char in digest)):
+                    raise ValueError("unknown binary identity")
+            business = _business_key(kind, document, fold_template_ids=fold_template_ids)
+            if (business is None or not isinstance(business[1], str) or not business[1].strip()
+                    or (kind != "binary_asset" and (len(business[1]) > 160
+                        or business[1] != business[1].strip()))):
+                raise ValueError("unknown business identity")
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:
+            raise ProjectError("reference_unconfirmed", "Target resource identity cannot be confirmed: " + identity) from exc
+        # A proven nonmatching identity is not a transfer conflict, even when
+        # repeated. A matching identity must never pick an arbitrary owner.
+        if business in current and (conflict_keys is None or business in conflict_keys):
+            raise ProjectError("dependency_conflict", "Duplicate target resource identity: " + business[1])
+        current[business] = identity
+    return current
+
+
+def _capture_target(store: ProjectStore) -> tuple[dict, ScopedRecords]:
+    """Keep every target row and raw-document proof, not a filtered catalog."""
+    records, data = store._read_operation_inputs()
+    return {"manifest": deepcopy(store.manifest), "documents": data}, records
+
+
+def _check_profile_names(records: dict, data: dict, changed: list[str]) -> None:
+    changed_profiles = [key for key in changed if records[key]["kind"] == "material_profile"]
+    if not changed_profiles:
+        return
+    from .material_research import ROLES
+    from .materials import check_material_name
+    profiles = []
+    for identity, row in records.items():
+        if row["kind"] != "material_profile":
+            continue
+        try:
+            profile = data[identity]["material"]
+            roles, category = profile.get("roles"), profile.get("category")
+            if (not isinstance(profile["id"], str) or not profile["id"].strip()
+                    or not isinstance(profile["name"], str) or not profile["name"].strip()
+                    or (category is not None and category not in ("film", "substrate", "other"))
+                    or (roles is not None and (not isinstance(roles, list) or not roles
+                        or any(not isinstance(role, str) or role not in ROLES for role in roles)))):
+                raise ValueError("unknown material naming evidence")
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:
+            raise ProjectError("reference_unconfirmed", "Target material name cannot be confirmed: " + identity) from exc
+        profiles.append(profile)
+    for identity in changed_profiles:
+        check_material_name(data[identity]["material"], profiles)
 
 
 def _rewrite_materials(value: Any, mapping: Mapping[str, str]) -> None:
@@ -186,16 +254,32 @@ def _rewrite_materials(value: Any, mapping: Mapping[str, str]) -> None:
 
 
 def _conflict_rows(source: dict, closure: list[str], target: dict,
-                   selected: list[str]) -> list[dict]:
-    source_rows, target_rows = _index(source), _index(target)
-    current = {_business_key(row["kind"], target["documents"][key]): key
-               for key, row in target_rows.items()
-               if _business_key(row["kind"], target["documents"][key]) is not None}
+                   selected: list[str], *, project_scope=False) -> list[dict]:
+    source_rows = _index(source)
+    businesses = {key: _business_key(source_rows[key]["kind"], source["documents"][key],
+                                     fold_template_ids=project_scope) for key in closure}
+    conflict_keys = {business for business in businesses.values() if business is not None}
+    kinds = {business[0] for business in conflict_keys}
+    if kinds.intersection({"material_profile", "optical_material"}):
+        kinds.update({"material_profile", "optical_material"})
+        conflict_keys.update((kind, name) for _kind, name in list(conflict_keys)
+                             if _kind in {"material_profile", "optical_material"}
+                             for kind in ("material_profile", "optical_material"))
+    if project_scope:
+        current = _business_index(target, kinds, fold_template_ids=True, conflict_keys=conflict_keys)
+    else:
+        # Non-project destinations already provide a complete strict snapshot.
+        # Keep their existing business-identity resolution unchanged.
+        current = {}
+        for key, row in _index(target).items():
+            business = _business_key(row["kind"], target["documents"][key])
+            if business is not None:
+                current[business] = key
     dependencies = _catalog_dependencies(source)
     rows = []
     for key in closure:
         row, data = source_rows[key], source["documents"][key]
-        business = _business_key(row["kind"], data)
+        business = businesses[key]
         target_id = current.get(business) if business else None
         identical = target_id and (target["documents"][target_id] == data or row["kind"] == "binary_asset")
         conflict = ("identical" if identical else "different") if target_id else ""
@@ -219,7 +303,9 @@ def _conflict_rows(source: dict, closure: list[str], target: dict,
 
 
 def _merge(source: dict, selected: list[str], target: dict, preview_rows: list[dict],
-           decisions: Mapping[str, str], *, asset_limits=None) -> tuple[dict, dict, list[str]]:
+           decisions: Mapping[str, str], *, asset_limits=None,
+           target_records: ScopedRecords | None = None,
+           target_store: ProjectStore | None = None) -> tuple[dict, dict, list[str], ScopedRecords | None]:
     source_rows = _index(source)
     source_data = source["documents"]
     source_snapshot_assets = source.get("assets", {})
@@ -263,14 +349,16 @@ def _merge(source: dict, selected: list[str], target: dict, preview_rows: list[d
             descendants = set(_selection(source, [key])[1]) - {key}
             if any(actions[child] == "copy" for child in descendants):
                 raise ProjectError("dependency_conflict", "Choose copy for the parent resource when copying its dependency: " + row_by_id[key]["name"])
-    records = deepcopy(_index(target))
+    records = deepcopy(target_records) if target_records is not None else deepcopy(_index(target))
     data = deepcopy(target["documents"])
     asset_sources = deepcopy(target.get("assets", {}))
     mapping, material_ids, changed = {}, {}, []
     counts = {"created": 0, "copied": 0, "overwritten": 0, "reused": 0,
               "skipped": len(set(row_by_id) - set(closure))}
-    occupied_materials = {value["material"]["id"].casefold() for key, value in data.items()
-                          if records[key]["kind"] in {"material_profile", "optical_material"}}
+    copying_materials = any(source_rows[key]["kind"] in {"material_profile", "optical_material"}
+                            and actions[key] == "copy" for key in closure)
+    occupied_materials = ({business[1] for business in _business_index(
+        target, {"material_profile", "optical_material"})} if copying_materials else set())
     for key in closure:
         row, kind = row_by_id[key], source_rows[key]["kind"]
         action = actions[key]
@@ -314,6 +402,10 @@ def _merge(source: dict, selected: list[str], target: dict, preview_rows: list[d
         elif kind in {"film", "expression_template"} and actions[key] == "copy":
             value["id" if kind == "film" else "template_id"] = uuid.uuid4().hex
             value["name"] = value["name"][:110] + " (copy)"
+        elif kind == "expression_template" and target_records is not None and actions[key] == "overwrite":
+            # Casefold matches one project identity; overwrite must retain its
+            # exact saved spelling, just as an ordinary template save does.
+            value["template_id"] = data[target_id]["template_id"]
         if kind == "binary_asset":
             from .project_binary_assets import ROLE_SUFFIXES
             value["payload_path"] = f"assets/{generation}/{target_id}{ROLE_SUFFIXES[value['role']]}"
@@ -328,9 +420,22 @@ def _merge(source: dict, selected: list[str], target: dict, preview_rows: list[d
         if kind == "deposition_configuration":
             value["process_document_id"] = mapping[value["process_document_id"]]
         data[target_id] = normalize_document(kind, value)
-        records[target_id] = {"id": target_id, "kind": kind,
-                              "path": _preview_document_path(kind, target_id),
-                              "sha256": "0" * 64, "dependencies": []}
+        if target_records is None or target_id not in records:
+            records[target_id] = {"id": target_id, "kind": kind,
+                                  "path": _preview_document_path(kind, target_id),
+                                  "sha256": "0" * 64, "dependencies": []}
+    _check_profile_names(records, data, changed)
+    result = {**counts, "id_map": mapping, "selected_ids": [mapping[key] for key in roots]}
+    if isinstance(records, ScopedRecords):
+        assert target_store is not None
+        # Reused roots/dependencies are actual inputs too, even when nothing
+        # changes. Existing rows are immutable evidence, including overwrite.
+        records.required_ids.update(mapping.values())
+        strict_records, strict_data, _retained = prepare_publication(target_store, records, data)
+        target_store.asset_sources(strict_records, strict_data, overrides=asset_sources, verify=True)
+        manifest = {**deepcopy(target["manifest"]), "documents": [deepcopy(row) for row in records.values()]}
+        merged = {"manifest": _manifest(manifest), "documents": data, "assets": asset_sources}
+        return merged, result, changed, records
     # Both existing and incoming references are UUID filenames. One preview
     # generation lets the ordinary graph validator resolve their identities.
     for key, row in records.items():
@@ -338,15 +443,9 @@ def _merge(source: dict, selected: list[str], target: dict, preview_rows: list[d
     materials = ProjectStore._material_index(records, data)
     for key, row in records.items():
         row["dependencies"] = ProjectStore._dependencies(key, records, data, materials)
-    from .materials import check_material_name
-    profiles = [data[key]["material"] for key, row in records.items() if row["kind"] == "material_profile"]
-    for identity in changed:
-        if records[identity]["kind"] == "material_profile":
-            check_material_name(data[identity]["material"], profiles)
     merged = _snapshot(records, data, target["manifest"], asset_sources)
     _validate_snapshot(merged, asset_limits)
-    return merged, {**counts, "id_map": mapping,
-                    "selected_ids": [mapping[key] for key in roots]}, changed
+    return merged, result, changed, None
 
 
 def _standalone_snapshot(path: Path) -> dict:
@@ -588,6 +687,7 @@ class _Plan:
     asset_owner: Any = None
     applying: bool = False
     target_fingerprint: str | None = None
+    target_records: ScopedRecords | None = None
 
 
 class _PlanSpool:
@@ -798,13 +898,14 @@ class ProjectResourceExchange:
         store = None
         target_service = None
         target_fingerprint = None
+        target_records = None
         if target == "project":
             target_type, target_path = "project", str(self.service.store.project_file)
             store = self.service.store
             target_service = self.service
             captured = ProjectStore.open(store.project_file, asset_limits=self.service.store.asset_limits)
-            snapshot = captured.snapshot_saved_inputs()
-            target_fingerprint = captured._fingerprint
+            snapshot, target_records = _capture_target(captured)
+            target_fingerprint = target_records.fingerprint
         elif target == "global":
             source_rows = _index(catalog.snapshot)
             if any(source_rows[key]["kind"] == "project_bbs_post" or
@@ -844,8 +945,8 @@ class ProjectResourceExchange:
                     with target_service._operation():
                         pass
                 captured = ProjectStore.open(store.project_file, asset_limits=self.service.store.asset_limits)
-                snapshot = captured.snapshot_saved_inputs()
-                target_fingerprint = captured._fingerprint
+                snapshot, target_records = _capture_target(captured)
+                target_fingerprint = target_records.fingerprint
             elif path.suffix.casefold() == ".cproject":
                 target_type = "package"
                 if path.exists():
@@ -857,7 +958,10 @@ class ProjectResourceExchange:
         if (target_type == "project" and catalog.source_type == "project" and
                 Path(catalog.source_path).parent == Path(target_path).parent):
             raise ProjectError("same_project", "Source and target projects must be different")
-        rows = _conflict_rows(catalog.snapshot, closure, snapshot, selected)
+        # Project logical template IDs use the publication contract's casefold
+        # uniqueness. Other destinations keep their existing identity rules.
+        rows = _conflict_rows(catalog.snapshot, closure, snapshot, selected,
+                              project_scope=target_records is not None)
         identity = uuid.uuid4().hex
         owner = None
         captured_source = None
@@ -880,7 +984,7 @@ class ProjectResourceExchange:
         try:
             plan = _Plan(catalog_id, selected, target_type, target_path,
                          deepcopy(snapshot), store, target_service, deepcopy(rows), captured_source, owner,
-                         target_fingerprint=target_fingerprint)
+                         target_fingerprint=target_fingerprint, target_records=deepcopy(target_records))
             with self.service._operation(), self._token_lock:
                 if self._closed or catalog_id not in self._catalogs:
                     raise ProjectError("expired_catalog", "Resource browser was closed while previewing")
@@ -925,8 +1029,11 @@ class ProjectResourceExchange:
         # never hold a session-host/resource lock across heavy read-only I/O.
         catalog = self._catalog(plan.catalog_id)
         if plan.target_type == "project":
-            current = ProjectStore.open(plan.target_path, asset_limits=self.service.store.asset_limits).snapshot_saved_inputs()
-            if _digest(current) != _digest(plan.target_snapshot):
+            captured = ProjectStore.open(plan.target_path, asset_limits=self.service.store.asset_limits)
+            _current_snapshot, current_records = _capture_target(captured)
+            if (plan.target_records is None or current_records.fingerprint != plan.target_fingerprint
+                    or current_records.base_records != plan.target_records.base_records
+                    or current_records.canonical_digests != plan.target_records.canonical_digests):
                 raise ProjectError("stale_target", "Target project changed after preview")
         elif plan.target_type == "global":
             from .project_global_resources import read_global_resources
@@ -934,20 +1041,21 @@ class ProjectResourceExchange:
                 raise ProjectError("stale_target", "Global library changed after preview")
         elif Path(plan.target_path).exists():
             raise ProjectError("destination_exists", "Package destination appeared after preview")
-        merged, result, changed = _merge(plan.source_snapshot or catalog.snapshot, plan.selected, plan.target_snapshot,
-                                        plan.rows, {} if decisions is None else decisions,
-                                        asset_limits=self.service.store.asset_limits)
+        merged, result, changed, operation_records = _merge(
+            plan.source_snapshot or catalog.snapshot, plan.selected, plan.target_snapshot,
+            plan.rows, {} if decisions is None else decisions,
+            asset_limits=self.service.store.asset_limits, target_records=plan.target_records,
+            target_store=plan.target_store)
         self._catalog(plan.catalog_id)
         if plan.target_type == "project":
             assert plan.target_store is not None
-            with plan.target_store.stage_asset_publications(_index(merged), merged["documents"],
+            assert operation_records is not None
+            with plan.target_store.stage_asset_publications(operation_records, merged["documents"],
                     merged.get("assets"), reservation_scope=self._reserve_staging) as prepared_assets:
                 self._catalog(plan.catalog_id)
                 with self._publication_scope(plan_id, plan):
                     if changed:
-                        # _index rebuilds plain records, so carry the immutable preview
-                        # fingerprint explicitly into the store's locked CAS boundary.
-                        plan.target_store._publish(_index(merged), merged["documents"], assets=prepared_assets,
+                        plan.target_store._publish(operation_records, merged["documents"], assets=prepared_assets,
                                                    expected_fingerprint=plan.target_fingerprint)
         elif plan.target_type == "global":
             from .project_global_resources import write_global_resources
