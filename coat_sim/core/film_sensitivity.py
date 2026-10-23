@@ -40,20 +40,28 @@ ROBUSTNESS_OBJECTIVES = (
 LIMITATIONS = (
     "Single-sided front coatings with coherent/auto semi-infinite substrate handling only.",
     "Thickness errors only; refractive-index, extinction, material, angle and wavelength errors are unsupported.",
-    "Only independent-layer or perfectly common-mode thickness errors; arbitrary correlation matrices are unsupported.",
+    "Independent, common-mode, material-common-mode and linear-drift thickness factors only; arbitrary correlations and monitoring feedback are unsupported.",
     "Linear response scales are first-order local estimates, not finite-error bounds or yield probabilities.",
     "Finite scenario results apply only to the explicitly supplied scenarios and sampled optical conditions.",
-    "Bounded coordinate search is local and does not certify global optimality.",
+    "Legacy coordinate search and nominal-preserving constrained scene-cloud search are local, not global certificates.",
     "Estimated retained/serialization result storage is limited to 256 MiB; oversized requests are rejected, never subsampled.",
 )
 
 
 @dataclass(frozen=True)
 class FilmThicknessError:
-    """Nonnegative error amplitude; relative_fraction=0.01 means 1 percent."""
+    """Nonnegative thickness scales; relative_fraction=0.01 means 1 percent.
+
+    The legacy magnitude/unit term and explicit absolute/relative terms add.
+    All terms share one signed layer factor, not independent quadrature noise.
+    A standard-deviation scale is therefore a perfectly correlated sum of its
+    absolute and relative components, never an inferred process precision.
+    """
     layer_id: str
-    magnitude: float
+    magnitude: float = 0.
     unit: str = "absolute_nm"
+    absolute_nm: float = 0.
+    relative_fraction: float = 0.
 
 
 @dataclass(frozen=True)
@@ -82,6 +90,8 @@ class FilmSensitivityRequest:
     min_step_fraction: float = 1e-5
     frozen_material_snapshot: Mapping[str, Any] | None = None
     strict_upper_bound_objective_indices: tuple[int, ...] = ()
+    optimization_policy: str = "robustness_only"
+    error_amplitude_semantics: str = "bounded_amplitude"
 
 
 @dataclass(frozen=True)
@@ -198,6 +208,93 @@ def _sequence(value: Any, label: str) -> tuple:
     return tuple(value)
 
 
+
+def _error_components(error: FilmThicknessError) -> tuple[float, float]:
+    return (error.absolute_nm + (error.magnitude if error.unit == "absolute_nm" else 0.),
+            error.relative_fraction + (error.magnitude if error.unit == "relative_fraction" else 0.))
+
+
+def _error_amplitudes(errors, thickness):
+    return np.asarray([absolute + relative * thickness[error.layer_id]
+        for error in errors for absolute, relative in (_error_components(error),)], dtype=float)
+
+
+def _drift_factors(design, errors):
+    # Full front deposition order, not the selected-variable/error subset.
+    layers = design["front_layers"]
+    positions = {row["id"]: index for index, row in enumerate(layers)}
+    return np.asarray([1. if len(layers) == 1 else
+        -1. + 2. * positions[error.layer_id] / (len(layers) - 1) for error in errors])
+
+
+def _linear_scale(affected, request):
+    if request.error_model == "independent":
+        return np.linalg.norm(affected, axis=1)
+    if request.error_model == "common_mode":
+        return np.abs(np.sum(affected, axis=1))
+    if request.error_model == "linear_drift":
+        return np.abs(affected @ _drift_factors(request.design_snapshot, request.errors))
+    layers = {row["id"]: row for row in request.design_snapshot["front_layers"]}
+    groups: dict[str, list[int]] = {}
+    for index, error in enumerate(request.errors):
+        groups.setdefault(layers[error.layer_id]["material_id"], []).append(index)
+    return np.linalg.norm(np.column_stack([affected[:, indices].sum(axis=1)
+        for indices in groups.values()]), axis=1)
+
+
+def generate_film_sensitivity_scenarios(
+    design: Mapping[str, Any], errors: tuple[FilmThicknessError, ...], *,
+    sample_count: int, seed: int, error_model: str,
+    distribution: str, scenario_prefix: str = "process",
+) -> tuple[FilmSensitivityScenario, ...]:
+    """Reproducible explicit factor cloud, not a measured process distribution.
+
+    bounded_uniform draws coefficients in [-1,1] and requires bounded_amplitude
+    request semantics. gaussian draws standard normal coefficients (unbounded,
+    never clipped) and requires standard_deviation semantics. Seed, count and
+    model are explicit; callers freeze the returned coefficients in their
+    request and choose disjoint training/tuning/holdout seeds themselves.
+    Absolute and proportional terms in each error share the same factor.
+    """
+    if type(sample_count) is not int or not 1 <= sample_count <= 100_000:
+        raise ValueError("sample_count must be an integer in [1, 100000]")
+    if type(seed) is not int or seed < 0:
+        raise ValueError("seed must be a nonnegative integer")
+    if error_model not in ("independent", "common_mode", "material_common_mode", "linear_drift"):
+        raise ValueError("unsupported process error_model")
+    if distribution not in ("bounded_uniform", "gaussian"):
+        raise ValueError("distribution must be bounded_uniform or gaussian")
+    if not isinstance(scenario_prefix, str) or not scenario_prefix:
+        raise ValueError("scenario_prefix must be nonempty")
+    design = validate_design(deepcopy(dict(design)))
+    layers = {row["id"]: row for row in design["front_layers"]}
+    if (not errors or any(not isinstance(e, FilmThicknessError) or e.layer_id not in layers for e in errors)
+            or len({e.layer_id for e in errors}) != len(errors)):
+        raise ValueError("errors must uniquely select existing front layers")
+    for error in errors:
+        if (error.unit not in ("absolute_nm", "relative_fraction")
+                or any(_finite(getattr(error, name), name) < 0
+                       for name in ("magnitude", "absolute_nm", "relative_fraction"))):
+            raise ValueError("error scales must be nonnegative and use an explicit supported unit")
+    groups: dict[str, int] = {}
+    indices = []
+    for error in errors:
+        group = (error.layer_id if error_model == "independent" else
+                 layers[error.layer_id]["material_id"] if error_model == "material_common_mode" else "all")
+        if group not in groups:
+            groups[group] = len(groups)
+        indices.append(groups[group])
+    if sample_count * len(errors) > 2_000_000:
+        raise ValueError("explicit scenario generator exceeds 2000000 coefficients; split the cloud")
+    rng = np.random.default_rng(seed)
+    factors = (rng.uniform(-1., 1., (sample_count, len(groups))) if distribution == "bounded_uniform"
+               else rng.standard_normal((sample_count, len(groups))))
+    coefficients = factors[:, indices]
+    if error_model == "linear_drift":
+        coefficients = coefficients * _drift_factors(design, errors)
+    return tuple(FilmSensitivityScenario(f"{scenario_prefix}-{i:06d}", tuple(float(c) for c in row))
+                 for i, row in enumerate(coefficients))
+
 def estimate_film_sensitivity_resources(request: FilmSensitivityRequest) -> dict[str, int]:
     """Conservative Python-object/JSON estimate, not a peak-memory guarantee.
 
@@ -209,8 +306,11 @@ def estimate_film_sensitivity_resources(request: FilmSensitivityRequest) -> dict
                 * len(o.angles_deg) for o in request.objectives)
     errors, scenarios = len(request.errors), len(request.scenarios)
     analysis = count * (768 + 96 * errors + 128 * scenarios) + 512 * scenarios
+    solver_bytes = (count * (scenarios + 1) * (len(request.variables) + 1) * 32
+                    if request.operation == "optimize" and request.optimization_policy == "nominal_preserving" else 0)
     return {"condition_count": count, "error_count": errors, "scenario_count": scenarios,
-            "estimated_analysis_bytes": analysis, "estimated_retained_result_bytes": 6 * analysis,
+            "estimated_analysis_bytes": analysis, "estimated_solver_working_bytes": solver_bytes,
+            "estimated_retained_result_bytes": 6 * analysis + solver_bytes,
             "max_retained_result_bytes": MAX_RETAINED_RESULT_BYTES}
 
 
@@ -228,8 +328,15 @@ def _validate(request: FilmSensitivityRequest) -> FilmSensitivityRequest:
         raise ValueError("sensitivity supports only single-sided coherent front coatings")
     if request.operation not in ("analyze", "optimize"):
         raise ValueError("operation must be analyze or optimize")
-    if request.error_model not in ("independent", "common_mode"):
-        raise ValueError("error_model must be independent or common_mode; arbitrary correlation is unsupported")
+    if request.error_model not in ("independent", "common_mode", "material_common_mode", "linear_drift"):
+        raise ValueError("error_model must be independent, common_mode, material_common_mode or linear_drift; arbitrary correlation is unsupported")
+    if request.optimization_policy not in ("robustness_only", "nominal_preserving"):
+        raise ValueError("optimization_policy must be robustness_only or nominal_preserving")
+    if request.error_amplitude_semantics not in ("bounded_amplitude", "standard_deviation"):
+        raise ValueError("error_amplitude_semantics must be bounded_amplitude or standard_deviation")
+    if (request.operation == "optimize" and request.optimization_policy == "nominal_preserving"
+            and request.robustness_objective == "linear_sensitivity_norm"):
+        raise ValueError("nominal_preserving requires an explicit finite-scenario objective; linear sensitivity analysis/search remains separate")
     if request.robustness_objective not in ROBUSTNESS_OBJECTIVES:
         raise ValueError("choose an explicit robustness_objective: " + ", ".join(ROBUSTNESS_OBJECTIVES))
     objectives = _sequence(request.objectives, "objectives")
@@ -247,9 +354,10 @@ def _validate(request: FilmSensitivityRequest) -> FilmSensitivityRequest:
         seen.add(error.layer_id)
         if error.unit not in ("absolute_nm", "relative_fraction"):
             raise ValueError("thickness error unit must be absolute_nm or relative_fraction")
-        if _finite(error.magnitude, "error magnitude") < 0:
-            raise ValueError("error magnitude must be nonnegative")
-    if not errors or not any(e.magnitude > 0 for e in errors):
+        if any(_finite(getattr(error, name), name) < 0
+               for name in ("magnitude", "absolute_nm", "relative_fraction")):
+            raise ValueError("error magnitude and additive scales must be nonnegative")
+    if not errors or not any(e.magnitude > 0 or e.absolute_nm > 0 or e.relative_fraction > 0 for e in errors):
         raise ValueError("at least one nonzero thickness-error amplitude is required")
     variables = _sequence(request.variables, "variables")
     seen = set()
@@ -277,10 +385,24 @@ def _validate(request: FilmSensitivityRequest) -> FilmSensitivityRequest:
         if len(coefficients) != len(errors):
             raise ValueError("scenario coefficients must match errors order and length")
         coefficients = tuple(_finite(c, "scenario coefficient") for c in coefficients)
-        if any(abs(c) > 1 for c in coefficients):
-            raise ValueError("scenario coefficients must lie in [-1, 1]")
+        if request.error_amplitude_semantics == "bounded_amplitude" and any(abs(c) > 1 for c in coefficients):
+            raise ValueError("bounded-amplitude scenario coefficients must lie in [-1, 1]; sigma scenarios require standard_deviation semantics")
         if request.error_model == "common_mode" and len(set(coefficients)) > 1:
             raise ValueError("common_mode scenarios require the same coefficient for every layer")
+        if request.error_model == "material_common_mode":
+            groups: dict[str, float] = {}
+            layers = {r["id"]: r for r in design["front_layers"]}
+            for error, coefficient in zip(errors, coefficients, strict=True):
+                material = layers[error.layer_id]["material_id"]
+                if material in groups and groups[material] != coefficient:
+                    raise ValueError("material_common_mode scenarios require the same coefficient within each material")
+                groups[material] = coefficient
+        if request.error_model == "linear_drift":
+            factors = _drift_factors(design, errors)
+            nonzero = factors != 0
+            scale = coefficients[int(np.flatnonzero(nonzero)[0])] / factors[nonzero][0] if np.any(nonzero) else 0.
+            if not np.allclose(coefficients, factors * scale, rtol=1e-12, atol=1e-14):
+                raise ValueError("linear_drift scenarios require one signed slope over deposition layer order")
         if _finite(scenario.weight, "scenario weight") <= 0:
             raise ValueError("scenario weights must be positive")
     if request.robustness_objective != "linear_sensitivity_norm" and not scenarios:
@@ -323,6 +445,8 @@ def sensitivity_request_from_optimization(
     max_iterations: int | None = None, max_evaluations: int | None = None,
     initial_step_fraction: float = 0.25, min_step_fraction: float = 1e-5,
     strict_upper_bound_objective_indices: tuple[int, ...] = (),
+    optimization_policy: str = "robustness_only",
+    error_amplitude_semantics: str = "bounded_amplitude",
 ) -> FilmSensitivityRequest:
     """Explicit adapter; ordinary solver settings do not choose a robust objective.
 
@@ -335,7 +459,8 @@ def sensitivity_request_from_optimization(
         tuple(base.objectives), tuple(errors), error_model, robustness_objective,
         tuple(base.variables), tuple(scenarios), operation, base.acceptable_normalized_error,
         max_iterations, max_evaluations, initial_step_fraction, min_step_fraction,
-        deepcopy(base.frozen_material_snapshot), tuple(strict_upper_bound_objective_indices)))
+        deepcopy(base.frozen_material_snapshot), tuple(strict_upper_bound_objective_indices),
+        optimization_policy, error_amplitude_semantics))
 
 
 def freeze_film_sensitivity_request(service: Any, request: FilmSensitivityRequest) -> FilmSensitivityRequest:
@@ -373,6 +498,9 @@ class _Evaluator:
         self.cache_entry_bytes = estimate_film_sensitivity_resources(request)["estimated_analysis_bytes"]
         self.cache_bytes = 0
         self.evaluations = self.forward = self.jacobian = self.failures = 0
+        self.constrained = request.operation == "optimize" and request.optimization_policy == "nominal_preserving"
+        self.solver_key: bytes | None = None
+        self.solver_data: dict[str, Any] | None = None
         # Includes the full frozen design/material digest, all objectives/error
         # definitions, scenario weights and nominal acceptance, never just layer IDs.
         encoded = json.dumps(film_sensitivity_request_to_payload(request), sort_keys=True,
@@ -387,13 +515,14 @@ class _Evaluator:
         return {layer["id"]: _physical_layer_thickness(layer, design,
                     self.snapshot) for layer in design["front_layers"]}
 
-    def response(self, design, derivatives):
+    def response(self, design, derivatives, variables=None):
         self.check()
         rows: list[float] = []
         jacobians: list[NDArray[np.float64]] = []
         conditions: list[tuple[int, float, float, FilmOptimizationObjective]] = []
-        variables = tuple(FilmThicknessVariable("front", e.layer_id, 0., 1.)
-                          for e in self.request.errors) if derivatives else ()
+        if variables is None:
+            variables = tuple(FilmThicknessVariable("front", e.layer_id, 0., 1.)
+                              for e in self.request.errors) if derivatives else ()
         for index, objective in enumerate(self.request.objectives):
             waves = np.linspace(objective.wavelength_min_nm, objective.wavelength_max_nm,
                                 objective.wavelength_samples)
@@ -441,20 +570,30 @@ class _Evaluator:
         # Ordered complete front topology is fixed for the whole run. Include
         # all physical rows, not merely optimized or error-affected columns.
         key = np.asarray([thickness[r["id"]] for r in design["front_layers"]], dtype="<f8").tobytes()
-        if key in self.cache:
+        if key in self.cache and (not self.constrained or key == self.solver_key):
             self.cache.move_to_end(key)
             return self.cache[key]
         if self.request.max_evaluations is not None and self.evaluations >= self.request.max_evaluations:
             raise _Budget()
         self.evaluations += 1
         try:
-            nominal, jac, conditions = self.response(design, True)
+            derivative_variables = None
+            if self.constrained:
+                identifiers = list(dict.fromkeys([e.layer_id for e in self.request.errors]
+                    + [v.layer_id for v in self.request.variables]))
+                derivative_variables = tuple(FilmThicknessVariable("front", identifier, 0., 1.)
+                                             for identifier in identifiers)
+            nominal, full_jac, conditions = self.response(design, True, derivative_variables)
+            if self.constrained:
+                error_columns = [identifiers.index(e.layer_id) for e in self.request.errors]
+                nominal_jac = full_jac[:, [identifiers.index(v.layer_id) for v in self.request.variables]]
+                jac = full_jac[:, error_columns]
+            else:
+                jac = full_jac
             errors, max_error, rms = self.scores(nominal, conditions)
-            amplitudes = np.asarray([e.magnitude if e.unit == "absolute_nm" else
-                                    e.magnitude * thickness[e.layer_id] for e in self.request.errors])
+            amplitudes = _error_amplitudes(self.request.errors, thickness)
             affected = jac * amplitudes
-            linear = (np.abs(np.sum(affected, axis=1)) if self.request.error_model == "common_mode"
-                      else np.linalg.norm(affected, axis=1))
+            linear = _linear_scale(affected, self.request)
             scales = np.asarray([c[3].normalization_scale for c in conditions])
             weights = np.asarray([c[3].weight for c in conditions])
             normalized = linear / scales
@@ -464,6 +603,7 @@ class _Evaluator:
                 float(response_scale), float(normalized_scale)) for (i, w, a, o), n, j, response_scale, normalized_scale in
                 zip(conditions, nominal, jac, linear, normalized, strict=True))
             finite = []
+            scenario_jacobians = []
             worst_scores = []
             for scenario in self.request.scenarios:
                 self.check()
@@ -475,7 +615,16 @@ class _Evaluator:
                     if not math.isfinite(value) or value < 0:
                         raise ValueError(f"scenario {scenario.scenario_id} produces negative/nonfinite thickness for {error.layer_id}; errors are never clipped")
                     layer["thickness"] = {"value": value, "unit": "nm"}
-                values, _, _ = self.response(perturbed, False)
+                values, scenario_jac, _ = self.response(perturbed, self.constrained,
+                    self.request.variables if self.constrained else None)
+                if self.constrained:
+                    chain = np.ones(len(self.request.variables))
+                    error_indices = {error.layer_id: i for i, error in enumerate(self.request.errors)}
+                    for column, variable in enumerate(self.request.variables):
+                        if variable.layer_id in error_indices:
+                            i = error_indices[variable.layer_id]
+                            chain[column] += _error_components(self.request.errors[i])[1] * scenario.coefficients[i]
+                    scenario_jacobians.append(scenario_jac * chain)
                 scenario_errors, scenario_max, scenario_rms = self.scores(values, conditions)
                 worst_scores.append(max(r.weighted_normalized_violation for r in scenario_errors))
                 finite.append(FilmSensitivityScenarioResult(scenario.scenario_id, float(scenario.weight),
@@ -498,12 +647,18 @@ class _Evaluator:
                 linear_conditions, float(norm), tuple(finite), float(robust))
             if not math.isfinite(result.robustness_value):
                 raise ValueError("robustness objective is not finite")
+            if self.constrained:
+                self.solver_key = key
+                self.solver_data = dict(nominal=nominal, nominal_jac=nominal_jac,
+                    scenario_values=np.asarray([row.finite_perturbation_values for row in finite]),
+                    scenario_jac=np.asarray(scenario_jacobians), conditions=conditions)
         except (ValueError, ArithmeticError, FloatingPointError):
             self.failures += 1
             raise
         if self.cache_entry_bytes <= MAX_ANALYSIS_CACHE_BYTES:
+            if key not in self.cache:
+                self.cache_bytes += self.cache_entry_bytes
             self.cache[key] = result
-            self.cache_bytes += self.cache_entry_bytes
             while len(self.cache) > 32 or self.cache_bytes > MAX_ANALYSIS_CACHE_BYTES:
                 self.cache.popitem(last=False)
                 self.cache_bytes -= self.cache_entry_bytes
@@ -576,11 +731,40 @@ def execute_film_sensitivity_request(service: Any, request: FilmSensitivityReque
         emit("baseline")
         baseline = best = evaluator.evaluate(initial_design)
         best_design = initial_design
+        if (request.operation == "optimize" and request.optimization_policy == "nominal_preserving"
+                and not baseline.nominal_targets_met):
+            emit("baseline_complete")
+            return outcome("failed", "initial_nominal_infeasible",
+                "Initial design fails the unchanged original nominal grid; no nominal-preserving search was started and no margin was added.")
         checkpoint()
         emit("baseline_complete")
         evaluator.check()
         if request.operation == "analyze":
             return outcome("completed", "analysis_complete")
+        if request.optimization_policy == "nominal_preserving":
+            from .film_sensitivity_constrained import run_nominal_preserving
+
+            def accept_feasible(candidate, analysis):
+                nonlocal best, best_design
+                assert best is not None
+                candidate_thickness = evaluator.physical(candidate)
+                if any(not variable.lower_nm <= candidate_thickness[variable.layer_id] <= variable.upper_nm
+                       for variable in request.variables):
+                    raise ValueError("constrained candidate violates explicit nominal thickness bounds")
+                if analysis.nominal_targets_met and analysis.robustness_value < best.robustness_value:
+                    best, best_design = analysis, candidate
+                    checkpoint()
+                    emit("improved")
+
+            def constrained_iteration(_values):
+                nonlocal iteration
+                iteration += 1
+                emit("iteration")
+                evaluator.check()
+
+            state, reason, message = run_nominal_preserving(request, evaluator, initial_design, baseline,
+                accept_candidate=accept_feasible, iteration_callback=constrained_iteration, emit=emit)
+            return outcome(state, reason, message)
         lows = np.asarray([v.lower_nm for v in request.variables], dtype=float)
         spans = np.asarray([_finite(v.upper_nm, "upper_nm") - v.lower_nm for v in request.variables])
         values = np.asarray([physical[v.layer_id] for v in request.variables])
@@ -669,6 +853,14 @@ def film_sensitivity_request_to_payload(request: FilmSensitivityRequest) -> dict
     # Empty optional operator flags retain the original v1 canonical identity.
     if not request.strict_upper_bound_objective_indices:
         payload.pop("strict_upper_bound_objective_indices")
+    if request.optimization_policy == "robustness_only":
+        payload.pop("optimization_policy")
+    if request.error_amplitude_semantics == "bounded_amplitude":
+        payload.pop("error_amplitude_semantics")
+    for error in payload["errors"]:
+        for field in ("absolute_nm", "relative_fraction"):
+            if not error[field]:
+                error.pop(field)
     try:
         # Return detached, JSON-native data and reject NaN/infinity everywhere.
         return json.loads(json.dumps(payload, ensure_ascii=False, allow_nan=False))
@@ -891,8 +1083,9 @@ def validate_film_sensitivity_result_payload(payload: Mapping[str, Any], *,
         raise ValueError("sensitivity result work counters are inconsistent")
     if not result.is_final and (result.state != "partial" or result.termination_reason != "checkpoint"):
         raise ValueError("nonfinal results must be partial checkpoints")
-    if result.state == "completed" and result.termination_reason != (
-            "analysis_complete" if result.operation == "analyze" else "step_tolerance"):
+    expected_reason = ("analysis_complete" if result.operation == "analyze" else
+        "constrained_tolerance" if request.optimization_policy == "nominal_preserving" else "step_tolerance")
+    if result.state == "completed" and result.termination_reason != expected_reason:
         raise ValueError("completed sensitivity result has an invalid termination reason")
     if result.state == "cancelled" and result.termination_reason not in (
             "cancelled", "scheduler_cancel_won", "scored_checkpoint_recovered"):
@@ -926,6 +1119,13 @@ def validate_film_sensitivity_result_payload(payload: Mapping[str, Any], *,
         raise ValueError("a scored result must retain its best analysis")
     if best_analysis.robustness_value > result.baseline_analysis.robustness_value:
         raise ValueError("best robustness score is worse than its retained baseline")
+    if request.operation == "optimize" and request.optimization_policy == "nominal_preserving":
+        if result.baseline_analysis.nominal_targets_met:
+            if not best_analysis.nominal_targets_met:
+                raise ValueError("nominal-preserving result has a nominal-infeasible incumbent")
+        elif (result.state != "failed" or result.termination_reason != "initial_nominal_infeasible"
+              or physical != initial):
+            raise ValueError("nominal-preserving search requires an initially feasible original nominal grid")
     if replay:
         # Replay must not consume or be blocked by the original search budget.
         evaluator.request = replace(request, max_evaluations=None)

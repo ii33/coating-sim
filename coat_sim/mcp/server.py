@@ -1217,7 +1217,18 @@ def submit_film_synthesis(payload: dict[str, Any], client_request_id: str | None
 def plan_film_sensitivity(payload: dict[str, Any]) -> dict[str, Any]:
     """Read-only freeze a separate thickness-error analysis/optimization request.
 
-    Does not run a calculation, modify nominal targets, or enqueue work.
+    Process assumptions are request data, not inferred defaults: callers may
+    specify independent, common-mode, material-common-mode or linear-drift
+    factors, plus bounded-amplitude or standard-deviation semantics. Per-layer
+    legacy, absolute-nm and relative-fraction scales add under one signed layer
+    factor (not RSS). Explicit scenario coefficients remain part of the frozen
+    request. ``nominal_preserving`` accepts only finite-scenario objectives;
+    original nominal bounds remain hard constraints, with no added margin.
+
+    This read-only operation does not run a calculation, modify nominal targets,
+    create an estimate or job, or enqueue work. The canonical payload must still
+    pass the closed sensitivity deserializer; this discovery schema is not the
+    sole validation boundary.
     """
     from coat_sim.core.film_sensitivity_jobs import prepare_sensitivity_payload
     try:
@@ -1230,7 +1241,13 @@ def plan_film_sensitivity(payload: dict[str, Any]) -> dict[str, Any]:
 
 @mcp.tool()
 def submit_film_sensitivity(payload: dict[str, Any], client_request_id: str | None = None) -> dict[str, Any]:
-    """Submit an independent frozen sensitivity task through confirmed durable scheduling."""
+    """Submit an independent frozen sensitivity task through confirmed durable scheduling.
+
+    The new process-model fields and explicit coefficients are frozen into the
+    same ``film_sensitivity`` job payload. Submission retains normal request-ID
+    deduplication and compute-release confirmation; it is not a direct worker
+    call and does not turn robustness improvement into nominal acceptance.
+    """
     from coat_sim.core.film_sensitivity_jobs import submit_sensitivity
     try:
         return submit_sensitivity(service, payload, client_request_id)

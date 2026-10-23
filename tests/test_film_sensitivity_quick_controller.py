@@ -12,7 +12,7 @@ import os
 from threading import Event
 from types import SimpleNamespace
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("QT_QUICK_BACKEND", "software")
@@ -114,6 +114,14 @@ def harness(app, tmp_path):
         sensitivity.pool = pool
         sensitivity.client_factory = lambda _root: client
         assert sensitivity.prepare(), sensitivity.error
+        # These legacy regression cases explicitly exercise the old pure
+        # sensitivity mode; the new process UI has no calibrated defaults.
+        assert sensitivity.setChoice("policy", "robustness_only")
+        assert sensitivity.setChoice("objective", "linear_sensitivity_norm")
+        assert sensitivity.setChoice("model", "independent")
+        assert sensitivity.setChoice("semantics", "bounded_amplitude")
+        for row in sensitivity.layerErrors:
+            assert sensitivity.setMagnitude(row["layer_id"], "1")
         yield SimpleNamespace(owner=owner, source=source, session=session, service=service,
                               library=library, design=design, sensitivity=sensitivity,
                               pool=pool, client=client, native_pool=native_pool)
@@ -143,6 +151,9 @@ def test_preparation_reloads_current_complete_design_preserves_errors_by_layer_i
     harness.owner.refreshDesign()
     assert panel.prepare(), panel.error
     assert [r["layer_id"] for r in panel.layerErrors] == [original, "added-current-layer"]
+    # The added layer has no process assumption until this legacy case
+    # explicitly supplies its historical 1 nm test input.
+    assert panel.setMagnitude("added-current-layer", "1")
     assert [r["magnitude"] for r in panel.layerErrors] == ["2.75", "1"]
     rows = panel.layerErrors
     rows[0]["magnitude"] = "999"
@@ -194,6 +205,8 @@ def test_explicit_scenario_generation_distinguishes_common_and_independent(harne
         {**deepcopy(harness.design["front_layers"][0]), "id": "another-layer"})
     harness.owner.refreshDesign()
     assert panel.prepare()
+    for row in panel.layerErrors:
+        assert panel.setMagnitude(row["layer_id"], "1")
     assert panel.setChoice("model", model)
     assert panel.scenarioCount == 0
     assert panel.generateScenarios()
@@ -527,6 +540,12 @@ def test_real_source_apply_is_one_unsaved_undo_transaction(app, tmp_path, monkey
         monkeypatch.setattr(panel, "pool", pool)
         panel.client_factory = lambda _root: client
         assert panel.prepare() and panel.setOption("max_evaluations", "24")
+        assert panel.setChoice("policy", "robustness_only")
+        assert panel.setChoice("objective", "linear_sensitivity_norm")
+        assert panel.setChoice("model", "independent")
+        assert panel.setChoice("semantics", "bounded_amplitude")
+        for row in cast(list[dict[str, Any]], panel.layerErrors):
+            assert panel.setMagnitude(row["layer_id"], "1")
         assert panel.start("optimize"), panel.error
         pool.run()
         payload = panel._payload

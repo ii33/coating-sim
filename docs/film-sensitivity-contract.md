@@ -1,6 +1,6 @@
 # 独立膜厚敏感性工作流
 
-日期：2026-10-22。接口真值是 `coat_sim/core/film_sensitivity.py` 的独立 request/result 类型，普通厚度优化请求 v1 仍严格拒绝这些字段。
+日期：2026-10-23。新保留名义指标、工艺误差与正式入口增量见 [稳健优化契约](film-robust-optimization-contract.md)、[面板契约](film-sensitivity-process-ui-contract.md) 和 [CLI/MCP契约](film-sensitivity-process-interface-contract.md)。接口真值是 `coat_sim/core/film_sensitivity.py` 的独立 request/result 类型，普通厚度优化请求 v1 仍严格拒绝这些字段。
 
 ## 输入与能力边界
 
@@ -16,13 +16,13 @@
 
 ## 结果、保存与应用
 
-结果分别保留名义 max 违规 / 是否名义通过、用户选择的误差目标、线性估计与有限扰动评价。敏感性优化真实优化所选误差目标，允许名义指标变化，绝不把敏感性改善冒充名义通过。用户查看后显式应用；写回前复核来源版本与未提交编辑版本，来源变更则整次拒绝。失败/取消结果只能查看或保存，不自动回写。窗口沿用共享 Theme 控件和现有几何策略，无渲染后端降级。
+结果分别保留名义 max 违规 / 是否名义通过、用户选择的误差目标、线性估计与有限扰动评价。敏感性优化真实优化所选误差目标；旧robustness_only策略允许名义指标变化，新GUI默认nominal_preserving在原名义硬约束下优化有限场景worst，纯降敏须明确选择并警示。两者都不把敏感性改善冒充名义通过，也不额外加余量。初态名义不满足时新策略明确失败，需先恢复名义或换初态，不自动放宽。用户查看后显式应用；写回前复核来源版本与未提交编辑版本，来源变更则整次拒绝。失败/取消结果只能查看或保存，不自动回写。窗口沿用共享 Theme 控件和现有几何策略，无渲染后端降级。
 
 ## 实际首版接口与资源语义
 
-FilmThicknessError(layer_id,magnitude,unit) 的 unit=absolute_nm 或 relative_fraction（0.01为1%）；GUI相对幅度以百分数显示并明确换算。独立场景为显式系数[-1,1]和正权重；GUI“生成±幅度场景”对独立模型只生成±单层组，不把它称为全部联合角点或蒙特卡洛。需要任意联合场景时使用独立JSON/CLI或MCP请求。
+FilmThicknessError(layer_id,magnitude,unit) 的 unit=absolute_nm 或 relative_fraction（0.01为1%）；GUI相对幅度以百分数显示并明确换算。旧默认bounded_amplitude场景系数为[-1,1]和正权重；新standard_deviation明确以σ为尺度，允许不截断的超±1倍数。新GUI须明确填写绝对nm/相对%加和尺度、幅度或σ、误差模型、分布、样本数和种子，再生成真实显式场景；不擅设工艺精度。旧“生成±幅度场景”接口仍保留，对独立模型只生成±单层组，不能称全部联合角点或蒙特卡洛。手填任意联合场景仍可使用独立JSON/CLI或MCP。
 
-优化采用真实误差目标的确定性17点逐变量初扫和有界坐标模式搜索，不是旧名义优化器包装；局部step_tolerance、iteration_limit、evaluation_limit、physical_evaluation_failed和cancelled严格分开。GUI提供的200评价/20迭代仅为可见可清空初值，不是核心隐性限额。完整敏感性结果估计>256MiB明确拒绝并给出字节；分析缓存按32项和64MiB双限，不删场景或原采样点。
+旧robustness_only优化采用真实误差目标的确定性17点逐变量初扫和有界坐标模式搜索，不是旧名义优化器包装；新nominal_preserving使用完整原名义条件与有限场景解析Jacobian的有界SLSQP，只有原名义通过的完整候选可入档，见增量契约；局部step_tolerance、iteration_limit、evaluation_limit、physical_evaluation_failed和cancelled严格分开。GUI提供的200评价/20迭代仅为可见可清空初值，不是核心隐性限额。完整敏感性结果估计>256MiB明确拒绝并给出字节；分析缓存按32项和64MiB双限，不删场景或原采样点。
 
 共享队列kind=film_sensitivity，独立job/checkpoint/result类型；MCP plan_film_sensitivity只读冻结、submit_film_sensitivity沿用已有计算确认/去重路径。首版GUI敏感性明确本地CPU队列，不继承普通优化器的远程/XPU选择，不宣称已支持敏感性远程设备。历史队列结果在只读独立报告窗口中打开，物理重放在后台完成；没有来源编辑上下文，不可应用。运行结果只在明确点击并确认应用后，沿现有applyOptimizedDesign版本/编辑epoch/撤销路径写回。
 
@@ -39,3 +39,7 @@ FilmThicknessError(layer_id,magnitude,unit) 的 unit=absolute_nm 或 relative_fr
 名义条件和每个有限扰动场景都直接按实际光学响应核对原上下界，不以 `acceptable_normalized_error` 放宽用户目标。结果另有 `solver_acceptable` 表达原数值容差是否满足，不作为制造保证。自动合成目标行显式勾选的严格上界可通过独立请求的可选 `strict_upper_bound_objective_indices` 选择数学 `<`；未勾选仍为原有 `<=`，不按3%等数值猜测运算符，也不添加epsilon或安全余量。空的新字段不写入请求规范化载荷，保持既有无此选项请求的缓存身份。
 
 名义与有限场景的百分比违规均为实际物理差值乘100，归一化误差另列。未完成检查点只能查看或保存，不能应用；最终结果仍需用户显式确认，并通过来源设计版本及未提交编辑代际核对。
+
+## 升级后的本地执行器
+
+更新到含新策略的版本后，正常关闭并重新启动应用及其本地调度器，再使用新面板。旧进程可能只理解旧v1字段并明确拒绝新策略/误差项；不得因旧执行器不支持而静默改为robustness_only或丢弃场景。失败时原设计保持不变，先核对队列与实际运行版本，不自动重复不确定提交。

@@ -181,13 +181,14 @@ AppWindow {
     }
     ThemeControls.ThemeDialogBase {
         id: sensitivityApplyDialog
+        objectName: "filmSensitivityApplyConfirmDialog"
         title: "应用独立误差目标候选？"
         modal: true
         anchors.centerIn: parent
         width: Math.min(520, window.width - 40)
         standardButtons: Dialog.Yes | Dialog.No
         contentItem: Label {
-            text: "候选优化的是用户选择的误差目标，不保证原名义目标通过。确认把最优完整评分候选应用到来源设计？来源版本变化时会整次拒绝。"
+            text: "原名义指标与有限误差场景请分别查看报告；保持名义策略不额外加余量，纯降敏策略可能使名义指标退化。确认将完整评分的最优候选应用到来源设计？来源版本变化时会整次拒绝。"
             color: window.themeTokens.colorText
             wrapMode: Text.WordWrap
         }

@@ -70,3 +70,5 @@ python -m pytest -q tests/test_film_synthesis_gui_review.py::test_qml_n0_grows_r
 ```
 
 前一命令不创建scheduler服务，不能代替后一命令的GUI/保存/漂移验收；受限云环境没有重试被拒的端点。准确发布SHA的所有CI tiers仍须分别读取实际终态。
+
+受控Windows主机已在c880a569上完成上述冠军修复验收：10项新边界和3项真实GUI/IPC共13项通过；三个原队列案例均返回单层、11次评价，原12次预算及GUI断言未修改。此为实机正式路径结果，不以直接core测试替代；完整CI仍须按准确SHA分别核对终态。

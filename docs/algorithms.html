@@ -12,6 +12,7 @@
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px solid #c8e0db;border-radius:8px;padding:16px;font-size:.88rem;line-height:1.5}</style>
 </head>
 <body>
+<p class="source">工艺厚度误差与保留原名义指标补充：2026-10-23，见<a href="#film-robust-nominal-preserving-20261023">14an</a>。绝对/相对加和、幅度/σ、明确场景与原名义硬约束分开；不擅设设备精度或额外余量。</p>
 <p class="source">真实混合多进程补充：2026-10-23，见<a href="#film-hybrid-parallel-20261023">14am</a>；请求数、逻辑批次与实际派发分开，不承诺整流程线性加速。</p>
 <p class="source">批量针插与独立敏感性补充：2026-10-22，见<a href="#film-batch-needle-20261022">14ai</a>、<a href="#film-sensitivity-20261022">14aj</a>。数学零厚、有限联合前向、名义验收和误差目标分别报告。</p>
 <p class="source">ITO 电学计算补充：2026-10-18，见<a href="#ito-electrical-20261018">膜厚、方阻、电阻率及矩形测量边界</a>。</p>
@@ -236,6 +237,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#film-hybrid-synthesis-20261022">14ak 统一混合合成、冠军压缩与全原约束精修</a>
 <a href="#film-nominal-acceptance-20261022">14al 原门限名义验收与求解容差分离</a>
 <a href="#film-hybrid-parallel-20261023">14am 混合合成独立物理批次与真实多进程</a>
+<a href="#film-robust-nominal-preserving-20261023">14an 原名义硬约束与工艺误差场景精修</a>
 </nav>
 <main>
 <section id="film-wavelength-workers-20261017"><h2>CPU wavelength workers and fair single-candidate timing — 2026-10-17</h2>
@@ -3085,17 +3087,17 @@ close/shutdown/history/late old operation: do not trigger automatic apply</pre>
 
 <section id="film-sensitivity-20261022">
 <h2>14aj 独立膜厚敏感性分析与真实误差目标优化</h2>
-<p>更新：2026-10-22。实现 <code>film_sensitivity.py</code>、<code>film_sensitivity_cli.py</code>。独立 request/result v1，普通厚度请求 v1 仍拒绝敏感性字段。输入原设计、原 R/T 目标及网格、冻结真实 n/k、逐层绝对 nm 或相对厚度误差、共模/独立模型、可选显式场景和优化变量；输出名义评分、一阶局部响应、完整有限扰动、用户所选误差目标以及真实终态/最优候选。不会暗加名义余量或固定 ±0.2% 门槛。</p>
+<p>更新：2026-10-23。实现 <code>film_sensitivity.py</code>、<code>film_sensitivity_cli.py</code>；新原名义保持策略与加和工艺误差见<a href="#film-robust-nominal-preserving-20261023">14an</a>，旧请求默认不重解释。独立 request/result v1，普通厚度请求 v1 仍拒绝敏感性字段。输入原设计、原 R/T 目标及网格、冻结真实 n/k、逐层绝对 nm 或相对厚度误差、共模/独立模型、可选显式场景和优化变量；输出名义评分、一阶局部响应、完整有限扰动、用户所选误差目标以及真实终态/最优候选。不会暗加名义余量或固定 ±0.2% 门槛。</p>
 <div class="formula">aᵢ=绝对误差 nm，或 aᵢ=相对分数·dᵢ；Jᵢ=∂(R/T)/∂dᵢ。独立：s=√Σ(Jᵢaᵢ)²；共模：s=|ΣJᵢaᵢ|。</div>
-<p>独立模型的 s 是所声明单位幅度下的一阶响应组合，不自动假定高斯分布。<code>linear_sensitivity_norm</code> 为各目标条件 s/normalization_scale 的目标权重 RMS。有限场景要求显式 cᵢ∈[−1,1]、场景权重&gt;0；共模每列 c 相同：</p>
+<p>独立模型的 s 是所声明单位幅度下的一阶响应组合，不自动假定高斯分布。<code>linear_sensitivity_norm</code> 为各目标条件 s/normalization_scale 的目标权重 RMS。默认bounded_amplitude有限场景要求显式 cᵢ∈[−1,1]、场景权重&gt;0；新显式standard_deviation允许未截断σ倍数，见14an。共模每列 c 相同：</p>
 <div class="formula">δdᵢ=aᵢcᵢ，d′=d+δd；线性预测 y+Jδd 与真实 y(d′) 分栏。负厚度明确失败，绝不夹到零。</div>
-<p><code>finite_scenario_worst</code> 是所有已列场景/原条件的 max(√目标权重·违规/scale)；<code>finite_scenario_expected</code> 是各场景完整目标加权 RMS 违规的场景权重 RMS。场景权重不改变 worst 目标；原始名义验收仍只看未加权 max 违规是否≤原 acceptable。有限场景不代表全部联合角点、概率良率或连续域误差上界。</p>
+<p><code>finite_scenario_worst</code> 是所有已列场景/原条件的 max(√目标权重·违规/scale)；<code>finite_scenario_expected</code> 是各场景完整目标加权 RMS 违规的场景权重 RMS。场景权重不改变 worst 目标；原始名义验收直接检查原实际上下界运算符，求解容差单列，不能放宽目标。有限场景不代表全部联合角点、概率良率或连续域误差上界。</p>
 <figure class="figure"><svg viewBox="0 0 850 195" role="img" aria-label="独立敏感性与原名义验收的并行报告">
 <g fill="#e9f4f1" stroke="#087f78"><rect x="20" y="55" width="190" height="55" rx="8"/><rect x="300" y="12" width="245" height="55" rx="8"/><rect x="300" y="120" width="245" height="55" rx="8"/><rect x="635" y="55" width="195" height="55" rx="8"/></g>
 <g class="svgtext"><text x="35" y="88">原处方、原目标、真实 n/k</text><text x="315" y="44">解析 J → 一阶局部响应尺度</text><text x="315" y="151">显式 δd → 完整有限前向</text><text x="650" y="88">用户所选误差目标</text></g>
 <g stroke="#50616a" fill="none" stroke-width="2"><path d="M210 82L300 40"/><path d="M210 82L300 146"/><path d="M545 40L635 82"/><path d="M545 146L635 82"/></g>
 </svg><figcaption>图14aj：原名义 max 验收独立保留；一阶预测不冒充有限扰动，优化所选误差目标也不冒充原目标通过。</figcaption></figure>
-<p>优化直接降低用户所选误差标量，不调用名义优化器冒充鲁棒优化，不强加未请求名义罚项。首版采用每变量17点确定性有限域扫，再有界坐标模式搜索；无改善步长减半至 min_step_fraction=1e−5，初始 .25，只有用户显式给定的迭代/评价限额会提前停止。该算法为局部搜索，不是全局最优证明；最优完整评分候选与末次探点、收敛/预算/失败/取消分开。每个名义候选连同完整有限场景算一次候选评价，物理前向与Jacobian调用另计。</p>
+<p>旧默认robustness_only直接降低用户所选误差标量，不调用名义优化器冒充鲁棒优化，不强加未请求名义罚项；新nominal_preserving显式施加原名义硬约束，见14an。旧策略采用每变量17点确定性有限域扫，再有界坐标模式搜索；无改善步长减半至 min_step_fraction=1e−5，初始 .25，只有用户显式给定的迭代/评价限额会提前停止。该算法为局部搜索，不是全局最优证明；最优完整评分候选与末次探点、收敛/预算/失败/取消分开。每个名义候选连同完整有限场景算一次候选评价，物理前向与Jacobian调用另计。</p>
 <p>冻结缓存覆盖实际材料、光学环境、全部目标/原网格、误差与场景、变量层ID；不只用快照展示metadata。检查点含完整请求和已完成评分候选，加载/应用前可独立重放名义、线性及有限场景，验证层序/材料/未选层厚度保持。缓存最多32项且估计64MiB；完整结果保留估计超过256MiB则报告所需/限制字节并拒绝，不静默删场景或稀疏原网格。这些仅为本项目资源护栏。</p>
 <p>适用：已有单面、前表面、受支持相干或半无限基片固定层序 R/T；只研究膜厚误差。n/k、粗糙度、角度/波长误差、一般相关矩阵、相位/GD/GDD、一般各向异性和制造蒙特卡洛分布不支持。结果不是实镜制造或实测材料认证。CLI 通过 --request/--output，输出不覆盖已有文件；退出0=completed、3=partial预算、130=cancelled、2=failed。</p>
 <p class="source">来源：解析相干 TMM 与同页厚度 Jacobian 复用 <a href="https://arxiv.org/abs/1603.02720">Byrnes 原文</a>。一阶误差传播为所声明模型的代数定义；场景聚合、17点初始化、局部搜索与资源边界未找到外部依据，仅为本项目实现。不能援引来源声称制造分布或此搜索策略已获验证。</p>
@@ -3167,6 +3169,91 @@ close/shutdown/history/late old operation: do not trigger automatic apply</pre>
 <p><strong>进程CPU计时与验证负载：</strong>工作量中的CPU秒为物理评价前后 <code>process_time</code> 之差，只累计已收回的真实非负增量；0仍是合法计时观测，未收到结果则保持未知，不能改成伪造的正数。2026-10-23的受控Windows观测中，0.85–2.73ms微任务可返回0，正增量为15.625ms的倍数；报告单位/名义分辨率不保证每个微任务都可分辨。这是该主机观测，不是平台通用精度保证。专用6-worker调度回归将其原31点测试网格增至4097点，以真实光学负载保留逐PID正CPU断言；生产网格、计时器及200000准入阈值不变。原生19-worker重负载证明独立保留。</p>
 <p>调度前预留完整批预算，取消及总时限贯穿启动/评价/等待；局部阶段到期不再准入新批，已准入不可分割工作可稍后返回。崩溃后原物理工作保持未知，串行重算记回退，不能虚报为0。结果区展示真实派发PID而不是输入数字。有限实测：本云请求19、可用CPU9时达9真实PID；48层1001点的12个独立Jac任务热池约1.63×，仅为该评价阶段，不是整个流程或线程池对比。四窗原冷启动1200秒未达标结论未改变。普通名义门限、严格不等号、可选敏感性目标及硬件渲染均不改变。</p>
 </section>
+<section id="film-robust-nominal-preserving-20261023">
+<style>
+#film-robust-nominal-preserving-20261023 .robust-note{border-left:4px solid #087f78;padding:10px 14px;background:#eef7f4;color:#173b37}
+#film-robust-nominal-preserving-20261023 .robust-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+#film-robust-nominal-preserving-20261023 .robust-grid>div{border:1px solid #cad8d5;border-radius:8px;padding:12px}
+#film-robust-nominal-preserving-20261023 .formula{white-space:normal;overflow-wrap:anywhere;padding:12px 16px;background:#f2f5f8;border-radius:8px;line-height:1.8}
+#film-robust-nominal-preserving-20261023 svg{display:block;width:100%;height:auto;max-width:1000px;margin:auto}
+#film-robust-nominal-preserving-20261023 svg text{font-family:system-ui,sans-serif;fill:#203d43}
+#film-robust-nominal-preserving-20261023 figcaption{color:#50616a;line-height:1.6;margin-top:8px}
+</style>
+<h2>14an 原名义硬约束与可重放有限场景稳健精修</h2>
+<p>更新：2026-10-23。用途：在原名义规格可行域内降低明确厚度误差场景的违规。输入/输出沿独立敏感性 request/result v1；实现位置为 <code>coat_sim/core/film_sensitivity.py</code> 与 <code>film_sensitivity_constrained.py</code>，解析相干前向复用 <code>film_optimization_derivatives.py</code>。接口、终态与重放边界见 <a href="film-robust-optimization-contract.md">有限场景稳健优化契约</a>及<a href="film-sensitivity-contract.md">原敏感性工作流契约</a>。</p>
+<p class="robust-note"><strong>边界先行：</strong><code>optimization_policy=nominal_preserving</code> 是显式新选项，旧默认 <code>robustness_only</code> 及其坐标搜索保留。新策略只优化有限场景 worst/expected，不加安全 margin，不自动修复初态，不把局部收敛、训练 loss 降低或有限场景通过称为真实生产良率提高。</p>
+
+<h3>输入、坐标与幅度语义</h3>
+<p>固定已有单面前表面层序、原 R/T 波长/角度/偏振条件、冻结材料 n/k、显式变量边界及显式场景。物理厚度/波长单位 nm，角度 deg，R/T 为无量纲功率分数；0.01 的相对误差表示 1%。不按 QW 显示厚度施加误差，误差层列表与优化变量列表分别按层 ID 映射，顺序和集合均可不同。</p>
+<div class="formula" aria-label="厚度误差变换公式">
+Aᵢ = absolute_nmᵢ + [旧 unitᵢ = absolute_nm] · magnitudeᵢ；<br>
+rᵢ = relative_fractionᵢ + [旧 unitᵢ = relative_fraction] · magnitudeᵢ；<br>
+aᵢ(dᵢ) = Aᵢ + rᵢdᵢ，δdₛᵢ = cₛᵢaᵢ(dᵢ)，d′ₛᵢ = dᵢ + δdₛᵢ。
+</div>
+<p>所有尺度非负，旧 magnitude/unit 与新 absolute_nm/relative_fraction 加和，不覆盖。同一层全部分量共用一个有符号潜因子。因此 sigma 语义下 σᵢ=Aᵢ+rᵢdᵢ 是完全相关的和，<strong>不是</strong>独立噪声的 √(Aᵢ²+(rᵢdᵢ)²)。默认 <code>error_amplitude_semantics=bounded_amplitude</code> 要求每个 c∈[−1,1]；<code>standard_deviation</code> 允许 σ 倍数超过 ±1，不自动假定正态、不截断。负或非有限扰动厚度明确失败，绝不夹到零。</p>
+<div class="robust-grid">
+<div><strong>逐层 / 批次</strong><p><code>independent</code> 可逐层给系数；<code>common_mode</code> 同一场景所有误差层共享同一系数。显式有限点本身不构成统计独立性证据。</p></div>
+<div><strong>按材料共模</strong><p><code>material_common_mode</code> 同一 material_id 的误差层共享一次因子，各层 a(d) 仍可不同。任意协方差与监控反馈尚不支持。</p></div>
+<div><strong>线性沉积漂移</strong><p><code>linear_drift</code>：cₛᵢ=zₛhᵢ，hᵢ=−1+2kᵢ/(L−1)，按完整前表面层序；L=1 时 h=1。不是累积随机游走或 AR(1)。</p></div>
+</div>
+<figure class="figure">
+<svg viewBox="0 0 960 245" role="img" aria-labelledby="robustFactorTitle20261023 robustFactorDesc20261023">
+<title id="robustFactorTitle20261023">四类场景潜因子与独立变量选择</title>
+<desc id="robustFactorDesc20261023">六个示意层，材料高低交替。逐层误差有六个潜因子，批次共模有一个，按材料有两个，线性漂移沿完整层序从负到正。选中哪些优化变量不改变误差的作用范围。</desc>
+<g stroke="#c5d5d8" stroke-width="1"><path d="M210 30V210M330 30V210M450 30V210M570 30V210M690 30V210M810 30V210M930 30V210"/></g>
+<g font-size="16"><text x="22" y="32">示意完整层序</text><text x="22" y="83">逐层独立因子</text><text x="22" y="120">批次共模</text><text x="22" y="157">材料共模</text><text x="22" y="194">线性漂移 h</text></g>
+<g font-size="16" text-anchor="middle"><text x="270" y="32">1 / H</text><text x="390" y="32">2 / L</text><text x="510" y="32">3 / H</text><text x="630" y="32">4 / L</text><text x="750" y="32">5 / H</text><text x="870" y="32">6 / L</text>
+<text x="270" y="83">z₁</text><text x="390" y="83">z₂</text><text x="510" y="83">z₃</text><text x="630" y="83">z₄</text><text x="750" y="83">z₅</text><text x="870" y="83">z₆</text>
+<text x="270" y="120">z</text><text x="390" y="120">z</text><text x="510" y="120">z</text><text x="630" y="120">z</text><text x="750" y="120">z</text><text x="870" y="120">z</text>
+<text x="270" y="157">zH</text><text x="390" y="157">zL</text><text x="510" y="157">zH</text><text x="630" y="157">zL</text><text x="750" y="157">zH</text><text x="870" y="157">zL</text>
+<text x="270" y="194">−1</text><text x="390" y="194">−0.6</text><text x="510" y="194">−0.2</text><text x="630" y="194">0.2</text><text x="750" y="194">0.6</text><text x="870" y="194">1</text></g>
+<text x="480" y="231" text-anchor="middle" font-size="15">变量选择仅控制哪些名义厚度能改变，不会自动删掉未优化层的已声明误差。</text>
+</svg>
+<figcaption>图14an-1：潜因子结构示意，不是工艺校准。线性漂移按完整层序定义；只挑中间几个变量或误差层时不会重新拉满到 ±1。</figcaption>
+</figure>
+
+<h3>有限场景目标、原名义门与解析链式梯度</h3>
+<p>条件 c 包含目标行及其原采样波长、角度、偏振/metric；w_c&gt;0 为目标权重，b_c&gt;0 为原 normalization_scale。range 违规 vₛc=max(0,lower_c−yₛc,yₛc−upper_c)，未给边界省略；value 违规 vₛc=|yₛc−target_c|。eₛc=vₛc/b_c。完整相干前向 y(d′ₛ) 是真实场景值；y(d)+Jδd 只是一阶诊断。</p>
+<div class="formula" aria-label="有限场景最坏违规和期望场景均方根公式">
+finite_scenario_worst = maxₛ,c √w_c · eₛc；<br>
+finite_scenario_expected = √[ (Σₛ pₛ Σ_c w_c eₛc²) / ((Σₛ pₛ)(Σ_c w_c)) ]。
+</div>
+<p>pₛ&gt;0，可不预归一化；它不影响 worst。expected 是跨场景/条件的加权 RMS，等价于场景 RMS 的加权 RMS，<strong>不是场景 RMS 的算术平均，更不是通过概率</strong>。该非负违规目标在全部场景恰好通过后为零，不额外优化 signed tail 或 CVaR。</p>
+<p>新策略的名义约束保留原响应 lower/upper 或精确 value 等式，不由权重、normalization_scale、acceptable_normalized_error 或 solver 停止容差放宽。原输入已有 margin 则原样保留，不再叠加。显式严格上界在 SLSQP 约束中使用 nextafter(upper,−∞)，最终仍按原 &lt; upper 检查；未指定仍 ≤。一 ULP 的浮点闭约束不是工艺安全余量。严格边界恰好相等时违规分数可能为零，但通过标志仍为假。</p>
+<div class="formula" aria-label="相对厚度误差下的梯度链式法则">
+受误差变量 j：∂d′ₛⱼ/∂dⱼ = 1+cₛⱼrⱼ；<br>
+∂yₛc/∂dⱼ = (∂yₛc/∂d′ₛⱼ)(1+cₛⱼrⱼ)；未受误差变量因子为 1。<br>
+固定的是 cₛᵢ，不是初态的 δdₛᵢ；相对幅度随候选厚度更新。
+</div>
+<p>nominal 与各场景在各自实际设计点调用解析厚度 Jacobian，分别映射误差列和自由变量列。旧相对 magnitude 与新增 relative_fraction 都进入 r。有限 worst 用辅助 epigraph z；expected 使用同一聚合目标的解析导数。变量按原名义区间与所有场景非负物理域交集的有效可表示端点归一化，导数乘有效域跨度；精确端点、初始物理厚度锚点与近端点插值避免反变换越出用户显式厚度界。物理根按真实 d+c(A+rd) 算式复核，至多向域内检查64个相邻float后仍不安全则明确数值失败，不把负扰动夹0，不增加工艺margin。worst的√w·值/scale及同尺度Jac用frexp/ldexp稳定乘除，不先形成可溢出的√w/scale，不删除条件；入档前再核实际名义厚度界，正式重放界不放宽。SLSQP 是局部约束求解，不是全局可行或最优证明。</p>
+
+<figure class="figure">
+<svg viewBox="0 0 1000 340" role="img" aria-labelledby="robustFlowTitle20261023 robustFlowDesc20261023">
+<title id="robustFlowTitle20261023">名义保留场景优化与可行 incumbent</title>
+<desc id="robustFlowDesc20261023">冻结原请求后检查初态，原名义不合格则失败且不修复。合格初态成为完整可行基线。SLSQP 利用固定场景和解析导数试探，只有全部原名义约束通过且完整场景评分的改善候选才进入 incumbent。预算或取消保留已完成可行候选。独立验收场景不用于训练。</desc>
+<defs><marker id="robustFlowArrow20261023" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#526976"/></marker></defs>
+<g stroke="#087f78" fill="#e9f4f1" stroke-width="1.5"><rect x="18" y="24" width="200" height="78" rx="9"/><rect x="265" y="24" width="240" height="78" rx="9"/><rect x="555" y="24" width="200" height="78" rx="9"/><rect x="555" y="154" width="200" height="80" rx="9"/><rect x="18" y="270" width="320" height="50" rx="9"/><rect x="385" y="270" width="370" height="50" rx="9"/></g>
+<rect x="265" y="154" width="240" height="80" rx="9" fill="#fff1ed" stroke="#ac4a32" stroke-width="1.5"/>
+<rect x="805" y="154" width="178" height="80" rx="9" fill="#eef2fa" stroke="#526976" stroke-width="1.5"/>
+<g font-size="16" text-anchor="middle"><text x="118" y="55">原规格 / 原网格</text><text x="118" y="81">材料 / 明确场景冻结</text><text x="385" y="55">初态完整名义核对</text><text x="385" y="81">显式厚度边界</text><text x="655" y="55">完整可行基线</text><text x="655" y="81">初始化 incumbent</text><text x="385" y="187">初态不合格 → failed</text><text x="385" y="212">不加 margin / 不自动修复</text><text x="655" y="187">SLSQP + 解析 J</text><text x="655" y="212">固定场景、原名义约束</text><text x="894" y="187">独立 holdout</text><text x="894" y="212">非训练 / 非选解</text><text x="178" y="301">取消 / 预算：保留完整可行 incumbent</text><text x="570" y="301">完整评分且名义通过、目标改善 → 更新</text></g>
+<g fill="none" stroke="#526976" stroke-width="2" marker-end="url(#robustFlowArrow20261023)"><path d="M218 63H265"/><path d="M505 63H555"/><path d="M385 102V154"/><path d="M655 102V154"/><path d="M655 234V270"/><path d="M385 295H338"/><path d="M755 194H805"/></g>
+<text x="520" y="48" font-size="13">通过</text><text x="396" y="136" font-size="13">失败</text>
+</svg>
+<figcaption>图14an-2：中间试探可以不合格，但不能覆盖已完成可行候选。solver success 不代替原名义 checker；取消、预算、失败与局部完成分别报告。</figcaption>
+</figure>
+
+<h3>重现、停止与资源</h3>
+<p><code>generate_film_sensitivity_scenarios</code> 需要显式 sample_count、seed、error_model 和 distribution：bounded_uniform 抽有界潜因子，与 bounded_amplitude 配套；gaussian 抽不截断标准正态，与 standard_deviation 配套。生成器返回显式 FilmSensitivityScenario；实际系数随请求冻结，求解中不再抽样。调用方另外记录种子/分布/用途，不能杜撰请求中不存在的种子字段，也不填用户未提供的工艺精度。默认 scenario_prefix 为 process 只用于命名，不代表实测工艺。</p>
+<p>单次场景生成 sample_count∈[1,100000] 且系数总数≤2000000，超过明确拒绝；这是本项目分配护栏，不是推荐样本量。核心保留原网格，不为赶预算稀疏化/删场景。完整结果估计上限 256 MiB、分析缓存 32 项/64 MiB；约束导数额外存储纳入估计。候选评价、实际前向、Jacobian 与失败调用分别计数，不用迭代次数冒充相同物理预算。</p>
+<p>当前 SLSQP 数值 ftol=1e−10；max_iterations 未给时约束路径内部上限为100次，显式给定则用该值，max_evaluations 未给不另设候选评价限额。它们是本项目计算参数，不放宽名义规格。新策略完成为 constrained_tolerance；初态名义失败为 initial_nominal_infeasible；最终试探被精确名义门拒绝为 constrained_nominal_rejected（partial），其他求解停止为 constrained_solver_stopped（partial）。预算/取消沿既有独立终态。初态超出边界或名义不合格明确失败；没有可行点时不创建“通过”的空结果。取消在物理/分块边界协作检查，partial/cancelled/failed 保留已有完整可行 incumbent，但不自动应用。检查点、恢复、原子保存、来源 revision/编辑 epoch 与物理重放沿独立工作流门禁；未完成末点、半个场景云、伪造 metadata 或 solver 输出不能成为可应用证据。</p>
+
+<h3>线性诊断、独立验收与已知近似</h3>
+<p>线性响应的独立层尺度为 √Σᵢ(Jᵢaᵢ)²，批次共模为 |ΣᵢJᵢaᵢ|，材料共模先按材料求和再对材料取 L2，线性漂移为 |ΣᵢJᵢaᵢhᵢ|。bounded 语义下这些是本项目局部诊断尺度，不是 box 最坏上界；真正独立 box 的一阶单响应上界为 Σᵢ|Jᵢ|aᵢ。只有潜因子分布/协方差已明确时，才可能把相应 L2 解释为标准差；不能把诊断范数当有限误差或良率。</p>
+<p>训练场景参与优化；validation/调参场景一旦用于选择变量、误差档、seed 或候选，就不能再叫 holdout；最终 holdout 在候选固定后只验收。如果据其结果重选方案，需要新的未使用 holdout。不同 seed 本身不是无泄漏证明。baseline/candidate 用相同显式场景成对比较，并报告原名义通过、完整代理分数、逐场景通过与全部模型假设。</p>
+<p><strong>资格边界：</strong>名义通过仅为原采样网格合格，不是波长/角度连续域认证；细网格也不是数学证明。有限 worst 不覆盖未列出的有界组合，expected RMS 不是制造通过率。可以报告该有限表中的通过比例，不能称真实生产良率。当前仅有厚度误差，未包含 n/k、粗糙度、空间通量、角度/波长扰动、相位/GD/GDD、任意相关矩阵或顺序光学监控反馈；固定拓扑局部搜索也不能保证大误差下存在可行解。</p>
+<p class="source">来源与外推边界：<a href="https://doi.org/10.1364/AO.50.000C36">Birge、Kärtner 与 Nohadani（2011）</a>（<a href="https://bib-pubdb1.desy.de/record/97205/files/32DE6A27-C2C7-A869-C92E4A7D3539AB91_206412.pdf">DESY 开放全文</a>）说明最坏代理改善不必然改善制造良率；<a href="https://doi.org/10.1364/OE.19.002371">Pervak、Trubetskov 与 Tikhonravov（2011）</a>（<a href="https://attoworld.de/fileadmin/user_upload/tx_attoworld/publications/paper_OptExpr_Y2011_M01_D31_V19_P2371.pdf">作者机构全文</a>）是邻域 design cloud 的方法来源，不验证本项目蒸发精度或同潜因子模型；<a href="https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html">SciPy SLSQP 官方文档</a>是约束求解入口；<a href="https://optilayer.com/optilayer-tools/error-analysis/statistical-error-analysis/">OptiLayer 官方统计误差说明</a>支持区分绝对/相对及材料相关项，不提供本项目设备参数。四类因子具体编码、同潜因子加和、漂移坐标、有限场景评分与可行 incumbent 协议均为本项目约定，未找到外部依据证明其组合已在本项目实物中验证。</p>
+</section>
+
 <section id="film-solver-powell">
 <h2>14i-2 有边界Powell方向集</h2>
 <p>输入14i-1固定层序问题，输出完整原指标档案。在[0,1]归一化厚度上依次做一维有界线搜索，以本轮净位移更新方向集；不求导。优点是无需Jacobian且可移动到非坐标方向，适合已有层序的局部精修。多峰谱、很窄的谷或预算不足时可能停在较差局部解；每轮含多次光学评估。</p>
