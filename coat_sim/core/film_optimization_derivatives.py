@@ -19,7 +19,7 @@ import hashlib
 import json
 import math
 from threading import RLock
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -274,7 +274,7 @@ def _analytic_one_polarization(waves, indices, thickness_nm, layer_ids,
     return jacobian_r, jacobian_t
 
 
-def simulate_with_thickness_jacobian(
+def _prepare_thickness_jacobian_inputs(
     design, materials, variables, settings, *, zero_thickness_layer_ids=(),
     wavelengths_nm=None,
 ):
@@ -310,7 +310,8 @@ def simulate_with_thickness_jacobian(
         material sampling and the returned R/T and Jacobians use this same
         detached float64 array, without reconstructing chunk interior points.
 
-    Returns a mapping with wavelength_nm, R, T, jacobian_R and jacobian_T.
+    Returns the checked ndarray recurrence inputs. Both public forward/Jacobian
+    and private scalar-objective probes share these exact checks and arrays.
     The Jacobians have shape [wavelength, variable] and units fraction/nm.
     This entry point intentionally supports only coherent front coatings on
     a single-sided, semi-infinite substrate. It rejects double-sided/back-side
@@ -325,7 +326,6 @@ def simulate_with_thickness_jacobian(
     if len(set(zero_ids)) != len(zero_ids):
         raise ValueError("zero_thickness_layer_ids must not contain duplicates")
 
-    design_input = design
     if zero_ids:
         if not isinstance(design, Mapping):
             raise ValueError("design must be a mapping")
@@ -337,7 +337,6 @@ def simulate_with_thickness_jacobian(
         back = probe_design.get("back_layers", [])
         if not isinstance(front, list) or not isinstance(back, list):
             raise ValueError("zero-thickness probes require front/back layer lists")
-        all_rows = [row for row in [*front, *back] if isinstance(row, Mapping)]
         for identifier in zero_ids:
             front_matches = [row for row in front
                              if isinstance(row, Mapping) and row.get("id") == identifier]
@@ -346,7 +345,7 @@ def simulate_with_thickness_jacobian(
             if len(front_matches) != 1 or back_matches:
                 raise ValueError(
                     f"zero-thickness layer ID must identify exactly one front layer: {identifier}")
-            layer = front_matches[0]
+            layer = cast(dict[str, Any], front_matches[0])
             thickness = layer.get("thickness")
             if not isinstance(thickness, Mapping) or thickness.get("unit") != "nm":
                 raise ValueError(f"zero-thickness layer must use nm units: {identifier}")
@@ -464,14 +463,14 @@ def simulate_with_thickness_jacobian(
     ordered_layers = list(reversed(design["front_layers"]))
     ordered_ids = []
     layer_columns = []
-    thickness_nm = []
+    thickness_values_nm = []
     for layer in ordered_layers:
         ordered_ids.append(layer["id"])
         layer_columns.append(index_series(layer))
         n_reference = None
         if layer["thickness"]["unit"] == "qw":
             n_reference = evaluate(layer, design["reference_wavelength_nm"], purpose="reference").real
-        thickness_nm.append(physical_thickness_nm(
+        thickness_values_nm.append(physical_thickness_nm(
             layer, design["reference_wavelength_nm"], n_reference,
         ))
     if zero_ids:
@@ -481,13 +480,24 @@ def simulate_with_thickness_jacobian(
             raise ValueError("zero-thickness layer IDs are not in front_layers: " +
                              ", ".join(sorted(missing_zero_ids)))
         for identifier in zero_ids:
-            thickness_nm[ordered_id_positions[identifier]] = 0.0
+            thickness_values_nm[ordered_id_positions[identifier]] = 0.0
 
     indices = np.column_stack([incident_indices, *layer_columns, substrate_indices])
-    thickness_nm = np.asarray(thickness_nm, dtype=float)
+    thickness_nm = np.asarray(thickness_values_nm, dtype=float)
     angle = normalized["angle_deg"]
     polarization = normalized["polarization"]
 
+    return waves, indices, thickness_nm, ordered_ids, variable_columns, angle, polarization
+
+
+def _thickness_jacobian_arrays(
+    waves, indices, thickness_nm, ordered_ids, variable_columns, angle, polarization,
+):
+    """Return both finite union-column Jacobians without a second value solve.
+
+    Transmission is differentiated with the actual incident/exit flux, never
+    inferred as 1-R. Keep both finite checks even for an R-only or T-only probe.
+    """
     # Differentiate first so an exact critical layer is rejected before the
     # value solver enters its separate normalized-field implementation.
     polarizations = ("s", "p") if polarization == "unpolarized" else (polarization,)
@@ -503,6 +513,37 @@ def simulate_with_thickness_jacobian(
     if not np.all(np.isfinite(jacobian_r)) or not np.all(np.isfinite(jacobian_t)):
         raise ValueError("nonfinite analytic thickness Jacobian")
 
+    return jacobian_r, jacobian_t
+
+
+def _simulate_thickness_jacobian_arrays(
+    design, materials, variables, settings, *, wavelengths_nm=None,
+):
+    """Private ndarray-only FD probe channel; no power solve or list conversion."""
+    prepared = _prepare_thickness_jacobian_inputs(
+        design, materials, variables, settings, wavelengths_nm=wavelengths_nm,
+    )
+    jacobian_r, jacobian_t = _thickness_jacobian_arrays(*prepared)
+    return prepared[0], jacobian_r, jacobian_t
+
+
+def simulate_with_thickness_jacobian(
+    design, materials, variables, settings, *, zero_thickness_layer_ids=(),
+    wavelengths_nm=None,
+):
+    """Return canonical coherent R/T and analytic thickness Jacobians as lists.
+
+    Columns differentiate physical nm in the supplied variable order. The exact
+    optional grid and all domain checks are shared with the private ndarray-only
+    probe path by :func:`_prepare_thickness_jacobian_inputs`. This public complete
+    evaluation still runs ``coherent_rta`` for canonical power values.
+    """
+    prepared = _prepare_thickness_jacobian_inputs(
+        design, materials, variables, settings,
+        zero_thickness_layer_ids=zero_thickness_layer_ids, wavelengths_nm=wavelengths_nm,
+    )
+    jacobian_r, jacobian_t = _thickness_jacobian_arrays(*prepared)
+    waves, indices, thickness_nm, _ids, _columns, angle, polarization = prepared
     # Reuse the optical solver for the returned power values so all coherent
     # branch handling and flux definitions are precisely the same as service.
     response = coherent_rta(

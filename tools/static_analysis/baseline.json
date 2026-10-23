@@ -5540,16 +5540,6 @@
     },
     {
       "tool": "ruff",
-      "path": "coat_sim/core/film_optimization_derivatives.py",
-      "code": "F841",
-      "message": "Local variable `design_input` is assigned to but never used",
-      "scope": "simulate_with_thickness_jacobian",
-      "anchor": "design_input = design",
-      "fingerprint": "177c67a756efce0d7e1d3f1e60b9899da24face371d36422065d4e8f298d84d5",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
       "path": "coat_sim/ui/film_design.py",
       "code": "E702",
       "message": "Multiple statements on one line (semicolon)",
@@ -11476,16 +11466,6 @@
       "scope": "_finish_kernel_record",
       "anchor": "items = ((name, getattr(entry, name)) for name in",
       "fingerprint": "2ec3e12d8ee8537b5080636366a27144b934454e8201e0ed84f93ba25c900324",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_derivatives.py",
-      "code": "assignment",
-      "message": "Incompatible types in assignment (expression has type \"ndarray[Any, Any]\", variable has type \"list[Any]\")",
-      "scope": "simulate_with_thickness_jacobian",
-      "anchor": "thickness_nm = np.asarray(thickness_nm, dtype=float)",
-      "fingerprint": "2ec4e2bca94bab7ff5d191fe517c360af80c17a5b315c06fe41d82e7e54cadca",
       "count": 1
     },
     {
@@ -24976,16 +24956,6 @@
       "scope": "",
       "anchor": "ThemeControls.ThemeLabel { visible: dialog.ideal; width: parent.width; wrapMode: Text.Wrap; text: \"你已明确选择理想小孔模型，αZn=αS₂=τZn=τS₂=1。它是理想出口情景，不是实测 ZnS 开放表面升华系数，也不表示装置已标定。\"; color: typeof Theme !== \"undefined\" ? Theme.snapshot.colorWarning : \"#b07730\" }",
       "fingerprint": "67d3e8a8693c005cb98cfcb67c03f8f2e5b31616c5a1f43c840f8d112798b901",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_derivatives.py",
-      "code": "index",
-      "message": "Unsupported target for indexed assignment (\"Mapping[Any, Any]\")",
-      "scope": "simulate_with_thickness_jacobian",
-      "anchor": "layer[\"thickness\"] = {\"value\": 1.0, \"unit\": \"nm\"}",
-      "fingerprint": "67d5a8f253e0de11022f8743d19f30fd5a1b23062e2c760c8bd76317257e15c4",
       "count": 1
     },
     {
@@ -54700,16 +54670,6 @@
     },
     {
       "tool": "ruff",
-      "path": "coat_sim/core/film_optimization_derivatives.py",
-      "code": "F841",
-      "message": "Local variable `all_rows` is assigned to but never used",
-      "scope": "simulate_with_thickness_jacobian",
-      "anchor": "all_rows = [row for row in [*front, *back] if isinstance(row, Mapping)]",
-      "fingerprint": "e32373551e51cdbb41d5bf698dca29ef13e73ce777916a49871ff31b92ec03d9",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
       "path": "tests/test_process_environment.py",
       "code": "E702",
       "message": "Multiple statements on one line (semicolon)",
@@ -61769,6 +61729,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "Resolved only Scheduler.memory_status E701 fingerprint 62da8d6b7e51217eec8a18db42ec8278e28c16fed0ea9dc172aead2d8dc26ac8 by expanding the changed conditional return; retain reviewed explicit-extrema Theme/root removals, add no diagnostic entries.",
+  "last_prune_reason": "Remove exactly four resolved derivative diagnostics after scalar-probe shared preparation: deleted two unused locals, separated list/ndarray names, and typed the already validated mutable layer; no new diagnostics accepted.",
   "configuration_review_reason": "2026-10-17: add only BSD-3-Clause pypdf 6.21.0 for isolated research PDF extraction; all previous dependency/tool versions, analyzer rules and diagnostic entries remain unchanged. The lock-file digest changes only for this reviewed runtime dependency."
 }

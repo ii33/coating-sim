@@ -392,18 +392,14 @@ def test_raw_block_budget_cannot_be_bypassed_by_one_multiblock_candidate():
 def test_cancel_during_raw_probe_block_never_publishes_partial_gradient(monkeypatch):
     service, request = problem()
     event = Event()
-    original = ideal.simulate_with_thickness_jacobian
-    calls = 0
+    original = ideal._simulate_thickness_jacobian_arrays
 
     def cancel_after_second(*args, **kwargs):
-        nonlocal calls
-        calls += 1
         answer = original(*args, **kwargs)
-        if calls == 2:
-            event.set()
+        event.set()  # Baseline was the first block, this scalar probe is second.
         return answer
 
-    monkeypatch.setattr(ideal, "simulate_with_thickness_jacobian", cancel_after_second)
+    monkeypatch.setattr(ideal, "_simulate_thickness_jacobian_arrays", cancel_after_second)
     result = ideal.execute_film_ideal_sensitivity_request(service, request, cancel_event=event)
     assert result.state == "cancelled" and result.forward_evaluations == 2
     assert result.fd_gradient_evaluations == 0 and result.best_thickness_nm == {"low-film": 80.0}

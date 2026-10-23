@@ -750,10 +750,10 @@ def _execute(
                     changed = values.copy()
                     changed[col] = probe_value
                     probe = v1._candidate_design(design, variables, changed)
-                    data = evaluator.evaluate(probe, probe=True)
+                    probe_objective = evaluator.scalar_objective(probe)
                     # Probes can be nominal-infeasible; they are never retained
                     # as available candidates, even if their objective is lower.
-                    normalized_probe = data.analysis.objective_value / solver_scale
+                    normalized_probe = probe_objective / solver_scale
                     if not math.isfinite(normalized_probe):
                         raise ValueError(
                             "fixed initial-objective conditioning overflows at a finite-difference probe; no clipping"

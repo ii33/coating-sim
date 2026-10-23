@@ -33,7 +33,11 @@ from .film_optimization import (
     _checked_frozen_snapshot,
     _wavelength_chunks,
 )
-from .film_optimization_derivatives import _PreparedMaterialData, simulate_with_thickness_jacobian
+from .film_optimization_derivatives import (
+    _PreparedMaterialData,
+    _simulate_thickness_jacobian_arrays,
+    simulate_with_thickness_jacobian,
+)
 from .film_optimization_needle import _normalize_objectives, _physical_layer_thickness
 from .film_optimization_scoring import score_condition, weighted_rms_error
 
@@ -96,8 +100,10 @@ class FilmIdealSensitivityProgress:
 class FilmIdealSensitivityResult:
     """Feasible incumbent and solver termination are deliberately independent.
 
-    evaluations counts cache-miss candidate attempts; forward/jacobian count
-    paired raw condition blocks. probe_evaluations counts FD probe attempts
+    evaluations counts cache-miss candidate/probe attempts; forward/jacobian
+    count paired logical condition blocks, not canonical value-solver calls.
+    Scalar probes retain the analytic r/t recurrence but omit the redundant
+    coherent power solve. probe_evaluations counts FD probe attempts
     including cache hits; fd_gradient_evaluations counts complete gradients only.
     """
 
@@ -345,12 +351,22 @@ def estimate_film_ideal_sensitivity_resources(
         256 * (len(request.design_snapshot["front_layers"]) + 2) + 256 * (columns + 1) + 1024
     )
     prepared_optical_cache = 32 * 1024**2
+    # Scalars retain only global condition scales/normalized weights/energies,
+    # not a full-grid probe J or nominal analysis. Include two simultaneous
+    # block-normalized arrays for multiply/divide/square temporaries and a
+    # row reduction. Both union-column block Jacobians are conservatively
+    # included here too, although forward_workspace already allows for them.
+    extended_bytes = np.dtype(np.longdouble).itemsize
+    probe_workspace = extended_bytes * (
+        3 * points + block_points * (2 * sensitivity + 1)
+    ) + 16 * block_points * columns
     working_bytes = (
         solver_bytes
         + forward_workspace
         + prepared_optical_cache
         + min(MAX_CACHE_BYTES, 32 * cache_entry)
-        + 3 * cache_entry
+        + 3 * cache_entry  # Conservative ordinary-candidate retained/build margin.
+        + probe_workspace
     )
     return dict(
         condition_points=points,
@@ -366,6 +382,8 @@ def estimate_film_ideal_sensitivity_resources(
         estimated_jacobian_bytes=jacobian_bytes,
         estimated_forward_workspace_bytes=forward_workspace,
         estimated_prepared_optical_cache_bytes=prepared_optical_cache,
+        estimated_probe_workspace_bytes=probe_workspace,
+        estimated_probe_retained_jacobian_bytes=0,
         estimated_slsqp_workspace_bytes=solver_bytes,
         estimated_working_bytes=working_bytes,
         objective_probes_per_gradient=2 * free,
@@ -532,6 +550,23 @@ class _Evaluator:
             self.failures
         ) = 0
         self.gradients = 0
+        # Public forward/jacobian counters retain their paired condition-block
+        # budget meaning. This private counter records the actually requested
+        # redundant canonical value solves, not analytic recurrence work.
+        self.requested_coherent_value_solves = 0
+        points = sum(o.wavelength_samples * len(o.angles_deg) for o in request.objectives)
+        self.scales = np.empty(points, dtype=np.longdouble)
+        self.weights = np.empty(points, dtype=np.longdouble)
+        start = 0
+        for objective in request.objectives:
+            end = start + objective.wavelength_samples * len(objective.angles_deg)
+            self.scales[start:end] = objective.normalization_scale
+            self.weights[start:end] = objective.weight
+            start = end
+        # Identical full-condition ordering and normalization to complete
+        # evaluate(): never normalize each objective or each chunk separately.
+        self.weights /= np.max(self.weights)
+        self.weights /= np.sum(self.weights)
 
     def check(self, *, block=False):
         if self.cancel is not None and self.cancel.is_set():
@@ -550,8 +585,7 @@ class _Evaluator:
             for row in design["front_layers"]
         }
 
-    def evaluate(self, design, *, probe=False):
-        self.check()
+    def _candidate_key(self, design):
         physical = self.physical(design)
         if any(not math.isfinite(value) or value < 0 for value in physical.values()):
             raise ValueError("physical thicknesses must be finite and nonnegative")
@@ -559,12 +593,16 @@ class _Evaluator:
             not v.lower_nm <= physical[v.layer_id] <= v.upper_nm for v in self.request.variables
         ):
             raise ValueError("candidate violates explicit physical thickness bounds")
-        key = (
+        return physical, (
             self.identity,
             np.asarray(
                 [physical[row["id"]] for row in design["front_layers"]], dtype="<f8"
             ).tobytes(),
         )
+
+    def evaluate(self, design, *, probe=False):
+        self.check()
+        physical, key = self._candidate_key(design)
         if probe:
             self.probes += 1
         if key in self.cache:
@@ -586,6 +624,7 @@ class _Evaluator:
                         self.check(block=True)
                         self.forward += 1
                         self.jacobian += 1
+                        self.requested_coherent_value_solves += 1
                         response = simulate_with_thickness_jacobian(
                             design,
                             self.materials,
@@ -708,6 +747,92 @@ class _Evaluator:
             while len(self.cache) > 32 or len(self.cache) * self.entry_bytes > MAX_CACHE_BYTES:
                 self.cache.popitem(last=False)
         return result
+
+    def scalar_objective(self, design):
+        """Evaluate a complete FD probe without making it a candidate.
+
+        Reuse only an exact complete-candidate cache hit. New scalar probes
+        never add, replace or evict entries, including after cancellation.
+        """
+        self.check()
+        physical, key = self._candidate_key(design)
+        self.probes += 1
+        if key in self.cache:
+            self.cache_hits += 1
+            self.cache.move_to_end(key)
+            return self.cache[key].analysis.objective_value
+        self.evaluations += 1
+        amplitude = (
+            np.ones(len(self.sensitivity_columns))
+            if self.request.sensitivity_mode == "absolute"
+            else np.asarray([physical[i] for i in self.request.sensitivity_layer_ids])
+        )
+        energy = np.empty(len(self.weights), dtype=np.longdouble)
+        nonzero = False
+        start = 0
+        try:
+            for objective in self.request.objectives:
+                waves = np.linspace(
+                    objective.wavelength_min_nm,
+                    objective.wavelength_max_nm,
+                    objective.wavelength_samples,
+                )
+                for angle in objective.angles_deg:
+                    for chunk in _wavelength_chunks(waves, BLOCK_SAMPLES):
+                        self.check(block=True)
+                        self.forward += 1
+                        self.jacobian += 1
+                        returned_waves, jac_r, jac_t = _simulate_thickness_jacobian_arrays(
+                            design,
+                            self.materials,
+                            self.derivative_variables,
+                            dict(
+                                wavelength_min_nm=float(chunk[0]),
+                                wavelength_max_nm=float(chunk[-1]),
+                                samples=len(chunk),
+                                angle_deg=angle,
+                                polarization=objective.polarization,
+                                first_surface="front",
+                            ),
+                            wavelengths_nm=chunk,
+                        )
+                        self.check()
+                        if (returned_waves.shape != chunk.shape
+                                or returned_waves.tobytes()
+                                != np.asarray(chunk, dtype=np.float64).tobytes()):
+                            raise ValueError(
+                                "physical forward changed the exact original wavelength grid"
+                            )
+                        # Check BOTH metrics and ALL union columns, including
+                        # columns not selected by this objective's F.
+                        if any(jac.shape != (len(chunk), len(self.columns))
+                               or not np.all(np.isfinite(jac)) for jac in (jac_r, jac_t)):
+                            raise ValueError("physical forward returned invalid response/Jacobian")
+                        jac = jac_r if objective.metric == "R" else jac_t
+                        end = start + len(chunk)
+                        with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+                            normalized = (
+                                np.asarray(jac[:, self.sensitivity_columns], dtype=np.longdouble)
+                                * amplitude / self.scales[start:end, None]
+                            )
+                            energy[start:end] = np.sum(normalized * normalized, axis=1)
+                        nonzero = nonzero or bool(np.any(normalized != 0.0))
+                        start = end
+            # Only this one full-condition reduction matches the complete
+            # path's arithmetic order. Summing scalar block F values does not.
+            with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+                objective_value = float(np.sum(self.weights * energy))
+            if objective_value == 0.0 and nonzero:
+                raise ValueError(
+                    "ideal sensitivity objective underflows; a nonzero derivative cannot be claimed as zero"
+                )
+            if not math.isfinite(objective_value):
+                raise ValueError("ideal sensitivity mean-square objective is not finite")
+            self.check()
+        except (ValueError, ArithmeticError, FloatingPointError):
+            self.failures += 1
+            raise
+        return objective_value
 
 
 def _bounded_stencil(value, lower, upper, *, step_scale=1.0):
@@ -1014,10 +1139,10 @@ def _execute(
                     changed = values.copy()
                     changed[col] = probe_value
                     probe = _candidate_design(design, variables, changed)
-                    data = evaluator.evaluate(probe, probe=True)
+                    probe_objective = evaluator.scalar_objective(probe)
                     # Probes can be nominal-infeasible; they are never retained
                     # as available candidates, even if their objective is lower.
-                    normalized_probe = data.analysis.objective_value / solver_scale
+                    normalized_probe = probe_objective / solver_scale
                     if not math.isfinite(normalized_probe):
                         raise ValueError(
                             "fixed initial-objective conditioning overflows at a finite-difference probe; no clipping"

@@ -72,19 +72,32 @@ def test_real_fixed_budget_preview_changes_no_physics_or_incumbent(kind, enabled
     module = sensitivity if kind in ("sensitivity", "constrained") else ideal
     original = module.simulate_with_thickness_jacobian
     calls = []
+    scalar_calls = []
 
     def counted(*args, **kwargs):
         calls.append(1)
         return original(*args, **kwargs)
 
     monkeypatch.setattr(module, "simulate_with_thickness_jacobian", counted)
+    if kind in ("ideal", "ideal_v2"):
+        original_scalar = ideal._simulate_thickness_jacobian_arrays
+
+        def counted_scalar(*args, **kwargs):
+            scalar_calls.append(1)
+            return original_scalar(*args, **kwargs)
+
+        monkeypatch.setattr(ideal, "_simulate_thickness_jacobian_arrays", counted_scalar)
     expected = execute(None, request)
     expected_calls = len(calls)
+    expected_scalar_calls = len(scalar_calls)
     calls.clear()
+    scalar_calls.clear()
     observed, packets = observer(request, enabled=enabled)
     actual = execute(None, request, candidate_observer=observed)
     assert actual == expected
-    assert len(calls) == expected_calls == actual.forward_evaluations
+    assert len(calls) == expected_calls
+    assert len(scalar_calls) == expected_scalar_calls
+    assert len(calls) + len(scalar_calls) == actual.forward_evaluations
     assert not observed.last_error
     if enabled:
         assert packets and packets[-1]["terminal"]
@@ -166,18 +179,14 @@ def test_independent_analysis_does_not_fabricate_candidate_search(kind):
 def test_fd_probes_and_cancelled_half_gradient_never_enter_candidate_display(kind, monkeypatch):
     request, execute = case(kind, budget=20)
     expected_event = Event()
-    original = ideal.simulate_with_thickness_jacobian
-    calls = 0
+    original = ideal._simulate_thickness_jacobian_arrays
 
     def cancelled_forward(*args, **kwargs):
-        nonlocal calls
         result = original(*args, **kwargs)
-        calls += 1
-        if calls == 2:
-            expected_event.set()
+        expected_event.set()  # First scalar block, after one complete baseline block.
         return result
 
-    monkeypatch.setattr(ideal, "simulate_with_thickness_jacobian", cancelled_forward)
+    monkeypatch.setattr(ideal, "_simulate_thickness_jacobian_arrays", cancelled_forward)
     observed, packets = observer(request)
     result = execute(None, request, cancel_event=expected_event, candidate_observer=observed)
     assert result.state == "cancelled"
@@ -207,21 +216,24 @@ def test_v2_nominal_failed_guard_pass_candidate_is_retained_without_apply_author
 
 
 @pytest.mark.parametrize("kind", ["ideal", "ideal_v2"])
-def test_normal_trial_after_fd_cache_fill_is_observed_and_local_cache_hits_publish(kind, monkeypatch):
+@pytest.mark.parametrize("budget", [3, 4])
+def test_normal_trial_after_scalar_probe_is_fully_evaluated_and_cache_hits_publish(
+    kind, budget, monkeypatch,
+):
     import scipy.optimize  # type: ignore[import-untyped]
 
-    request, execute = case(kind, budget=20)
+    request, execute = case(kind, budget=budget)
     observed, packets = observer(request)
 
     def fake_minimize(fun, z, *, jac, callback, **_kwargs):
         fun(z)
-        jac(z)  # Populate only FD cache entries, never the display leaderboard.
+        jac(z)  # Scalar FD probes fill neither candidate cache nor leaderboard.
         initial_count = len(observed._top)
         assert initial_count == 1
         current_packets = len(packets)
         fun(z)  # Normal same-point local cache hit must still reach the observer.
         assert len(packets) > current_packets
-        # Use an actual prior FD point as a normal trial: a cache hit is not a probe.
+        # A former scalar probe must be fully evaluated before it is a candidate.
         physical = 80.0
         stencil = ideal._bounded_stencil if kind == "ideal" else ideal_v2._bounded_stencil
         x1, _x2 = stencil(physical, 60.0, 145.0)
@@ -233,9 +245,14 @@ def test_normal_trial_after_fd_cache_fill_is_observed_and_local_cache_hits_publi
 
     monkeypatch.setattr(scipy.optimize, "minimize", fake_minimize)
     result = execute(None, request, candidate_observer=observed)
-    assert result.probe_evaluations == 2 and result.cache_hits >= 1
-    assert result.forward_evaluations == 3
-    assert len(packets[-1]["top10"]) == 2
+    assert result.probe_evaluations == 2 and result.fd_gradient_evaluations == 1
+    # With only three blocks the normal trial cannot borrow the scalar F as
+    # a complete candidate. Four blocks allow its full nominal/guard work.
+    assert result.forward_evaluations == budget
+    assert result.state == ("partial" if budget == 3 else "completed")
+    assert len(packets[-1]["top10"]) == (1 if budget == 3 else 2)
+    if budget == 4:
+        assert result.cache_hits >= 1
 
 
 def test_robust_coordinate_trials_not_mistaken_for_fd_and_finite_scenarios_not_ranked():

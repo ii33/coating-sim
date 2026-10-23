@@ -612,15 +612,18 @@ def test_fd_probes_may_cross_guard_and_nominal_but_never_become_incumbents(monke
     scipy_optimize = import_module("scipy.optimize")
 
     probes = []
-    original = ideal._Evaluator.evaluate
+    original = ideal._Evaluator.scalar_objective
 
-    def captured(self, design, *, probe=False):
-        data = original(self, design, probe=probe)
-        if probe:
-            probes.append((self.request, data))
-        return data
+    def captured(self, design):
+        value = original(self, design)
+        # A separate test-only reference must not turn production scalar
+        # probes into complete candidates or alter their cache/accounting.
+        data = ideal._Evaluator(self.request).evaluate(design)
+        assert value == data.analysis.objective_value
+        probes.append((self.request, data))
+        return value
 
-    monkeypatch.setattr(ideal._Evaluator, "evaluate", captured)
+    monkeypatch.setattr(ideal._Evaluator, "scalar_objective", captured)
 
     def once(fun, z, *, jac, **_kwargs):
         fun(z)

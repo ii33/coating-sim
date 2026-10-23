@@ -243,6 +243,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#film-ideal-local-sensitivity-20261023">14ao 理想局部导数敏感度优化</a>
 <a href="#film-thickness-error-table-20261023">14ap 独立厚度参数表预期误差</a>
 <a href="#film-ideal-controlled-degradation-20261023">14aq 固定初始光谱的受控退化理想优化</a>
+<a href="#film-ideal-scalar-probes-20261023">14aq-1 理想敏感度标量探针</a>
 <a href="#candidate-display-score">14ar 可开关实时光谱与独立候选展示评分</a>
 </nav>
 <main>
@@ -3206,6 +3207,15 @@ close/shutdown/history/late old operation: do not trigger automatic apply</pre>
 <p>仅本次已锁基线evaluator缓存最近候选约束四元组，key为完整request identity+little-endian z精确bytes；数组不可写且无可写别名，换一bit/身份、失败或未完成构建不命中。旧矩阵先释放，首次锁基线清缓存，不跨运行共享。除原全拓扑物理working/retained/SLSQP估算，另计8M(V+1)约束缓存、构建临时峰值及逐条件基准对象/位串；均是保守非RSS估算，原资源上限保留，不降网格/删列绕门。2V指目标梯度probe次数，每个完整probe仍按全部原条件块计预算，取消保留上一个完整合法incumbent。</p>
 <p>输出分别报告初始/最终原nominal、guard、F与F/F₀、每行δ/消耗/超额以及最大定向光谱退化与位置。nominal=false但guard=true且F改善的合法候选可在明确确认未达标及退化幅度后应用；epoch/层ID/请求digest/operation/replay绑定和undo保持。小真实物理例与伪造边界负例验证该合同，不代表89层搜索、敏感度多核性能、生产良率或未验证文件后端已通过。</p>
 <p class="source">求解器接口与ftol含义：<a href="https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html">SciPy官方SLSQP文档</a>；本节未更换求解器、损失、F₀正缩放或完整网格。固定初态定向额度与模板选择为本项目实现，不声称全局收敛。</p>
+</section>
+<section id="film-ideal-scalar-probes-20261023">
+<h2>14aq-1 理想敏感度 ndarray 标量探针通道</h2>
+<p class="source">更新：2026-10-23。用途、输入输出：固定拓扑、有界物理厚度 nm、冻结 n+ik、完整原波长/角度/偏振/目标与敏感层集合，输入一次合法 FD 探点，输出单个完整 F（无量纲平方响应）；不输出候选或名义记录。实现：<code>film_optimization_derivatives.py::_prepare_thickness_jacobian_inputs / _thickness_jacobian_arrays / _simulate_thickness_jacobian_arrays</code> 与 <code>film_ideal_sensitivity.py::_Evaluator.scalar_objective</code>。普通候选继续 canonical coherent_rta、完整名义诊断、guard、榜单、checkpoint 和应用门。未更换 SLSQP、F/F₀、有界三点模板、变量 span 链项、原采样网格或物理域。</p>
+<div class="formula">w ← longdouble(原全局条件权重)；w ← (w / max(w)) / sum(w / max(w))<br>每原块：N = longdouble(J[:, 敏感列]) × a / scale；E[原全局位置] = sum(N², axis=1)<br>F = float(sum(w × E))，只在全部原条件结束后按原顺序归约一次。绝对 a=1nm；相对 a=d<sub>probe当前值</sub>，而不是中心 d。</div>
+<figure><svg viewBox="0 0 960 170" role="img" aria-labelledby="scalar-probe-title"><title id="scalar-probe-title">完整候选与纯标量探针分道</title><g fill="#e9f4f1" stroke="#087f78"><rect x="8" y="28" width="210" height="75" rx="8"/><rect x="255" y="28" width="310" height="75" rx="8"/><rect x="605" y="28" width="345" height="75" rx="8"/><path d="M218 65H255 M565 65H605" fill="none"/></g><g font-size="15" fill="#18303a" text-anchor="middle"><text x="113" y="57">同一冻结输入与原网格</text><text x="113" y="82">union列 / 双R、T检查</text><text x="410" y="57">同一解析双扫J，逐块写全局E</text><text x="410" y="82">真实flux JacT，不用 −JacR</text><text x="777" y="57">完整 F → 原有2V有界三点差分</text><text x="777" y="82">无名义对象、无榜单、无新缓存</text><text x="480" y="143">普通候选仍完整前向；FD探针省第二次coherent_rta与list往返，不省物理J递推</text></g></svg><figcaption>图14aq-2：标量通道只减掉求 F 无需的重复值求解、对象和序列化，绝不把未过名义/guard的探针发布为可应用结果。</figcaption></figure>
+<p>归约次序为本项目数值合同，不对块 F 先求和。longdouble 不假定在所有平台具有扩展精度，仅保证同平台与完整参考次序一致。保留非零导数下溢、溢出、非有限和 union 全列 JacR/JacT 检查；R-only 与 T-only 都不缩小检查域。真实 JacT 保留入射/出射通量，吸收下不能由 1−R 推断。共享准备保留相干单面、透明入射端、物理厚度、QW 参考折射率和精确原始波长位串检查；仍拒绝内部精确 q=0 等原不支持域。</p>
+<p>公开 forward/jacobian 继续计相同成对 condition block 作为既有预算单位，不表示实际重复值求解次数相同。每块前检查预算、前后检查取消；部分 E 不返回、不缓存，2V 梯度仍须全量完成。仅允许原 exact-full-candidate 缓存命中提取 F；新 scalar 不建缓存、不替换或驱逐正常候选。正常 trial 若访问先前仅算 F 的探点，必须重新完整评价才可入榜，不能借用标量当完整记录；因此旧/新实现任意同预算轨迹不保证一致，固定工作量对比须统一缓存策略，而同一新实现 UI 开关的同预算结果应一致。资源估算另列全局 longdouble scales/weights/energy 和块内平方临时，不保留全网格 probe J；正常候选、原缓存、基准、约束和 SLSQP 工作区仍独立保守计入。估算不是实测 RSS 或性能保证。</p>
+<p class="source">本节是本项目等价执行路径优化，未找到外部依据，仅为本项目实现。物理递推及真实通量沿14ao原实现；求解器边界参考 <a href="https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html">SciPy 官方 SLSQP 文档</a>。合成 k&gt;0 数学 fixture 只验证 A&gt;0 与 JacT，不是用户材料的 low-k 实证；不宣称89层优化、工艺良率或固定加速倍数已验收。</p>
 </section>
 <section id="candidate-display-score">
 <h2>14ar · 可开关实时光谱与独立候选展示评分</h2>
