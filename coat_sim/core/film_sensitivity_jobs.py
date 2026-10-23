@@ -147,11 +147,14 @@ def execute_job(
     report: Any,
     checkpoint_path: Any,
     write_json: Any,
+    *, candidate_observer=None, candidate_observer_factory=None,
 ) -> dict[str, Any]:
     if not isinstance(parameters, Mapping) or set(parameters) != {"payload"}:
         raise ValueError("film_sensitivity executor requires one frozen job")
     job = deepcopy(parameters["payload"])
     request = deserialize_job_payload(job)
+    observer = ((candidate_observer_factory(request) if candidate_observer_factory is not None
+                 else candidate_observer) if request.operation == 'optimize' else None)
 
     def progress(item):
         body = asdict(item)
@@ -173,6 +176,7 @@ def execute_job(
         cancel_event=cancel_event,
         progress_callback=progress,
         checkpoint_callback=checkpoint,
+        candidate_observer=observer,
     )
     payload = film_sensitivity_result_to_payload(result)
     if not result_matches_job(payload, job):

@@ -680,7 +680,8 @@ class _SynthesisStopEvent:
 
 def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cancel_event: Any = None,
                            progress_callback: Callable[[FilmSynthesisProgress], None] | None = None,
-                           snapshot_callback: Callable[[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]], None] | None = None) -> FilmSynthesisResult:
+                           snapshot_callback: Callable[[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]], None] | None = None,
+                           candidate_observer: Any = None) -> FilmSynthesisResult:
     """Return a reviewable candidate; completed means training and audit passed.
 
     Invalid requests raise ValueError. Numerical failures, cancellation and
@@ -756,6 +757,18 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
     last_stage_time = __import__("time").perf_counter()
     last_stage = "initialization"
     reason, state = "search_exhausted", "not_found"
+    from .film_candidate_display import CandidateDisplayObserver, finish_candidate_display, record_candidate
+
+    def display_value(value, *, is_best=False, is_current=True):
+        if type(candidate_observer) is not CandidateDisplayObserver or value is None:
+            return
+        record_candidate(candidate_observer, value["design"],
+            weighted_rms_error=value["score"]["weighted_rms_error"],
+            max_normalized_error=value["score"]["max_error"], condition_rows=value["score"]["errors"],
+            physical_thickness_nm=tuple(row["thickness"]["value"]
+                for side in ("front_layers", "back_layers") for row in value["design"].get(side, ())),
+            is_best=is_best, is_current=is_current, iterations=cycle, evaluations=evaluations,
+            source="film_synthesis", scope="training")
 
     def close_proposal_streams():
         # Merged generators publish their consumed-family diagnostics on close.
@@ -914,6 +927,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     completed_training_best = {"design": deepcopy(value["design"]),
                                                "score": _copy_internal_candidate(value["score"])}
                     completed_training_validation = None
+                display_value(value)
             return value
         except _StructureCancelled:
             raise
@@ -1022,6 +1036,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 operator=operator or archive_context.get("operator", "evaluated"))
         if feasible(value["design"]) and (best is None or rank(value) < rank(best)):
             best = _copy_internal_candidate(value)
+            display_value(best, is_best=True, is_current=False)
             emit("incumbent", "已保存独立评分的候选，等待最终密网格验证", value["design"], value["score"])
         # A training-feasible candidate may be better on audit even when it
         # loses the training cost tie-break. Audit it before discarding it.
@@ -2947,6 +2962,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                    "已取消；保留此前完整评分的候选，未确认达标。" if state == "cancelled" else
                    "尚未找到通过全部验证的膜系；候选仅供审查。")
         emit(state, message, None if best is None else best["design"], None if best is None else best["score"])
+        display_value(best, is_best=True, is_current=False)
+        finish_candidate_display(candidate_observer, state=state)
         return FilmSynthesisResult(state, reason, None if best is None else annotate_synthesis_design(request, best["design"]),
             request.design_revision, met, None if best is None else deepcopy(best["score"]),
             None if validation is None else deepcopy(validation["score"]), validation is not None,

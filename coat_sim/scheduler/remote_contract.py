@@ -490,9 +490,10 @@ def validate_submission(value, blob_reader, *, allow_probe=False) -> tuple[str, 
     """Validate the exact external API v1 envelope and its content-addressed spec."""
     legacy_fields = {"api_version", "executor_schema_version", "job_id", "spec_blob"}
     bound_fields = legacy_fields | {"device_binding_version", "device_id"}
-    if not isinstance(value, dict) or set(value) not in (legacy_fields, bound_fields):
+    from .film_display import CONFIG_KEY, FILM_DISPLAY_EXECUTORS, prepare_display_configuration
+    if not isinstance(value, dict) or set(value) - {CONFIG_KEY} not in (legacy_fields, bound_fields):
         _fail("invalid_submission", "submission has missing or unsupported fields")
-    bound = set(value) == bound_fields
+    bound = set(value) - {CONFIG_KEY} == bound_fields
     if type(value["api_version"]) is not int or value["api_version"] != API_VERSION:
         _fail("unsupported_api_version", "api_version must be 1")
     if type(value["executor_schema_version"]) is not int or value["executor_schema_version"] != EXECUTOR_SCHEMA_VERSION:
@@ -543,4 +544,11 @@ def validate_submission(value, blob_reader, *, allow_probe=False) -> tuple[str, 
     metadata = {"api_version": API_VERSION, "executor_schema_version": EXECUTOR_SCHEMA_VERSION,
                 "spec_sha256": digest, "spec_bytes": size,
                 "device_id": value["device_id"] if bound else None}
+    if CONFIG_KEY in value:
+        if spec.executor not in FILM_DISPLAY_EXECUTORS:
+            _fail("film_display_not_supported", "executor does not produce optimization candidates")
+        try:
+            metadata[CONFIG_KEY] = prepare_display_configuration(value[CONFIG_KEY])
+        except (ValueError, TypeError, OverflowError):
+            _fail("invalid_film_display_configuration", "invalid optional display configuration")
     return job_id, spec, metadata

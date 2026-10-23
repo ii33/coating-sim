@@ -186,6 +186,16 @@ class SchedulerClient:
     def status(self, job_id): return self._call('status', job_id=job_id)
     def read_job(self, job_id): return self.status(job_id)
     def cancel(self, job_id): return self._call('cancel', job_id=job_id)
+    def film_display_control(self, job_id, *, input_digest, generation, enabled, selection):
+        # Read/CAS only in the caller's existing background control pump. Never
+        # blindly retry a stale desired value after another UI intent arrived.
+        row = self._call('status', start=False, job_id=job_id)
+        if (row.get('input_digest') != input_digest
+                or row.get('film_display_config', {}).get('generation') != generation):
+            raise ValueError('film_display_control_identity_mismatch')
+        return self._call('film_display_control', start=False, job_id=job_id,
+            input_digest=input_digest, generation=generation, enabled=enabled,
+            selection=selection, expected_sequence=row.get('film_display_control_sequence', 0))
     def request_cancel(self, job_id): return self.cancel(job_id)['cancel_requested']
     def result(self, job_id): return self._call('result', job_id=job_id)
     def snapshot(self, after_event=0, limit=100): return self._call('snapshot', after_event=after_event, limit=limit)
@@ -226,6 +236,13 @@ class SchedulerClient:
                         if on_update: on_update(current)
                         if current.get('state') in ('succeeded', 'failed', 'cancelled'):
                             break
+                # Drain the latest side-channel even beside a terminal event.
+                # It cannot affect the official terminal state or result.
+                for packet in response.get('film_displays') or []:
+                    if isinstance(packet, dict) and packet.get('job_id') == job_id:
+                        current = {**current, 'film_display': packet}
+                        if on_update:
+                            on_update(current)
                 cursor = max(cursor, int(response.get('sequence', cursor)))
             else:
                 if wait_s: time.sleep(wait_s)

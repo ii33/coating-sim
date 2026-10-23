@@ -180,7 +180,7 @@ def _physical_bounds(request):
 
 
 def run_nominal_preserving(request, evaluator, initial_design, baseline, *,
-                           accept_candidate, iteration_callback, emit):
+                           accept_candidate, iteration_callback, emit, observe_candidate=None):
     """Run SLSQP, returning status only; caller owns feasible incumbent/results."""
     physical = evaluator.physical(initial_design)
     physical_bounds = _physical_bounds(request)
@@ -211,7 +211,9 @@ def run_nominal_preserving(request, evaluator, initial_design, baseline, *,
         nonlocal last_x, last_data
         evaluator.check()
         candidate_x = np.asarray(x[:len(spans)])
-        if last_x is not None and np.array_equal(last_x, candidate_x):
+        if last_x is not None and last_data is not None and np.array_equal(last_x, candidate_x):
+            if observe_candidate is not None:
+                observe_candidate(last_data["design"], last_data["analysis"])
             return last_data
         if (not np.all(np.isfinite(candidate_x)) or np.any(candidate_x < 0.)
                 or np.any(candidate_x > 1.) or np.any((spans == 0.) & (candidate_x != 0.))):
@@ -239,7 +241,7 @@ def run_nominal_preserving(request, evaluator, initial_design, baseline, *,
         evaluator.check()
         data = evaluator.solver_data
         assert data is not None
-        last_data = dict(data, analysis=analysis, nominal_jac=data["nominal_jac"] * spans,
+        last_data = dict(data, design=candidate, analysis=analysis, nominal_jac=data["nominal_jac"] * spans,
                          scenario_jac=data["scenario_jac"] * spans)
         last_x = candidate_x.copy()
         return last_data

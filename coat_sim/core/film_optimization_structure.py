@@ -1038,6 +1038,7 @@ def _local_refine(
     evaluation_budget: int,
     sequence: list[int],
     emit: Callable[[str, str], None],
+    candidate_callback: Callable[[Mapping[str, Any]], None] | None = None,
 ) -> tuple[dict[str, Any], Mapping[str, Any], bool]:
     groups = _variable_groups(request, start, frozen, split_groups, active_layer_ids)
     if not groups:
@@ -1071,6 +1072,8 @@ def _local_refine(
             )
             counters["score_evaluations"] += 1
             counters["jacobian_evaluations"] += int(current_evaluation["jacobian_calls"])
+            if candidate_callback is not None:
+                candidate_callback(current_evaluation)
         except _StructureCancelled:
             return deepcopy(dict(start)), start_evaluation, True
         except (ValueError, ArithmeticError, FloatingPointError):
@@ -1125,6 +1128,8 @@ def _local_refine(
             )
             counters["score_evaluations"] += 1
             counters["jacobian_evaluations"] += int(trial_evaluation["jacobian_calls"])
+            if candidate_callback is not None:
+                candidate_callback(trial_evaluation)
         except _StructureCancelled:
             was_cancelled = True
             break
@@ -1347,6 +1352,7 @@ def optimize_film_design_with_structure(
     progress_callback: Callable[[FilmOptimizationProgress], None] | None = None,
     cancel_event: Any = None,
     checkpoint_callback: Callable[[FilmStructureOptimizationResult], None] | None = None,
+    candidate_observer: Any = None,
 ) -> FilmStructureOptimizationResult:
     """Run one serial sensitivity scan, bounded growth stage, and local polish.
 
@@ -1374,6 +1380,19 @@ def optimize_film_design_with_structure(
     best: dict[str, Any] | None = None
     termination = "completed"
     final_message = "bounded structure exploration completed"
+    from .film_candidate_display import (
+        CandidateDisplayObserver, finish_candidate_display, physical_layer_thicknesses, record_candidate,
+    )
+
+    def display_value(value, *, is_best=False, is_current=True):
+        if type(candidate_observer) is not CandidateDisplayObserver:
+            return
+        record_candidate(candidate_observer, value["design"],
+            weighted_rms_error=value["score"]["weighted_rms_error"],
+            max_normalized_error=value["score"]["max_error"], condition_rows=value["score"]["errors"],
+            physical_thickness_nm=physical_layer_thicknesses(value["design"], frozen),
+            is_best=is_best, is_current=is_current, iterations=int(counters["local_iterations"]),
+            evaluations=int(counters["objective_evaluations"]), source="film_structure", scope="training")
 
     def trace_event(**kwargs: Any) -> None:
         trace.append(FilmStructureTraceEvent(sequence=sequence[0], **kwargs))
@@ -1398,6 +1417,8 @@ def optimize_film_design_with_structure(
             pass
 
     def checkpoint(*, final: bool = False, state: str = "completed", message: str = "") -> None:
+        if best is not None:
+            display_value(best["evaluation"], is_best=True, is_current=False)
         if checkpoint_callback is None or best is None:
             return
         snapshot = _as_structure_result(
@@ -1442,6 +1463,8 @@ def optimize_film_design_with_structure(
             raise
         counters["score_evaluations"] += 1
         counters["jacobian_evaluations"] += int(output["jacobian_calls"])
+        if not validation and not zero_thickness_layer_ids:
+            display_value(output)
         return output
 
     def validation_for(design: Mapping[str, Any]) -> Mapping[str, Any] | None:
@@ -1484,6 +1507,7 @@ def optimize_film_design_with_structure(
             frozen_request, best, counters, trace, state="cancelled",
             message=final_message, termination_reason=termination, is_final=True)
         checkpoint(final=True, state="cancelled", message=final_message)
+        finish_candidate_display(candidate_observer, state="cancelled")
         return result
 
     try:
@@ -1528,7 +1552,7 @@ def optimize_film_design_with_structure(
                 frozen_request, base_design, initial, frozen, {}, (), counters, trace, cancel_event,
                 max_iterations=max(0, frozen_request.base_request.max_iterations // (4 if frozen_request.mode == "combined" else 2)),
                 evaluation_budget=max_evaluations - (6 if frozen_request.mode == "combined" else 2),
-                sequence=sequence, emit=notify,
+                sequence=sequence, emit=notify, candidate_callback=display_value,
             )
         if baseline_cancelled:
             termination = "cancelled"
@@ -1774,7 +1798,7 @@ def optimize_film_design_with_structure(
                         max_iterations=max(0, frozen_request.base_request.max_iterations - counters["local_iterations"]),
                         evaluation_budget=max_evaluations - remaining_reserve,
                         sequence=sequence,
-                        emit=notify,
+                        emit=notify, candidate_callback=display_value,
                     )
                     if was_cancelled:
                         raise _StructureCancelled()
@@ -1916,7 +1940,7 @@ def optimize_film_design_with_structure(
                             max_iterations=max(0, frozen_request.base_request.max_iterations - counters["local_iterations"]),
                             evaluation_budget=max_evaluations - 1,
                             sequence=sequence,
-                            emit=notify,
+                            emit=notify, candidate_callback=display_value,
                         )
                         if was_cancelled:
                             raise _StructureCancelled()
@@ -2158,7 +2182,7 @@ def optimize_film_design_with_structure(
                             max_iterations=max(0, frozen_request.base_request.max_iterations - counters["local_iterations"]),
                             evaluation_budget=max_evaluations - remaining_reserve,
                             sequence=sequence,
-                            emit=notify,
+                            emit=notify, candidate_callback=display_value,
                         )
                         if was_cancelled:
                             raise _StructureCancelled()
@@ -2223,6 +2247,7 @@ def optimize_film_design_with_structure(
         message=final_message, termination_reason=termination, is_final=True,
     )
     checkpoint(final=True, state=result_state, message=final_message)
+    finish_candidate_display(candidate_observer, state=result_state)
     return result
 
 

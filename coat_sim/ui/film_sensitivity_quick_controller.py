@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+import inspect
 import math
 from pathlib import Path
 import threading
@@ -58,12 +59,14 @@ class _SensitivityTask(QRunnable):
         signals,
         disconnected,
         admission_check,
+        live_display=None,
     ):
         super().__init__()
         self.service, self.request, self.client = service, request, client
         self.job_id, self.cancel, self.metadata = job_id, cancel, metadata
         self.generation, self.signals = generation, signals
         self.disconnected, self.admission_check = disconnected, admission_check
+        self.live_display = live_display
 
     def run(self):
         try:
@@ -93,12 +96,21 @@ class _SensitivityTask(QRunnable):
             submit_local_with_receipt(self.client, spec, job_id=self.job_id, metadata=self.metadata)
             self.cancel.mark_admitted()
             self.signals.admitted.emit(self.generation)
+            display_options = {}
+            if self.live_display is not None:
+                try:
+                    attempt = ("sensitivity", self.generation)
+                    self.live_display.bind_admitted(attempt, self.client, self.job_id)
+                    if "display" in inspect.signature(observe_job).parameters:
+                        display_options["display"] = lambda packet: self.live_display.offer(attempt, packet)
+                except Exception:
+                    pass  # Display failures do not change the independent analysis/job.
             try:
                 payload = observe_job(
                     self.client,
                     self.job_id,
                     lambda item: self.signals.progress.emit(self.generation, item),
-                    disconnected=self.disconnected.is_set,
+                    disconnected=self.disconnected.is_set, **display_options,
                 )
             except (InterruptedError, RuntimeError):
                 row = self.client.status(self.job_id)
@@ -626,6 +638,18 @@ class FilmSensitivityQuickController(QObject):
             return False
         return (self.owner.session.snapshot().design_revision == context["revision"]
                 and self.owner._source_edit_epoch() == context["epoch"])
+
+    def _display_context_is_current(self, context, session, source):
+        if (self._closed or self.owner._source_closed or self.owner._observers_detached
+                or self.owner.session is not session or self.owner._source_controller is not source):
+            return False
+        if session is not None:
+            return self._context_is_current(context)
+        compute = context.get("project_compute")
+        return (self.owner._source_revision == context["revision"]
+                and self.owner._source_edit_epoch() == context["epoch"]
+                and (compute is None or (not compute.editing_frozen
+                    and compute.accepts(context.get("project_operation")))))
 
     @Property(str, notify=changed)
     def resultSummary(self):
@@ -1425,6 +1449,14 @@ class FilmSensitivityQuickController(QObject):
             return False
 
         self._generation += 1
+        display_session, display_source = self.owner.session, self.owner._source_controller
+        if workflow == "ideal":
+            self.owner._sync_live_selection()
+            metadata["film_display_config"] = self.owner._live_display.begin(
+                ("sensitivity", self._generation), objectives=request.objectives,
+                source_current=lambda: self._display_context_is_current(context, display_session, display_source))
+        else:
+            self.owner._live_display.clear_analysis()
         self._active_workflow = workflow
         if workflow == "table":
             self._table_payload = None
@@ -1454,6 +1486,7 @@ class FilmSensitivityQuickController(QObject):
         self.pool.start(_SensitivityTask(
             self.owner.service, request, client, job_id, cancel, metadata,
             self._generation, self._signals, self._disconnected, admission_check,
+            self.owner._live_display if workflow == "ideal" else None,
         ))
         return True
 
@@ -1530,6 +1563,14 @@ class FilmSensitivityQuickController(QObject):
             self.changed.emit()
             return False
         self._generation += 1
+        display_session, display_source = self.owner.session, self.owner._source_controller
+        if operation == "optimize":
+            self.owner._sync_live_selection()
+            metadata["film_display_config"] = self.owner._live_display.begin(
+                ("sensitivity", self._generation), objectives=request.objectives,
+                source_current=lambda: self._display_context_is_current(context, display_session, display_source))
+        else:
+            self.owner._live_display.clear_analysis()
         self._active_workflow = "legacy"
         self._legacy_job_id = job_id
         self._context, self._job_id, self._cancel = context, job_id, cancel
@@ -1562,6 +1603,7 @@ class FilmSensitivityQuickController(QObject):
                 self._signals,
                 self._disconnected,
                 admission_check,
+                self.owner._live_display if operation == "optimize" else None,
             )
         )
         return True
@@ -1609,6 +1651,7 @@ class FilmSensitivityQuickController(QObject):
         if self._closed or generation != self._generation:
             return
         self._busy = False
+        self.owner._live_display.end(("sensitivity", generation))
         self._unknown_submission = error.startswith("submission_unknown:")
         context = self._context or {}
         workflow = context.get("workflow", "legacy")

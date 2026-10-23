@@ -1872,6 +1872,16 @@ AppWindow {
                 Rectangle {
                     id: plotPanel
                     objectName: "filmOptimizationPlotPanel"
+                    readonly property var activeLiveData: window.controller.liveDisplay.running && window.controller.liveDisplay.enabled
+                                                          ? window.controller.liveDisplay.plotData : ({})
+                    readonly property bool showingLiveData: activeLiveData && activeLiveData.live === true
+                    readonly property bool waitingForLive: window.controller.liveDisplay.running
+                                                          && window.controller.liveDisplay.enabled && !showingLiveData
+                    readonly property string previewStatus: waitingForLive
+                                                            ? "等待完整预览；暂显示正式曲线。"
+                                                            : (!window.controller.liveDisplay.running && window.controller.liveDisplay.hasAttempt
+                                                               ? "实时预览已结束；显示正式曲线，Top 10 保留。"
+                                                               : window.controller.liveDisplay.status)
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.minimumHeight: Math.max(140, Math.min(220, window.height * 0.25))
@@ -1912,10 +1922,42 @@ AppWindow {
                                 onActivated: window.controller.selectPlotAngle(currentIndex)
                             }
                         }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            CheckBox {
+                                id: livePreviewToggle
+                                objectName: "filmCandidateLivePreviewToggle"
+                                text: "实时光谱"
+                                checked: window.controller.liveDisplay.enabled
+                                onToggled: window.controller.liveDisplay.setEnabled(livePreviewToggle.checked)
+                                ToolTip.visible: livePreviewToggle.hovered
+                                ToolTip.text: window.controller.liveDisplay.status + "\n默认关闭；只展示既有完整候选，不增加光学计算。"
+                            }
+                            ThemeControls.ThemeComboBox {
+                                objectName: "filmCandidateLiveMetricBox"
+                                Layout.preferredWidth: 72
+                                model: ["R", "T"]
+                                currentIndex: window.controller.liveDisplay.metric === "T" ? 1 : 0
+                                onActivated: window.controller.liveDisplay.setMetric(model[currentIndex])
+                            }
+                            Label {
+                                objectName: "filmCandidateLivePreviewStatus"
+                                Layout.fillWidth: true
+                                text: plotPanel.width >= 500 ? plotPanel.previewStatus
+                                      : (plotPanel.waitingForLive ? "等待预览 · 正式曲线"
+                                         : (plotPanel.showingLiveData ? "实时当前 / 最佳" : "正式曲线 · Top 10 保留"))
+                                color: window.themeTokens.colorTextMuted
+                                wrapMode: Text.NoWrap
+                                elide: Text.ElideRight
+                                font.pointSize: window.themeTokens.fontSizeSmall
+                            }
+                        }
                         Label {
                             objectName: "filmOptimizationPlotBaselineTitle"
                             Layout.fillWidth: true
-                            text: "R/T (%) · " + (window.controller.plotData.baseline_label || "原设计") + "与候选；目标线按未加权界限显示"
+                            text: plotPanel.showingLiveData
+                                  ? "R/T (%) · 当前试探与优化器最佳；仅抽样原目标网格"
+                                  : "R/T (%) · " + (comparisonCanvas.dataSnapshot.baseline_label || "原设计") + "与候选；目标线按未加权界限显示"
                             color: window.themeTokens.colorTextMuted
                             font.pointSize: window.themeTokens.fontSizeSmall
                         }
@@ -1941,7 +1983,11 @@ AppWindow {
                             objectName: "filmOptimizationComparisonCanvas"
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            property var dataSnapshot: window.controller.plotData
+                            property var dataSnapshot: plotPanel.showingLiveData
+                                                       ? plotPanel.activeLiveData
+                                                       : window.controller.plotData
+                            property string seriesLegend: plotPanel.showingLiveData
+                                                          ? "当前试探 / 优化器最佳" : "原设计 / 候选"
                             onDataSnapshotChanged: requestPaint()
                             onPaint: {
                                 const ctx = getContext("2d")
@@ -1959,12 +2005,15 @@ AppWindow {
                                     ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(left + plotWidth, y); ctx.stroke()
                                     ctx.fillText(String(100 - tick * 25) + "%", 2, y + 4)
                                 }
-                                if (!rows || !rows.wavelength_nm || rows.wavelength_nm.length === 0) {
+                                const live = rows && rows.live === true
+                                const primary = live ? (rows.current || rows.best) : null
+                                const selectedWaves = live && primary ? primary.wavelength_nm : (rows ? rows.wavelength_nm : null)
+                                if (!selectedWaves || selectedWaves.length === 0) {
                                     ctx.fillStyle = window.themeTokens.colorTextMuted
-                                    ctx.fillText("运行优化后显示采样光谱", left + 12, top + 24)
+                                    ctx.fillText(plotPanel.waitingForLive ? "等待所选完整候选光谱" : "运行优化后显示采样光谱", left + 12, top + 24)
                                     return
                                 }
-                                const waves = rows.wavelength_nm
+                                const waves = selectedWaves
                                 const discreteLine = waves.length === 1
                                 const minWave = discreteLine ? waves[0] - 0.5 : waves[0]
                                 const maxWave = discreteLine ? waves[0] + 0.5 : waves[waves.length - 1]
@@ -1980,30 +2029,36 @@ AppWindow {
                                 drawTarget(rows.target_value)
                                 drawTarget(rows.lower_bound)
                                 drawTarget(rows.upper_bound)
-                                const drawSeries = (values, color, lineWidth) => {
-                                    if (!values || values.length !== waves.length) return
+                                const drawSeries = (values, color, lineWidth, seriesWaves) => {
+                                    const xWaves = seriesWaves || waves
+                                    if (!values || values.length !== xWaves.length) return
                                     ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = lineWidth
                                     for (let i = 0; i < values.length; ++i) {
-                                        const x = xAt(waves[i]), y = yAt(values[i])
+                                        const x = xAt(xWaves[i]), y = yAt(values[i])
                                         if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
                                     }
                                     ctx.stroke()
                                     if (discreteLine) {
                                         ctx.beginPath(); ctx.fillStyle = color
-                                        ctx.arc(xAt(waves[0]), yAt(values[0]), 4, 0, 2 * Math.PI); ctx.fill()
+                                        ctx.arc(xAt(xWaves[0]), yAt(values[0]), 4, 0, 2 * Math.PI); ctx.fill()
                                     }
                                 }
-                                drawSeries(rows.baseline, window.themeTokens.colorTextMuted, 1.5)
-                                drawSeries(rows.candidate, window.themeTokens.colorAccent, 2.5)
+                                if (live) {
+                                    if (rows.current) drawSeries(rows.current.actual, window.themeTokens.colorWarning, 1.5, rows.current.wavelength_nm)
+                                    if (rows.best) drawSeries(rows.best.actual, window.themeTokens.colorAccent, 2.5, rows.best.wavelength_nm)
+                                } else {
+                                    drawSeries(rows.baseline, window.themeTokens.colorTextMuted, 1.5)
+                                    drawSeries(rows.candidate, window.themeTokens.colorAccent, 2.5)
+                                }
                                 ctx.fillStyle = window.themeTokens.colorTextMuted
                                 ctx.fillText(discreteLine ? waves[0] + " nm（离散目标）" : minWave.toFixed(0) + " nm", left, height - 8)
                                 if (!discreteLine) ctx.fillText(maxWave.toFixed(0) + " nm", left + plotWidth - 52, height - 8)
-                                ctx.fillStyle = window.themeTokens.colorTextMuted
+                                ctx.fillStyle = live ? window.themeTokens.colorWarning : window.themeTokens.colorTextMuted
                                 ctx.fillRect(left + 8, 4, 14, 3)
-                                ctx.fillText(rows.baseline_label || "原设计", left + 26, 10)
+                                ctx.fillText(live ? "当前试探" : (rows.baseline_label || "原设计"), left + 26, 10)
                                 ctx.fillStyle = window.themeTokens.colorAccent
                                 ctx.fillRect(left + 90, 4, 14, 3)
-                                ctx.fillText("候选", left + 108, 10)
+                                ctx.fillText(live ? "优化器最佳" : "候选", left + 108, 10)
                             }
                         }
                     }
@@ -2174,6 +2229,104 @@ AppWindow {
                 visible: window.controller.hasCandidate
                 Layout.fillWidth: true
                 text: window.controller.resultValidationSummary
+                color: window.themeTokens.colorWarning
+                wrapMode: Text.WordWrap
+            }
+            Label {
+                objectName: "filmCandidateLiveBestSummary"
+                Layout.fillWidth: true
+                text: "优化器最佳（原接受门）：\n" + window.controller.liveDisplay.bestSummary
+                color: window.themeTokens.colorAccent
+                wrapMode: Text.WrapAnywhere
+            }
+            Label {
+                objectName: "filmCandidateLiveCurrentSummary"
+                Layout.fillWidth: true
+                text: "当前完整试探：\n" + window.controller.liveDisplay.currentSummary
+                color: window.themeTokens.colorTextMuted
+                wrapMode: Text.WrapAnywhere
+            }
+            Label {
+                objectName: "filmCandidateDisplayRankNotice"
+                Layout.fillWidth: true
+                text: window.controller.liveDisplay.rankingDiffers
+                      ? "显示榜首 ≠ 优化器最佳。S 仅排序偏好，不改变 F、名义约束、guard 或应用条件。"
+                      : "Top 10 为独立显示榜，不是优化器接受门；榜单无应用入口。"
+                color: window.themeTokens.colorWarning
+                wrapMode: Text.WordWrap
+            }
+            Label {
+                Layout.fillWidth: true
+                text: "Top 10 完整候选 · S / E / 名义 / 归一化违规 / N / D / ID / 来源 / 范围"
+                color: window.themeTokens.colorText
+                wrapMode: Text.WordWrap
+                font.weight: window.themeTokens.fontWeightEmphasis
+            }
+            Repeater {
+                objectName: "filmCandidateDisplayTop10"
+                model: window.controller.liveDisplay.top10
+                delegate: Label {
+                    required property var modelData
+                    required property int index
+                    objectName: "filmCandidateDisplayRank_" + index
+                    Layout.fillWidth: true
+                    text: modelData.display
+                    color: modelData.candidate_eligible ? window.themeTokens.colorText : window.themeTokens.colorWarning
+                    wrapMode: Text.WrapAnywhere
+                    Accessible.name: text
+                }
+            }
+            CheckBox {
+                id: scorePreferencesToggle
+                objectName: "filmCandidateScorePreferencesToggle"
+                text: "高级：显示评分偏好"
+            }
+            ColumnLayout {
+                visible: scorePreferencesToggle.checked
+                Layout.fillWidth: true
+                Label {
+                    Layout.fillWidth: true
+                    text: "E 为完整原目标加权 RMS，N 含合法零厚膜层，D 为前/后全膜层物理总厚度。修改仅下一任务生效，当前榜单保留本任务冻结评分；Top 10 不是全部历史。权重和归一化锚点是显示偏好，不是工艺参数或上限。"
+                    color: window.themeTokens.colorTextMuted
+                    wrapMode: Text.WordWrap
+                }
+                Repeater {
+                    model: [{key: "weight_error", label: "E 权重"},
+                            {key: "weight_layers", label: "层数权重"},
+                            {key: "weight_thickness", label: "厚度权重"},
+                            {key: "layer_reference", label: "层数锚点（层）"},
+                            {key: "thickness_reference_nm", label: "厚度锚点（nm）"}]
+                    delegate: RowLayout {
+                        id: scorePreferenceRow
+                        required property var modelData
+                        Layout.fillWidth: true
+                        Label {
+                            Layout.fillWidth: true
+                            text: scorePreferenceRow.modelData.label
+                            color: window.themeTokens.colorText
+                        }
+                        ThemeControls.ThemeField {
+                            objectName: "filmCandidateScore_" + scorePreferenceRow.modelData.key
+                            Layout.preferredWidth: 96
+                            numericDisplayValue: window.controller.liveDisplay.scoreConfig[scorePreferenceRow.modelData.key]
+                            onEditingFinished: window.controller.liveDisplay.setScoreField(scorePreferenceRow.modelData.key, text)
+                        }
+                    }
+                }
+                Label {
+                    objectName: "filmCandidateScoreNextRunNotice"
+                    Layout.fillWidth: true
+                    visible: window.controller.liveDisplay.scoreChangesPending
+                    text: "评分偏好已改，仅下一任务生效；当前榜单沿用本任务冻结配置。"
+                    color: window.themeTokens.colorWarning
+                    wrapMode: Text.WordWrap
+                }
+            }
+            Label {
+                objectName: "filmCandidateDisplayError"
+                Layout.fillWidth: true
+                visible: window.controller.liveDisplay.error.length > 0
+                text: window.controller.liveDisplay.error
                 color: window.themeTokens.colorWarning
                 wrapMode: Text.WordWrap
             }

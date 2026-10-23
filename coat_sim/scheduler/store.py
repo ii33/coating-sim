@@ -52,6 +52,11 @@ class SchedulerStore:
                 value = {key: metadata[key] for key in ('summary', 'estimated_s', 'origin', 'estimate_id',
                          'memory_estimate_label', 'memory_warning', 'input_summary',
                          'execution_project_root') if key in metadata}
+                from .film_display import CONFIG_KEY, FILM_DISPLAY_EXECUTORS, prepare_display_configuration
+                if parsed.executor in FILM_DISPLAY_EXECUTORS:
+                    value[CONFIG_KEY] = prepare_display_configuration(metadata.get(CONFIG_KEY))
+                elif CONFIG_KEY in metadata:
+                    raise ValueError('film_display_not_supported')
                 value.update(job_id=job_id, kind=parsed.executor, state='queued', created_at=_now(),
                              started_at=None, finished_at=None, result=None, error=None,
                              cancel_requested=False, scheduler_managed=True,

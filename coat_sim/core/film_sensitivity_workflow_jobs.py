@@ -178,7 +178,8 @@ def validate_checkpoint(value: Mapping[str, Any], *, expected_job: Mapping[str, 
     return terminal_reply(validated, terminal_state)
 
 
-def execute_job(parameters, cancel_event, report, checkpoint_path, write_json):
+def execute_job(parameters, cancel_event, report, checkpoint_path, write_json, *,
+                candidate_observer=None, candidate_observer_factory=None):
     if not isinstance(parameters, Mapping) or set(parameters) != {"payload"}:
         raise ValueError("sensitivity executor requires one frozen job")
     job = deepcopy(parameters["payload"])
@@ -196,9 +197,13 @@ def execute_job(parameters, cancel_event, report, checkpoint_path, write_json):
         write_json(checkpoint_path, {"schema_version": 1,
             "kind": "coat_sim." + kind + "_checkpoint", "job": job, "result": payload})
 
+    observation = {}
+    if kind == 'film_ideal_sensitivity':
+        observation['candidate_observer'] = (candidate_observer_factory(request)
+            if candidate_observer_factory is not None else candidate_observer)
     result = getattr(_api(kind), "execute_" + kind + "_request")(
         None, request, cancel_event=cancel_event, progress_callback=progress,
-        checkpoint_callback=checkpoint)
+        checkpoint_callback=checkpoint, **observation)
     payload = workflow_result_to_payload(result)
     if not result_matches_job(payload, job):
         raise ValueError("sensitivity result differs from its frozen job")

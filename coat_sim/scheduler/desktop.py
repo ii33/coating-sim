@@ -132,13 +132,30 @@ def resolve_unknown_submission(client, error, *, timeout_s=90, should_stop=None)
             raise error
         time.sleep(min(.5, remaining))
 
-def observe_job(client, job_id, progress=None, *, disconnected=None, wait_s=1.0):
+def observe_job(client, job_id, progress=None, *, disconnected=None, wait_s=1.0, display=None):
     previous = None
+    previous_display = None
+    identity = [None, None]
     def publish(job):
-        nonlocal previous
+        nonlocal previous, previous_display
         value = job.get('progress')
         if progress and value and value != previous:
             progress(value); previous = value
+        if display is not None:
+            if not all(identity):
+                identity[:] = [job.get('input_digest'), (job.get('film_display_config') or {}).get('generation')]
+            if not identity[0] or not identity[1]:
+                return
+            from .film_display import validate_live_display_packet
+            packet = validate_live_display_packet(job.get('film_display'), job_id=job_id,
+                input_digest=identity[0], generation=identity[1])
+            marker = None if packet is None else (packet['generation'], packet['control_sequence'], packet['display']['sequence'])
+            if packet is not None and marker != previous_display:
+                previous_display = marker
+                try:
+                    display(packet)
+                except Exception:
+                    pass  # A display observer has no ownership of admitted work.
 
     if disconnected and disconnected():
         raise RuntimeError("observer_disconnected: admitted job continues")

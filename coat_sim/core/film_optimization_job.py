@@ -857,6 +857,8 @@ def execute_film_optimization_job(
     enable_forward_cache: bool = False,
     performance_callback: Callable[[dict[str, Any]], None] | None = None,
     performance_options: Any = None,
+    candidate_observer: Any = None,
+    candidate_observer_factory: Any = None,
 ) -> dict[str, Any]:
     """Run the queue-side task against its frozen materials only.
 
@@ -888,6 +890,8 @@ def execute_film_optimization_job(
         if request.base_request.frozen_material_snapshot is None:
             raise ValueError("queued structure optimization requires a frozen material snapshot")
         request = freeze_film_structure_optimization_request(service, request)
+        observer = (candidate_observer_factory(request.base_request) if candidate_observer_factory is not None
+                    else candidate_observer)
         frozen_snapshot = deepcopy(dict(request.base_request.frozen_material_snapshot))
         frozen_service = _service_with_frozen_materials(service, frozen_snapshot)
 
@@ -901,6 +905,7 @@ def execute_film_optimization_job(
             progress_callback=progress_callback,
             checkpoint_callback=(save_structure_incumbent
                                 if checkpoint_callback is not None else None),
+            candidate_observer=observer,
         )
         result_payload = film_structure_result_to_payload(request, result)
         if cancel_event is not None and cancel_event.is_set():
@@ -929,6 +934,8 @@ def execute_film_optimization_job(
     if request.frozen_material_snapshot is None:
         raise ValueError("queued film optimization requires a frozen material snapshot")
     request = freeze_film_optimization_request(service, request)
+    observer = (candidate_observer_factory(request) if candidate_observer_factory is not None
+                else candidate_observer)
     frozen_snapshot = deepcopy(dict(request.frozen_material_snapshot))
     frozen_service = _service_with_frozen_materials(service, frozen_snapshot)
     if enable_forward_cache and request.execution_mode == "serial":
@@ -949,5 +956,6 @@ def execute_film_optimization_job(
         progress_callback=progress_callback,
         checkpoint_callback=save_incumbent if checkpoint_callback is not None else None,
         performance_options=performance_options, performance_callback=performance_callback,
+        candidate_observer=observer,
     )
     return serialize_result(request, result)

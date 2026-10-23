@@ -210,7 +210,7 @@ def _film_progress_payload(value):
     }
 
 
-def _film_optimization(service, parameters, cancel, report, checkpoint_path):
+def _film_optimization(service, parameters, cancel, report, checkpoint_path, *, candidate_observer_factory=None):
     """Execute a typed film job and persist only replay-verified incumbents."""
     from coat_sim.core.film_optimization_job import execute_film_optimization_job
     from .result_capability import (
@@ -305,6 +305,7 @@ def _film_optimization(service, parameters, cancel, report, checkpoint_path):
             enable_forward_cache=forward_cache_enabled,
             performance_callback=(publish_performance if performance_enabled else None),
             performance_options=performance_options,
+            candidate_observer_factory=candidate_observer_factory,
         )
     finally:
         persist_performance(force=True)
@@ -460,6 +461,8 @@ def run(root, job_id, owner_pid, owner_instance):
         last_report[0] = now
         try: write_json(directory / 'progress.json', value)
         except OSError as exc: print(f'progress_persistence_warning: {exc}', flush=True)
+    display_session = None
+    display_options = {}
     try:
         spec = None
         queue_kind = None
@@ -477,6 +480,14 @@ def run(root, job_id, owner_pid, owner_instance):
             raise ValueError('frozen_input_digest_mismatch')
         if queue_kind != spec.executor:
             raise ValueError('queue_executor_mismatch')
+        from .film_display import FILM_DISPLAY_EXECUTORS, WorkerDisplaySession, display_configuration_for_job
+        if spec.executor in FILM_DISPLAY_EXECUTORS:
+            try:
+                display_session = WorkerDisplaySession(directory, job_id, frozen.fingerprint,
+                    display_configuration_for_job(queue_record))
+                display_options = {'candidate_observer_factory': display_session.observer_for_request}
+            except Exception:
+                pass  # An invalid optional observation never rejects physics.
         if spec.executor == 'probe':
             reply = _probe(spec.parameters, directory, cancel, report, job_id)
         elif spec.executor == 'appearance_render':
@@ -489,15 +500,15 @@ def run(root, job_id, owner_pid, owner_instance):
                 business_root = str(root)
             reply = execute_job(spec.parameters, cancel, report,
                                 directory / 'best-candidate.json', write_json,
-                                execution_project_root=business_root)
+                                execution_project_root=business_root, **display_options)
         elif spec.executor in ('film_ideal_sensitivity', 'film_thickness_error_table'):
             from coat_sim.core.film_sensitivity_workflow_jobs import execute_job as execute_workflow_job
             reply = execute_workflow_job(spec.parameters, cancel, report,
-                                        directory / 'best-candidate.json', write_json)
+                                        directory / 'best-candidate.json', write_json, **display_options)
         elif spec.executor == 'film_sensitivity':
             from coat_sim.core.film_sensitivity_jobs import execute_job as execute_sensitivity_job
             reply = execute_sensitivity_job(spec.parameters, cancel, report,
-                                            directory / 'best-candidate.json', write_json)
+                                            directory / 'best-candidate.json', write_json, **display_options)
         else:
             from coat_sim.core.api import CoatService
             from coat_sim.core import isolated_compute
@@ -509,7 +520,7 @@ def run(root, job_id, owner_pid, owner_instance):
             if spec.executor == 'film_optimization':
                 reply = _film_optimization(
                     service, parameters, cancel, report,
-                    directory / 'best-candidate.json')
+                    directory / 'best-candidate.json', **display_options)
             elif spec.executor == 'geometric_raytrace':
                 reply = _geometric_raytrace(root, spec, directory, cancel, report)
             elif spec.executor in ('process', 'process_recipe', 'single_source', 'mask_optimization'):
@@ -585,6 +596,8 @@ def run(root, job_id, owner_pid, owner_instance):
                    'elapsed_s': time.monotonic() - started}
         if partial_result is None:
             outcome['result_unavailable_reason'] = unavailable_reason
+    if display_session is not None:
+        display_session.finish(outcome['state'])
     try: write_json(directory / 'outcome.json', outcome)
     except Exception:
         traceback.print_exc(); return 74

@@ -4889,16 +4889,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmSimulationCalculationItems.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "+ \" · 最小 \" + root.percent(bandCard.modelData.min_R)",
-      "fingerprint": "150e0e7ad74f84a1d7c477da879e6d83c9a5ecbf9c6de1f6308722b756b863d9",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tools/benchmark_film_structure.py",
       "code": "arg-type",
@@ -7306,16 +7296,6 @@
       "scope": "FilmWorkflowDocumentTests.test_configuration_finite_validation_noop_and_candidate_preserves_latest",
       "anchor": "self.assertEqual(session.snapshot().revision, current.revision)",
       "fingerprint": "1ee1f2484a5e04dab5dfa2f528ff4e0f4051bb01b0447d9a9c42e1d2b9c3130b",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmSimulationCalculationItems.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "+ \" · 最小 \" + root.percent(bandCard.modelData.min_T)",
-      "fingerprint": "1ee77b2d8add292208ffa5862615b7e80bcdc4b9803570157eb08728be7cde26",
       "count": 1
     },
     {
@@ -10386,16 +10366,6 @@
       "scope": "_create_page",
       "anchor": "window.showNormal()",
       "fingerprint": "2a380c4cb9355ead405e9279b9add4a011059bb149695072beee55caf12e8e51",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmSimulationCalculationItems.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "text: \"T 均值 \" + root.percent(bandCard.modelData.mean_T)",
-      "fingerprint": "2a39749a36fcf069f448537748fb652cea92e5cd01189a8f5f380637427fc591",
       "count": 1
     },
     {
@@ -13876,7 +13846,7 @@
       "scope": "",
       "anchor": "color: Theme.snapshot.colorText",
       "fingerprint": "3875378441e05b6bcd82270a7c22b0568ab2b3c24b78ee071b3c6a655142c027",
-      "count": 10
+      "count": 7
     },
     {
       "tool": "qmllint",
@@ -15446,16 +15416,6 @@
       "scope": "SettingsBridge._start_bound_key_lookup",
       "anchor": "self._credential_future = self._credential_executor.submit(",
       "fingerprint": "3f48cdf2fa90214a829b49bb24b4548a72cb3677e1755f93a86ed74c799976eb",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmSimulationCalculationItems.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "onClicked: root.controller.removeCalculationBand(",
-      "fingerprint": "3f4f4d2dc6db02efd9f36af918bd84738711c7bf9e6ddb20f8c22c92afa96ae7",
       "count": 1
     },
     {
@@ -19179,16 +19139,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmSimulationCalculationItems.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "text: \"R 均值 \" + root.percent(bandCard.modelData.mean_R)",
-      "fingerprint": "4f13c0ee205a9fe6b9e3f40a25bb63ffc9864929581a10f9f3b4d6ddfcd0889e",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/scheduler/remote_contract.py",
       "code": "E702",
@@ -20066,16 +20016,6 @@
       "scope": "DesignerReloadQmlTests.test_qml_refresh_buttons_and_discard_dialogs",
       "anchor": "self.assertTrue(dialog.property(\"visible\"))",
       "fingerprint": "526c46ad9bf832aea7fd72cd925a61205a5c29accf1e666b3c3d93f292b6c3b1",
-      "count": 2
-    },
-    {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmSimulationCalculationItems.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "onEditingFinished: root.controller.setCalculationBand(",
-      "fingerprint": "527ba6dbf6df2d6f70d4843cd7056582a5ee52e94b91b5938a887b43cdebeab4",
       "count": 2
     },
     {
@@ -23779,16 +23719,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "coat_sim/scheduler/daemon.py",
-      "code": "E701",
-      "message": "Multiple statements on one line (colon)",
-      "scope": "Scheduler.memory_status",
-      "anchor": "if job_id in self.index: return deepcopy(self.index[job_id])",
-      "fingerprint": "62da8d6b7e51217eec8a18db42ec8278e28c16fed0ea9dc172aead2d8dc26ac8",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_material_optical_editor.py",
       "code": "union-attr",
@@ -26590,16 +26520,6 @@
     },
     {
       "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmSimulationCalculationItems.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "+ \" · 最大 \" + root.percent(bandCard.modelData.max_R)",
-      "fingerprint": "6d94233e8d51005d182abcdac7ee77ac24906695c311921dedbaa9a2e96ad04e",
-      "count": 1
-    },
-    {
-      "tool": "qmllint",
       "path": "coat_sim/ui/qml/FilmDesignExpressionPanel.qml",
       "code": "unqualified",
       "message": "Unqualified access",
@@ -27186,7 +27106,7 @@
       "scope": "",
       "anchor": "font.pointSize: Theme.snapshot.fontSizeSmall",
       "fingerprint": "6fe5e3a0031bdd9d4e25d8b3aad504eb64823b25d4c7b52827dbd56e52ed1383",
-      "count": 13
+      "count": 11
     },
     {
       "tool": "mypy",
@@ -28106,7 +28026,7 @@
       "scope": "",
       "anchor": "font.family: Theme.snapshot.fontFamily",
       "fingerprint": "73d1e69faa3d8d1acbb85d9919ebd822658298cc60728c8d057c16f9f630846a",
-      "count": 15
+      "count": 13
     },
     {
       "tool": "ruff",
@@ -46289,16 +46209,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmSimulationCalculationItems.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "+ \" · 最大 \" + root.percent(bandCard.modelData.max_T)",
-      "fingerprint": "c03b8898bb536e49717ba5a63e3f4039e249650c33fb1471c2e967a4e320f11f",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_remaining_windows_compact_chrome_ui.py",
       "code": "arg-type",
@@ -61859,6 +61769,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "Remove only the resolved missing-import diagnostic after using the explicit tests package fixture import; preserve all remaining reviewed debt and reject every new diagnostic.",
+  "last_prune_reason": "Resolved only Scheduler.memory_status E701 fingerprint 62da8d6b7e51217eec8a18db42ec8278e28c16fed0ea9dc172aead2d8dc26ac8 by expanding the changed conditional return; retain reviewed explicit-extrema Theme/root removals, add no diagnostic entries.",
   "configuration_review_reason": "2026-10-17: add only BSD-3-Clause pypdf 6.21.0 for isolated research PDF extraction; all previous dependency/tool versions, analyzer rules and diagnostic entries remain unchanged. The lock-file digest changes only for this reviewed runtime dependency."
 }

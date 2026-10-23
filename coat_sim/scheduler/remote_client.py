@@ -88,7 +88,7 @@ class RemoteTransport:
 
     _RPC_ACTIONS = frozenset({
         "status", "snapshot", "events", "page", "cancel", "result", "artifact",
-        "run_result", "find_request", "refresh_estimates",
+        "run_result", "find_request", "refresh_estimates", "film_display_control",
     })
 
     def __init__(self, base_url: str, *, token: str | None = None,
@@ -291,8 +291,12 @@ class RemoteTransport:
         return {"sha256": digest, "bytes": len(source) if isinstance(source, bytes) else size}
 
     def submit(self, spec, job_id: str, metadata: dict | None = None) -> dict:
-        if metadata not in (None, {}) and (self.device_id is None or not isinstance(metadata, dict)):
+        from .film_display import CONFIG_KEY, prepare_display_configuration
+        if metadata not in (None, {}) and (not isinstance(metadata, dict)
+                or (self.device_id is None and set(metadata) - {CONFIG_KEY})):
             raise RemoteServiceError("remote_metadata_unsupported")
+        display_config = (prepare_display_configuration(metadata[CONFIG_KEY])
+                          if isinstance(metadata, dict) and CONFIG_KEY in metadata else None)
         if not isinstance(job_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", job_id):
             raise RemoteServiceError("invalid_job_id")
         from .remote_contract import prepare_portable_spec
@@ -341,6 +345,8 @@ class RemoteTransport:
         }
         if self.device_id is not None:
             envelope.update(device_binding_version=1, device_id=self.device_id)
+        if display_config is not None:
+            envelope[CONFIG_KEY] = display_config
         try:
             if getattr(prepared, "executor", None) == "appearance_render":
                 receipt = self._json_call("POST", "/api/v1/jobs", envelope, timeout=120)

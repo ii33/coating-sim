@@ -20,6 +20,7 @@ from coat_sim.project_session import OperationBinding
 from PySide6.QtCore import Property, QObject, QRunnable, QThreadPool, Qt, QTimer, QUrl, Signal, Slot
 
 from coat_sim.assistant_diagnostics import trace
+from coat_sim.ui.film_candidate_display_controller import FilmCandidateDisplayController
 
 from coat_sim.core.film_optimization import (
     FilmConditionError,
@@ -329,6 +330,7 @@ class _PreparedAngleGrid:
     request: Any
     spec: dict
     editable_snapshot: dict | None = None
+    display_score_config: dict | None = None
 
 
 def _angles_for_row_cancellable(row: dict, cancel_event=None, progress=None,
@@ -609,6 +611,8 @@ class _FilmOptimizationTask(QRunnable):
         self.admitted = remote_admission is None
         self._project_compute = project_compute
         self._observer_disconnected = threading.Event()
+        self._display_callback: Any = None
+        self._display_bind: Any = None
         self.signals = _OptimizationSignals()
         self.setAutoDelete(False)
 
@@ -690,6 +694,11 @@ class _FilmOptimizationTask(QRunnable):
                 self.admitted = True
                 self._record_state("queued")
                 self.signals.jobIdChanged.emit(self.operation_id, self.job_id)
+            if callable(self._display_bind):
+                try:
+                    self._display_bind(self.store, self.job_id)
+                except Exception:
+                    pass  # Optional display binding cannot fail the queue observer.
             if self.request.frozen_material_snapshot is None:
                 raise ValueError("optimization request was not frozen before submission")
             self.signals.progress.emit(self.operation_id, FilmOptimizationProgress(
@@ -752,9 +761,12 @@ class _FilmOptimizationTask(QRunnable):
                         message="正在计算原设计光谱",
                     ))
 
+            display_options: dict[str, Any] = {}
+            if callable(self._display_callback) and "display" in inspect.signature(observe_job).parameters:
+                display_options["display"] = self._display_callback
             payload = observe_job(
                 self.store, self.job_id, self._publish_queue_progress,
-                disconnected=self._observer_disconnected.is_set,
+                disconnected=self._observer_disconnected.is_set, **display_options,
             )
             result = self._decode_result(payload)
             self._record_state("succeeded")
@@ -1009,6 +1021,7 @@ class FilmOptimizationQuickController(QObject):
         self._progress_text = "尚未开始"
         self._error = ""
         self._result: FilmOptimizationResult | None = None
+        self._live_display = FilmCandidateDisplayController(self)
         self._sensitivity_controller: FilmSensitivityQuickController | None = None
         self._result_terminal_state = ""
         self._result_application_eligible = False
@@ -1285,6 +1298,10 @@ class FilmOptimizationQuickController(QObject):
         return (self._project_compute is None or
                 (self._project_operation is not None
                  and self._project_compute.accepts(self._project_operation)))
+
+    @Property(QObject, constant=True)
+    def liveDisplay(self):
+        return self._live_display
 
     @Property(QObject, constant=True)
     def computeTarget(self):
@@ -1854,6 +1871,7 @@ class FilmOptimizationQuickController(QObject):
         """Stop receiving source/session events before this window is destroyed."""
         if self._observers_detached:
             return
+        self._live_display.shutdown()
         if self._sensitivity_controller is not None:
             self._sensitivity_controller.detach()
         self._synthesis_forward_probe.cancel()
@@ -2082,6 +2100,7 @@ class FilmOptimizationQuickController(QObject):
             self.changed.emit()
 
     def _invalidate_result(self) -> None:
+        self._live_display.clear_analysis()
         self._sync_film_execution_target()
         if not self._configuration_loading:
             self._configuration_load_error = ""
@@ -3538,6 +3557,7 @@ class FilmOptimizationQuickController(QObject):
         self._plot_objective = int(index)
         angles = self.plotAngles
         self._plot_angle = float(angles[0]["value"]) if angles else 0.0
+        self._sync_live_selection()
         self.changed.emit()
         self.plotDataChanged.emit()
 
@@ -3546,7 +3566,14 @@ class FilmOptimizationQuickController(QObject):
         angles = self.plotAngles
         if 0 <= int(index) < len(angles):
             self._plot_angle = float(angles[int(index)]["value"])
+            self._sync_live_selection()
             self.plotDataChanged.emit()
+
+    def _sync_live_selection(self):
+        objectives = self._inspection_objectives or self._objectives
+        if 0 <= self._plot_objective < len(objectives):
+            self._live_display.set_selection(self._plot_objective, self._plot_angle,
+                objectives[self._plot_objective]["metric"])
 
     def _build_request(self, *, require_variables: bool = True,
                        fixed_topology: bool = True,
@@ -4315,6 +4342,7 @@ class FilmOptimizationQuickController(QObject):
             "design_revision": revision,
             "edit_epoch": edit_epoch,
             "target_identity": self._compute_target.selection_identity(),
+            "display_score_config": self._live_display.score_configuration(),
             "job_id": job_id,
         }
         try:
@@ -4588,6 +4616,20 @@ class FilmOptimizationQuickController(QObject):
                     submit_local_with_receipt(store, spec, job_id=job_id, metadata=metadata)
                     local_cancel_event.mark_admitted()
 
+            self._sync_live_selection()
+            display_attempt = ("optimization", self._operation_serial + 1)
+            display_revision, display_epoch = self._source_revision, self._source_edit_epoch()
+            display_session, display_source = self.session, self._source_controller
+            metadata["film_display_config"] = self._live_display.begin(display_attempt,
+                objectives=base_request.objectives,
+                score_config=(prepared_start.display_score_config if prepared_start is not None else None),
+                source_current=lambda: (not self._source_closed and not self._shutting_down
+                    and self._operation_serial == display_attempt[1] and self._project_current()
+                    and not self._observers_detached
+                    and self.session is display_session and self._source_controller is display_source
+                    and (self.session is None or self.session.snapshot().design_revision == display_revision)
+                    and self._source_edit_epoch() == display_epoch))
+
             def create_worker(operation_id):
                 args: tuple[Any, FilmOptimizationRequest, Any, str, RemoteCancelEvent, int] = (
                     self.service, base_request, store, job_id, cancel_event, operation_id)
@@ -4595,10 +4637,15 @@ class FilmOptimizationQuickController(QObject):
                 if queue_admission is None:
                     queue_admission = async_local_admission
                 task_class = _FilmSynthesisTask if self._search_mode == "synthesis" else _FilmOptimizationTask
-                return (task_class(*args, remote_admission=queue_admission,
+                task = (task_class(*args, remote_admission=queue_admission,
                                    project_compute=self._project_compute)
                         if queue_admission is not None else
                         task_class(*args, project_compute=self._project_compute))
+                def bind_display(client, admitted_job_id):
+                    self._live_display.bind_admitted(display_attempt, client, admitted_job_id)
+                task._display_bind = bind_display
+                task._display_callback = lambda packet: self._live_display.offer(display_attempt, packet)
+                return task
 
             previous_job_id = self._queue_job_id
             previous_frozen_request = self._frozen_request
@@ -4617,6 +4664,8 @@ class FilmOptimizationQuickController(QObject):
                 edit_epoch=self._source_edit_epoch(),
             )
         except Exception as exc:
+            if "display_attempt" in locals():
+                self._live_display.end(display_attempt)
             if self._attempt_operation_id == self._operation_serial + 1:
                 self._clear_cancel_attempt()
             if self._project_compute is not None and "job_id" in locals():
@@ -5046,6 +5095,7 @@ class FilmOptimizationQuickController(QObject):
             self._error = str(exc)
             self.changed.emit()
             return False
+        self._live_display.clear_analysis()
         self._project_operation = operation
         self._queue_job_id = str(job_id)
         self._frozen_request = request
@@ -5107,6 +5157,7 @@ class FilmOptimizationQuickController(QObject):
             self._error = str(exc)
             self.changed.emit()
             return False
+        self._live_display.clear_analysis()
         self._project_operation = operation
         self._queue_job_id = str(job_id)
         self._synthesis_payload = deepcopy(dict(view.payload))
@@ -5232,6 +5283,7 @@ class FilmOptimizationQuickController(QObject):
             self.requestClose()
             return
         self._prepared_angle_job_id = str(pending["job_id"])
+        result = replace(result, display_score_config=pending.get("display_score_config"))
         if not self._start_optimization(prepared_start=result):
             self._project_operation = None
             self._prepared_angle_job_id = None
@@ -5264,6 +5316,7 @@ class FilmOptimizationQuickController(QObject):
                 return
         if self._shutting_down or operation_id != self._operation_serial:
             return
+        self._live_display.end(("optimization", operation_id))
         synthesis_result = result if isinstance(result, SynthesisQuickResult) else None
         self._synthesis_payload = deepcopy(dict(synthesis_result.payload)) if synthesis_result is not None else None
         if synthesis_result is not None:
@@ -5740,6 +5793,7 @@ class FilmOptimizationQuickController(QObject):
     def shutdown(self, timeout_ms: int = 5000) -> bool:
         """Cancel and wait for this window's private pool during test/teardown."""
         self.detach_observers()
+        self._live_display.shutdown()
         sensitivity_done = (self._sensitivity_controller is None
             or self._sensitivity_controller.shutdown(timeout_ms))
         self._synthesis_forward_probe.shutdown()

@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -10,8 +12,13 @@ Rectangle {
     property var controller
     property var analysisSnapshot: controller.spectrumAnalysis
     property var calculationItemsSnapshot: controller.calculationItems
+    property var extremaItemsSnapshot: controller.extremaItems
     property bool expanded: true
     property bool sidebarManaged: false
+    // ThemeEngineBridge injects Theme into the QML context; qmllint cannot model this runtime context property.
+    // qmllint disable unqualified
+    readonly property var themeTokens: Theme.snapshot
+    // qmllint enable unqualified
     signal toggleRequested()
     implicitWidth: expanded ? 292 : 44
     implicitHeight: sidebarManaged ? 580 : 400
@@ -86,15 +93,54 @@ Rectangle {
         }
     }
 
-    Component.onCompleted: root.syncCalculationRows()
+    function syncExtremaRows() {
+        const items = root.controller.extremaItems
+        if (items.length < extremaRows.count)
+            extremaRows.clear()
+        for (let row = 0; row < items.length; ++row) {
+            if (row < extremaRows.count)
+                extremaRows.setProperty(row, "bandRow", items[row])
+            else
+                extremaRows.append({ bandRow: items[row] })
+        }
+    }
+
+    function ensureBandsItemVisible(item) {
+        const flickable = bandsView.contentItem as Flickable
+        const content = flickable ? flickable.contentItem : null
+        if (!item || !flickable || !content)
+            return
+        const position = item.mapToItem(content, 0, 0)
+        const top = position.y
+        const bottom = top + item.height
+        const margin = root.themeTokens.spaceXs
+        let target = flickable.contentY
+        if (top < flickable.contentY + margin)
+            target = top - margin
+        else if (bottom > flickable.contentY + flickable.height - margin)
+            target = bottom + margin - flickable.height
+        const maximum = Math.max(0, flickable.contentHeight - flickable.height)
+        flickable.contentY = Math.max(0, Math.min(maximum, target))
+    }
+
+    Component.onCompleted: {
+        root.syncCalculationRows()
+        root.syncExtremaRows()
+    }
 
     Connections {
         target: root.controller
         function onCalculationItemsChanged() { root.syncCalculationRows() }
+        function onExtremaItemsChanged() { root.syncExtremaRows() }
     }
 
     ListModel {
         id: calculationRows
+        dynamicRoles: true
+    }
+
+    ListModel {
+        id: extremaRows
         dynamicRoles: true
     }
 
@@ -137,7 +183,7 @@ Rectangle {
         Label {
             visible: root.expanded
             Layout.fillWidth: true
-            text: "区间积分和阈值通带只使用已计算波长；不外推。"
+            text: "积分、峰谷与通带均基于已计算光谱；峰谷只用显式波段。"
             color: Theme.snapshot.colorTextMuted
             wrapMode: Text.WordWrap
             font.family: Theme.snapshot.fontFamily
@@ -228,41 +274,6 @@ Rectangle {
         }
 
         Label {
-            objectName: "filmSpectrumGlobalExtrema"
-            visible: root.expanded && root.analysisSnapshot.status === "ok"
-            Layout.fillWidth: true
-            text: "全局最小 " + root.extremaText(root.analysisSnapshot.global_min, 8)
-                  + "\n全局最大 " + root.extremaText(root.analysisSnapshot.global_max, 8)
-            color: Theme.snapshot.colorText
-            wrapMode: Text.WordWrap
-            font.family: Theme.snapshot.fontFamily
-            font.pointSize: Theme.snapshot.fontSizeSmall
-        }
-
-        Label {
-            objectName: "filmSpectrumLocalPeaks"
-            visible: root.expanded && root.analysisSnapshot.status === "ok"
-            Layout.fillWidth: true
-            text: "局部峰（波长 nm · 值）: "
-                  + root.extremaText(root.analysisSnapshot.local_peaks, 8)
-            color: Theme.snapshot.colorText
-            wrapMode: Text.WordWrap
-            font.family: Theme.snapshot.fontFamily
-            font.pointSize: Theme.snapshot.fontSizeSmall
-        }
-        Label {
-            objectName: "filmSpectrumLocalValleys"
-            visible: root.expanded && root.analysisSnapshot.status === "ok"
-            Layout.fillWidth: true
-            text: "局部谷（波长 nm · 值）: "
-                  + root.extremaText(root.analysisSnapshot.local_valleys, 8)
-            color: Theme.snapshot.colorText
-            wrapMode: Text.WordWrap
-            font.family: Theme.snapshot.fontFamily
-            font.pointSize: Theme.snapshot.fontSizeSmall
-        }
-
-        Label {
             objectName: "filmSpectrumLongWavePass"
             visible: root.expanded && root.analysisSnapshot.status === "ok"
             Layout.fillWidth: true
@@ -295,7 +306,7 @@ Rectangle {
         }
         Label {
             visible: root.expanded
-            text: "波段积分"
+            text: "统计波段"
             color: Theme.snapshot.colorText
             font.family: Theme.snapshot.fontFamily
             font.pointSize: Theme.snapshot.fontSizeSmall
@@ -315,12 +326,256 @@ Rectangle {
                 width: bandsView.availableWidth
                 spacing: Theme.snapshot.spaceSm
 
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label {
+                        Layout.fillWidth: true
+                        text: "峰谷极值统计波段"
+                        color: root.themeTokens.colorText
+                        font.family: root.themeTokens.fontFamily
+                        font.pointSize: root.themeTokens.fontSizeSmall
+                        font.weight: root.themeTokens.fontWeightEmphasis
+                    }
+                    ThemeControls.ThemeButton {
+                        objectName: "filmSimulationAddExtremaBandButton"
+                        text: "+ 极值波段"
+                        Accessible.name: "添加极值统计波段"
+                        onClicked: root.controller.addExtremaBand()
+                    }
+                }
+
+                Label {
+                    objectName: "filmSpectrumExtremaUnconfigured"
+                    Layout.fillWidth: true
+                    text: "峰谷只统计显式波段内已计算的样点；不插值或补算。空列表表示未配置。"
+                    color: root.themeTokens.colorTextMuted
+                    wrapMode: Text.WordWrap
+                    font.family: root.themeTokens.fontFamily
+                    font.pointSize: root.themeTokens.fontSizeSmall
+                }
+
                 Label {
                     Layout.fillWidth: true
-                    visible: root.calculationItemsSnapshot.length === 0
+                    visible: root.expanded && root.extremaItemsSnapshot.length === 0
+                    text: "未配置极值统计波段。"
+                    color: root.themeTokens.colorTextMuted
+                    wrapMode: Text.WordWrap
+                    font.family: root.themeTokens.fontFamily
+                    font.pointSize: root.themeTokens.fontSizeSmall
+                }
+
+                Repeater {
+                    model: extremaRows
+                    delegate: Rectangle {
+                        id: extremaCard
+                        required property var bandRow
+                        property string minimumDraftText: extremaCard.numberText(bandRow.minimum_nm)
+                        property string maximumDraftText: extremaCard.numberText(bandRow.maximum_nm)
+                        property bool minimumDraftDirty: false
+                        property bool maximumDraftDirty: false
+                        readonly property var modelData: bandRow
+                        Layout.fillWidth: true
+                        implicitHeight: extremaLayout.implicitHeight + root.themeTokens.spaceSm * 2
+                        radius: root.themeTokens.radiusSm
+                        color: root.themeTokens.colorSurfaceRaised
+                        border.color: root.themeTokens.colorBorder
+
+                        function numberText(value) {
+                            return value === null || value === undefined ? "" : String(value)
+                        }
+                        function syncDraftText() {
+                            if (minimumDraftDirty && Number.isFinite(Number(minimumDraftText))
+                                    && Number(minimumDraftText) === bandRow.minimum_nm)
+                                minimumDraftDirty = false
+                            if (maximumDraftDirty && Number.isFinite(Number(maximumDraftText))
+                                    && Number(maximumDraftText) === bandRow.maximum_nm)
+                                maximumDraftDirty = false
+                            if (!minimumDraftDirty)
+                                minimumDraftText = numberText(bandRow.minimum_nm)
+                            if (!maximumDraftDirty)
+                                maximumDraftText = numberText(bandRow.maximum_nm)
+                        }
+                        onBandRowChanged: syncDraftText()
+
+                        ColumnLayout {
+                            id: extremaLayout
+                            anchors.fill: parent
+                            anchors.margins: root.themeTokens.spaceSm
+                            spacing: root.themeTokens.spaceXs
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: "极值波段 " + (extremaCard.modelData.index + 1)
+                                    color: root.themeTokens.colorText
+                                    font.family: root.themeTokens.fontFamily
+                                    font.weight: root.themeTokens.fontWeightEmphasis
+                                }
+                                ThemeControls.ThemeButton {
+                                    id: removeExtremaBandButton
+                                    objectName: "filmSimulationRemoveExtremaBandButton_"
+                                                 + extremaCard.modelData.index
+                                    text: "移除"
+                                    Accessible.name: "移除极值统计波段 "
+                                                   + (extremaCard.modelData.index + 1)
+                                    onActiveFocusChanged: {
+                                        if (activeFocus)
+                                            root.ensureBandsItemVisible(removeExtremaBandButton)
+                                    }
+                                    onClicked: root.controller.removeExtremaBand(
+                                                   extremaCard.modelData.index)
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Label { text: "nm"; color: root.themeTokens.colorTextMuted }
+                                ThemeControls.ThemeField {
+                                    id: extremaMinimumField
+                                    objectName: "filmSimulationExtremaMinimumField_"
+                                                 + extremaCard.modelData.index
+                                    Layout.fillWidth: true
+                                    accessibleLabel: "极值波段下限 nm"
+                                    onActiveFocusChanged: {
+                                        if (activeFocus)
+                                            root.ensureBandsItemVisible(extremaMinimumField)
+                                    }
+                                    numericDisplayValue: extremaCard.minimumDraftText
+                                    numericDisplayDecimals: 3
+                                    inputMethodHints: Qt.ImhFormattedNumbersOnly
+                                    validator: DoubleValidator {
+                                        bottom: 0.000001; top: 1.0e12; decimals: 10
+                                    }
+                                    onTextEdited: {
+                                        extremaCard.minimumDraftDirty = true
+                                        extremaCard.minimumDraftText = text
+                                    }
+                                    onEditingFinished: root.controller.setExtremaBand(
+                                        extremaCard.modelData.index,
+                                        extremaMinimumField.acceptableInput ? Number(text)
+                                                                           : extremaCard.modelData.minimum_nm,
+                                        extremaCard.modelData.maximum_nm)
+                                }
+                                Label { text: "至"; color: root.themeTokens.colorTextMuted }
+                                ThemeControls.ThemeField {
+                                    id: extremaMaximumField
+                                    objectName: "filmSimulationExtremaMaximumField_"
+                                                 + extremaCard.modelData.index
+                                    Layout.fillWidth: true
+                                    accessibleLabel: "极值波段上限 nm"
+                                    onActiveFocusChanged: {
+                                        if (activeFocus)
+                                            root.ensureBandsItemVisible(extremaMaximumField)
+                                    }
+                                    numericDisplayValue: extremaCard.maximumDraftText
+                                    numericDisplayDecimals: 3
+                                    inputMethodHints: Qt.ImhFormattedNumbersOnly
+                                    validator: DoubleValidator {
+                                        bottom: 0.000001; top: 1.0e12; decimals: 10
+                                    }
+                                    onTextEdited: {
+                                        extremaCard.maximumDraftDirty = true
+                                        extremaCard.maximumDraftText = text
+                                    }
+                                    onEditingFinished: root.controller.setExtremaBand(
+                                        extremaCard.modelData.index,
+                                        extremaCard.modelData.minimum_nm,
+                                        extremaMaximumField.acceptableInput ? Number(text)
+                                                                           : extremaCard.modelData.maximum_nm)
+                                }
+                            }
+
+                            Label {
+                                Layout.fillWidth: true
+                                visible: extremaCard.modelData.status === "ok"
+                                text: "波段内已取样 "
+                                      + extremaCard.numberText(extremaCard.modelData.sample_minimum_nm)
+                                      + "–"
+                                      + extremaCard.numberText(extremaCard.modelData.sample_maximum_nm)
+                                      + " nm · " + extremaCard.modelData.sample_count + " 点"
+                                      + " · " + root.polarizationLabel(
+                                            extremaCard.modelData.polarization)
+                                      + " · θ " + root.number(extremaCard.modelData.angle_deg) + "°"
+                                color: root.themeTokens.colorTextMuted
+                                wrapMode: Text.WordWrap
+                                font.family: root.themeTokens.fontFamily
+                                font.pointSize: root.themeTokens.fontSizeSmall
+                            }
+                            Label {
+                                objectName: "filmSpectrumExtremaGlobal_"
+                                             + extremaCard.modelData.index
+                                Layout.fillWidth: true
+                                visible: root.expanded && extremaCard.modelData.status === "ok"
+                                text: "波段内全局最小 "
+                                      + root.extremaText(extremaCard.modelData.global_min, 8)
+                                      + "\n波段内全局最大 "
+                                      + root.extremaText(extremaCard.modelData.global_max, 8)
+                                      + "\n注：波段两端可作为全局极值，不作为局部峰谷。"
+                                color: root.themeTokens.colorText
+                                wrapMode: Text.WordWrap
+                                font.family: root.themeTokens.fontFamily
+                                font.pointSize: root.themeTokens.fontSizeSmall
+                            }
+                            Label {
+                                objectName: "filmSpectrumExtremaPeaks_"
+                                             + extremaCard.modelData.index
+                                Layout.fillWidth: true
+                                visible: root.expanded && extremaCard.modelData.status === "ok"
+                                text: "波段内局部峰（波长 nm · 值）: "
+                                      + root.extremaText(extremaCard.modelData.local_peaks, 8)
+                                color: root.themeTokens.colorText
+                                wrapMode: Text.WordWrap
+                                font.family: root.themeTokens.fontFamily
+                                font.pointSize: root.themeTokens.fontSizeSmall
+                            }
+                            Label {
+                                objectName: "filmSpectrumExtremaValleys_"
+                                             + extremaCard.modelData.index
+                                Layout.fillWidth: true
+                                visible: root.expanded && extremaCard.modelData.status === "ok"
+                                text: "波段内局部谷（波长 nm · 值）: "
+                                      + root.extremaText(extremaCard.modelData.local_valleys, 8)
+                                color: root.themeTokens.colorText
+                                wrapMode: Text.WordWrap
+                                font.family: root.themeTokens.fontFamily
+                                font.pointSize: root.themeTokens.fontSizeSmall
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                visible: extremaCard.modelData.status !== "ok"
+                                text: extremaCard.modelData.message
+                                color: root.themeTokens.colorWarning
+                                wrapMode: Text.WordWrap
+                                font.family: root.themeTokens.fontFamily
+                                font.pointSize: root.themeTokens.fontSizeSmall
+                            }
+                        }
+                    }
+                }
+                Rectangle {
+                    visible: root.expanded
+                    Layout.fillWidth: true
+                    height: root.themeTokens.borderWidth
+                    color: root.themeTokens.colorBorder
+                }
+
+                Label {
+                    visible: root.expanded
+                    text: "波段积分"
+                    color: root.themeTokens.colorText
+                    font.family: root.themeTokens.fontFamily
+                    font.pointSize: root.themeTokens.fontSizeSmall
+                    font.weight: root.themeTokens.fontWeightEmphasis
+                }
+                Label {
+                    Layout.fillWidth: true
+                    visible: root.expanded && root.calculationItemsSnapshot.length === 0
                     text: "没有计算项，请添加波段。"
                     color: Theme.snapshot.colorTextMuted
                     wrapMode: Text.WordWrap
+                    font.family: Theme.snapshot.fontFamily
+                    font.pointSize: Theme.snapshot.fontSizeSmall
                 }
 
                 Repeater {
@@ -372,8 +627,15 @@ Rectangle {
                                     font.weight: Theme.snapshot.fontWeightEmphasis
                                 }
                                 ThemeControls.ThemeButton {
+                                    id: removeCalculationBandButton
+                                    objectName: "filmSimulationRemoveBandButton_"
+                                                 + bandCard.modelData.index
                                     text: "移除"
                                     Accessible.name: "移除计算波段 " + (bandCard.modelData.index + 1)
+                                    onActiveFocusChanged: {
+                                        if (activeFocus)
+                                            root.ensureBandsItemVisible(removeCalculationBandButton)
+                                    }
                                     onClicked: root.controller.removeCalculationBand(
                                                    bandCard.modelData.index)
                                 }
@@ -388,6 +650,10 @@ Rectangle {
                                                  + bandCard.modelData.index
                                     Layout.fillWidth: true
                                     accessibleLabel: "波段下限 nm"
+                                    onActiveFocusChanged: {
+                                        if (activeFocus)
+                                            root.ensureBandsItemVisible(minimumField)
+                                    }
                                     numericDisplayValue: bandCard.minimumDraftText
                                     numericDisplayDecimals: 3
                                     inputMethodHints: Qt.ImhFormattedNumbersOnly
@@ -411,6 +677,10 @@ Rectangle {
                                                  + bandCard.modelData.index
                                     Layout.fillWidth: true
                                     accessibleLabel: "波段上限 nm"
+                                    onActiveFocusChanged: {
+                                        if (activeFocus)
+                                            root.ensureBandsItemVisible(maximumField)
+                                    }
                                     numericDisplayValue: bandCard.maximumDraftText
                                     numericDisplayDecimals: 3
                                     inputMethodHints: Qt.ImhFormattedNumbersOnly

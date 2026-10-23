@@ -46,7 +46,7 @@ class FilmSimulationBandInputTests(unittest.TestCase):
         self.pump()
         self._tempdir.cleanup()
 
-    def add_second_band(self):
+    def add_second_band(self, *, ensure_visible=True):
         button = self.find_item("filmSimulationAddBandButton")
         self.assertIsNotNone(button)
         self.click(button)
@@ -55,7 +55,66 @@ class FilmSimulationBandInputTests(unittest.TestCase):
         maximum = self.find_item("filmSimulationBandMaximumField_1")
         self.assertIsNotNone(minimum)
         self.assertIsNotNone(maximum)
+        if ensure_visible:
+            self.scroll_item_into_view(minimum)
         return minimum, maximum
+
+    def add_extrema_band(self):
+        button = self.find_item("filmSimulationAddExtremaBandButton")
+        self.assertIsNotNone(button)
+        self.click(button)
+        self.pump()
+        minimum = self.find_item("filmSimulationExtremaMinimumField_0")
+        maximum = self.find_item("filmSimulationExtremaMaximumField_0")
+        self.assertIsNotNone(minimum)
+        self.assertIsNotNone(maximum)
+        self.scroll_item_into_view(minimum)
+        return minimum, maximum
+
+    def scroll_item_into_view(self, item):
+        scroll_view = self.find_item("filmSimulationBandsScrollView")
+        flickable = scroll_view.property("contentItem")
+        content = flickable.property("contentItem")
+        position = item.mapToItem(content, 0, 0)
+        top = float(position.y())
+        bottom = top + float(item.height())
+        current = float(flickable.property("contentY"))
+        viewport_height = float(flickable.height())
+        margin = 4.0
+        target = current
+        if top < current + margin:
+            target = top - margin
+        elif bottom > current + viewport_height - margin:
+            target = bottom + margin - viewport_height
+        maximum = max(0.0, float(flickable.property("contentHeight")) - viewport_height)
+        flickable.setProperty("contentY", min(maximum, max(0.0, target)))
+        self.pump()
+
+        self.assert_item_visible(item)
+
+    def assert_item_visible(self, item):
+        flickable = self.find_item("filmSimulationBandsScrollView").property("contentItem")
+        viewport_top = float(flickable.mapToScene(QPointF(0, 0)).y())
+        item_top = float(item.mapToScene(QPointF(0, 0)).y())
+        self.assertGreaterEqual(item_top, viewport_top - 0.5)
+        self.assertLessEqual(item_top + float(item.height()),
+                             viewport_top + float(flickable.height()) + 0.5)
+
+    def install_sample_result(self):
+        self.controller._result = {
+            "settings": {"polarization": "unpolarized"},
+            "wavelength_nm": [100.0, 1200.0],
+            "R": [0.1, 0.2],
+            "T": [0.9, 0.8],
+        }
+        self.controller._stale = False
+        self.controller._invalidate_calculation_items()
+        self.controller._invalidate_spectrum_analysis()
+        self.controller._invalidate_extrema_items()
+        self.controller.calculationItemsChanged.emit()
+        self.controller.spectrumAnalysisChanged.emit()
+        self.controller.extremaItemsChanged.emit()
+        self.pump()
 
     def find_item(self, object_name):
         pending = list(self.window.contentItem().childItems())
@@ -128,18 +187,52 @@ class FilmSimulationBandInputTests(unittest.TestCase):
         self.assertEqual(self.controller.calculationItems[1]["minimum_nm"], 1200.0)
         self.assertEqual(self.controller.calculationItems[1]["maximum_nm"], 700.0)
 
+    def test_tab_scrolls_offscreen_integral_fields_into_view_in_small_window(self):
+        self.window.setWidth(800)
+        self.window.setHeight(760)
+        self.pump()
+        self.install_sample_result()
+        self.add_second_band(ensure_visible=False)
+
+        first_minimum = self.find_item("filmSimulationBandMinimumField_0")
+        second_minimum = self.find_item("filmSimulationBandMinimumField_1")
+        second_maximum = self.find_item("filmSimulationBandMaximumField_1")
+        self.assertIsNotNone(first_minimum)
+        self.assertIsNotNone(second_minimum)
+        self.assertIsNotNone(second_maximum)
+
+        scroll_view = self.find_item("filmSimulationBandsScrollView")
+        flickable = scroll_view.property("contentItem")
+        viewport_top = float(flickable.mapToScene(QPointF(0, 0)).y())
+        second_minimum_top = float(second_minimum.mapToScene(QPointF(0, 0)).y())
+        self.assertGreater(second_minimum_top + second_minimum.height(),
+                           viewport_top + flickable.height())
+
+        self.scroll_item_into_view(first_minimum)
+        self.click(first_minimum)
+        QTest.keyClick(self.window, Qt.Key.Key_Tab)
+        self.pump()
+        self.assertEqual(self.active_name(), "filmSimulationBandMaximumField_0")
+        self.assert_item_visible(first_minimum)
+        QTest.keyClick(self.window, Qt.Key.Key_Tab)
+        self.pump()
+        remove_button = self.find_item("filmSimulationRemoveBandButton_1")
+        self.assertEqual(self.active_name(), "filmSimulationRemoveBandButton_1")
+        self.assert_item_visible(remove_button)
+        self.assertGreater(float(flickable.property("contentY")), 0.0)
+        QTest.keyClick(self.window, Qt.Key.Key_Tab)
+        self.pump()
+        self.assertEqual(self.active_name(), "filmSimulationBandMinimumField_1")
+        self.assert_item_visible(second_minimum)
+        QTest.keyClick(self.window, Qt.Key.Key_Tab)
+        self.pump()
+        self.assertEqual(self.active_name(), "filmSimulationBandMaximumField_1")
+        self.assert_item_visible(second_maximum)
+
     def test_upper_first_keeps_temporarily_invalid_range_until_corrected(self):
         # Provide a small computed result so the existing range validator is
         # observable while exercising the actual QML editor and keyboard path.
-        self.controller._result = {
-            "wavelength_nm": [100.0, 1200.0],
-            "R": [0.1, 0.2],
-            "T": [0.9, 0.8],
-        }
-        self.controller._stale = False
-        self.controller._invalidate_calculation_items()
-        self.controller.calculationItemsChanged.emit()
-        self.pump()
+        self.install_sample_result()
 
         _minimum, maximum = self.add_second_band()
         self.click(maximum)
@@ -169,15 +262,7 @@ class FilmSimulationBandInputTests(unittest.TestCase):
         self.assertEqual(self.active_name(), "filmSimulationBandMaximumField_1")
 
     def test_editing_only_upper_preserves_an_incomplete_lower_bound(self):
-        self.controller._result = {
-            "wavelength_nm": [100.0, 1200.0],
-            "R": [0.1, 0.2],
-            "T": [0.9, 0.8],
-        }
-        self.controller._stale = False
-        self.controller._invalidate_calculation_items()
-        self.controller.calculationItemsChanged.emit()
-        self.pump()
+        self.install_sample_result()
 
         minimum, _maximum = self.add_second_band()
         self.click(minimum)
@@ -230,3 +315,62 @@ class FilmSimulationBandInputTests(unittest.TestCase):
         self.assertEqual(self.find_item("filmSimulationBandMinimumField_1").property("text"), "0")
         self.assertEqual((self.controller.calculationItems[1]["minimum_nm"],
                           self.controller.calculationItems[1]["maximum_nm"]), (400.0, 700.0))
+
+    def test_extrema_band_uses_real_tab_navigation_and_keeps_nullable_counterpart(self):
+        self.controller._result = {
+            "settings": {"polarization": "unpolarized"},
+            "wavelength_nm": [400.0, 500.0, 600.0, 700.0, 800.0],
+            "R": [0.1, 0.9, 0.2, 0.8, 0.1],
+            "T": [0.9, 0.1, 0.8, 0.2, 0.9],
+        }
+        self.controller._stale = False
+        self.controller._invalidate_spectrum_analysis()
+        self.controller._invalidate_extrema_items()
+        self.controller.spectrumAnalysisChanged.emit()
+        self.controller.extremaItemsChanged.emit()
+        self.pump()
+
+        self.assertEqual(self.controller.extremaItems, [])
+        self.assertIsNone(self.find_item("filmSpectrumGlobalExtrema"))
+        unconfigured = self.find_item("filmSpectrumExtremaUnconfigured")
+        self.assertIsNotNone(unconfigured)
+        self.assertTrue(unconfigured.isVisible())
+
+        minimum, maximum = self.add_extrema_band()
+        self.assertEqual(len(self.controller.extremaItems), 1)
+        self.assertEqual(self.controller.extremaItems[0]["status"], "incomplete_range")
+        self.click(maximum)
+        self.enter_text("700")
+        QTest.keyClick(self.window, Qt.Key.Key_Tab, Qt.KeyboardModifier.ShiftModifier)
+        self.pump()
+
+        self.assertEqual(self.active_name(), "filmSimulationExtremaMinimumField_0")
+        self.assertEqual(minimum.property("text"), "")
+        self.assertEqual((self.controller.extremaItems[0]["minimum_nm"],
+                          self.controller.extremaItems[0]["maximum_nm"]), (None, 700.0))
+        self.assertEqual(self.controller.extremaItems[0]["status"], "incomplete_range")
+
+        self.enter_text("500")
+        QTest.keyClick(self.window, Qt.Key.Key_Tab)
+        self.pump()
+        row = self.controller.extremaItems[0]
+        self.assertEqual(self.active_name(), "filmSimulationExtremaMaximumField_0")
+        self.assertEqual((row["minimum_nm"], row["maximum_nm"]), (500.0, 700.0))
+        self.assertEqual(row["status"], "ok")
+        self.assertEqual(row["sample_count"], 3)
+
+        QTest.keyClick(self.window, Qt.Key.Key_Tab, Qt.KeyboardModifier.ShiftModifier)
+        self.pump()
+        self.enter_text("450")
+        self.assertTrue(self.controller.setCalculationBand(0, 410.0, 690.0))
+        self.pump()
+        self.assertEqual(self.active_name(), "filmSimulationExtremaMinimumField_0")
+        self.assertEqual(minimum.property("text"), "450")
+        self.assertEqual(self.controller.extremaItems[0]["minimum_nm"], 500.0)
+
+        QTest.keyClick(self.window, Qt.Key.Key_Tab)
+        self.pump()
+        self.assertEqual(self.active_name(), "filmSimulationExtremaMaximumField_0")
+        self.assertEqual((self.controller.extremaItems[0]["minimum_nm"],
+                          self.controller.extremaItems[0]["maximum_nm"]), (450.0, 700.0))
+        self.assertEqual(self.controller.calculationItems[0]["minimum_nm"], 410.0)

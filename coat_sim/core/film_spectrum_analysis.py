@@ -6,6 +6,7 @@ not request additional optical calculations or change exported data.
 from __future__ import annotations
 
 import math
+from bisect import bisect_left, bisect_right
 from typing import Any
 
 
@@ -81,13 +82,14 @@ def calculate_spectrum_analysis(
         result: dict[str, Any] | None,
         channel: str = "T",
         polarization: str | None = None,
-        threshold_fraction: Any = 0.5) -> dict[str, Any]:
+        threshold_fraction: Any = 0.5, *, include_extrema: bool = True) -> dict[str, Any]:
     """Return sampled extrema and threshold-pass intervals for R or T.
 
     Local extrema use exact-equality plateaus and require a sample on each
-    side. Global extrema include the endpoints. Threshold crossings are
-    linearly interpolated only between finite solved samples. These are UI
-    conventions over the result grid, not additional physical predictions.
+    side. Global extrema include the endpoints. Set ``include_extrema=False``
+    to skip extrema while retaining full-result threshold intervals. Threshold
+    crossings are linearly interpolated only between finite solved samples.
+    These are UI conventions over the result grid, not additional predictions.
     """
     if not isinstance(result, dict) or not result:
         return {"status": "no_result", "message": "尚无仿真结果。"}
@@ -131,24 +133,27 @@ def calculate_spectrum_analysis(
             "message": "光谱结果需要至少两个递增波长点，且 R/T 长度须与波长一致。",
         }
 
-    minimum, maximum = min(values), max(values)
-    minimum_runs = [run for run in _group_equal_runs(waves, values)
-                    if run["value"] == minimum]
-    maximum_runs = [run for run in _group_equal_runs(waves, values)
-                    if run["value"] == maximum]
+    minimum_runs: list[dict[str, Any]] = []
+    maximum_runs: list[dict[str, Any]] = []
     local_peaks: list[dict[str, Any]] = []
     local_valleys: list[dict[str, Any]] = []
-    runs = _group_equal_runs(waves, values)
-    for run_index in range(1, len(runs) - 1):
-        run = runs[run_index]
-        previous = runs[run_index - 1]["value"]
-        following = runs[run_index + 1]["value"]
-        point = {key: run[key] for key in (
-            "wavelength_min_nm", "wavelength_max_nm", "wavelength_nm", "value")}
-        if run["value"] > previous and run["value"] > following:
-            local_peaks.append({"kind": "peak", **point})
-        elif run["value"] < previous and run["value"] < following:
-            local_valleys.append({"kind": "valley", **point})
+    if include_extrema:
+        minimum, maximum = min(values), max(values)
+        minimum_runs = [run for run in _group_equal_runs(waves, values)
+                        if run["value"] == minimum]
+        maximum_runs = [run for run in _group_equal_runs(waves, values)
+                        if run["value"] == maximum]
+        runs = _group_equal_runs(waves, values)
+        for run_index in range(1, len(runs) - 1):
+            run = runs[run_index]
+            previous = runs[run_index - 1]["value"]
+            following = runs[run_index + 1]["value"]
+            point = {key: run[key] for key in (
+                "wavelength_min_nm", "wavelength_max_nm", "wavelength_nm", "value")}
+            if run["value"] > previous and run["value"] > following:
+                local_peaks.append({"kind": "peak", **point})
+            elif run["value"] < previous and run["value"] < following:
+                local_valleys.append({"kind": "valley", **point})
 
     intervals = _intervals_at_threshold(waves, values, threshold)
     try:
@@ -170,4 +175,121 @@ def calculate_spectrum_analysis(
         "local_valleys": local_valleys,
         "long_wave_pass_intervals": intervals,
         "short_wave_pass_intervals": list(reversed(intervals)),
+    }
+
+
+def calculate_spectrum_extrema(
+        result: dict[str, Any] | None,
+        channel: str = "T",
+        polarization: str | None = None,
+        minimum_nm: Any = None,
+        maximum_nm: Any = None) -> dict[str, Any]:
+    """Return extrema of solved samples inside one explicit closed wavelength band.
+
+    The requested bounds select existing samples only; no endpoint interpolation,
+    extrapolation, resampling, or use of out-of-band neighbor samples occurs.
+    Global extrema include the selected band's first and last samples. Local
+    extrema use exact-equality plateaus and require strict comparisons with both
+    neighboring plateaus wholly inside the selected band.
+    """
+    if not isinstance(result, dict) or not result:
+        return {"status": "no_result", "message": "尚无仿真结果。"}
+    if channel not in ("R", "T"):
+        return {"status": "invalid_channel", "message": "请选择 R 或 T 曲线。"}
+    if minimum_nm is None or maximum_nm is None:
+        return {"status": "incomplete_range", "message": "请填写极值统计波段下限和上限。"}
+    try:
+        band_min = _finite(minimum_nm, "波段下限")
+        band_max = _finite(maximum_nm, "波段上限")
+    except ValueError as exc:
+        return {"status": "invalid_range", "message": str(exc)}
+    if band_min >= band_max:
+        return {"status": "invalid_range", "message": "极值统计波段下限须小于上限。"}
+
+    settings = result.get("settings")
+    if not isinstance(settings, dict):
+        settings = {}
+    base_polarization = str(settings.get("polarization", "unpolarized"))
+    chosen_polarization = polarization or base_polarization
+    if chosen_polarization == base_polarization:
+        raw_values = result.get(channel)
+    else:
+        polarization_curves = result.get("polarization_curves")
+        if not isinstance(polarization_curves, dict):
+            polarization_curves = {}
+        selected = polarization_curves.get(chosen_polarization)
+        raw_values = selected.get(channel) if isinstance(selected, dict) else None
+        if raw_values is None:
+            return {
+                "status": "polarization_unavailable",
+                "message": f"当前结果没有 {chosen_polarization} 偏振的 {channel} 曲线。",
+            }
+
+    try:
+        waves = [_finite(value, "结果波长") for value in result.get("wavelength_nm", ())]
+        values = [_finite(value, f"{channel} 数据") for value in (raw_values or ())]
+    except (TypeError, ValueError, OverflowError) as exc:
+        return {"status": "invalid_result", "message": f"光谱数据无效：{exc}"}
+    if len(values) != len(waves) or any(
+            right <= left for left, right in zip(waves, waves[1:], strict=False)):
+        return {
+            "status": "invalid_result",
+            "message": "光谱结果须有等长曲线和严格递增的有限波长点。",
+        }
+
+    first = bisect_left(waves, band_min)
+    last = bisect_right(waves, band_max)
+    selected_waves = waves[first:last]
+    selected_values = values[first:last]
+    common = {
+        "channel": channel,
+        "polarization": chosen_polarization,
+        "band_minimum_nm": band_min,
+        "band_maximum_nm": band_max,
+        "sample_count": len(selected_waves),
+    }
+    if not selected_waves:
+        return {"status": "no_samples", "message": "指定波段内没有已计算的波长样点。",
+                **common}
+    if len(selected_waves) == 1:
+        return {
+            "status": "insufficient_samples",
+            "message": "指定波段内仅有 1 个已计算样点；极值统计至少需要 2 点。",
+            "sample_minimum_nm": selected_waves[0],
+            "sample_maximum_nm": selected_waves[0],
+            **common,
+        }
+
+    minimum, maximum = min(selected_values), max(selected_values)
+    runs = _group_equal_runs(selected_waves, selected_values)
+    minimum_runs = [run for run in runs if run["value"] == minimum]
+    maximum_runs = [run for run in runs if run["value"] == maximum]
+    local_peaks: list[dict[str, Any]] = []
+    local_valleys: list[dict[str, Any]] = []
+    for run_index in range(1, len(runs) - 1):
+        run = runs[run_index]
+        previous = runs[run_index - 1]["value"]
+        following = runs[run_index + 1]["value"]
+        point = {key: run[key] for key in (
+            "wavelength_min_nm", "wavelength_max_nm", "wavelength_nm", "value")}
+        if run["value"] > previous and run["value"] > following:
+            local_peaks.append({"kind": "peak", **point})
+        elif run["value"] < previous and run["value"] < following:
+            local_valleys.append({"kind": "valley", **point})
+
+    try:
+        angle_deg = _finite(settings.get("angle_deg", 0.0), "入射角")
+    except ValueError:
+        angle_deg = None
+    return {
+        "status": "ok",
+        "message": "",
+        "sample_minimum_nm": selected_waves[0],
+        "sample_maximum_nm": selected_waves[-1],
+        "global_min": minimum_runs,
+        "global_max": maximum_runs,
+        "local_peaks": local_peaks,
+        "local_valleys": local_valleys,
+        "angle_deg": angle_deg,
+        **common,
     }

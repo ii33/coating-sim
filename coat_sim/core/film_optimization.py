@@ -16,6 +16,7 @@ import numpy as np
 
 from .film_design import physical_thickness_nm
 from .optical_constants import prepare_optical_set
+from .film_nominal_acceptance import nominal_condition_pass
 from .film_optimization_scoring import (candidate_key, score_condition, search_scalar,
                                         weighted_rms_error, weighted_scaled_value)
 
@@ -296,6 +297,7 @@ def optimize_film_design(
     checkpoint_callback: Callable[[dict[str, Any]], None] | None = None,
     performance_options: Any = None,
     performance_callback: Callable[[dict[str, Any]], None] | None = None,
+    candidate_observer: Any = None,
 ) -> FilmOptimizationResult:
     """Optimize only requested layer thicknesses through the film service.
 
@@ -534,6 +536,7 @@ def optimize_film_design(
         normalized_errors: list[float] = []
         max_error = 0.0
         weighted_max_error = 0.0
+        original_nominal_pass = True
         for objective_index, objective in enumerate(rows_to_evaluate):
             waves = np.linspace(objective.wavelength_min_nm,
                                 objective.wavelength_max_nm,
@@ -560,6 +563,8 @@ def optimize_film_design(
                             not np.allclose(actual_waves, chunk_waves, rtol=0, atol=1e-9)):
                         raise ValueError("film simulation returned invalid objective samples")
                     for wavelength, actual in zip(chunk_waves, actual_values):
+                        if display_physical is not None:
+                            original_nominal_pass &= nominal_condition_pass(objective, float(actual))
                         if objective.mode == "value":
                             violation = abs(float(actual) - float(objective.target_value))
                         else:
@@ -592,6 +597,8 @@ def optimize_film_design(
             "errors": tuple(errors), "max_error": max_error,
             "weighted_max_error": weighted_max_error,
             "weighted_rms_error": weighted_rms,
+            "nominal_pass": bool(original_nominal_pass),
+            "condition_count": len(normalized_errors),
             "key": candidate_key(max_error, weighted_rms, acceptable),
         }
 
@@ -609,11 +616,29 @@ def optimize_film_design(
     failed_evaluations = 0
     iteration = 0
     cancel_after_evaluation = False
+    from .film_candidate_display import (
+        CandidateDisplayObserver, finish_candidate_display, physical_layer_thicknesses, record_candidate,
+        refresh_candidate_display,
+    )
+    display_physical = (physical_layer_thicknesses(base_design, frozen)
+                        if type(candidate_observer) is CandidateDisplayObserver else None)
+
+    def display_candidate(current, *, is_best=False, is_current=True, publish=True):
+        if display_physical is None:
+            return
+        physical = dict(display_physical)
+        for value, (side, identifier, _low, _high, _current) in zip(current["values"], normalized_variables, strict=True):
+            physical[(side + "_layers", identifier)] = float(value)
+        record_candidate(candidate_observer, current["design"],
+            weighted_rms_error=current["weighted_rms_error"], max_normalized_error=current["max_error"],
+            condition_rows=current["errors"], physical_thickness_nm=physical,
+            is_best=is_best, is_current=is_current, iterations=iteration, evaluations=evaluations,
+            source="film_optimization", scope="training", publish=publish)
 
     def cancelled() -> bool:
         return cancel_event is not None and callable(getattr(cancel_event, "is_set", None)) and cancel_event.is_set()
 
-    def archive(current: dict[str, Any]) -> None:
+    def archive(current: dict[str, Any], *, is_current=True, publish_display=True) -> None:
         nonlocal best
         incumbent_changed = False
         if best is None:
@@ -626,6 +651,7 @@ def optimize_film_design(
         elif current["key"] < best["key"]:
             best = current
             incumbent_changed = True
+        display_candidate(current, is_best=incumbent_changed, is_current=is_current, publish=publish_display)
         if incumbent_changed and checkpoint_callback is not None:
             thickness = {
                 layer_id: float(value)
@@ -780,6 +806,7 @@ def optimize_film_design(
             execution_device=request.execution_device)
         baseline = best
         baseline_pending = True
+        display_pending: list[Any] = [None]
 
         def batch_evaluate(points):
             nonlocal baseline_pending
@@ -798,19 +825,65 @@ def optimize_film_design(
                 current = evaluate(point, supplied_responses=forward.candidate_responses(responses, index),
                                    include_details=False)
                 results.append(BatchEvaluation(current["key"], search_scalar(
-                    current["max_error"], current["weighted_rms_error"], acceptable), None))
+                    current["max_error"], current["weighted_rms_error"], acceptable),
+                    {"display_metrics": (current["max_error"], current["weighted_rms_error"],
+                                         current["nominal_pass"], current["condition_count"])} if display_physical is not None else None))
                 if chunk_best is None or current["key"] < chunk_best["key"]:
                     chunk_best, chunk_best_index = current, index
             # Only a chunk's best can replace the global best after atomic
             # batch acceptance. Do not retain full condition objects for losers.
             assert chunk_best is not None and chunk_best_index is not None
+            winner_value = {
+                "values": np.array(points[chunk_best_index], copy=True),
+                "responses": tuple(forward.candidate_responses(responses, chunk_best_index)),
+            }
+            if display_physical is not None:
+                winner_value["display_metrics"] = (
+                    chunk_best["max_error"], chunk_best["weighted_rms_error"],
+                    chunk_best["nominal_pass"], chunk_best["condition_count"])
             results[chunk_best_index] = BatchEvaluation(
                 chunk_best["key"], search_scalar(
-                    chunk_best["max_error"], chunk_best["weighted_rms_error"], acceptable), {
-                    "values": np.array(points[chunk_best_index], copy=True),
-                    "responses": tuple(forward.candidate_responses(responses, chunk_best_index)),
-                })
+                    chunk_best["max_error"], chunk_best["weighted_rms_error"], acceptable), winner_value)
+            if display_physical is not None:
+                # Existing raw batch memory lives only through atomic acceptance
+                # and its following progress callback. No display array copy.
+                display_pending[0] = (responses, len(points) - 1)
             return results
+
+        def batch_accepted(items, points, accepted_evaluations, accepted_generations):
+            if display_physical is None:
+                return
+            for item, point in zip(items, points, strict=True):
+                maximum, rms, passed, condition_count = item.value["display_metrics"]
+                physical = dict(display_physical)
+                for value, (side, identifier, _low, _high, _current) in zip(point, normalized_variables, strict=True):
+                    physical[(side + "_layers", identifier)] = float(value)
+                record_candidate(candidate_observer, candidate_design(point), weighted_rms_error=rms,
+                    max_normalized_error=maximum, condition_rows=None, nominal_pass=passed,
+                    condition_count=condition_count,
+                    physical_thickness_nm=physical, iterations=accepted_generations,
+                    evaluations=accepted_evaluations,
+                    source="film_optimization_batch", scope="training", publish=False)
+
+        def batch_spectrum(selection, limit):
+            pending = display_pending[0]
+            if pending is None:
+                return None
+            raw, index = pending
+            objective_index = selection["objective_index"]
+            objective = objectives[objective_index]
+            if selection["angle_deg"] not in objective.angles_deg or selection["metric"] not in ("R", "T"):
+                return None
+            condition_index = sum(len(o.angles_deg) for o in objectives[:objective_index])
+            condition_index += objective.angles_deg.index(selection["angle_deg"])
+            response = raw[condition_index]
+            waves, values = response["wavelength_nm"], response[selection["metric"]][index]
+            count = len(waves)
+            indices = (list(range(count)) if count <= limit else
+                       [i * (count - 1) // (limit - 1) for i in range(limit)])
+            return {"wavelength_nm": [float(waves[i]) for i in indices],
+                    "actual": [float(values[i]) for i in indices], "indices": indices,
+                    "original_point_count": count}
 
         def batch_progress(progress):
             nonlocal evaluations, failed_evaluations, iteration
@@ -820,16 +893,22 @@ def optimize_film_design(
             if progress.best.key < best["key"]:
                 value = progress.best.value
                 current = evaluate(value["values"], supplied_responses=iter(value["responses"]))
-                archive(current)
+                archive(current, is_current=False, publish_display=False)
             else:
-                archive(best)
+                archive(best, is_current=False, publish_display=False)
+            try:
+                refresh_candidate_display(candidate_observer, spectrum_provider=batch_spectrum)
+            finally:
+                display_pending[0] = None
 
         outcome = run_batch_de(
             batch_evaluate, initial, lows, highs,
             max_iterations=max_iterations, max_evaluations=max_evaluations,
             seed=seed, population_size=population_size,
             max_batch_size=min(request.batch_size, forward.batch_limit),
-            cancel_event=cancel_event, checkpoint_callback=batch_progress)
+            cancel_event=cancel_event, checkpoint_callback=batch_progress,
+            accepted_callback=batch_accepted if display_physical is not None else None)
+        display_pending[0] = None
         evaluations, failed_evaluations = outcome.evaluations, outcome.failed
         iteration, termination_reason = outcome.generations, outcome.reason
         cancel_after_evaluation = outcome.state == "cancelled"
@@ -1239,6 +1318,8 @@ def optimize_film_design(
     if not termination_reason:
         termination_reason = "target_met" if best["max_error"] <= acceptable else "converged"
     emit(state, 1.0, iteration, evaluations, float(best["max_error"]), message)
+    display_candidate(best, is_best=True, is_current=False)
+    finish_candidate_display(candidate_observer, state=state)
     thickness = {layer_id: float(value) for value, (_side, layer_id, _low, _high, _current)
                  in zip(best["values"], normalized_variables)}
     return FilmOptimizationResult(

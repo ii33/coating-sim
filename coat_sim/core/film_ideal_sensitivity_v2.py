@@ -17,6 +17,9 @@ from typing import Any, Mapping
 import numpy as np
 
 from . import film_ideal_sensitivity as v1
+from .film_candidate_display import (
+    CandidateDisplayObserver, finish_candidate_display, record_candidate,
+)
 from .film_optimization import (
     FilmOptimizationObjective,
     FilmOptimizationRequest,
@@ -530,6 +533,7 @@ def _execute(
     cancel_event=None,
     progress_callback=None,
     checkpoint_callback=None,
+    candidate_observer=None,
 ):
     if cancel_event is not None and not callable(getattr(cancel_event, "is_set", None)):
         raise ValueError("cancel_event must provide is_set()")
@@ -546,6 +550,8 @@ def _execute(
     solver_scale = None
 
     def result(state, reason, message="", *, final=True):
+        if final and operation == "optimize":
+            finish_candidate_display(candidate_observer, state=state)
         return FilmIdealSensitivityV2Result(
             state,
             reason,
@@ -599,6 +605,25 @@ def _execute(
                 )
             )
 
+    def observe_candidate(design, evaluation, *, guard_pass=None):
+        # Only complete ordinary trials enter display, even on a normal cache hit.
+        # Objective-gradient finite differences never call this boundary.
+        if operation != "optimize" or type(candidate_observer) is not CandidateDisplayObserver:
+            return
+        analysis = evaluation.analysis
+        record_candidate(candidate_observer, design,
+            weighted_rms_error=analysis.nominal_weighted_rms_error,
+            max_normalized_error=analysis.nominal_max_normalized_error,
+            condition_rows=analysis.nominal_conditions,
+            physical_thickness_nm=evaluator.physical(design),
+            is_best=analysis is best, iterations=iterations, evaluations=evaluator.evaluations,
+            source="ideal_sensitivity_v2", guard_pass=guard_pass,
+            sensitivity_objective=analysis.objective_value,
+            normalized_sensitivity_objective=(None if solver_scale is None
+                else analysis.objective_value / solver_scale),
+            usable_candidate=(guard_pass is True and baseline is not None
+                and analysis.objective_value <= baseline.objective_value))
+
     def accept(design, evaluation):
         nonlocal best, best_design, best_guard
         analysis = evaluation.analysis
@@ -613,6 +638,8 @@ def _execute(
                         result("partial", "checkpoint", final=False)
                     )
                 )
+        observe_candidate(design, evaluation, guard_pass=guard.guard_pass)
+        return guard
 
     try:
         emit("baseline")
@@ -631,6 +658,7 @@ def _execute(
             best, best_design, best_guard = baseline, initial_design, baseline_guard
             return result("completed", "analysis_complete")
         if request.policy == "strict_nominal" and not baseline.nominal_targets_met:
+            observe_candidate(initial_design, base_evaluation, guard_pass=baseline_guard.guard_pass)
             return result(
                 "failed",
                 "initial_nominal_infeasible",
@@ -676,10 +704,11 @@ def _execute(
             (initial_values < highs) & (initial_z == 1), np.nextafter(1.0, 0.0), initial_z
         )
         last_key, last_data = None, None
+        last_guard_pass = None
         constraint_cache = _ConstraintRowsCache()
 
         def evaluate_z(z):
-            nonlocal last_key, last_data
+            nonlocal last_key, last_data, last_guard_pass
             evaluator.check()
             z = np.asarray(z, dtype=float)
             if (
@@ -690,14 +719,15 @@ def _execute(
             ):
                 raise ValueError("solver trial is outside normalized physical bounds")
             key = z.tobytes()
-            if last_key == key:
+            if last_key == key and last_data is not None:
+                observe_candidate(last_data[0], last_data[1], guard_pass=last_guard_pass)
                 return last_data
             values = np.where(z <= 0.5, lows + z * spans, highs - (1.0 - z) * spans)
             values = np.where(z == 0, lows, np.where(z == 1, highs, values))
             values = np.where(z == initial_z, initial_values, values)
             design = v1._candidate_design(initial_design, variables, values)
             evaluation = evaluator.evaluate(design)
-            accept(design, evaluation)
+            last_guard_pass = accept(design, evaluation).guard_pass
             last_key, last_data = key, (design, evaluation, values)
             return last_data
 
@@ -854,6 +884,7 @@ def execute_film_ideal_sensitivity_request(
     cancel_event=None,
     progress_callback=None,
     checkpoint_callback=None,
+    candidate_observer=None,
 ) -> FilmIdealSensitivityV2Result:
     return _execute(
         service,
@@ -862,6 +893,7 @@ def execute_film_ideal_sensitivity_request(
         cancel_event=cancel_event,
         progress_callback=progress_callback,
         checkpoint_callback=checkpoint_callback,
+        candidate_observer=candidate_observer,
     )
 
 
@@ -871,6 +903,7 @@ def analyze_film_ideal_sensitivity(
     *,
     cancel_event=None,
     progress_callback=None,
+    candidate_observer=None,
 ) -> FilmIdealSensitivityV2Result:
     return _execute(
         service,
@@ -878,6 +911,7 @@ def analyze_film_ideal_sensitivity(
         operation="analyze",
         cancel_event=cancel_event,
         progress_callback=progress_callback,
+        candidate_observer=candidate_observer,
     )
 
 

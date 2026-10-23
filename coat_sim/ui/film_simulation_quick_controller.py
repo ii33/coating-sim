@@ -28,7 +28,9 @@ from coat_sim.core.film_optimization_preview import (
     PREVIEW_KIND,
     validate_optimization_preview_handoff,
 )
-from coat_sim.core.film_spectrum_analysis import calculate_spectrum_analysis
+from coat_sim.core.film_spectrum_analysis import (
+    calculate_spectrum_analysis, calculate_spectrum_extrema,
+)
 from coat_sim.ui.local_files import local_file_path
 
 
@@ -757,6 +759,7 @@ class FilmSimulationQuickController(QObject):
     cursorReadoutChanged = Signal()
     spectrumAnalysisChanged = Signal()
     calculationItemsChanged = Signal()
+    extremaItemsChanged = Signal()
     confirmationRequested = Signal(str, str)
     closeConfirmed = Signal()
 
@@ -813,6 +816,8 @@ class FilmSimulationQuickController(QObject):
             "maximum_nm": self._params["wavelength_max_nm"],
         }]
         self._calculation_items_cache: list[dict[str, Any]] | None = None
+        self._extrema_bands: list[dict[str, Any]] = []
+        self._extrema_items_cache: list[dict[str, Any]] | None = None
         self._analysis_channel = "T"
         self._analysis_polarization = "current"
         self._analysis_threshold_fraction = 0.5
@@ -1072,6 +1077,9 @@ class FilmSimulationQuickController(QObject):
     def _invalidate_calculation_items(self) -> None:
         self._calculation_items_cache = None
 
+    def _invalidate_extrema_items(self) -> None:
+        self._extrema_items_cache = None
+
     def _invalidate_spectrum_analysis(self) -> None:
         self._spectrum_analysis_cache = None
 
@@ -1110,8 +1118,24 @@ class FilmSimulationQuickController(QObject):
         if self._spectrum_analysis_cache is None:
             self._spectrum_analysis_cache = calculate_spectrum_analysis(
                 self._result, self._analysis_channel, self.analysisPolarization,
-                self._analysis_threshold_fraction)
+                self._analysis_threshold_fraction, include_extrema=False)
         return copy.deepcopy(self._spectrum_analysis_cache)
+
+    @Property(list, notify=extremaItemsChanged)
+    def extremaItems(self) -> list[dict[str, Any]]:
+        if self._extrema_items_cache is not None:
+            return copy.deepcopy(self._extrema_items_cache)
+        items = []
+        for index, band in enumerate(self._extrema_bands):
+            stats = calculate_spectrum_extrema(
+                self._result, self._analysis_channel, cast(str, self.analysisPolarization),
+                band.get("minimum_nm"), band.get("maximum_nm"))
+            if self._result is not None and self._stale:
+                stats = {**stats, "status": "stale",
+                         "message": "结果对应旧参数；重新计算后更新此项。"}
+            items.append({"index": index, **copy.deepcopy(band), **stats})
+        self._extrema_items_cache = items
+        return copy.deepcopy(items)
 
     @Property(str, notify=stateChanged)
     def status(self) -> str:
@@ -1238,6 +1262,7 @@ class FilmSimulationQuickController(QObject):
             "blackbody_temperature_k": self._params["blackbody_temperature_k"],
             "plot": copy.deepcopy(self._plot_settings),
             "calculation_bands": copy.deepcopy(self._calculation_bands),
+            "extrema_bands": copy.deepcopy(self._extrema_bands),
             "analysis": {"channel": self._analysis_channel,
                          "polarization": self._analysis_polarization,
                          "threshold_fraction": self._analysis_threshold_fraction},
@@ -1247,7 +1272,7 @@ class FilmSimulationQuickController(QObject):
     def _prepare_configuration(self, configuration):
         raw = validate_workflow_settings({"simulation": configuration})["simulation"]
         if set(raw) - {"schema_version", "parameters", "blackbody_temperature_k", "plot",
-                       "calculation_bands", "analysis", "png_export"}:
+                       "calculation_bands", "extrema_bands", "analysis", "png_export"}:
             raise ValueError("未知仿真配置字段")
         if type(raw.get("schema_version", 1)) is not int or raw.get("schema_version", 1) != 1:
             raise ValueError("不支持的仿真配置版本")
@@ -1276,6 +1301,15 @@ class FilmSimulationQuickController(QObject):
             for value in band.values():
                 if value is not None:
                     _finite(value, "计算波段")
+        extrema_bands = raw.get("extrema_bands", [])
+        if not isinstance(extrema_bands, list) or len(extrema_bands) > 12:
+            raise ValueError("极值统计波段须为最多12项的数组")
+        for band in extrema_bands:
+            if not isinstance(band, dict) or set(band) != {"minimum_nm", "maximum_nm"}:
+                raise ValueError("极值统计波段字段无效")
+            for value in band.values():
+                if value is not None:
+                    _finite(value, "极值统计波段")
         analysis = raw.get("analysis", {})
         if (not isinstance(analysis, dict) or set(analysis) - {"channel", "polarization", "threshold_fraction"}
                 or analysis.get("channel", "T") not in ("R", "T")
@@ -1292,10 +1326,10 @@ class FilmSimulationQuickController(QObject):
                 or not 72 <= png["dpi"] <= 300 or not isinstance(png["transparent"], bool)
                 or width * height * png["dpi"] ** 2 > 40_000_000):
             raise ValueError("PNG导出尺寸/精度配置无效")
-        return params, source, plot, bands, analysis, threshold, png
+        return params, source, plot, bands, extrema_bands, analysis, threshold, png
 
     def _apply_configuration(self, prepared) -> None:
-        params, source, plot, bands, analysis, threshold, png = prepared
+        params, source, plot, bands, extrema_bands, analysis, threshold, png = prepared
         token = params["light_source_id"]
         if token not in self._source_payloads or (source["kind"] == "tabulated" and self._source_payloads[token] != source):
             self._source_payloads[token] = copy.deepcopy(source)
@@ -1304,11 +1338,13 @@ class FilmSimulationQuickController(QObject):
         physical_change = params != self._params
         self._params, self._plot_settings = params, plot
         self._calculation_bands = copy.deepcopy(bands)
+        self._extrema_bands = copy.deepcopy(extrema_bands)
         self._analysis_channel = analysis.get("channel", "T")
         self._analysis_polarization = analysis.get("polarization", "current")
         self._analysis_threshold_fraction = threshold
         self._png_export_settings = copy.deepcopy(png)
         self._invalidate_calculation_items()
+        self._invalidate_extrema_items()
         self._invalidate_spectrum_analysis()
         self._refresh_plot_data()
         self._render_plot()
@@ -1317,6 +1353,7 @@ class FilmSimulationQuickController(QObject):
         self.plotDataChanged.emit()
         self.plotViewChanged.emit()
         self.calculationItemsChanged.emit()
+        self.extremaItemsChanged.emit()
         self.spectrumAnalysisChanged.emit()
         self.stateChanged.emit()
 
@@ -1664,7 +1701,9 @@ class FilmSimulationQuickController(QObject):
             self._analysis_channel = channel
             self._persist_configuration()
             self._invalidate_spectrum_analysis()
+            self._invalidate_extrema_items()
             self.spectrumAnalysisChanged.emit()
+            self.extremaItemsChanged.emit()
             self.stateChanged.emit()
 
     @Slot(str)
@@ -1673,7 +1712,9 @@ class FilmSimulationQuickController(QObject):
             self._analysis_polarization = polarization
             self._persist_configuration()
             self._invalidate_spectrum_analysis()
+            self._invalidate_extrema_items()
             self.spectrumAnalysisChanged.emit()
+            self.extremaItemsChanged.emit()
             self.stateChanged.emit()
 
     @Slot(float)
@@ -1719,6 +1760,7 @@ class FilmSimulationQuickController(QObject):
         self._generation += 1
         self._stale = True
         self._invalidate_calculation_items()
+        self._invalidate_extrema_items()
         self.calculationItemsChanged.emit()
         if clear_result:
             self._result = None
@@ -1726,12 +1768,16 @@ class FilmSimulationQuickController(QObject):
                 self._view_bounds = None
             self._cursor_readout = ""
             self._invalidate_spectrum_analysis()
+            self._invalidate_extrema_items()
             self._refresh_plot_data()
             self.plotDataChanged.emit()
             self.plotViewChanged.emit()
             self.cursorReadoutChanged.emit()
             self.spectrumAnalysisChanged.emit()
+            self.extremaItemsChanged.emit()
             self._render_plot()
+        else:
+            self.extremaItemsChanged.emit()
         self._refresh_validation()
         self._status = message
         self.stateChanged.emit()
@@ -1961,6 +2007,52 @@ class FilmSimulationQuickController(QObject):
         self._persist_configuration()
         self._invalidate_calculation_items()
         self.calculationItemsChanged.emit()
+        self.stateChanged.emit()
+        return True
+
+    @Slot(result=bool)
+    def addExtremaBand(self) -> bool:
+        if len(self._extrema_bands) >= 12:
+            self._error = "最多可添加 12 个极值统计波段。"
+            self.stateChanged.emit()
+            return False
+        self._extrema_bands.append({"minimum_nm": None, "maximum_nm": None})
+        self._error = ""
+        self._persist_configuration()
+        self._invalidate_extrema_items()
+        self.extremaItemsChanged.emit()
+        self.stateChanged.emit()
+        return True
+
+    @Slot(int)
+    def removeExtremaBand(self, index: int) -> None:
+        if 0 <= index < len(self._extrema_bands):
+            self._extrema_bands.pop(index)
+            self._persist_configuration()
+            self._error = ""
+            self._invalidate_extrema_items()
+            self.extremaItemsChanged.emit()
+            self.stateChanged.emit()
+
+    @Slot(int, "QVariant", "QVariant", result=bool)
+    def setExtremaBand(self, index: int, minimum_nm: Any, maximum_nm: Any) -> bool:
+        if not 0 <= index < len(self._extrema_bands):
+            return False
+
+        def bound(value: Any) -> float | None:
+            try:
+                return _finite(value, "波长")
+            except ValueError:
+                return None
+
+        self._extrema_bands[index] = {
+            "minimum_nm": bound(minimum_nm),
+            "maximum_nm": bound(maximum_nm),
+        }
+        self._error = ""
+        self._persist_configuration()
+        self._invalidate_extrema_items()
+        self.extremaItemsChanged.emit()
         self.stateChanged.emit()
         return True
 
@@ -2601,6 +2693,8 @@ class FilmSimulationQuickController(QObject):
             self._stale = True
             self._invalidate_calculation_items()
             self.calculationItemsChanged.emit()
+            self._invalidate_extrema_items()
+            self.extremaItemsChanged.emit()
             self._refresh_validation()
             self._status = "计算期间参数或膜系已改变，旧光谱已丢弃；请重新计算。"
             self.stateChanged.emit()
@@ -2610,6 +2704,8 @@ class FilmSimulationQuickController(QObject):
             self._stale = True
             self._invalidate_calculation_items()
             self.calculationItemsChanged.emit()
+            self._invalidate_extrema_items()
+            self.extremaItemsChanged.emit()
             self._error = str(error)
             self._summary = self._error
             self._status = "光谱计算失败。"
@@ -2627,6 +2723,7 @@ class FilmSimulationQuickController(QObject):
             self._pending_recompute = True
         self._invalidate_spectrum_analysis()
         self._invalidate_calculation_items()
+        self._invalidate_extrema_items()
         self._cursor_readout = ""
         self._error = ""
         self._summary = _result_summary(result)
@@ -2638,6 +2735,7 @@ class FilmSimulationQuickController(QObject):
         self.cursorReadoutChanged.emit()
         self.spectrumAnalysisChanged.emit()
         self.calculationItemsChanged.emit()
+        self.extremaItemsChanged.emit()
         self.stateChanged.emit()
         self._start_pending_recompute_if_idle()
 
@@ -2709,6 +2807,8 @@ class FilmSimulationQuickController(QObject):
         self._cursor_readout = ""
         self._invalidate_spectrum_analysis()
         self._invalidate_calculation_items()
+        self._invalidate_extrema_items()
+        self.extremaItemsChanged.emit()
         self._refresh_plot_data()
         self._detach_from_source()
         if self._executor is not None:

@@ -901,7 +901,7 @@ def submit_synthesis(service, payload, client_request_id=None):
 
 
 def execute_job(value: Mapping[str, Any], cancel_event, report, checkpoint_path, write_json,
-                execution_project_root: str):
+                execution_project_root: str, *, candidate_observer=None, candidate_observer_factory=None):
     if isinstance(value, Mapping) and set(value) == {"payload"}:
         job = deepcopy(value["payload"])
         deserialize_job_payload(job)
@@ -969,8 +969,11 @@ def execute_job(value: Mapping[str, Any], cancel_event, report, checkpoint_path,
     try:
         canonical, generated_metadata = prepare_film_synthesis_payload(None, job["request"], progress_callback=lambda p: publish(p))
         request_id, request, _ = film_synthesis_request_from_payload(canonical)
+        observer = (candidate_observer_factory(request) if candidate_observer_factory is not None
+                    else candidate_observer)
         result = synthesize_film_design(None, request, cancel_event=cancel_event,
-                                        progress_callback=progress, snapshot_callback=checkpoint)
+                                        progress_callback=progress, snapshot_callback=checkpoint,
+                                        candidate_observer=observer)
         # Older queued specs legitimately omit newly added execution controls.
         # Resolve them only for execution, never rewrite the original identity
         # or relax the worker/queue's exact frozen-request comparison.

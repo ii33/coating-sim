@@ -228,6 +228,8 @@ class Scheduler:
         except Exception as exc:
             self.recovery_error = str(exc)
         self.condition = threading.Condition(threading.RLock())
+        from .film_display import FilmDisplayRegistry
+        self.film_display = FilmDisplayRegistry(self.root)
         initial = self.store.queue.snapshot(limit=100)
         self.index = {job['job_id']: job for job in initial['jobs']}
         self.confirmations = initial['confirmations']
@@ -243,6 +245,7 @@ class Scheduler:
         if value is None: return
         self.sequence = getattr(self.store, 'last_sequence', self.sequence)
         self.index[value['job_id']] = deepcopy(value)
+        self.film_display.finish(value)
         for item in (value.get('result') or {}).get('result_artifacts', []):
             self.artifact_index[item['artifact_id']] = item
         self.event_buffer.append({**deepcopy(value), 'type': kind, 'sequence': self.sequence, 'event_id': self.sequence})
@@ -250,6 +253,7 @@ class Scheduler:
         terminal = [key for key, job in self.index.items() if job['state'] in FINAL]
         for key in terminal[:-100]:
             old = self.index.pop(key, None)
+            self.film_display.discard(key)
             for item in (old.get('result') or {}).get('result_artifacts', []):
                 self.artifact_index.pop(item['artifact_id'], None)
         self.condition.notify_all()
@@ -296,27 +300,30 @@ class Scheduler:
             recent = sorted((job for job in jobs if job['state'] in FINAL),
                             key=lambda job: job.get('queue_order', 0), reverse=True)
             events = [value for value in self.event_buffer if value['sequence'] > after_event]
-            return deepcopy({'jobs': active + recent[:max(0, int(limit)-len(active))],
+            return self.film_display.attach_snapshot({'jobs': active + recent[:max(0, int(limit)-len(active))],
                 'confirmations': self.confirmations, 'events': events[:max(1,int(limit))],
                 'latest_event_id': self.sequence, 'sequence': self.sequence,
                 'cursor': events[min(len(events), max(1,int(limit)))-1]['sequence'] if events else after_event})
 
     def memory_status(self, job_id):
         with self.condition:
-            if job_id in self.index: return deepcopy(self.index[job_id])
+            if job_id in self.index:
+                return self.film_display.attach_job(self.index[job_id])
         # Explicit historical detail is a lazy read, separate from common queue refresh.
-        return self.store.status(job_id)
+        return self.film_display.attach_job(self.store.status(job_id))
 
     def events(self, after_sequence=0, wait_s=0):
         after_sequence = int(after_sequence)
         wait_s = min(30, max(0, float(wait_s)))
         with self.condition:
+            display_revision = self.film_display.revision
             if after_sequence == self.sequence and wait_s:
-                self.condition.wait_for(lambda: self.sequence != after_sequence or self.stopping.is_set(), timeout=wait_s)
+                self.condition.wait_for(lambda: self.sequence != after_sequence or
+                    self.film_display.revision != display_revision or self.stopping.is_set(), timeout=wait_s)
             oldest = self.event_buffer[0]['sequence'] if self.event_buffer else self.sequence+1
             if after_sequence < oldest-1 or after_sequence > self.sequence:
-                return {'sequence': self.sequence, 'reset': True, 'events': [], 'snapshot': self.memory_snapshot()}
-            return deepcopy({'sequence': self.sequence, 'reset': False,
+                return self.film_display.attach_events({'sequence': self.sequence, 'reset': True, 'events': [], 'snapshot': self.memory_snapshot()})
+            return self.film_display.attach_events({'sequence': self.sequence, 'reset': False,
                              'events': [event for event in self.event_buffer if event['sequence'] > after_sequence]})
 
     def register_artifacts(self, job_id, result):
@@ -526,7 +533,7 @@ class Scheduler:
                 self.stopping.set()
 
     def dispatch(self, action, arguments):
-        with self.request_scope(activity=action in {'submit', 'cancel', 'refresh_estimates'}):
+        with self.request_scope(activity=action in {'submit', 'cancel', 'refresh_estimates', 'film_display_control'}):
             if action.startswith('lifecycle_'):
                 return self._lifecycle(action, arguments)
             return self._dispatch(action, arguments)
@@ -546,6 +553,17 @@ class Scheduler:
                 return self._commit('submit', **arguments)
         if action == 'status':
             return self.memory_status(**arguments)
+        if action == 'film_display_control':
+            with self.condition:
+                self._expire_exit()
+                if self.stopping.is_set():
+                    raise ValueError('scheduler_stopping')
+                if self._exit_id:
+                    raise ValueError('scheduler_exit_in_progress')
+                row = self.memory_status(arguments['job_id'])
+                result = self.film_display.control(row, **{key: value for key, value in arguments.items() if key != 'job_id'})
+                self.condition.notify_all()
+                return result
         if action == 'cancel':
             return self._commit('cancel', **arguments)
         if action == 'result':
@@ -633,6 +651,9 @@ class Scheduler:
         frozen = JobSpec.parse_frozen(spec)
         if frozen.fingerprint != value['input_digest']: raise ValueError('frozen_input_digest_mismatch')
         write_text(directory / 'spec.json', frozen.canonical_json)
+        from .film_display import FILM_DISPLAY_EXECUTORS
+        if frozen.executor in FILM_DISPLAY_EXECUTORS:
+            self.film_display.start(value, directory)
         options: dict[str, Any] = {'cwd': str(Path(__file__).resolve().parents[2]), 'stdin': subprocess.DEVNULL}
         if os.name == 'nt': options['creationflags'] = subprocess.CREATE_NO_WINDOW
         else: options['start_new_session'] = True
@@ -668,6 +689,9 @@ class Scheduler:
     def tick(self):
         if self.active:
             job_id, process, directory, last_progress = self.active
+            with self.condition:
+                if self.film_display.poll(self.index.get(job_id, {}), directory):
+                    self.condition.notify_all()
             if self.memory_status(job_id).get('cancel_requested') and not self._notify_cancel(job_id):
                 if process.poll() is None: process.terminate()
             try:
@@ -678,6 +702,11 @@ class Scheduler:
             except (OSError, ValueError): pass
             code = process.poll()
             if code is None: return
+            # The worker may publish its terminal slot between the first file
+            # poll and process exit. Drain once more before the terminal event.
+            with self.condition:
+                if self.film_display.poll(self.index.get(job_id, {}), directory):
+                    self.condition.notify_all()
             try:
                 outcome = json.loads((directory / 'outcome.json').read_text(encoding='utf-8'))
             except (OSError, ValueError):

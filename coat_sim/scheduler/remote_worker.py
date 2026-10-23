@@ -114,10 +114,10 @@ def run(root, job_id, owner_pid, owner_instance):
     from . import worker
     spec = _check_bound_worker(root, job_id)
     original_film = worker._film_optimization
-    def film_executor(deposition_service, parameters, cancel, report, checkpoint_path):
+    def film_executor(service, parameters, cancel, report, checkpoint_path, *, candidate_observer_factory=None):
         from coat_sim.core.film_design_service import FilmDesignService
-        return original_film(FilmDesignService(deposition_service.root), parameters,
-                             cancel, report, checkpoint_path)
+        return original_film(FilmDesignService(service.root), parameters, cancel, report, checkpoint_path,
+                             candidate_observer_factory=candidate_observer_factory)
     worker._film_optimization = film_executor
     try:
         code = worker.run(root, job_id, owner_pid, owner_instance)

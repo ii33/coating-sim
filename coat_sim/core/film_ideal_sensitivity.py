@@ -20,6 +20,9 @@ from typing import Any, Mapping
 import numpy as np
 
 from .film_design import validate_design
+from .film_candidate_display import (
+    CandidateDisplayObserver, finish_candidate_display, record_candidate,
+)
 from .film_nominal_acceptance import nominal_condition_pass
 from .optical_constants import prepare_optical_set
 from .film_optimization import (
@@ -811,6 +814,7 @@ def _execute(
     cancel_event=None,
     progress_callback=None,
     checkpoint_callback=None,
+    candidate_observer=None,
 ):
     if cancel_event is not None and not callable(getattr(cancel_event, "is_set", None)):
         raise ValueError("cancel_event must provide is_set()")
@@ -827,6 +831,8 @@ def _execute(
     solver_scale = None
 
     def result(state, reason, message="", *, final=True):
+        if final and operation == "optimize":
+            finish_candidate_display(candidate_observer, state=state)
         return FilmIdealSensitivityResult(
             state,
             reason,
@@ -875,6 +881,24 @@ def _execute(
                 )
             )
 
+    def observe_candidate(design, evaluation, *, guard_pass=None):
+        # Only complete ordinary trials enter display, even on a normal cache hit.
+        # Objective-gradient finite differences never call this boundary.
+        if operation != "optimize" or type(candidate_observer) is not CandidateDisplayObserver:
+            return
+        analysis = evaluation.analysis
+        record_candidate(candidate_observer, design,
+            weighted_rms_error=analysis.nominal_weighted_rms_error,
+            max_normalized_error=analysis.nominal_max_normalized_error,
+            condition_rows=analysis.nominal_conditions,
+            physical_thickness_nm=evaluator.physical(design),
+            is_best=analysis is best, iterations=iterations, evaluations=evaluator.evaluations,
+            source="ideal_sensitivity_v1", guard_pass=guard_pass,
+            sensitivity_objective=analysis.objective_value,
+            normalized_sensitivity_objective=(None if solver_scale is None
+                else analysis.objective_value / solver_scale),
+            usable_candidate=analysis.nominal_targets_met)
+
     def accept(design, evaluation):
         nonlocal best, best_design
         analysis = evaluation.analysis
@@ -888,6 +912,7 @@ def _execute(
                         result("partial", "checkpoint", final=False)
                     )
                 )
+        observe_candidate(design, evaluation, guard_pass=analysis.nominal_targets_met)
 
     try:
         emit("baseline")
@@ -899,6 +924,7 @@ def _execute(
             best, best_design = baseline, initial_design
             return result("completed", "analysis_complete")
         if not baseline.nominal_targets_met:
+            observe_candidate(initial_design, base_evaluation, guard_pass=False)
             return result(
                 "failed",
                 "initial_nominal_infeasible",
@@ -957,7 +983,8 @@ def _execute(
             ):
                 raise ValueError("solver trial is outside normalized physical bounds")
             key = z.tobytes()
-            if last_key == key:
+            if last_key == key and last_data is not None:
+                observe_candidate(last_data[0], last_data[1], guard_pass=last_data[1].analysis.nominal_targets_met)
                 return last_data
             values = np.where(z <= 0.5, lows + z * spans, highs - (1.0 - z) * spans)
             values = np.where(z == 0, lows, np.where(z == 1, highs, values))
@@ -1102,6 +1129,7 @@ def execute_film_ideal_sensitivity_request(
     cancel_event=None,
     progress_callback=None,
     checkpoint_callback=None,
+    candidate_observer=None,
 ) -> FilmIdealSensitivityResult:
     return _execute(
         service,
@@ -1110,11 +1138,13 @@ def execute_film_ideal_sensitivity_request(
         cancel_event=cancel_event,
         progress_callback=progress_callback,
         checkpoint_callback=checkpoint_callback,
+        candidate_observer=candidate_observer,
     )
 
 
 def analyze_film_ideal_sensitivity(
-    service: Any, request: FilmIdealSensitivityRequest, *, cancel_event=None, progress_callback=None
+    service: Any, request: FilmIdealSensitivityRequest, *, cancel_event=None, progress_callback=None,
+    candidate_observer=None,
 ) -> FilmIdealSensitivityResult:
     return _execute(
         service,
@@ -1122,6 +1152,7 @@ def analyze_film_ideal_sensitivity(
         operation="analyze",
         cancel_event=cancel_event,
         progress_callback=progress_callback,
+        candidate_observer=candidate_observer,
     )
 
 

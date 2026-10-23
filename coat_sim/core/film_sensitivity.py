@@ -18,6 +18,9 @@ import numpy as np
 from numpy.typing import NDArray
 
 from .film_design import validate_design
+from .film_candidate_display import (
+    CandidateDisplayObserver, finish_candidate_display, record_candidate,
+)
 from .film_optimization import (
     FilmConditionError, FilmOptimizationObjective, FilmOptimizationRequest, FilmThicknessVariable,
     _checked_frozen_snapshot, _wavelength_chunks,
@@ -669,6 +672,7 @@ def execute_film_sensitivity_request(service: Any, request: FilmSensitivityReque
     cancel_event: Any = None,
     progress_callback: Callable[[FilmSensitivityProgress], None] | None = None,
     checkpoint_callback: Callable[[dict[str, Any]], None] | None = None,
+    candidate_observer: Any = None,
 ) -> FilmSensitivityResult:
     """Analyze, or minimize exactly the requested robustness objective.
 
@@ -708,8 +712,26 @@ def execute_film_sensitivity_request(service: Any, request: FilmSensitivityReque
 
     def outcome(state, reason, message=""):
         result = make_result(state, reason, message)
+        if request.operation == "optimize":
+            finish_candidate_display(candidate_observer, state=state)
         emit("finished", state, message)
         return result
+
+    def observe_candidate(design, analysis):
+        # Runtime display is not part of the request, identity, or acceptance.
+        # In particular, scenario responses are never normal candidates.
+        if (request.operation != "optimize" or evaluator is None
+                or type(candidate_observer) is not CandidateDisplayObserver):
+            return
+        record_candidate(candidate_observer, design,
+            weighted_rms_error=analysis.nominal_weighted_rms_error,
+            max_normalized_error=analysis.nominal_max_normalized_error,
+            condition_rows=analysis.nominal_conditions,
+            physical_thickness_nm=evaluator.physical(design),
+            is_best=analysis is best, iterations=iteration, evaluations=evaluator.evaluations,
+            selection={"robustness_value": analysis.robustness_value},
+            source="sensitivity", sensitivity_objective=analysis.robustness_value,
+            usable_candidate=analysis.nominal_targets_met)
 
     def checkpoint():
         if checkpoint_callback is not None:
@@ -731,6 +753,7 @@ def execute_film_sensitivity_request(service: Any, request: FilmSensitivityReque
         emit("baseline")
         baseline = best = evaluator.evaluate(initial_design)
         best_design = initial_design
+        observe_candidate(initial_design, baseline)
         if (request.operation == "optimize" and request.optimization_policy == "nominal_preserving"
                 and not baseline.nominal_targets_met):
             emit("baseline_complete")
@@ -755,6 +778,7 @@ def execute_film_sensitivity_request(service: Any, request: FilmSensitivityReque
                     best, best_design = analysis, candidate
                     checkpoint()
                     emit("improved")
+                observe_candidate(candidate, analysis)
 
             def constrained_iteration(_values):
                 nonlocal iteration
@@ -763,7 +787,8 @@ def execute_film_sensitivity_request(service: Any, request: FilmSensitivityReque
                 evaluator.check()
 
             state, reason, message = run_nominal_preserving(request, evaluator, initial_design, baseline,
-                accept_candidate=accept_feasible, iteration_callback=constrained_iteration, emit=emit)
+                accept_candidate=accept_feasible, iteration_callback=constrained_iteration, emit=emit,
+                observe_candidate=observe_candidate)
             return outcome(state, reason, message)
         lows = np.asarray([v.lower_nm for v in request.variables], dtype=float)
         spans = np.asarray([_finite(v.upper_nm, "upper_nm") - v.lower_nm for v in request.variables])
@@ -790,7 +815,9 @@ def execute_film_sensitivity_request(service: Any, request: FilmSensitivityReque
                 best, best_design, values = analysis, candidate, candidate_values.copy()
                 checkpoint()
                 emit("improved")
+                observe_candidate(candidate, analysis)
                 return True
+            observe_candidate(candidate, analysis)
             return False
 
         # A deterministic finite-domain initialization, followed by bounded

@@ -7,6 +7,7 @@ import tempfile
 import threading
 import time
 import unittest
+from typing import cast
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtGui import QGuiApplication
@@ -71,6 +72,13 @@ class FilmWorkflowDocumentTests(unittest.TestCase):
                                   "x": {"auto": False, "min": 450.125, "max": 610.5},
                                   "y": {"unit": "percent", "auto": False, "min": 10, "max": 90}})
         self.sim.setCalculationBand(0, 440.5, 680.125)
+        self.assertTrue(self.sim.addExtremaBand())
+        self.assertTrue(self.sim.setExtremaBand(0, 503.25, None))
+        self.assertTrue(self.sim.addExtremaBand())
+        self.assertTrue(self.sim.setExtremaBand(1, 600, 650))
+        self.assertEqual(cast(list, self.sim.calculationItems)[0]["minimum_nm"], 440.5)
+        self.assertEqual(cast(list, self.sim.extremaItems)[0]["minimum_nm"], 503.25)
+        self.assertIsNone(cast(list, self.sim.extremaItems)[0]["maximum_nm"])
         self.sim.setSpectrumAnalysisThresholdPercent(61.2345)
         self.sim.setPngExportSettings({"width_in": 12.125, "height_in": 7.375,
                                        "dpi": 188, "transparent": True})
@@ -81,6 +89,10 @@ class FilmWorkflowDocumentTests(unittest.TestCase):
         self.assertEqual(self.design.session.snapshot().design_revision, revision)
         self.assertTrue(self.design.dirty)
         config = self.sim.exportSimulationConfiguration()
+        self.assertEqual(config["extrema_bands"], [
+            {"minimum_nm": 503.25, "maximum_nm": None},
+            {"minimum_nm": 600.0, "maximum_nm": 650.0},
+        ])
         target = Path(self.temp.name) / "all.cfilm"
         self.assertTrue(self.design.saveFilePath(str(target)))
         self.assertFalse(self.design.dirty)
@@ -209,6 +221,51 @@ class FilmWorkflowDocumentTests(unittest.TestCase):
         self.assertEqual(self.sim.exportSimulationConfiguration(), before)
         for malformed in ({"plot": []}, {"parameters": []}, {"png_export": []}, {"analysis": []}):
             self.assertFalse(self.sim.loadSimulationConfiguration(malformed))
+            self.assertEqual(self.sim.exportSimulationConfiguration(), before)
+
+    def test_extrema_bands_default_empty_keep_nullable_rows_and_report_cap_errors(self):
+        self.assertEqual(self.sim.exportSimulationConfiguration()["extrema_bands"], [])
+        self.sim._result = {
+            "settings": {"polarization": "unpolarized"},
+            "wavelength_nm": [400.0, 500.0, 600.0, 700.0],
+            "R": [0.1, 0.8, 0.2, 0.9],
+            "T": [0.9, 0.2, 0.8, 0.1],
+        }
+        self.sim._stale = False
+        self.sim._invalidate_spectrum_analysis()
+        self.assertEqual(cast(list, self.sim.extremaItems), [])
+        self.assertEqual(cast(dict, self.sim.spectrumAnalysis)["global_min"], [])
+
+        self.assertTrue(self.sim.addExtremaBand())
+        self.assertEqual(cast(list, self.sim.extremaItems)[0]["status"], "incomplete_range")
+        self.assertTrue(self.sim.setExtremaBand(0, None, 700))
+        self.assertEqual(cast(list, self.sim.extremaItems)[0]["status"], "incomplete_range")
+        self.assertEqual(self.sim.exportSimulationConfiguration()["extrema_bands"], [
+            {"minimum_nm": None, "maximum_nm": 700.0},
+        ])
+        self.assertTrue(self.sim.setExtremaBand(0, 500, 700))
+        self.assertEqual(cast(list, self.sim.extremaItems)[0]["status"], "ok")
+        self.assertEqual(cast(list, self.sim.extremaItems)[0]["sample_count"], 3)
+        self.assertEqual(cast(dict, self.sim.spectrumAnalysis)["global_min"], [])
+        self.sim._changed(clear_result=True)
+        self.assertEqual(cast(list, self.sim.extremaItems)[0]["status"], "no_result")
+
+        for _ in range(11):
+            self.assertTrue(self.sim.addExtremaBand())
+        before = self.sim.exportSimulationConfiguration()
+        self.assertFalse(self.sim.addExtremaBand())
+        self.assertIn("12", str(self.sim.validationError))
+        self.assertEqual(self.sim.exportSimulationConfiguration(), before)
+        self.assertEqual(len(self.sim.exportSimulationConfiguration()["calculation_bands"]), 1)
+
+    def test_extrema_configuration_rejects_malformed_rows_atomically(self):
+        before = self.sim.exportSimulationConfiguration()
+        for rows in ([{"minimum_nm": 1}], [{"minimum_nm": math.inf, "maximum_nm": 3}],
+                     [None], [dict(minimum_nm=1, maximum_nm=2, extra=3)],
+                     [{"minimum_nm": 1, "maximum_nm": 2}] * 13):
+            invalid = deepcopy(before)
+            invalid["extrema_bands"] = rows
+            self.assertFalse(self.sim.loadSimulationConfiguration(invalid), rows)
             self.assertEqual(self.sim.exportSimulationConfiguration(), before)
 
     def test_partial_valid_curve_range_gaps_and_user_zoom_are_distinct(self):

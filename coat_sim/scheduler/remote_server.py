@@ -293,6 +293,9 @@ class RemoteScheduler(Scheduler):
         if frozen.fingerprint != value['input_digest']:
             raise ValueError('frozen_input_digest_mismatch')
         write_text(directory / 'spec.json', frozen.canonical_json)
+        from .film_display import FILM_DISPLAY_EXECUTORS
+        if frozen.executor in FILM_DISPLAY_EXECUTORS:
+            self.film_display.start(value, directory)
         options: dict[str, Any] = {'cwd': str(Path(__file__).resolve().parents[2]), 'stdin': subprocess.DEVNULL}
         if os.name == 'nt':
             options['creationflags'] = subprocess.CREATE_NO_WINDOW
@@ -510,10 +513,13 @@ class RemoteComputeService:
             item, _ = self._artifact(reference['artifact_id'])
             if item['sha256'] != reference['sha256'] or item['role'] != 'bundle':
                 raise ServiceError('deposition_artifact_mismatch')
+        from .film_display import CONFIG_KEY
+        submission_metadata = ({'input_summary': {'device_id': device_id,
+            'external_spec_sha256': external_spec_sha256}} if device_id else {})
+        if CONFIG_KEY in metadata:
+            submission_metadata[CONFIG_KEY] = metadata[CONFIG_KEY]
         receipt = self.scheduler.dispatch('submit', {'spec': spec, 'job_id': job_id,
-            'metadata': {'input_summary': {'device_id': device_id,
-                                           'external_spec_sha256': external_spec_sha256}}
-                        if device_id else {}})
+            'metadata': submission_metadata})
         if device_id is not None:
             receipt['requested_device_id'] = device_id
         return receipt
@@ -538,12 +544,16 @@ class RemoteComputeService:
                    'snapshot': {'after_event', 'limit'}, 'events': {'after_sequence', 'wait_s'},
                    'page': {'bucket', 'before', 'limit'}, 'artifact': {'artifact_id'},
                    'run_result': {'run_id'}, 'find_request': {'client_request_id'},
-                   'refresh_estimates': set()}
+                   'refresh_estimates': set(),
+                   'film_display_control': {'job_id', 'input_digest', 'generation', 'enabled',
+                                            'selection', 'expected_sequence'}}
         if not isinstance(action, str) or action not in schemas or set(args) - schemas[action]:
             raise ServiceError('unsupported_action')
         required = {'status': 'job_id', 'cancel': 'job_id', 'result': 'job_id', 'artifact': 'artifact_id',
                     'run_result': 'run_id', 'find_request': 'client_request_id', 'page': 'bucket'}
         if action in required and required[action] not in args:
+            raise ServiceError('missing_argument')
+        if action == 'film_display_control' and set(args) != schemas[action]:
             raise ServiceError('missing_argument')
         for key in ('job_id', 'run_id', 'client_request_id'):
             if key in args and (not isinstance(args[key], str) or not _JOB.fullmatch(args[key])):
@@ -572,7 +582,7 @@ class RemoteComputeService:
                 return self._with_requested_device(current)
         if action == 'page' and args['bucket'] not in ('recent', 'history'):
             raise ServiceError('invalid_bucket')
-        if action in {'cancel', 'refresh_estimates'}:
+        if action in {'cancel', 'refresh_estimates', 'film_display_control'}:
             with self.scheduler.condition:
                 if self.scheduler.stopping.is_set():
                     raise ServiceError('scheduler_stopping', 503)

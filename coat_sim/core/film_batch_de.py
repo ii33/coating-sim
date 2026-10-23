@@ -14,6 +14,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 import math
 from threading import Event
+from types import MappingProxyType
 from typing import Any, Callable, Sequence
 
 import numpy as np
@@ -164,6 +165,7 @@ def run_batch_de(
     max_batch_size: int = 16,
     cancel_event: Event | None = None,
     checkpoint_callback: Callable[[BatchDEProgress], None] | None = None,
+    accepted_callback: Callable[[Sequence[BatchEvaluation], np.ndarray, int, int], None] | None = None,
 ) -> BatchDEOutcome:
     """Run bounded differential evolution with deferred, vectorized updates.
 
@@ -196,6 +198,8 @@ def run_batch_de(
         raise TypeError("evaluate_batch must be callable")
     if checkpoint_callback is not None and not callable(checkpoint_callback):
         raise TypeError("checkpoint_callback must be callable or None")
+    if accepted_callback is not None and not callable(accepted_callback):
+        raise TypeError("accepted_callback must be callable or None")
 
     evaluations = 0
     failed = 0
@@ -355,6 +359,25 @@ def run_batch_de(
                     (result, point, index)
                     for result, point, index in zip(batch, chunk_points, chunk_indexes)
                 ])
+                # Internal display adapter observes only the atomically accepted
+                # chunk, never a partial/failed/cancel-discarded evaluation.
+                if accepted_callback is not None:
+                    try:
+                        observations = []
+                        for item in batch:
+                            metrics = (item.value.get("display_metrics")
+                                       if isinstance(item.value, dict) else None)
+                            if not (type(metrics) is tuple and len(metrics) == 4 and
+                                    all(type(value) in (float, int, bool) for value in metrics)):
+                                metrics = None
+                            observations.append(BatchEvaluation(item.key, item.surrogate,
+                                MappingProxyType({"display_metrics": metrics})))
+                        # Only small coordinate/scalar observations are detached;
+                        # never duplicate raw spectral or Jacobian payloads.
+                        coordinates = np.frombuffer(chunk_points.tobytes(), dtype=float).reshape(chunk_points.shape)
+                        accepted_callback(tuple(observations), coordinates, evaluations, generations)
+                    except Exception:
+                        pass  # Display observation cannot affect DE state.
                 for position, result in zip(chunk_positions, batch):
                     scores[position] = result.surrogate
                 cursor += chunk_count
