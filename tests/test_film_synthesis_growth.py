@@ -182,7 +182,7 @@ def test_audited_checkpoint_is_copied_and_cancellation_keeps_audited_best():
     assert result.audit_physical_evaluations >= 1 and result.audit_wavelength_points >= 17
 
 
-def test_optical_thickness_replacement_recovers_high_order_solution_after_bad_raw_swap():
+def test_optical_thickness_replacement_recovers_high_order_solution_after_bad_raw_swap(monkeypatch):
     service, request = setup_problem(upper=0., low=550., high=550., samples=1, materials=("low",))
     bad = deepcopy(service.materials.records["high"])
     bad["id"] = "n13"
@@ -192,9 +192,24 @@ def test_optical_thickness_replacement_recovers_high_order_solution_after_bad_ra
     start = seed(request, [layer("high-order", "n13", d)])
     request = replace(request, seed_designs=(start,), max_layers=1,
                       acceptable_normalized_error=1e-10)
+    evaluated = []
+    real_evaluate = synthesis.evaluate_frozen_structure_candidate
+
+    def record_physical_evaluation(*args, **kwargs):
+        value = real_evaluate(*args, **kwargs)
+        evaluated.append(deepcopy(value))
+        return value
+
+    monkeypatch.setattr(synthesis, "evaluate_frozen_structure_candidate", record_physical_evaluation)
     result = synthesis.synthesize_film_design(service, request)
     report("optical_thickness_swap", result)
-    assert result.targets_met
+    # This target is exactly R <= 0, not an approximate antireflection goal.
+    # The recovered machine-small positive response is solver-acceptable,
+    # but must never be mislabeled as satisfying the user's zero bound.
+    assert result.state == "not_found" and not result.targets_met
+    assert result.solver_acceptable is True
+    assert result.validation_score is not None
+    assert 0. < result.validation_score["max_error"] < 1e-20
     replacement: list[float] = []
     for trace in result.trace:
         if trace.stage == "material_replacement":
@@ -202,7 +217,14 @@ def test_optical_thickness_replacement_recovers_high_order_solution_after_bad_ra
             replacement.append(trace.max_normalized_error)
     assert replacement[0] > .02 and min(replacement) < 1e-20
     assert result.candidate_design is not None
-    assert result.candidate_design["front_layers"][0]["thickness"]["value"] == pytest.approx(11 * 550 / (4 * np.sqrt(1.5)))
+    expected_thickness = 11 * 550 / (4 * np.sqrt(1.5))
+    high_order = [value for value in evaluated if len(value["design"]["front_layers"]) == 1
+        and value["design"]["front_layers"][0]["material_id"] == "low"
+        and value["design"]["front_layers"][0]["thickness"]["value"] == pytest.approx(expected_thickness)]
+    # Without a nominal pass the search legitimately continues to a thinner
+    # quarter-wave champion. Prove the original high-order replacement itself
+    # was actually evaluated and recovered, instead of constraining the winner.
+    assert high_order and min(value["score"]["max_error"] for value in high_order) < 1e-20
 
 
 def test_training_success_audit_failure_continues_true_zero_layer_growth():

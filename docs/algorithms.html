@@ -233,6 +233,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#film-batch-needle-20261022">14ai 原宿主锚点的解析批量针插</a>
 <a href="#film-sensitivity-20261022">14aj 独立膜厚敏感性与误差目标优化</a>
 <a href="#film-hybrid-synthesis-20261022">14ak 统一混合合成与全原约束精修</a>
+<a href="#film-nominal-acceptance-20261022">14al 原门限名义验收与求解容差分离</a>
 </nav>
 <main>
 <section id="film-wavelength-workers-20261017"><h2>CPU wavelength workers and fair single-candidate timing — 2026-10-17</h2>
@@ -3126,6 +3127,12 @@ close/shutdown/history/late old operation: do not trigger automatic apply</pre>
 <p>简单AR兼容先验：当原请求允许1.0倍参考QW且属于纯AR组合路线，优先尝试该真实均匀单层，再试其余用户允许份额；仍保留多族后续广筛及完整独审。这是本项目调度约定，不增加隐性预算、不凭QW公式宣称通过；未允许1.0时不自行添加。</p>
 </section>
 
+
+<section id="film-nominal-acceptance-20261022"><h2>14al 原门限名义验收与求解容差分离</h2>
+<p><b>物理值无量纲，报告百分点乘100。</b>对range条件，未显式选择严格运算符时逐点检查 L≤y≤U；strict_upper_bound_objective_indices选择 y&lt;U，既有显式严格下界选择 y&gt;L。value目标按 y=t 判断。检查实际值，不使用归一化误差为零代替，以免下溢/零权重掩盖越界。</p>
+<p>名义通过 N=所有原始条件满足原运算符，且独审的完整dense、独立offset和极值发现全部完成并满足。求解可接受 A=每个完整条件的归一化违规≤用户原容差，并保留显式严格运算符；N与A分别报告。R=0.04、U=0.0395、归一化比例1、求解容差0.001时，N=false而A=true。无额外epsilon、制造余量或固定3%特例；严格R&lt;0.03在等号处失败，原含等号上界仍允许等号。</p>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 112" role="img" aria-label="实际光学值分别进入名义门限判定和求解容差判定"><rect x="4" y="34" width="190" height="50" rx="6" fill="#dcecff"/><text x="18" y="64" fill="#15263b">完整实际值 + 冻结原目标</text><path d="M194 59H267M267 59V25H340M267 59V92H340" stroke="#52677f" stroke-width="2" fill="none"/><rect x="340" y="2" width="410" height="43" rx="6" fill="#e1f3e5"/><text x="352" y="29" fill="#15263b">原门限运算符 → 严格名义通过 N</text><rect x="340" y="68" width="410" height="43" rx="6" fill="#fff0d4"/><text x="352" y="95" fill="#15263b">原归一化比例/用户容差 → 求解可接受 A</text></svg>
+<p>自动合成targets_met采用严格名义语义，solver_acceptable单列，未知核查不假绿；最佳候选独审状态与求解终态分离。当前及旧历史都须绑定真实JobSpec、原始源记录和冻结请求，并在后台逐条件物理重放及状态重算；三份设计自洽不证明光谱真实。64项小状态缓存绑定完整源/规范摘要，不信任持久化重放标记，不重写原文件。独立敏感性对名义与完整有限场景采用相同原门限判定，误差目标优化仍独立、不改用户目标。普通结构优化v1请求不接收新增自动合成字段。比较规则的来源是冻结用户约束；计算/停止/独审核查范围见14ai–14ak及接口合同。</p></section>
 </main>
 <article style="grid-column:2;max-width:1000px">
 <section id="film-solver-contract">

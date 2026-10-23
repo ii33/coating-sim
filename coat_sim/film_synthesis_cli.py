@@ -86,7 +86,10 @@ def _execute(request_id, envelope, cancel: Event, events: queue.Queue, checkpoin
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, epilog=(
+        "targets_met reports original nominal bounds; solver_acceptable reports the separate "
+        "acceptable_normalized_error tolerance, not a target relaxation or manufacturing margin. "
+        "Synthesis-only strict_upper_bound_objective_indices selects < instead of inclusive <=."))
     parser.add_argument("--request", type=Path, help="Frozen request JSON; omitted reads stdin")
     parser.add_argument("--output", type=Path, help="New result JSON, never overwrite; omitted writes stdout")
     parser.add_argument("--checkpoint", type=Path, help="Atomically updated best audited-candidate snapshot")
@@ -213,6 +216,12 @@ def main(argv=None) -> int:
             sys.stdout.flush()
         else:
             _write_exclusive(args.output, payload)
+        emit({"kind": "acceptance", "acceptance_semantics": payload["acceptance_semantics"],
+              "task_state": payload["result"]["state"],
+              "targets_met": payload["result"]["targets_met"],
+              "solver_acceptable": payload["result"]["solver_acceptable"],
+              "best_candidate_audit": payload["best_candidate_audit"],
+              "note": "Original nominal bounds and solver tolerance are separate; no manufacturing margin is added."})
         return 130 if result.state == "cancelled" else 2 if result.state == "failed" else 0
     except Exception as exc:
         failure = {"schema_version": SCHEMA_VERSION, "kind": RESULT_KIND,

@@ -57,7 +57,15 @@ FILM_SYNTHESIS_PLAN_INPUT_SCHEMA: dict[str, Any] = {
             "schema_version": {"const": 1},
             "kind": {"const": "coat_sim.film_synthesis_request"},
             "request_id": {"type": "string", "minLength": 1, "maxLength": 128},
-            "request": {"type": "object", "additionalProperties": True},
+            "request": {"type": "object", "additionalProperties": True,
+                "properties": {
+                    "strict_upper_bound_objective_indices": {
+                        "type": "array", "uniqueItems": True,
+                        "items": {"type": "integer", "minimum": 0},
+                        "description": "Synthesis-only zero-based range-objective indices using strict < at the original upper bound; omitted indices retain inclusive <=."},
+                    "acceptable_normalized_error": {
+                        "type": "number", "minimum": 0,
+                        "description": "Solver acceptability tolerance only; does not relax nominal targets_met or add a manufacturing margin."}}},
             "physical_structures": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
         }}}
 }

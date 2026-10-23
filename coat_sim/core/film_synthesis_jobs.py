@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import asdict, is_dataclass, replace
+from dataclasses import asdict, fields, is_dataclass, replace
 import json
 import math
 import threading
@@ -11,11 +11,14 @@ from typing import Any, Mapping
 from pydantic import BaseModel, ConfigDict
 
 from .film_auto_synthesis import (FilmSynthesisResult, FilmSynthesisTrace, _feasible,
-                                  _proxy, strict_lower_bounds_pass, synthesize_film_design)
+                                  freeze_film_synthesis_request,
+                                  _proxy, synthesize_film_design)
+from .film_nominal_acceptance import (ACCEPTANCE_SEMANTICS, complete_original_score,
+    nominal_condition_pass, nominal_targets_pass, solver_acceptable, solver_condition_acceptable)
 from .film_optimization_structure import evaluate_frozen_structure_candidate
 from .film_synthesis_io import (
     RESULT_KIND, SCHEMA_VERSION, film_synthesis_request_from_payload,
-    film_synthesis_result_to_payload, prepare_film_synthesis_payload,
+    film_synthesis_result_to_payload, film_synthesis_request_to_payload, prepare_film_synthesis_payload,
 )
 
 JOB_KIND = "coat_sim.film_synthesis_job"
@@ -151,10 +154,16 @@ def _partial_result(request, request_id, checkpoint, *, terminal_state="cancelle
         audit_performance = saved_audit.get("synthesis_performance") if isinstance(saved_audit, Mapping) else None
         saved_performance = audit_performance if isinstance(audit_performance, Mapping) else None
     performance = _historical_checkpoint_performance(saved_performance)
+    nominal = (nominal_targets_pass(request, checkpoint["training_score"])
+        and nominal_targets_pass(request, validation, independent_audit=True))
+    state = "not_found" if terminal_state == "completed" and not nominal else terminal_state
     result = FilmSynthesisResult(
-        state=terminal_state, termination_reason="audited_checkpoint_recovered",
+        state=state, termination_reason=("validation_targets_not_met" if state != terminal_state
+            else "audited_checkpoint_recovered"),
         candidate_design=design, design_revision=request.design_revision,
-        targets_met=(terminal_state == "completed" and bool(validation.get("targets_met", False))),
+        targets_met=state == "completed" and nominal,
+        solver_acceptable=(solver_acceptable(request, checkpoint["training_score"])
+            and solver_acceptable(request, validation, independent_audit=True)),
         training_score=deepcopy(checkpoint["training_score"]), validation_score=validation,
         validation_complete=True, cycles=counters["cycles"],
         evaluations=counters["evaluations"],
@@ -407,10 +416,8 @@ def _validate_completed_training_candidate(value: Mapping[str, Any], *, time_lim
         if (not isinstance(validation, Mapping) or not same_design(validation["design"])
                 or number(validation["max_error"]) < 0 or number(validation["weighted_rms_error"]) < 0
                 or not equal(quality["audit_max_normalized_error"], validation["max_error"])
-                or quality["targets_met"] is not (max(training["max_error"], validation["max_error"])
-                                                   <= request.acceptable_normalized_error
-                    and strict_lower_bounds_pass(request, training)
-                    and strict_lower_bounds_pass(request, validation))):
+                or quality["targets_met"] is not (nominal_targets_pass(request, training)
+                    and nominal_targets_pass(request, validation, independent_audit=True))):
             raise ValueError("cancel candidate audit belongs to another design or quality")
         import numpy as np
         audit = validation.get("audit")
@@ -481,8 +488,49 @@ def _validate_completed_training_candidate(value: Mapping[str, Any], *, time_lim
             raise ValueError("cancel candidate review layer differs from the frozen candidate")
 
 
+def _validate_result_physical_binding(request, result: Mapping[str, Any]) -> None:
+    """Bind saved designs to real frozen inputs, without TMM or re-auditing.
+
+    This is deliberately a cheap live/cancellation boundary. Historical
+    acceptance additionally needs the opt-in background physical replay below.
+    """
+    from .film_design import validate_design
+    if type(result["design_revision"]) is not int or result["design_revision"] != request.design_revision:
+        raise ValueError("synthesis result revision differs from its frozen request")
+    request = freeze_film_synthesis_request(None, request)
+    candidate = result["candidate_design"]
+    if candidate is None:
+        if result["training_score"] is not None or result["validation_score"] is not None:
+            raise ValueError("synthesis result has scores without a candidate")
+        return
+    candidate = validate_design(candidate)
+    physical_keys = ("substrate", "incident_medium", "exit_medium", "first_surface",
+        "layer_order", "reference_wavelength_nm", "use_k", "assume_lossless")
+    allowed = {(ref.material_id, ref.optical_set_id) for ref in request.candidate_materials}
+    allowed.update((row["material_id"], row["optical_set_id"])
+        for seed in request.seed_designs for row in seed["front_layers"])
+    if (any(candidate[key] != request.environment[key] for key in physical_keys)
+            or candidate["back_layers"] or not _feasible(request, candidate)
+            or any(row["thickness"]["unit"] != "nm"
+                or (row["material_id"], row["optical_set_id"]) not in allowed
+                for row in candidate["front_layers"])):
+        raise ValueError("synthesis candidate violates its frozen physical request")
+    def physical_identity(design):
+        return {key: item for key, item in validate_design(design).items()
+                if key not in {"note", "summary"}}
+    expected = physical_identity(candidate)
+    for name in ("training_score", "validation_score"):
+        score = result[name]
+        if score is not None and physical_identity(score["design"]) != expected:
+            raise ValueError("synthesis score belongs to another physical design")
+    if not isinstance(result["training_score"], Mapping):
+        raise ValueError("synthesis candidate has no complete training evidence")
+
+
 def is_synthesis_result(value: Any) -> bool:
-    if not isinstance(value, dict) or value.get("schema_version") != SCHEMA_VERSION or value.get("kind") != RESULT_KIND:
+    if (not isinstance(value, dict) or value.get("schema_version") != SCHEMA_VERSION
+            or value.get("kind") != RESULT_KIND
+            or value.get("acceptance_semantics") != ACCEPTANCE_SEMANTICS):
         return False
     result = value.get("result")
     review = value.get("review")
@@ -518,6 +566,59 @@ def is_synthesis_result(value: Any) -> bool:
                 return False
         except (KeyError, TypeError, ValueError, ArithmeticError):
             return False
+    try:
+        _, acceptance_request, _ = film_synthesis_request_from_payload({
+            "schema_version": SCHEMA_VERSION, "kind": "coat_sim.film_synthesis_request",
+            "request_id": value["request_id"], "request": result["frozen_request"], "physical_structures": []})
+        _validate_result_physical_binding(acceptance_request, result)
+        audited = result["candidate_design"] is not None and result["validation_complete"]
+        if audited and (not complete_original_score(acceptance_request, result.get("training_score"))
+                or not complete_original_score(acceptance_request, result.get("validation_score"), independent_audit=True)):
+            return False
+        nominal = (nominal_targets_pass(acceptance_request, result.get("training_score"))
+            and nominal_targets_pass(acceptance_request, result.get("validation_score"), independent_audit=True)
+            if audited else None)
+        acceptable = (solver_acceptable(acceptance_request, result.get("training_score"))
+            and solver_acceptable(acceptance_request, result.get("validation_score"), independent_audit=True)
+            if audited else None)
+        def same_number(left, right):
+            return (not isinstance(left, bool) and isinstance(left, (float, int))
+                and math.isfinite(left) and math.isclose(left, right, rel_tol=1e-10, abs_tol=1e-12))
+        if audited:
+            statuses = review.get("per_objective")
+            if (not isinstance(statuses, list) or len(statuses) != len(acceptance_request.objectives)
+                    or {row.get("objective_index") for row in statuses if isinstance(row, Mapping)}
+                        != set(range(len(acceptance_request.objectives)))):
+                return False
+            for row in statuses:
+                index = row["objective_index"]
+                if type(index) is not int:
+                    return False
+                errors = [error for error in result["validation_score"]["errors"]
+                          if error["objective_index"] == index]
+                objective = acceptance_request.objectives[index]
+                strict_lower = index in acceptance_request.strict_lower_bound_objective_indices
+                strict_upper = index in acceptance_request.strict_upper_bound_objective_indices
+                if (row.get("targets_met") is not all(nominal_condition_pass(objective, error["actual"],
+                        strict_lower=strict_lower, strict_upper=strict_upper) for error in errors)
+                        or row.get("solver_acceptable") is not all(solver_condition_acceptable(objective,
+                            error["actual"], acceptance_request.acceptable_normalized_error,
+                            strict_lower=strict_lower, strict_upper=strict_upper) for error in errors)):
+                    return False
+        if (candidate_audit["available"] is not audited
+                or not same_number(candidate_audit.get("acceptable_normalized_error"), acceptance_request.acceptable_normalized_error)
+                or (audited and (not same_number(candidate_audit.get("training_max_normalized_error"), result["training_score"]["max_error"])
+                    or not same_number(candidate_audit.get("audit_max_normalized_error"), result["validation_score"]["max_error"])))
+                or candidate_audit["targets_met"] is not nominal
+                or candidate_audit.get("solver_acceptable") is not acceptable
+                or result.get("solver_acceptable") is not acceptable
+                or review.get("targets_met") is not result["targets_met"]
+                or review.get("solver_acceptable") is not acceptable
+                or result["targets_met"] is not (result["state"] == "completed" and nominal is True)
+                or (result["state"] == "completed" and nominal is not True)):
+            return False
+    except (KeyError, TypeError, ValueError, ArithmeticError):
+        return False
     candidate = result.get("candidate_design")
     if candidate is None:
         return (result.get("state") in {"not_found", "cancelled", "failed"}
@@ -551,6 +652,220 @@ def is_synthesis_result(value: Any) -> bool:
     return (result["validation_complete"] is True
             and isinstance(result.get("validation_score"), dict)
             and isinstance(result.get("training_score"), dict))
+
+
+def is_legacy_synthesis_result(value: Any) -> bool:
+    """Cheap legacy-history eligibility only; never evidence of target success.
+
+    A true value permits listing/deferred read-only replay, not applying the
+    design or reusing old tolerance-based targets_met. No TMM is run here.
+    """
+    if (not isinstance(value, dict) or value.get("acceptance_semantics") is not None
+            or value.get("schema_version") != SCHEMA_VERSION or value.get("kind") != RESULT_KIND):
+        return False
+    try:
+        from .film_design import validate_design
+        from .film_optimization import _checked_frozen_snapshot
+        from .film_optimization_scoring import score_condition
+        body = value["result"]
+        if (not isinstance(body, Mapping) or body.get("state") not in {"completed", "not_found", "cancelled", "failed"}
+                or type(body.get("targets_met")) is not bool or type(body.get("validation_complete")) is not bool
+                or not isinstance(value.get("review"), Mapping)
+                or not isinstance(value.get("best_candidate_audit"), Mapping)):
+            return False
+        _, request, _ = film_synthesis_request_from_payload({
+            "schema_version": SCHEMA_VERSION, "kind": "coat_sim.film_synthesis_request",
+            "request_id": value["request_id"], "request": body["frozen_request"], "physical_structures": []})
+        if request.frozen_material_snapshot is None:
+            return False
+        _checked_frozen_snapshot(request.frozen_material_snapshot, request.environment)
+        if body["design_revision"] != request.design_revision:
+            return False
+        candidate = body["candidate_design"]
+        if candidate is None:
+            return (body["state"] != "completed" and body["targets_met"] is False
+                and body["validation_complete"] is False and body["training_score"] is None
+                and body["validation_score"] is None)
+        candidate = validate_design(candidate)
+        physical_keys = ("substrate", "incident_medium", "exit_medium", "first_surface",
+            "layer_order", "reference_wavelength_nm", "use_k", "assume_lossless")
+        allowed = {(ref.material_id, ref.optical_set_id) for ref in request.candidate_materials}
+        allowed.update((row["material_id"], row["optical_set_id"])
+            for seed in request.seed_designs for row in seed["front_layers"])
+        if (any(candidate[key] != request.environment[key] for key in physical_keys)
+                or candidate["back_layers"] or not _feasible(request, candidate)
+                or any(row["thickness"]["unit"] != "nm"
+                    or (row["material_id"], row["optical_set_id"]) not in allowed
+                    for row in candidate["front_layers"])):
+            return False
+        def identity(design):
+            return {key: item for key, item in validate_design(design).items() if key not in {"note", "summary"}}
+        for name, independent in (("training_score", False), ("validation_score", True)):
+            score = body[name]
+            if independent and not body["validation_complete"]:
+                if score is not None:
+                    return False
+                continue
+            if (not complete_original_score(request, score, independent_audit=independent)
+                    or identity(score["design"]) != identity(candidate)):
+                return False
+            normalized, weighted = [], []
+            for row in score["errors"]:
+                objective = request.objectives[row["objective_index"]]
+                actual = row["actual"]
+                violation = (abs(actual - objective.target_value) if objective.mode == "value" else
+                    max(0., 0. if objective.lower_bound is None else objective.lower_bound - actual,
+                        0. if objective.upper_bound is None else actual - objective.upper_bound))
+                norm, weight = score_condition(violation, objective.normalization_scale, objective.weight)
+                if (not math.isclose(row["normalized_violation"], norm, rel_tol=1e-10, abs_tol=1e-12)
+                        or not math.isclose(row["weighted_normalized_violation"], weight, rel_tol=1e-10, abs_tol=1e-12)):
+                    return False
+                normalized.append(norm)
+                weighted.append(weight)
+            if (not math.isclose(score["max_error"], max(normalized), rel_tol=1e-10, abs_tol=1e-12)
+                    or not math.isclose(score["weighted_max_error"], max(weighted), rel_tol=1e-10, abs_tol=1e-12)):
+                return False
+        return True
+    except (KeyError, TypeError, ValueError, ArithmeticError, AttributeError):
+        return False
+
+
+def normalize_legacy_synthesis_result(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a read-only compatible copy after frozen physical replay.
+
+    No original history file is changed. Missing/invalid frozen inputs, foreign
+    designs, incomplete evidence or non-replaying scores are rejected, not
+    promoted to a current nominal claim. Call from a background history loader,
+    never from the cheap result predicate or a UI render loop.
+    """
+    if not isinstance(value, Mapping):
+        raise ValueError("legacy synthesis result must be an object")
+    if value.get("acceptance_semantics") == ACCEPTANCE_SEMANTICS:
+        if not is_synthesis_result(value):
+            raise ValueError("current synthesis result is invalid")
+        return deepcopy(dict(value))
+    if (value.get("acceptance_semantics") is not None
+            or value.get("schema_version") != SCHEMA_VERSION or value.get("kind") != RESULT_KIND):
+        raise ValueError("unsupported legacy synthesis result semantics")
+    if not is_legacy_synthesis_result(value):
+        raise ValueError("legacy synthesis result has invalid identity, design or score evidence")
+    return _replay_synthesis_result(value, legacy=True)
+
+
+def replay_synthesis_result(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Physically verify current or historical scores in a background loader.
+
+    Schema/identity recognition is not proof that mutually consistent saved
+    designs and spectra belong together. Never call this from a live cancel
+    receipt, QML property accessor or cheap result predicate.
+    """
+    if value.get("acceptance_semantics") != ACCEPTANCE_SEMANTICS:
+        return normalize_legacy_synthesis_result(value)
+    if not is_synthesis_result(value):
+        raise ValueError("current synthesis result has invalid physical identity")
+    return _replay_synthesis_result(value, legacy=False)
+
+
+def _replay_synthesis_result(value: Mapping[str, Any], *, legacy: bool) -> dict[str, Any]:
+    try:
+        body = value["result"]
+        if not isinstance(body, Mapping) or set(body) - {item.name for item in fields(FilmSynthesisResult)}:
+            raise ValueError("saved synthesis result body is invalid")
+        if (body["state"] not in {"completed", "not_found", "cancelled", "failed"}
+                or type(body["targets_met"]) is not bool or type(body["validation_complete"]) is not bool):
+            raise ValueError("saved synthesis result state is invalid")
+        request_id, request, _ = film_synthesis_request_from_payload({
+            "schema_version": SCHEMA_VERSION, "kind": "coat_sim.film_synthesis_request",
+            "request_id": value["request_id"], "request": body["frozen_request"], "physical_structures": []})
+        # Preserve the parsed historical request as routing/source identity.
+        # Resolving optional execution metadata on this host must not rewrite
+        # old inputs (for example an absent resource_guard_resolution).
+        execution_request = freeze_film_synthesis_request(None, request)
+        _validate_result_physical_binding(execution_request, body)
+        metadata = value.get("physical_structure_metadata", [])
+        if not isinstance(metadata, list):
+            raise ValueError("saved synthesis structure metadata is invalid")
+        _validate_physical_structure_metadata(film_synthesis_request_to_payload(request_id, request), metadata)
+        candidate = body["candidate_design"]
+        training = validation = None
+        replay_work = {"training_evaluations": 0, "validation_evaluations": 0,
+                       "audit_physical_evaluations": 0, "audit_wavelength_points": 0}
+        if candidate is not None:
+            from .film_design import validate_design
+            from .film_synthesis_audit import audit_frozen_synthesis_candidate
+            candidate = validate_design(deepcopy(candidate))
+            def physical_identity(design):
+                return {key: item for key, item in validate_design(design).items()
+                        if key not in {"note", "summary"}}
+
+            def verify_saved_score(stored, actual, *, audit=False):
+                if (not complete_original_score(request, stored, independent_audit=audit)
+                        or physical_identity(stored["design"]) != physical_identity(candidate)):
+                    raise ValueError("saved synthesis score is incomplete or belongs to another design")
+                def number_equal(left, right):
+                    return (not isinstance(left, bool) and isinstance(left, (float, int))
+                        and math.isfinite(left) and math.isclose(left, right, rel_tol=1e-10, abs_tol=1e-12))
+                if any(not number_equal(stored[key], actual[key]) for key in
+                       ("max_error", "weighted_max_error", "weighted_rms_error")):
+                    raise ValueError("saved synthesis aggregate score does not physically replay")
+                expected = _json_snapshot(actual)["errors"]
+                def order(row):
+                    return (row["objective_index"], row["angle_deg"], row["wavelength_nm"])
+                recorded, expected = sorted(stored["errors"], key=order), sorted(expected, key=order)
+                if len(recorded) != len(expected):
+                    raise ValueError("saved synthesis condition count does not physically replay")
+                for old, replayed in zip(recorded, expected, strict=True):
+                    if (any(old[key] != replayed[key] for key in
+                            ("objective_index", "polarization", "metric", "target_value", "lower_bound", "upper_bound"))
+                            or any(not number_equal(old[key], replayed[key]) for key in
+                                ("wavelength_nm", "angle_deg", "actual", "normalized_violation", "weighted_normalized_violation"))):
+                        raise ValueError("saved synthesis physical condition does not replay")
+            training = evaluate_frozen_structure_candidate(_proxy(execution_request), candidate,
+                derived_validation_grid=False)["score"]
+            replay_work["training_evaluations"] = 1
+            verify_saved_score(body["training_score"], training)
+            if body["validation_complete"]:
+                audited = audit_frozen_synthesis_candidate(execution_request, candidate)
+                validation = audited["score"]
+                verify_saved_score(body["validation_score"], validation, audit=True)
+                replay_work.update(validation_evaluations=1,
+                    audit_physical_evaluations=audited["audit"]["physical_evaluations"],
+                    audit_wavelength_points=audited["audit"]["wavelength_points"])
+            elif body["validation_score"] is not None:
+                raise ValueError("saved synthesis incomplete audit has a score")
+        elif (body["training_score"] is not None or body["validation_score"] is not None
+                or body["validation_complete"] or body["targets_met"]):
+            raise ValueError("saved synthesis result claims evidence without a candidate")
+        nominal = (training is not None and validation is not None
+            and nominal_targets_pass(request, training)
+            and nominal_targets_pass(request, validation, independent_audit=True))
+        data = deepcopy(dict(body))
+        data.update(candidate_design=candidate, training_score=training, validation_score=validation,
+            frozen_request=request, targets_met=body["state"] == "completed" and nominal,
+            trace=tuple(FilmSynthesisTrace(**row) for row in body["trace"]))
+        if body["state"] == "completed" and not nominal:
+            data.update(state="not_found", termination_reason=("legacy_nominal_targets_not_met"
+                if legacy else "replay_nominal_targets_not_met"),
+                message="Frozen physical replay did not satisfy the original nominal bounds.")
+        upgraded = film_synthesis_result_to_payload(request_id, FilmSynthesisResult(**data),
+            audit=value.get("audit"), physical_structure_metadata=metadata)
+        # Retain routing/counter evidence, never a stale quality or approval flag.
+        for key in ("execution_project_root", "work_counters"):
+            if key in value:
+                upgraded[key] = deepcopy(value[key])
+        if "cancel_snapshot" in value.get("review", {}):
+            upgraded["review"]["cancel_snapshot"] = deepcopy(value["review"]["cancel_snapshot"])
+        upgraded["legacy_compatibility" if legacy else "physical_replay_verification"] = {
+            "read_only": True, "physical_replay_performed": True,
+            "original_targets_met": body["targets_met"], "replay_work": replay_work}
+        upgraded["review"]["warnings"].append(
+            ("Read-only legacy history: " if legacy else "Read-only history: ")
+            + "nominal and solver acceptance were recomputed by frozen physical replay; the original file was not changed.")
+        if not is_synthesis_result(upgraded):
+            raise ValueError("saved synthesis result cannot be safely normalized")
+        return upgraded
+    except (KeyError, TypeError, ValueError, ArithmeticError, AttributeError) as exc:
+        raise ValueError(f"{'legacy' if legacy else 'saved'} synthesis result cannot be safely normalized: {exc}") from exc
 
 
 def submit_synthesis(service, payload, client_request_id=None):

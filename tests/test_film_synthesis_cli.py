@@ -94,7 +94,9 @@ def test_review_separates_disjoint_objective_windows_and_nm_from_independent_k_u
     payload = film_synthesis_result_to_payload("review-unit", review_result)
     review = payload["review"]
     assert payload["best_candidate_audit"]["available"] is True
-    assert payload["best_candidate_audit"]["targets_met"] is True
+    # Scores from the prior objective/candidate do not prove the new windows.
+    assert payload["best_candidate_audit"]["targets_met"] is False
+    assert payload["best_candidate_audit"]["solver_acceptable"] is False
     assert payload["best_candidate_audit"]["continuous_certificate"] is False
     assert payload["best_candidate_audit"]["audit_max_normalized_error"] <= frozen.acceptable_normalized_error
     assert review["audit_domain"]["objective_windows"] == [

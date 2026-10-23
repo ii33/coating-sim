@@ -12,33 +12,34 @@ from coat_sim.core.project_film_session import ProjectFilmWorkspace
 from coat_sim.scheduler.jobs import JobSpec, canonical
 from coat_sim.scheduler.remote_server import BlobStore
 from coat_sim.scheduler.result_capability import is_synthesis_result
-from coat_sim.ui.compute_queue import _annotate_result_availability, _read_queue_result
+from coat_sim.ui.compute_queue import (
+    _SynthesisQueueResult, _annotate_result_availability, _read_queue_result,
+)
+from tests.test_film_synthesis_nominal_surfaces import _bind_row
 from coat_sim.ui.project_compute_views import _wire_project_queue_results
 
 
 def _result(*, state="completed", candidate=True):
-    body = {
-        "state": state,
-        "candidate_design": {"front_layers": []} if candidate else None,
-        "validation_complete": candidate,
-        "validation_score": {} if candidate else None,
-        "training_score": {} if candidate else None,
-        "targets_met": candidate and state == "completed",
-    }
-    audit = {"available": candidate, "targets_met": candidate if state == "completed" else None,
-             "continuous_certificate": False, "training_max_normalized_error": 0.0 if candidate else None,
-             "audit_max_normalized_error": 0.0 if candidate else None,
-             "acceptable_normalized_error": 1.0}
-    return {"schema_version": 1, "kind": "coat_sim.film_synthesis_result",
-            "request_id": "queue-view-test", "ok": state != "failed", "result": body,
-            "review": {"termination": {"state": state, "reason": "test"},
-                       "targets_met": body["targets_met"], "layers": [], "per_objective": []},
-            "best_candidate_audit": audit, "audit": None,
-            "physical_structure_metadata": []}
+    # Use a real frozen physical result; an invented old quality flag cannot
+    # supply nominal acceptance evidence to the queue capability boundary.
+    from dataclasses import replace
+    from coat_sim.core.film_auto_synthesis import synthesize_film_design
+    from coat_sim.core.film_synthesis_io import film_synthesis_result_to_payload
+    from tests.test_film_auto_synthesis import setup_problem
+    service, request = setup_problem(upper=.05, low=550., high=550., samples=1)
+    result = synthesize_film_design(service, request)
+    if state != "completed":
+        result = replace(result, state=state, targets_met=False, termination_reason=state)
+    if not candidate:
+        result = replace(result, candidate_design=None, training_score=None,
+                         validation_score=None, validation_complete=False,
+                         candidate_provenance={}, solver_acceptable=None)
+    return film_synthesis_result_to_payload("queue-view-test", result)
 
 
 class _Store:
-    def __init__(self, job):
+    def __init__(self, root, job):
+        self.root = root
         self.job = job
 
     def read_job(self, _job_id):
@@ -48,21 +49,35 @@ class _Store:
 def test_synthesis_history_result_is_typed_readable_and_available(tmp_path: Path):
     result = _result()
     row = {"job_id": "job-1", "kind": "film_synthesis", "state": "succeeded", "result": result}
+    _bind_row(tmp_path, row)
     assert is_synthesis_result(result)
     _annotate_result_availability(tmp_path, [row])
     assert row["resultAvailable"] is True
-    loaded, asset_path = _read_queue_result(None, _Store(row), "job-1")
-    assert loaded == result
-    assert loaded is not result
+    loaded, asset_path = _read_queue_result(None, _Store(tmp_path, row), "job-1")
+    assert isinstance(loaded, _SynthesisQueueResult)
+    assert loaded.source_job == row
+    assert loaded.payload["result"]["candidate_design"] == result["result"]["candidate_design"]
+    assert loaded.payload["result"]["targets_met"] == result["result"]["targets_met"]
+    for name in ("training_score", "validation_score"):
+        # Replay's evaluator rank key is deliberately not a synthesis search
+        # ranking key, but every saved physical condition must be unchanged.
+        before = {key: value for key, value in result["result"][name].items() if key != "key"}
+        after = {key: value for key, value in loaded.payload["result"][name].items() if key != "key"}
+        assert canonical(after) == canonical(before)
+    assert loaded.payload is not result
+    assert loaded.payload["physical_replay_verification"]["read_only"] is True
     assert asset_path == ""
 
 
 def test_synthesis_cancellation_without_candidate_remains_viewable(tmp_path: Path):
     result = _result(state="cancelled", candidate=False)
     row = {"job_id": "job-2", "kind": "film_synthesis", "state": "cancelled", "result": result}
+    _bind_row(tmp_path, row)
     _annotate_result_availability(tmp_path, [row])
     assert row["resultAvailable"] is True
-    loaded, _ = _read_queue_result(None, _Store(row), "job-2")
+    loaded, _ = _read_queue_result(None, _Store(tmp_path, row), "job-2")
+    assert isinstance(loaded, _SynthesisQueueResult)
+    loaded = loaded.payload
     assert loaded["result"]["candidate_design"] is None
     assert loaded["best_candidate_audit"]["targets_met"] is None
 
@@ -74,7 +89,7 @@ def test_synthesis_payload_is_not_reinterpreted_under_another_queue_kind():
     _annotate_result_availability(Path("."), [row])
     assert row["resultAvailable"] is False
     with pytest.raises(ValueError, match="does not belong"):
-        _read_queue_result(None, _Store(row), row["job_id"])
+        _read_queue_result(None, _Store(Path("."), row), row["job_id"])
 
 
 class _Queue(QObject):
@@ -83,9 +98,14 @@ class _Queue(QObject):
     rayTraceResultReady = Signal(str, str)
     cancelReceived = Signal(str, object, str)
 
-    def __init__(self, row):
+    def __init__(self, row, store=None, loaded=None):
         super().__init__()
         self.row = row
+        self.store = store
+        self._result_viewer = (None if loaded is None else SimpleNamespace(
+            _shown_job=row["job_id"], _shown_kind="film_synthesis",
+            _shown_synthesis_source_job=deepcopy(loaded.source_job),
+            _shown_film_result=deepcopy(loaded.payload)))
         self.status = ""
 
     def _require_owned_job(self, job_id):
@@ -96,10 +116,15 @@ class _Queue(QObject):
         self.status = message
 
 
-def test_project_queue_routes_exact_typed_payload_to_read_only_synthesis_inspector():
+def test_project_queue_routes_exact_typed_payload_to_read_only_synthesis_inspector(tmp_path):
     result = _result()
     origin = {"project_id": "project-a", "project_root": "C:/projects/a"}
-    row = {"job_id": "job-3", "kind": "film_synthesis", "result": result, "origin": origin}
+    row = {"job_id": "job-3", "kind": "film_synthesis", "state": "succeeded",
+           "result": result, "origin": origin}
+    _bind_row(tmp_path, row)
+    store = _Store(tmp_path, row)
+    loaded, _ = _read_queue_result(None, store, row["job_id"])
+    assert isinstance(loaded, _SynthesisQueueResult)
     inspected = []
 
     class Controller:
@@ -120,10 +145,16 @@ def test_project_queue_routes_exact_typed_payload_to_read_only_synthesis_inspect
 
     workspace = cast(ProjectFilmWorkspace, controller.project_context)
     navigation = SimpleNamespace(desktop=Desktop())
-    queue = _Queue(row)
+    queue = _Queue(row, store)
     _wire_project_queue_results(queue, workspace, navigation)
     queue.filmSynthesisResultReady.emit("job-3", deepcopy(result))
-    assert inspected == [("job-3", result, origin)]
+    assert inspected == []
+    assert "Unable to open" in queue.status
+    queue._result_viewer = SimpleNamespace(_shown_job=row["job_id"],
+        _shown_kind="film_synthesis", _shown_synthesis_source_job=deepcopy(loaded.source_job),
+        _shown_film_result=deepcopy(loaded.payload))
+    queue.filmSynthesisResultReady.emit("job-3", deepcopy(loaded.payload))
+    assert inspected == [("job-3", loaded.payload, origin)]
     assert "read-only" in queue.status
 
 

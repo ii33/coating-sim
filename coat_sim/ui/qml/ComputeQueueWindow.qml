@@ -100,6 +100,7 @@ AppWindow {
                     model: computeQueue ? computeQueue.jobs : []
                     delegate: ThemeControls.ThemeSurface {
                         id: task
+                        objectName: "queueTask_" + modelData.job_id
                         readonly property bool resultButtonEnabled: resultButton.enabled
                         readonly property bool resultWarningVisible: missingQueueResultWarning.visible
                         readonly property string resultWarningText: missingQueueResultWarning.text
@@ -116,12 +117,14 @@ AppWindow {
                         readonly property bool cancelPending: !!modelData.cancel_requested ||
                             (computeQueue && computeQueue.pendingCancelJobIds.indexOf(modelData.job_id) >= 0)
                         readonly property string stageLabel: ({"queued": "排队等待", "integrate": "沉积积分", "baseline": "无选板基线", "current": "原板评分", "response": "初形扫描", "optimize": "轮廓搜索", "verify": "原网格候选验证", "group_complete": "本组验证完成", "verify_full": "全膜系最终验证", "full_verify": "全膜系最终验证", "materialize": "保存验证方案与结果", "complete": "最终验证完成"})[progress.stage] || progress.stage || "等待进度"
+                        readonly property string taskStateSeverity: ["failed", "cancelled"].indexOf(modelData.state) >= 0 ? "error"
+                            : modelData.state === "succeeded"
+                              ? (modelData.kind !== "film_synthesis" || modelData.synthesisNominalStatus === "passed" ? "success" : "warning")
+                            : modelData.state === "running" ? "info" : "muted"
                         readonly property color stateInk: window.themeColors
-                            ? (modelData.state === "succeeded" ? window.themeColors.colorSuccess
-                               : ["failed", "cancelled"].indexOf(modelData.state) >= 0
-                                 ? window.themeColors.colorError
-                                 : modelData.state === "running" ? window.themeColors.colorInfo
-                                                                   : window.themeColors.colorTextMuted)
+                            ? ({"success": window.themeColors.colorSuccess, "warning": window.themeColors.colorWarning,
+                                "error": window.themeColors.colorError, "info": window.themeColors.colorInfo,
+                                "muted": window.themeColors.colorTextMuted})[taskStateSeverity]
                             : window.palette.placeholderText
                         function scoreLabel(score, cv) {
                             if (!hasNumber(score)) return "尚无有效评分"
@@ -140,7 +143,10 @@ AppWindow {
                             RowLayout {
                                 Layout.fillWidth: true
                                 ThemeControls.ThemeLabel { Layout.fillWidth: true; text: task.modelData.summary || "计算任务"; wrapMode: Text.WordWrap; font.bold: true }
-                                ThemeControls.ThemeLabel { text: task.modelData.stateLabel; color: task.stateInk }
+                                ThemeControls.ThemeLabel {
+                                    text: (task.modelData.kind === "film_synthesis" ? "任务执行：" : "") + task.modelData.stateLabel
+                                    color: task.stateInk
+                                }
                             }
                             Flow {
                                 Layout.fillWidth: true
@@ -156,6 +162,14 @@ AppWindow {
                                 color: window.themeColors ? window.themeColors.colorWarning
                                                           : window.palette.windowText
                             }
+                            }
+                            ThemeControls.ThemeLabel {
+                                objectName: "queueSynthesisAcceptance"
+                                Layout.fillWidth: true
+                                visible: task.modelData.kind === "film_synthesis"
+                                text: task.modelData.synthesisAcceptanceSummary || "原门限名义验收：未知；求解容差可接受：未知。"
+                                wrapMode: Text.WordWrap
+                                color: task.stateInk
                             }
                             ThemeControls.ThemeLabel {
                                 Layout.fillWidth: true

@@ -7,7 +7,9 @@ import math
 from typing import Any, Mapping, cast
 
 from .film_auto_synthesis import (FilmSynthesisRequest, _validated,
-                                  freeze_film_synthesis_request, strict_lower_bounds_pass)
+                                  freeze_film_synthesis_request)
+from .film_nominal_acceptance import (ACCEPTANCE_SEMANTICS, nominal_condition_pass,
+    nominal_targets_pass, solver_acceptable, solver_condition_acceptable)
 from .film_optimization import FilmOptimizationObjective
 from .film_optimization_needle import FilmNeedleMaterialReference, _candidate_payload_from_materials
 from .film_physical_structures import structure_spec_from_mapping, structure_spec_to_mapping
@@ -57,10 +59,11 @@ def film_synthesis_request_from_payload(payload: Mapping[str, Any], *, require_f
         data["candidate_materials"] = tuple(FilmNeedleMaterialReference(**item)
                                              for item in data["candidate_materials"])
         data["seed_designs"] = tuple(deepcopy(item) for item in data.get("seed_designs", ()))
-        strict_indices = data.get("strict_lower_bound_objective_indices", ())
-        if not isinstance(strict_indices, (tuple, list)):
-            raise ValueError("strict_lower_bound_objective_indices must be an array")
-        data["strict_lower_bound_objective_indices"] = tuple(strict_indices)
+        for name in ("strict_lower_bound_objective_indices", "strict_upper_bound_objective_indices"):
+            strict_indices = data.get(name, ())
+            if not isinstance(strict_indices, (tuple, list)):
+                raise ValueError(f"{name} must be an array")
+            data[name] = tuple(strict_indices)
         request = _validated(FilmSynthesisRequest(**data))
     except (KeyError, TypeError, ValueError) as exc:
         raise FilmSynthesisPayloadError(f"invalid synthesis request: {exc}") from exc
@@ -133,8 +136,10 @@ def film_synthesis_request_to_payload(request_id: str, request: FilmSynthesisReq
     request = _validated(request)
     if request.frozen_material_snapshot is None:
         raise FilmSynthesisPayloadError("only frozen requests can be serialized for execution")
+    raw_request = asdict(request)
+    raw_request["strict_upper_bound_objective_indices"] = list(request.strict_upper_bound_objective_indices)
     return {"schema_version": SCHEMA_VERSION, "kind": REQUEST_KIND,
-            "request_id": request_id, "request": asdict(request),
+            "request_id": request_id, "request": raw_request,
             "physical_structures": list(_normalize_specs(physical_structures))}
 
 
@@ -215,15 +220,17 @@ def film_synthesis_result_to_payload(request_id: str, result: Any, *, audit: Map
     epsilon = finite_score(frozen.acceptable_normalized_error)
     audit_available = (result.candidate_design is not None and result.validation_complete
                        and audit_max is not None)
-    physical_targets_met = (training_max <= epsilon and audit_max <= epsilon
-                            if audit_available and training_max is not None and epsilon is not None
-                            else None)
-    if physical_targets_met is not None:
-        physical_targets_met = (physical_targets_met and strict_lower_bounds_pass(frozen, training)
-                                and strict_lower_bounds_pass(frozen, validation))
+    physical_targets_met = (nominal_targets_pass(frozen, training)
+        and nominal_targets_pass(frozen, validation, independent_audit=True) if audit_available else None)
+    physical_solver_acceptable = (solver_acceptable(frozen, training)
+        and solver_acceptable(frozen, validation, independent_audit=True) if audit_available else None)
+    # Recompute at the export boundary rather than trusting caller-set/stale flags.
+    body["targets_met"] = result.state == "completed" and physical_targets_met is True
+    body["solver_acceptable"] = physical_solver_acceptable
     best_candidate_audit = {
         "available": audit_available,
         "targets_met": physical_targets_met,
+        "solver_acceptable": physical_solver_acceptable,
         "training_max_normalized_error": training_max,
         "audit_max_normalized_error": audit_max if audit_available else None,
         "acceptable_normalized_error": epsilon,
@@ -245,12 +252,24 @@ def film_synthesis_result_to_payload(request_id: str, result: Any, *, audit: Map
     per_objective = deepcopy(audit_metadata.get("objective_status", []))
     for status in per_objective:
         index = status["objective_index"]
-        if index in frozen.strict_lower_bound_objective_indices:
-            errors = [row for row in body.get("validation_score", {}).get("errors", ()) if row["objective_index"] == index]
-            strict_pass = bool(errors) and all(row["actual"] > objectives[index].lower_bound for row in errors)
+        conditions = [row for row in body.get("validation_score", {}).get("errors", ())
+                      if row["objective_index"] == index]
+        strict_lower = index in frozen.strict_lower_bound_objective_indices
+        strict_upper = index in frozen.strict_upper_bound_objective_indices
+        status["targets_met"] = bool(conditions) and all(nominal_condition_pass(
+            objectives[index], row["actual"], strict_lower=strict_lower, strict_upper=strict_upper)
+            for row in conditions)
+        status["solver_acceptable"] = bool(conditions) and all(solver_condition_acceptable(
+            objectives[index], row["actual"], frozen.acceptable_normalized_error,
+            strict_lower=strict_lower, strict_upper=strict_upper) for row in conditions)
+        if strict_lower:
             status["strict_lower_bound"] = True
-            status["strict_lower_bound_met"] = strict_pass
-            status["targets_met"] = status["targets_met"] and strict_pass
+            status["strict_lower_bound_met"] = bool(conditions) and all(
+                row["actual"] > objectives[index].lower_bound for row in conditions)
+        if strict_upper:
+            status["strict_upper_bound"] = True
+            status["strict_upper_bound_met"] = bool(conditions) and all(
+                row["actual"] < objectives[index].upper_bound for row in conditions)
     retained_training = (
         (result.state == "cancelled"
          and result.candidate_provenance.get("selection") == "completed_training_at_cancel")
@@ -273,11 +292,16 @@ def film_synthesis_result_to_payload(request_id: str, result: Any, *, audit: Map
                 "worst_wavelength_nm": worst["wavelength_nm"], "worst_angle_deg": worst["angle_deg"],
                 "worst_actual": worst["actual"], "max_normalized_error": None,
                 "training_max_normalized_error": worst["normalized_violation"],
-                "training_targets_met": (worst["normalized_violation"] <= frozen.acceptable_normalized_error
-                    and (index not in frozen.strict_lower_bound_objective_indices
-                         or all(row["actual"] > objective.lower_bound for row in conditions)))})
+                "training_targets_met": all(nominal_condition_pass(objective, row["actual"],
+                    strict_lower=index in frozen.strict_lower_bound_objective_indices,
+                    strict_upper=index in frozen.strict_upper_bound_objective_indices) for row in conditions),
+                "training_solver_acceptable": all(solver_condition_acceptable(objective, row["actual"],
+                    frozen.acceptable_normalized_error,
+                    strict_lower=index in frozen.strict_lower_bound_objective_indices,
+                    strict_upper=index in frozen.strict_upper_bound_objective_indices) for row in conditions)})
     review = {"absorption_assumption": deepcopy(absorption), "termination": {"state": result.state, "reason": result.termination_reason},
-        "targets_met": result.targets_met,
+        "targets_met": body["targets_met"],
+        "solver_acceptable": physical_solver_acceptable,
         "per_objective": per_objective,
         "candidate_provenance": deepcopy(dict(result.candidate_provenance)),
         "audit_domain": {"objective_windows": [
@@ -300,6 +324,7 @@ def film_synthesis_result_to_payload(request_id: str, result: Any, *, audit: Map
             "audit_wavelength_points": result.audit_wavelength_points},
         "layers": layers, "warnings": warnings}
     return {"schema_version": SCHEMA_VERSION, "kind": RESULT_KIND, "request_id": request_id,
+            "acceptance_semantics": ACCEPTANCE_SEMANTICS,
             "ok": result.state != "failed", "result": body, "review": review,
             "best_candidate_audit": best_candidate_audit,
             "absorption_assumption": absorption,

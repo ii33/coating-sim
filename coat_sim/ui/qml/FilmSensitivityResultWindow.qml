@@ -39,7 +39,9 @@ AppWindow {
                     Layout.fillWidth: true
                     text: modelData.scenario_id + " · 有限场景最大违规 "
                           + Number(modelData.max_error_percent).toPrecision(7) + " 个百分点 · "
-                          + (modelData.targets_met ? "采样通过" : "未通过")
+                          + (modelData.targets_met ? "原门限采样通过" : "原门限未通过")
+                          + " · 归一化违规 " + Number(modelData.max_normalized_error).toPrecision(7)
+                          + (modelData.solver_acceptable ? " · 求解容差可接受" : " · 求解容差不可接受")
                     color: window.themeColors.colorText
                     wrapMode: Text.WordWrap
                 }

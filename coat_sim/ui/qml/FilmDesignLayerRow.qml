@@ -216,6 +216,7 @@ Rectangle {
                 readonly property string tooltipText: row.datasetTooltip(modelData)
                 width: setBox.width
                 text: modelData.name || modelData.id || ""
+                font: setBox.font
                 hoverEnabled: true
                 highlighted: index === setBox.highlightedIndex
                 readonly property bool currentSelection: index === setBox.currentIndex

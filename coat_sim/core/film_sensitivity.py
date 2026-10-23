@@ -25,6 +25,7 @@ from .film_optimization import (
 from .film_optimization_derivatives import _PreparedMaterialData, simulate_with_thickness_jacobian
 from .film_optimization_needle import _normalize_objectives, _physical_layer_thickness
 from .film_optimization_scoring import score_condition, weighted_rms_error
+from .film_nominal_acceptance import nominal_condition_pass, solver_condition_acceptable
 
 REQUEST_KIND = "coat_sim.film_sensitivity_request"
 RESULT_KIND = "coat_sim.film_sensitivity_result"
@@ -80,6 +81,7 @@ class FilmSensitivityRequest:
     initial_step_fraction: float = 0.25
     min_step_fraction: float = 1e-5
     frozen_material_snapshot: Mapping[str, Any] | None = None
+    strict_upper_bound_objective_indices: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -152,6 +154,7 @@ class FilmSensitivityResult:
     limitations: tuple[str, ...] = LIMITATIONS
     is_final: bool = True
     message: str = ""
+    solver_acceptable: bool | None = None
 
     @property
     def candidate_design(self) -> Mapping[str, Any] | None:
@@ -168,7 +171,7 @@ class FilmSensitivityResult:
     @property
     def targets_met(self) -> bool:
         """Nominal sampled acceptance only, never a robustness certificate."""
-        return self.nominal_targets_met
+        return self.state == "completed" and self.nominal_targets_met
 
     @property
     def nominal_targets_met(self) -> bool:
@@ -285,6 +288,12 @@ def _validate(request: FilmSensitivityRequest) -> FilmSensitivityRequest:
     acceptable = _finite(request.acceptable_normalized_error, "acceptable_normalized_error")
     if acceptable < 0:
         raise ValueError("acceptable_normalized_error must be nonnegative")
+    strict_upper = _sequence(request.strict_upper_bound_objective_indices,
+                             "strict_upper_bound_objective_indices")
+    if (any(type(i) is not int or not 0 <= i < len(objectives) for i in strict_upper)
+            or len(set(strict_upper)) != len(strict_upper)
+            or any(objectives[i].mode != "range" or objectives[i].upper_bound is None for i in strict_upper)):
+        raise ValueError("strict_upper_bound_objective_indices must uniquely select range upper bounds")
     for label in ("max_iterations", "max_evaluations"):
         value = getattr(request, label)
         if value is not None and (type(value) is not int or value < 1):
@@ -303,7 +312,8 @@ def _validate(request: FilmSensitivityRequest) -> FilmSensitivityRequest:
     if request.frozen_material_snapshot is not None:
         _checked_frozen_snapshot(request.frozen_material_snapshot, design)
     return replace(request, design_snapshot=design, objectives=objectives,
-                   errors=errors, variables=variables, scenarios=scenarios)
+                   errors=errors, variables=variables, scenarios=scenarios,
+                   strict_upper_bound_objective_indices=tuple(sorted(strict_upper)))
 
 
 def sensitivity_request_from_optimization(
@@ -312,6 +322,7 @@ def sensitivity_request_from_optimization(
     scenarios: tuple[FilmSensitivityScenario, ...] = (), operation: str = "analyze",
     max_iterations: int | None = None, max_evaluations: int | None = None,
     initial_step_fraction: float = 0.25, min_step_fraction: float = 1e-5,
+    strict_upper_bound_objective_indices: tuple[int, ...] = (),
 ) -> FilmSensitivityRequest:
     """Explicit adapter; ordinary solver settings do not choose a robust objective.
 
@@ -324,7 +335,7 @@ def sensitivity_request_from_optimization(
         tuple(base.objectives), tuple(errors), error_model, robustness_objective,
         tuple(base.variables), tuple(scenarios), operation, base.acceptable_normalized_error,
         max_iterations, max_evaluations, initial_step_fraction, min_step_fraction,
-        deepcopy(base.frozen_material_snapshot)))
+        deepcopy(base.frozen_material_snapshot), tuple(strict_upper_bound_objective_indices)))
 
 
 def freeze_film_sensitivity_request(service: Any, request: FilmSensitivityRequest) -> FilmSensitivityRequest:
@@ -470,7 +481,9 @@ class _Evaluator:
                 finite.append(FilmSensitivityScenarioResult(scenario.scenario_id, float(scenario.weight),
                     tuple(float(d) for d in delta), tuple(float(x) for x in nominal + jac @ delta),
                     tuple(float(x) for x in values), scenario_max, scenario_rms,
-                    scenario_max <= self.request.acceptable_normalized_error))
+                    all(nominal_condition_pass(o, float(actual),
+                        strict_upper=i in self.request.strict_upper_bound_objective_indices)
+                        for (i, _w, _a, o), actual in zip(conditions, values, strict=True))))
             if self.request.robustness_objective == "linear_sensitivity_norm":
                 robust = norm
             elif self.request.robustness_objective == "finite_scenario_worst":
@@ -479,7 +492,9 @@ class _Evaluator:
                 robust = weighted_rms_error([s.finite_weighted_rms_error for s in finite],
                                             [s.weight for s in finite])
             result = FilmSensitivityAnalysis(max_error, rms,
-                max_error <= self.request.acceptable_normalized_error, errors,
+                all(nominal_condition_pass(o, float(actual),
+                    strict_upper=i in self.request.strict_upper_bound_objective_indices)
+                    for (i, _w, _a, o), actual in zip(conditions, nominal, strict=True)), errors,
                 linear_conditions, float(norm), tuple(finite), float(robust))
             if not math.isfinite(result.robustness_value):
                 raise ValueError("robustness objective is not finite")
@@ -529,7 +544,11 @@ def execute_film_sensitivity_request(service: Any, request: FilmSensitivityReque
             baseline, best, iteration, 0 if evaluator is None else evaluator.evaluations,
             0 if evaluator is None else evaluator.forward, 0 if evaluator is None else evaluator.jacobian,
             0 if evaluator is None else evaluator.failures, "" if evaluator is None else evaluator.identity,
-            request, is_final=is_final, message=message)
+            request, is_final=is_final, message=message,
+            solver_acceptable=None if best is None else all(solver_condition_acceptable(
+                request.objectives[row.objective_index], row.actual, request.acceptable_normalized_error,
+                strict_upper=row.objective_index in request.strict_upper_bound_objective_indices)
+                for row in best.nominal_conditions))
         return result
 
     def outcome(state, reason, message=""):
@@ -647,6 +666,9 @@ def _record(cls, value, label):
 def film_sensitivity_request_to_payload(request: FilmSensitivityRequest) -> dict[str, Any]:
     request = _validate(request)
     payload = dict(schema_version=SCHEMA_VERSION, kind=REQUEST_KIND, **asdict(request))
+    # Empty optional operator flags retain the original v1 canonical identity.
+    if not request.strict_upper_bound_objective_indices:
+        payload.pop("strict_upper_bound_objective_indices")
     try:
         # Return detached, JSON-native data and reject NaN/infinity everywhere.
         return json.loads(json.dumps(payload, ensure_ascii=False, allow_nan=False))
@@ -714,6 +736,7 @@ def film_sensitivity_result_to_payload(result: FilmSensitivityResult) -> dict[st
 
 def film_sensitivity_result_from_payload(payload: Mapping[str, Any]) -> FilmSensitivityResult:
     data = _envelope(payload, FilmSensitivityResult, RESULT_KIND)
+    has_solver_status = "solver_acceptable" in data
     try:
         data["frozen_request"] = film_sensitivity_request_from_payload(data["frozen_request"])
         data["baseline_analysis"] = _analysis_from_payload(data["baseline_analysis"])
@@ -777,9 +800,11 @@ def film_sensitivity_result_from_payload(payload: Mapping[str, Any]) -> FilmSens
             if (nominal.target_value, nominal.lower_bound, nominal.upper_bound) != (
                     objective.target_value, objective.lower_bound, objective.upper_bound):
                 raise ValueError("nominal condition target differs from the request")
-        if analysis.nominal_targets_met != (
-                analysis.nominal_max_normalized_error <= request.acceptable_normalized_error):
-            raise ValueError("nominal target acceptance does not match the unchanged request tolerance")
+        if analysis.nominal_targets_met != all(nominal_condition_pass(
+                request.objectives[row.objective_index], row.actual,
+                strict_upper=row.objective_index in request.strict_upper_bound_objective_indices)
+                for row in analysis.nominal_conditions):
+            raise ValueError("nominal target acceptance does not match original actual bounds")
         if len(analysis.finite_scenarios) != len(request.scenarios):
             raise ValueError("analysis scenario count does not match the request")
         for row, scenario in zip(analysis.finite_scenarios, request.scenarios, strict=True):
@@ -789,13 +814,25 @@ def film_sensitivity_result_from_payload(payload: Mapping[str, Any]) -> FilmSens
                     or len(row.finite_perturbation_values) != len(analysis.nominal_conditions)):
                 raise ValueError("scenario result identity or dimensions are invalid")
             if type(row.finite_targets_met) is not bool or row.finite_targets_met != (
-                    row.finite_max_normalized_error <= request.acceptable_normalized_error):
-                raise ValueError("finite scenario acceptance does not match the request tolerance")
+                    all(nominal_condition_pass(request.objectives[nominal.objective_index], actual,
+                        strict_upper=nominal.objective_index in request.strict_upper_bound_objective_indices)
+                        for nominal, actual in zip(analysis.nominal_conditions,
+                            row.finite_perturbation_values, strict=True))):
+                raise ValueError("finite scenario acceptance does not match original actual bounds")
             for value in (*row.delta_thickness_nm, *row.linear_estimated_values, *row.finite_perturbation_values):
                 _finite(value, "scenario result value")
             for value in (row.finite_max_normalized_error, row.finite_weighted_rms_error):
                 if _finite(value, "finite scenario error") < 0:
                     raise ValueError("finite scenario errors must be nonnegative")
+    expected_solver = None if result.best_analysis is None else all(solver_condition_acceptable(
+        request.objectives[row.objective_index], row.actual, request.acceptable_normalized_error,
+        strict_upper=row.objective_index in request.strict_upper_bound_objective_indices)
+        for row in result.best_analysis.nominal_conditions)
+    if not has_solver_status:
+        result = replace(result, solver_acceptable=expected_solver)
+    elif (result.solver_acceptable is not None and type(result.solver_acceptable) is not bool
+          or result.solver_acceptable is not expected_solver):
+        raise ValueError("solver_acceptable differs from actual conditions and unchanged request tolerance")
     return result
 
 

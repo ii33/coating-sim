@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import signal
 import threading
+from typing import Any
 import unittest
 
 from tools.export_film_synthesis_cloud import build_bundle, import_closure
@@ -81,17 +82,43 @@ class FilmSynthesisCloudBundleTests(unittest.TestCase):
 
     def test_git_frozen_requests_match_fresh_production_optics_and_targets(self):
         import json
+        from tools.run_film_synthesis_acceptance import sha256_json
         manifest = json.loads((ROOT / "benchmarks/film_synthesis/20261021/cloud-requests.json").read_text(encoding="utf-8"))
         fresh = build_bundle(seed=0, workers=2, repo_root=ROOT)
         self.assertEqual(manifest["kind"], "film_synthesis_git_requests")
         self.assertEqual([entry["case"] for entry in manifest["entries"]], [entry["case"] for entry in fresh["entries"]])
         for stored, actual in zip(manifest["entries"], fresh["entries"], strict=True):
-            # The historical frozen requests predate the optional deadline.
-            # Assert its exact current default, then compare every original
-            # field without changing the stored request or its identity hash.
+            # Preserve the historical request bytes/identity. Added execution
+            # controls have explicit current defaults, but cannot excuse any
+            # change to an original optical input, target, grid or option.
+            self.assertEqual(stored["request_sha256"], sha256_json(stored["request"]))
+            self.assertEqual(actual["request_sha256"], sha256_json(actual["request"]))
             current_request = dict(actual["request"])
-            self.assertIn("max_seconds", current_request)
-            self.assertIsNone(current_request.pop("max_seconds"))
+            added_defaults: dict[str, Any] = {
+                "max_seconds": None, "search_strategy": "hybrid",
+                "objective_weighting": "equal_window", "archive_capacity": 32,
+                "needle_batch_size": 6, "needle_pre_local": False,
+                "needle_position_refinement_rounds": 1, "max_working_set_bytes": 0,
+                "strict_upper_bound_objective_indices": [],
+            }
+            for name, expected in added_defaults.items():
+                self.assertNotIn(name, stored["request"])
+                self.assertEqual(current_request.pop(name), expected)
+            resolution = current_request.pop("resource_guard_resolution")
+            self.assertNotIn("resource_guard_resolution", stored["request"])
+            self.assertEqual(set(resolution), {
+                "version", "mode", "requested_bytes", "effective_bytes", "available_bytes", "basis"})
+            self.assertEqual(resolution["version"], 1)
+            self.assertEqual(resolution["mode"], "auto")
+            self.assertEqual(resolution["requested_bytes"], 0)
+            if resolution["available_bytes"] is not None:
+                self.assertEqual(resolution["basis"], "half_available_memory_at_freeze")
+                self.assertEqual(resolution["effective_bytes"], resolution["available_bytes"] // 2)
+            else:
+                from coat_sim.core.film_auto_synthesis import SYNTHESIS_WORKING_SET_FALLBACK_BYTES
+                self.assertIn(resolution["basis"], {
+                    "unknown_memory_fallback", "memory_probe_error_fallback", "invalid_memory_fallback"})
+                self.assertEqual(resolution["effective_bytes"], SYNTHESIS_WORKING_SET_FALLBACK_BYTES)
             self.assertEqual(stored["request"], current_request)
             self.assertEqual(stored["wall_seconds"], 120)
 

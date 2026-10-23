@@ -26,6 +26,7 @@ from .film_optimization_structure import (
     _site_records, _PreparedStructureEvaluator, evaluate_frozen_structure_candidate,
 )
 from .optical_constants import UNITS_TO_UM, prepare_optical_set
+from .film_nominal_acceptance import nominal_targets_pass, solver_acceptable
 from .film_synthesis_absorption import (annotate_synthesis_design, assumes_unknown_k_zero,
                                         sample_synthesis_optical)
 
@@ -81,6 +82,9 @@ class FilmSynthesisRequest:
     max_working_set_bytes uses 0=auto, positive=explicit bytes, None=off. Derived
     resource_guard_resolution freezes its v1 policy for deterministic replay;
     it is staged numerical admission, not a process memory isolation guarantee.
+    acceptable_normalized_error is solver tolerance only, never nominal target
+    acceptance. Range bounds remain inclusive unless their objective index is
+    explicitly listed in strict_lower/strict_upper_bound_objective_indices.
     """
 
     environment: Mapping[str, Any]
@@ -118,6 +122,7 @@ class FilmSynthesisRequest:
     needle_position_refinement_rounds: int = 1
     max_working_set_bytes: int | None = 0
     resource_guard_resolution: Mapping[str, Any] | None = None
+    strict_upper_bound_objective_indices: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -148,6 +153,12 @@ class FilmSynthesisTrace:
 
 @dataclass(frozen=True)
 class FilmSynthesisResult:
+    """Nominal task success and independent solver tolerance are separate.
+
+    solver_acceptable is None without a complete matching independent audit;
+    candidate quality never overrides cancelled, failed or budget-limited state.
+    """
+
     state: str
     termination_reason: str
     candidate_design: Mapping[str, Any] | None
@@ -167,6 +178,7 @@ class FilmSynthesisResult:
     audit_wavelength_points: int = 0
     performance: Mapping[str, Any] = field(default_factory=dict)
     candidate_provenance: Mapping[str, Any] = field(default_factory=dict)
+    solver_acceptable: bool | None = None
 
 
 def strict_lower_bounds_pass(request, score):
@@ -333,6 +345,15 @@ def _validated(request):
         raise ValueError("strict_lower_bound_objective_indices must be unique")
     if any(objectives[index].mode != "range" or objectives[index].lower_bound is None for index in strict_indices):
         raise ValueError("strict lower bounds require range objectives with an explicit lower_bound")
+    strict_upper_indices = request.strict_upper_bound_objective_indices
+    if not isinstance(strict_upper_indices, (tuple, list)):
+        raise ValueError("strict_upper_bound_objective_indices must be a sequence")
+    if any(type(index) is not int or index < 0 or index >= len(objectives) for index in strict_upper_indices):
+        raise ValueError("strict_upper_bound_objective_indices must contain valid nonboolean objective indices")
+    if len(set(strict_upper_indices)) != len(strict_upper_indices):
+        raise ValueError("strict_upper_bound_objective_indices must be unique")
+    if any(objectives[index].mode != "range" or objectives[index].upper_bound is None for index in strict_upper_indices):
+        raise ValueError("strict upper bounds require range objectives with an explicit upper_bound")
     if not isinstance(request.candidate_materials, (tuple, list)) or not request.candidate_materials:
         raise ValueError("explicit candidate materials are required")
     refs = set()
@@ -392,6 +413,7 @@ def _validated(request):
     return replace(request, environment=design, objectives=objectives, seed_designs=tuple(seeds), forward_device=forward_device,
                    resource_guard_resolution=resource_guard_resolution,
                    strict_lower_bound_objective_indices=tuple(strict_indices),
+                   strict_upper_bound_objective_indices=tuple(strict_upper_indices),
                    candidate_materials=tuple(request.candidate_materials),
                    growth_quarter_wave_fractions=tuple(float(v) for v in request.growth_quarter_wave_fractions),
                    **numeric)
@@ -879,40 +901,40 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             failures += 1
             raise
 
-    def strict_lower_pass(score):
-        return strict_lower_bounds_pass(request, score)
-
     def rank(candidate):
-        legacy = _synthesis_candidate_rank(candidate, request.acceptable_normalized_error)
-        strict_indices = set(request.strict_lower_bound_objective_indices)
+        legacy = _synthesis_candidate_rank(candidate, 0.0)
+        strict_indices = set(request.strict_lower_bound_objective_indices) | set(request.strict_upper_bound_objective_indices)
         if request.search_strategy == "hybrid":
             if not strict_indices:
-                return legacy
+                return (int(not nominal_targets_pass(request, candidate["score"])), *legacy)
             score = candidate["score"]
-            passed = strict_lower_pass(score) and score["max_error"] <= request.acceptable_normalized_error
+            passed = nominal_targets_pass(request, score)
             rows = candidate["design"]["front_layers"]
             cost = (len(rows), sum(row["thickness"]["value"] for row in rows))
             if passed:
                 return (0, *cost, score["max_error"], score["weighted_rms_error"])
             return (1, score["max_error"], score["weighted_rms_error"], *cost)
         if not (automatic_reflector_route or automatic_matching_route) and not strict_indices:
-            return legacy
+            return (int(not nominal_targets_pass(request, candidate["score"])), *legacy)
         score = candidate["score"]
         # Raw optical merit guides automatic structural search. Only explicitly
-        # selected strict lower bounds change feasibility; ordinary saved range
-        # objectives keep their inclusive/tolerance acceptance semantics.
-        slack_indices = strict_indices
+        # selected strict bounds change the operator; ordinary saved range
+        # objectives retain their original inclusive bounds, without tolerance.
+        slack_indices = set(request.strict_lower_bound_objective_indices)
         if not slack_indices and automatic_reflector_route:
             slack_indices = {i for i, objective in enumerate(request.objectives)
                              if objective.metric == "R" and objective.mode == "range"
                              and objective.lower_bound is not None}
         slacks = [error.actual - request.objectives[error.objective_index].lower_bound
                   for error in score.get("errors", ()) if error.objective_index in slack_indices]
+        slacks.extend(request.objectives[error.objective_index].upper_bound - error.actual
+            for error in score.get("errors", ())
+            if error.objective_index in request.strict_upper_bound_objective_indices)
         slack = min(slacks, default=0.0) if score["max_error"] == 0 else 0.0
         optical = (score["max_error"], -slack, *legacy)
         if strict_indices:
-            return (0 if strict_lower_pass(score) and score["max_error"] <= request.acceptable_normalized_error else 1, *optical)
-        return optical
+            return (0 if nominal_targets_pass(request, score) else 1, *optical)
+        return (int(not nominal_targets_pass(request, score)), *optical)
 
     def audit_archive(value, *, allow_feedback_repair=True):
         nonlocal audited_best, completed_training_validation
@@ -928,7 +950,12 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 completed_training_best["design"] == value["design"]):
             completed_training_validation = {"design": deepcopy(audited["design"]),
                                              "score": _copy_internal_candidate(audited["score"])}
-        if audited_best is None or rank(audited) < rank(audited_best[1]):
+        def audited_rank(training, audit):
+            both_nominal = (nominal_targets_pass(request, training["score"])
+                and nominal_targets_pass(request, audit["score"], independent_audit=True))
+            return (int(not both_nominal), *rank(audit))
+        if (audited_best is None
+                or audited_rank(value, audited) < audited_rank(*audited_best)):
             audited_best = (_copy_internal_candidate(value), _copy_internal_candidate(audited))
             emit("audit_incumbent", "Saved best audited candidate", value["design"], audited["score"])
             if snapshot_callback:
@@ -964,10 +991,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
 
     def targets_verified():
         return (audited_best is not None
-                and audited_best[0]["score"]["max_error"] <= request.acceptable_normalized_error
-                and audited_best[1]["score"]["max_error"] <= request.acceptable_normalized_error
-                and strict_lower_pass(audited_best[0]["score"])
-                and strict_lower_pass(audited_best[1]["score"]))
+                and nominal_targets_pass(request, audited_best[0]["score"])
+                and nominal_targets_pass(request, audited_best[1]["score"], independent_audit=True))
 
     def archive(value, *, audit_eligible=True, provenance=None, parent_hash=None, operator=None):
         nonlocal best
@@ -982,7 +1007,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         # loses the training cost tie-break. Audit it before discarding it.
         if (audit_eligible and feasible(value["design"])
                 and value["score"]["max_error"] <= request.acceptable_normalized_error
-                and strict_lower_pass(value["score"])):
+                and solver_acceptable(request, value["score"])):
             audit_archive(value)
 
 
@@ -1443,7 +1468,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     raw = hybrid_evaluate(proposal.design)
                     archive(raw, audit_eligible=False, provenance=proposal.provenance, operator="engineering_prior")
                     if (raw["score"]["max_error"] <= request.acceptable_normalized_error
-                            and strict_lower_pass(raw["score"])):
+                            and solver_acceptable(request, raw["score"])):
                         audit_archive(raw, allow_feedback_repair=False)
                     emit("structure_proposal", json.dumps(proposal.provenance, sort_keys=True), raw["design"], raw["score"])
                     if (not explorer["design"]["front_layers"] or score_sse(raw) < score_sse(explorer)):
@@ -1802,7 +1827,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                             initial_max_error=raw["score"]["max_error"], state="refining")
                         runs.append(entry)
                         if (raw["score"]["max_error"] <= request.acceptable_normalized_error
-                                and strict_lower_pass(raw["score"])):
+                                and solver_acceptable(request, raw["score"])):
                             entry["state"] = "auditing_prior"
                             audit_archive(raw, allow_feedback_repair=False)
                             if targets_verified():
@@ -1830,7 +1855,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         # strict-rank champion. A guide never grants acceptance.
                         for candidate in (refined, local_best):
                             if (candidate["score"]["max_error"] <= request.acceptable_normalized_error
-                                    and strict_lower_pass(candidate["score"])):
+                                    and solver_acceptable(request, candidate["score"])):
                                 audit_archive(candidate)
                             if targets_verified():
                                 break
@@ -1951,7 +1976,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     emit("hr_minimax_prior", json.dumps(entry, sort_keys=True), raw_hr["design"], raw_hr["score"])
                     archive(raw_hr, audit_eligible=False)
                     if (raw_hr["score"]["max_error"] <= request.acceptable_normalized_error
-                            and strict_lower_pass(raw_hr["score"])):
+                            and solver_acceptable(request, raw_hr["score"])):
                         audit_archive(raw_hr, allow_feedback_repair=False)
                     if not targets_verified():
                         entry["state"] = "refining"
@@ -2336,7 +2361,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                             evolution.accept(losses)
                             global_record["completed_generations"] = evolution.generations
                             if (global_best["score"]["max_error"] <= request.acceptable_normalized_error
-                                    and strict_lower_pass(global_best["score"])):
+                                    and solver_acceptable(request, global_best["score"])):
                                 audit_archive(global_best)
                             if targets_verified():
                                 global_record["stop_reason"] = "validated_targets_met"
@@ -2345,7 +2370,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                             global_best = interior_refine(global_best)
                             archive(global_best, audit_eligible=False)
                             if (global_best["score"]["max_error"] <= request.acceptable_normalized_error
-                                    and strict_lower_pass(global_best["score"])):
+                                    and solver_acceptable(request, global_best["score"])):
                                 audit_archive(global_best)
                         seed_value = global_best
                         if targets_verified():
@@ -2363,7 +2388,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     if matching is not None:
                         next_selected[matching] = (refined, next_selected[matching][1])
                     assert best is not None  # The baseline was archived before global search.
-                    if audited_best is None or epoch % 2 == 1 or (best["score"]["max_error"] <= request.acceptable_normalized_error and strict_lower_pass(best["score"])):
+                    if audited_best is None or epoch % 2 == 1 or (best["score"]["max_error"] <= request.acceptable_normalized_error and solver_acceptable(request, best["score"])):
                         audit_archive(best)
                     else:
                         emit("audit_deferred", "Keep prior audited incumbent; defer nonpassing stage audit to every second global epoch", best["design"], best["score"])
@@ -2558,12 +2583,12 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 audit_archive(best, allow_feedback_repair=request.search_strategy == "legacy")
                 if audited_best is not None:
                     validated_training, validation = audited_best
-                    if state != "failed" and validated_training["score"]["max_error"] <= request.acceptable_normalized_error:
-                        if (validation["score"]["max_error"] <= request.acceptable_normalized_error
-                                and (not request.strict_lower_bound_objective_indices or targets_verified())):
+                    if state != "failed":
+                        if targets_verified():
                             state, reason = "completed", "validated_targets_met"
-                        elif request.search_strategy != "hybrid" or reason not in {
-                                "cycle_limit", "evaluation_limit", "time_limit", "resource_limit"}:
+                        elif (nominal_targets_pass(request, validated_training["score"])
+                                and (request.search_strategy != "hybrid" or reason not in {
+                                    "cycle_limit", "evaluation_limit", "time_limit", "resource_limit"})):
                             reason = "validation_targets_not_met"
             except _StructureCancelled:
                 state, reason = (("not_found", "time_limit")
@@ -2590,7 +2615,12 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         execution.close()
         if forward is not None:
             forward.close()
-        met = state == "completed"
+        met = state == "completed" and best is not None and validation is not None and (
+            nominal_targets_pass(request, best["score"])
+            and nominal_targets_pass(request, validation["score"], independent_audit=True))
+        acceptable = (solver_acceptable(request, best["score"])
+            and solver_acceptable(request, validation["score"], independent_audit=True)
+            if best is not None and validation is not None else None)
         message = ("找到通过训练网格与独立密网格验证的候选；尚未应用到用户设计。" if met else
                    "已取消；保留此前完整评分的候选，未确认达标。" if state == "cancelled" else
                    "尚未找到通过全部验证的膜系；候选仅供审查。")
@@ -2599,7 +2629,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             request.design_revision, met, None if best is None else deepcopy(best["score"]),
             None if validation is None else deepcopy(validation["score"]), validation is not None,
             cycle, evaluations, validation_evaluations, failures, tuple(trace), message, request,
-            audit_physical_evaluations, audit_wavelength_points, performance(), candidate_provenance)
+            audit_physical_evaluations, audit_wavelength_points, performance(), candidate_provenance, acceptable)
     except _ObserverFailure as exc:
         raise exc.error.with_traceback(exc.error.__traceback__) from None
     finally:

@@ -319,6 +319,12 @@ def is_synthesis_result(result) -> bool:
     return check(result)
 
 
+def is_legacy_synthesis_result(result) -> bool:
+    """Read-only history eligibility, not a verified nominal success claim."""
+    from coat_sim.core.film_synthesis_jobs import is_legacy_synthesis_result as check
+    return check(result)
+
+
 def is_geometric_raytrace_result(result) -> bool:
     """Recognize a complete ray result summary backed by a registered artifact."""
     try:
@@ -335,6 +341,10 @@ def job_has_viewable_result(job) -> bool:
     result = job.get("result")
     if not isinstance(result, dict):
         return False
+    if is_legacy_synthesis_result(result):
+        # Physical replay is intentionally deferred to the history reader.
+        # Old tolerance-based targets_met cannot authorize a current result.
+        return job.get("kind") == "film_synthesis" and job.get("state") in ("succeeded", "failed", "cancelled")
     if is_sensitivity_result(result):
         return job.get("kind") == "film_sensitivity" and job.get("state") in ("succeeded", "failed", "cancelled")
     if job.get("state") == "succeeded":

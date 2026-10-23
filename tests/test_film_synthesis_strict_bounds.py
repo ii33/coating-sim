@@ -27,11 +27,14 @@ def boundary_problem(metric='R', offset=0.):
 
 @pytest.mark.parametrize('metric', ['R','T'])
 @pytest.mark.parametrize('offset', [0.,.0005])
-def test_inclusive_equal_and_tolerated_lower_bounds_remain_completed_without_opt_in(metric,offset):
+def test_inclusive_equality_is_nominal_but_tolerated_lower_violation_is_solver_only(metric,offset):
     service,request,actual=boundary_problem(metric,offset)
     result=synthesize_film_design(service,request)
-    assert result.state=='completed'
-    assert result.evaluations==2
+    assert result.state==('completed' if offset==0. else 'not_found')
+    assert result.targets_met is (offset==0.)
+    assert result.solver_acceptable is True
+    assert result.validation_complete
+    assert result.evaluations==(2 if offset==0. else 3)
     assert result.candidate_design is not None
     assert result.candidate_design['front_layers']==[]
     assert result.training_score is not None

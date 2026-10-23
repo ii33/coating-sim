@@ -1,9 +1,11 @@
 """Read/cancel the shared queue from a standalone simulation window."""
 from concurrent.futures import ThreadPoolExecutor
+from collections import OrderedDict
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
+import hashlib
 import json
 import re
 import sqlite3
@@ -21,6 +23,7 @@ from coat_sim.scheduler import SchedulerClient
 from coat_sim.scheduler.result_capability import (
     is_best_candidate_result, is_film_optimization_result,
     is_geometric_raytrace_result, is_synthesis_result, is_sensitivity_result,
+    is_legacy_synthesis_result,
     validate_film_optimization_result,
 )
 from coat_sim.ui.icons import window_icon
@@ -34,6 +37,19 @@ _MAX_RAYTRACE_RESULT_BYTES = 512 * 1024 * 1024
 @dataclass(frozen=True)
 class _RayTraceQueueResult:
     artifact_path: str
+
+
+@dataclass(frozen=True)
+class _SynthesisQueueResult:
+    """Background-replayed history plus its unchanged persisted source row."""
+
+    source_job: dict
+    payload: dict
+
+
+# Compatibility name for callers of the original legacy-only reader wrapper.
+_LegacySynthesisQueueResult = _SynthesisQueueResult
+_SYNTHESIS_REPLAY_CACHE_LIMIT = 64
 
 _MISSING_RESULT_REASON = "队列记录缺少可验证的 result 结构，无法确认结果包。"
 
@@ -51,6 +67,15 @@ def _read_queue_result(service, store, job_id, asset_path=None):
     """Dispatch a queue result by its typed product kind."""
     job = store.read_job(job_id)
     result = _require_result_payload(job)
+    if result.get('kind') == 'coat_sim.film_synthesis_result':
+        if job.get('job_id') != job_id:
+            raise ValueError('Synthesis result belongs to another queue job.')
+        _require_synthesis_job_binding(getattr(store, 'root', None), job, result)
+        from coat_sim.core.film_synthesis_jobs import replay_synthesis_result
+        normalized = replay_synthesis_result(result)
+        # Keep the complete immutable source separate from the read-only replay.
+        # Routing rechecks both this source and the current JobSpec afterwards.
+        return _SynthesisQueueResult(deepcopy(job), normalized), ''
     if is_sensitivity_result(result):
         if job.get('kind') != 'film_sensitivity':
             raise ValueError('Typed sensitivity result does not belong to a film_sensitivity queue job.')
@@ -78,10 +103,6 @@ def _read_queue_result(service, store, job_id, asset_path=None):
             result = terminal_reply(result, job['state'])
         return validate_film_sensitivity_result_payload(result,
             expected_request=deserialize_job_payload(spec.parameters['payload']), replay=True), ''
-    if is_synthesis_result(result):
-        if job.get('kind') != 'film_synthesis':
-            raise ValueError('Typed synthesis result does not belong to a film_synthesis queue job.')
-        return deepcopy(result), ''
     if (job.get('state') in ('failed', 'cancelled')
             and not is_best_candidate_result(result)):
         raise ValueError(job.get('result_unavailable_reason')
@@ -150,12 +171,119 @@ def _visible_queue_rows(bucket, rows, now=None):
     return [row for row in rows if queue_job_is_recent(row, now)]
 
 
-def _annotate_result_availability(root, rows):
+def _require_synthesis_job_binding(root, row, result):
+    """Read the real immutable input before any history proof/cache is used."""
+    from coat_sim.core.film_synthesis_jobs import deserialize_job_payload
+    from coat_sim.scheduler.jobs import JobSpec
+    from coat_sim.scheduler.worker import _film_reply_matches_payload
+    if row.get('kind') != 'film_synthesis':
+        raise ValueError('Typed synthesis result does not belong to a film_synthesis queue job.')
+    if row.get('state') not in ('succeeded', 'failed', 'cancelled'):
+        raise ValueError('Synthesis history requires a terminal queue job.')
+    body = result.get('result')
+    if not isinstance(body, dict):
+        raise ValueError('Synthesis history has an invalid result body.')
+    if (row.get('state') in ('failed', 'cancelled')
+            and body.get('state') != row['state']):
+        raise ValueError('Synthesis result contradicts its authoritative queue lifecycle.')
+    job_id = row.get('job_id')
+    if (root is None or not isinstance(job_id, str)
+            or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', job_id)):
+        raise ValueError('Synthesis queue input identity is unavailable or invalid.')
+    root = Path(root).resolve()
+    directory = (root / 'artifacts/runtime/scheduler/jobs' / job_id).resolve()
+    path = directory / 'spec.json'
+    if (not directory.is_relative_to(root) or path.is_symlink()
+            or not path.resolve().is_relative_to(directory)):
+        raise ValueError('Synthesis queue input identity escaped its job directory.')
+    try:
+        spec = JobSpec.parse_frozen_json(path.read_text(encoding='utf-8'))
+        _, _, metadata = deserialize_job_payload(spec.parameters.get('payload'))
+    except (OSError, KeyError, TypeError, ValueError) as exc:
+        raise ValueError('Synthesis queue input identity is unavailable or invalid.') from exc
+    if (spec.executor != 'film_synthesis' or spec.fingerprint != row.get('input_digest')
+            or result.get('physical_structure_metadata', []) != metadata
+            or not _film_reply_matches_payload(result, spec.parameters.get('payload'))):
+        raise ValueError('Synthesis result frozen input binding is unverified (队列冻结输入绑定未核实).')
+    return spec
+
+
+def _synthesis_result_bound_to_job(root, row, result):
+    try:
+        _require_synthesis_job_binding(root, row, result)
+        return True
+    except (OSError, TypeError, ValueError, AttributeError):
+        return False
+
+
+def _annotate_synthesis_acceptance(root, row, result, cache):
+    """Background-only physical admission; cache only bounded tiny statuses."""
+    from coat_sim.core.film_synthesis_jobs import replay_synthesis_result
+    from coat_sim.scheduler.jobs import canonical
+    key = None
+    try:
+        # Mandatory before lookup: a stale spec/source must never use old proof.
+        spec = _require_synthesis_job_binding(root, row, result)
+        key = hashlib.sha256(canonical({
+            'root': str(root), 'job_id': row['job_id'], 'kind': row['kind'],
+            'state': row['state'], 'input_digest': row.get('input_digest'),
+            'spec_fingerprint': spec.fingerprint, 'result': result,
+        }).encode('utf-8')).hexdigest()
+        if key in cache:
+            status = cache.pop(key)
+            cache[key] = status
+            row.update(status)
+            return
+        replayed = replay_synthesis_result(result)
+        body = replayed['result']
+        nominal = replayed['best_candidate_audit'].get('targets_met')
+        acceptable = body.get('solver_acceptable')
+        def label(value):
+            return '通过' if value is True else '未通过' if value is False else '未知（核查未完成）'
+        status = {
+            'resultAvailable': True, 'resultUnavailableReason': '',
+            'synthesisNominalStatus': ('passed' if row['state'] == 'succeeded'
+                and body['state'] == 'completed' and body['targets_met'] is True
+                and nominal is True else 'failed' if nominal is False else 'unknown'),
+            'synthesisAcceptanceSummary': (
+                f"候选原门限名义验收：{label(nominal)}；"
+                f"求解容差可接受：{label(acceptable)}。两者独立，不添加制造余量。"
+                + ('旧达标标志未采用；已完成后台物理重放。'
+                   if is_legacy_synthesis_result(result) else '已完成后台物理重放。')),
+        }
+        cache[key] = status
+        while len(cache) > _SYNTHESIS_REPLAY_CACHE_LIMIT:
+            cache.popitem(last=False)
+        row.update(status)
+    except (OSError, TypeError, ValueError, ArithmeticError, AttributeError) as exc:
+        status = dict(resultAvailable=False, resultUnavailableReason=str(exc),
+            synthesisNominalStatus='unknown', synthesisAcceptanceSummary=(
+                '原门限名义验收：未知；求解容差可接受：未知（后台物理重放或冻结输入绑定未核实）。'))
+        if key is not None:
+            cache[key] = status
+            while len(cache) > _SYNTHESIS_REPLAY_CACHE_LIMIT:
+                cache.popitem(last=False)
+        row.update(status)
+
+
+def _annotate_result_availability(root, rows, *, synthesis_cache=None):
     """Mark terminal rows whose successful result or best candidate can be opened."""
     root = Path(root).resolve()
+    synthesis_cache = OrderedDict() if synthesis_cache is None else synthesis_cache
     run_ids = set()
     for row in rows:
+        if row.get('kind') == 'film_synthesis':
+            # Derived badges are never durable authority, including on rows
+            # whose result was removed/replaced after an earlier successful read.
+            row['synthesisNominalStatus'] = 'unknown'
+            row['synthesisAcceptanceSummary'] = '原门限名义验收：未知；后台核查尚未通过。'
         if row.get('state') not in ('succeeded', 'failed', 'cancelled'):
+            raw = row.get('result')
+            if isinstance(raw, dict) and raw.get('kind') == 'coat_sim.film_synthesis_result':
+                row.update(resultAvailable=False,
+                    resultUnavailableReason='Synthesis history requires a terminal queue job.',
+                    synthesisNominalStatus='unknown',
+                    synthesisAcceptanceSummary='原门限名义验收：未知；任务尚未终态，不能采用历史验收结论。')
             continue
         try:
             result = _require_result_payload(row)
@@ -172,13 +300,8 @@ def _annotate_result_availability(root, rows):
             row['resultUnavailableReason'] = ('' if row['resultAvailable'] else
                 'Typed sensitivity result does not belong to this job kind.')
             continue
-        if is_synthesis_result(result):
-            if row.get('kind') != 'film_synthesis':
-                row['resultAvailable'] = False
-                row['resultUnavailableReason'] = 'Typed synthesis result does not belong to this job kind.'
-                continue
-            row['resultAvailable'] = True
-            row['resultUnavailableReason'] = ''
+        if result.get('kind') == 'coat_sim.film_synthesis_result':
+            _annotate_synthesis_acceptance(root, row, result, synthesis_cache)
             continue
         if is_geometric_raytrace_result(result):
             row['resultAvailable'] = True
@@ -235,13 +358,8 @@ def _annotate_result_availability(root, rows):
             row['resultUnavailableReason'] = ('' if row['resultAvailable'] else
                 'Typed sensitivity result does not belong to this job kind.')
             continue
-        if is_synthesis_result(result):
-            if row.get('kind') != 'film_synthesis':
-                row['resultAvailable'] = False
-                row['resultUnavailableReason'] = 'Typed synthesis result does not belong to this job kind.'
-                continue
-            row['resultAvailable'] = True
-            row['resultUnavailableReason'] = ''
+        if result.get('kind') == 'coat_sim.film_synthesis_result':
+            # Already admitted by the first background pass, never replay twice.
             continue
         if is_geometric_raytrace_result(result):
             row['resultAvailable'] = True
@@ -325,6 +443,7 @@ class ComputeQueueView(QObject):
         self._confirmed_cancels = set()
         self._pending_request = None
         self._result_viewer = None
+        self._synthesis_replay_cache = OrderedDict()
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='simulation-queue-view')
         self.received.connect(self._receive)
         self.cancelReceived.connect(self._cancel_received)
@@ -491,7 +610,8 @@ class ComputeQueueView(QObject):
             current['expected_finish_at'] = current.get('finished_at')
             refresh_jobs.append(current)
         page['refresh_jobs'] = refresh_jobs
-        _annotate_result_availability(self.store.root, page['jobs'] + refresh_jobs)
+        _annotate_result_availability(self.store.root, page['jobs'] + refresh_jobs,
+            synthesis_cache=self._synthesis_replay_cache)
         return page
     _is_recent_job = staticmethod(queue_job_is_recent)
     @Slot(object, str)
@@ -693,6 +813,7 @@ class QueueResultViewer(QObject):
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='queue-result-reader')
         self._closed, self._generation, self._loading_job, self._shown_job = False, 0, '', ''
         self._shown_kind, self._shown_film_result = '', None
+        self._shown_synthesis_source_job = None
         self._shown_raytrace_path = ''
         self._sensitivity_window: QQuickWindow | None = None
         self._sensitivity_controller: "FilmSensitivityQuickController | None" = None
@@ -775,10 +896,17 @@ class QueueResultViewer(QObject):
             self.availabilityChanged.emit(job_id, True, '')
             self.statusChanged.emit('Film optimization candidate is ready for its typed result view.')
             return
+        source_job = None
+        if isinstance(loaded, _SynthesisQueueResult):
+            source_job, loaded = loaded.source_job, loaded.payload
+            if source_job.get('job_id') != job_id:
+                self.statusChanged.emit('无法打开结果：历史合成结果属于另一队列任务。')
+                return
         if is_synthesis_result(loaded):
             self._shown_job = job_id
             self._shown_kind = 'film_synthesis'
             self._shown_film_result = deepcopy(loaded)
+            self._shown_synthesis_source_job = deepcopy(source_job)
             self.filmSynthesisResultReady.emit(job_id, deepcopy(loaded))
             self.availabilityChanged.emit(job_id, True, '')
             self.statusChanged.emit('Film synthesis candidate is ready for its read-only typed result view.')

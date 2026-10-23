@@ -304,3 +304,50 @@ def test_history_summary_separates_actual_percent_points_from_normalized_error(h
     summary = harness.sensitivity.resultSummary
     assert f'原始最坏违规 {raw * 100:.7g} 个百分点' in summary
     assert f'最大归一化违规 {normalized:.8g}' in summary
+    scenario = result['best_analysis']['finite_scenarios'][0]
+    displayed = harness.sensitivity.scenarioResults[0]
+    # This fixture's original upper is zero; do not label scaled errors as pp.
+    assert displayed['max_error_percent'] == pytest.approx(max(scenario['finite_perturbation_values']) * 100)
+    assert displayed['max_normalized_error'] == scenario['finite_max_normalized_error']
+    assert '求解容差' in summary
+
+
+@pytest.mark.qt
+def test_nonfinal_checkpoint_never_enables_apply(harness):
+    panel = harness.sensitivity
+    layer_id = harness.design['front_layers'][0]['id']
+    assert harness.owner.setVariableBound('front', layer_id, 'lower_nm', 60.)
+    assert harness.owner.setVariableBound('front', layer_id, 'upper_nm', 145.)
+    assert panel.setOption('max_evaluations', '2')
+    assert panel.start('optimize')
+    harness.pool.run()
+    assert panel.canApply
+    panel._payload['is_final'] = False
+    panel._payload['state'] = 'partial'
+    panel._payload['termination_reason'] = 'checkpoint'
+    assert not panel.canApply
+    assert not panel.applyBest()
+    assert not harness.source.applied
+
+
+@pytest.mark.qt
+def test_sensitivity_captures_explicit_strict_upper_without_changing_target(harness):
+    assert harness.owner.setSearchMode('synthesis')
+    assert harness.owner.setObjectiveField('mode', 'range')
+    assert harness.owner.setObjectiveField('upper_bound_percent', 3.95)
+    assert harness.owner.setSynthesisStrictUpperBound(True)
+    panel = harness.sensitivity
+    assert panel.start('analyze'), panel.error
+    harness.pool.run()
+    assert panel.hasResult, panel.error
+    frozen = panel._payload['frozen_request']
+    assert frozen['strict_upper_bound_objective_indices'] == [0]
+    assert frozen['objectives'][0]['upper_bound'] == .0395
+
+
+@pytest.mark.qt
+def test_sensitivity_rejects_invalid_strict_flag_instead_of_silently_dropping_it(harness):
+    harness.owner._objectives[0]['synthesis_strict_upper_bound'] = 'true'
+    assert not harness.sensitivity.start('analyze')
+    assert 'boolean' in harness.sensitivity.error
+    assert not harness.pool.tasks and not harness.client.submissions

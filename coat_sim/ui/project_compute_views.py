@@ -55,9 +55,20 @@ def _wire_project_queue_results(queue, workspace: ProjectFilmWorkspace, navigati
         try:
             row = queue._require_owned_job(job_id)
             from coat_sim.scheduler.result_capability import is_synthesis_result
-            if (not isinstance(row, dict) or payload != row.get("result")
-                    or not is_synthesis_result(payload)):
-                raise ValueError("Synthesis result differs from its typed project queue record")
+            viewer = getattr(queue, "_result_viewer", None)
+            from coat_sim.ui.compute_queue import _synthesis_result_bound_to_job
+            replay_source = getattr(viewer, "_shown_synthesis_source_job", None)
+            # Every historical synthesis selection, not only legacy records,
+            # must have come through the physical background reader. Re-read
+            # the source row and immutable JobSpec before routing the cache.
+            same_source = (isinstance(row, dict) and isinstance(replay_source, dict)
+                and viewer is not None and viewer._shown_job == job_id
+                and viewer._shown_kind == "film_synthesis"
+                and replay_source == row and viewer._shown_film_result == payload
+                and _synthesis_result_bound_to_job(getattr(queue.store, "root", None),
+                    row, row.get("result")))
+            if not same_source or not is_synthesis_result(payload):
+                raise ValueError("Synthesis result differs from its verified typed project queue record")
             controller = target("film_optimization")
             inspect = getattr(controller, "inspectSynthesisQueueResult", None)
             if not callable(inspect) or not inspect(job_id, payload, origin=row["origin"]):

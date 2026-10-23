@@ -130,7 +130,9 @@ def test_real_robustness_optimization_improves_selected_objective_not_nominal_bu
     assert result.best_analysis.robustness_value < result.baseline_analysis.robustness_value / 100.
     assert 100. < result.best_thickness_nm['low-film'] < 125.
     assert result.evaluations > 17 and result.jacobian_evaluations > 17
-    assert result.best_analysis.nominal_targets_met == (
+    assert result.best_analysis.nominal_targets_met == all(
+        row.actual <= 0. for row in result.best_analysis.nominal_conditions)
+    assert result.solver_acceptable == (
         result.best_analysis.nominal_max_normalized_error <= request.acceptable_normalized_error)
     validate_film_sensitivity_result_payload(film_sensitivity_result_to_payload(result), expected_request=result.frozen_request)
 

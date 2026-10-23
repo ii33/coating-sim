@@ -73,14 +73,22 @@ def test_gui_default_request_survives_freeze_job_roundtrip_and_executes_global_s
     )
     assert result["result"]["state"] == "completed"
     assert result["result"]["targets_met"] is True
-    assert result["result"]["cycles"] == 0
+    # Unified hybrid priors are admitted inside its first budgeted cycle,
+    # rather than the former unbudgeted global-prefix pass (cycle zero).
+    assert result["result"]["cycles"] == 1
+    assert result["result"]["frozen_request"]["search_strategy"] == "hybrid"
+    assert result["acceptance_semantics"] == "nominal_bounds_v1"
+    assert result["result"]["solver_acceptable"] is True
     assert result["result"]["candidate_design"] is not None
     assert len(result["result"]["candidate_design"]["front_layers"]) > 1
-    assert result["result"]["validation_score"]["max_error"] <= .001
+    assert result["result"]["validation_score"]["max_error"] == 0.
     assert result["best_candidate_audit"]["targets_met"] is True
     assert result["result"]["frozen_request"]["cpu_workers"] == 19
     generated = [item for item in progress if item.get("stage") == "structure_proposal"]
-    assert generated and all(item["layer_count"] > 1 for item in generated)
+    # Broad hybrid screening includes homogeneous and multi-layer families;
+    # it must not silently collapse to only homogeneous trials.
+    assert generated and any(item["layer_count"] == 1 for item in generated)
+    assert any(item["layer_count"] > 1 for item in generated)
 
 
 def test_gui_v23_matching_mode_recovers_after_training_pass_but_dense_audit_failure(tmp_path):

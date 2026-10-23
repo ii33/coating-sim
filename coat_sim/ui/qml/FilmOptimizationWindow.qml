@@ -755,6 +755,19 @@ AppWindow {
                                             color: window.themeTokens.colorWarning
                                             wrapMode: Text.WordWrap
                                         }
+                                        CheckBox {
+                                            objectName: "filmSynthesisStrictUpperBoundCheck"
+                                            Layout.columnSpan: 2
+                                            Layout.fillWidth: true
+                                            visible: window.controller.searchMode === "synthesis"
+                                            enabled: !window.controller.busy
+                                            text: "此目标使用严格上界 <（等于上限不通过）"
+                                            checked: window.controller.selectedObjective.synthesis_strict_upper_bound ?? false
+                                            onToggled: {
+                                                window.controller.setSynthesisStrictUpperBound(checked)
+                                                checked = Qt.binding(() => window.controller.selectedObjective.synthesis_strict_upper_bound ?? false)
+                                            }
+                                        }
                                         Label { text: "目标权重"; color: window.themeTokens.colorText }
                                         ThemeControls.ThemeField {
                                             objectName: "filmOptimizationWeightField"
@@ -768,7 +781,10 @@ AppWindow {
                                             }
                                             onEditingFinished: commitDraft()
                                         }
-                                        Label { text: "达标容限 (百分点)"; color: window.themeTokens.colorText }
+                                        Label {
+                                            text: window.controller.searchMode === "synthesis" ? "求解可接受容差 (百分点)" : "达标容限 (百分点)"
+                                            color: window.themeTokens.colorText
+                                        }
                                         ThemeControls.ThemeField {
                                             objectName: "filmOptimizationToleranceField"
                                             Layout.fillWidth: true
@@ -782,6 +798,15 @@ AppWindow {
                                                 numericValueEdited = false
                                             }
                                             onEditingFinished: commitDraft()
+                                        }
+                                        Label {
+                                            objectName: "filmSynthesisToleranceExplanation"
+                                            Layout.columnSpan: 2
+                                            Layout.fillWidth: true
+                                            visible: window.controller.searchMode === "synthesis"
+                                            text: "求解容差只表示数值上可接受；原门限名义验收单独判定，不放宽目标，不添加制造余量。未勾选严格上界时使用 ≤。"
+                                            color: window.themeTokens.colorTextMuted
+                                            wrapMode: Text.WordWrap
                                         }
                                     }
                                     Label {

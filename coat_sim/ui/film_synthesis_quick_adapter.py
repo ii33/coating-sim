@@ -89,12 +89,42 @@ def synthesis_cpu_workers(value: Any) -> int:
     return workers
 
 
+def synthesis_strict_upper_bound_indices(objectives) -> tuple[int, ...]:
+    """Parse only editor strict flags, independent of budgets or material rows.
+
+    This consumes UI percentages, not ordinary optimization request fields.
+    Invalid explicit flags are errors, never silently ignored by other tools.
+    """
+    if not isinstance(objectives, (list, tuple)):
+        raise ValueError("Synthesis objectives must be an ordered list")
+    indices = []
+    for index, row in enumerate(objectives):
+        if not isinstance(row, Mapping):
+            raise ValueError("Synthesis objective must be an object")
+        flag = row.get("synthesis_strict_upper_bound", False)
+        if type(flag) is not bool:
+            raise ValueError("Synthesis strict upper bound must be an explicit boolean")
+        if flag:
+            upper = row.get("upper_bound_percent")
+            if isinstance(upper, bool) or upper is None:
+                raise ValueError("Synthesis strict upper bound requires a finite upper bound")
+            try:
+                number = float(upper)
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError("Synthesis strict upper bound requires a finite upper bound") from exc
+            if row.get("mode") != "range" or not math.isfinite(number) or not 0 <= number <= 100:
+                raise ValueError("Synthesis strict upper bound requires a range upper bound in [0,100]%")
+            indices.append(index)
+    return tuple(indices)
+
+
 def build_synthesis_request(base: FilmOptimizationRequest, references, options,
                             use_current_seed: bool = False,
                             assume_unknown_k_zero: bool = False,
                             cpu_workers: int = 1,
                             forward_backend: str = "cpu",
-                            forward_device: Mapping[str, Any] | None = None) -> FilmSynthesisRequest:
+                            forward_device: Mapping[str, Any] | None = None,
+                            strict_upper_bound_objective_indices: tuple[int, ...] = ()) -> FilmSynthesisRequest:
     if type(assume_unknown_k_zero) is not bool:
         raise ValueError("Unknown-k assumption must be an explicit boolean")
     original = deepcopy(dict(base.design_snapshot))
@@ -109,6 +139,7 @@ def build_synthesis_request(base: FilmOptimizationRequest, references, options,
         acceptable_normalized_error=base.acceptable_normalized_error,
         validation_samples_multiplier=base.validation_samples_multiplier,
         seed_designs=(original,) if use_current_seed else (),
+        strict_upper_bound_objective_indices=strict_upper_bound_objective_indices,
         cpu_workers=synthesis_cpu_workers(cpu_workers),
         forward_backend=forward_backend,
         forward_device=validate_forward_device(forward_device, forward_backend),

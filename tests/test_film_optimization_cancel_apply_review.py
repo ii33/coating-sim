@@ -385,7 +385,8 @@ def test_structure_cancel_uses_full_topology_and_checks_hard_bounds_without_clai
         assert review.controller.hasCandidate
 
 
-def test_real_typed_n0_cancel_retains_new_training_topology_without_reauditing(review, monkeypatch, tmp_path):
+@pytest.mark.parametrize('strategy', ['legacy', 'hybrid'])
+def test_real_typed_n0_cancel_retains_new_training_topology_without_reauditing(review, monkeypatch, tmp_path, strategy):
     from coat_sim.core import film_synthesis_audit as audit
     from coat_sim.core.film_auto_synthesis import FilmSynthesisRequest, freeze_film_synthesis_request
     from coat_sim.core.film_optimization_needle import FilmNeedleMaterialReference
@@ -398,11 +399,13 @@ def test_real_typed_n0_cancel_retains_new_training_topology_without_reauditing(r
 
     environment = deepcopy(dict(review.base.design))
     environment['front_layers'] = []
+    strategy_options: dict[str, Any] = {'search_strategy': 'legacy'} if strategy == 'legacy' else {}
     request = freeze_film_synthesis_request(review.service, FilmSynthesisRequest(
         environment, (FilmOptimizationObjective(550., 550., 1, mode='range', upper_bound=.03),),
         (FilmNeedleMaterialReference('acceptance-film', 'film-set'),),
         design_revision=review.base.design_revision, max_cycles=1,
-        max_evaluations=None, seed_designs=(deepcopy(environment),)))
+        max_evaluations=None, seed_designs=(deepcopy(environment),), **strategy_options))
+    assert request.search_strategy == strategy  # Hybrid exercises the real default.
     cancel = Event()
     audited_designs: list[Any] = []
     checkpoints: list[Any] = []
@@ -414,7 +417,12 @@ def test_real_typed_n0_cancel_retains_new_training_topology_without_reauditing(r
         return original_audit(*args, **kwargs)
 
     def report(value, **kwargs):
-        if value.get('stage') == 'zero_layer_trial':
+        # The old single-needle finite-growth event is legacy-only. Hybrid's
+        # incumbent notification occurs after the complete parent-owned score
+        # commit, before its following archive/audit admission.
+        if ((strategy == 'legacy' and value.get('stage') == 'zero_layer_trial')
+                or (strategy == 'hybrid' and value.get('stage') == 'incumbent'
+                    and value.get('layer_count') == 1)):
             cancel.set()
 
     monkeypatch.setattr(audit, 'audit_frozen_synthesis_candidate', audited)
@@ -423,6 +431,7 @@ def test_real_typed_n0_cancel_retains_new_training_topology_without_reauditing(r
         tmp_path / 'checkpoint.json', lambda _path, value: checkpoints.append(deepcopy(value)), str(tmp_path))
     assert is_synthesis_result(response)
     raw = response['result']
+    assert cancel.is_set(), 'The real strategy-specific complete-score boundary must request cancellation'
     assert raw['state'] == 'cancelled'
     assert raw['candidate_design'] is not None and len(raw['candidate_design']['front_layers']) == 1
     assert raw['candidate_provenance']['training_complete']
@@ -431,9 +440,16 @@ def test_real_typed_n0_cancel_retains_new_training_topology_without_reauditing(r
     assert not raw['validation_complete'] and raw['validation_score'] is None
     assert response['best_candidate_audit']['available'] is False
     assert response['best_candidate_audit']['targets_met'] is None
-    assert len(audited_designs) == 1 and not audited_designs[0]['front_layers']
-    assert checkpoints, 'The obsolete audited bare candidate exists, but must not replace training best'
-    assert raw['candidate_design']['front_layers'] != audited_designs[0]['front_layers']
+    if strategy == 'legacy':
+        assert len(audited_designs) == 1 and not audited_designs[0]['front_layers']
+        assert checkpoints, 'The obsolete audited bare candidate exists, but must not replace training best'
+        assert raw['candidate_design']['front_layers'] != audited_designs[0]['front_layers']
+    else:
+        # Hybrid screens its first positive-thickness prior before an audit of
+        # the failing bare surface. Cancellation cannot invent an audit merely
+        # to make a typed training candidate available to the UI.
+        assert audited_designs == [] and checkpoints == []
+        assert raw['frozen_request']['search_strategy'] == 'hybrid'
     view = synthesis_result_view(response)
     assert view.optimization_result is not None
     assert view.optimization_result.validation_targets_met is None

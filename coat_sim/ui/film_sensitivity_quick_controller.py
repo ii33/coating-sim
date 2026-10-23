@@ -24,8 +24,15 @@ from coat_sim.core.film_sensitivity import (
     validate_film_sensitivity_result_payload,
 )
 from coat_sim.core.film_result_service import atomic_film_json
+from coat_sim.core.film_nominal_acceptance import solver_condition_acceptable
 from coat_sim.scheduler import SchedulerClient, freeze_spec
 from coat_sim.scheduler.desktop import RemoteCancelEvent, observe_job, submit_local_with_receipt
+from coat_sim.ui.film_synthesis_quick_adapter import synthesis_strict_upper_bound_indices
+
+
+def _raw_violation(actual, target, lower, upper):
+    return abs(actual - target) if target is not None else max(
+        0., 0. if lower is None else lower - actual, 0. if upper is None else actual - upper)
 
 
 class _Signals(QObject):
@@ -184,6 +191,7 @@ class FilmSensitivityQuickController(QObject):
             not self._busy
             and not self._applied
             and self._payload is not None
+            and self._payload.get("is_final") is True
             and self._payload["state"] in {"completed", "partial"}
             and self._payload["operation"] == "optimize"
             and self._payload.get("best_design") is not None
@@ -202,9 +210,7 @@ class FilmSensitivityQuickController(QObject):
             f"候选评价 {result.evaluations}，前向 {result.forward_evaluations}，Jacobian {result.jacobian_evaluations}"
         )
         if best is not None:
-            raw_worst = max((abs(row.actual - row.target_value) if row.target_value is not None else max(
-                0., row.lower_bound - row.actual if row.lower_bound is not None else 0.,
-                row.actual - row.upper_bound if row.upper_bound is not None else 0.)
+            raw_worst = max((_raw_violation(row.actual, row.target_value, row.lower_bound, row.upper_bound)
                 for row in best.nominal_conditions), default=0.)
             text += (
                 f"\n所选误差目标 {result.robustness_objective}: {best.robustness_value:.8g}"
@@ -212,6 +218,8 @@ class FilmSensitivityQuickController(QObject):
                 + f"\n原始最坏违规 {raw_worst * 100:.7g} 个百分点；"
                 + f"最大归一化违规 {best.nominal_max_normalized_error:.8g}；"
                 + ("名义采样通过" if best.nominal_targets_met else "名义采样未通过")
+                + ("；求解容差内可接受" if result.solver_acceptable is True else
+                   "；求解容差内不可接受" if result.solver_acceptable is False else "；求解容差状态未知")
                 + f"\n一阶敏感度范数 {best.linear_sensitivity_norm:.8g}；完整有限扰动场景 {len(best.finite_scenarios)} 个。"
             )
         return text + "\n线性估计不是有限误差上界，有限场景不是制造良率或连续谱证明。"
@@ -233,13 +241,25 @@ class FilmSensitivityQuickController(QObject):
     def scenarioResults(self):
         if self._payload is None or self._payload.get("best_analysis") is None:
             return []
+        result = film_sensitivity_result_from_payload(self._payload)
+        assert result.best_analysis is not None
+        request = result.frozen_request
         return [
             {
-                "scenario_id": row["scenario_id"],
-                "max_error_percent": row["finite_max_normalized_error"] * 100,
-                "targets_met": row["finite_targets_met"],
+                "scenario_id": row.scenario_id,
+                "max_error_percent": 100 * max((_raw_violation(actual, nominal.target_value,
+                    nominal.lower_bound, nominal.upper_bound) for nominal, actual in zip(
+                        result.best_analysis.nominal_conditions, row.finite_perturbation_values,
+                        strict=True)), default=0.),
+                "max_normalized_error": row.finite_max_normalized_error,
+                "targets_met": row.finite_targets_met,
+                "solver_acceptable": all(solver_condition_acceptable(request.objectives[nominal.objective_index],
+                    actual, request.acceptable_normalized_error,
+                    strict_upper=nominal.objective_index in request.strict_upper_bound_objective_indices)
+                    for nominal, actual in zip(result.best_analysis.nominal_conditions,
+                        row.finite_perturbation_values, strict=True)),
             }
-            for row in self._payload["best_analysis"]["finite_scenarios"]
+            for row in result.best_analysis.finite_scenarios
         ]
 
     @Slot(result=bool)
@@ -400,6 +420,8 @@ class FilmSensitivityQuickController(QObject):
                 operation=operation,
                 max_evaluations=self._limit(self._options["max_evaluations"], "最大候选评价"),
                 max_iterations=self._limit(self._options["max_iterations"], "最大迭代"),
+                strict_upper_bound_objective_indices=synthesis_strict_upper_bound_indices(
+                    getattr(self.owner, "_objectives", ())),
             )
             job_id = uuid4().hex
             compute = self.owner._project_compute

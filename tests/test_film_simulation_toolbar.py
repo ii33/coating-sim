@@ -13,13 +13,17 @@ from tests import qt_test_guard  # noqa: F401
 from tests.qt_visual_lookup import find_visual_item
 
 from PySide6.QtCore import (
-    QCoreApplication, QEvent, QMetaObject, QObject, QPoint, QPointF, QSettings, Qt,
+    QCoreApplication, QEvent, QMetaObject, QObject, QPoint, QPointF, QSettings,
+    QThread, Qt,
 )
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtQuick import QQuickItem
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QDialogButtonBox
+from shiboken6 import isValid
+
+from tools.pytest_qt_diagnostics import record_qt_disposal
 
 from coat_sim.core.film_design_service import FilmDesignService
 from coat_sim.ui.film_simulation_quick_controller import (
@@ -32,6 +36,56 @@ from coat_sim.ui.film_simulation_plot_settings import FilmSimulationAndPlotSetti
 ROOT = Path(__file__).parents[1]
 QQuickStyle.setStyle("Fusion")
 _APP = QGuiApplication.instance() or QGuiApplication([])
+
+
+def _dispose_simulation_scene(engine, window, controller, *, test_id):
+    """Destroy only this factory-owned graph, with its context held alive."""
+    assert QThread.currentThread() == _APP.thread()
+    # The standalone factory gives its caller ownership of all three objects.
+    # Keep the controller alive until the root and its QML context are gone.
+    owned = (("window", window), ("engine", engine), ("controller", controller))
+    destroyed = []
+
+    def receipt(label):
+        destroyed.append(label)
+        record_qt_disposal(test_id, "destroyed", label)
+
+    for label, value in owned:
+        assert isValid(value), f"{label} was destroyed before fixture cleanup"
+        value.destroyed.connect(lambda *_args, label=label: receipt(label))
+    controller.close()
+    window.close()
+    for index, (label, value) in enumerate(owned):
+        record_qt_disposal(test_id, "delete_begin", label)
+        value.deleteLater()
+        QCoreApplication.sendPostedEvents(value, QEvent.Type.DeferredDelete)
+        assert not isValid(value), f"test left live C++ {label}"
+        assert destroyed == [name for name, _value in owned[:index + 1]]
+        record_qt_disposal(test_id, "delete_end", label)
+    _APP.processEvents()
+
+
+def test_simulation_scene_cleanup_destroys_owned_graph_without_global_deferred_drain(
+    tmp_path, request,
+):
+    service = FilmDesignService(tmp_path)
+    geometry = QSettings(str(tmp_path / "geometry.ini"), QSettings.Format.IniFormat)
+    engine, window, controller = create_film_simulation_quick_window(
+        root=tmp_path, service=service, design=service.new_design(),
+        geometry_settings=geometry,
+    )
+    engine_child = QObject(engine)
+    controller_child = QObject(controller)
+    unrelated = QObject()
+    unrelated.deleteLater()
+    try:
+        _dispose_simulation_scene(engine, window, controller, test_id=request.node.nodeid)
+        assert not isValid(engine_child), "engine-owned children must also be destroyed"
+        assert not isValid(controller_child), "controller-owned children must also be destroyed"
+        assert isValid(unrelated), "scene cleanup drained another fixture's deletion"
+    finally:
+        QCoreApplication.sendPostedEvents(unrelated, QEvent.Type.DeferredDelete)
+    assert not isValid(unrelated)
 
 
 class FilmSimulationToolbarTests(unittest.TestCase):
@@ -48,12 +102,12 @@ class FilmSimulationToolbarTests(unittest.TestCase):
         self.window.setHeight(700)
 
     def tearDown(self):
-        self.controller.close()
-        self.window.close()
-        self.engine.deleteLater()
-        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-        QCoreApplication.processEvents()
-        self.temp.cleanup()
+        try:
+            _dispose_simulation_scene(
+                self.engine, self.window, self.controller, test_id=self.id(),
+            )
+        finally:
+            self.temp.cleanup()
 
     @staticmethod
     def _item(window, name):

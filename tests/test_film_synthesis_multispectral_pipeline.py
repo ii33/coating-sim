@@ -22,7 +22,6 @@ def request_for_prefix():
 @pytest.mark.parametrize("stop_mode", ["cancel", "time_limit", "evaluation_limit"])
 def test_prefix_shares_parent_stop_and_preserves_complete_candidate(monkeypatch, stop_mode):
     request = request_for_prefix()
-    original = deepcopy(request)
     proposals = list(islice(priors.iter_multispectral_hr_proposals(request), 1))
     assert proposals
     monkeypatch.setattr(priors, 'iter_multispectral_hr_proposals', lambda *a, **kw: iter(proposals))
@@ -33,6 +32,9 @@ def test_prefix_shares_parent_stop_and_preserves_complete_candidate(monkeypatch,
         monkeypatch.setattr(synthesis, 'monotonic', lambda: clock[0])
     if stop_mode == 'evaluation_limit':
         request = replace(request, max_evaluations=5)
+    # Compare the actual frozen submission, including its one-time RAM sample,
+    # not a newly frozen request whose available-memory evidence can differ.
+    original = deepcopy(request)
     seen = []
     completed = []
     def stop(request, initial, *, evaluate, archive, cancel_check, **options):
@@ -65,7 +67,7 @@ def test_prefix_shares_parent_stop_and_preserves_complete_candidate(monkeypatch,
         assert result.validation_score is None
     else:
         assert result.evaluations == 5
-    assert original == request_for_prefix()
+    assert original == request
 
 
 def test_single_hr_request_keeps_original_route(monkeypatch):

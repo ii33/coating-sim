@@ -41,6 +41,7 @@ from coat_sim.scheduler.desktop import (
 from coat_sim.ui.film_synthesis_quick_adapter import (
     SYNTHESIS_DEFAULT_OPTIONS, SynthesisQuickResult, build_synthesis_request,
     synthesis_base_request, synthesis_cpu_workers, synthesis_options, synthesis_result_view, synthesis_spec,
+    synthesis_strict_upper_bound_indices,
     synthesis_preview_handoff,
     verify_synthesis_file_references,
 )
@@ -130,6 +131,7 @@ def _objective_default(index: int) -> dict:
         "target_value_percent": 5.0,
         "lower_bound_percent": 0.0,
         "upper_bound_percent": 5.0,
+        "synthesis_strict_upper_bound": False,
         "weight": 1.0,
     }
 
@@ -1448,6 +1450,8 @@ class FilmOptimizationQuickController(QObject):
                 if row["mode"] == "value":
                     row["lower_bound_percent"] = row["upper_bound_percent"] = row["target_value_percent"]
                 row["mode"] = "range"
+                if type(row["synthesis_strict_upper_bound"]) is not bool:
+                    raise ValueError("合成严格上界必须为明确的开关")
                 if row["lower_bound_percent"] > row["upper_bound_percent"]:
                     raise ValueError(f"目标 {index + 1} 下界不能大于上界")
                 row["weight"] = _number(row["weight"], "目标权重")
@@ -3083,7 +3087,8 @@ class FilmOptimizationQuickController(QObject):
         if self._synthesis_payload is not None:
             raw = self._synthesis_payload["result"]
             facts = self._synthesis_payload["best_candidate_audit"]
-            return (f"任务 {raw['state']}；候选审计目标通过 {facts.get('targets_met')}；"
+            return (f"任务 {raw['state']}；原门限名义验收：{self._synthesis_acceptance_text(facts.get('targets_met'))}；"
+                    f"求解容差可接受：{self._synthesis_acceptance_text(facts.get('solver_acceptable'))}；"
                     f"轮次 {self._synthesis_work_count('cycles')}；评价 {self._synthesis_work_count('evaluations')}"
                     + self._synthesis_work_counters_note())
         if self._result is None:
@@ -3592,7 +3597,9 @@ class FilmOptimizationQuickController(QObject):
             angles = (self._angles_for_row(row) if prepared_angles is None
                       else tuple(prepared_angles[index]))
             mode: Literal["value", "range"] = (
-                "value" if row["lower_bound_percent"] == row["upper_bound_percent"] else "range")
+                "value" if row["lower_bound_percent"] == row["upper_bound_percent"]
+                and not (self._search_mode == "synthesis" and row.get("synthesis_strict_upper_bound", False))
+                else "range")
             objectives.append(FilmOptimizationObjective(
                 wavelength_min_nm=low,
                 wavelength_max_nm=high,
@@ -3816,7 +3823,8 @@ class FilmOptimizationQuickController(QObject):
                                        self._synthesis_assume_unknown_k_zero,
                                        cpu_workers=self._synthesis_cpu_workers,
                                        forward_backend=self._synthesis_forward_backend,
-                                       forward_device=self._synthesis_forward_device)
+                                       forward_device=self._synthesis_forward_device,
+                                       strict_upper_bound_objective_indices=synthesis_strict_upper_bound_indices(self._objectives))
 
     def _synthesis_configuration_error(self):
         if self._pending_edit_error:
@@ -4026,6 +4034,26 @@ class FilmOptimizationQuickController(QObject):
     def synthesisCandidateAudit(self):
         return deepcopy((self._synthesis_payload or {}).get("best_candidate_audit", {}))
 
+    @Slot(bool, result=bool)
+    def setSynthesisStrictUpperBound(self, enabled: bool) -> bool:
+        """Select < only for this synthesis objective, never change its bound."""
+        if (self._busy or self._shutting_down or self._search_mode != "synthesis"
+                or self._pending_edit_error or self._objective_bounds_pending()
+                or not 0 <= self._selected_objective < len(self._objectives)
+                or type(enabled) is not bool):
+            return False
+        row = self._objectives[self._selected_objective]
+        if enabled and (row.get("mode") != "range" or not str(row.get("upper_bound_percent", "")).strip()):
+            return False
+        row["synthesis_strict_upper_bound"] = enabled
+        self._error = ""
+        self._invalidate_result()
+        return True
+
+    @staticmethod
+    def _synthesis_acceptance_text(value) -> str:
+        return "通过" if value is True else "未通过" if value is False else "未知（缺少完整核查）"
+
     @Property(str, notify=changed)
     def synthesisExecutionSummary(self) -> str:
         if self._synthesis_payload is None:
@@ -4106,10 +4134,27 @@ class FilmOptimizationQuickController(QObject):
     @Property(list, notify=changed)
     def synthesisObjectiveAudit(self):
         rows = deepcopy((self._synthesis_payload or {}).get("review", {}).get("per_objective", []))
+        frozen = (self._synthesis_payload or {}).get("result", {}).get("frozen_request", {})
+        objectives = frozen.get("objectives", [])
         for row in rows:
+            index = row["objective_index"]
+            objective = objectives[index] if 0 <= index < len(objectives) else {}
+            lower = objective.get("lower_bound")
+            upper = objective.get("upper_bound")
+            lower_op = ">" if index in frozen.get("strict_lower_bound_objective_indices", []) else "≥"
+            upper_op = "<" if index in frozen.get("strict_upper_bound_objective_indices", []) else "≤"
+            bounds = (f"{lower_op} {lower}" if lower is not None else "")
+            bounds += (("，" if bounds else "") + f"{upper_op} {upper}" if upper is not None else "")
+            if objective.get("mode") == "value":
+                bounds = f"= {objective.get('target_value')}"
+            quality = (f"原门限名义验收：{self._synthesis_acceptance_text(row.get('targets_met'))}；"
+                       f"求解容差可接受：{self._synthesis_acceptance_text(row.get('solver_acceptable'))}")
+            if row.get("score_scope") == "training":
+                quality += (f"\n仅训练网格：名义{self._synthesis_acceptance_text(row.get('training_targets_met'))}，"
+                            f"求解容差{self._synthesis_acceptance_text(row.get('training_solver_acceptable'))}；无完整独立核查")
             row["display"] = (f"目标 {row['objective_index'] + 1} | {row['metric']} | "
                 f"{row['wavelength_min_nm']}–{row['wavelength_max_nm']} nm | "
-                f"审计通过：{row['targets_met']}\n"
+                f"原门限 {bounds or '精确值目标'}\n{quality}\n"
                 f"最坏点 {row['worst_wavelength_nm']} nm / {row['worst_angle_deg']}°，"
                 f"实际值 {row['worst_actual']}，最大归一化违规 {row['max_normalized_error']}")
         return rows
@@ -4167,16 +4212,19 @@ class FilmOptimizationQuickController(QObject):
         if payload is None:
             return ""
         raw, facts = payload["result"], payload["best_candidate_audit"]
-        quality = ("通过" if facts.get("targets_met") is True else "未通过"
-                   if facts.get("targets_met") is False else "尚无完整审计")
+        quality = self._synthesis_acceptance_text(facts.get("targets_met"))
+        acceptable = self._synthesis_acceptance_text(facts.get("solver_acceptable"))
         layers = payload.get("review", {}).get("layers", [])
         return (f"任务状态：{raw['state']} / {raw['termination_reason']}\n"
-                f"候选独立审计：{quality}，层数 {len(layers)}，"
-                f"最大违规 {facts.get('audit_max_normalized_error')}，允许误差 {facts.get('acceptable_normalized_error')}\n"
+                f"候选独立审计：原门限名义验收{quality}，层数 {len(layers)}\n"
+                f"求解容差可接受：{acceptable}，最大归一化违规 {facts.get('audit_max_normalized_error')}，"
+                f"求解容差 {facts.get('acceptable_normalized_error')}（不放宽原门限，不添加制造余量）\n"
                 f"审计物理调用 {self._synthesis_work_count('audit_physical_evaluations')}，"
                 f"审计波长点 {self._synthesis_work_count('audit_wavelength_points')}。"
                 "有限采样审计，无连续谱证书。原设计仅在确认应用后改变。"
-                + self._synthesis_work_counters_note())
+                + self._synthesis_work_counters_note()
+                + ("\n" + "\n".join(str(warning) for warning in payload.get("review", {}).get("warnings", []))
+                   if payload.get("review", {}).get("warnings") else ""))
 
     @Property(str, notify=changed)
     def synthesisPreviewLabel(self):

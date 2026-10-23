@@ -263,6 +263,15 @@ Window {{
         selected = qml(engine, selector, "popup.contentItem.itemAtIndex(0)")
         disabled_candidate = qml(engine, selector, "popup.contentItem.itemAtIndex(2)")
         assert highlighted and selected and disabled_candidate
+        selector_font = selector.property("font")
+        for candidate in (highlighted, selected, disabled_candidate):
+            # A custom ComboBox delegate does not inherit the control's font:
+            # it must retain the theme family/size rather than platform defaults.
+            candidate_font = candidate.property("font")
+            assert candidate_font.family() == selector_font.family()
+            assert candidate_font.pointSizeF() == selector_font.pointSizeF()
+            assert candidate_font.weight() == selector_font.weight()
+            assert candidate.property("contentItem").property("font") == candidate_font
         popup_width = qml(engine, selector, "popup.width")
         popup_x = highlighted.mapToScene(QPointF(0, 0)).x()
         assert popup_width <= window_width

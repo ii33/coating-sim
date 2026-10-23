@@ -49,7 +49,12 @@ def test_unknown_k_explicit_opt_in_grows_audits_and_replays_without_patching_sou
     assert _phase_step_limits_nm(frozen)[('low', 'nk')] > 0
     checkpoints = []
     result = synthesize_film_design(None, frozen, snapshot_callback=lambda *items: checkpoints.append(items[0]))
-    assert result.state == 'completed' and result.targets_met
+    # Keep the exact zero-R target unchanged. A tiny positive residual cannot
+    # become nominal success merely because the solver tolerance accepts it.
+    assert result.state == 'not_found' and not result.targets_met
+    assert result.solver_acceptable is True
+    assert result.validation_score is not None
+    assert 0. < result.validation_score['max_error'] <= request.acceptable_normalized_error
     assert result.candidate_design is not None
     assert result.candidate_design['assume_lossless'] is True
     assert result.candidate_design['use_k'] is True

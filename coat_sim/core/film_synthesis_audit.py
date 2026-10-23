@@ -11,6 +11,7 @@ from typing import Any, Callable, Mapping
 
 import numpy as np
 
+from .film_nominal_acceptance import nominal_condition_pass, solver_condition_acceptable
 from .film_design import validate_design
 from .film_design_service import active_material_references
 from .film_optimization import FilmOptimizationObjective, FilmOptimizationRequest
@@ -242,7 +243,15 @@ def audit_frozen_synthesis_candidate(
             discrete_line=objective.wavelength_min_nm == objective.wavelength_max_nm,
             worst_wavelength_nm=worst.wavelength_nm, worst_angle_deg=worst.angle_deg,
             worst_actual=worst.actual, max_normalized_error=worst.normalized_violation,
-            targets_met=worst.normalized_violation <= request.acceptable_normalized_error))
+            targets_met=all(nominal_condition_pass(objective, e.actual,
+                strict_lower=index in request.strict_lower_bound_objective_indices,
+                strict_upper=index in request.strict_upper_bound_objective_indices)
+                for e in errors if e.objective_index == index),
+            solver_acceptable=all(solver_condition_acceptable(objective, e.actual,
+                request.acceptable_normalized_error,
+                strict_lower=index in request.strict_lower_bound_objective_indices,
+                strict_upper=index in request.strict_upper_bound_objective_indices)
+                for e in errors if e.objective_index == index)))
     metadata = dict(physical_evaluations=physical, wavelength_points=points,
         dense_points=dense_points, offset_points=offset_points,
         extra_points=points - dense_points, unique_condition_points=len(errors),

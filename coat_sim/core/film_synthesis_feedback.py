@@ -11,6 +11,7 @@ from dataclasses import dataclass, replace
 import math
 from typing import TYPE_CHECKING, Any, Callable, Mapping
 
+from .film_nominal_acceptance import nominal_condition_pass
 from .film_optimization import FilmOptimizationObjective
 from .film_optimization_scoring import score_condition
 
@@ -33,6 +34,7 @@ class FeedbackSnapshot:
     objectives: tuple[FilmOptimizationObjective, ...]
     acceptable_normalized_error: float
     strict_lower_bound_objective_indices: tuple[int, ...]
+    strict_upper_bound_objective_indices: tuple[int, ...] = ()
 
 
 def _field(error: Any, name: str) -> Any:
@@ -72,13 +74,19 @@ def _checked_error(error: Any, objectives: tuple[FilmOptimizationObjective, ...]
 
 
 def _strict_failed(index: int, actual: float, objectives: tuple[FilmOptimizationObjective, ...],
-                   strict_indices: tuple[int, ...]) -> bool:
-    if index not in strict_indices:
-        return False
-    lower = objectives[index].lower_bound
-    if lower is None:
-        raise ValueError("strict feedback objective requires an explicit lower bound")
-    return actual <= lower
+                   strict_indices: tuple[int, ...], strict_upper_indices: tuple[int, ...] = ()) -> bool:
+    objective = objectives[index]
+    if index in strict_indices:
+        if objective.lower_bound is None:
+            raise ValueError("strict feedback objective requires an explicit lower bound")
+        if actual <= objective.lower_bound:
+            return True
+    if index in strict_upper_indices:
+        if objective.upper_bound is None:
+            raise ValueError("strict feedback objective requires an explicit upper bound")
+        if actual >= objective.upper_bound:
+            return True
+    return False
 
 
 def _same_wave(left: float, right: float) -> bool:
@@ -107,6 +115,7 @@ class SparseFeedbackRegistry:
         self._objectives = tuple(request.objectives)
         self._acceptable = request.acceptable_normalized_error
         self._strict = tuple(request.strict_lower_bound_objective_indices)
+        self._strict_upper = tuple(request.strict_upper_bound_objective_indices)
         self._points: set[FeedbackPoint] = set()
         self._revision = 0
 
@@ -114,8 +123,11 @@ class SparseFeedbackRegistry:
         worst: dict[tuple[int, float, str], tuple[tuple[bool, float, float], FeedbackPoint]] = {}
         for error in score["errors"]:
             point, actual, normalized = _checked_error(error, self._objectives)
-            strict_failure = _strict_failed(point.objective_index, actual, self._objectives, self._strict)
-            if normalized <= self._acceptable and not strict_failure:
+            strict_failure = _strict_failed(point.objective_index, actual, self._objectives,
+                self._strict, self._strict_upper)
+            if nominal_condition_pass(self._objectives[point.objective_index], actual,
+                    strict_lower=point.objective_index in self._strict,
+                    strict_upper=point.objective_index in self._strict_upper):
                 continue
             if _on_training_grid(point, self._objectives[point.objective_index]):
                 continue
@@ -135,7 +147,7 @@ class SparseFeedbackRegistry:
 
     def snapshot(self) -> FeedbackSnapshot:
         return FeedbackSnapshot(self._revision, tuple(sorted(self._points)),
-            self._objectives, self._acceptable, self._strict)
+            self._objectives, self._acceptable, self._strict, self._strict_upper)
 
 
 def augment_feedback_guide(request: FilmSynthesisRequest, base: Mapping[str, Any],
@@ -151,7 +163,8 @@ def augment_feedback_guide(request: FilmSynthesisRequest, base: Mapping[str, Any
     """
     if (tuple(request.objectives) != snapshot.objectives
             or request.acceptable_normalized_error != snapshot.acceptable_normalized_error
-            or tuple(request.strict_lower_bound_objective_indices) != snapshot.strict_lower_bound_objective_indices):
+            or tuple(request.strict_lower_bound_objective_indices) != snapshot.strict_lower_bound_objective_indices
+            or tuple(request.strict_upper_bound_objective_indices) != snapshot.strict_upper_bound_objective_indices):
         raise ValueError("feedback snapshot belongs to different objective conditions")
     if "_feedback_base" in base:
         raise ValueError("a feedback guide cannot be augmented twice")
@@ -165,7 +178,8 @@ def augment_feedback_guide(request: FilmSynthesisRequest, base: Mapping[str, Any
             raise ValueError("feedback snapshot point differs from its original objective")
     base_errors = [_checked_error(error, snapshot.objectives) for error in base["score"]["errors"]]
     strict_failed = any(_strict_failed(p.objective_index, actual, snapshot.objectives,
-        snapshot.strict_lower_bound_objective_indices) for p, actual, _ in base_errors)
+        snapshot.strict_lower_bound_objective_indices,
+        snapshot.strict_upper_bound_objective_indices) for p, actual, _ in base_errors)
     guide = deepcopy(dict(base))
     responses = list(guide.get("responses", ()))
     maximum = _number(base["score"]["max_error"])
@@ -190,7 +204,8 @@ def augment_feedback_guide(request: FilmSynthesisRequest, base: Mapping[str, Any
             point = snapshot.points[local.objective_index]
             maximum = max(maximum, normalized)
             strict_failed = strict_failed or _strict_failed(point.objective_index, actual,
-                snapshot.objectives, snapshot.strict_lower_bound_objective_indices)
+                snapshot.objectives, snapshot.strict_lower_bound_objective_indices,
+                snapshot.strict_upper_bound_objective_indices)
         seen = set()
         for response in extra_responses:
             local_index = response["objective_index"]
