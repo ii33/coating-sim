@@ -759,17 +759,39 @@ class ProjectStore:
 
     @_store_operation
     def _publish(self, records, data, *, default=None, change_default=False, assets=None,
-                 expected_fingerprint: str | None = None, discussion_only: bool = False) -> dict[str, str]:
+                 expected_fingerprint: str | None = None, discussion_only: bool = False,
+                 film_only: bool = False) -> dict[str, str]:
         result = self._publish_transaction(records, data, default=default, change_default=change_default,
-            assets=assets, expected_fingerprint=expected_fingerprint, discussion_only=discussion_only)
+            assets=assets, expected_fingerprint=expected_fingerprint, discussion_only=discussion_only,
+            film_only=film_only)
         self._notify_changes()
         return result
 
     @_store_operation
     def _publish_transaction(self, records, data, *, default=None, change_default=False, assets=None,
                              expected_fingerprint: str | None = None,
-                             discussion_only: bool = False) -> dict[str, str]:
+                             discussion_only: bool = False, film_only: bool = False) -> dict[str, str]:
         retained = {}
+        if film_only:
+            if (discussion_only or change_default or assets is not None or set(records) != set(data)
+                    or sum(row["kind"] == "film" for row in records.values()) != 1):
+                raise ProjectError("invalid_document", "Film publication requires exactly one film and its optical closure")
+            self._current()
+            previous = self._index()
+            for key, row in records.items():
+                kind = row["kind"]
+                if kind not in {"film", "optical_material"}:
+                    raise ProjectError("dependency_conflict", "Film publication cannot change other resource kinds")
+                if key in previous and previous[key] != row:
+                    raise ProjectError("stale_document", "Film closure differs from its saved manifest row")
+                if normalize_document(kind, data[key]) != data[key]:
+                    raise ProjectError("invalid_document", "Film publication requires normalized documents")
+                if kind == "optical_material" and key in previous and data[key] != self._read_record(row):
+                    raise ProjectError("dependency_conflict", "Film saving cannot modify an existing optical material")
+            # Existing material documents are dependencies, not edited inputs.
+            # Keep their original bytes, paths and revisions, just like sources.
+            retained = {key: deepcopy(row) for key, row in previous.items()
+                        if key not in records or row["kind"] == "optical_material"}
         if discussion_only:
             if change_default or set(records) != set(data):
                 raise ProjectError("bbs_invalid_arguments", "BBS publication cannot change the project default or omit data")
@@ -785,7 +807,7 @@ class ProjectStore:
                 if normalize_document(kind, data[key]) != data[key]:
                     raise ProjectError("invalid_document", "BBS publication requires normalized documents")
             retained = {key: deepcopy(row) for key, row in previous.items() if key not in records}
-        if len(records) + len(retained) > MAX_PROJECT_DOCUMENTS:
+        if len(set(records) | set(retained)) > MAX_PROJECT_DOCUMENTS:
             raise ProjectError("capacity_exceeded", "Project has too many managed input documents")
         captured_fingerprint = getattr(records, "fingerprint", self._fingerprint)
         if captured_fingerprint != self._fingerprint:
@@ -799,7 +821,8 @@ class ProjectStore:
         revision_directory = f"r{self._manifest['revision'] + 1:08d}"
         # Never merge into an existing category revision, including leftovers
         # from an interrupted writer or unrelated user folders.
-        categories = sorted({PROJECT_TYPED_DIRECTORY_BY_KIND[row["kind"]] for row in records.values()})
+        publication_records = {key: row for key, row in records.items() if key not in retained}
+        categories = sorted({PROJECT_TYPED_DIRECTORY_BY_KIND[row["kind"]] for row in publication_records.values()})
         for category in categories:
             reject_links(self.root / category)
         attempt, base_revision = 1, revision_directory
@@ -811,8 +834,8 @@ class ProjectStore:
             revision_directory = base_revision + "-" + str(attempt)
         occupied: dict[str, set[str]] = {}
         from .resource_information import resource_display_name
-        changed_records = deepcopy(records)
-        changed_data = deepcopy(data)
+        changed_records = deepcopy(publication_records)
+        changed_data = {key: deepcopy(data[key]) for key in changed_records}
         for identity, row in changed_records.items():
             category = PROJECT_TYPED_DIRECTORY_BY_KIND[row["kind"]]
             filename = safe_resource_filename(resource_display_name(row["kind"], data[identity]), row["kind"],
@@ -826,7 +849,7 @@ class ProjectStore:
                 if target not in dependencies[identity]:
                     raise ProjectError("dependency_conflict", "Ambiguous dependency while rebasing project")
                 owner[field] = target + EXTENSIONS[changed_records[target]["kind"]]
-        self._validate_graph(changed_records, changed_data)
+        self._validate_graph({**records, **changed_records}, {**data, **changed_data})
         content = {key: json_bytes(document) for key, document in changed_data.items()}
         if any(len(encoded) > MAX_FILE_BYTES for encoded in content.values()):
             raise ProjectError("capacity_exceeded", "Managed project JSON document exceeds size limit")
@@ -834,10 +857,23 @@ class ProjectStore:
         for row in retained.values():
             # Capacity/path checks do not parse or normalize unrelated designs.
             path = self.root / managed_document_path(row["path"], row["kind"], row["id"])
-            reject_links(path)
-            size = path.stat().st_size
-            if size > MAX_FILE_BYTES:
-                raise ProjectError("capacity_exceeded", "Managed project JSON document exceeds size limit")
+            try:
+                reject_links(path)
+                info = path.lstat()
+                if film_only and not stat.S_ISREG(info.st_mode):
+                    raise ProjectError("unsafe_path", "Preserved project JSON must be an ordinary file: " + row["id"])
+                size = info.st_size
+                if size > MAX_FILE_BYTES:
+                    raise ProjectError("capacity_exceeded", "Managed project JSON document exceeds size limit")
+                if film_only:
+                    # Verify preserved bytes without accepting or migrating
+                    # obsolete schemas. No unrelated resource is written.
+                    with path.open("rb") as stream:
+                        preserved = stream.read(MAX_FILE_BYTES + 1)
+                    if len(preserved) != size or _digest(preserved) != row["sha256"]:
+                        raise ProjectError("integrity_error", "Preserved project document digest does not match: " + row["id"])
+            except OSError as exc:
+                raise ProjectError("io_error", "Cannot read preserved project document: " + row["id"]) from exc
             retained_size += size
         if sum(map(len, content.values())) + retained_size > MAX_PROJECT_BYTES:
             raise ProjectError("capacity_exceeded", "Managed project input JSON exceeds the safety capacity limit")
@@ -1079,6 +1115,59 @@ class ProjectStore:
                 material_index[material_id] = existing_id
             if set_id not in {row["id"] for row in data[existing_id]["material"]["optical_sets"]}:
                 raise ProjectError("missing_dependency", "Document optical set is missing: " + material_id + "/" + set_id)
+
+    @_store_operation
+    def save_film_document(self, document: Mapping, *, document_id: str | None = None,
+                           expected_revision: str | None = None, materials: Mapping | None = None) -> str:
+        """Save one film atomically without revalidating unrelated source schemas.
+
+        Every referenced optical material remains strictly validated. Existing
+        material values cannot be changed through this scoped operation; all
+        other manifest rows and immutable resource bytes are preserved.
+        """
+        self._current()
+        previous = self._index()
+        normalized = normalize_document("film", document)
+        records = _CapturedRecords({}, self._fingerprint)
+        data = {}
+        if document_id is not None:
+            identifier(document_id)
+            row = previous.get(document_id)
+            if row is None or row["kind"] != "film":
+                raise ProjectError("missing_document", "Managed film document does not exist")
+            # Validate the actual old dependency closure, not only its row.
+            graph = self.resolve_document(document_id)
+            old = next(item["data"] for item in graph["documents"] if item["id"] == document_id)
+            if expected_revision != row["sha256"]:
+                raise ProjectError("stale_document", "Film changed since the supplied saved revision")
+            if normalized["id"] != old["id"]:
+                raise ProjectError("dependency_conflict", "Saving cannot replace the film's internal design ID")
+            records[document_id] = deepcopy(row)
+            data[document_id] = normalized
+        elif expected_revision is not None:
+            raise ProjectError("invalid_document", "A new film cannot have an expected saved revision")
+        required = {key.casefold() for key, _ in document_material_references("film", normalized)}
+        for key, row in previous.items():
+            if row["kind"] != "optical_material":
+                continue
+            # Only inspect identity for unrelated optical records. Selected
+            # records use the same strict normalization as ordinary reads.
+            raw, content = read_json(self.root / row["path"])
+            if _digest(content) != row["sha256"]:
+                raise ProjectError("integrity_error", "Project optical material digest does not match: " + key)
+            material_id = raw.get("material", {}).get("id") if isinstance(raw, dict) and isinstance(raw.get("material"), dict) else None
+            if not isinstance(material_id, str) or not material_id:
+                raise ProjectError("invalid_document", "Project optical material has no unambiguous identity: " + key)
+            if material_id.casefold() in required:
+                records[key] = deepcopy(row)
+                data[key] = self._read_record(row)
+        self._ensure_material_dependencies(records, data, "film", normalized, materials)
+        if document_id is None:
+            document_id = self._add_document(records, data, "film", normalized)
+        elif normalized == old and all(key in previous for key in records):
+            return document_id
+        self._publish(records, data, film_only=True)
+        return document_id
 
     @_store_operation
     def create_document(self, kind: str, document: Mapping, *, materials: Mapping | None = None,

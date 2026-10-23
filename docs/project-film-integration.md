@@ -114,3 +114,29 @@ Offscreen Qt tests load the real film QML, exercise toolbar navigation and
 same-project simulation isolation, and reject foreign companion sources.
 They do not establish Windows desktop acceptance, cross-process singleton,
 launcher/assistant lifetime or application exit behavior.
+
+## Scoped film saves (2026-10-23)
+
+`ProjectStore.save_film_document` is the dedicated atomic boundary used by
+`ProjectFilmService.create_film` and `save_document`. It strictly validates the
+changed film and every referenced project optical material/set. A save cannot
+change the film's internal ID, bypass its expected revision, modify an existing
+material, or ignore a broken dependency in the film's own closure. Explicit new
+materials are captured in the same transaction.
+
+Unrelated source/process/configuration documents are not re-normalized or
+migrated. Their existing manifest records, paths, hashes and bytes are retained;
+retained JSON is still subject to aggregate capacity, ordinary-path and digest
+checks. A historical source rejected by the current source schema therefore
+cannot block an unrelated film edit, but remains invalid for source/process
+calculation. Unknown fields in the changed film or its required material records
+still fail. Publication uses the existing exclusive project writer and
+immutable-generation transaction, with the descriptor committed last. Failed
+publication preserves the saved film, original input bytes and editing draft.
+
+This is not a tolerant project opener or a source migration. Opening a project
+still validates its selected default process closure. If an obsolete source is
+part of that closure, a successful film save does not make restarting/opening
+that process valid. Keep the active editor and independently verified current
+recovery checkpoint until the source/opening issue is resolved explicitly;
+never assume an older checkpoint includes subsequent edits.

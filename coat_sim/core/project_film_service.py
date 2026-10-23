@@ -35,7 +35,8 @@ from .tfcalc_import import (build_tfcalc_design, read_tfcalc_file,
 
 
 class ProjectFilmStore(Protocol):
-    root: Path
+    @property
+    def root(self) -> Path: ...
 
     @property
     def manifest(self) -> dict[str, Any]: ...
@@ -50,6 +51,10 @@ class ProjectFilmStore(Protocol):
 
     def save_document(self, document_id: str, document: Mapping[str, Any], *,
                       materials: Mapping[str, Any] | None = None) -> None: ...
+
+    def save_film_document(self, document: Mapping[str, Any], *, document_id: str | None = None,
+                           expected_revision: str | None = None,
+                           materials: Mapping[str, Any] | None = None) -> str: ...
 
 
 @dataclass(frozen=True)
@@ -438,7 +443,7 @@ class ProjectFilmService:
         normalized = self.new_design() if design is None else self.validate(design)
         with self._operation():
             transfer = self._material_transfer("film", normalized, materials)
-            identity = self.project_store.create_document("film", normalized, materials=transfer)
+            identity = self.project_store.save_film_document(normalized, materials=transfer)
             self._refresh_materials(refresh_global=False)
             return self.load_document(identity)
 
@@ -464,7 +469,8 @@ class ProjectFilmService:
             if normalized["id"] != current.design["id"]:
                 raise ProjectError("dependency_conflict", "Saving cannot replace the film's internal design ID")
             transfer = self._material_transfer("film", normalized, materials)
-            self.project_store.save_document(document_id, normalized, materials=transfer)
+            self.project_store.save_film_document(normalized, document_id=document_id,
+                expected_revision=expected_revision, materials=transfer)
             self._refresh_materials(refresh_global=False)
             return self.load_document(document_id)
 
