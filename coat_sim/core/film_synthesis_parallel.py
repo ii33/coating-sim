@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from collections import deque
 from contextlib import contextmanager
+from copy import deepcopy
+import hashlib
 from dataclasses import dataclass
 import errno
 import math
@@ -41,6 +43,7 @@ class EvaluationTask:
     jacobian: bool = True
     zero_ids: tuple[str, ...] = ()
     context: Any = None
+    retain_responses: bool = False
 
 
 @dataclass
@@ -51,6 +54,7 @@ class EvaluationOutcome:
     infrastructure: bool = False
     consumed: bool = False
     discarded: bool = False
+    worker_pid: int | None = None
 
 
 class InfrastructureFailure(RuntimeError):
@@ -187,7 +191,10 @@ def _worker_main():
     started = time.perf_counter()
     initial, _, _ = _read_frame(sys.stdin.buffer)
     request, cancel = initial["request"], _CancelFile(initial["cancel_path"])
+    prepared = physical._PreparedStructureEvaluator(request)
     _write_frame(sys.stdout.buffer, {"kind": "ready", "pid": os.getpid(),
+        "prepared_material_contexts": 1,
+        "frozen_request_identity": initial.get("frozen_request_identity"),
         "initialization_seconds": time.perf_counter() - started,
         "creation_time": _windows_creation_time(),
         "qt_imported": any(name.startswith(("PySide", "PyQt")) for name in sys.modules),
@@ -216,14 +223,15 @@ def _worker_main():
             design = command["design"]
             cpu_before = time.process_time()
             try:
-                value = physical.evaluate_frozen_structure_candidate(request, design,
+                value = prepared.evaluate(design,
                     variable_ids=tuple(row["id"] for row in design["front_layers"]) if command["jacobian"] else (),
                     with_jacobian=command["jacobian"], zero_thickness_layer_ids=command["zero_ids"],
                     derived_validation_grid=False, cancel_event=cancel)
             finally:
                 cpu_elapsed = time.process_time() - cpu_before
             value = dict(value)
-            value.pop("responses", None)  # Full J matrices are unused by synthesis decisions.
+            if not command.get("retain_responses", False):
+                value.pop("responses", None)  # Legacy decisions retain the compact contract.
             reply: dict[str, Any] = {"status": "ok", "value": value}
         except physical._StructureCancelled:
             reply = {"status": "cancelled", "message": "headless evaluation cancelled"}
@@ -278,6 +286,7 @@ class OrderedEvaluationExecutor:
         self.workers = min(8 if requested_workers == 0 else requested_workers, available)
         self.cancel_event = cancel_event
         self.request = None
+        self.frozen_request_identity: str | None = None
         self.children: list[_Child] = []
         self.events: Queue = Queue()
         self.outcomes: dict[int, EvaluationOutcome] = {}
@@ -307,13 +316,18 @@ class OrderedEvaluationExecutor:
         self._selected_workers = 0
 
     def configure(self, request):
-        self.request = request
+        if self.children or self.submitted:
+            raise RuntimeError("cannot reconfigure a started frozen evaluation pool")
+        self.request = deepcopy(request)
+        self.frozen_request_identity = hashlib.sha256(
+            pickle.dumps(self.request, protocol=pickle.HIGHEST_PROTOCOL)).hexdigest()
 
     def check_cancel(self):
         if self.cancel_event is not None and self.cancel_event.is_set():
             raise physical._StructureCancelled()
 
-    def eligible(self, count: int, work: int, budget_allows: bool, *, phase: str = "") -> bool:
+    def eligible(self, count: int, work: int, budget_allows: bool, *, phase: str = "",
+                 worker_limit: int | None = None) -> bool:
         """Choose only from completed observations; never prepare or score work.
 
         Cold discovery uses the existing work threshold cumulatively across
@@ -323,10 +337,12 @@ class OrderedEvaluationExecutor:
         is local to one run and is not a hardware calibration certificate.
         """
         warm_workers = sum(child.ready for child in self.children)
-        cap = min(self.workers, max(0, count))
+        cap = min(self.workers, max(0, count),
+                  self.workers if worker_limit is None else max(1, worker_limit))
         kind = {"needle": (True, True), "growth": (True, False),
                 "structure": (False, False), "structure_global": (False, False),
-                "global": (False, False)}.get(phase)
+                "global": (False, False), "hybrid_prior": (False, False),
+                "hybrid_global": (False, False), "hybrid_needle": (True, True)}.get(phase)
         sample = self.serial_costs.get(kind) if kind is not None else None
         serial_estimate = (work * sample.seconds / sample.work
                            if sample is not None and sample.work > 0 else None)
@@ -336,6 +352,9 @@ class OrderedEvaluationExecutor:
         target = cap
         if self.workers <= 1:
             reason = "requested_serial" if self.requested_workers == 1 else "available_cpu_serial"
+        elif cap <= 1:
+            reason = ("insufficient_candidates" if count < 2 else
+                      "resource_guard_serial" if worker_limit == 1 else "insufficient_candidates")
         elif not budget_allows:
             reason = "finite_budget_serial"
         elif self.disabled or self.closed:
@@ -365,6 +384,7 @@ class OrderedEvaluationExecutor:
             "selection_reason": reason, "pool_temperature": "warm" if warm_workers else "cold",
             "requested_worker_limit": self.requested_workers, "available_cpu_limit": self.available_workers,
             "effective_worker_limit": self.workers, "candidate_worker_cap": cap,
+            "resource_worker_limit": worker_limit,
             "ready_pool_workers": warm_workers, "selected_worker_cap": self._selected_workers,
             "cold_work_threshold": MIN_PARALLEL_WORK,
             "observed_serial_work": self.serial_observed_work,
@@ -487,6 +507,7 @@ class OrderedEvaluationExecutor:
                     cpu_sample.unrecorded_completed_tasks += 1
             status = reply["status"]
             outcome = self.outcomes[token]
+            outcome.worker_pid = child.actual_pid
             if status == "ok":
                 if not outcome.discarded:
                     outcome.value = reply["value"]
@@ -556,7 +577,8 @@ class OrderedEvaluationExecutor:
                     name=f"synthesis-writer-{process.pid}", daemon=True)
                 reader.start()
                 child.writer.start()
-                self._send(child, {"request": self.request, "cancel_path": str(self.cancel_path)})
+                self._send(child, {"request": self.request, "cancel_path": str(self.cancel_path),
+                                   "frozen_request_identity": self.frozen_request_identity})
             deadline = started + STARTUP_TIMEOUT_SECONDS
             while not all(child.ready for child in self.children):
                 self.check_cancel()
@@ -576,12 +598,13 @@ class OrderedEvaluationExecutor:
         self.check_cancel()
         token = self.next_token
         self.next_token += 1
-        outcome = EvaluationOutcome(token)
+        outcome = EvaluationOutcome(token, worker_pid=child.actual_pid)
         self.outcomes[token] = outcome
         child.pending = token
         try:
             self._send(child, {"kind": "evaluate", "token": token, "design": task.design,
-                               "jacobian": task.jacobian, "zero_ids": task.zero_ids})
+                               "jacobian": task.jacobian, "zero_ids": task.zero_ids,
+                               "retain_responses": task.retain_responses})
             self.submitted.add(token)
         except (OSError, EOFError, RuntimeError, pickle.PickleError) as exc:
             self._infrastructure(f"send: {type(exc).__name__}: {exc}")
@@ -605,17 +628,29 @@ class OrderedEvaluationExecutor:
         return value
 
     @contextmanager
-    def batch(self, tasks: Iterable[EvaluationTask], *, count: int, work: int, budget_allows: bool, phase: str = ""):
+    def batch(self, tasks: Iterable[EvaluationTask], *, count: int, work: int, budget_allows: bool, phase: str = "",
+              worker_limit: int | None = None):
         decision = {"phase": phase, "candidate_count": count, "estimated_work": work, "budget_allows": budget_allows}
         self.batch_decisions.append(decision)
-        parallel = self.eligible(count, work, budget_allows, phase=phase)
+        parallel = self.eligible(count, work, budget_allows, phase=phase, worker_limit=worker_limit)
         decision.update(self._last_selection)
         decision["eligibility_reason"] = self._last_selection["selection_reason"]
         decision["pool_eligible"] = parallel
         startup_before = self.startup_seconds
         selected_workers = self._selected_workers
         if parallel:
-            self._ensure_pool(selected_workers)
+            try:
+                self._ensure_pool(selected_workers)
+            except BaseException as exc:
+                self.close()
+                decision.update(startup_seconds_in_batch=self.startup_seconds - startup_before,
+                    parallel_selected=False, backend="not_dispatched", effective_workers=0,
+                    submitted_tasks=0, completed_tasks=0, discarded_tasks=0, worker_pids=[],
+                    owned_worker_pids=[child.actual_pid for child in self.children if child.actual_pid is not None],
+                    launcher_pids=[child.process.pid for child in self.children],
+                    startup_state="cancelled" if isinstance(exc, physical._StructureCancelled) else "failed",
+                    startup_error=f"{type(exc).__name__}: {exc}")
+                raise
             parallel = not (self.disabled or self.closed)
             if not parallel:
                 decision["selection_reason"] = "startup_unavailable_serial"
@@ -671,6 +706,14 @@ class OrderedEvaluationExecutor:
                     discarded = True
             if discarded:
                 self.close()
+            decision.update(submitted_tasks=len(tokens),
+                completed_tasks=sum(token in self.finished for token in tokens),
+                discarded_tasks=sum(self.outcomes[token].discarded for token in tokens),
+                worker_pids=sorted({pid for token in tokens
+                                    if (pid := self.outcomes[token].worker_pid) is not None}),
+                backend="headless_process" if tokens else "serial",
+                effective_workers=len({self.outcomes[token].worker_pid for token in tokens
+                                       if self.outcomes[token].worker_pid is not None}) if tokens else 1)
 
     def close(self):
         if self.closed:
@@ -742,6 +785,11 @@ class OrderedEvaluationExecutor:
             "requested_workers": self.requested_workers, "effective_workers": len(self.children) if self.submitted else 1,
             "worker_pids": [child.actual_pid for child in self.children if child.actual_pid is not None],
             "launcher_pids": [child.process.pid for child in self.children],
+            "owned_worker_count": len(self.children),
+            "ready_worker_count": sum(child.actual_pid is not None for child in self.children),
+            "workers_with_submitted_tasks": len({outcome.worker_pid for token, outcome in self.outcomes.items()
+                if token in self.submitted and outcome.worker_pid is not None}),
+            "worker_pid_scope": "owned ready-handshake PIDs may include startup-only idle workers; per-stage worker_pids identify dispatched physical tasks",
             "active_worker_pids": [child.actual_pid for child in self.children if child.actual_pid is not None and not child.actual_dead],
             "cleanup_complete": self.closed and all(child.actual_dead and child.process.poll() is not None
                 and not child.reader.is_alive() and (child.writer is None or not child.writer.is_alive())
@@ -787,6 +835,8 @@ class OrderedEvaluationExecutor:
                 "limitations": "point-times-layer proxy; finite samples; no future-work prediction or speedup guarantee",
             },
             "workers": list(self.worker_records),
+            "frozen_request_identity": self.frozen_request_identity,
+            "prepared_optics_policy": "one independently validated immutable material context per worker; no candidate cache",
             "counter_scope": "training_evaluations_only_audit_reported_separately"}
 
 

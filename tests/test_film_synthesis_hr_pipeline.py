@@ -123,13 +123,15 @@ def test_public_case_has_no_hidden_seed_and_uses_normal_typed_request_contract(m
         assume_unknown_k_zero=True, cpu_workers=1)
     rebuilt = freeze_film_synthesis_request(None, replace(rebuilt,
         frozen_material_snapshot=original.frozen_material_snapshot))
-    # Every original request field remains binding. The only addition is the
-    # canonical derived AUTO policy, not a seed or a changed physical budget.
-    assert rebuilt == replace(original, resource_guard_resolution=expected_resolution)
+    # Every original input remains binding. Only the two explicit AUTO
+    # execution controls resolve, never optics, seeds, grid or user budgets.
+    expected = replace(original, resource_guard_resolution=expected_resolution, parallel_batch_size=1)
+    assert original.parallel_batch_size is None
+    assert rebuilt == expected
     assert rebuilt.resource_guard_resolution == expected_resolution
     job = build_job_payload(canonical_parameters(None, {'payload': payload}))
     _, queued, _ = deserialize_job_payload(job)
-    assert queued == replace(original, resource_guard_resolution=expected_resolution)
+    assert queued == expected
     assert queued.resource_guard_resolution == expected_resolution and not queued.seed_designs
     assert all(o.wavelength_samples == 301 for o in queued.objectives)
     assert {(o.polarization, a) for o in queued.objectives for a in o.angles_deg} == {

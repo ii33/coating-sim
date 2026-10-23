@@ -42,9 +42,11 @@ def test_four_window_jobs_keep_original_nk_and_strict_upper_boundary(branch):
     job = build_job_payload(canonical_parameters(None, {'payload':payload}))
     _, decoded, queued_structures = deserialize_job_payload(job)
     assert not queued_structures
-    # Canonical freezing adds only versioned execution-resource provenance;
-    # every original optical/grid/manufacturing field remains byte-value equal.
-    assert replace(decoded, resource_guard_resolution=request.resource_guard_resolution) == request
+    # Only explicit AUTO execution controls resolve; every original
+    # optical/grid/manufacturing field remains byte-value equal.
+    assert request.parallel_batch_size is None and decoded.parallel_batch_size == 1
+    assert replace(decoded, resource_guard_resolution=request.resource_guard_resolution,
+                   parallel_batch_size=request.parallel_batch_size) == request
     assert decoded.resource_guard_resolution is not None
     assert decoded.resource_guard_resolution['version'] == 1
     assert decoded.resource_guard_resolution['requested_bytes'] == request.max_working_set_bytes

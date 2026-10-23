@@ -908,6 +908,7 @@ def execute_job(value: Mapping[str, Any], cancel_event, report, checkpoint_path,
     else:
         job = build_job_payload(value)
     request_id, request, metadata = deserialize_job_payload(job)
+    bound_request = request  # Immutable persisted spec identity, before execution AUTO resolution.
     latest: dict[str, Any] = {"stage": "starting", "cycle": 0, "evaluations": 0,
               "layer_count": 0, "best_max_normalized_error": None,
               "heartbeat_sequence": 0}
@@ -970,6 +971,20 @@ def execute_job(value: Mapping[str, Any], cancel_event, report, checkpoint_path,
         request_id, request, _ = film_synthesis_request_from_payload(canonical)
         result = synthesize_film_design(None, request, cancel_event=cancel_event,
                                         progress_callback=progress, snapshot_callback=checkpoint)
+        # Older queued specs legitimately omit newly added execution controls.
+        # Resolve them only for execution, never rewrite the original identity
+        # or relax the worker/queue's exact frozen-request comparison.
+        normalized = replace(result.frozen_request,
+            parallel_batch_size=bound_request.parallel_batch_size,
+            resource_guard_resolution=bound_request.resource_guard_resolution)
+        if normalized != bound_request:
+            raise ValueError("synthesis execution changed immutable job request inputs")
+        resolved_controls = {
+            "parallel_batch_size": result.frozen_request.parallel_batch_size,
+            "resource_guard_resolution": deepcopy(result.frozen_request.resource_guard_resolution),
+        }
+        result = replace(result, frozen_request=bound_request,
+            performance={**result.performance, "resolved_execution_controls": resolved_controls})
         retained_training = (
             result.candidate_provenance.get("training_complete") is True
             and ((result.state == "cancelled"

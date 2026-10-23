@@ -229,6 +229,9 @@ def test_ui_cpu_two_worker_setting_reaches_real_typed_job_and_history(app, tmp_p
         assert controller.setObjectiveField("upper_bound_percent", 100)
         assert controller.setObjectiveField("lower_bound_percent", 99.9999)
         assert controller.setSynthesisCpuWorkers(2)
+        # This original phase='structure'/four-candidate routing contract is
+        # legacy-specific. Default-hybrid real GUI workers have their own test.
+        assert controller.setSynthesisOption("search_strategy", "legacy")
         assert controller.setSynthesisOption("max_cycles", 1)
         assert controller._synthesis_forward_backend == "cpu"
         assert not controller._active_configuration_error()

@@ -83,7 +83,10 @@ class FilmSynthesisRequest:
     resource_guard_resolution freezes its v1 policy for deterministic replay;
     it is staged numerical admission, not a process memory isolation guarantee.
     acceptable_normalized_error is solver tolerance only, never nominal target
-    acceptance. Range bounds remain inclusive unless their objective index is
+    acceptance. parallel_batch_size=None is AUTO, resolved once at freeze from
+    requested/available CPUs and preserved as a positive logical quantum when
+    execution cpu_workers changes for serial/parallel replay. Range bounds
+    remain inclusive unless their objective index is
     explicitly listed in strict_lower/strict_upper_bound_objective_indices.
     """
 
@@ -123,6 +126,7 @@ class FilmSynthesisRequest:
     max_working_set_bytes: int | None = 0
     resource_guard_resolution: Mapping[str, Any] | None = None
     strict_upper_bound_objective_indices: tuple[int, ...] = ()
+    parallel_batch_size: int | None = None
 
 
 @dataclass(frozen=True)
@@ -329,6 +333,9 @@ def _validated(request):
         raise ValueError("structure_search_seed must be a nonnegative integer")
     if type(request.cpu_workers) is not int or request.cpu_workers < 0:
         raise ValueError("cpu_workers must be a nonnegative integer (0=auto, 1=serial)")
+    if request.parallel_batch_size is not None and (
+            type(request.parallel_batch_size) is not int or request.parallel_batch_size < 1):
+        raise ValueError("parallel_batch_size must be a positive integer or None (AUTO)")
     if type(request.design_revision) is not int or request.design_revision < 0:
         raise ValueError("design_revision must be a nonnegative integer")
     if not isinstance(request.objectives, (tuple, list)):
@@ -523,7 +530,13 @@ def freeze_film_synthesis_request(service: Any, request: FilmSynthesisRequest,
     _check_cancel(cancel_event)
     resource_resolution = _resolve_synthesis_resource_guard(result)
     _check_cancel(cancel_event)
-    return replace(result, seed_designs=tuple(seeds), resource_guard_resolution=resource_resolution)
+    batch_size = result.parallel_batch_size
+    if batch_size is None and result.search_strategy == "hybrid":
+        from .film_performance import available_cpu_workers
+        available = available_cpu_workers()
+        batch_size = max(1, min(result.cpu_workers or available, available))
+    return replace(result, seed_designs=tuple(seeds), resource_guard_resolution=resource_resolution,
+                   parallel_batch_size=batch_size)
 
 
 def _feasible(request, design):
@@ -709,6 +722,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
     reserved_layer_ids = {row["id"] for design in (request.environment, *request.seed_designs)
                           for side in ("front_layers", "back_layers") for row in design[side]}
     evaluations = validation_evaluations = failures = cycle = 0
+    reserved_training_slots = 0
     best = None
     audited_best = None
     completed_training_best = None
@@ -812,19 +826,24 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         # Apply the same remaining logical budget before lazy preparation as
         # before physical scoring; keep one existing slot for independent audit.
         _check_cancel(cancel_event)
-        if request.max_evaluations is not None and evaluations >= request.max_evaluations - 1:
+        if request.max_evaluations is not None and evaluations + reserved_training_slots >= request.max_evaluations - 1:
             raise _Stopped("evaluation_limit")
 
     prepared_training: list[_PreparedStructureEvaluator | None] = [None]
 
-    def evaluate(design, *, jacobian=False, zero_ids=(), holdout=False, outcome=None, gpu_forward=False):
-        nonlocal evaluations, validation_evaluations, failures
+    def evaluate(design, *, jacobian=False, zero_ids=(), holdout=False, outcome=None, gpu_forward=False, _reserved=False):
+        nonlocal evaluations, validation_evaluations, failures, reserved_training_slots
         nonlocal audit_physical_evaluations, audit_wavelength_points
         nonlocal completed_training_best, completed_training_validation, fully_scored_evaluations
         if holdout:
             _check_cancel(cancel_event)
-            if request.max_evaluations is not None and evaluations >= request.max_evaluations:
+            if request.max_evaluations is not None and evaluations + reserved_training_slots >= request.max_evaluations:
                 raise _Stopped("evaluation_limit")
+        elif _reserved:
+            _check_cancel(cancel_event)
+            if reserved_training_slots <= 0:
+                raise RuntimeError("hybrid evaluation has no reserved training slot")
+            reserved_training_slots -= 1
         else:
             check_training_admission()
         evaluations += 1
@@ -871,7 +890,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         except InfrastructureFailure:
                             value = execution.serial(physical_call, task, fallback=True)
                 elif outcome is None:
-                    value = execution.serial(physical_call, task)
+                    value = execution.serial(physical_call, task, fallback=execution.disabled)
                 else:
                     try:
                         value = execution.take(outcome)
@@ -1241,15 +1260,25 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         from .film_synthesis_hr_priors import iter_dual_substack_hr_proposals
 
         resource_resolution = _resolve_synthesis_resource_guard(request)
+        assert request.parallel_batch_size is not None  # Resolved once at freeze.
+        batch_quantum = request.parallel_batch_size
+        if request.cpu_workers == 0:
+            # Hybrid AUTO follows its frozen request rather than the legacy
+            # executor default of eight. Available CPUs remain an actual cap.
+            execution.workers = min(batch_quantum, execution.available_workers)
         details: dict[str, Any] = dict(strategy="hybrid", objective_weighting=request.objective_weighting,
             objective_masses=synthesis_window_masses(request).tolist(), stages=[], needle_scans=[],
+            parallel_batches=[],
             exploration_endpoints=[], resource_skips=[], original_grid_points=sum(
                 o.wavelength_samples * len(o.angles_deg) for o in request.objectives),
             max_working_set_bytes=resource_resolution["effective_bytes"],
             requested_max_working_set_bytes=request.max_working_set_bytes,
             effective_max_working_set_bytes=resource_resolution["effective_bytes"],
             resource_guard_resolution=deepcopy(resource_resolution), resource_limited=False,
-            resource_guard_formula="128 MiB + points*layers*(64 Jacobian / 32 forward) bytes; full SLSQP adds 16*bound_conditions*(layers+1) bytes",
+            resource_guard_formula="128 MiB + points*layers*(64 Jacobian / 32 forward) bytes + retained archive Python storage; full SLSQP adds 16*bound_conditions*(layers+1) bytes",
+            source_prefix_batch_quantum=batch_quantum,
+            frozen_parallel_batch_size=batch_quantum,
+            maximum_simultaneous_hybrid_workers=min(batch_quantum, execution.workers),
             budget_policy="each rotation: <=25% remaining screening, <=15% local/global, <=25% scan, <=45% joint SSE, <=15% compression; remaining reserved for full-original SLSQP and final audit; stage expiry is not convergence",
             strict_champion_role="original physical full-grid max violation; never overwritten by SSE endpoint",
             no_implicit_layer_limit=True, schema_layer_limit=MAX_LAYERS)
@@ -1271,7 +1300,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             seconds = None if stop_event.deadline is None else max(0., stop_event.deadline - now)
             record = dict(stage=stage, cycle=cycle, start_evaluations=evaluations,
                 admitted_evaluation_quantum=cap, remaining_training_evaluations=remaining,
-                wall_time_share=fraction, elapsed_seconds=0., evaluations_used=0, termination="running")
+                wall_time_share=fraction, elapsed_seconds=0., evaluations_used=0, termination="running",
+                reserved_audit_slots=1 if stage == "engineering_prior_screen" and cap > 1 else 0)
             details["stages"].append(record)
             active_slice = (record, evaluations + cap, None if seconds is None else now + fraction * seconds, now)
             return record
@@ -1294,15 +1324,47 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     record["termination"] = termination
             active_slice = None
 
+        archive_storage_cache: list[Any] = [None, 0]
+
+        def archive_storage_estimate_bytes():
+            # The archive owns compact designs/summaries, not full spectral/J
+            # matrices. Count retained Python object storage without copying it.
+            # Values are conservatively counted by occurrence, independent of
+            # interning/IPC aliases. Allocator/RSS overhead remains unknown.
+            key = (design_archive.total_admitted, len(design_archive.entries),
+                   design_archive.audited_champion_hash)
+            if archive_storage_cache[0] == key:
+                return archive_storage_cache[1]
+            def storage(value):
+                # Deterministic conservative Python-container model, not live
+                # getsizeof/alias accounting (which differs after IPC/replay).
+                # Count shared values by occurrence so sharing never shrinks
+                # admission differently between serial and process runs.
+                if isinstance(value, Mapping):
+                    return 192 + 72 * len(value) + sum(storage(k) + storage(v) for k, v in value.items())
+                if isinstance(value, (list, tuple, set, frozenset)):
+                    return 64 + 8 * len(value) + sum(storage(v) for v in value)
+                if isinstance(value, str):
+                    return 96 + 4 * len(value)
+                if hasattr(value, "__dict__"):
+                    return 128 + storage(vars(value))
+                return 32
+            estimate = storage(design_archive.entries)
+            archive_storage_cache[:] = [key, estimate]
+            return estimate
+
         def resource_check(design, *, jacobian=False, epigraph=False):
-            estimate = _synthesis_working_set_estimate_bytes(request, len(design["front_layers"]),
+            numerical_estimate = _synthesis_working_set_estimate_bytes(request, len(design["front_layers"]),
                 jacobian=jacobian, epigraph=epigraph)
+            archive_estimate = archive_storage_estimate_bytes()
+            estimate = numerical_estimate + archive_estimate
             limit = resource_resolution["effective_bytes"]
             details["largest_estimated_working_set_bytes"] = max(estimate,
                 details.get("largest_estimated_working_set_bytes", 0))
             if limit is not None and estimate > limit:
                 skip = dict(stage=None if active_slice is None else active_slice[0]["stage"],
                     layer_count=len(design["front_layers"]), estimated_bytes=estimate, limit_bytes=limit,
+                    numerical_estimate_bytes=numerical_estimate, retained_archive_estimate_bytes=archive_estimate,
                     requested_limit_bytes=request.max_working_set_bytes,
                     resource_policy=resource_resolution["mode"],
                     jacobian=jacobian, full_epigraph=epigraph,
@@ -1318,6 +1380,132 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             if forward is not None and not kwargs.get("jacobian") and not kwargs.get("zero_ids"):
                 kwargs["gpu_forward"] = True
             return evaluate(design, **kwargs)
+
+        def batch_remaining():
+            remaining = (batch_quantum if request.max_evaluations is None else
+                         max(0, request.max_evaluations - evaluations - reserved_training_slots - 1))
+            if active_slice is not None:
+                remaining = min(remaining, max(0, active_slice[1] - evaluations - reserved_training_slots
+                    - active_slice[0].get("reserved_audit_slots", 0)))
+            return min(batch_quantum, remaining)
+
+        def hybrid_batch_evaluate(tasks, *, phase, evaluate_one=None):
+            """Reserve then eagerly consume a bounded independent source prefix.
+
+            Batch shape depends on frozen memory/stage limits, not CPU width.
+            All physical outcomes precede serial archive/adoption callbacks.
+            """
+            nonlocal evaluations, reserved_training_slots
+            stage_check()
+            tasks = list(tasks)[:batch_remaining()]
+            if not tasks:
+                return []
+            points = details["original_grid_points"]
+            use_forward = forward is not None and all(not task.get("variable_ids") for task in tasks)
+            estimates = []
+            retained = []
+            for task in tasks:
+                jacobian = bool(task.get("variable_ids"))
+                design = task["design"]
+                resource_check(design, jacobian=jacobian)
+                layers = max(1, len(design["front_layers"]) + len(design["back_layers"]))
+                estimates.append(_synthesis_working_set_estimate_bytes(request, layers, jacobian=jacobian))
+                # Returned arrays are Python float lists and condition records,
+                # not only raw doubles. Deliberately conservative project proxy.
+                retained.append(points * (320 + 40 * (layers if jacobian else 0)) + 4096 * layers)
+            limit = resource_resolution["effective_bytes"]
+            archive_estimate = archive_storage_estimate_bytes()
+            parent_estimate = max(estimates) + archive_estimate
+            while len(tasks) > 1 and limit is not None and parent_estimate + sum(retained[:-1]) > limit:
+                tasks.pop()
+                estimates.pop()
+                retained.pop()
+                parent_estimate = max(estimates) + archive_estimate
+            base = 128 * 1024**2
+            live = len(execution.children) if not execution.closed else 0
+            from .film_synthesis_parallel import MAX_FRAME_BYTES
+            frame_limited = max(retained) >= MAX_FRAME_BYTES
+            width = 1 if use_forward or frame_limited else min(execution.workers, len(tasks))
+            peak = parent_estimate + sum(retained) + max(live, width) * base + width * (max(estimates) - base)
+            while width > 1 and limit is not None and peak > limit:
+                width -= 1
+                peak = parent_estimate + sum(retained) + max(live, width) * base + width * (max(estimates) - base)
+            if width <= 1:
+                # Idle workers still occupy resident baseline memory. Retire
+                # this run-owned pool rather than pretend they cost nothing.
+                if live and limit is not None and parent_estimate + sum(retained[:-1]) + live * base > limit:
+                    execution.close()
+                    live = 0
+                peak = parent_estimate + sum(retained[:-1]) + live * base
+            record = dict(phase=phase, cycle=cycle, reserved_slots=len(tasks), consumed_slots=0,
+                dispatched_unused_slots=0, released_unsubmitted_slots=0,
+                requested_workers=request.cpu_workers, available_cpu_workers=execution.available_workers,
+                resource_worker_cap=width, frozen_budget_bytes=limit,
+                full_response_frame_limited=frame_limited, max_frame_bytes=MAX_FRAME_BYTES,
+                parent_working_set_estimate_bytes=parent_estimate,
+                resident_workers_estimate=max(live, width) if width > 1 else live,
+                resident_worker_baseline_estimate_bytes=(max(live, width) if width > 1 else live) * base,
+                retained_archive_estimate_bytes=archive_estimate,
+                archive_storage_scope="deterministic compact archive Python-container proxy; shared values counted per occurrence; not allocator overhead or RSS",
+                source_prefix_batch_quantum=batch_quantum,
+                retained_result_estimate_bytes=sum(retained),
+                estimated_peak_bytes=peak, estimate_is_os_quota=False,
+                memory_policy="parent + retained Python responses + resident worker baselines + active worker numerical worksets",
+                stage=None if active_slice is None else active_slice[0]["stage"])
+            details["parallel_batches"].append(record)
+            reserved_training_slots += len(tasks)
+            token_start = execution.next_token
+            record["executor_decision_index"] = len(execution.batch_decisions)
+            values: list[Mapping[str, Any]] = []
+            remaining_reserved = len(tasks)
+            consumed_before = evaluations
+            try:
+                work = sum(points * max(1, len(task["design"]["front_layers"])) for task in tasks)
+                prepared_tasks = [EvaluationTask(task["design"], bool(task.get("variable_ids")),
+                    tuple(task.get("zero_ids", ())), context=task, retain_responses=True) for task in tasks]
+                with execution.batch(prepared_tasks, count=len(tasks), work=work, budget_allows=True,
+                                     phase=phase, worker_limit=width) as ordered:
+                    for task, outcome in ordered:
+                        if outcome is None and values and active_slice is not None:
+                            deadline = active_slice[2]
+                            if deadline is not None and monotonic() >= deadline:
+                                active_slice[0]["termination"] = "stage_budget"
+                                break
+                        before = evaluations
+                        try:
+                            if evaluate_one is None:
+                                value = evaluate(task.design, jacobian=task.jacobian, zero_ids=task.zero_ids,
+                                                 outcome=outcome, gpu_forward=use_forward, _reserved=True)
+                            else:
+                                value = evaluate_one(task.design, variable_ids=tuple(
+                                    row["id"] for row in task.design["front_layers"]) if task.jacobian else (),
+                                    zero_ids=task.zero_ids, outcome=outcome, _reserved=True)
+                        finally:
+                            remaining_reserved -= evaluations - before
+                        values.append(value)
+            finally:
+                unused = sum(not outcome.consumed for token, outcome in execution.outcomes.items()
+                             if token >= token_start and token in execution.submitted)
+                charge = min(remaining_reserved, unused)
+                evaluations += charge
+                reserved_training_slots -= remaining_reserved
+                record.update(consumed_slots=evaluations - consumed_before - charge,
+                    dispatched_unused_slots=charge,
+                    released_unsubmitted_slots=remaining_reserved - charge,
+                    completed_results=len(values),
+                    submitted_tokens=[token for token in execution.outcomes if token >= token_start],
+                    backend=("forward_" + str(forward.actual_backend if forward is not None else "unknown") if use_forward else
+                             "headless_process" if execution.next_token > token_start else "serial"),
+                    worker_pids=sorted({outcome.worker_pid for token, outcome in execution.outcomes.items()
+                        if token >= token_start and outcome.worker_pid is not None}))
+                record["effective_workers"] = (len(record["worker_pids"]) or
+                    (1 if record["consumed_slots"] else 0))
+                if not record["submitted_tokens"] and not record["consumed_slots"]:
+                    record["backend"] = "not_dispatched"
+                    decision = execution.batch_decisions[record["executor_decision_index"]]
+                    record["startup_state"] = decision.get("startup_state", "no_dispatch")
+                    record["owned_worker_pids"] = decision.get("owned_worker_pids", [])
+            return values
 
         def local_progress(stage, value, metadata):
             emit(stage, json.dumps(metadata, sort_keys=True), value["design"], value["score"])
@@ -1449,30 +1637,67 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 misses = 0
                 while streams and misses < len(streams) and not targets_verified():
                     stage_check()
-                    source_cursor %= len(streams)
-                    source = streams[source_cursor]
-                    try:
-                        proposal = next(source)
-                    except StopIteration:
-                        streams.pop(source_cursor)
-                        continue
-                    source_cursor += 1
-                    signature = physical_design_hash(proposal.design)
-                    if signature in seen_priors:
-                        misses += 1
-                        continue
-                    misses = 0
-                    seen_priors.add(signature)
-                    if not feasible(proposal.design):
-                        continue
-                    raw = hybrid_evaluate(proposal.design)
-                    archive(raw, audit_eligible=False, provenance=proposal.provenance, operator="engineering_prior")
-                    if (raw["score"]["max_error"] <= request.acceptable_normalized_error
-                            and solver_acceptable(request, raw["score"])):
-                        audit_archive(raw, allow_feedback_repair=False)
-                    emit("structure_proposal", json.dumps(proposal.provenance, sort_keys=True), raw["design"], raw["score"])
-                    if (not explorer["design"]["front_layers"] or score_sse(raw) < score_sse(explorer)):
-                        explorer = raw
+                    prior_proposals: list[StructuralProposal] = []
+                    while streams and len(prior_proposals) < batch_remaining() and misses < len(streams):
+                        stage_check()
+                        source_cursor %= len(streams)
+                        source = streams[source_cursor]
+                        try:
+                            proposal = next(source)
+                        except StopIteration:
+                            streams.pop(source_cursor)
+                            continue
+                        source_cursor += 1
+                        signature = physical_design_hash(proposal.design)
+                        if signature in seen_priors:
+                            misses += 1
+                            continue
+                        misses = 0
+                        seen_priors.add(signature)
+                        if feasible(proposal.design):
+                            try:
+                                resource_check(proposal.design)
+                            except SynthesisResourceGuard:
+                                # One oversized family member cannot discard
+                                # feasible source-prefix work already gathered.
+                                if prior_proposals:
+                                    break
+                                continue
+                            prior_proposals.append(proposal)
+                    if not prior_proposals:
+                        break
+                    values = None  # Release the preceding batch before new physical work.
+                    values = hybrid_batch_evaluate([dict(design=p.design) for p in prior_proposals], phase="hybrid_prior")
+                    # A resource-limited batch can return a prefix. Preserve
+                    # unscored priors for a later turn, without old-code replay.
+                    if len(values) < len(prior_proposals):
+                        for pending_proposal in prior_proposals[len(values):]:
+                            seen_priors.discard(physical_design_hash(pending_proposal.design))
+                        pending = iter(prior_proposals[len(values):])
+                        streams.insert(source_cursor % max(1, len(streams)), pending)
+                    for adopted_index, (proposal, raw) in enumerate(zip(prior_proposals, values, strict=False)):
+                        archive(raw, audit_eligible=False, provenance=proposal.provenance, operator="engineering_prior")
+                        if (raw["score"]["max_error"] <= request.acceptable_normalized_error
+                                and solver_acceptable(request, raw["score"])):
+                            assert active_slice is not None
+                            if (evaluations < active_slice[1] and
+                                    (active_slice[2] is None or monotonic() < active_slice[2])):
+                                audit_archive(raw, allow_feedback_repair=False)
+                            else:
+                                details["deferred_prior_audits"] = details.get("deferred_prior_audits", 0) + 1
+                        emit("structure_proposal", json.dumps(proposal.provenance, sort_keys=True), raw["design"], raw["score"])
+                        if (not explorer["design"]["front_layers"] or score_sse(raw) < score_sse(explorer)):
+                            explorer = raw
+                        if targets_verified():
+                            # Eager work is already counted. Do not adopt later
+                            # results after the source-ordered successful audit.
+                            batch_record = details["parallel_batches"][-1]
+                            batch_record["completed_unadopted_results"] = len(values) - adopted_index - 1
+                            for token in batch_record["submitted_tokens"][adopted_index + 1:]:
+                                execution.outcomes[token].discarded = True
+                            execution.batch_decisions[batch_record["executor_decision_index"]]["discarded_tasks"] = sum(
+                                execution.outcomes[token].discarded for token in batch_record["submitted_tokens"])
+                            break
             except (SynthesisStageBudget, SynthesisResourceGuard) as exc:
                 end_slice("resource_guard" if isinstance(exc, SynthesisResourceGuard) else "stage_budget")
             finally:
@@ -1501,19 +1726,33 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         seed=request.structure_search_seed + cycle + entry.insertion_index, population_size=6)
                     for _generation in range(2):
                         losses = np.full(len(evolution.population), np.inf)
+                        global_proposals: list[tuple[int, Any]] = []
                         for index, point in enumerate(evolution.proposals()):
                             stage_check()
                             trial = deepcopy(entry.design)
                             for row, delta in zip(trial["front_layers"], basis @ point, strict=True):
                                 row["thickness"]["value"] *= math.exp(float(delta))
-                            if not feasible(trial):
-                                continue
-                            value = hybrid_evaluate(trial)
-                            losses[index] = score_sse(value)
-                            archive(value, audit_eligible=False)
-                            if losses[index] < score_sse(explorer):
-                                explorer = value
-                            emit("hybrid_global_trial", "有界低维厚度群体探索，原网格完整评分", trial, value["score"])
+                            if feasible(trial):
+                                try:
+                                    resource_check(trial)
+                                except SynthesisResourceGuard:
+                                    continue
+                                global_proposals.append((index, trial))
+                        cursor = 0
+                        while cursor < len(global_proposals):
+                            stage_check()
+                            batch = global_proposals[cursor:cursor + batch_remaining()]
+                            values = None  # Do not retain the preceding full responses.
+                            values = hybrid_batch_evaluate([dict(design=trial) for _, trial in batch], phase="hybrid_global")
+                            if not values:
+                                break
+                            for (index, trial), value in zip(batch, values, strict=False):
+                                losses[index] = score_sse(value)
+                                archive(value, audit_eligible=False)
+                                if losses[index] < score_sse(explorer):
+                                    explorer = value
+                                emit("hybrid_global_trial", "有界低维厚度群体探索，原网格完整评分", trial, value["score"])
+                            cursor += len(values)
                         evolution.accept(losses)
                 if request.needle_pre_local and explorer["design"]["front_layers"]:
                     explorer, local = refine_synthesis_explorer(request, explorer,
@@ -1551,12 +1790,21 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         return True
                     except SynthesisResourceGuard:
                         return False
-                def probe_evaluate(design, *, variable_ids=(), zero_ids=()):
+                def probe_evaluate(design, *, variable_ids=(), zero_ids=(), outcome=None, _reserved=False):
                     # A probe admitted just before a local deadline may finish;
                     # do not throw away earlier probes at a second slice check.
-                    check_training_admission()
-                    resource_check(design, jacobian=bool(variable_ids))
-                    return evaluate(design, jacobian=bool(variable_ids), zero_ids=zero_ids)
+                    if not _reserved:
+                        check_training_admission()
+                        resource_check(design, jacobian=bool(variable_ids))
+                    return evaluate(design, jacobian=bool(variable_ids), zero_ids=zero_ids,
+                                    outcome=outcome, _reserved=_reserved)
+                def probe_evaluate_batch(tasks, *, evaluate):
+                    if scan_stop_requested():
+                        return []
+                    try:
+                        return hybrid_batch_evaluate(tasks, phase="hybrid_needle", evaluate_one=evaluate)
+                    except SynthesisStageBudget:
+                        return []
                 def on_probe(proposal, explorer=explorer):
                     emit("needle_probe", "P=d(显式等窗/用户权重SSE)/dd，d=0；不作为最坏点验收", explorer["design"],
                         material_id=proposal.reference.material_id,
@@ -1567,7 +1815,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     max_needles=request.needle_batch_size, max_layers=request.max_layers,
                     seed=request.structure_search_seed + cycle, max_probes=probe_quota, genuine_only=True,
                     gradient=lambda value, ids: weighted_sse_loss_gradient(request, value, ids)[1],
-                    on_probe=on_probe, stop_check=scan_stop_requested, admit=resource_admit)
+                    on_probe=on_probe, stop_check=scan_stop_requested, admit=resource_admit,
+                    evaluate_batch=probe_evaluate_batch, probe_batch_size=batch_quantum)
                 details["needle_scans"].append(dict(cycle=cycle, parent_hash=parent_hash,
                     probes=scan.probe_count, refined_probes=scan.refined_probe_count,
                     selected=len(scan.selected), complete=scan.complete, stop_reason=scan.stop_reason,

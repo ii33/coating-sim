@@ -12,6 +12,7 @@
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px solid #c8e0db;border-radius:8px;padding:16px;font-size:.88rem;line-height:1.5}</style>
 </head>
 <body>
+<p class="source">真实混合多进程补充：2026-10-23，见<a href="#film-hybrid-parallel-20261023">14am</a>；请求数、逻辑批次与实际派发分开，不承诺整流程线性加速。</p>
 <p class="source">批量针插与独立敏感性补充：2026-10-22，见<a href="#film-batch-needle-20261022">14ai</a>、<a href="#film-sensitivity-20261022">14aj</a>。数学零厚、有限联合前向、名义验收和误差目标分别报告。</p>
 <p class="source">ITO 电学计算补充：2026-10-18，见<a href="#ito-electrical-20261018">膜厚、方阻、电阻率及矩形测量边界</a>。</p>
 <p class="source">单层光谱反演补充：2026-10-17，见<a href="#optical-constant-inversion">模型、背面与非唯一性</a>。</p>
@@ -234,6 +235,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#film-sensitivity-20261022">14aj 独立膜厚敏感性与误差目标优化</a>
 <a href="#film-hybrid-synthesis-20261022">14ak 统一混合合成与全原约束精修</a>
 <a href="#film-nominal-acceptance-20261022">14al 原门限名义验收与求解容差分离</a>
+<a href="#film-hybrid-parallel-20261023">14am 混合合成独立物理批次与真实多进程</a>
 </nav>
 <main>
 <section id="film-wavelength-workers-20261017"><h2>CPU wavelength workers and fair single-candidate timing — 2026-10-17</h2>
@@ -3149,6 +3151,17 @@ close/shutdown/history/late old operation: do not trigger automatic apply</pre>
 <figure class="figure"><svg viewBox="0 0 740 112" role="img" aria-label="有限RMS二进制缩放"><rect x="10" y="20" width="210" height="48" fill="#e3f1ed"/><rect x="260" y="20" width="210" height="48" fill="#fff2dd"/><rect x="510" y="20" width="215" height="48" fill="#e3f1ed"/><text x="25" y="50" class="svgtext">误差/权重分别分解</text><path d="M224 44H253" stroke="#087f78" stroke-width="3"/><text x="278" y="50" class="svgtext">缩放有限和与比值</text><path d="M475 44H503" stroke="#087f78" stroke-width="3"/><text x="532" y="50" class="svgtext">恢复最终RMS指数</text><text x="16" y="99" class="svgsmall">例：e=1e−200、w=1e−300时RMS仍为1e−200；不先计算下溢的平方乘积。</text></svg><figcaption>二进制缩放控制中间值，不改变原K、权重或目标阈值。</figcaption></figure>
 <p>归一化或带权逐条件指标超出浮点有限范围时显式拒绝；RMS可表示而中间平方不可表示时仍返回有限结果。极端小项的缩放可舍入为0，未提供任意精度保证。此缩放与失败策略为“本项目实现”，未找到外部依据，仅为本项目实现；不以外部方法来源暗示其已被验证。</p>
 <p class="note">误差优先级、默认参数、失效保留、网格和取消策略均为“本项目约定”。未找到外部依据，仅为本项目实现；不保证全局最优或连续光谱全域达标。</p>
+</section>
+<section id="film-hybrid-parallel-20261023">
+<h2>14am 混合合成独立物理批次与真实多进程</h2>
+<p class="source">更新：2026-10-23。实现：film_auto_synthesis.py、film_synthesis_batch_needle.py、film_synthesis_parallel.py；入口与异步边界见<a href="film-hybrid-parallel-contract.md">核心合同</a>、<a href="film-hybrid-parallel-ui-contract.md">GUI/CLI/job/MCP合同</a>。以下调度和估算常数均为本项目约定，未找到外部依据，仅为本项目实现；不声称求解器、物理层数或速度的理论界限。</p>
+<p>输入为完整冻结材料n/k、目标/原网格、稳定层ID、资源预算及正逻辑批次Q。hybrid的AUTO只在冻结时令Q=max(1,min(请求CPU或可用CPU,可用CPU))；显式Q不变。输出为源序全响应/解析Jacobian及真实工作计数，后续档案/优化语义不变。相同冻结Q的串行与多进程使用同一候选前缀、物理nm厚度、导数列顺序和采纳顺序；层数没有新增硬上限。legacy AUTO保持原协议。</p>
+<div class="formula">批次长度 B ≤ min(Q, 候选数, 阶段剩余, 总训练剩余−终审保留)<br>并发 W ≤ min(B, 用户请求/可用CPU, 冻结内存准入宽度)</div>
+<p>仅独立工程先验、全局候选及同轮解析零厚针探针送入现有持久stdio工作进程。每进程一次准备完整冻结材料，使用私有缓存而非共享内存；完整响应/Jacobian按源序消费，先释放上一批矩阵再做下一批。当前轮全部已确定结果完成后才能构造下一轮低谷细化。全部厚度联合精修、档案采纳、后续轮次及验收继续串行；不把有限多针相互作用近似为导数可加。</p>
+<div class="formula">M估计 = M父数值及档案 + ΣM保留响应 + max(已驻留进程,W)·128MiB + W·(M单任务−128MiB)<br>M保留响应 = 点数·(320+40·Jac列数)+4096·层数 [byte]</div>
+<p>单任务沿用128MiB+点数·层数·(Jac:64 / 前向:32) byte；父档案另按确定性Python容器代理计数。串行尾批仍记空闲池驻留基线，不够时关闭本次拥有的池。响应帧过大保持既有串行路径，不改传输通道。估计非RSS、非OS配额，不保证绝不超内存；无论19请求还是AUTO均可因候选不足、预算、小工作量或内存而更小，必须报告原因。</p>
+<figure class="figure"><svg viewBox="0 0 900 185" role="img" aria-label="同一冻结批次先并行计算，再顺序采纳及联合优化"><rect x="12" y="52" width="175" height="72" rx="8" fill="#e3f1ed"/><text x="30" y="82" class="svgtext">冻结Q与资源预算</text><text x="30" y="105" class="svgsmall">预留终审，绑定完整输入</text><path d="M187 88 H225" stroke="#087f78" stroke-width="3"/><rect x="228" y="18" width="260" height="145" rx="8" fill="#ecf5f3"/><text x="245" y="47" class="svgtext">独立候选 / 同轮零厚探针</text><text x="245" y="81" class="svgtext">worker 1   worker 2 … W</text><text x="245" y="111" class="svgsmall">真实PID、私有材料、完整解析Jac</text><text x="245" y="139" class="svgsmall">取消与未知工作分开计数</text><path d="M488 88 H532" stroke="#087f78" stroke-width="3"/><rect x="535" y="52" width="350" height="72" rx="8" fill="#fff2dd"/><text x="553" y="82" class="svgtext">源序采纳 → 联合精修 → 下轮 / 独审</text><text x="553" y="105" class="svgsmall">必要串行依赖，不保证整体线性加速</text></svg><figcaption>逻辑批次与执行宽度分开；预留、提交、完成、消费、未采纳、未知及清理分别记录，已完成的急切批工作不能因早停被抹掉。</figcaption></figure>
+<p>调度前预留完整批预算，取消及总时限贯穿启动/评价/等待；局部阶段到期不再准入新批，已准入不可分割工作可稍后返回。崩溃后原物理工作保持未知，串行重算记回退，不能虚报为0。结果区展示真实派发PID而不是输入数字。有限实测：本云请求19、可用CPU9时达9真实PID；48层1001点的12个独立Jac任务热池约1.63×，仅为该评价阶段，不是整个流程或线程池对比。四窗原冷启动1200秒未达标结论未改变。普通名义门限、严格不等号、可选敏感性目标及硬件渲染均不改变。</p>
 </section>
 <section id="film-solver-powell">
 <h2>14i-2 有边界Powell方向集</h2>

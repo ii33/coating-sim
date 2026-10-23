@@ -57,6 +57,18 @@ def _write_exclusive(path: Path, payload: Any) -> None:
         os.fsync(stream.fileno())
 
 
+def _parallel_batch_argument(value: str) -> int | None:
+    if value.strip().lower() == "auto":
+        return None
+    try:
+        count = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("parallel batch size must be a positive integer or auto") from exc
+    if count < 1:
+        raise argparse.ArgumentTypeError("parallel batch size must be a positive integer or auto")
+    return count
+
+
 def _timestamp() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
@@ -95,6 +107,8 @@ def main(argv=None) -> int:
     parser.add_argument("--checkpoint", type=Path, help="Atomically updated best audited-candidate snapshot")
     parser.add_argument("--cancel-file", type=Path, help="Existing file requests cooperative cancellation")
     parser.add_argument("--plan", action="store_true", help="Freeze and expand seeds, print a CLI-ready request, and do not search")
+    parser.add_argument("--parallel-batch-size", type=_parallel_batch_argument, default=argparse.SUPPRESS,
+        metavar="auto|N", help="Override the hybrid logical batch, not promised concurrent workers; AUTO freezes requested/available CPU, with actual memory/candidate/budget admission")
     parser.add_argument("--heartbeat-interval", type=float, default=2.0)
     parser.add_argument("--stalled-after-seconds", type=float, default=30.0)
     parser.add_argument("--unresponsive-after-seconds", type=float, default=120.0)
@@ -110,6 +124,11 @@ def main(argv=None) -> int:
     try:
         raw = args.request.read_text(encoding="utf-8-sig") if args.request else sys.stdin.read()
         envelope = json.loads(raw)
+        if hasattr(args, "parallel_batch_size"):
+            # Validate the original kind/fields first; an override cannot turn
+            # an unrelated or malformed request into an accepted synthesis.
+            film_synthesis_request_from_payload(envelope, require_frozen=False)
+            envelope["request"] = dict(envelope["request"], parallel_batch_size=args.parallel_batch_size)
         if args.plan:
             if args.output is not None or args.checkpoint is not None or args.cancel_file is not None:
                 raise ValueError("--plan cannot be combined with output, checkpoint, or cancel-file options")

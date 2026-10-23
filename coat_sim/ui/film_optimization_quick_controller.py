@@ -4092,6 +4092,13 @@ class FilmOptimizationQuickController(QObject):
         requested = performance.get("requested_workers", "unknown")
         effective = performance.get("effective_workers", "unknown")
         pids = performance.get("worker_pids")
+        dispatched = performance.get("workers_with_submitted_tasks")
+        owned = performance.get("owned_worker_count")
+        if (type(dispatched) is int and dispatched >= 0 and
+                (backend == "headless_process" or type(owned) is int and owned > 0)):
+            # Owned/ready handshake PIDs may include idle or startup-cancelled
+            # workers; only actually dispatched workers count as working.
+            effective = dispatched
         process_count = effective if isinstance(effective, int) and not isinstance(effective, bool) else "未知"
         pid_count = len(pids) if isinstance(pids, list) else "未知"
         request_text = "自动" if requested == 0 else str(requested)
@@ -4113,7 +4120,20 @@ class FilmOptimizationQuickController(QObject):
                 elif isinstance(item, dict) and (item.get("reason") or item.get("code")):
                     reasons.append(str(item.get("reason") or item.get("code")))
         fallback_reason = "、".join(reasons) if reasons else "未记录"
-        return (forward_text + f"{backend_text}（{history_text}；PID 仅为记录，不代表进程仍在运行）；"
+        batch_text = ""
+        search = performance.get("search")
+        hybrid = search.get("hybrid") if isinstance(search, dict) else None
+        if isinstance(hybrid, dict):
+            quantum = hybrid.get("frozen_parallel_batch_size")
+            logical = str(quantum) if type(quantum) is int and quantum > 0 else "未知"
+            records = hybrid.get("parallel_batches")
+            records = records if isinstance(records, (tuple, list)) else ()
+            caps = sorted({row["resource_worker_cap"] for row in records if isinstance(row, dict)
+                and type(row.get("resource_worker_cap")) is int and row["resource_worker_cap"] > 0})
+            cap_text = "/".join(map(str, caps)) if caps else "未记录"
+            batch_text = (f"冻结逻辑批次：{logical}；阶段准入并发上限：{cap_text}；"
+                "可并行：独立候选/解析针扫；串行：联合厚度精修/采纳；")
+        return (forward_text + batch_text + f"{backend_text}（{history_text}；PID 仅为记录，不代表进程仍在运行）；"
                 f"请求进程数：{request_text}；实际工作进程数：{process_count}；记录的 PID 数：{pid_count}；"
                 f"任务提交/完成：{count('submitted_tasks')}/{count('completed_tasks')}；"
                 f"按原序采用：{count('consumed_tasks')}；投机未采用：{count('discarded_tasks')}；"

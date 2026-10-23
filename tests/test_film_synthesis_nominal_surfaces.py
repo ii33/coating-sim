@@ -198,6 +198,10 @@ def test_real_qml_physical_candidate_never_turns_tolerance_into_green_nominal_ba
         assert controller.setStructureMaterialSelected("acceptance-film", "film-set", True)
         assert controller.setSynthesisOption("max_evaluations", 12 if upper_percent == 0. else 3)
         assert controller.setSynthesisOption("max_cycles", 1)
+        # Isolate this exact physical acceptance regression from the optional
+        # scheduling quantum; default-hybrid real workers have a separate test.
+        assert controller.setSynthesisOption("parallel_batch_size", 1)
+        assert controller.setSynthesisOption("max_layers", 1)
         request = controller._build_synthesis_request()
         result = synthesize_film_design(service, request)
         assert result.candidate_design is not None

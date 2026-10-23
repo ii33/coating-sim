@@ -1280,6 +1280,34 @@ AppWindow {
                                         currentIndex: (window.controller.synthesisOptions.objective_weighting ?? "equal_window") === "equal_window" ? 0 : 1
                                         onActivated: window.controller.setSynthesisOption("objective_weighting", model[currentIndex].id)
                                     }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        visible: (window.controller.synthesisOptions.search_strategy ?? "hybrid") === "hybrid"
+                                        Label { text: "独立候选逻辑批次"; Layout.preferredWidth: 155 }
+                                        ThemeControls.ThemeField {
+                                            objectName: "filmSynthesisParallelBatchSizeField"
+                                            Layout.fillWidth: true
+                                            accessibleLabel: "独立候选逻辑批次，留空自动"
+                                            placeholderText: "自动（冻结时按请求进程和可用CPU）"
+                                            preserveNumericDisplayText: true
+                                            numericDisplayValue: window.controller.synthesisOptions.parallel_batch_size ?? ""
+                                            function commitDraft() {
+                                                if (!numericValueEdited) return
+                                                const value = numericEditText
+                                                numericValueEdited = false
+                                                window.controller.setSynthesisOption("parallel_batch_size", value)
+                                            }
+                                            onAccepted: commitDraft()
+                                            onEditingFinished: commitDraft()
+                                        }
+                                    }
+                                    Label {
+                                        Layout.fillWidth: true
+                                        visible: (window.controller.synthesisOptions.search_strategy ?? "hybrid") === "hybrid"
+                                        text: "逻辑批次不是并发保证。实际进程仍由请求、候选数、原预算与内存准入决定；独立候选和解析针扫可多核，联合厚度精修与采纳保持串行。"
+                                        color: window.themeTokens.colorTextMuted
+                                        wrapMode: Text.WordWrap
+                                    }
                                     CheckBox {
                                         objectName: "filmSynthesisNeedlePreLocalField"
                                         text: "每次针扫描前先局部精修当前工作分支"

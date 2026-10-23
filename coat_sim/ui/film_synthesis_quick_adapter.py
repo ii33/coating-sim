@@ -25,6 +25,7 @@ SYNTHESIS_SEARCH_DEFAULTS = {
     "archive_capacity": 32, "needle_batch_size": 6,
     "needle_pre_local": False, "needle_position_refinement_rounds": 1,
     "max_working_set_bytes": 0,
+    "parallel_batch_size": None,
 }
 
 
@@ -33,6 +34,10 @@ def synthesis_options(values: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("Unknown synthesis constraint")
     result = dict(SYNTHESIS_DEFAULT_OPTIONS)
     for name, raw in values.items():
+        if name == "parallel_batch_size" and (raw is None or (isinstance(raw, str)
+                and (not raw.strip() or raw.strip().lower() == "auto"))):
+            result[name] = None
+            continue
         if name == "max_working_set_bytes" and (raw is None or (isinstance(raw, str) and not raw.strip())):
             result[name] = None  # Explicit off, distinct from 0=auto and an omitted default.
             continue
@@ -48,7 +53,7 @@ def synthesis_options(values: Mapping[str, Any]) -> dict[str, Any]:
                 raise ValueError("needle_pre_local must be an explicit boolean")
             result[name] = raw
             continue
-        if name in {"archive_capacity", "needle_batch_size", "needle_position_refinement_rounds", "max_working_set_bytes"}:
+        if name in {"archive_capacity", "needle_batch_size", "needle_position_refinement_rounds", "max_working_set_bytes", "parallel_batch_size"}:
             if isinstance(raw, bool):
                 raise ValueError(f"{name} requires an integer")
             number = float(raw)

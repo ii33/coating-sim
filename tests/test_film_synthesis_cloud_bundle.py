@@ -100,6 +100,7 @@ class FilmSynthesisCloudBundleTests(unittest.TestCase):
                 "needle_batch_size": 6, "needle_pre_local": False,
                 "needle_position_refinement_rounds": 1, "max_working_set_bytes": 0,
                 "strict_upper_bound_objective_indices": [],
+                "parallel_batch_size": 2,
             }
             for name, expected in added_defaults.items():
                 self.assertNotIn(name, stored["request"])

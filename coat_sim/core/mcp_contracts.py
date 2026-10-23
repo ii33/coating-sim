@@ -59,6 +59,9 @@ FILM_SYNTHESIS_PLAN_INPUT_SCHEMA: dict[str, Any] = {
             "request_id": {"type": "string", "minLength": 1, "maxLength": 128},
             "request": {"type": "object", "additionalProperties": True,
                 "properties": {
+                    "parallel_batch_size": {
+                        "type": ["integer", "null"], "minimum": 1,
+                        "description": "Hybrid logical candidate batch; null=AUTO resolved at freeze from requested/available CPU. Not a promise of this many concurrent workers: candidate, memory, frame and budget admission can reduce actual parallelism."},
                     "strict_upper_bound_objective_indices": {
                         "type": "array", "uniqueItems": True,
                         "items": {"type": "integer", "minimum": 0},

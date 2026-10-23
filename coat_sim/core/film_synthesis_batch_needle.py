@@ -289,6 +289,8 @@ def scan_batch_needles(
     on_probe: Callable[[BatchNeedleProposal], None] | None = None,
     admit: Callable[[Mapping[str, Any]], bool] | None = None,
     stop_check: Callable[[], bool] | None = None,
+    evaluate_batch: Callable[..., Sequence[Mapping[str, Any]]] | None = None,
+    probe_batch_size: int = 4,
 ) -> BatchNeedleScan:
     """Scan every selected material/interface/interior and refine sampled valleys.
 
@@ -309,11 +311,20 @@ def scan_batch_needles(
     local scheduling slice gracefully and retain its accumulated shortlist.
     Exceptions from this hook still propagate (notably total-budget/cancel).
     Selection itself never starts another optical call or rechecks the slice.
+    ``evaluate_batch`` optionally evaluates bounded, source-ordered independent
+    probes. All current-round results are committed before constructing the next
+    refinement round. A shorter returned prefix is consumed and released before scheduling the
+    remaining probes; an empty prefix means admission stopped, never a zero
+    derivative. Unreturned tasks are not recorded as evaluated probes.
+    ``probe_batch_size`` only bounds scheduling and does not cap layers.
     ``genuine_only`` excludes same-source interior needles and interfaces
     matching either film neighbour: these are existing-layer thickness growth,
     not new topology. Such exclusions are reported separately, not as resource
     failures. The bulk substrate is not a film neighbour for this purpose.
     """
+    probe_batch_size = _count(probe_batch_size, "probe_batch_size")
+    if evaluate_batch is not None and not callable(evaluate_batch):
+        raise ValueError("evaluate_batch must be callable or None")
     position_samples = _count(position_samples, "position_samples", zero=True)
     valley_refinement_rounds = _count(valley_refinement_rounds, "valley_refinement_rounds", zero=True)
     max_needles = _count(max_needles, "max_needles")
@@ -350,16 +361,61 @@ def scan_batch_needles(
     initial_count = 0
     stage_budget_reached = False
 
+    pending: list[tuple[Any, BatchNeedleProposal, BatchNeedleBuild]] = []
+    pending_keys = set()
+
+    def flush():
+        nonlocal stage_budget_reached, initial_count
+        while pending:
+            tasks = [dict(design=build.design, variable_ids=build.layer_ids,
+                          zero_ids=build.zero_thickness_layer_ids)
+                     for _key, _proposal, build in pending]
+            values = ([evaluate(task["design"], variable_ids=task["variable_ids"],
+                                zero_ids=task["zero_ids"]) for task in tasks]
+                      if evaluate_batch is None else list(evaluate_batch(tasks, evaluate=evaluate)))
+            if len(values) > len(pending):
+                raise ValueError("needle batch returned more results than submitted probes")
+            if not values:
+                stage_budget_reached = True
+                break
+            consumed = len(values)
+            for (key, proposal, build), value in zip(pending, values, strict=False):
+                if gradient is None:
+                    sensitivity = float(value["gradient_by_layer_id"][proposal.needle_id])
+                else:
+                    guide: NDArray[np.float64] = np.asarray(gradient(value, build.layer_ids), dtype=float)
+                    if guide.shape != (len(build.layer_ids),) or not np.all(np.isfinite(guide)):
+                        raise ValueError("needle guide gradient must match the built layer order")
+                    sensitivity = float(guide[build.layer_ids.index(proposal.needle_id)])
+                if not math.isfinite(sensitivity):
+                    raise ValueError("nonfinite analytic needle sensitivity")
+                proposal = BatchNeedleProposal(proposal.site, proposal.reference, sensitivity,
+                    proposal.needle_id, proposal.split_id, proposal.refinement_level, fingerprint)
+                probes[key] = proposal
+                pending_keys.discard(key)
+                if proposal.refinement_level == 0:
+                    initial_count += 1
+                if on_probe is not None:
+                    on_probe(proposal)
+            del pending[:consumed]
+            # Release full responses/Jacobians before the next memory-limited
+            # prefix. Only scalar proposals are retained across physical work.
+            del values, value
+            if pending and stop_check is not None and stop_check():
+                stage_budget_reached = True
+                break
+        pending.clear()
+        pending_keys.clear()
+
     def probe(site, ref, level):
         nonlocal stage_budget_reached
-        nonlocal initial_count
         if stage_budget_reached:
             return
         if stop_check is not None and stop_check():
             stage_budget_reached = True
             return
         key = (_anchor_key(site), ref.material_id, ref.optical_set_id)
-        if key in probes or key in skipped or key in equivalent_skipped:
+        if key in probes or key in pending_keys or key in skipped or key in equivalent_skipped:
             return
         if genuine_only:
             pair = (ref.material_id, ref.optical_set_id)
@@ -371,7 +427,7 @@ def scan_batch_needles(
             if any((row["material_id"], row["optical_set_id"]) == pair for row in neighbours):
                 equivalent_skipped.add(key)
                 return
-        if max_probes is not None and len(probes) >= max_probes:
+        if max_probes is not None and len(probes) + len(pending) >= max_probes:
             stage_budget_reached = True
             return
         ids = [fingerprint, seed, key]
@@ -386,24 +442,10 @@ def scan_batch_needles(
         if admit is not None and not admit(build.design):
             skipped.add(key)
             return
-        value = evaluate(build.design, variable_ids=build.layer_ids,
-                         zero_ids=build.zero_thickness_layer_ids)
-        if gradient is None:
-            sensitivity = float(value["gradient_by_layer_id"][needle_id])
-        else:
-            guide: NDArray[np.float64] = np.asarray(gradient(value, build.layer_ids), dtype=float)
-            if guide.shape != (len(build.layer_ids),) or not np.all(np.isfinite(guide)):
-                raise ValueError("needle guide gradient must match the built layer order")
-            sensitivity = float(guide[build.layer_ids.index(needle_id)])
-        if not math.isfinite(sensitivity):
-            raise ValueError("nonfinite analytic needle sensitivity")
-        proposal = BatchNeedleProposal(deepcopy(site), ref, sensitivity, needle_id, split_id,
-                                       level, fingerprint)
-        probes[key] = proposal
-        if level == 0:
-            initial_count += 1
-        if on_probe is not None:
-            on_probe(proposal)
+        pending.append((key, proposal, build))
+        pending_keys.add(key)
+        if len(pending) >= (1 if evaluate_batch is None else probe_batch_size):
+            flush()
 
     sites = _site_records(parent, frozen, position_samples)
     task_count = len(sites) * len(references)
@@ -418,7 +460,7 @@ def scan_batch_needles(
     initial_limit = None if max_probes is None else max_probes - reserve
     next_ordinal = 0
     for ordinal in range(task_count):
-        if initial_limit is not None and len(probes) >= initial_limit:
+        if initial_limit is not None and len(probes) + len(pending) >= initial_limit:
             next_ordinal = ordinal
             break
         task = (ordinal + offset) % task_count
@@ -426,6 +468,7 @@ def scan_batch_needles(
         next_ordinal = ordinal + 1
         if stage_budget_reached:
             break
+    flush()
     for level in range(1, valley_refinement_rounds + 1):
         if stage_budget_reached:
             break
@@ -473,6 +516,7 @@ def scan_batch_needles(
             probe(site, ref, level)
             if stage_budget_reached:
                 break
+        flush()
         if len(probes) == before:
             break
     # If the sampled portion had no valleys, use its remaining quantum on new
@@ -482,6 +526,7 @@ def scan_batch_needles(
         probe(sites[task // len(references)], references[task % len(references)], 0)
         if stage_budget_reached:
             break
+    flush()
     ordered = tuple(sorted(probes.values(), key=lambda proposal: (
         proposal.sensitivity, proposal.site["position_nm"], proposal.reference.material_id,
         proposal.reference.optical_set_id, proposal.needle_id)))
