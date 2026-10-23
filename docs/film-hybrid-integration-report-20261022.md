@@ -1,6 +1,6 @@
 # 混合合成与独立敏感性集成验收
 
-日期：2026-10-22。本文记录功能边界和实际测试，不提供连续全局证明、制造通过或任意目标可解承诺。接口与算法见[合成契约](film-auto-synthesis-contract.md)、[敏感性契约](film-sensitivity-contract.md)、[使用入口](film-synthesis-gui-guide.md)及离线[算法文档](algorithms.html#film-hybrid-synthesis-20261022)。
+日期：2026-10-22。本文记录功能边界和实际测试，不提供连续全局证明、制造通过或任意目标可解承诺。接口与算法见[合成契约](film-auto-synthesis-contract.md)、[敏感性契约](film-sensitivity-workflows-contract.md)、[使用入口](film-synthesis-gui-guide.md)及离线[算法文档](algorithms.html#film-hybrid-synthesis-20261022)。
 
 ## 功能与正式路径
 

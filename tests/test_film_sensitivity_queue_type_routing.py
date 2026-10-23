@@ -4,7 +4,7 @@ from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
 from threading import Event
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -219,20 +219,13 @@ def test_ordinary_simulation_keeps_original_generic_asset_route():
     assert service.generic_calls == [Path('memory-only.coatasset')]
 
 
-@pytest.fixture(scope='module', params=_EXECUTORS)
+@pytest.fixture(scope='module', params=jobs.WORKFLOW_KINDS)
 def real_typed_job(request):
     executor = request.param
-    adapter: ModuleType
-    if executor == 'film_sensitivity':
-        from coat_sim.core import film_sensitivity_jobs as adapter
-        from tests.test_film_sensitivity import problem as legacy_problem
-        service, workflow_request = legacy_problem()
-    else:
-        adapter = jobs
-        service, workflow_request = problem(executor)
+    service, workflow_request = problem(executor)
     frozen = jobs.freeze_workflow_request(service, workflow_request)
     spec = JobSpec.parse_frozen(freeze_spec(None, executor, {'request': frozen}))
-    payload = adapter.execute_job(spec.parameters, Event(), lambda _item: None,
+    payload = jobs.execute_job(spec.parameters, Event(), lambda _item: None,
                                   'in-memory-only', lambda *_args: None)
     jobs.validate_workflow_result(payload, expected_request=frozen, replay=True)
     assert is_sensitivity_result(payload)
@@ -295,8 +288,6 @@ def test_real_typed_reader_rejects_input_binding_or_replay_tampering(tmp_path, r
         result['analysis']['conditions'][0]['nominal_value'] += .25
     elif row['kind'] == 'film_ideal_sensitivity':
         result['best_analysis']['objective_value'] += .25
-    else:
-        result['best_analysis']['linear_sensitivity_norm'] += .25
     service, store = _MemoryService(), _MemoryStore(row, tmp_path)
     with pytest.raises(ValueError):
         queue._read_queue_result(service, store, row['job_id'])
@@ -305,7 +296,7 @@ def test_real_typed_reader_rejects_input_binding_or_replay_tampering(tmp_path, r
 
 def test_real_typed_result_cannot_cross_executor_ownership(tmp_path, real_typed_job):
     row = _bind_spec(tmp_path, real_typed_job)
-    row['kind'] = next(kind for kind in _EXECUTORS if kind != row['kind'])
+    row['kind'] = next(kind for kind in jobs.WORKFLOW_KINDS if kind != row['kind'])
     assert not job_has_viewable_result(row)
     service, store = _MemoryService(), _MemoryStore(row, tmp_path)
     with pytest.raises(ValueError, match=r'(?i)belong|kind|executor|workflow'):
@@ -359,3 +350,25 @@ def test_scheduler_result_returns_bound_readonly_report_without_best_candidate(r
         with pytest.raises(ValueError, match=r'(?i)bound|binding|identity|invalid|unavailable'):
             Scheduler._dispatch(scheduler, 'result', {'job_id': row['job_id']})
     assert binding_checks == [(row['job_id'], payload)]
+
+
+@pytest.mark.parametrize('executor', ['film_sensitivity', 'film_ideal_sensitivity'])
+def test_removed_history_is_explicitly_unsupported_in_scheduler_not_generic(executor):
+    import threading
+    result = _malformed_result(executor)
+    row = _row(executor, result)
+    binding_calls: list[Any] = []
+    scheduler = cast(Scheduler, SimpleNamespace(
+        memory_status=lambda *_args, **_kwargs: deepcopy(row),
+        _bound_film_reply=lambda *_args: binding_calls.append(_args),
+        condition=threading.Condition(), index={row['job_id']: row}))
+    with pytest.raises(ValueError, match=r'(?i)unsupported'):
+        Scheduler._dispatch(scheduler, 'result', {'job_id': row['job_id']})
+    with pytest.raises(ValueError, match=r'(?i)unsupported'):
+        Scheduler._dispatch(scheduler, 'run_result', {'run_id': _RUN_ID})
+    outcome = Scheduler._attach_best_candidate_checkpoint(scheduler, row['job_id'],
+        {'state': 'failed', 'result': result})
+    assert outcome['result'] is None and 'unsupported' in outcome['result_unavailable_reason'].lower()
+    cancelled = Scheduler._cancelled_outcome(scheduler, row['job_id'], {'result': result})
+    assert cancelled['result'] is None and 'unsupported' in cancelled['result_unavailable_reason'].lower()
+    assert binding_calls == []

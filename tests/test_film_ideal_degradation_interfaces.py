@@ -1,8 +1,8 @@
-"""Frozen v2 policies through the real typed job, CLI and readonly MCP paths."""
+"""Current schema 2 policies through the real typed job, CLI and readonly MCP paths."""
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import fields, replace
+from dataclasses import replace
 import io
 import json
 from threading import Event
@@ -12,7 +12,6 @@ from typing import Any
 import pytest
 
 from coat_sim.core import film_ideal_sensitivity as ideal
-from coat_sim.core import film_ideal_sensitivity_v2 as v2
 from coat_sim.core import film_sensitivity_workflow_jobs as jobs
 from coat_sim.core.film_optimization import FilmOptimizationObjective
 from coat_sim.scheduler.jobs import JobSpec, freeze_spec
@@ -26,10 +25,9 @@ def problem(*, budget=.1, maximum=100, lower=.99):
     service, original = strict_problem(max_evaluations=maximum, max_iterations=25)
     original = replace(original, objectives=(FilmOptimizationObjective(
         550., 550., 1, mode='range', lower_bound=lower),))
-    request = v2.FilmIdealSensitivityV2Request(
-        **{field.name: getattr(original, field.name) for field in fields(original)},
+    request = replace(original,
         policy='bounded_baseline_degradation', objective_ids=('stable-HR-target',),
-        budgets=(v2.FilmIdealDegradationBudget('stable-HR-target', budget, 'percentage_point'),))
+        budgets=(ideal.FilmIdealDegradationBudget('stable-HR-target', budget, 'percentage_point'),))
     return service, request
 
 
@@ -76,7 +74,8 @@ def test_freeze_and_plan_do_not_evaluate_or_mutate_the_execution_baseline(monkey
     def forbidden(*args, **kwargs):
         calls.append(args)
         raise AssertionError('planning may not hide a baseline physical evaluation')
-    monkeypatch.setattr(ideal, 'simulate_with_thickness_jacobian', forbidden)
+    from coat_sim.core import _film_ideal_sensitivity_core as numerical
+    monkeypatch.setattr(numerical, 'simulate_with_thickness_jacobian', forbidden)
     monkeypatch.setattr(server, 'service', SimpleNamespace(film_design_service=service))
     raw = jobs.workflow_request_to_payload(request)
     result = server.plan_film_ideal_sensitivity(raw)
@@ -87,7 +86,7 @@ def test_freeze_and_plan_do_not_evaluate_or_mutate_the_execution_baseline(monkey
     assert request.kernel_identity is None
 
 
-def test_mcp_discovery_separates_closed_v1_and_v2_without_table_fields():
+def test_mcp_discovery_accepts_only_current_ideal_schema_without_table_fields():
     from coat_sim.core import mcp_contracts as contracts
     from coat_sim.core.capabilities import CapabilityError
     _service, request = problem()
@@ -107,22 +106,21 @@ def test_mcp_discovery_separates_closed_v1_and_v2_without_table_fields():
         contracts.validate_mcp_arguments(schema, {'payload': missing_unit})
     with pytest.raises(ValueError):
         jobs.workflow_request_from_payload(missing_unit)
-    _service, old = strict_problem()
-    legacy = jobs.workflow_request_to_payload(old)
-    assert legacy['schema_version'] == 1 and 'policy' not in legacy
-    assert contracts.validate_mcp_arguments(schema, {'payload': legacy}) == {'payload': legacy}
-    for field in ('policy', 'objective_ids', 'budgets', 'kernel_identity'):
-        changed = deepcopy(legacy)
-        changed[field] = raw[field]
-        with pytest.raises(CapabilityError):
-            contracts.validate_mcp_arguments(schema, {'payload': changed})
-        with pytest.raises(ValueError):
-            jobs.workflow_request_from_payload(changed)
+    _service, strict = strict_problem()
+    current = jobs.workflow_request_to_payload(strict)
+    assert current['schema_version'] == 2 and current['policy'] == 'strict_nominal'
+    assert contracts.validate_mcp_arguments(schema, {'payload': current}) == {'payload': current}
+    old = deepcopy(current)
+    old['schema_version'] = 1
+    with pytest.raises(CapabilityError):
+        contracts.validate_mcp_arguments(schema, {'payload': old})
+    with pytest.raises(ValueError, match='unsupported'):
+        jobs.workflow_request_from_payload(old)
     table = contracts.FILM_ERROR_TABLE_PLAN_INPUT_SCHEMA['properties']['payload']['properties']
     assert all(field not in table for field in ('policy', 'objective_ids', 'budgets', 'kernel_identity'))
 
 
-def test_cli_executes_frozen_v2_and_reports_partial_not_nominal_success(monkeypatch, capsys, tmp_path):
+def test_cli_executes_current_ideal_and_reports_partial_not_nominal_success(monkeypatch, capsys, tmp_path):
     from coat_sim import film_sensitivity_workflow_cli as cli
     service, request = problem()
     frozen = jobs.freeze_workflow_request(service, request)
@@ -144,7 +142,7 @@ def test_cli_executes_frozen_v2_and_reports_partial_not_nominal_success(monkeypa
     assert output.read_bytes() == stored
 
 
-def test_operation_mismatch_remains_rejected_for_v2():
+def test_operation_mismatch_remains_rejected_for_current_ideal():
     service, request = problem()
     frozen = jobs.freeze_workflow_request(service, request)
     job = jobs.build_job_payload(None, frozen)

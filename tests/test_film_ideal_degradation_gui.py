@@ -1,4 +1,4 @@
-"""GUI/controller contracts for v2 bounded ideal sensitivity."""
+"""GUI/controller contracts for current bounded ideal sensitivity."""
 from __future__ import annotations
 
 from copy import deepcopy
@@ -10,9 +10,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("QT_QUICK_BACKEND", "software")
 
 import pytest
-from PySide6.QtCore import QMetaObject, QObject
+from PySide6.QtCore import QObject, Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQuick import QQuickItem
+from PySide6.QtTest import QTest
 
 from coat_sim.core import film_sensitivity_workflow_jobs as workflow_jobs
 from coat_sim.scheduler.jobs import JobSpec
@@ -32,7 +33,7 @@ class _PhysicsClient:
     """The UI uses its normal worker path; this transports to real local physics."""
 
     def __init__(self):
-        self.executors = ["film_ideal_sensitivity", "film_thickness_error_table", "film_sensitivity"]
+        self.executors = ["film_ideal_sensitivity", "film_thickness_error_table"]
         self.submissions = []
         self.rows = {}
         self.unknown = False
@@ -101,6 +102,20 @@ def _find_visual_item(root, object_name):
                 return found
     return None
 
+
+
+def _dialog_button(root, answer):
+    """Locate an actual visible standard button without accepting the dialog API."""
+    labels = {"yes": {"yes", "是"}, "no": {"no", "否"}}[answer]
+    text = root.property("text")
+    if (hasattr(root, "clicked") and root.isVisible() and isinstance(text, str)
+            and text.replace("&", "").strip().lower() in labels):
+        return root
+    for child in root.childItems():
+        found = _dialog_button(child, answer)
+        if found is not None:
+            return found
+    return None
 
 def _run_ideal(harness, *, mode="absolute", budget="0.1", max_iterations="4",
                max_evaluations="60"):
@@ -181,6 +196,27 @@ def test_bounded_default_requires_each_budget_and_keeps_id_associations(harness)
     assert not panel.startIdealSensitivityOptimization()
     assert "有限非负数" in panel.idealError
     assert not harness.pool.tasks and not harness.client.submissions
+
+
+def test_real_qml_scale_selection_then_blank_budget_cannot_submit(harness, app):
+    panel = harness.panel
+    with window_runtime(app, harness.owner) as (window, warnings):
+        click(app, window, window.findChild(QQuickItem, "filmSensitivityOpenButton"))
+        mode = window.findChild(QQuickItem, "filmIdealSensitivityModeBox")
+        assert mode is not None and mode.isVisible()
+        click(app, window, mode)
+        QTest.keyClick(window, Qt.Key.Key_Home)
+        QTest.keyClick(window, Qt.Key.Key_Down)
+        QTest.keyClick(window, Qt.Key.Key_Return)
+        app.processEvents()
+        assert panel.idealSensitivityMode == "absolute"
+        assert all(row["budget_text"] == "" for row in panel.idealDegradationObjectives)
+        optimize = window.findChild(QQuickItem, "filmIdealSensitivityOptimizeButton")
+        assert optimize is not None and optimize.isEnabled()
+        click(app, window, optimize)
+        assert "百分点 pp" in panel.idealError and "空白不会按零" in panel.idealError
+        assert not panel.busy and not harness.pool.tasks and not harness.client.submissions
+        assert not warnings, warnings
 
 
 def test_policy_and_budget_drafts_do_not_touch_parameter_table(harness):
@@ -273,8 +309,17 @@ def test_nominal_false_guard_pass_candidate_requires_explicit_confirm_and_is_one
         assert "初态原名义目标：未通过" in label.property("text")
         assert "最终原名义目标：未通过" in label.property("text")
         assert not harness.source.applied
-        assert QMetaObject.invokeMethod(confirm, "accept")
-        app.processEvents()
+        no_button = _dialog_button(window.contentItem(), "no")
+        assert no_button is not None
+        click(app, window, no_button)
+        assert not confirm.property("visible") and not harness.source.applied
+        assert panel.idealCanApply
+        click(app, window, apply)
+        assert confirm.property("visible")
+        yes_button = _dialog_button(window.contentItem(), "yes")
+        assert yes_button is not None
+        click(app, window, yes_button)
+        assert not confirm.property("visible")
         assert harness.source.applied
         assert not panel.idealCanApply
         assert harness.source.undoOptimizedDesign()

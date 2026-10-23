@@ -210,8 +210,8 @@ def test_global_preview_retains_existing_strict_destination_identity_rules(tmp_p
     assert file_snapshot(source.root) == before
 
 
-@pytest.mark.parametrize("action", ["copy", "overwrite"])
-def test_project_template_case_conflict_preview_offers_executable_decisions(tmp_path, action):
+@pytest.mark.parametrize("target_template_id,action", [("shared", "copy"), ("shared", "overwrite"), ("Shared", "import")])
+def test_project_template_exact_id_conflicts_and_case_distinct_import_are_executable(tmp_path, target_template_id, action):
     source = ProjectStore.create(tmp_path / "source", "Source")
     template = {"schema_version": 1, "template_id": "shared", "name": "Incoming", "note": "",
                 "expression": {"text": "A", "symbols": {"A": {
@@ -220,7 +220,7 @@ def test_project_template_case_conflict_preview_offers_executable_decisions(tmp_
     selected = source.create_document("expression_template", template, materials={"shared": material("shared")})
     target = ProjectStore.create(tmp_path / "target", "Target")
     existing = target.create_document("expression_template", {
-        **deepcopy(template), "template_id": "Shared", "name": "Existing"},
+        **deepcopy(template), "template_id": target_template_id, "name": "Existing"},
         materials={"shared": material("shared")})
     _unsupported_source(target)
     original = _unchanged(target, target.manifest["documents"])
@@ -229,15 +229,21 @@ def test_project_template_case_conflict_preview_offers_executable_decisions(tmp_
     catalog = resources.inspect_resources(source.project_file)
     plan = resources.preview_resource_transfer(catalog["catalog_id"], [selected])
     row = next(row for row in plan["rows"] if row["id"] == selected)
-    assert row["conflict"] == "different" and row["target_id"] == existing
+    if action == "import":
+        assert row["conflict"] == "" and row["target_id"] == ""
+    else:
+        assert row["conflict"] == "different" and row["target_id"] == existing
     assert action in row["choices"]
     result = resources.apply_resource_transfer(plan["plan_id"], {selected: action})
     incoming = result["id_map"][selected]
     document = target.resolve_document(incoming)["documents"][0]["data"]
     if action == "overwrite":
-        assert incoming == existing and document["template_id"] == "Shared"
-    else:
+        assert incoming == existing and document["template_id"] == "shared"
+    elif action == "copy":
         assert incoming != existing and document["template_id"].casefold() != "shared"
+    else:
+        assert incoming != existing and document["template_id"] == "shared"
+        assert target._read_record(target._index()[existing])["template_id"] == "Shared"
     for identity, (saved_row, content) in original.items():
         assert (target.root / saved_row["path"]).read_bytes() == content
         if identity not in result["replaced_ids"]:

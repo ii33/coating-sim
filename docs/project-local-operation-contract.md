@@ -73,3 +73,9 @@ Tests: `test_project_mutation_capture.py`,
 `test_project_scoped_asset_operations.py`, `test_project_asset_scope_gui.py`,
 `test_project_scoped_resource_exchange.py`, and the unchanged
 project/session/reference/transaction regression suites.
+
+Template business IDs are exact, case-sensitive symbols, in both ordinary
+publication and selected transfer. Thus `Dose` and `dose` are separate IDs; only
+an exact ID match offers reuse/overwrite/copy conflict decisions. Material-ID
+normalization is unchanged. The generic operation scope does not invent a new
+case-insensitive template identity.

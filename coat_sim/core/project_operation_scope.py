@@ -177,7 +177,9 @@ def _logical_indexes(records, data, *, required_kinds, allow_ambiguous=False):
             if kind in required_kinds:
                 raise ProjectError("reference_unconfirmed", "Project logical identity cannot be confirmed: " + identity) from None
             continue
-        folded = key.casefold()
+        # Template IDs are exact symbols; material IDs use their existing
+        # case-insensitive catalog identity. Do not conflate Dose with dose.
+        folded = key if kind == "expression_template" else key.casefold()
         if folded in seen[kind]:
             if not allow_ambiguous:
                 raise ProjectError("dependency_conflict", "Duplicate project logical identity: " + key)

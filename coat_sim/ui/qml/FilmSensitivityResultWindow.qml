@@ -15,11 +15,14 @@ AppWindow {
     minimumWidth: 620
     minimumHeight: 420
     initialMaximized: false
-    statusText: controller.activeWorkflow === "table" ? controller.tableStatus
-                : controller.activeWorkflow === "ideal" ? controller.idealStatus : controller.status
-    statusSeverity: (controller.activeWorkflow === "table" ? controller.tableError.length
-                     : controller.activeWorkflow === "ideal" ? controller.idealError.length
-                     : controller.error.length) ? "error" : "info"
+    readonly property bool unsupportedWorkflow: controller.activeWorkflow !== "table"
+                                                  && controller.activeWorkflow !== "ideal"
+    statusText: unsupportedWorkflow ? "仅支持当前敏感度报告格式"
+                : controller.activeWorkflow === "table" ? controller.tableStatus
+                : controller.idealStatus
+    statusSeverity: unsupportedWorkflow ? "warning"
+                     : (controller.activeWorkflow === "table" ? controller.tableError.length
+                        : controller.idealError.length) ? "error" : "info"
     color: window.themeColors.colorWindow
     ScrollView {
         anchors.fill: parent
@@ -30,10 +33,11 @@ AppWindow {
         ColumnLayout {
             width: parent.width
             Label {
+                objectName: "filmSensitivityUnsupportedHistoryNotice"
                 Layout.fillWidth: true
-                visible: window.controller.activeWorkflow === "legacy"
-                text: "作业 " + window.controller.jobId + "\n" + window.controller.resultSummary
-                color: window.themeColors.colorText
+                visible: window.unsupportedWorkflow
+                text: "此敏感度历史格式不受支持。内容保持只读，不会转换为其他类型、重算或应用。"
+                color: window.themeColors.colorTextMuted
                 wrapMode: Text.WordWrap
             }
             FilmSensitivityWorkflowResultPanel {
@@ -50,31 +54,10 @@ AppWindow {
                 themeTokens: window.themeColors
                 workflowKind: "ideal"
             }
-            Repeater {
-                model: window.controller.scenarioResults
-                delegate: Label {
-                    required property var modelData
-                    visible: window.controller.activeWorkflow === "legacy"
-                    Layout.fillWidth: true
-                    text: modelData.scenario_id + " · 有限场景最大违规 "
-                          + Number(modelData.max_error_percent).toPrecision(7) + " 个百分点 · "
-                          + (modelData.targets_met ? "原门限采样通过" : "原门限未通过")
-                          + " · 归一化违规 " + Number(modelData.max_normalized_error).toPrecision(7)
-                          + (modelData.solver_acceptable ? " · 求解容差可接受" : " · 求解容差不可接受")
-                    color: window.themeColors.colorText
-                    wrapMode: Text.WordWrap
-                }
-            }
             ThemeControls.ThemeButton {
+                visible: !window.unsupportedWorkflow
                 text: "保存完整冻结请求与报告…"
                 onClicked: reportFile.open()
-            }
-            Label {
-                Layout.fillWidth: true
-                visible: window.controller.activeWorkflow === "legacy"
-                text: window.controller.error
-                color: window.themeColors.colorError
-                wrapMode: Text.WordWrap
             }
         }
     }

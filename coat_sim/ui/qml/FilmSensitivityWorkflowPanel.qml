@@ -23,8 +23,7 @@ ColumnLayout {
         onCurrentIndexChanged: panel.selectPage(currentIndex)
         Repeater {
             model: [{label: "参数表预期误差分析", name: "filmSensitivityTableTab"},
-                    {label: "理想敏感度优化", name: "filmSensitivityIdealTab"},
-                    {label: "高级兼容", name: "filmSensitivityLegacyTab"}]
+                    {label: "理想敏感度优化", name: "filmSensitivityIdealTab"}]
             delegate: TabButton {
                 id: tab
                 required property var modelData
@@ -62,12 +61,6 @@ ColumnLayout {
             onSaveRequested: panel.saveRequested()
         }
         FilmIdealSensitivityPanel {
-            controller: panel.controller
-            themeTokens: panel.themeTokens
-            onApplyRequested: panel.applyRequested()
-            onSaveRequested: panel.saveRequested()
-        }
-        FilmSensitivityPanel {
             controller: panel.controller
             themeTokens: panel.themeTokens
             onApplyRequested: panel.applyRequested()

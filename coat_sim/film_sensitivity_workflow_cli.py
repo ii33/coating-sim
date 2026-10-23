@@ -11,7 +11,7 @@ from threading import Event
 
 from .core.film_result_service import atomic_film_json
 from .core.film_sensitivity_workflow_jobs import (
-    WORKFLOW_KINDS, _api, workflow_for_request, workflow_request_from_payload,
+    _api, workflow_for_request, workflow_request_from_payload,
     workflow_result_to_payload,
 )
 
@@ -29,8 +29,6 @@ def main(argv=None) -> int:
         source = args.request.read_text(encoding="utf-8-sig") if args.request else sys.stdin.read()
         request = workflow_request_from_payload(json.loads(source))
         kind = workflow_for_request(request)
-        if kind not in WORKFLOW_KINDS:
-            raise ValueError("legacy explicit-scenario requests retain coat_sim.film_sensitivity_cli")
         if request.frozen_material_snapshot is None:
             raise ValueError("CLI requires frozen materials; it never reads the live material catalog")
 

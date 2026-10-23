@@ -163,20 +163,19 @@ def _selection(snapshot: dict, identities: Sequence[str]) -> tuple[list[str], li
     return selected, sorted(closure)
 
 
-def _business_key(kind: str, data: dict, *, fold_template_ids=False) -> tuple[str, str] | None:
+def _business_key(kind: str, data: dict) -> tuple[str, str] | None:
     if kind == "binary_asset":
         return kind, data["role"] + ":" + data["sha256"] + ":" + str(data["size"])
     if kind in {"material_profile", "optical_material"}:
         return kind, data["material"]["id"].casefold()
     if kind == "expression_template":
-        identity = data["template_id"]
-        return kind, identity.casefold() if fold_template_ids else identity
+        return kind, data["template_id"]
     if kind == "film":
         return kind, data["id"]
     return None
 
 
-def _business_index(snapshot: dict, kinds: set[str], *, fold_template_ids=False,
+def _business_index(snapshot: dict, kinds: set[str], *,
                     conflict_keys: set[tuple[str, str]] | None = None) -> dict[tuple[str, str], str]:
     """Confirm relevant identities without accepting unrelated document schemas."""
     current = {}
@@ -195,7 +194,7 @@ def _business_index(snapshot: dict, kinds: set[str], *, fold_template_ids=False,
                         or not isinstance(digest, str) or len(digest) != 64
                         or any(char not in "0123456789abcdef" for char in digest)):
                     raise ValueError("unknown binary identity")
-            business = _business_key(kind, document, fold_template_ids=fold_template_ids)
+            business = _business_key(kind, document)
             if (business is None or not isinstance(business[1], str) or not business[1].strip()
                     or (kind != "binary_asset" and (len(business[1]) > 160
                         or business[1] != business[1].strip()))):
@@ -256,8 +255,7 @@ def _rewrite_materials(value: Any, mapping: Mapping[str, str]) -> None:
 def _conflict_rows(source: dict, closure: list[str], target: dict,
                    selected: list[str], *, project_scope=False) -> list[dict]:
     source_rows = _index(source)
-    businesses = {key: _business_key(source_rows[key]["kind"], source["documents"][key],
-                                     fold_template_ids=project_scope) for key in closure}
+    businesses = {key: _business_key(source_rows[key]["kind"], source["documents"][key]) for key in closure}
     conflict_keys = {business for business in businesses.values() if business is not None}
     kinds = {business[0] for business in conflict_keys}
     if kinds.intersection({"material_profile", "optical_material"}):
@@ -266,7 +264,7 @@ def _conflict_rows(source: dict, closure: list[str], target: dict,
                              if _kind in {"material_profile", "optical_material"}
                              for kind in ("material_profile", "optical_material"))
     if project_scope:
-        current = _business_index(target, kinds, fold_template_ids=True, conflict_keys=conflict_keys)
+        current = _business_index(target, kinds, conflict_keys=conflict_keys)
     else:
         # Non-project destinations already provide a complete strict snapshot.
         # Keep their existing business-identity resolution unchanged.
@@ -402,10 +400,6 @@ def _merge(source: dict, selected: list[str], target: dict, preview_rows: list[d
         elif kind in {"film", "expression_template"} and actions[key] == "copy":
             value["id" if kind == "film" else "template_id"] = uuid.uuid4().hex
             value["name"] = value["name"][:110] + " (copy)"
-        elif kind == "expression_template" and target_records is not None and actions[key] == "overwrite":
-            # Casefold matches one project identity; overwrite must retain its
-            # exact saved spelling, just as an ordinary template save does.
-            value["template_id"] = data[target_id]["template_id"]
         if kind == "binary_asset":
             from .project_binary_assets import ROLE_SUFFIXES
             value["payload_path"] = f"assets/{generation}/{target_id}{ROLE_SUFFIXES[value['role']]}"

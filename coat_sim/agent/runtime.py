@@ -317,7 +317,7 @@ READ_TOOLS = frozenset({
     "design_workflow_status",
     "preview_film_stack_import", "read_process_layers", "read_simulation_asset", "simulation_summaries",
     "film_design_schema", "film_materials", "validate_film_design", "load_film_design",
-    "plan_film_synthesis", "plan_film_sensitivity", "plan_film_ideal_sensitivity", "plan_film_thickness_error_table",
+    "plan_film_synthesis", "plan_film_ideal_sensitivity", "plan_film_thickness_error_table",
     "expand_film_expression",
     "estimate_compute_task", "estimate_film_optimization", "estimate_appearance_render",
     "inspect_appearance_asset",
@@ -369,8 +369,8 @@ MAIN_TOOLS = READ_TOOLS | DATA_WRITE_TOOLS | {"save_design", "export_pdf", "wind
                            "correction_board_weights", "correction_board_field", "selected_point_weights", "planet_center_occlusion_ring",
                            "submit_single_source", "submit_process_recipe", "submit_mask_optimization", "create_default_workflow", "estimate_mask_optimization", "import_mask_dxf", "export_mask_dxf", "export_mask_drawing", "cancel_calculation_job"}
 MAIN_TOOLS = MAIN_TOOLS | {"project_research_save", "project_bbs_write", "project_bbs_import_attachment", DISCUSSION_COMMENT_TOOL, "project_open", "project_manage", "save_film_design", "simulate_film_design", "submit_film_optimization", "submit_appearance_render"}
-MAIN_TOOLS = MAIN_TOOLS | {"submit_film_synthesis", "submit_film_sensitivity", "submit_film_ideal_sensitivity", "submit_film_thickness_error_table"}
-SUBMIT_TOOLS = frozenset({"submit_single_source", "submit_process_recipe", "submit_mask_optimization", "submit_film_optimization", "submit_film_synthesis", "submit_film_sensitivity", "submit_film_ideal_sensitivity", "submit_film_thickness_error_table", "submit_appearance_render", "create_default_workflow"})
+MAIN_TOOLS = MAIN_TOOLS | {"submit_film_synthesis", "submit_film_ideal_sensitivity", "submit_film_thickness_error_table"}
+SUBMIT_TOOLS = frozenset({"submit_single_source", "submit_process_recipe", "submit_mask_optimization", "submit_film_optimization", "submit_film_synthesis", "submit_film_ideal_sensitivity", "submit_film_thickness_error_table", "submit_appearance_render", "create_default_workflow"})
 WORKFLOW_TOOLS = frozenset({"create_design_workflow", "advance_design_workflow", "cancel_design_workflow", "render_design", "render_design_workflow"})
 MAIN_TOOLS = MAIN_TOOLS | WORKFLOW_TOOLS | {"build_film_stack", "import_film_stack", "update_design_fields", "visualize_calculation_result",
     "create_material", "update_material", "copy_material", "export_simulation_asset",
@@ -1487,8 +1487,8 @@ EXECUTION_TOOLS = {
     "windows": frozenset({"project_list", "project_editor_snapshot", "project_open", "read_software_manual", "list_windows", "read_window", "open_window", "close_window", "update_window", "window_action"}),
     "design": _COMMON | _JOB_READ | DATA_WRITE_TOOLS | {"preview_design", "save_design", "export_pdf", "convert_time_fields", "convert_gear_geometry", "import_mask_dxf", "export_mask_dxf", "export_mask_drawing"},
     "simulation": _COMMON | _JOB_READ | {"estimate_calculation", "estimate_film_optimization",
-                                         "plan_film_synthesis", "plan_film_sensitivity", "plan_film_ideal_sensitivity", "plan_film_thickness_error_table",
-                                         "submit_film_synthesis", "submit_film_sensitivity", "submit_film_ideal_sensitivity", "submit_film_thickness_error_table",
+                                         "plan_film_synthesis", "plan_film_ideal_sensitivity", "plan_film_thickness_error_table",
+                                         "submit_film_synthesis", "submit_film_ideal_sensitivity", "submit_film_thickness_error_table",
                                          "estimate_appearance_render", "submit_appearance_render",
                                          "inspect_appearance_asset",
                                          "submit_single_source", "submit_process_recipe",

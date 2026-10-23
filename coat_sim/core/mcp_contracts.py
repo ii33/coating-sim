@@ -80,54 +80,6 @@ FILM_SYNTHESIS_SUBMIT_INPUT_SCHEMA: dict[str, Any] = {
         "client_request_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 512}},
 }
 
-FILM_SENSITIVITY_PLAN_INPUT_SCHEMA: dict[str, Any] = {
-    "type": "object", "additionalProperties": False, "required": ["payload"],
-    "properties": {"payload": {
-        "type": "object", "additionalProperties": True,
-        "required": ["schema_version", "kind", "design_snapshot", "design_revision",
-                     "objectives", "errors", "error_model", "robustness_objective"],
-        "properties": {
-            "schema_version": {"const": 1},
-            "kind": {"const": "coat_sim.film_sensitivity_request"},
-            "optimization_policy": {"type": "string",
-                "enum": ["robustness_only", "nominal_preserving"],
-                "default": "robustness_only",
-                "description": "robustness_only is the legacy policy; nominal_preserving optimizes only an explicit finite-scenario objective while preserving the original nominal bounds."},
-            "error_amplitude_semantics": {"type": "string",
-                "enum": ["bounded_amplitude", "standard_deviation"],
-                "default": "bounded_amplitude",
-                "description": "bounded_amplitude keeps explicit scenario coefficients in [-1, 1]; standard_deviation interprets scales as sigma and permits unbounded Gaussian coefficients."},
-            "error_model": {"type": "string",
-                "enum": ["independent", "common_mode", "material_common_mode", "linear_drift"],
-                "description": "Explicit layer-factor structure; this is not a measured process distribution."},
-            "robustness_objective": {"type": "string",
-                "enum": ["linear_sensitivity_norm", "finite_scenario_worst", "finite_scenario_expected"]},
-            "errors": {"type": "array", "minItems": 1,
-                "description": "Thickness amplitude is (unit=absolute_nm ? magnitude : 0) + absolute_nm + ((unit=relative_fraction ? magnitude : 0) + relative_fraction) times nominal thickness. Components share one signed layer factor, not RSS-combined.",
-                "items": {"type": "object", "additionalProperties": False,
-                    "required": ["layer_id"],
-                    "properties": {
-                        "layer_id": {"type": "string", "minLength": 1},
-                        "magnitude": {"type": "number", "minimum": 0, "default": 0},
-                        "unit": {"type": "string", "enum": ["absolute_nm", "relative_fraction"], "default": "absolute_nm"},
-                        "absolute_nm": {"type": "number", "minimum": 0, "default": 0},
-                        "relative_fraction": {"type": "number", "minimum": 0, "default": 0}}}},
-            "scenarios": {"type": "array", "description": "Explicit signed coefficients follow errors order and are frozen into the request. Coefficients outside [-1, 1] require standard_deviation semantics; Gaussian coefficients are never clipped.",
-                "items": {"type": "object", "additionalProperties": False,
-                    "required": ["scenario_id", "coefficients"],
-                    "properties": {
-                        "scenario_id": {"type": "string", "minLength": 1},
-                        "coefficients": {"type": "array", "items": {"type": "number"}},
-                        "weight": {"type": "number", "exclusiveMinimum": 0, "default": 1}}}}}}},
-}
-
-FILM_SENSITIVITY_SUBMIT_INPUT_SCHEMA: dict[str, Any] = {
-    "type": "object", "additionalProperties": False, "required": ["payload"],
-    "properties": {"payload": FILM_SENSITIVITY_PLAN_INPUT_SCHEMA["properties"]["payload"],
-        "client_request_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 512}},
-}
-
-
 def _independent_sensitivity_schema(kind: str, *, table: bool) -> dict[str, Any]:
     """Discovery hints; closed typed deserializers remain authoritative."""
     properties: dict[str, Any] = {
@@ -177,12 +129,10 @@ def _independent_sensitivity_schema(kind: str, *, table: bool) -> dict[str, Any]
     payload: dict[str, Any] = {"type": "object", "additionalProperties": False,
                               "required": required, "properties": properties}
     if not table:
-        # Version 1 remains closed: the explicit v2 policy/budgets are never
-        # silently injected into a stored strict request or its canonical hash.
-        properties["schema_version"] = {"enum": [1, 2]}
+        properties["schema_version"] = {"const": 2}
         properties.update({
             "policy": {"enum": ["strict_nominal", "bounded_baseline_degradation"],
-                "description": "V2 only. Original nominal acceptance is independent of the fixed-baseline spectral guard."},
+                "description": "Original nominal acceptance is independent of the fixed-baseline spectral guard."},
             "objective_ids": {"type": "array", "minItems": 1, "uniqueItems": True,
                 "items": {"type": "string", "minLength": 1},
                 "description": "Stable ordered target-row IDs, not guessed positional budget assignments."},
@@ -195,13 +145,7 @@ def _independent_sensitivity_schema(kind: str, *, table: bool) -> dict[str, Any]
             "kernel_identity": {"type": ["string", "null"],
                 "description": "Frozen physical implementation identity. No pre-submit baseline optical computation."},
         })
-        v2_fields = ("policy", "objective_ids", "budgets", "kernel_identity")
-        payload["oneOf"] = [
-            {"properties": {"schema_version": {"const": 1}},
-             "not": {"anyOf": [{"required": [name]} for name in v2_fields]}},
-            {"properties": {"schema_version": {"const": 2}},
-             "required": ["policy", "objective_ids", "budgets"]},
-        ]
+        required.extend(("policy", "objective_ids", "budgets"))
     return {"type": "object", "additionalProperties": False, "required": ["payload"],
             "properties": {"payload": payload}}
 
@@ -224,7 +168,7 @@ FILM_SYNTHESIS_ESTIMATE_INPUT_SCHEMA: dict[str, Any] = {
     "required": ["kind", "parameters"],
     "properties": {
         "kind": {"enum": ["single_source", "process", "mask_optimization", "film_optimization",
-            "film_synthesis", "film_sensitivity", "film_ideal_sensitivity", "film_thickness_error_table", "mask_weights", "mask_field", "point_weights", "python_script"]},
+            "film_synthesis", "film_ideal_sensitivity", "film_thickness_error_table", "mask_weights", "mask_field", "point_weights", "python_script"]},
         "parameters": {"type": "object"},
     },
     "allOf": [{"if": {"properties": {"kind": {"const": "film_synthesis"}}, "required": ["kind"]},
@@ -249,7 +193,7 @@ film_design_schema source_quadrature convert_gear_geometry sample_substrate_outl
 sample_substrate_surface calculation_history estimate_calculation convert_time_fields
 list_windows read_window project_editor_snapshot inspect_appearance_asset
 wait_calculation_job mask_optimization_groups ito_electrical_calculate
-list_deleted_builtin_materials plan_film_synthesis plan_film_sensitivity
+list_deleted_builtin_materials plan_film_synthesis
 plan_film_ideal_sensitivity plan_film_thickness_error_table'''.split())
 _WRITE = frozenset('''project_bbs_import_attachment project_bbs_comment project_bbs_write project_open project_research_save project_manage
  developer_report_issue developer_issue_reports developer_access developer_checks
@@ -263,7 +207,7 @@ _WRITE = frozenset('''project_bbs_import_attachment project_bbs_comment project_
  correction_board_weights correction_board_field selected_point_weights
  planet_center_occlusion_ring export_pdf open_window update_window window_action
  close_window estimate_compute_task estimate_film_optimization submit_film_optimization
- submit_film_synthesis submit_film_sensitivity submit_film_ideal_sensitivity submit_film_thickness_error_table
+ submit_film_synthesis submit_film_ideal_sensitivity submit_film_thickness_error_table
  estimate_appearance_render submit_appearance_render request_compute_confirmation
  submit_mask_weights submit_mask_field submit_point_weights submit_python_script
  submit_single_source submit_process_recipe create_default_workflow create_design_workflow

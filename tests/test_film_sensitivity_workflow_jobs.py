@@ -36,6 +36,8 @@ def test_real_typed_job_freeze_binding_checkpoint_cancel_and_replay(kind):
     frozen = jobs.freeze_workflow_request(service, request)
     spec = JobSpec.parse_frozen(freeze_spec(None, kind, {'request': frozen}))
     assert spec.executor == kind and not spec.inputs
+    assert spec.parameters['payload']['schema_version'] == 1
+    assert spec.parameters['payload']['request']['schema_version'] == (2 if kind == 'film_ideal_sensitivity' else 1)
     assert jobs.workflow_request_to_payload(jobs.deserialize_job_payload(spec.parameters['payload'])) == jobs.workflow_request_to_payload(frozen)
     progress: list[dict[str, Any]] = []
     checkpoints: list[tuple[str, dict[str, Any]]] = []
@@ -61,6 +63,7 @@ def test_real_typed_job_freeze_binding_checkpoint_cancel_and_replay(kind):
     other_kind = next(value for value in jobs.WORKFLOW_KINDS if value != kind)
     assert not job_has_viewable_result({'kind': other_kind, 'state': 'succeeded', 'result': payload})
     if checkpoints:
+        assert checkpoints[-1][1]['schema_version'] == 1
         recovered = jobs.validate_checkpoint(checkpoints[-1][1], expected_job=spec.parameters['payload'])
         assert recovered['state'] == 'cancelled'
         jobs.validate_workflow_result(recovered, expected_request=frozen, replay=True)
@@ -140,19 +143,13 @@ def test_readonly_mcp_planner_freezes_exact_request_without_job_or_transport(kin
         getattr(server, 'plan_' + other_kind)(payload)
 
 
-def test_table_request_never_changes_ideal_payload_or_legacy_request_identity():
+def test_table_request_never_changes_current_ideal_payload():
     service, ideal = problem('film_ideal_sensitivity')
     before = jobs.workflow_request_to_payload(jobs.freeze_workflow_request(service, ideal))
     _, table = problem('film_thickness_error_table')
     changed = replace(table, rows=(replace(table.rows[0], bias=7.),))
     assert jobs.workflow_request_to_payload(table) != jobs.workflow_request_to_payload(changed)
     assert jobs.workflow_request_to_payload(jobs.freeze_workflow_request(service, ideal)) == before
-    from tests.test_film_sensitivity import problem as legacy_problem
-    from coat_sim.core.film_sensitivity import film_sensitivity_request_to_payload
-    _, legacy = legacy_problem()
-    original = film_sensitivity_request_to_payload(legacy)
-    assert jobs.workflow_request_to_payload(legacy) == original
-    assert 'rows' not in original and 'sensitivity_mode' not in original
 
 
 def test_scheduler_failed_terminal_never_relabels_initial_nominal_failure():

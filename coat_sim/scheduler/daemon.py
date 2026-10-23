@@ -373,6 +373,11 @@ class Scheduler:
             return False
 
     def _attach_best_candidate_checkpoint(self, job_id, outcome):
+        from .result_capability import unsupported_sensitivity_format
+        reason = unsupported_sensitivity_format({**self.memory_status(job_id),
+            'result': (outcome or {}).get('result')})
+        if reason:
+            return {**dict(outcome or {}), 'result': None, 'result_unavailable_reason': reason}
         if self.memory_status(job_id).get('kind') == 'appearance_render':
             # Appearance output is readable only after a successful terminal
             # transition; it has no best-candidate or partial-result path.
@@ -380,14 +385,14 @@ class Scheduler:
             outcome['result'] = None
             outcome.pop('result_unavailable_reason', None)
             return outcome
-        if self.memory_status(job_id).get('kind') in ('film_sensitivity', 'film_ideal_sensitivity', 'film_thickness_error_table'):
+        if self.memory_status(job_id).get('kind') in ('film_ideal_sensitivity', 'film_thickness_error_table'):
             existing = (outcome or {}).get('result')
             if isinstance(existing, dict) and is_sensitivity_result(existing) and self._bound_film_reply(job_id, existing):
                 if outcome.get('state') in ('failed', 'cancelled'):
                     from coat_sim.core.film_sensitivity_workflow_jobs import terminal_reply
                     return {**dict(outcome), 'result': terminal_reply(existing, outcome['state'])}
                 return dict(outcome)
-        if (self.memory_status(job_id).get('kind') in ('film_synthesis', 'film_optimization', 'film_sensitivity', 'film_ideal_sensitivity', 'film_thickness_error_table')
+        if (self.memory_status(job_id).get('kind') in ('film_synthesis', 'film_optimization', 'film_ideal_sensitivity', 'film_thickness_error_table')
                 and (outcome or {}).get('state') == 'cancelled'):
             from .result_capability import is_film_optimization_result, is_synthesis_result
             existing = (outcome or {}).get('result')
@@ -398,7 +403,7 @@ class Scheduler:
                 return {**dict(outcome or {}), 'result': None,
                     'result_unavailable_reason': ('No complete current worker reply is available; '
                         'checkpoint retained for explicit review without cancellation replay.')}
-        if self.memory_status(job_id).get('kind') in ('film_synthesis', 'film_sensitivity', 'film_ideal_sensitivity', 'film_thickness_error_table'):
+        if self.memory_status(job_id).get('kind') in ('film_synthesis', 'film_ideal_sensitivity', 'film_thickness_error_table'):
             from .result_capability import load_best_candidate_checkpoint
             candidate, reason = load_best_candidate_checkpoint(self.root, job_id,
                 terminal_state=(outcome or {}).get('state', 'cancelled'))
@@ -421,12 +426,18 @@ class Scheduler:
         return outcome
 
     def _cancelled_outcome(self, job_id, previous):
+        from .result_capability import unsupported_sensitivity_format
+        reason = unsupported_sensitivity_format({**self.memory_status(job_id),
+            'result': (previous or {}).get('result')})
+        if reason:
+            return {'state': 'cancelled', 'error_code': 'cancelled', 'error': 'Cancelled by user',
+                    'result': None, 'result_unavailable_reason': reason}
         outcome: dict[str, Any] = {'state': 'cancelled', 'error_code': 'cancelled',
                    'error': (previous or {}).get('error') or 'Cancelled by user'}
         if self.memory_status(job_id).get('kind') == 'appearance_render':
             outcome['result'] = None
             return outcome
-        if self.memory_status(job_id).get('kind') in ('film_sensitivity', 'film_ideal_sensitivity', 'film_thickness_error_table'):
+        if self.memory_status(job_id).get('kind') in ('film_ideal_sensitivity', 'film_thickness_error_table'):
             from .worker import _completed_film_cancel_reply
             saved = _completed_film_cancel_reply((previous or {}).get('result'))
             if saved is not None and self._bound_film_reply(job_id, saved):
@@ -570,6 +581,10 @@ class Scheduler:
             value = self.memory_status(**arguments)
             state = value.get('state')
             result = value.get('result')
+            from .result_capability import unsupported_sensitivity_format
+            reason = unsupported_sensitivity_format(value)
+            if reason:
+                raise ValueError(reason)
             from .result_capability import (
                 is_best_candidate_result, is_film_optimization_result,
                 is_synthesis_result, job_has_viewable_result,
@@ -610,13 +625,22 @@ class Scheduler:
             with self.condition:
                 for value in self.index.values():
                     if value['state'] == 'succeeded' and (value.get('result') or {}).get('run_id') == arguments['run_id']:
+                        from .result_capability import unsupported_sensitivity_format
+                        reason = unsupported_sensitivity_format(value)
+                        if reason:
+                            raise ValueError(reason)
                         return deepcopy(value['result'])
             with self.store.queue.connection() as db:
                 row = db.execute("SELECT payload FROM queue_jobs WHERE state='succeeded' AND json_extract(payload,'$.result.run_id')=?",
                                  (arguments['run_id'],)).fetchone()
             if not row:
                 raise ValueError('run_not_found')
-            return json.loads(row['payload'])['result']
+            value = json.loads(row['payload'])
+            from .result_capability import unsupported_sensitivity_format
+            reason = unsupported_sensitivity_format(value)
+            if reason:
+                raise ValueError(reason)
+            return value['result']
         if action == 'snapshot':
             return self.memory_snapshot(**arguments)
         if action == 'events':
@@ -646,10 +670,10 @@ class Scheduler:
     def start_job(self, value, spec):
         job_id = value['job_id']
         directory = self.runtime / 'jobs' / job_id
-        directory.mkdir(parents=True, exist_ok=True)
         from .jobs import JobSpec
         frozen = JobSpec.parse_frozen(spec)
         if frozen.fingerprint != value['input_digest']: raise ValueError('frozen_input_digest_mismatch')
+        directory.mkdir(parents=True, exist_ok=True)
         write_text(directory / 'spec.json', frozen.canonical_json)
         from .film_display import FILM_DISPLAY_EXECUTORS
         if frozen.executor in FILM_DISPLAY_EXECUTORS:

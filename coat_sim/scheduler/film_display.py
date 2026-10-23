@@ -19,7 +19,7 @@ from uuid import uuid4
 from .io import write_json
 
 FILM_DISPLAY_EXECUTORS = frozenset({
-    "film_optimization", "film_synthesis", "film_sensitivity", "film_ideal_sensitivity",
+    "film_optimization", "film_synthesis", "film_ideal_sensitivity",
 })
 MAX_DISPLAY_BYTES = 128 * 1024
 MAX_CONTROL_BYTES = 4096

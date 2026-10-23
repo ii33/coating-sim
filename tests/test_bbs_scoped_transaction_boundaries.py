@@ -1,6 +1,7 @@
 """Scoped BBS publication preserves ordinary validation and atomic ownership."""
 from contextlib import contextmanager
 from copy import deepcopy
+import json
 
 import pytest
 
@@ -48,19 +49,31 @@ def test_discussion_capture_is_stale_after_same_store_unrelated_write(tmp_path):
     before = hashes(store)
     with pytest.raises(ProjectError) as error:
         store._publish(records, data, discussion_only=True)
-    assert error.value.code == "stale_document"
+    assert error.value.code == "stale_project"
     assert hashes(store) == before
     assert ordinary in {row["id"] for row in store.manifest["documents"]}
 
 
-def test_ordinary_publish_still_rejects_unrelated_invalid_design_after_bbs_save(tmp_path):
+def test_local_publish_isolated_but_targeted_invalid_design_remains_rejected_after_bbs_save(tmp_path):
     store = ProjectStore.create(tmp_path / "project", "Project")
     source = store.create_document("source", deepcopy(_RECTANGULAR_SOURCE))
-    store, _path = damage_source(store, source)
+    store, bad_path = damage_source(store, source)
     ProjectBbsService(store).create_post("journal", "Independent", "Allowed BBS scope")
+    bad_bytes = bad_path.read_bytes()
+    # An independent current-schema write has no dependency on the bad source.
+    created = store.create_document("source", deepcopy(_RECTANGULAR_SOURCE))
+    assert created != source
+    assert bad_path.read_bytes() == bad_bytes
+    assert store.resolve_document(created)["root_document_id"] == created
     before = hashes(store)
     with pytest.raises(ProjectError, match="aperture_kind"):
-        store.create_document("source", deepcopy(_RECTANGULAR_SOURCE))
+        store.save_document(source, json.loads(bad_bytes))
+    assert hashes(store) == before
+    with pytest.raises(ProjectError, match="aperture_kind"):
+        store.resolve_document(source)
+    # Whole-project capture includes that document and still rejects it.
+    with pytest.raises(ProjectError, match="aperture_kind"):
+        store.snapshot_saved_inputs()
     assert hashes(store) == before
 
 

@@ -379,9 +379,6 @@ def _film_reply_matches_payload(reply, payload):
         if kind in ('coat_sim.film_ideal_sensitivity_result', 'coat_sim.film_thickness_error_table_result'):
             from coat_sim.core.film_sensitivity_workflow_jobs import result_matches_job
             return result_matches_job(reply, payload)
-        if kind == 'coat_sim.film_sensitivity_result':
-            from coat_sim.core.film_sensitivity_jobs import result_matches_job
-            return result_matches_job(reply, payload)
         if kind == 'coat_sim.film_synthesis_result':
             from coat_sim.core.film_synthesis_io import film_synthesis_request_from_payload
             expected_id, expected, _ = film_synthesis_request_from_payload(payload['request'])
@@ -505,10 +502,6 @@ def run(root, job_id, owner_pid, owner_instance):
             from coat_sim.core.film_sensitivity_workflow_jobs import execute_job as execute_workflow_job
             reply = execute_workflow_job(spec.parameters, cancel, report,
                                         directory / 'best-candidate.json', write_json, **display_options)
-        elif spec.executor == 'film_sensitivity':
-            from coat_sim.core.film_sensitivity_jobs import execute_job as execute_sensitivity_job
-            reply = execute_sensitivity_job(spec.parameters, cancel, report,
-                                            directory / 'best-candidate.json', write_json, **display_options)
         else:
             from coat_sim.core.api import CoatService
             from coat_sim.core import isolated_compute
@@ -560,14 +553,14 @@ def run(root, job_id, owner_pid, owner_instance):
             else: raise ValueError('executor_not_registered')
         if cancel.is_set():
             saved = (_completed_film_cancel_reply(reply, spec.parameters.get('payload'))
-                if spec.executor in ('film_synthesis', 'film_optimization', 'film_sensitivity',
+                if spec.executor in ('film_synthesis', 'film_optimization',
                                      'film_ideal_sensitivity', 'film_thickness_error_table') else None)
             if saved is None:
                 raise InterruptedError('cancelled')
             outcome = {'state': 'cancelled', 'result': saved, 'error_code': 'cancelled',
                 'error': 'Cancelled by user', 'cancel_snapshot': {'source': 'worker_completed_reply',
                     'replay_performed': False}}
-        elif spec.executor in ('film_sensitivity', 'film_ideal_sensitivity', 'film_thickness_error_table') and reply.get('state') == 'failed':
+        elif spec.executor in ('film_ideal_sensitivity', 'film_thickness_error_table') and reply.get('state') == 'failed':
             outcome = {'state': 'failed', 'result': reply, 'error_code': 'algorithm_failed',
                        'error': reply.get('message') or 'Sensitivity evaluation failed.'}
         else:
@@ -576,7 +569,7 @@ def run(root, job_id, owner_pid, owner_instance):
     except BaseException as exc:
         traceback.print_exc()
         partial_result, unavailable_reason = None, ''
-        cancelled_film = (spec is not None and spec.executor in ('film_synthesis', 'film_optimization', 'film_sensitivity',
+        cancelled_film = (spec is not None and spec.executor in ('film_synthesis', 'film_optimization',
                           'film_ideal_sensitivity', 'film_thickness_error_table')
                           and (isinstance(exc, InterruptedError) or cancel.is_set()))
         if cancelled_film:

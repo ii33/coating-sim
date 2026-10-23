@@ -3,7 +3,7 @@ from dataclasses import asdict
 import hashlib
 import math
 
-KINDS = frozenset({"single_source", "process", "mask_optimization", "film_optimization", "film_synthesis", "film_sensitivity", "film_ideal_sensitivity", "film_thickness_error_table", "appearance_render", "mask_weights", "mask_field", "point_weights", "python_script"})
+KINDS = frozenset({"single_source", "process", "mask_optimization", "film_optimization", "film_synthesis", "film_ideal_sensitivity", "film_thickness_error_table", "appearance_render", "mask_weights", "mask_field", "point_weights", "python_script"})
 
 
 def canonical_parameters(service, kind, supplied):
@@ -24,9 +24,6 @@ def canonical_parameters(service, kind, supplied):
     if kind == "film_synthesis":
         from .film_synthesis_jobs import canonical_parameters
         return canonical_parameters(service, value)
-    if kind == "film_sensitivity":
-        from .film_sensitivity_jobs import canonical_parameters
-        return canonical_parameters(getattr(service, "film_design_service", service), value)
     if kind == "python_script":
         if set(value) - {"code", "files", "timeout_s"}:
             raise ValueError("脚本参数包含未知字段")
@@ -151,6 +148,8 @@ def input_file_fingerprints(service, kind, parameters):
 
 
 def estimate(service, kind, parameters):
+    if kind not in KINDS:
+        raise ValueError("invalid_compute_kind: unsupported compute kind")
     if kind in ("film_ideal_sensitivity", "film_thickness_error_table"):
         from .film_sensitivity_workflow_jobs import workflow_request_from_payload, estimate_workflow_resources
         request = workflow_request_from_payload(parameters["payload"])
@@ -183,18 +182,6 @@ def estimate(service, kind, parameters):
                     "objective_count": len(request.get("objectives", [])),
                     "seed_count": len(request.get("seed_designs", []))},
                 "basis": "No matching measured film synthesis history; request limits are not a runtime prediction"}
-    if kind == "film_sensitivity":
-        request = parameters["payload"]
-        return {"summary": "膜厚敏感性分析 / 优化", "execution_project_root": str(service.root),
-                "estimated_s": None, "work_index": None, "sample_count": 0,
-                "operations": {"operation": request["operation"],
-                    "robustness_objective": request["robustness_objective"],
-                    "error_model": request["error_model"],
-                    "max_iterations": request.get("max_iterations"),
-                    "max_evaluations": request.get("max_evaluations"),
-                    "objective_count": len(request["objectives"]),
-                    "scenario_count": len(request["scenarios"])},
-                "basis": "Explicit error model and finite scenarios, not a yield or runtime prediction"}
     name = {"single_source": "单源沉积", "process": "工艺沉积仿真", "mask_optimization": "源与修正板优化",
             "mask_weights": "径向遮挡分析", "mask_field": "工件盘遮挡热图", "point_weights": "选点遮挡分析",
             "python_script": "Python 沙箱脚本"}[kind]

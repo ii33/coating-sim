@@ -48,7 +48,6 @@ from coat_sim.core.appearance_compute import (APPEARANCE_TOOL_ARGUMENTS,
 from coat_sim.core.compute_tasks import ComputeTaskStore
 from coat_sim.core.mcp_contracts import (FILM_SYNTHESIS_ESTIMATE_INPUT_SCHEMA,
                                           FILM_SYNTHESIS_PLAN_INPUT_SCHEMA, FILM_SYNTHESIS_SUBMIT_INPUT_SCHEMA,
-                                          FILM_SENSITIVITY_PLAN_INPUT_SCHEMA, FILM_SENSITIVITY_SUBMIT_INPUT_SCHEMA,
                                           FILM_IDEAL_SENSITIVITY_PLAN_INPUT_SCHEMA, FILM_IDEAL_SENSITIVITY_SUBMIT_INPUT_SCHEMA,
                                           FILM_ERROR_TABLE_PLAN_INPUT_SCHEMA, FILM_ERROR_TABLE_SUBMIT_INPUT_SCHEMA,
                                           ITO_ELECTRICAL_INPUT_SCHEMA,
@@ -121,8 +120,6 @@ class CapabilityMCPServer(MCPServer):
         schemas["estimate_compute_task"] = FILM_SYNTHESIS_ESTIMATE_INPUT_SCHEMA
         schemas["plan_film_synthesis"] = FILM_SYNTHESIS_PLAN_INPUT_SCHEMA
         schemas["submit_film_synthesis"] = FILM_SYNTHESIS_SUBMIT_INPUT_SCHEMA
-        schemas["plan_film_sensitivity"] = FILM_SENSITIVITY_PLAN_INPUT_SCHEMA
-        schemas["submit_film_sensitivity"] = FILM_SENSITIVITY_SUBMIT_INPUT_SCHEMA
         schemas["plan_film_ideal_sensitivity"] = FILM_IDEAL_SENSITIVITY_PLAN_INPUT_SCHEMA
         schemas["submit_film_ideal_sensitivity"] = FILM_IDEAL_SENSITIVITY_SUBMIT_INPUT_SCHEMA
         schemas["plan_film_thickness_error_table"] = FILM_ERROR_TABLE_PLAN_INPUT_SCHEMA
@@ -1219,48 +1216,6 @@ def submit_film_synthesis(payload: dict[str, Any], client_request_id: str | None
         raise _error(exc) from exc
 
 
-@mcp.tool()
-def plan_film_sensitivity(payload: dict[str, Any]) -> dict[str, Any]:
-    """Read-only freeze a separate thickness-error analysis/optimization request.
-
-    Process assumptions are request data, not inferred defaults: callers may
-    specify independent, common-mode, material-common-mode or linear-drift
-    factors, plus bounded-amplitude or standard-deviation semantics. Per-layer
-    legacy, absolute-nm and relative-fraction scales add under one signed layer
-    factor (not RSS). Explicit scenario coefficients remain part of the frozen
-    request. ``nominal_preserving`` accepts only finite-scenario objectives;
-    original nominal bounds remain hard constraints, with no added margin.
-
-    This read-only operation does not run a calculation, modify nominal targets,
-    create an estimate or job, or enqueue work. The canonical payload must still
-    pass the closed sensitivity deserializer; this discovery schema is not the
-    sole validation boundary.
-    """
-    from coat_sim.core.film_sensitivity_jobs import prepare_sensitivity_payload
-    try:
-        request = prepare_sensitivity_payload(service.film_design_service, payload)
-        return {"ok": True, "request": request,
-                "execution": "Use coat_sim.film_sensitivity_cli or submit_film_sensitivity; no computation was performed."}
-    except (ValueError, TypeError, KeyError, ArithmeticError) as exc:
-        raise ToolError(f"invalid_arguments: {exc}") from exc
-
-
-@mcp.tool()
-def submit_film_sensitivity(payload: dict[str, Any], client_request_id: str | None = None) -> dict[str, Any]:
-    """Submit an independent frozen sensitivity task through confirmed durable scheduling.
-
-    The new process-model fields and explicit coefficients are frozen into the
-    same ``film_sensitivity`` job payload. Submission retains normal request-ID
-    deduplication and compute-release confirmation; it is not a direct worker
-    call and does not turn robustness improvement into nominal acceptance.
-    """
-    from coat_sim.core.film_sensitivity_jobs import submit_sensitivity
-    try:
-        return submit_sensitivity(service, payload, client_request_id)
-    except (ServiceError, OSError, ValueError, TypeError) as exc:
-        raise _error(exc) from exc
-
-
 def _plan_independent_sensitivity(payload, executor):
     from coat_sim.core.film_sensitivity_workflow_jobs import (
         prepare_workflow_payload, workflow_for_request, workflow_request_from_payload,
@@ -1292,8 +1247,8 @@ def plan_film_ideal_sensitivity(payload: dict[str, Any]) -> dict[str, Any]:
     """Read-only freeze a deterministic local-Jacobian sensitivity optimization.
 
     Explicit absolute J*1nm or relative J*d columns are not manufacturing
-    errors. Version 1 keeps its original strict nominal policy. Version 2
-    explicitly chooses strict nominal or a user-budgeted fixed-initial-spectrum
+    errors. The current schema 2 request explicitly chooses strict nominal
+    or a user-budgeted fixed-initial-spectrum
     guard; original nominal acceptance is reported independently. The first
     complete in-budget execution evaluation locks the baseline, not this plan.
     No error-table value, process preset, probability or implicit k=0 enters.
@@ -2566,7 +2521,7 @@ def close_window(window_type: UiWindowType, force: bool = False,
 
 
 @mcp.tool()
-def estimate_compute_task(kind: Literal["single_source", "process", "mask_optimization", "film_optimization", "film_synthesis", "film_sensitivity", "mask_weights", "mask_field", "point_weights", "python_script"],
+def estimate_compute_task(kind: Literal["single_source", "process", "mask_optimization", "film_optimization", "film_synthesis", "film_ideal_sensitivity", "film_thickness_error_table", "mask_weights", "mask_field", "point_weights", "python_script"],
                           parameters: dict[str, Any]) -> dict[str, Any]:
     """Describe workload and empirical duration; never execute physics or a script.
 

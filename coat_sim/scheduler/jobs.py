@@ -10,7 +10,7 @@ PROTOCOL_VERSION = 1
 MAX_RAYTRACE_SPEC_BYTES = 20 * 1024 * 1024
 EXECUTORS = frozenset({'process', 'process_recipe', 'single_source', 'mask_optimization',
                        'film_optimization', 'mask_weights', 'mask_field', 'point_weights',
-                       'film_synthesis', 'film_sensitivity', 'film_ideal_sensitivity',
+                       'film_synthesis', 'film_ideal_sensitivity',
                        'film_thickness_error_table', 'geometric_raytrace', 'appearance_render', 'python_script', 'probe'})
 
 def canonical(value):
@@ -68,6 +68,11 @@ class JobSpec:
             raise ValueError('unsupported_protocol_version')
         if value['executor'] not in EXECUTORS or not isinstance(value['parameters'], dict) or not isinstance(value['inputs'], dict):
             raise ValueError('invalid_job_spec')
+        from .result_capability import unsupported_sensitivity_format
+        reason = unsupported_sensitivity_format({
+            'kind': value['executor'], 'request': value['parameters'].get('payload')})
+        if reason:
+            raise ValueError(reason)
         if (value['executor'] == 'geometric_raytrace'
                 and len(serialized.encode('utf-8')) > MAX_RAYTRACE_SPEC_BYTES):
             raise ValueError('geometric_raytrace_request_exceeds_20_mib')
@@ -83,6 +88,8 @@ class JobSpec:
 
 def freeze_spec(service, kind, parameters):
     """Capture every referenced design once; original paths are provenance only."""
+    if kind not in EXECUTORS:
+        raise ValueError('unsupported executor: ' + str(kind))
     values = deepcopy(parameters)
     if kind == 'geometric_raytrace':
         if not isinstance(values, dict) or set(values) - {'request', 'deposition_artifact'} or 'request' not in values:
@@ -111,12 +118,6 @@ def freeze_spec(service, kind, parameters):
         if workflow_for_request(request) != kind:
             raise ValueError('sensitivity executor differs from request kind')
         return JobSpec(kind, {'payload': build_workflow_job_payload(service, request)}, {}).to_dict()
-    if kind == 'film_sensitivity':
-        if set(values) not in ({'request'}, {'payload'}):
-            raise ValueError('film_sensitivity requires one independent request')
-        from coat_sim.core.film_sensitivity_jobs import build_job_payload as build_sensitivity_job_payload
-        payload = build_sensitivity_job_payload(service, values.get('request', values.get('payload')))
-        return JobSpec(kind, {'payload': payload}, {}).to_dict()
     if kind == 'appearance_render':
         if set(values) != {'frozen'} or not isinstance(values.get('frozen'), dict):
             raise ValueError('appearance_render requires one frozen request envelope')

@@ -33,7 +33,7 @@ def source_hashes():
     files = (
         "scripts/benchmark_ideal_scalar_probes.py",
         "coat_sim/core/film_ideal_sensitivity.py",
-        "coat_sim/core/film_ideal_sensitivity_v2.py",
+        "coat_sim/core/_film_ideal_sensitivity_core.py",
         "coat_sim/core/film_optimization_derivatives.py",
         "coat_sim/core/film_optics.py",
         "coat_sim/core/film_optimization_needle.py",
@@ -44,7 +44,6 @@ def source_hashes():
 def fixture(layers, full_grid, source_nk):
     import numpy as np
     from coat_sim.core import film_ideal_sensitivity as ideal
-    from coat_sim.core import film_ideal_sensitivity_v2 as v2
     from coat_sim.core.film_design import validate_design
     from coat_sim.core.film_design_service import FilmDesignService
     from coat_sim.core.film_optimization import FilmOptimizationObjective, FilmThicknessVariable
@@ -86,14 +85,14 @@ def fixture(layers, full_grid, source_nk):
         normalization_scale=(1., .8, .6, .9)[i],
     ) for i, (lo, hi, metric, bound) in enumerate(bands))
     ids = tuple(f"new-band-{i}" for i in range(4))
-    request = v2.FilmIdealSensitivityV2Request(
+    request = ideal.FilmIdealSensitivityRequest(
         design, 1, objectives,
         tuple(FilmThicknessVariable("front", row["id"], 0., 1000.)
               for row in design["front_layers"]), "relative",
         max_iterations=1, max_evaluations=None,
         strict_lower_bound_objective_indices=(0, 1, 2, 3),
         policy="bounded_baseline_degradation", objective_ids=ids,
-        budgets=tuple(v2.FilmIdealDegradationBudget(i, .1) for i in ids),
+        budgets=tuple(ideal.FilmIdealDegradationBudget(i, .1) for i in ids),
     )
     frozen = ideal.freeze_film_ideal_sensitivity_request(Service(), request)
     return frozen, dict(source_sha256=hashlib.sha256(raw).hexdigest(),
@@ -104,7 +103,7 @@ def fixture(layers, full_grid, source_nk):
 def run_worker(case, measurement=None):
     import numpy as np
     from coat_sim.core import film_ideal_sensitivity as ideal
-    from coat_sim.core import film_ideal_sensitivity_v2 as v2
+    from coat_sim.core import _film_ideal_sensitivity_core as core
     from coat_sim.core import film_optimization_derivatives as derivatives
 
     # These are enforceable CPU/address-space limits, not just post-hoc RSS claims.
@@ -112,14 +111,14 @@ def run_worker(case, measurement=None):
     resource.setrlimit(resource.RLIMIT_AS, (1024**3, 1024**3))
     frozen, evidence = fixture(case["layers"], case["full_grid"], case["source_nk"])
     design = frozen.design_snapshot
-    physical = ideal._Evaluator(frozen).physical(design)
-    center = ideal._Evaluator(frozen).scalar_objective(design)
+    physical = core._Evaluator(frozen).physical(design)
+    center = core._Evaluator(frozen).scalar_objective(design)
     probes: list[dict] = []
     stencils: list[tuple[float, float, float, float]] = []
     for variable in frozen.variables:
         value = physical[variable.layer_id]
-        x1, x2 = v2._bounded_stencil(value, variable.lower_nm, variable.upper_nm)
-        probes.extend(ideal._candidate_design(design, (variable,), (x,)) for x in (x1, x2))
+        x1, x2 = core._bounded_stencil(value, variable.lower_nm, variable.upper_nm)
+        probes.extend(core._candidate_design(design, (variable,), (x,)) for x in (x1, x2))
         stencils.append((value, x1, x2, variable.upper_nm - variable.lower_nm))
     designs = [design] if case["operation"] == "F" else probes
 
@@ -132,15 +131,15 @@ def run_worker(case, measurement=None):
             answer.append(evaluator.scalar_objective(changed) if scalar else
                           evaluator.evaluate(changed, probe=True).analysis.objective_value)
         if case["operation"] != "F":
-            return [ideal._three_point_derivative(center, answer[2*i], answer[2*i+1],
+            return [core._three_point_derivative(center, answer[2*i], answer[2*i+1],
                                                    value, x1, x2) * span
                     for i, (value, x1, x2, span) in enumerate(stencils)]
         return answer
 
     # Accuracy gate precedes every timing in this subprocess.
-    reference = values(ideal._Evaluator(frozen), measurement is not None)
+    reference = values(core._Evaluator(frozen), measurement is not None)
     if measurement is None:
-        actual = values(ideal._Evaluator(frozen), True)
+        actual = values(core._Evaluator(frozen), True)
         if [x.hex() for x in actual] != [x.hex() for x in reference]:
             raise AssertionError("precision gate failed: scalar/reference are not bit-exact")
     calls = 0
@@ -155,7 +154,7 @@ def run_worker(case, measurement=None):
     rows = []
     for scalar in ((False, True) if measurement is None else (measurement["scalar"],)):
         for warm in ((False, True) if measurement is None else (measurement["warm"],)):
-            evaluator = ideal._Evaluator(frozen) if warm else None
+            evaluator = core._Evaluator(frozen) if warm else None
             if evaluator is not None:
                 # Warm the same run-owned material series, never a candidate F.
                 values(evaluator, scalar)
@@ -166,7 +165,7 @@ def run_worker(case, measurement=None):
             calls = 0
             wall, cpu = time.perf_counter(), time.process_time()
             if evaluator is None:
-                evaluator = ideal._Evaluator(frozen)
+                evaluator = core._Evaluator(frozen)
             output = values(evaluator, scalar)
             elapsed, cpu_elapsed = time.perf_counter() - wall, time.process_time() - cpu
             assert [x.hex() for x in output] == [x.hex() for x in reference]

@@ -31,7 +31,7 @@ def app():
 
 class _WorkflowPhysicsClient:
     def __init__(self):
-        self.executors = ["film_ideal_sensitivity", "film_thickness_error_table", "film_sensitivity"]
+        self.executors = ["film_ideal_sensitivity", "film_thickness_error_table"]
         self.submissions = []
         self.rows = {}
         self.unknown = False
@@ -45,10 +45,6 @@ class _WorkflowPhysicsClient:
         if self.unknown:
             raise OSError("held lost submission acknowledgement")
         execute = workflow_jobs.execute_job
-        if frozen.executor == "film_sensitivity":
-            from coat_sim.core import film_sensitivity_jobs
-
-            execute = film_sensitivity_jobs.execute_job
         payload = execute(frozen.parameters, Event(), lambda _item: None,
                           "memory-checkpoint", lambda *_args: None)
         state = {"completed": "succeeded", "partial": "succeeded",
@@ -145,9 +141,9 @@ def test_initial_entries_have_no_invented_table_or_ideal_defaults(harness, app):
     assert panel.idealSensitivityMode == ""
     assert panel.idealSensitivityPolicy == "bounded_baseline_degradation"
     assert panel.idealOptions == {"max_iterations": "", "max_evaluations": ""}
-    assert len(panel.idealSensitivityLayers) == len(panel.layerErrors)
+    assert len(panel.idealSensitivityLayers) == len(harness.session.design["front_layers"])
     assert all(row["selected"] for row in panel.idealSensitivityLayers)
-    assert panel.errorModel == panel.amplitudeSemantics == panel.distribution == ""
+    assert panel.activeWorkflow == "ideal"
     with window_runtime(app, harness.owner) as (window, warnings):
         click(app, window, window.findChild(QQuickItem, "filmSensitivityOpenButton"))
         assert window.findChild(QObject, "filmSensitivityDialog").property("visible")
@@ -155,15 +151,13 @@ def test_initial_entries_have_no_invented_table_or_ideal_defaults(harness, app):
         root = window.contentItem()
         assert _find_visual_item(root, "filmSensitivityTableTab") is not None
         assert _find_visual_item(root, "filmSensitivityIdealTab") is not None
-        assert _find_visual_item(root, "filmSensitivityLegacyTab") is not None
+        assert _find_visual_item(root, "filmSensitivityLegacyTab") is None
         assert window.findChild(QObject, "filmThicknessErrorTableAnalyzeButton") is not None
         ideal_optimize = window.findChild(QObject, "filmIdealSensitivityOptimizeButton")
         assert ideal_optimize is not None and ideal_optimize.isEnabled()
-        assert window.findChild(QObject, "filmSensitivityAnalyzeButton") is not None
+        assert window.findChild(QObject, "filmSensitivityAnalyzeButton") is None
         click(app, window, _find_visual_item(root, "filmSensitivityIdealTab"))
         assert panel.activeWorkflow == "ideal"
-        click(app, window, _find_visual_item(root, "filmSensitivityLegacyTab"))
-        assert panel.activeWorkflow == "legacy"
         click(app, window, _find_visual_item(root, "filmSensitivityTableTab"))
         assert panel.activeWorkflow == "table"
         assert not warnings, warnings
@@ -203,7 +197,7 @@ def test_table_blank_rejects_but_explicit_zero_is_frozen_and_never_applicable(ha
     row = next(item for item in request.rows if item.layer_id == layer_id)
     assert row.bias == 0. and row.bias_unit == "absolute_nm"
     assert _run_table(harness) is not None
-    assert not panel.canApply and not panel.idealCanApply
+    assert not panel.idealCanApply and not panel.applySelectedBest()
     assert "不可应用" in panel.tableResultSummary
 
 
@@ -359,7 +353,7 @@ def test_table_and_ideal_drafts_are_isolated_and_focus_survives_typing(harness, 
         assert panel.activeWorkflow == "table"
         field = _find_visual_item(window.contentItem(), "filmThicknessBias_" + layer_id)
         assert field is not None, warnings
-        field.forceActiveFocus()
+        click(app, window, field)
         QTest.qWait(15)
         QTest.keyClick(window, Qt.Key.Key_1)
         QTest.keyClick(window, Qt.Key.Key_E)
@@ -373,7 +367,7 @@ def test_table_and_ideal_drafts_are_isolated_and_focus_survives_typing(harness, 
 def test_tab_switch_and_dialog_reopen_preserve_all_workflow_drafts_and_results(harness, app):
     panel = harness.panel
 
-    # Create real physics-backed results for all three independent entries.
+    # Create real physics-backed results for both independent current entries.
     table_layer = panel.thicknessErrorRows[0]["layer_id"]
     _set_bias(panel, table_layer, "1")
     _run_table(harness)
@@ -381,7 +375,7 @@ def test_tab_switch_and_dialog_reopen_preserve_all_workflow_drafts_and_results(h
 
     _bounded_variable(harness)
     assert panel.setIdealSensitivityMode("absolute")
-    # Preserve this legacy regression's former strict hard-gate semantics.
+    # Exercise the current strict policy without degradation allowances.
     assert panel.setIdealSensitivityPolicy("strict_nominal")
     assert panel.setIdealOption("max_iterations", "2")
     assert panel.setIdealOption("max_evaluations", "12")
@@ -390,17 +384,6 @@ def test_tab_switch_and_dialog_reopen_preserve_all_workflow_drafts_and_results(h
     assert panel.idealHasResult, panel.idealError
     ideal_job_id = panel.idealJobId
 
-    assert panel.setChoice("policy", "robustness_only")
-    assert panel.setChoice("objective", "linear_sensitivity_norm")
-    assert panel.setChoice("model", "independent")
-    assert panel.setChoice("semantics", "bounded_amplitude")
-    for row in panel.layerErrors:
-        assert panel.setMagnitude(row["layer_id"], "1")
-    assert panel.start("analyze"), panel.error
-    harness.pool.run()
-    assert panel.hasResult, panel.error
-    legacy_job_id = panel.jobId
-
     with window_runtime(app, harness.owner) as (window, warnings):
         open_button = window.findChild(QQuickItem, "filmSensitivityOpenButton")
         click(app, window, open_button)
@@ -408,36 +391,32 @@ def test_tab_switch_and_dialog_reopen_preserve_all_workflow_drafts_and_results(h
         tabs = window.findChild(QObject, "filmSensitivityWorkflowTabs")
         assert tabs.property("currentIndex") == 1
 
-        for index, name in ((0, "table"), (1, "ideal"), (2, "legacy"), (0, "table")):
+        for index, name in ((0, "table"), (1, "ideal"), (0, "table")):
             click(app, window, _find_visual_item(root, (
-                "filmSensitivityTableTab", "filmSensitivityIdealTab", "filmSensitivityLegacyTab"
+                "filmSensitivityTableTab", "filmSensitivityIdealTab"
             )[index]))
             assert panel.activeWorkflow == name
             assert panel.tableHasResult and panel.tableJobId == table_job_id
             assert panel.idealHasResult and panel.idealJobId == ideal_job_id
-            assert panel.hasResult
-            assert panel.jobId == {"table": table_job_id, "ideal": ideal_job_id,
-                                   "legacy": legacy_job_id}[name]
+            assert panel.jobId == {"table": table_job_id, "ideal": ideal_job_id}[name]
             assert panel.thicknessErrorRows[0]["bias_text"] == "1"
             assert panel.idealSensitivityMode == "absolute"
-            assert panel.layerErrors[0]["magnitude"] == "1"
 
         # The dialog is a persistent child of the optimization window; hiding
         # and reopening it must retain the explicitly selected tab and state.
         dialog = window.findChild(QObject, "filmSensitivityDialog")
-        dialog.setProperty("visible", False)
+        QTest.keyClick(window, Qt.Key.Key_Escape)
         app.processEvents()
         assert not dialog.property("visible")
         click(app, window, open_button)
         assert dialog.property("visible")
         assert tabs.property("currentIndex") == 0
         assert panel.activeWorkflow == "table"
-        assert panel.tableHasResult and panel.idealHasResult and panel.hasResult
+        assert panel.tableHasResult and panel.idealHasResult
         assert panel.tableJobId == table_job_id and panel.idealJobId == ideal_job_id
         assert panel.jobId == table_job_id
         assert panel.thicknessErrorRows[0]["bias_text"] == "1"
         assert panel.idealSensitivityMode == "absolute"
-        assert panel.layerErrors[0]["magnitude"] == "1"
         assert not warnings, warnings
 
 
@@ -483,7 +462,7 @@ def test_table_result_history_is_read_only_and_report_failure_preserves_file(har
     assert "disk full" in panel.tableError
     panel.load_verified_history(payload, "table-history-1")
     assert panel.activeWorkflow == "table" and panel.tableJobId == "table-history-1"
-    assert panel.tableHasResult and not panel.canApply and not panel.idealCanApply
+    assert panel.tableHasResult and not panel.idealCanApply and not panel.applySelectedBest()
     assert not panel.applySelectedBest()
 
 
@@ -498,7 +477,7 @@ def test_ideal_requires_explicit_scale_and_selected_columns_and_source_fence(har
     assert not panel.startIdealSensitivityOptimization()
     assert "至少选择一个" in panel.idealError
     assert panel.setIdealSensitivityLayer(layer_id, True)
-    # This regression exercises the old nominal-only acceptance path.
+    # Exercise the current strict nominal policy.
     assert panel.setIdealSensitivityPolicy("strict_nominal")
     assert panel.setIdealOption("max_iterations", "2")
     assert panel.setIdealOption("max_evaluations", "12")

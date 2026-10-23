@@ -1,7 +1,8 @@
 """Typed scheduling adapters for independent ideal and error-table workflows.
 
-The legacy explicit-scenario request retains its own interpretation. New
-workflows never invent a process model or derive optimizer weights from a table.
+Only the current ideal request and independent thickness-error table are
+accepted. Neither workflow invents a process model or derives optimizer weights
+from a table.
 """
 from __future__ import annotations
 
@@ -12,11 +13,10 @@ from typing import Any, Mapping
 
 
 WORKFLOW_KINDS = ("film_ideal_sensitivity", "film_thickness_error_table")
-_ALL_KINDS = (*WORKFLOW_KINDS, "film_sensitivity")
 
 
 def _api(kind: str):
-    if kind not in _ALL_KINDS:
+    if kind not in WORKFLOW_KINDS:
         raise ValueError("unknown independent sensitivity workflow")
     return import_module("coat_sim.core." + kind)
 
@@ -24,7 +24,12 @@ def _api(kind: str):
 def _for_payload(payload: Mapping[str, Any], suffix: str) -> str:
     if not isinstance(payload, Mapping):
         raise ValueError("workflow payload must be an object")
-    for kind in _ALL_KINDS:
+    if payload.get("kind") == "coat_sim.film_sensitivity_" + suffix:
+        raise ValueError("unsupported sensitivity format: process sensitivity has been removed")
+    if (payload.get("kind") == "coat_sim.film_ideal_sensitivity_" + suffix
+            and (type(payload.get("schema_version")) is not int or payload["schema_version"] != 2)):
+        raise ValueError("unsupported sensitivity format: ideal sensitivity requires schema 2")
+    for kind in WORKFLOW_KINDS:
         if payload.get("kind") == "coat_sim." + kind + "_" + suffix:
             return kind
     raise ValueError("unknown independent sensitivity " + suffix + " kind")
@@ -33,10 +38,7 @@ def _for_payload(payload: Mapping[str, Any], suffix: str) -> str:
 def workflow_for_request(request: Any) -> str:
     if isinstance(request, Mapping):
         return _for_payload(request, "request")
-    if (type(request).__module__ == "coat_sim.core.film_ideal_sensitivity_v2"
-            and type(request).__name__ == "FilmIdealSensitivityV2Request"):
-        return "film_ideal_sensitivity"
-    for kind in _ALL_KINDS:
+    for kind in WORKFLOW_KINDS:
         # Exact class ownership is a dispatch hint only; the typed freeze below
         # is the validation boundary and rejects unknown/inconsistent fields.
         if type(request).__module__ == "coat_sim.core." + kind:
@@ -109,8 +111,6 @@ def canonical_parameters(service: Any, supplied: Mapping[str, Any]) -> dict[str,
 def build_job_payload(service: Any, request: Any) -> dict[str, Any]:
     frozen = freeze_workflow_request(service, request)
     kind = workflow_for_request(frozen)
-    if kind not in WORKFLOW_KINDS:
-        raise ValueError("legacy scenario jobs retain their original adapter")
     return {"schema_version": 1, "kind": "coat_sim." + kind + "_job",
             "request": workflow_request_to_payload(frozen)}
 
@@ -149,9 +149,6 @@ def is_workflow_result(value: Any) -> bool:
 
 
 def terminal_reply(value: Mapping[str, Any], state: str) -> dict[str, Any]:
-    if _for_payload(value, "result") == "film_sensitivity":
-        from .film_sensitivity_jobs import terminal_reply as legacy_terminal_reply
-        return legacy_terminal_reply(value, state)
     if state not in ("failed", "cancelled"):
         raise ValueError("terminal sensitivity reply requires failed or cancelled")
     result = workflow_result_from_payload(value)
@@ -215,8 +212,6 @@ def submit_workflow(service: Any, payload: Mapping[str, Any], client_request_id:
     from coat_sim.scheduler.submission import submit_confirmed
 
     kind = workflow_for_request(payload)
-    if kind not in WORKFLOW_KINDS:
-        raise ValueError("legacy scenario submission retains its original adapter")
     values = canonical_parameters(service, {"payload": payload})
     identity = digest({"kind": kind, "parameters": values, "input_files": {}})
     if client_request_id is None:

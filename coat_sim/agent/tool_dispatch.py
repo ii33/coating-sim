@@ -17,7 +17,7 @@ LIVE_READ_TOOLS = frozenset({'read_window', 'list_windows', 'project_list',
     'project_inspect', 'project_resolve', 'project_editor_snapshot', 'calculation_queue_snapshot',
     'refractiveindex_status', 'library_status'})
 STRONG_IDEMPOTENT_TOOLS = frozenset({'submit_single_source', 'submit_process_recipe',
-    'submit_mask_optimization', 'submit_film_optimization', 'submit_film_synthesis', 'submit_film_sensitivity', 'submit_film_ideal_sensitivity', 'submit_film_thickness_error_table', 'submit_appearance_render',
+    'submit_mask_optimization', 'submit_film_optimization', 'submit_film_synthesis', 'submit_film_ideal_sensitivity', 'submit_film_thickness_error_table', 'submit_appearance_render',
     'create_default_workflow', 'create_design_workflow', 'submit_mask_weights',
     'submit_mask_field', 'submit_point_weights', 'submit_python_script', 'request_compute_confirmation'})
 

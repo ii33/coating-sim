@@ -1315,12 +1315,26 @@ class FilmOptimizationQuickController(QObject):
         return self._sensitivity_controller
 
     def _apply_sensitivity_candidate(self, result, context) -> bool:
-        """Explicit fixed-topology apply, fenced by both source edit versions."""
+        """Apply a current ideal candidate, fenced by both source edit versions."""
+        from coat_sim.core.film_ideal_sensitivity import FilmIdealSensitivityResult
+
+        if not isinstance(result, FilmIdealSensitivityResult) or result.schema_version != 2:
+            return False
+        if result.policy == "strict_nominal":
+            if result.best_analysis is None or result.best_analysis.nominal_targets_met is not True:
+                return False
+        elif result.policy == "bounded_baseline_degradation":
+            if result.usable_candidate is not True or result.guard_pass is not True:
+                return False
+        else:
+            return False
         if (self._busy or self._source_closed or self.session is None
                 or self._source_controller is None or context is None
                 or result.state not in {"completed", "partial"}
                 or not result.is_final or result.operation != "optimize"
                 or result.best_design is None):
+            return False
+        if context.get("workflow") != "ideal":
             return False
         compute, operation = context["project_compute"], context["project_operation"]
         if compute is not None and (compute.editing_frozen or not compute.accepts(operation)):

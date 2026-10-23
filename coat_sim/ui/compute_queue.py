@@ -67,6 +67,10 @@ def _read_queue_result(service, store, job_id, asset_path=None):
     """Dispatch a queue result by its typed product kind."""
     job = store.read_job(job_id)
     result = _require_result_payload(job)
+    from coat_sim.scheduler.result_capability import unsupported_sensitivity_format
+    reason = unsupported_sensitivity_format(job)
+    if reason:
+        raise ValueError(reason)
     if claims_sensitivity_result(job):
         if not is_sensitivity_result(result):
             raise ValueError('Typed sensitivity result kind/schema is invalid.')
@@ -78,14 +82,9 @@ def _read_queue_result(service, store, job_id, asset_path=None):
         executor = workflow_for_result(result)
         if job.get('kind') != executor:
             raise ValueError('Typed sensitivity result does not belong to this queue executor.')
-        if executor == 'film_sensitivity':
-            from coat_sim.core.film_sensitivity_jobs import (
-                deserialize_job_payload, result_matches_job, terminal_reply,
-            )
-        else:
-            from coat_sim.core.film_sensitivity_workflow_jobs import (
-                deserialize_job_payload, result_matches_job, terminal_reply,
-            )
+        from coat_sim.core.film_sensitivity_workflow_jobs import (
+            deserialize_job_payload, result_matches_job, terminal_reply,
+        )
         from coat_sim.scheduler.jobs import JobSpec
         if not isinstance(job_id, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', job_id):
             raise ValueError('Invalid sensitivity queue identity.')
@@ -281,9 +280,14 @@ def _annotate_synthesis_acceptance(root, row, result, cache):
 def _annotate_result_availability(root, rows, *, synthesis_cache=None):
     """Mark terminal rows whose successful result or best candidate can be opened."""
     root = Path(root).resolve()
+    from coat_sim.scheduler.result_capability import unsupported_sensitivity_format
     synthesis_cache = OrderedDict() if synthesis_cache is None else synthesis_cache
     run_ids = set()
     for row in rows:
+        reason = unsupported_sensitivity_format(row)
+        if reason:
+            row.update(resultAvailable=False, resultUnavailableReason=reason)
+            continue
         if row.get('kind') == 'film_synthesis':
             # Derived badges are never durable authority, including on rows
             # whose result was removed/replaced after an earlier successful read.
@@ -356,6 +360,10 @@ def _annotate_result_availability(root, rows, *, synthesis_cache=None):
                 connection.close()
 
     for row in rows:
+        reason = unsupported_sensitivity_format(row)
+        if reason:
+            row.update(resultAvailable=False, resultUnavailableReason=reason)
+            continue
         if row.get('state') not in ('succeeded', 'failed', 'cancelled'):
             continue
         try:
@@ -848,7 +856,7 @@ class QueueResultViewer(QObject):
         if self._future is not None:
             self._future.cancel()
         if self._shown_job == job_id:
-            if self._shown_kind == 'film_sensitivity' and self._shown_film_result is not None:
+            if self._shown_kind in ('film_ideal_sensitivity', 'film_thickness_error_table') and self._shown_film_result is not None:
                 self._show_sensitivity_result(job_id, self._shown_film_result)
                 return
             if self._shown_kind == 'film_optimization' and self._shown_film_result is not None:
@@ -903,6 +911,12 @@ class QueueResultViewer(QObject):
                 job_id, False,
                 '结果资产包不可用；队列历史仍保留，不能仅凭摘要恢复计算结果。')
             return
+        from coat_sim.scheduler.result_capability import unsupported_sensitivity_format
+        reason = unsupported_sensitivity_format(loaded)
+        if reason:
+            self.statusChanged.emit('无法打开结果：' + reason)
+            self.availabilityChanged.emit(job_id, False, reason)
+            return
         if is_film_optimization_result(loaded):
             self._shown_job = job_id
             self._shown_kind = 'film_optimization'
@@ -927,7 +941,8 @@ class QueueResultViewer(QObject):
             self.statusChanged.emit('Film synthesis candidate is ready for its read-only typed result view.')
             return
         if is_sensitivity_result(loaded):
-            self._shown_job, self._shown_kind = job_id, 'film_sensitivity'
+            from coat_sim.core.film_sensitivity_workflow_jobs import workflow_for_result
+            self._shown_job, self._shown_kind = job_id, workflow_for_result(loaded)
             self._shown_film_result = deepcopy(loaded)
             self._show_sensitivity_result(job_id, loaded)
             self.availabilityChanged.emit(job_id, True, '')

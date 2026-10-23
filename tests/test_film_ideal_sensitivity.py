@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from coat_sim.core import film_ideal_sensitivity as ideal
+from coat_sim.core import _film_ideal_sensitivity_core as core
 from coat_sim.core.film_design_service import simulate_frozen
 from coat_sim.core.film_optimization import (
     FilmOptimizationObjective,
@@ -58,6 +59,8 @@ def problem(*, two=False, mode="absolute", upper=0.05, max_evaluations=1000, max
         mode,
         max_evaluations=max_evaluations,
         max_iterations=max_iterations,
+        policy="strict_nominal",
+        objective_ids=tuple(f"objective-{i}" for i in range(len(synthesis.objectives))),
     )
 
 
@@ -97,7 +100,7 @@ def test_ideal_definition_physical_units_and_relative_one_percent_scaling(mode, 
             )
         request = replace(request, design_snapshot=changed)
     result = analysis(service, request)
-    evaluator = ideal._Evaluator(result.frozen_request)
+    evaluator = core._Evaluator(result.frozen_request)
     data = evaluator.evaluate(result.frozen_request.design_snapshot)
     thickness = evaluator.physical(result.frozen_request.design_snapshot)
     amplitude = np.ones(2) if mode == "absolute" else np.asarray(list(thickness.values()))
@@ -126,7 +129,7 @@ def test_real_forward_and_analytic_constraint_jacobian_match_canonical_and_fd(me
         ),
     )
     frozen = ideal.freeze_film_ideal_sensitivity_request(service, request)
-    evaluator = ideal._Evaluator(frozen)
+    evaluator = core._Evaluator(frozen)
     data = evaluator.evaluate(frozen.design_snapshot)
     assert frozen.frozen_material_snapshot is not None
     for i, angle in enumerate((0.0, 42.0)):
@@ -165,7 +168,7 @@ def test_sensitivity_columns_are_independent_of_variables_and_frozen_in_selected
     )
     result = analysis(service, request)
     assert result.frozen_request.sensitivity_layer_ids == ("high-film", "low-film")
-    evaluator = ideal._Evaluator(result.frozen_request)
+    evaluator = core._Evaluator(result.frozen_request)
     assert evaluator.columns == ("high-film", "low-film")
     assert evaluator.evaluate(result.frozen_request.design_snapshot).nominal_jacobian.shape == (
         1,
@@ -186,8 +189,9 @@ def test_true_weighted_mean_square_not_sqrt_or_mean_of_objectives():
             550.0, 550.0, 1, mode="range", upper_bound=1.0, weight=1.0, normalization_scale=0.7
         ),
     )
-    result = analysis(service, replace(request, objectives=objectives))
-    evaluator = ideal._Evaluator(result.frozen_request)
+    result = analysis(service, replace(request, objectives=objectives,
+        objective_ids=tuple(f"objective-{i}" for i in range(len(objectives)))))
+    evaluator = core._Evaluator(result.frozen_request)
     data = evaluator.evaluate(result.frozen_request.design_snapshot)
     jac = data.nominal_jacobian[:, 0]
     expected = (9.0 * np.sum((jac[:3] / 0.2) ** 2) + (jac[3] / 0.7) ** 2) / 28.0
@@ -205,7 +209,7 @@ def test_true_weighted_mean_square_not_sqrt_or_mean_of_objectives():
     ],
 )
 def test_bounded_fd_stencils_and_quadratic_exactness(value, low, high, side):
-    x1, x2 = ideal._bounded_stencil(value, low, high)
+    x1, x2 = core._bounded_stencil(value, low, high)
     assert low <= x1 <= high and low <= x2 <= high and len({value, x1, x2}) == 3
     assert (
         (x1 < value < x2)
@@ -216,20 +220,20 @@ def test_bounded_fd_stencils_and_quadratic_exactness(value, low, high, side):
     def f(x):
         return (x - value) ** 2 + 3 * (x - value) + 5
 
-    derivative = ideal._three_point_derivative(f(value), f(x1), f(x2), value, x1, x2)
+    derivative = core._three_point_derivative(f(value), f(x1), f(x2), value, x1, x2)
     assert derivative == pytest.approx(3.0, rel=1e-10)
 
 
 def test_fd_uses_actual_unequal_representable_float_offsets():
     value = float(2**53)
     low, high = value - 3.0, value + 6.0
-    x1, x2 = ideal._bounded_stencil(value, low, high)
+    x1, x2 = core._bounded_stencil(value, low, high)
     assert (value - x1) != (x2 - value)
 
     def f(x):
         return (x - value) ** 2 + 3 * (x - value) + 5
 
-    assert ideal._three_point_derivative(f(value), f(x1), f(x2), value, x1, x2) == pytest.approx(
+    assert core._three_point_derivative(f(value), f(x1), f(x2), value, x1, x2) == pytest.approx(
         3.0
     )
 
@@ -239,29 +243,29 @@ def test_fd_uses_actual_unequal_representable_float_offsets():
     [(1.0, 1.0, 1.0), (1.0, 1.0, np.nextafter(1.0, np.inf)), (0.0, 0.0, np.nextafter(0.0, 1.0))],
 )
 def test_fd_insufficient_representable_domain_is_explicit(value, low, high):
-    with pytest.raises(ideal._FDDomainInsufficient, match="fd_domain_insufficient"):
-        ideal._bounded_stencil(value, low, high)
+    with pytest.raises(core._FDDomainInsufficient, match="fd_domain_insufficient"):
+        core._bounded_stencil(value, low, high)
 
 
 @pytest.mark.parametrize("mode", ["absolute", "relative"])
 def test_real_objective_gradient_h_half_diagnostic_and_relative_chain(mode):
     service, request = problem(two=True, mode=mode)
     frozen = ideal.freeze_film_ideal_sensitivity_request(service, request)
-    evaluator = ideal._Evaluator(frozen)
+    evaluator = core._Evaluator(frozen)
     base = evaluator.evaluate(frozen.design_snapshot).analysis.objective_value
     estimates = []
     for multiplier in (1.0, 0.5):
         gradient = []
         for variable in frozen.variables:
             value = evaluator.physical(frozen.design_snapshot)[variable.layer_id]
-            x1, x2 = ideal._bounded_stencil(
+            x1, x2 = core._bounded_stencil(
                 value, variable.lower_nm, variable.upper_nm, step_scale=multiplier
             )
             f = []
             for x in (x1, x2):
-                changed = ideal._candidate_design(frozen.design_snapshot, (variable,), (x,))
+                changed = core._candidate_design(frozen.design_snapshot, (variable,), (x,))
                 f.append(evaluator.evaluate(changed, probe=True).analysis.objective_value)
-            gradient.append(ideal._three_point_derivative(base, f[0], f[1], value, x1, x2))
+            gradient.append(core._three_point_derivative(base, f[0], f[1], value, x1, x2))
         estimates.append(gradient)
     np.testing.assert_allclose(estimates[0], estimates[1], rtol=3e-7, atol=1e-12)
     assert evaluator.probes == 8
@@ -284,9 +288,9 @@ def test_nominal_constraint_jacobian_is_unscaled_J_then_z_span_only():
         ),
     )
     frozen = ideal.freeze_film_ideal_sensitivity_request(service, request)
-    data = ideal._Evaluator(frozen).evaluate(frozen.design_snapshot)
+    data = core._Evaluator(frozen).evaluate(frozen.design_snapshot)
     spans = np.asarray([85.0, 60.0])
-    rows = ideal._constraint_rows(data, frozen, [0, 1], spans)
+    rows = core._strict_nominal_constraint_rows(data, frozen, [0, 1], spans)
     np.testing.assert_allclose(rows[1][0], data.nominal_jacobian[0] * spans / 0.3)
     np.testing.assert_allclose(rows[1][1], -data.nominal_jacobian[0] * spans / 0.3)
 
@@ -330,8 +334,8 @@ def test_strict_bounds_use_exact_original_check_and_single_inward_ulp():
         service, replace(request, strict_lower_bound_objective_indices=())
     ).best_analysis.nominal_targets_met
     frozen = ideal.freeze_film_ideal_sensitivity_request(service, request)
-    data = ideal._Evaluator(frozen).evaluate(frozen.design_snapshot)
-    rows = ideal._constraint_rows(data, frozen, [0], np.asarray([85.0]))
+    data = core._Evaluator(frozen).evaluate(frozen.design_snapshot)
+    rows = core._strict_nominal_constraint_rows(data, frozen, [0], np.asarray([85.0]))
     assert rows[0][0] == initial - np.nextafter(initial, np.inf)
     upper = replace(
         request,
@@ -392,14 +396,14 @@ def test_raw_block_budget_cannot_be_bypassed_by_one_multiblock_candidate():
 def test_cancel_during_raw_probe_block_never_publishes_partial_gradient(monkeypatch):
     service, request = problem()
     event = Event()
-    original = ideal._simulate_thickness_jacobian_arrays
+    original = core._simulate_thickness_jacobian_arrays
 
     def cancel_after_second(*args, **kwargs):
         answer = original(*args, **kwargs)
         event.set()  # Baseline was the first block, this scalar probe is second.
         return answer
 
-    monkeypatch.setattr(ideal, "_simulate_thickness_jacobian_arrays", cancel_after_second)
+    monkeypatch.setattr(core, "_simulate_thickness_jacobian_arrays", cancel_after_second)
     result = ideal.execute_film_ideal_sensitivity_request(service, request, cancel_event=event)
     assert result.state == "cancelled" and result.forward_evaluations == 2
     assert result.fd_gradient_evaluations == 0 and result.best_thickness_nm == {"low-film": 80.0}
@@ -409,7 +413,7 @@ def test_cancel_during_raw_probe_block_never_publishes_partial_gradient(monkeypa
 def test_exact_request_owned_cache_has_explicit_hits_and_probes():
     service, request = problem()
     frozen = ideal.freeze_film_ideal_sensitivity_request(service, request)
-    evaluator = ideal._Evaluator(frozen)
+    evaluator = core._Evaluator(frozen)
     first = evaluator.evaluate(frozen.design_snapshot)
     assert evaluator.evaluate(deepcopy(frozen.design_snapshot), probe=True) is first
     assert (
@@ -422,7 +426,7 @@ def test_exact_request_owned_cache_has_explicit_hits_and_probes():
     changed["front_layers"][0]["thickness"]["value"] = np.nextafter(80.0, 81.0)
     evaluator.evaluate(changed)
     assert evaluator.evaluations == 2 and evaluator.forward == 2
-    assert ideal._request_identity(frozen) != ideal._request_identity(
+    assert core._request_identity(frozen) != core._request_identity(
         replace(frozen, sensitivity_mode="relative")
     )
 
@@ -514,7 +518,7 @@ def test_resource_estimate_accounts_independently_for_columns_probes_and_slsqp_a
         resources["estimated_jacobian_bytes"] > 0
         and resources["estimated_slsqp_workspace_bytes"] > 0
     )
-    monkeypatch.setattr(ideal, "MAX_WORKING_BYTES", 1)
+    monkeypatch.setattr(core, "MAX_WORKING_BYTES", 1)
     with pytest.raises(ValueError, match="no grid or columns were dropped"):
         ideal.freeze_film_ideal_sensitivity_request(service, request)
 
@@ -532,7 +536,8 @@ def test_factory_requires_explicit_mode_and_does_not_leak_old_solver_error_contr
     )
     with pytest.raises(TypeError):
         cast(Any, ideal.ideal_sensitivity_request_from_optimization)(base)
-    result = ideal.ideal_sensitivity_request_from_optimization(base, sensitivity_mode="absolute")
+    result = ideal.ideal_sensitivity_request_from_optimization(base, sensitivity_mode="absolute",
+        policy="strict_nominal", objective_ids=("objective-0",), budgets=())
     assert result.max_iterations is None and result.max_evaluations is None
     assert result.sensitivity_layer_ids == ("low-film",)
     payload = ideal.film_ideal_sensitivity_request_to_payload(result)
@@ -591,7 +596,7 @@ def test_hard_nominal_gate_accepts_infeasible_fd_probes_but_never_retains_them()
     result = ideal.execute_film_ideal_sensitivity_request(
         service, request, checkpoint_callback=checkpoints.append
     )
-    assert result.termination_reason in ("evaluation_limit", "slsqp_converged")
+    assert result.state == "completed" and result.termination_reason == "no_improvement"
     assert result.fd_gradient_evaluations == 1 and result.probe_evaluations == 2
     assert result.best_thickness_nm == {"low-film": 80.0}
     assert result.best_analysis == result.baseline_analysis
@@ -637,7 +642,7 @@ def test_fixed_variable_is_removed_only_from_solver_dof_not_sensitivity(monkeypa
 
 def test_zero_derivative_objective_stops_explicitly_without_division_or_yield_claim(monkeypatch):
     service, request = problem()
-    original = ideal.simulate_with_thickness_jacobian
+    original = core.simulate_with_thickness_jacobian
 
     def zero_jacobian(*args, **kwargs):
         output = original(*args, **kwargs)
@@ -645,7 +650,7 @@ def test_zero_derivative_objective_stops_explicitly_without_division_or_yield_cl
             output[key] = np.zeros_like(output[key])
         return output
 
-    monkeypatch.setattr(ideal, "simulate_with_thickness_jacobian", zero_jacobian)
+    monkeypatch.setattr(core, "simulate_with_thickness_jacobian", zero_jacobian)
     result = ideal.execute_film_ideal_sensitivity_request(service, request)
     assert result.state == "completed" and result.termination_reason == "zero_sensitivity_objective"
     assert result.best_analysis is not None
@@ -721,7 +726,10 @@ def test_strict_source_gate_is_applied_to_frozen_replay_not_only_live_freeze():
         json.dumps(frozen, sort_keys=True, ensure_ascii=False, allow_nan=False).encode()
     ).hexdigest()
     changed_request = ideal.film_ideal_sensitivity_request_from_payload(payload["frozen_request"])
-    payload["cache_identity"] = ideal._request_identity(changed_request)
+    payload["cache_identity"] = core._request_identity(changed_request)
+    payload["baseline_evidence"]["request_identity"] = payload["cache_identity"]
+    evidence = ideal._evidence_from_payload(payload["baseline_evidence"])
+    payload["baseline_evidence"]["digest"] = core._evidence_digest(evidence)
     with pytest.raises(ValueError, match="low/nk"):
         ideal.validate_film_ideal_sensitivity_result_payload(payload, replay=False)
 
@@ -801,7 +809,7 @@ def test_tiny_squared_objective_replay_has_no_large_absolute_tolerance_loophole(
 
 def test_tiny_initial_F_normalization_overflow_is_explicit_and_keeps_feasible_baseline(monkeypatch):
     service, request = problem()
-    original = ideal.simulate_with_thickness_jacobian
+    original = core.simulate_with_thickness_jacobian
 
     def tiny_at_baseline(design, *args, **kwargs):
         output = original(design, *args, **kwargs)
@@ -809,7 +817,7 @@ def test_tiny_initial_F_normalization_overflow_is_explicit_and_keeps_feasible_ba
         output["jacobian_R"] = np.full_like(output["jacobian_R"], 1e-160 if value == 80.0 else 1.0)
         return output
 
-    monkeypatch.setattr(ideal, "simulate_with_thickness_jacobian", tiny_at_baseline)
+    monkeypatch.setattr(core, "simulate_with_thickness_jacobian", tiny_at_baseline)
     result = ideal.execute_film_ideal_sensitivity_request(service, request)
     assert result.state == "failed" and result.termination_reason == "numerical_failure"
     assert "conditioning overflows" in result.message
@@ -854,7 +862,8 @@ def test_same_budget_unconditioned_contrast_exposes_small_F_early_stop_without_c
         context.setattr(scipy_optimize, "minimize", unconditioned)
         raw = ideal.execute_film_ideal_sensitivity_request(service, request)
     conditioned = ideal.execute_film_ideal_sensitivity_request(service, request)
-    assert raw.termination_reason == conditioned.termination_reason == "slsqp_converged"
+    assert raw.termination_reason == "no_improvement" and not raw.improved
+    assert conditioned.termination_reason == "slsqp_converged"
     assert raw.best_analysis is not None
     assert conditioned.best_analysis is not None
     assert raw.best_analysis.objective_value == initial_F
@@ -947,7 +956,7 @@ def test_full_topology_resource_gate_rejects_4096_layers_before_freeze_or_forwar
     assert (
         estimate["estimated_forward_workspace_bytes"]
         >= physical_lower_bound
-        > ideal.MAX_WORKING_BYTES
+        > core.MAX_WORKING_BYTES
     )
     assert estimate["derivative_columns"] == 1
 
@@ -962,7 +971,7 @@ def test_full_topology_resource_gate_rejects_4096_layers_before_freeze_or_forwar
     small = topology(89)
     estimate_89 = ideal.estimate_film_ideal_sensitivity_resources(small)
     assert estimate_89["condition_points"] == 4096
-    assert estimate_89["estimated_working_bytes"] < ideal.MAX_WORKING_BYTES
+    assert estimate_89["estimated_working_bytes"] < core.MAX_WORKING_BYTES
     ideal._check_resources(small)
 
 
@@ -973,7 +982,7 @@ def test_4098_nonbinary_original_grid_matches_all_single_point_physics_and_prese
     )
     request = replace(request, objectives=(objective,))
     frozen = ideal.freeze_film_ideal_sensitivity_request(service, request)
-    evaluator = ideal._Evaluator(frozen)
+    evaluator = core._Evaluator(frozen)
     full = evaluator.evaluate(frozen.design_snapshot)
     expected_waves = np.linspace(objective.wavelength_min_nm, objective.wavelength_max_nm, 4098)
     recorded_waves = np.asarray([row.wavelength_nm for row in full.analysis.nominal_conditions])
@@ -981,7 +990,7 @@ def test_4098_nonbinary_original_grid_matches_all_single_point_physics_and_prese
     assert evaluator.forward == evaluator.jacobian == 2
     singles, single_jacobians = [], []
     for wave in expected_waves:
-        single = ideal.simulate_with_thickness_jacobian(
+        single = core.simulate_with_thickness_jacobian(
             frozen.design_snapshot,
             evaluator.materials,
             evaluator.derivative_variables,
@@ -1009,7 +1018,7 @@ def test_resampled_return_grid_is_rejected_not_labelled_as_original(monkeypatch)
             FilmOptimizationObjective(500.123, 600.789, 4098, mode="range", upper_bound=1.0),
         ),
     )
-    original = ideal.simulate_with_thickness_jacobian
+    original = core.simulate_with_thickness_jacobian
 
     def replace_grid(*args, **kwargs):
         output = original(*args, **kwargs)
@@ -1018,7 +1027,7 @@ def test_resampled_return_grid_is_rejected_not_labelled_as_original(monkeypatch)
         output["wavelength_nm"] = waves
         return output
 
-    monkeypatch.setattr(ideal, "simulate_with_thickness_jacobian", replace_grid)
+    monkeypatch.setattr(core, "simulate_with_thickness_jacobian", replace_grid)
     result = ideal.execute_film_ideal_sensitivity_request(service, request)
     assert result.state == "failed" and result.termination_reason == "numerical_failure"
     assert "changed the exact original wavelength grid" in result.message
@@ -1040,7 +1049,7 @@ def test_4098_grid_cancellation_at_first_raw_block_prevents_second_block_and_par
         ),
     )
     event = Event()
-    original = ideal.simulate_with_thickness_jacobian
+    original = core.simulate_with_thickness_jacobian
     calls = []
 
     def cancel(*args, **kwargs):
@@ -1049,10 +1058,10 @@ def test_4098_grid_cancellation_at_first_raw_block_prevents_second_block_and_par
         event.set()
         return output
 
-    monkeypatch.setattr(ideal, "simulate_with_thickness_jacobian", cancel)
+    monkeypatch.setattr(core, "simulate_with_thickness_jacobian", cancel)
     result = ideal.execute_film_ideal_sensitivity_request(service, request, cancel_event=event)
     assert result.state == "cancelled"
-    assert len(calls) == 1 and len(calls[0]) == ideal.BLOCK_SAMPLES == 4096
+    assert len(calls) == 1 and len(calls[0]) == core.BLOCK_SAMPLES == 4096
     assert result.forward_evaluations == result.jacobian_evaluations == 1
     assert result.baseline_analysis is None and result.best_design is None
 
@@ -1067,7 +1076,7 @@ def test_original_grid_index_163_strict_nominal_decision_matches_exact_singleton
     )
     request = replace(request, objectives=(objective,))
     frozen = ideal.freeze_film_ideal_sensitivity_request(service, request)
-    evaluator = ideal._Evaluator(frozen)
+    evaluator = core._Evaluator(frozen)
     waves = np.linspace(500.0, 600.0, 4098)
     wave = float(waves[163])
     single_objective = replace(
@@ -1093,12 +1102,12 @@ def test_original_grid_index_163_strict_nominal_decision_matches_exact_singleton
         ),
     )
     assert row.wavelength_nm == wave and row.actual == boundary
-    assert not ideal.nominal_condition_pass(target, row.actual, strict_upper=True)
+    assert not core.nominal_condition_pass(target, row.actual, strict_upper=True)
     assert exact_single.best_analysis.nominal_targets_met is False
     assert full.forward_evaluations == 2 and exact_single.forward_evaluations == 1
-    # The preserved legacy opt-out path demonstrates the former relinspace
-    # bug without changing that compatibility path or accepting its identity.
-    legacy = ideal.simulate_with_thickness_jacobian(
+    # The general optics API endpoint-only call constructs its own grid.
+    # It is not the exact-grid path required by current ideal sensitivity.
+    endpoint_only = core.simulate_with_thickness_jacobian(
         frozen.design_snapshot,
         evaluator.materials,
         evaluator.derivative_variables,
@@ -1111,5 +1120,5 @@ def test_original_grid_index_163_strict_nominal_decision_matches_exact_singleton
             first_surface="front",
         ),
     )
-    assert legacy["R"][163] < boundary
-    assert ideal.nominal_condition_pass(target, legacy["R"][163], strict_upper=True)
+    assert endpoint_only["R"][163] < boundary
+    assert core.nominal_condition_pass(target, endpoint_only["R"][163], strict_upper=True)

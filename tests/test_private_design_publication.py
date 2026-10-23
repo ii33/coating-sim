@@ -78,6 +78,7 @@ def test_source_snapshot_and_static_staging_leave_root_sheji_local(tmp_path: Pat
     project = tmp_path / "project"
     (project / "coat_sim").mkdir(parents=True)
     (project / "coat_sim" / "core.py").write_text("value = 1\n", encoding="utf-8")
+    (project / "coat_sim" / "version.txt").write_bytes((project_root / "coat_sim" / "version.txt").read_bytes())
     for relative in (
         "launcher.py",
         "launcher.pyw",

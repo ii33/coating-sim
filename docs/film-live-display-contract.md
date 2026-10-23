@@ -6,7 +6,7 @@ acceptance rule, saved optical result, or application authority.
 ## Ownership and supported paths
 
 Ordinary thickness and structure optimization, hybrid automatic synthesis,
-legacy sensitivity optimization, and ideal sensitivity v1/v2 emit observations
+and both current ideal sensitivity policies emit observations
 at existing complete-candidate boundaries. Analysis-only sensitivity and the
 thickness-error table do not manufacture an optimization ranking. Finite
 perturbation scenarios, finite-difference probes, needle derivatives, partial

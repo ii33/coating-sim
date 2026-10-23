@@ -245,6 +245,30 @@ def validate_film_optimization_result(service, result) -> dict:
     return deepcopy(validated)
 
 
+def unsupported_sensitivity_format(value) -> str:
+    """Reject removed products before any generic history/bundle fallback.
+
+    Job/checkpoint envelopes remain schema 1. Only the ideal request/result
+    itself is schema 2; the independent thickness-error table remains schema 1.
+    """
+    if not isinstance(value, dict):
+        return ""
+    kind = value.get("kind", value.get("executor"))
+    if kind == "film_sensitivity" or (isinstance(kind, str)
+            and kind.startswith("coat_sim.film_sensitivity_")):
+        return "Unsupported sensitivity format: process sensitivity has been removed."
+    if kind in ("coat_sim.film_ideal_sensitivity_request", "coat_sim.film_ideal_sensitivity_result"):
+        if type(value.get("schema_version")) is not int or value["schema_version"] != 2:
+            return "Unsupported sensitivity format: ideal sensitivity requires schema 2."
+    for field in ("request", "result", "job", "payload", "frozen_request"):
+        nested = value.get(field)
+        if isinstance(nested, dict):
+            reason = unsupported_sensitivity_format(nested)
+            if reason:
+                return reason
+    return ""
+
+
 def claims_sensitivity_result(job) -> bool:
     """Select typed-only routing, never grant validity or result capability.
 
@@ -254,7 +278,7 @@ def claims_sensitivity_result(job) -> bool:
     """
     if not isinstance(job, dict):
         return False
-    kinds = ("film_sensitivity", "film_ideal_sensitivity", "film_thickness_error_table")
+    kinds = ("film_ideal_sensitivity", "film_thickness_error_table")
     result = job.get("result")
     return (job.get("kind") in kinds
             or (isinstance(result, dict)
@@ -263,6 +287,8 @@ def claims_sensitivity_result(job) -> bool:
 
 def is_best_candidate_result(result) -> bool:
     """Return whether a terminal result explicitly advertises a verified candidate."""
+    if unsupported_sensitivity_format(result):
+        return False
     if is_film_optimization_result(result):
         return True
     if claims_sensitivity_result({"result": result}):
@@ -359,7 +385,7 @@ def job_has_viewable_result(job) -> bool:
     if not isinstance(job, dict):
         return False
     result = job.get("result")
-    if not isinstance(result, dict):
+    if unsupported_sensitivity_format(job) or not isinstance(result, dict):
         return False
     if claims_sensitivity_result(job):
         if not is_sensitivity_result(result):
@@ -394,9 +420,8 @@ def job_has_viewable_result(job) -> bool:
 
 
 def is_sensitivity_result(result) -> bool:
-    from coat_sim.core.film_sensitivity_jobs import is_sensitivity_result as check
     from coat_sim.core.film_sensitivity_workflow_jobs import is_workflow_result
-    return check(result) or is_workflow_result(result)
+    return not unsupported_sensitivity_format(result) and is_workflow_result(result)
 
 
 def is_appearance_render_result(result) -> bool:
@@ -437,6 +462,9 @@ def load_best_candidate_checkpoint(root, job_id, *, terminal_state="cancelled"):
         if pointer.is_symlink() or not pointer.resolve().is_relative_to(job_directory):
             raise ValueError("checkpoint pointer escaped its job directory")
         envelope = json.loads(pointer.read_text(encoding="utf-8"))
+        reason = unsupported_sensitivity_format(envelope)
+        if reason:
+            raise ValueError(reason)
         if isinstance(envelope, dict) and envelope.get("kind") in (
                 "coat_sim.film_ideal_sensitivity_checkpoint", "coat_sim.film_thickness_error_table_checkpoint"):
             from .jobs import JobSpec
@@ -452,19 +480,6 @@ def load_best_candidate_checkpoint(root, job_id, *, terminal_state="cancelled"):
             expected = deserialize_job_payload(spec.parameters["payload"])
             if spec.executor != workflow_for_request(expected) or row.get("input_digest") != spec.fingerprint:
                 raise ValueError("sensitivity workflow checkpoint job identity mismatch")
-            return validate_checkpoint(envelope, expected_job=spec.parameters["payload"],
-                                       terminal_state=terminal_state), ""
-        if isinstance(envelope, dict) and envelope.get("kind") == "coat_sim.film_sensitivity_checkpoint":
-            from .jobs import JobSpec
-            from .store import SchedulerStore
-            from coat_sim.core.film_sensitivity_jobs import validate_checkpoint
-            spec_path = job_directory / "spec.json"
-            if spec_path.is_symlink() or not spec_path.resolve().is_relative_to(job_directory):
-                raise ValueError("sensitivity job spec escaped its scheduler directory")
-            spec = JobSpec.parse_frozen_json(spec_path.read_text(encoding="utf-8"))
-            row = SchedulerStore(root).status(job_id)
-            if spec.executor != "film_sensitivity" or row.get("input_digest") != spec.fingerprint:
-                raise ValueError("sensitivity checkpoint job identity mismatch")
             return validate_checkpoint(envelope, expected_job=spec.parameters["payload"],
                                        terminal_state=terminal_state), ""
         if isinstance(envelope, dict) and envelope.get("kind") == "coat_sim.film_synthesis_audited_checkpoint":

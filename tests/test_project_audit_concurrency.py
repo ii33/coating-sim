@@ -26,10 +26,10 @@ def consistent(snapshot):
         key for key, row in records.items() if row["kind"] == "binary_asset"}
 
 
-def interleave(store, first, second, monkeypatch):
+def interleave(store, first, second, monkeypatch, *, capture_method="_read_operation_inputs"):
     """Pause A after capture and start B at the exact common-lock boundary."""
     captured, resume, attempted = Event(), Event(), Event()
-    read = store._read_all
+    read = getattr(store, capture_method)
     lock = store._operation_lock
     first_thread: list[Thread] = []
 
@@ -54,7 +54,7 @@ def interleave(store, first, second, monkeypatch):
         return first()
 
     monkeypatch.setattr(store, "_operation_lock", ObservedLock())
-    monkeypatch.setattr(store, "_read_all", paused_read)
+    monkeypatch.setattr(store, capture_method, paused_read)
     with ThreadPoolExecutor(max_workers=2) as pool:
         a = pool.submit(run_first)
         try:
@@ -103,7 +103,7 @@ def test_snapshot_serializes_entire_capture(tmp_path, monkeypatch, mutation):
         if mutation == "delete":
             return store.remove_document(identity)
         return store.save_document(identity, source("edited"))
-    old, _ = interleave(store, store.snapshot_saved_inputs, change, monkeypatch)
+    old, _ = interleave(store, store.snapshot_saved_inputs, change, monkeypatch, capture_method="_read_all")
     consistent(old)
     assert old["manifest"]["revision"] == 1
     assert old["documents"][identity]["name"] == "old"
@@ -162,7 +162,7 @@ def test_snapshot_asset_metadata_and_payload_stay_in_one_generation(tmp_path, mo
     asset = capture_simulation_asset(ProjectResourceService(store), "spd_csv", source_file)
     identity = asset["document_id"]
     saved, _ = interleave(store, store.snapshot_saved_inputs,
-                           lambda: store.remove_document(identity), monkeypatch)
+                           lambda: store.remove_document(identity), monkeypatch, capture_method="_read_all")
     consistent(saved)
     assert saved["documents"][identity]["sha256"] == sha256(payload).hexdigest()
     assert Path(saved["assets"][identity]["path"]).read_bytes() == payload

@@ -189,9 +189,7 @@ AppWindow {
         standardButtons: Dialog.Yes | Dialog.No
         contentItem: Label {
             objectName: "filmSensitivityApplySummaryLabel"
-            text: window.controller.sensitivityController.activeWorkflow === "legacy"
-                  ? "确认将旧高级兼容页的完整评分候选应用到来源设计？来源版本变化时会整次拒绝；一次应用形成一笔可撤销修改，不会写入项目文件。"
-                  : window.controller.sensitivityController.idealApplyConfirmationSummary
+            text: window.controller.sensitivityController.idealApplyConfirmationSummary
             color: window.themeTokens.colorText
             wrapMode: Text.WordWrap
         }

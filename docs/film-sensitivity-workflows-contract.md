@@ -1,14 +1,16 @@
 # Independent ideal sensitivity and thickness-parameter analysis
 
-Updated 2026-10-23. These two typed workflows do not reinterpret legacy
-`coat_sim.film_sensitivity_request` v1 or modify ordinary optimization targets.
+Updated 2026-10-23. Only the current ideal schema 2 and parameter-table schema 1
+are accepted. Removed process/scenario requests and ideal schema 1 are explicitly
+unsupported; there is no conversion, compatibility page or fallback parser.
+Ordinary optimization targets are unchanged.
 The implementation and offline diagrams are in [algorithms.html](algorithms.html).
 
 ## Two entry points and sole state owner
 
 The existing sensitivity dialog exposes parameter-table analysis and ideal
-sensitivity optimization as separate primary pages. Explicit scenario generation
-is retained only in the advanced compatibility page. The first opening selects
+sensitivity optimization as exactly two independent pages (table index 0, ideal
+index 1). No process/scenario page remains. The first opening selects
 ideal sensitivity optimization, with no selected absolute/relative scale. Closing
 and reopening the same dialog preserves an explicitly selected page and its
 independent drafts/results. The existing `FilmSensitivityQuickController` owns drafts, pending submission, generations,
@@ -18,14 +20,16 @@ The pages do not create their own executors or a second controller.
 The table does not provide an apply-candidate operation. Its values, uncertainty
 kinds and correlation declarations never populate the ideal objective. Changing
 either draft leaves a prior report available but does not make it a result for
-the new draft. Legacy stored requests keep their original semantics.
+the new draft. Unsupported stored requests cannot be rerun, applied or opened
+through a generic simulation fallback; task metadata can still explain rejection.
 
 ## Frozen inputs and physical domain
 
 The new kinds are `coat_sim.film_ideal_sensitivity_request` and
-`coat_sim.film_thickness_error_table_request`, each with independent version 1
-request/result envelopes for the table and the original ideal policy. Ideal schema 2
-is a separate explicit policy contract; schema 1 hashes and replay are unchanged. Typed parsers reject unknown fields, nonfinite values,
+`coat_sim.film_thickness_error_table_request`. Ideal request/result schema 2
+is the sole ideal format; table request/result schema 1 remains its independent
+current format. Workflow job/checkpoint envelope version 1 is a different protocol
+and is not rejected merely for its version number. Typed parsers reject unknown fields, nonfinite values,
 invalid identities and unsupported domains. Frozen inputs bind design revision,
 complete ordered layer topology, materials and optical-set data, original
 objectives/grid/angles/polarization, strict operators, and workflow-specific
@@ -61,7 +65,7 @@ F is a deterministic local squared norm, not yield, probability or a finite
 manufacturing-error bound. Showing a relative 1% effect multiplies A by .01 and
 its squared objective by .0001; the internal definition is unchanged.
 
-For original schema 1 and schema 2 `strict_nominal`, SLSQP retains every original nominal constraint. Analytic constraint J does not
+For current policy `strict_nominal`, SLSQP retains every original nominal constraint. Analytic constraint J does not
 use sensitivity-column scaling. Strict internal slack uses one inward nextafter;
 final acceptance still uses the original physical threshold and >/< operator.
 HR >= remains >=, and IR < remains <. No margin/tolerance is substituted.
@@ -70,11 +74,10 @@ Intermediate optical infeasibility is permitted for search/FD, but only complete
 strictly feasible candidates can enter the usable incumbent archive.
 
 Because F depends on J, its gradient needs second-order physical information.
-The first implementation uses bounded three-point scalar differences instead of
-misusing J as that gradient. h_base = eps^(1/3) max(1 nm, |d_j|); central samples
-use the available distance on both sides. If distinct central points cannot be
-represented, use two legal one-sided samples with h=min(h_base,room/2). Actual
-floating coordinates determine Lagrange weights when spacing differs. A missing
+The shared implementation uses bounded three-point scalar differences instead
+of misusing J as that gradient. h_base = eps^(1/3) max(1 nm, |d_j|); select the
+largest legal central/forward/backward stencil as specified below for both
+current policies. Actual floating coordinates determine Lagrange weights when spacing differs. A missing
 valid stencil fails with fd_domain_insufficient, never a fabricated zero.
 Fixed variables stay in the design/sensitivity columns but are removed from the
 optimizer freedom. All-fixed optimize fails; independent analyze can complete.
@@ -94,7 +97,8 @@ The new ideal GUI defaults to `bounded_baseline_degradation`, not a process-erro
 model. The user must still choose absolute/relative derivative scale and provide
 one explicit nonnegative finite allowance for every original target row. Blank is
 not zero. The alternative `strict_nominal` retains the original hard nominal gate;
-its budgets are empty. Old schema 1 requests are never upgraded or rehashed.
+its budgets are empty. Ideal schema 1 and removed process requests are rejected,
+not upgraded, rehashed or interpreted through a second executor.
 
 Each stable objective ID has a `percentage_point` allowance: 0.1 percentage point
 is 0.001 of R/T power fraction, not a relative 0.1% change. Allowances bind row IDs,
@@ -135,13 +139,13 @@ probes need physical bounds, not nominal/guard feasibility, and never become
 incumbents. The guard is always against the fixed launch spectrum, never against
 the last accepted candidate or the current edited design.
 
-Schema 2 additionally selects the largest legal three-point finite-difference
+Both current policies select the largest legal three-point finite-difference
 stencil: central h=min(h_base,left,right), forward h=min(h_base,right/2), backward
 h=min(h_base,left/2), descending h with central/forward/backward tie order. Invalid,
 repeated or out-of-bound points are discarded; actual floating coordinates still
 determine the nonuniform Lagrange weights. This avoids a tiny near-boundary side
-squeezing an otherwise well-scaled one-sided stencil. Schema 1 numerics are not
-changed. Schema 2 caches only the most recent constraint tuple after baseline lock,
+squeezing an otherwise well-scaled one-sided stencil. Each evaluator caches only
+the most recent constraint tuple after its baseline lock,
 keyed by request identity and exact little-endian z bytes. Immutable arrays have
 no writable aliases; different bits/identity or incomplete construction cannot
 reuse old rows. Baseline evidence, cache storage and construction peak are included
@@ -208,7 +212,8 @@ not measured RSS. Oversized requests fail, never shrink the grid/column set.
 scheduler, confirmation/release and deduplication. CLI:
 `python -m coat_sim.film_sensitivity_workflow_cli --request frozen.json`.
 CLI requires frozen materials and does not consult a live catalog. New plan/submit
-MCP tools are separate from legacy tools. Plan is read-only; submit retains normal
+MCP tools are the only current sensitivity tools; removed process plan/submit
+tools are not registered. Plan is read-only; submit retains normal
 compute confirmation. The formal ideal job performs optimize; an independently
 valid core analyze result cannot substitute for that operation. Worker/checkpoint/
 history results match the exact persisted JobSpec and input digest before physical
@@ -225,3 +230,14 @@ Small physical and contract regressions, not research warm designs or a cold
 89-layer search, establish this implementation's initial evidence. Large-task
 parallel throughput and the unrelated experimental v2 artifact backend are not
 certified by these workflows.
+
+## One implementation, no product compatibility layer
+
+The public API is `coat_sim/core/film_ideal_sensitivity.py`; shared physical,
+analysis, scalar-probe and finite-difference helpers live only in the private
+`_film_ideal_sensitivity_core.py`. Both policies use the same current SLSQP
+executor. The physical identity binds both actual files and the actual optical
+kernel. There is no `_v2` forwarding module, schema-1 executor, public class alias,
+request adapter into the withdrawn format, or dynamic compatibility attribute.
+The parameter table remains independent. Historical research evidence is not an
+accepted product format and is not migrated.

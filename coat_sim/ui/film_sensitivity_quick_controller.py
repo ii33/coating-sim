@@ -17,27 +17,12 @@ from uuid import uuid4
 
 from PySide6.QtCore import QObject, Property, QRunnable, QThreadPool, QUrl, Signal, Slot
 
-from coat_sim.core.film_sensitivity import (
-    FilmSensitivityScenario,
-    FilmThicknessError,
-    film_sensitivity_result_from_payload,
-    freeze_film_sensitivity_request,
-    generate_film_sensitivity_scenarios,
-    sensitivity_request_from_optimization,
-    validate_film_sensitivity_result_payload,
-)
 from coat_sim.core.film_thickness_error_table import FilmThicknessErrorParameter
 from coat_sim.core.film_thickness_error_table import thickness_error_table_request_from_optimization
 from coat_sim.core.film_result_service import atomic_film_json
-from coat_sim.core.film_nominal_acceptance import solver_condition_acceptable
 from coat_sim.scheduler import SchedulerClient, freeze_spec
 from coat_sim.scheduler.desktop import RemoteCancelEvent, observe_job, submit_local_with_receipt
 from coat_sim.ui.film_synthesis_quick_adapter import synthesis_strict_upper_bound_indices
-
-
-def _raw_violation(actual, target, lower, upper):
-    return abs(actual - target) if target is not None else max(
-        0., 0. if lower is None else lower - actual, 0. if upper is None else actual - upper)
 
 
 class _Signals(QObject):
@@ -75,10 +60,7 @@ class _SensitivityTask(QRunnable):
                 terminal_reply,
             )
             executor = workflow_for_request(self.request)
-            if executor == "film_sensitivity":
-                request = freeze_film_sensitivity_request(self.service, self.request)
-            else:
-                request = freeze_workflow_request(self.service, self.request)
+            request = freeze_workflow_request(self.service, self.request)
             spec = freeze_spec(None, executor, {"request": request})
             if self.cancel.is_set() or self.disconnected.is_set() or not self.admission_check():
                 raise InterruptedError(
@@ -118,15 +100,10 @@ class _SensitivityTask(QRunnable):
                 if not isinstance(payload, dict) or row.get("state") not in ("failed", "cancelled"):
                     raise
                 payload = terminal_reply(payload, row["state"])
-            if executor == "film_sensitivity":
-                validated = validate_film_sensitivity_result_payload(
-                    payload, expected_request=request, replay=True
-                )
-            else:
-                from coat_sim.core.film_sensitivity_workflow_jobs import result_matches_job
-                if not result_matches_job(payload, spec["parameters"]["payload"]):
-                    raise ValueError("Sensitivity result is not bound to this job request/operation.")
-                validated = validate_workflow_result(payload, expected_request=request, replay=True)
+            from coat_sim.core.film_sensitivity_workflow_jobs import result_matches_job
+            if not result_matches_job(payload, spec["parameters"]["payload"]):
+                raise ValueError("Sensitivity result is not bound to this job request/operation.")
+            validated = validate_workflow_result(payload, expected_request=request, replay=True)
             self.signals.finished.emit(self.generation, validated, "")
         except Exception as exc:
             from coat_sim.scheduler.remote_client import RemoteSubmissionUnknown
@@ -139,7 +116,6 @@ class _SensitivityTask(QRunnable):
 
 class FilmSensitivityQuickController(QObject):
     changed = Signal()
-    layerErrorsChanged = Signal()
     tableRowsChanged = Signal()
     idealRowsChanged = Signal()
     overwriteRequested = Signal(str)
@@ -158,38 +134,21 @@ class FilmSensitivityQuickController(QObject):
         self._busy = False
         self._closed = False
         self._unknown_submission = False
-        self._rows: list[dict[str, Any]] = []
-        self._unit = "absolute_nm"
-        self._error_model = ""
-        self._robustness = "finite_scenario_worst"
-        self._optimization_policy = "nominal_preserving"
-        self._amplitude_semantics = ""
-        self._distribution = ""
-        self._sampling = {"sample_count": "", "seed": ""}
-        self._scenario_source: dict[str, Any] | None = None
         self._prepared_source: dict[str, Any] | None = None
         self._prepared_signature: Any = None
-        self._scenario_kind = ""
-        self._scenarios: tuple[FilmSensitivityScenario, ...] = ()
-        self._options = {"max_evaluations": "200", "max_iterations": "20"}
-        self._status = "请填写工艺误差并显式选择模型、幅度语义与分布；不会推定制造精度或自动加余量。"
         self._error = ""
-        self._payload: dict[str, Any] | None = None
         self._context: dict[str, Any] | None = None
-        self._legacy_context: dict[str, Any] | None = None
         self._table_context: dict[str, Any] | None = None
         self._ideal_context: dict[str, Any] | None = None
         self._job_id = ""
-        self._legacy_job_id = ""
         self._table_job_id = ""
         self._ideal_job_id = ""
         self._cancel: RemoteCancelEvent | None = None
         self._disconnected = threading.Event()
-        self._applied = False
         self._ideal_applied = False
         # The ordinary dialog has two independent, explicitly-typed workflows.
-        # Keep their drafts and frozen reports separate from the legacy process
-        # editor above so switching pages cannot migrate assumptions.
+        # Keep drafts and frozen reports separate so switching pages cannot
+        # migrate assumptions or reset either result.
         self._table_rows: list[dict[str, Any]] = []
         self._ideal_layer_rows: list[dict[str, Any]] = []
         self._table_correlation_json = ""
@@ -201,8 +160,8 @@ class FilmSensitivityQuickController(QObject):
         self._table_status = "填写参数表后运行；未填写不等于零。"
         self._table_error = ""
         self._ideal_mode = ""
-        # V2 is the normal ideal-sensitivity workflow.  Policy and per-row
-        # allowances are an independent draft, keyed by the owner's stable
+        # Policy and per-row allowances are an independent draft, keyed by the
+        # owner's stable
         # objective IDs so reordering objectives never reassigns an allowance.
         self._ideal_policy = "bounded_baseline_degradation"
         self._ideal_objective_rows: list[dict[str, Any]] = []
@@ -211,73 +170,17 @@ class FilmSensitivityQuickController(QObject):
         self._ideal_selection_explicit = False
         self._ideal_options = {"max_iterations": "", "max_evaluations": ""}
         self._ideal_payload: dict[str, Any] | None = None
-        self._ideal_status = "v2 默认采用受控基准退化；请选择绝对或相对尺度，并为每个目标填写百分点额度。"
+        self._ideal_status = "默认采用受控基准退化；请选择绝对或相对尺度，并为每个目标填写百分点额度。"
         self._ideal_error = ""
-        self._active_workflow = "legacy"
+        self._active_workflow = "ideal"
 
     @Property(bool, notify=changed)
     def busy(self):
         return self._busy
 
-    @Property(list, notify=layerErrorsChanged)
-    def layerErrors(self):
-        return deepcopy(self._rows)
-
-    @Property(str, notify=changed)
-    def errorUnit(self):
-        return self._unit
-
-    @Property(str, notify=changed)
-    def errorModel(self):
-        return self._error_model
-
-    @Property(str, notify=changed)
-    def robustnessObjective(self):
-        return self._robustness
-
-    @Property(str, notify=changed)
-    def optimizationPolicy(self):
-        return self._optimization_policy
-
-    @Property(str, notify=changed)
-    def amplitudeSemantics(self):
-        return self._amplitude_semantics
-
-    @Property(str, notify=changed)
-    def distribution(self):
-        return self._distribution
-
-    @Property(dict, notify=changed)
-    def sampling(self):
-        return dict(self._sampling)
-
-    @Property(str, notify=changed)
-    def scenarioDescription(self):
-        return self._scenario_description()
-
     @Property(str, notify=changed)
     def activeWorkflow(self):
         return self._active_workflow
-
-    def _scenario_description(self) -> str:
-        if not self._scenarios:
-            return "尚无有效场景；配置或来源设计改变后须重新生成。"
-        if self._scenario_kind == "axis_probes":
-            return f"{len(self._scenarios)} 个明确 ± 轴/共模探针，非随机采样、非全部联合角点。"
-        return (f"{len(self._scenarios)} 个显式 {self._distribution} 场景，seed={self._sampling['seed']}；"
-                "系数将完整冻结，不代表已校准工艺或良率。")
-
-    @Property(dict, notify=changed)
-    def options(self):
-        return dict(self._options)
-
-    @Property(int, notify=changed)
-    def scenarioCount(self):
-        return len(self._scenarios)
-
-    @Property(str, notify=changed)
-    def status(self):
-        return self._status
 
     @Property(str, notify=changed)
     def error(self):
@@ -285,13 +188,7 @@ class FilmSensitivityQuickController(QObject):
 
     @Property(str, notify=changed)
     def jobId(self):
-        if self._active_workflow == "table" and self._table_job_id:
-            return self._table_job_id
-        if self._active_workflow == "ideal" and self._ideal_job_id:
-            return self._ideal_job_id
-        if self._active_workflow == "legacy" and self._legacy_job_id:
-            return self._legacy_job_id
-        return self._job_id
+        return self._table_job_id if self._active_workflow == "table" else self._ideal_job_id
 
     @Property(str, notify=changed)
     def tableJobId(self):
@@ -300,10 +197,6 @@ class FilmSensitivityQuickController(QObject):
     @Property(str, notify=changed)
     def idealJobId(self):
         return self._ideal_job_id
-
-    @Property(bool, notify=changed)
-    def hasResult(self):
-        return self._payload is not None
 
     @Property(list, notify=tableRowsChanged)
     def thicknessErrorRows(self):
@@ -430,9 +323,6 @@ class FilmSensitivityQuickController(QObject):
         final_met = getattr(best, "nominal_targets_met", None)
         nominal = ("通过" if final_met is True else "未通过" if final_met is False else "未知")
         initial = ("通过" if initial_met is True else "未通过" if initial_met is False else "未知")
-        if getattr(result, "schema_version", 1) != 2:
-            return (f"初态原名义目标：{initial}；最终原名义目标：{nominal}。"
-                    "仅原名义目标通过时可应用。一次应用形成一笔可撤销修改，不会写入项目文件。")
         if getattr(result, "policy", None) == "strict_nominal":
             warning = ("最终原名义目标未通过；严格策略禁止应用。"
                        if final_met is False else "")
@@ -518,8 +408,8 @@ class FilmSensitivityQuickController(QObject):
         selected = getattr(frozen, "sensitivity_layer_ids", ()) if frozen is not None else ()
         scale = getattr(frozen, "sensitivity_mode", "") if frozen is not None else ""
         baseline = getattr(result, "baseline_analysis", None)
-        schema = getattr(result, "schema_version", 1)
-        policy = getattr(result, "policy", "strict_nominal" if schema == 1 else "")
+        schema = result.schema_version
+        policy = result.policy
         summary = ("理想敏感度优化 · " + str(result.state) + " / " + str(result.termination_reason)
                    + f"\n冻结敏感度尺度：{scale or '未读取'}；列 ID：{self._summary_value(selected)}"
                    + f"\n策略：{policy}（schema v{schema}）"
@@ -529,37 +419,38 @@ class FilmSensitivityQuickController(QObject):
                    f"初态={self._summary_value(getattr(result, 'baseline_solver_objective_value', None))}"
                    + f"\n初态原始名义目标通过：{self._summary_value(getattr(baseline, 'nominal_targets_met', None))}；"
                    f"最终原始名义目标通过：{self._summary_value(nominal)}")
-        if schema == 2:
-            improvement_status = getattr(result, "improvement_status", "unavailable")
-            if improvement_status not in {"improved", "no_improvement", "unavailable"}:
-                improvement_status = "unavailable"
-            summary += f"\n敏感度改善状态：{improvement_status}"
-            for caption, guard in (("初态 guard", getattr(result, "baseline_guard", None)),
-                                   ("最终 guard", getattr(result, "best_guard", None))):
-                if guard is None:
-                    summary += f"\n{caption}：未提供"
-                    continue
-                maximum_pp = float(guard.max_directional_degradation_fraction) * 100.0
-                worst = (f"{guard.worst_objective_id} / {guard.wavelength_nm:g} nm / "
-                         f"{guard.angle_deg:g}° / {guard.polarization}"
-                         if guard.worst_objective_id is not None else "无最坏点")
-                summary += (f"\n{caption}：{'通过' if guard.guard_pass else '未通过'}；"
-                            f"最大定向退化 {maximum_pp:.7g} pp；最坏点 {worst}")
-                if caption == "最终 guard":
-                    for row in guard.rows:
-                        summary += (f"\n额度行 {row.objective_id}：{row.delta_percentage_point:g} pp "
-                                    f"({row.delta_fraction:.7g} fraction)；"
-                                    f"退化消耗 {row.consumed_fraction * 100:.7g} pp；"
-                                    f"超额 {row.excess_fraction * 100:.7g} pp；最坏点 "
-                                    f"{row.wavelength_nm:g} nm/{row.angle_deg:g}°/{row.polarization}")
+        improvement_status = getattr(result, "improvement_status", "unavailable")
+        if improvement_status not in {"improved", "no_improvement", "unavailable"}:
+            improvement_status = "unavailable"
+        summary += f"\n敏感度改善状态：{improvement_status}"
+        for caption, guard in (("初态 guard", getattr(result, "baseline_guard", None)),
+                               ("最终 guard", getattr(result, "best_guard", None))):
+            if guard is None:
+                summary += f"\n{caption}：未提供"
+                continue
+            maximum_pp = float(guard.max_directional_degradation_fraction) * 100.0
+            worst = (f"{guard.worst_objective_id} / {guard.wavelength_nm:g} nm / "
+                     f"{guard.angle_deg:g}° / {guard.polarization}"
+                     if guard.worst_objective_id is not None else "无最坏点")
+            summary += (f"\n{caption}：{'通过' if guard.guard_pass else '未通过'}；"
+                        f"最大定向退化 {maximum_pp:.7g} pp；最坏点 {worst}")
+            if caption == "最终 guard":
+                for row in guard.rows:
+                    summary += (f"\n额度行 {row.objective_id}：{row.delta_percentage_point:g} pp "
+                                f"({row.delta_fraction:.7g} fraction)；"
+                                f"退化消耗 {row.consumed_fraction * 100:.7g} pp；"
+                                f"超额 {row.excess_fraction * 100:.7g} pp；最坏点 "
+                                f"{row.wavelength_nm:g} nm/{row.angle_deg:g}°/{row.polarization}")
         summary += ("\n存在可审阅候选；必须显式确认后才会应用。"
                     if getattr(result, "best_design", None) is not None
                     else "\n没有可应用候选。")
-        if schema == 2 and nominal is False:
+        if nominal is False:
             summary += "\n警示：原名义目标未通过；guard 额度通过不代表原名义目标通过。"
         return summary
 
     def _can_apply_workflow(self, workflow):
+        if workflow != "ideal":
+            return False
         payload = self._payload_for_workflow(workflow)
         context = self._table_context if workflow == "table" else self._ideal_context
         if (payload is None or self._busy or self._closed or context is None
@@ -575,20 +466,13 @@ class FilmSensitivityQuickController(QObject):
                 return False
             analysis = getattr(result, "best_analysis", None)
             nominal_met = getattr(analysis, "nominal_targets_met", None) is True
-            schema = getattr(result, "schema_version", 1)
-            if schema == 1:
+            if result.schema_version != 2:
+                return False
+            if result.policy == "strict_nominal":
                 if not nominal_met:
                     return False
-            elif schema == 2:
-                policy = getattr(result, "policy", None)
-                if policy == "strict_nominal":
-                    if not nominal_met:
-                        return False
-                elif policy == "bounded_baseline_degradation":
-                    if (getattr(result, "usable_candidate", False) is not True
-                            or getattr(result, "guard_pass", False) is not True):
-                        return False
-                else:
+            elif result.policy == "bounded_baseline_degradation":
+                if result.usable_candidate is not True or result.guard_pass is not True:
                     return False
             else:
                 return False
@@ -603,32 +487,13 @@ class FilmSensitivityQuickController(QObject):
 
     @Slot(int, result=bool)
     def selectWorkflow(self, index):
-        if type(index) is not int or index not in (0, 1, 2):
+        if type(index) is not int or index not in (0, 1):
             return False
-        value = ("table", "ideal", "legacy")[index]
+        value = ("table", "ideal")[index]
         if value != self._active_workflow:
             self._active_workflow = value
             self.changed.emit()
         return True
-
-    @Property(bool, notify=changed)
-    def canApply(self):
-        context = self._legacy_context
-        return (
-            not self._busy
-            and not self._applied
-            and self._context_is_current(context)
-            and self._payload is not None
-            and self._payload.get("is_final") is True
-            and self._payload["state"] in {"completed", "partial"}
-            and self._payload["operation"] == "optimize"
-            and self._payload.get("best_design") is not None
-            and (self._payload.get("frozen_request", {}).get("optimization_policy", "robustness_only")
-                 != "nominal_preserving" or
-                 self._payload.get("best_analysis", {}).get("nominal_targets_met") is True)
-            and context is not None
-            and self.owner.session is not None
-        )
 
     def _context_is_current(self, context):
         if context is None or self.owner.session is None:
@@ -651,50 +516,6 @@ class FilmSensitivityQuickController(QObject):
                 and (compute is None or (not compute.editing_frozen
                     and compute.accepts(context.get("project_operation")))))
 
-    @Property(str, notify=changed)
-    def resultSummary(self):
-        if self._payload is None:
-            return ""
-        result = film_sensitivity_result_from_payload(self._payload)
-        best, baseline = result.best_analysis, result.baseline_analysis
-        request = result.frozen_request
-        policy = getattr(request, "optimization_policy", "robustness_only")
-        semantics = getattr(request, "error_amplitude_semantics", "bounded_amplitude")
-        policy_label = "原名义可行域约束" if policy == "nominal_preserving" else "纯降敏，名义指标可能恶化"
-        text = (f"策略 {policy}（{policy_label}）；误差尺度 "
-                + ("标准差 1σ（非有界幅度）" if semantics == "standard_deviation" else "有界幅度")
-                + f"；模型 {request.error_model}\n")
-        scales = []
-        for error in request.errors:
-            absolute = error.absolute_nm + (error.magnitude if error.unit == "absolute_nm" else 0.)
-            relative = error.relative_fraction + (error.magnitude if error.unit == "relative_fraction" else 0.)
-            scales.append(f"{error.layer_id}: {absolute:g} nm + {relative * 100:g}% × d")
-        text += "冻结误差尺度：" + "；".join(scales) + "\n"
-        text += (
-            f"{result.state} / {result.termination_reason} · "
-            f"候选评价 {result.evaluations}，前向 {result.forward_evaluations}，Jacobian {result.jacobian_evaluations}"
-        )
-        if best is not None:
-            raw_worst = max((_raw_violation(row.actual, row.target_value, row.lower_bound, row.upper_bound)
-                for row in best.nominal_conditions), default=0.)
-            text += (
-                f"\n所选误差目标 {result.robustness_objective}: {best.robustness_value:.8g}"
-                + (f"（原 {baseline.robustness_value:.8g}）" if baseline else "")
-                + f"\n原始最坏违规 {raw_worst * 100:.7g} 个百分点；"
-                + f"最大归一化违规 {best.nominal_max_normalized_error:.8g}；"
-                + ("名义采样通过" if best.nominal_targets_met else "名义采样未通过")
-                + ("；求解容差内可接受" if result.solver_acceptable is True else
-                   "；求解容差内不可接受" if result.solver_acceptable is False else "；求解容差状态未知")
-                + f"\n一阶敏感度范数 {best.linear_sensitivity_norm:.8g}；完整有限扰动场景 {len(best.finite_scenarios)} 个。"
-                + (f"有限场景采样通过 {sum(row.finite_targets_met for row in best.finite_scenarios)}"
-                   f"/{len(best.finite_scenarios)}；最坏归一化违规 "
-                   f"{max(row.finite_max_normalized_error for row in best.finite_scenarios):.8g}。"
-                   if best.finite_scenarios else "")
-            )
-        if result.termination_reason == "initial_nominal_infeasible":
-            text += "\n初态不满足原名义约束：请先恢复名义可行性或更换初态；未暗改目标或增加余量。"
-        return text + "\n这是局部搜索，非全局最优证明；线性估计不是有限误差上界，有限场景不是制造良率或连续谱证明。"
-
     def load_verified_history(self, payload, job_id):
         """Queue loader already replayed physics off the GUI thread.
 
@@ -703,23 +524,17 @@ class FilmSensitivityQuickController(QObject):
         from coat_sim.core.film_sensitivity_workflow_jobs import workflow_result_from_payload, workflow_for_request
         result = workflow_result_from_payload(payload)
         workflow = workflow_for_request(result.frozen_request)
+        if workflow not in {"film_thickness_error_table", "film_ideal_sensitivity"}:
+            raise ValueError("unsupported historical sensitivity workflow")
         self._job_id = job_id
         self._context = None
-        self._legacy_context = self._table_context = self._ideal_context = None
-        self._applied = self._ideal_applied = False
-        self._active_workflow = ("legacy" if workflow == "film_sensitivity" else
-                                 "table" if workflow == "film_thickness_error_table" else "ideal")
+        self._table_context = self._ideal_context = None
+        self._ideal_applied = False
+        self._active_workflow = "table" if workflow == "film_thickness_error_table" else "ideal"
         message = "只读历史报告；没有绑定当前设计，不可应用。"
-        if workflow == "film_sensitivity":
-            film_sensitivity_result_from_payload(payload)
-            self._payload = deepcopy(payload)
-            self._legacy_job_id = job_id
-            self._status = message
-            self._error = ""
-        elif workflow == "film_thickness_error_table":
+        if workflow == "film_thickness_error_table":
             self._table_payload = deepcopy(payload)
             self._table_job_id = job_id
-            self._table_context = None
             self._table_status = message
             self._table_error = ""
         elif workflow == "film_ideal_sensitivity":
@@ -732,56 +547,14 @@ class FilmSensitivityQuickController(QObject):
             raise ValueError("unsupported historical sensitivity workflow")
         self.changed.emit()
 
-    @Property(list, notify=changed)
-    def scenarioResults(self):
-        if self._payload is None or self._payload.get("best_analysis") is None:
-            return []
-        result = film_sensitivity_result_from_payload(self._payload)
-        assert result.best_analysis is not None
-        request = result.frozen_request
-        return [
-            {
-                "scenario_id": row.scenario_id,
-                "max_error_percent": 100 * max((_raw_violation(actual, nominal.target_value,
-                    nominal.lower_bound, nominal.upper_bound) for nominal, actual in zip(
-                        result.best_analysis.nominal_conditions, row.finite_perturbation_values,
-                        strict=True)), default=0.),
-                "max_normalized_error": row.finite_max_normalized_error,
-                "targets_met": row.finite_targets_met,
-                "solver_acceptable": all(solver_condition_acceptable(request.objectives[nominal.objective_index],
-                    actual, request.acceptable_normalized_error,
-                    strict_upper=nominal.objective_index in request.strict_upper_bound_objective_indices)
-                    for nominal, actual in zip(result.best_analysis.nominal_conditions,
-                        row.finite_perturbation_values, strict=True)),
-            }
-            for row in result.best_analysis.finite_scenarios
-        ]
-
     @Slot(result=bool)
     def prepare(self):
         if self._busy or self._closed:
             return False
         try:
             base = self.owner._build_request(require_variables=False, fixed_topology=False)
-            if self._prepared_source != base.design_snapshot:
-                self._scenarios = ()
-                self._scenario_source = None
-                self._scenario_kind = ""
             self._prepared_source = deepcopy(dict(base.design_snapshot))
             self._prepared_signature = self._request_signature(base)
-            previous = {row["layer_id"]: row for row in self._rows}
-            self._rows = [
-                {
-                    "layer_id": row["id"],
-                    "label": f"{index + 1}. {row['material_id']} / {row['optical_set_id']}",
-                    "nominal": f"{row['thickness']['value']:g} {row['thickness']['unit']}",
-                    "magnitude": previous.get(row["id"], {}).get("magnitude", ""),
-                    "absolute_nm": previous.get(row["id"], {}).get("absolute_nm", ""),
-                    "relative_percent": previous.get(row["id"], {}).get("relative_percent", ""),
-                    "enabled": previous.get(row["id"], {}).get("enabled", True),
-                }
-                for index, row in enumerate(base.design_snapshot["front_layers"])
-            ]
             previous_table = {row["layer_id"]: row for row in self._table_rows}
             self._table_rows = [
                 {
@@ -863,16 +636,19 @@ class FilmSensitivityQuickController(QObject):
                 current_set = set(current_ids)
                 self._ideal_layer_ids = [row_id for row_id in current_ids
                                          if row_id in current_set and row_id in self._ideal_layer_ids]
-            self.layerErrorsChanged.emit()
             self.tableRowsChanged.emit()
             self.idealRowsChanged.emit()
-            if not self._rows:
+            if not self._table_rows:
                 raise ValueError("敏感性分析需要已有膜层；先完成自动合成或添加真实膜系。")
             self._error = ""
             self.changed.emit()
             return True
         except (ValueError, TypeError, KeyError) as exc:
             self._error = str(exc)
+            if self._active_workflow == "table":
+                self._table_error = self._error
+            else:
+                self._ideal_error = self._error
             self.changed.emit()
             return False
 
@@ -880,15 +656,6 @@ class FilmSensitivityQuickController(QObject):
     def _request_signature(base):
         return deepcopy((base.design_revision, base.design_snapshot, base.objectives, base.variables,
                          base.frozen_material_snapshot, base.acceptable_normalized_error))
-
-    def _edit(self):
-        self._error = ""
-        if self._payload is not None:
-            self._status = "配置已编辑；下方仍为上一次冻结请求的报告，不代表当前草稿。需重新生成场景后运行。"
-        self._scenarios = ()
-        self._scenario_source = None
-        self._scenario_kind = ""
-        self.changed.emit()
 
     def _typed_edit(self, workflow):
         if workflow == "table":
@@ -899,7 +666,7 @@ class FilmSensitivityQuickController(QObject):
             self._ideal_error = ""
             self._ideal_status = ("配置已编辑；下方仍保留上次冻结结果，不代表当前草稿。"
                                   if self._ideal_payload is not None else
-                                  "v2 默认采用受控基准退化；请选择绝对或相对尺度，并为每个目标填写百分点额度。")
+                                  "默认采用受控基准退化；请选择绝对或相对尺度，并为每个目标填写百分点额度。")
         self.changed.emit()
 
     def _table_row(self, layer_id):
@@ -1052,219 +819,6 @@ class FilmSensitivityQuickController(QObject):
         self._typed_edit("ideal")
         return True
 
-    @Slot(str, str, result=bool)
-    def setChoice(self, name, value):
-        if self._busy:
-            return False
-        choices = {
-            "unit": ("absolute_nm", "relative_fraction"),
-            "model": ("independent", "common_mode", "material_common_mode", "linear_drift"),
-            "policy": ("robustness_only", "nominal_preserving"),
-            "semantics": ("bounded_amplitude", "standard_deviation"),
-            "distribution": ("bounded_uniform", "gaussian"),
-            "objective": (
-                "linear_sensitivity_norm",
-                "finite_scenario_worst",
-                "finite_scenario_expected",
-            ),
-        }
-        if not isinstance(name, str) or not isinstance(value, str) or name not in choices or value not in choices[name]:
-            return False
-        if name == "unit":
-            self._unit = value
-        elif name == "model":
-            self._error_model = value
-        elif name == "objective":
-            self._robustness = value
-        elif name == "policy":
-            self._optimization_policy = value
-        elif name == "semantics":
-            self._amplitude_semantics = value
-        else:
-            self._distribution = value
-        self._edit()
-        return True
-
-    @Slot(str, str, result=bool)
-    def setMagnitude(self, layer_id, value):
-        if self._busy or not isinstance(layer_id, str) or not isinstance(value, str):
-            return False
-        row = next((item for item in self._rows if item["layer_id"] == layer_id), None)
-        if row is None:
-            return False
-        row["magnitude"] = value
-        self._edit()
-        self.layerErrorsChanged.emit()
-        return True
-
-    def _set_component(self, layer_id, component, value, *, notify_rows):
-        if (self._busy or not isinstance(layer_id, str) or not isinstance(value, str)
-                or component not in ("absolute_nm", "relative_percent")):
-            return False
-        row = next((item for item in self._rows if item["layer_id"] == layer_id), None)
-        if row is None:
-            return False
-        row[component] = value
-        self._edit()
-        if notify_rows:
-            self.layerErrorsChanged.emit()
-        return True
-
-    @Slot(str, str, str, result=bool)
-    def setErrorComponent(self, layer_id, component, value):
-        return self._set_component(layer_id, component, value, notify_rows=True)
-
-    @Slot(str, str, str, result=bool)
-    def setErrorDraft(self, layer_id, component, value):
-        # Text changes are captured before focus loss. Do not rebuild a Repeater
-        # during typing: that would drop IME/selection/focus and partial input.
-        return self._set_component(layer_id, component, value, notify_rows=False)
-
-    @Slot(str, str, result=bool)
-    def setSamplingOption(self, name, value):
-        if self._busy or not isinstance(name, str) or name not in self._sampling or not isinstance(value, str):
-            return False
-        self._sampling[name] = value
-        self._edit()
-        return True
-
-    @Slot(str, bool, result=bool)
-    def setLayerEnabled(self, layer_id, enabled):
-        if self._busy or not isinstance(layer_id, str) or type(enabled) is not bool:
-            return False
-        row = next((item for item in self._rows if item["layer_id"] == layer_id), None)
-        if row is None:
-            return False
-        row["enabled"] = bool(enabled)
-        self._edit()
-        return True
-
-    @Slot(str, str, result=bool)
-    def setOption(self, name, value):
-        if self._busy or not isinstance(name, str) or name not in self._options or not isinstance(value, str):
-            return False
-        self._options[name] = value
-        self._edit()
-        return True
-
-    @staticmethod
-    def _nonnegative(value, label, *, optional=False):
-        if not isinstance(value, str):
-            raise ValueError(f"{label} 必须是数字文本。")
-        if not value.strip():
-            if optional:
-                return 0.
-            raise ValueError(f"请填写 {label}，不能推定工艺误差。")
-        result = float(value)
-        if not math.isfinite(result) or result < 0:
-            raise ValueError(f"{label} 必须为有限非负数。")
-        return result
-
-    def _errors(self):
-        selected = [row for row in self._rows if row["enabled"]]
-        if not selected:
-            raise ValueError("至少选择一个误差膜层。")
-        errors = []
-        for row in selected:
-            values = (row["magnitude"], row["absolute_nm"], row["relative_percent"])
-            if not any(isinstance(value, str) and value.strip() for value in values):
-                raise ValueError(f"请填写 {row['label']} 的工艺绝对 nm 或相对 % 误差；无校准默认值。")
-            magnitude, absolute, relative = (
-                self._nonnegative(value, label, optional=True)
-                for value, label in zip(values, ("兼容误差幅度", "绝对 nm 误差", "相对 % 误差"), strict=True)
-            )
-            errors.append(FilmThicknessError(
-                row["layer_id"], magnitude / 100. if self._unit == "relative_fraction" else magnitude,
-                self._unit, absolute_nm=absolute, relative_fraction=relative / 100.,
-            ))
-        if not any(error.magnitude or error.absolute_nm or error.relative_fraction for error in errors):
-            raise ValueError("至少需要一个明确非零工艺误差。")
-        return tuple(errors)
-
-    def _check_process_choices(self, *, sampling=False):
-        if self._error_model not in ("independent", "common_mode", "material_common_mode", "linear_drift"):
-            raise ValueError("请显式选择工艺误差模型。")
-        if self._amplitude_semantics not in ("bounded_amplitude", "standard_deviation"):
-            raise ValueError("请显式选择误差尺度是有界幅度还是标准差 1σ。")
-        if sampling:
-            expected = {"bounded_uniform": "bounded_amplitude", "gaussian": "standard_deviation"}
-            if self._distribution not in expected:
-                raise ValueError("请显式选择场景分布；不推定制造分布。")
-            if expected[self._distribution] != self._amplitude_semantics:
-                raise ValueError("有界均匀需选择有界幅度；高斯需选择标准差 1σ，系数不裁剪。")
-
-    @Slot(result=bool)
-    def generateProcessScenarios(self):
-        if self._busy or self._closed:
-            return False
-        try:
-            base = self.owner._build_request(require_variables=False, fixed_topology=False)
-            errors = self._errors()
-            self._check_process_choices(sampling=True)
-            count = self._limit(self._sampling["sample_count"], "场景样本数")
-            if count is None:
-                raise ValueError("请填写场景样本数。")
-            seed = self._integer(self._sampling["seed"], "随机 seed", minimum=0)
-            scenarios = generate_film_sensitivity_scenarios(
-                base.design_snapshot, errors, sample_count=count, seed=seed,
-                error_model=self._error_model, distribution=self._distribution,
-            )
-            self._scenarios = scenarios
-            self._scenario_source = deepcopy(dict(base.design_snapshot))
-            self._scenario_kind = "process_samples"
-            self._status = self._scenario_description()
-            self._error = ""
-        except (ValueError, TypeError, KeyError, OverflowError) as exc:
-            self._scenarios = ()
-            self._scenario_source = None
-            self._scenario_kind = ""
-            self._error = str(exc)
-            self.changed.emit()
-            return False
-        self.changed.emit()
-        return True
-
-    @Slot(result=bool)
-    def generateScenarios(self):
-        """Compatibility entry: explicit axis probes, never process Monte Carlo."""
-        if self._busy or self._closed:
-            return False
-        try:
-            base = self.owner._build_request(require_variables=False, fixed_topology=False)
-            count = len(self._errors())
-            self._check_process_choices()
-            if self._amplitude_semantics != "bounded_amplitude":
-                raise ValueError("旧 ± 轴探针仅用于有界幅度；1σ请使用显式高斯场景生成。")
-            if self._error_model == "common_mode":
-                scenarios = tuple(FilmSensitivityScenario(f"common_{sign:+d}", (float(sign),) * count)
-                                  for sign in (-1, 1))
-            elif self._error_model == "independent":
-                scenarios = tuple(FilmSensitivityScenario(f"layer_{axis + 1}_{sign:+d}",
-                    tuple(float(sign) if i == axis else 0. for i in range(count)))
-                    for axis in range(count) for sign in (-1, 1))
-            else:
-                raise ValueError("旧 ± 轴探针仅支持逐层独立/全部共模；请使用显式工艺场景生成。")
-            self._scenarios = scenarios
-            self._scenario_source = deepcopy(dict(base.design_snapshot))
-            self._scenario_kind = "axis_probes"
-            self._status = self._scenario_description()
-            self._error = ""
-        except (ValueError, TypeError, KeyError, OverflowError) as exc:
-            self._error = str(exc)
-            self.changed.emit()
-            return False
-        self.changed.emit()
-        return True
-
-    @staticmethod
-    def _integer(value, name, *, minimum):
-        if not isinstance(value, str) or not value.strip():
-            raise ValueError(f"请填写 {name} 的整数值。")
-        result = int(value)
-        if str(result) != value.strip() or result < minimum:
-            raise ValueError(f"{name} 必须是大于等于 {minimum} 的整数。")
-        return result
-
     @staticmethod
     def _limit(value, name):
         if not isinstance(value, str):
@@ -1382,7 +936,7 @@ class FilmSensitivityQuickController(QObject):
             raise ValueError("当前目标列表已变化；请刷新来源后重新核对稳定目标 ID。")
         budgets = []
         if self._ideal_policy == "bounded_baseline_degradation":
-            from coat_sim.core.film_ideal_sensitivity_v2 import FilmIdealDegradationBudget
+            from coat_sim.core.film_ideal_sensitivity import FilmIdealDegradationBudget
             for row in self._ideal_objective_rows:
                 text = self._ideal_budget_texts.get(row["objective_id"], "")
                 if not text.strip():
@@ -1396,8 +950,8 @@ class FilmSensitivityQuickController(QObject):
                     raise ValueError(f"{row['name']} 退化额度必须是有限非负数 pp；明确填写 0 合法。")
                 budgets.append(FilmIdealDegradationBudget(
                     objective_id=row["objective_id"], delta=delta, unit="percentage_point"))
-        from coat_sim.core.film_ideal_sensitivity_v2 import ideal_sensitivity_v2_request_from_optimization
-        return ideal_sensitivity_v2_request_from_optimization(
+        from coat_sim.core.film_ideal_sensitivity import ideal_sensitivity_request_from_optimization
+        return ideal_sensitivity_request_from_optimization(
             base, sensitivity_mode=self._ideal_mode, policy=self._ideal_policy,
             objective_ids=objective_ids, budgets=tuple(budgets),
             sensitivity_layer_ids=selected,
@@ -1498,116 +1052,6 @@ class FilmSensitivityQuickController(QObject):
     def startIdealSensitivityOptimization(self):
         return self._start_typed("ideal")
 
-    @Slot(str, result=bool)
-    def start(self, operation):
-        if self._busy or self._closed or self.owner.busy:
-            return False
-        if self._unknown_submission:
-            self._error = f"作业 {self._job_id} 的提交状态未知；请先在队列核对，不会自动重复提交。"
-            self.changed.emit()
-            return False
-        try:
-            base = self.owner._build_request(require_variables=False, fixed_topology=False)
-            if operation not in ("analyze", "optimize"):
-                raise ValueError("请选择分析或优化操作。")
-            errors = self._errors()
-            self._check_process_choices()
-            if (operation == "optimize" and self._optimization_policy == "nominal_preserving"
-                    and self._robustness == "linear_sensitivity_norm"):
-                raise ValueError("保名义优化只支持有限场景最坏/加权 RMS；一阶敏感度可独立分析，或显式选择纯降敏。")
-            if self._scenarios and self._scenario_source != base.design_snapshot:
-                self._scenarios = ()
-                self._scenario_source = None
-                self._scenario_kind = ""
-                raise ValueError("来源设计已变化；原场景已失效，请重新生成明确场景。")
-            if self._robustness != "linear_sensitivity_norm" and not self._scenarios:
-                raise ValueError("有限场景目标需要明确场景；请填写工艺配置并生成场景。")
-            request = sensitivity_request_from_optimization(
-                base,
-                errors=tuple(errors),
-                error_model=self._error_model,
-                optimization_policy=self._optimization_policy,
-                error_amplitude_semantics=self._amplitude_semantics,
-                robustness_objective=self._robustness,
-                scenarios=self._scenarios,
-                operation=operation,
-                max_evaluations=self._limit(self._options["max_evaluations"], "最大候选评价"),
-                max_iterations=self._limit(self._options["max_iterations"], "最大迭代"),
-                strict_upper_bound_objective_indices=synthesis_strict_upper_bound_indices(
-                    getattr(self.owner, "_objectives", ())),
-            )
-            job_id = uuid4().hex
-            compute = self.owner._project_compute
-            project_operation = compute.capture(job_id) if compute is not None else None
-            metadata = {"summary": "膜厚敏感性 " + operation, "origin": {"surface": "desktop"}}
-            if self._scenario_kind == "process_samples":
-                metadata["process_scenario_generation"] = {
-                    "distribution": self._distribution,
-                    "sample_count": len(self._scenarios),
-                    "seed": self._integer(self._sampling["seed"], "随机 seed", minimum=0),
-                    "note": "Generation provenance only; frozen request coefficients are authoritative.",
-                }
-            if compute is not None:
-                metadata = compute.metadata(project_operation, metadata)
-            context = {
-                "workflow": "legacy",
-                "revision": base.design_revision,
-                "epoch": self.owner._source_edit_epoch(),
-                "project_operation": project_operation,
-                "project_compute": compute,
-            }
-            client = self.client_factory(getattr(self.owner.service, "root", Path.cwd()))
-            cancel = RemoteCancelEvent(client, job_id, pending_admission=True)
-        except (ValueError, TypeError, KeyError, OverflowError) as exc:
-            self._error = str(exc)
-            self.changed.emit()
-            return False
-        self._generation += 1
-        display_session, display_source = self.owner.session, self.owner._source_controller
-        if operation == "optimize":
-            self.owner._sync_live_selection()
-            metadata["film_display_config"] = self.owner._live_display.begin(
-                ("sensitivity", self._generation), objectives=request.objectives,
-                source_current=lambda: self._display_context_is_current(context, display_session, display_source))
-        else:
-            self.owner._live_display.clear_analysis()
-        self._active_workflow = "legacy"
-        self._legacy_job_id = job_id
-        self._context, self._job_id, self._cancel = context, job_id, cancel
-        self._payload, self._applied = None, False
-        self._busy, self._error = True, ""
-        self._status = "正在冻结原网格/材料并提交独立本地 CPU 作业。"
-        self.changed.emit()
-        revision, epoch = context["revision"], context["epoch"]
-        session, source = self.owner.session, self.owner._source_controller
-
-        def admission_check():
-            project_ok = compute is None or (
-                not compute.editing_frozen and compute.accepts(project_operation)
-            )
-            source_ok = session is None or (
-                session.snapshot().design_revision == revision
-                and int(getattr(source, "pendingEditEpoch", 0)) == epoch
-            )
-            return project_ok and source_ok
-
-        self.pool.start(
-            _SensitivityTask(
-                self.owner.service,
-                request,
-                client,
-                job_id,
-                cancel,
-                metadata,
-                self._generation,
-                self._signals,
-                self._disconnected,
-                admission_check,
-                self.owner._live_display if operation == "optimize" else None,
-            )
-        )
-        return True
-
     @Slot(int)
     def _on_admitted(self, generation):
         if self._closed or generation != self._generation:
@@ -1622,14 +1066,12 @@ class FilmSensitivityQuickController(QObject):
                 state="queued",
                 metadata={"search_mode": "sensitivity"},
             )
-        workflow = self._context.get("workflow", "legacy")
+        workflow = self._context.get("workflow")
         message = "独立敏感性作业已进入共享队列；原设计不变。"
         if workflow == "table":
             self._table_status = message
         elif workflow == "ideal":
             self._ideal_status = message
-        else:
-            self._status = message
         self.changed.emit()
 
     @Slot(int, object)
@@ -1637,13 +1079,11 @@ class FilmSensitivityQuickController(QObject):
         if self._closed or generation != self._generation:
             return
         status = f"{value.get('stage', 'running')} · 评价 {value.get('evaluations', 0)} · {value.get('message', '')}"
-        workflow = (self._context or {}).get("workflow", "legacy")
+        workflow = (self._context or {}).get("workflow")
         if workflow == "table":
             self._table_status = status
         elif workflow == "ideal":
             self._ideal_status = status
-        else:
-            self._status = status
         self.changed.emit()
 
     @Slot(int, object, str)
@@ -1654,7 +1094,7 @@ class FilmSensitivityQuickController(QObject):
         self.owner._live_display.end(("sensitivity", generation))
         self._unknown_submission = error.startswith("submission_unknown:")
         context = self._context or {}
-        workflow = context.get("workflow", "legacy")
+        workflow = context.get("workflow")
         if workflow == "table":
             self._table_error, self._table_payload = error, payload
             self._table_context = dict(context)
@@ -1665,11 +1105,6 @@ class FilmSensitivityQuickController(QObject):
             self._ideal_context = dict(context)
             self._ideal_status = (payload["state"] + " / " + payload["termination_reason"]
                                   if payload is not None else "结果尚不可用；原设计未改变。")
-        else:
-            self._error, self._payload = error, payload
-            self._legacy_context = dict(context)
-            self._status = (payload["state"] + " / " + payload["termination_reason"]
-                            if payload is not None else "结果尚不可用；原设计未改变。")
         compute = self._context["project_compute"] if self._context else None
         if compute is not None:
             state = (
@@ -1689,43 +1124,15 @@ class FilmSensitivityQuickController(QObject):
         if self._busy and self._cancel is not None:
             self._cancel.set()
             message = "已请求取消；等待当前完整光学评价结束，不把取消意图当成已取消。"
-            workflow = (self._context or {}).get("workflow", "legacy")
+            workflow = (self._context or {}).get("workflow")
             if workflow == "table":
                 self._table_status = message
             elif workflow == "ideal":
                 self._ideal_status = message
-            else:
-                self._status = message
             self.changed.emit()
-
-    @Slot(result=bool)
-    def applyBest(self):
-        context = self._legacy_context
-        if self._busy or self._payload is None or context is None:
-            return False
-        if not self.canApply:
-            self._error = "来源设计、未提交编辑、材料或项目状态已变化；整个候选未应用。"
-            self.changed.emit()
-            return False
-        try:
-            result = film_sensitivity_result_from_payload(self._payload)
-            accepted = self.owner._apply_sensitivity_candidate(result, context)
-            if not accepted:
-                raise ValueError("来源设计、未提交编辑或项目已变化；整个候选未应用。")
-            self._applied = True
-            self._status = "敏感性最优候选已显式应用；可在设计窗口撤销。"
-            self._error = ""
-        except (ValueError, TypeError, RuntimeError) as exc:
-            self._error = str(exc)
-            self.changed.emit()
-            return False
-        self.changed.emit()
-        return True
 
     @Slot(result=bool)
     def applySelectedBest(self):
-        if self._active_workflow == "legacy":
-            return self.applyBest()
         if self._active_workflow != "ideal" or self._ideal_payload is None:
             return False
         if not self.idealCanApply:
@@ -1754,8 +1161,6 @@ class FilmSensitivityQuickController(QObject):
             payload = self._table_payload
         elif workflow == "ideal":
             payload = self._ideal_payload
-        else:
-            payload = self._payload
         if self._busy or payload is None:
             return False
         try:
@@ -1771,15 +1176,11 @@ class FilmSensitivityQuickController(QObject):
                 self._table_status, self._table_error = message, ""
             elif workflow == "ideal":
                 self._ideal_status, self._ideal_error = message, ""
-            else:
-                self._status, self._error = message, ""
         except (ValueError, OSError) as exc:
             if workflow == "table":
                 self._table_error = str(exc)
             elif workflow == "ideal":
                 self._ideal_error = str(exc)
-            else:
-                self._error = str(exc)
             self.changed.emit()
             return False
         self.changed.emit()
@@ -1793,8 +1194,6 @@ class FilmSensitivityQuickController(QObject):
                 self._table_error = message
             elif self._active_workflow == "ideal":
                 self._ideal_error = message
-            else:
-                self._error = message
             self.changed.emit()
             return False
         return self.saveReport(url.toLocalFile(), overwrite)

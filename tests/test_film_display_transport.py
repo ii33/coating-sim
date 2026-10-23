@@ -240,7 +240,7 @@ def test_desktop_observer_delivers_display_only_updates_once_and_final_first(tmp
     assert validate_live_display_packet(packets[-1], generation='c' * 32) is None
 
 
-@pytest.mark.parametrize('executor', ['film_optimization', 'film_synthesis', 'film_sensitivity',
+@pytest.mark.parametrize('executor', ['film_optimization', 'film_synthesis',
                                      'film_ideal_sensitivity', 'film_thickness_error_table'])
 def test_worker_dispatches_optional_runtime_observer_without_progress_arrays(tmp_path, monkeypatch, executor):
     from coat_sim.scheduler import worker
@@ -273,7 +273,7 @@ def test_worker_dispatches_optional_runtime_observer_without_progress_arrays(tmp
     else:
         import importlib
         module = importlib.import_module('coat_sim.core.' + {
-            'film_synthesis': 'film_synthesis_jobs', 'film_sensitivity': 'film_sensitivity_jobs',
+            'film_synthesis': 'film_synthesis_jobs',
             'film_ideal_sensitivity': 'film_sensitivity_workflow_jobs',
             'film_thickness_error_table': 'film_sensitivity_workflow_jobs'}[executor])
         monkeypatch.setattr(module, 'execute_job', execute)
@@ -291,10 +291,9 @@ def test_worker_dispatches_optional_runtime_observer_without_progress_arrays(tmp
     assert not (directory / 'progress.json').exists()
 
 
-@pytest.mark.parametrize('kind', ['ordinary', 'structure', 'synthesis', 'sensitivity', 'constrained',
-                                 'ideal', 'ideal_v2', 'analysis', 'table'])
+@pytest.mark.parametrize('kind', ['ordinary', 'structure', 'synthesis', 'strict_nominal', 'bounded_baseline_degradation', 'table'])
 def test_real_job_wrappers_observe_only_complete_optimization_candidates(tmp_path, kind):
-    from coat_sim.core import film_optimization_job, film_synthesis_jobs, film_sensitivity_jobs
+    from coat_sim.core import film_optimization_job, film_synthesis_jobs
     from coat_sim.core import film_sensitivity_workflow_jobs
     from tests.test_film_sensitivity_candidate_display import case
     packet_list: list[dict[str, Any]] = []
@@ -323,17 +322,6 @@ def test_real_job_wrappers_observe_only_complete_optimization_candidates(tmp_pat
         result = film_synthesis_jobs.execute_job({'payload': payload}, Event(), lambda _item: None,
             tmp_path / 'checkpoint.json', write_json, execution_project_root=str(tmp_path),
             candidate_observer_factory=factory)
-    elif kind in ('sensitivity', 'constrained', 'analysis'):
-        if kind == 'analysis':
-            from tests.test_film_sensitivity import problem
-            service, request = problem()
-            from coat_sim.core.film_sensitivity import freeze_film_sensitivity_request
-            request = freeze_film_sensitivity_request(service, request)
-        else:
-            request, _execute = case(kind, budget=3)
-        payload = film_sensitivity_jobs.build_job_payload(None, request)
-        result = film_sensitivity_jobs.execute_job({'payload': payload}, Event(), lambda _item: None,
-            tmp_path / 'checkpoint.json', write_json, candidate_observer_factory=factory)
     else:
         if kind == 'table':
             from tests.test_film_sensitivity_workflow_jobs import problem as workflow_problem
@@ -345,7 +333,7 @@ def test_real_job_wrappers_observe_only_complete_optimization_candidates(tmp_pat
         result = film_sensitivity_workflow_jobs.execute_job({'payload': payload}, Event(), lambda _item: None,
             tmp_path / 'checkpoint.json', write_json, candidate_observer_factory=factory)
     assert result
-    if kind in ('analysis', 'table'):
+    if kind == 'table':
         assert not factories and not packet_list
     else:
         assert len(factories) == 1 and packet_list and packet_list[-1]['terminal']
