@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import time
 from typing import cast
 
 import pytest
@@ -32,6 +33,10 @@ def wait_transfer(controller):
         if not controller.transferBusy:
             return
         QTest.qWait(10)
+        # Pumping Qt events alone can starve the ordinary Python I/O worker
+        # between GIL-releasing system calls. Yield without extending the
+        # existing poll count or changing any transfer/timeout assertion.
+        time.sleep(0)
     pytest.fail("Resource transfer did not finish: " + str(controller.transferStatus)
                 + "; timing=" + json.dumps(controller.transferDiagnostics, sort_keys=True))
 

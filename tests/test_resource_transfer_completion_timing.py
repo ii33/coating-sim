@@ -1,6 +1,10 @@
 """Worker completion and main-thread delivery are separate measured events."""
 from threading import Event
+import time
 from typing import Any
+
+import pytest
+from PySide6.QtTest import QTest
 
 from coat_sim.ui.project_resource_adapter import ProjectResourceTransferController
 from tests.test_project_resource_transfer_adapter import wait_transfer
@@ -45,3 +49,39 @@ def test_timing_history_is_bounded_and_contains_no_worker_payload():
         assert all(isinstance(v, (str, int, float, bool, type(None))) for v in row.values())
         assert row["terminal_emit_returned_s"] >= row["worker_started_s"]
     controller.deleteLater()
+
+
+def test_transfer_wait_yields_worker_after_each_qt_event_pump(monkeypatch):
+    calls = []
+
+    class Controller:
+        checks = 0
+
+        @property
+        def transferBusy(self):
+            self.checks += 1
+            return self.checks <= 2
+
+    monkeypatch.setattr(QTest, "qWait", lambda value: calls.append(("qt", value)))
+    monkeypatch.setattr(time, "sleep", lambda value: calls.append(("yield", value)))
+    controller = Controller()
+    wait_transfer(controller)
+    assert calls == [("qt", 10), ("yield", 0), ("qt", 10), ("yield", 0)]
+    assert controller.checks == 3
+
+
+def test_transfer_wait_keeps_original_poll_count_and_timeout_failure(monkeypatch):
+    calls = []
+
+    class Controller:
+        transferBusy = True
+        transferStatus = "synthetic incomplete transfer"
+        transferDiagnostics = {"synthetic": True}
+
+    monkeypatch.setattr(QTest, "qWait", lambda value: calls.append(("qt", value)))
+    monkeypatch.setattr(time, "sleep", lambda value: calls.append(("yield", value)))
+    with pytest.raises(pytest.fail.Exception, match="Resource transfer did not finish") as caught:
+        wait_transfer(Controller())
+    assert calls == [("qt", 10), ("yield", 0)] * 1200
+    assert "synthetic incomplete transfer" in str(caught.value)
+    assert '"synthetic": true' in str(caught.value)
