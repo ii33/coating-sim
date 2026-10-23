@@ -5,7 +5,7 @@
       "demo-layer"
     ],
     "sequence_order": "substrate_outward",
-    "snapshot_sha256": "ac52ece1ebec083f3811414e1facafd9d842795c7049f2d25c182caca58d0a6e",
+    "snapshot_sha256": "66fcde04776c9321d454650e27cd8fa51bde4a63211f8c326f357b50522f7d26",
     "source_slots_by_material_id": {
       "demo-film": 1
     },
@@ -155,6 +155,7 @@
               "minimum_nm": 400.0
             }
           ],
+          "extrema_bands": [],
           "parameters": {
             "angle_deg": 0.0,
             "extrapolation_policy": "endpoint_hold",
@@ -274,7 +275,7 @@
       "wavelength_max_nm": 700.0,
       "wavelength_min_nm": 400.0
     },
-    "sha256": "ac52ece1ebec083f3811414e1facafd9d842795c7049f2d25c182caca58d0a6e"
+    "sha256": "66fcde04776c9321d454650e27cd8fa51bde4a63211f8c326f357b50522f7d26"
   },
   "machine_file": "faecdff32f2b4531916e47957029fe77.cmac",
   "name": "Synthetic masked single-layer process",

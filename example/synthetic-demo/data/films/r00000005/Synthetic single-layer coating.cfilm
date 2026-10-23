@@ -138,6 +138,7 @@
           "minimum_nm": 400.0
         }
       ],
+      "extrema_bands": [],
       "parameters": {
         "angle_deg": 0.0,
         "extrapolation_policy": "endpoint_hold",

@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 from unittest.mock import patch
+from typing import cast
 
 import numpy as np
 import pytest
@@ -151,6 +152,52 @@ def test_example_page_configurations_restore_without_guessing(example):
               "targets_met=", result.targets_met)
     finally:
         optimization.markSourceClosed()
+        simulation.close()
+        source.markSourceClosed()
+        app.processEvents()
+
+
+def test_example_empty_extrema_roundtrip_never_scans_full_spectrum_or_changes_integrals(example):
+    from PySide6.QtGui import QGuiApplication
+    from coat_sim.ui.film_quick_controller import FilmDesignQuickController
+    from coat_sim.ui.film_simulation_quick_controller import FilmSimulationQuickController
+    app = QGuiApplication.instance() or QGuiApplication([])
+    service = ProjectFilmService(example, global_material_library=EmptyCatalog())
+    snapshot = load_project_default(example).film_design_snapshot
+    assert snapshot is not None
+    design = snapshot["design"]
+    configuration = design["workflow_settings"]["simulation"]
+    assert configuration["extrema_bands"] == []
+    source = FilmDesignQuickController(service=service)
+    assert source.session is not None
+    assert source.session.request_replace_design(design)
+    simulation = FilmSimulationQuickController(service=service, source_controller=source)
+    try:
+        assert simulation.exportSimulationConfiguration() == configuration
+        simulation._result = service.simulate(design, configuration["parameters"])
+        simulation._stale = False
+        simulation._invalidate_calculation_items()
+        simulation._invalidate_extrema_items()
+        simulation._invalidate_spectrum_analysis()
+        integrals = cast(list, simulation.calculationItems)
+        assert integrals and all(row["status"] == "ok" for row in integrals)
+        with patch("coat_sim.ui.film_simulation_quick_controller.calculate_spectrum_extrema",
+                   side_effect=AssertionError("An empty extrema list must not scan any spectrum")):
+            assert simulation.extremaItems == []
+            analysis = cast(dict, simulation.spectrumAnalysis)
+            assert all(analysis[key] == [] for key in
+                       ("global_min", "global_max", "local_peaks", "local_valleys"))
+        assert simulation.addExtremaBand()
+        assert simulation.setExtremaBand(0, 500.0, 600.0)
+        assert cast(list, simulation.extremaItems)[0]["status"] == "ok"
+        assert cast(list, simulation.extremaItems)[0]["sample_count"] == 11
+        assert simulation.calculationItems == integrals
+        assert simulation.exportSimulationConfiguration()["calculation_bands"] == configuration["calculation_bands"]
+        simulation.removeExtremaBand(0)
+        assert simulation.extremaItems == []
+        assert simulation.calculationItems == integrals
+        assert simulation.exportSimulationConfiguration() == configuration
+    finally:
         simulation.close()
         source.markSourceClosed()
         app.processEvents()
