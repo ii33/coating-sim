@@ -188,9 +188,10 @@ AppWindow {
         width: Math.min(520, window.width - 40)
         standardButtons: Dialog.Yes | Dialog.No
         contentItem: Label {
+            objectName: "filmSensitivityApplySummaryLabel"
             text: window.controller.sensitivityController.activeWorkflow === "legacy"
                   ? "确认将旧高级兼容页的完整评分候选应用到来源设计？来源版本变化时会整次拒绝；一次应用形成一笔可撤销修改，不会写入项目文件。"
-                  : "确认将完整评分的理想敏感度候选应用到来源设计？仅在原始名义硬约束通过且来源版本未变化时接受；一次应用形成一笔可撤销修改，不会写入项目文件。"
+                  : window.controller.sensitivityController.idealApplyConfirmationSummary
             color: window.themeTokens.colorText
             wrapMode: Text.WordWrap
         }

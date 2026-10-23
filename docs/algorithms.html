@@ -27,7 +27,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
   <div class="eyebrow">Optical Coating / Algorithm Atlas</div>
   <h1>光学镀膜<br>算法图解与参考来源</h1>
   <p>从独立基片、蒸发源、修正板、机器与工艺文件，到行星运动、射线通量、膜厚归一化和预计用时。本文依据当前代码写成，可离线阅读；公式描述的是本项目的计算模型。</p>
-<div class="meta"><span class="pill">版本：机器 v5 · 工艺 v7 · 源 v2；材料交换包 v1、安全导入冲突预览与原子回滚)</span><span class="pill">更新：2026-10-23（真实混合多核、原门限与容差分离、冠军物理压缩与拒绝统计；周期0显式时间/评价/取消统一预算；高反自动结构/全局搜索、材料谱向量复用与同预算验收、显式严格下界与跨类别冻结基准；活动光路材料校验与从零合成审计；优化目标上下限统一与角度范围显式确认；厚度编辑精度、零厚层与优化边界；冻结服务边界与单点归一化；研究证据与单层光谱反演；修正板不设数量上限、完整依赖快照与逐板遮挡；工程文件格式契约说明；优化多角网格与计算量人工顶值移除；TFCalc明文层表导入；外观逐光线精确 TMM 与独立波长 CPU 进程并行；Qt Quick 光谱极值与波长通带、场景图曲线预览；多孔厚盖、独立源采样、无固定最大网格与计算隔离；工艺环境、工作气体及零碰撞直达束；材料库、已设计源工艺选择、盖孔射线与快扫描空间分布；桌面仿真共享队列、逐批进度、无固定步数上限、100%快算默认与Å/s界面；五项上下文预算、硬限与安全压缩、后台流合并与固定设计绘图；平滑轮廓、全膜系目标选优与评分进度；凭据反馈与有界模型候选兼容探测；待决选项、模式放行、诊断未读摘要、结果队列身份修复、紧凑产物；计算量估算、后台串行队列、源板分组优化与跨段选区；完整设备回退、成功设备记忆、临时仿真资产包、可选 PDF、历史闭合与滚动高度缓存；批量膜系、物理层表导入、固定图表、工具原文归档与任务成本、视口文本增量渲染；批量工具契约、演示工作流、逐回合展示与复制、撤回确认、本地助手调试、实际生效参数快照、LPAC启动修复；容量自适应上下文、轮次关闭、插话与排队、剪贴板图片、系统语言与语气、开发访问；逐层修正板、轮廓优化、工艺快算、估时、上下文用量、请求续约、原生档位缓存、滚动跟随、二维 CAD 与加工图、模型 Token 上限、缓存命中统计、富文本与开发门禁；修正板视口设备路由、反向滚动与可选输入诊断）</span><span class="pill">单位：mm · s · rpm · nm · px；助手 Token / 字符 / 附件字节</span><span class="pill">离线单文件 HTML</span></div>
+<div class="meta"><span class="pill">版本：机器 v5 · 工艺 v7 · 源 v2；材料交换包 v1、安全导入冲突预览与原子回滚)</span><span class="pill">更新：2026-10-23（固定初始光谱受控退化理想优化v2、旧strict版本兼容；真实混合多核、原门限与容差分离、冠军物理压缩与拒绝统计；周期0显式时间/评价/取消统一预算；高反自动结构/全局搜索、材料谱向量复用与同预算验收、显式严格下界与跨类别冻结基准；活动光路材料校验与从零合成审计；优化目标上下限统一与角度范围显式确认；厚度编辑精度、零厚层与优化边界；冻结服务边界与单点归一化；研究证据与单层光谱反演；修正板不设数量上限、完整依赖快照与逐板遮挡；工程文件格式契约说明；优化多角网格与计算量人工顶值移除；TFCalc明文层表导入；外观逐光线精确 TMM 与独立波长 CPU 进程并行；Qt Quick 光谱极值与波长通带、场景图曲线预览；多孔厚盖、独立源采样、无固定最大网格与计算隔离；工艺环境、工作气体及零碰撞直达束；材料库、已设计源工艺选择、盖孔射线与快扫描空间分布；桌面仿真共享队列、逐批进度、无固定步数上限、100%快算默认与Å/s界面；五项上下文预算、硬限与安全压缩、后台流合并与固定设计绘图；平滑轮廓、全膜系目标选优与评分进度；凭据反馈与有界模型候选兼容探测；待决选项、模式放行、诊断未读摘要、结果队列身份修复、紧凑产物；计算量估算、后台串行队列、源板分组优化与跨段选区；完整设备回退、成功设备记忆、临时仿真资产包、可选 PDF、历史闭合与滚动高度缓存；批量膜系、物理层表导入、固定图表、工具原文归档与任务成本、视口文本增量渲染；批量工具契约、演示工作流、逐回合展示与复制、撤回确认、本地助手调试、实际生效参数快照、LPAC启动修复；容量自适应上下文、轮次关闭、插话与排队、剪贴板图片、系统语言与语气、开发访问；逐层修正板、轮廓优化、工艺快算、估时、上下文用量、请求续约、原生档位缓存、滚动跟随、二维 CAD 与加工图、模型 Token 上限、缓存命中统计、富文本与开发门禁；修正板视口设备路由、反向滚动与可选输入诊断）</span><span class="pill">单位：mm · s · rpm · nm · px；助手 Token / 字符 / 附件字节</span><span class="pill">离线单文件 HTML</span></div>
 <p class="source">补充更新：2026-10-05——通过服务接口执行的非 CPU 沉积仿真使用一次任务一个短生命周期计算进程；Windows 子进程关闭管道时把 WinError 109 视作 EOF，避免计算完成后误记失败。</p>
 <p class="source">cub 接口补齐更新：2026-10-05。三路径提交、材料业务工具、机器工程检查和 AI 资产导出契约；未覆盖在线模型及实机校准。</p>
 <p class="source">GUI接线更新：2026-10-20。14t从零合成与14u物理结构已进入现有优化页/参数侧栏；入口与状态边界见<a href="film-synthesis-gui-guide.md">使用指南</a>、<a href="film-synthesis-gui-stage-report-20261020.md">同源GUI验收</a>。原GUI接线无数值公式变更；后续显式未知k近似策略见<a href="#film-synthesis-unknown-k-20261020">14v</a>，默认严格且不会静默回退。</p>
@@ -240,6 +240,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#film-robust-nominal-preserving-20261023">14an 原名义硬约束与工艺误差场景精修</a>
 <a href="#film-ideal-local-sensitivity-20261023">14ao 理想局部导数敏感度优化</a>
 <a href="#film-thickness-error-table-20261023">14ap 独立厚度参数表预期误差</a>
+<a href="#film-ideal-controlled-degradation-20261023">14aq 固定初始光谱的受控退化理想优化</a>
 </nav>
 <main>
 <section id="film-wavelength-workers-20261017"><h2>CPU wavelength workers and fair single-candidate timing — 2026-10-17</h2>
@@ -3145,6 +3146,7 @@ close/shutdown/history/late old operation: do not trigger automatic apply</pre>
 
 <section id="film-ideal-local-sensitivity-20261023">
 <h2>14ao 理想局部厚度导数敏感度与原名义硬约束</h2>
+<p class="note">版本说明：本节保留schema 1及显式strict_nominal政策的语义；新默认schema 2的固定初始光谱受控退化见<a href="#film-ideal-controlled-degradation-20261023">14aq</a>，旧请求/报告不自动升级。</p>
 <p class="source">更新：2026-10-23。实现：<code>film_ideal_sensitivity.py</code>；正式入口、唯一状态、取消与回放边界见<a href="film-sensitivity-workflows-contract.md">两入口合同</a>。本节是独立新 request/result，不重新解释14an的旧场景数据，也不读取误差表为目标自动配权。</p>
 <p>固定完整拓扑、真实冻结材料 n/k/use_k、原波长网格/角度/偏振/目标与稳定层ID。仅支持单前表面相干/auto半无限基底的R/T。厚度转换到物理nm，QW参考n取自冻结源。默认采样仍沿原1nm规则，用户显式原网格不变。敏感列S默认全front层，可显式选择，与优化自由度V及厚度界独立；空列拒绝。用户必须选择绝对或相对，不能默认真实工艺精度，更不能将所有材料自动k=0。</p>
 <div class="formula">J<sub>ij</sub>=∂y<sub>i</sub>/∂d<sub>j</sub>；绝对 A<sub>ij</sub>=J<sub>ij</sub>·1nm；相对 A<sub>ij</sub>=J<sub>ij</sub>·d<sub>j</sub><br>F=Σ<sub>i</sub>w<sub>i</sub> Σ<sub>j∈S</sub>(A<sub>ij</sub>/b<sub>i</sub>)² / Σ<sub>i</sub>w<sub>i</sub></div>
@@ -3166,6 +3168,19 @@ close/shutdown/history/late old operation: do not trigger automatic apply</pre>
 <p>ρ按启用且已定义stddev行的有序ID绑定，必须精确对称/diag=1，不自动平均归一。PSD不确定带τ=64εn max(1,||ρ||₂)：λmin&lt;−τ拒绝；[−τ,0)标数值不确定并保留原矩阵，不clip特征值。二次型使用正尺度化稳定归并，避免先平方上下溢；此缩放不改变ρ。任何负q的条件sigma=null/numerical_indeterminate，整体aggregate_status=partial，不开平方或夹0；精确反相关q=0合法。运行cancel/budget partial另有state，不能与统计聚合partial混淆。bounded/stddev混合分栏，不伪造总sigma/概率。</p>
 <p>冻结、CLI与replay同样检查完整源n/k；use_k=True缺失或越域明确报具体材料/波段，显式覆盖源域的k=0有效；use_k=False才明示理想化。完整原网格的精确float slice由14ao所述additive API传入物理核，不能报告原波长而实际重采样1ULP并误判strict边界。保存/working资源独立透明限额，超限明确拒绝不降采样。</p>
 <p class="source">一阶不确定度/相关量传播参考：<a href="https://www.bipm.org/documents/20126/2071204/JCGM_100_2008_E.pdf">JCGM 100:2008（GUM，5.1/5.2）</a>。参数表/UI、PSD不确定带、数值缩放与资源策略为本项目约定；参考公式不等于实际制造分布、工艺精度或良率已校准。</p>
+</section>
+<section id="film-ideal-controlled-degradation-20261023">
+<h2>14aq 固定初始光谱的受控退化理想敏感度优化</h2>
+<p class="source">更新：2026-10-23。实现：<code>film_ideal_sensitivity_v2.py</code>，旧入口仅按显式schema分派；GUI/CLI/job/MCP及应用边界见<a href="film-sensitivity-workflows-contract.md">两入口合同</a>。以下政策、额度、FD模板和资源系数均为本项目约定，未找到外部工艺依据；不是制造误差模型或良率保证。</p>
+<p>用途：固定层序、原材料/use_k、完整原1nm或用户网格、角度/偏振，在显式有限光谱退化内降低14ao的同一理想平方敏感度F。schema 2显式选择strict_nominal或新GUI默认bounded_baseline_degradation；旧schema 1字段、digest、数值和replay不变。绝对J·1nm或相对J·d仍须用户选择，参数表不配权、不提供工艺默认。受控模式下，每原目标行稳定ID须明确有限非负δ，空白不能提交、0合法；单位为百分点，0.1pp=0.001功率fraction，不是相对百分比。</p>
+<div class="formula">固定初态y₀；δ=δ<sub>pp</sub>/100。原仅下界行：yᵢ≥y₀ᵢ−δ；原仅上界行：yᵢ≤y₀ᵢ+δ<br>原双边range或value行：y₀ᵢ−δ≤yᵢ≤y₀ᵢ+δ；每个重叠目标都逐点约束。可用候选同时满足guard及F≤F₀。</div>
+<figure><svg viewBox="0 0 980 190" role="img" aria-labelledby="bounded-baseline-title"><title id="bounded-baseline-title">固定原始光谱、退化护栏与原名义状态独立</title><g fill="#e9f4f1" stroke="#087f78"><rect x="8" y="25" width="205" height="85" rx="8"/><rect x="255" y="25" width="220" height="85" rx="8"/><rect x="517" y="25" width="205" height="85" rx="8"/><rect x="764" y="25" width="205" height="85" rx="8"/><path d="M213 67H255 M475 67H517 M722 67H764" fill="none"/></g><g font-size="15" fill="#18303a" text-anchor="middle"><text x="110" y="53">冻结初态/材料/原网格</text><text x="110" y="80">首个完整计预算评价锁y₀</text><text x="365" y="53">完整逐点闭合guard</text><text x="365" y="80">全程只对同一y₀比较</text><text x="619" y="53">同一F/F₀与解析约束J</text><text x="619" y="80">物理界内FD临时探点</text><text x="866" y="53">guard通过且F不增</text><text x="866" y="80">名义未达标独立警示</text><text x="490" y="157">候选/基准真实重放后才可显式确认应用；不滚动基准，不把guard称原目标达标</text></g></svg><figcaption>图14aq-1：允许原指标未达标启动及额度内光谱退化，不允许敏感度目标恶化或每轮累积放宽。</figcaption></figure>
+<p>guard为闭合精确比较，绝不加ftol/epsilon额度。单向δ=0仍允许向指标改善方向变化；双边/value的δ=0固定该行光谱，作为两组不等式而非大量等式交给SLSQP。原目标阈值、严格&lt;/&gt;及value名义容差仅用于独立nominal_targets_met，不改写、不双重nextafter。非法材料/厚度/bounds仍拒绝。初态名义未达标可优化；只有F严格下降才称改善，无下降保留原初态并明确no_improvement。</p>
+<p>request只冻结初态、完整目标/条件、源材料与physical kernel身份、policy、目标ID/δ；plan/freeze不隐含计算y₀。run首个完整F/J评价计原raw-block预算/取消后一次锁基线；不完整/非有限/取消不得锁或产生guard。result证据绑定request/kernel、精确有序目标ID/index、波长/角度位串、偏振/metric、little-endian float64/fraction、y₀及digest。replay从原request重算基线和候选，独立精确guard及真实F≤F₀，不能以自报analysis或近似比较代替。当前编辑设计从不替换y₀；修改预算/基准/身份必须拒绝。</p>
+<p>仅schema 2改良FD模板：候选central h=min(h_base,left,right)、forward h=min(h_base,right/2)、backward h=min(h_base,left/2)，h_base=ε^(1/3)max(1nm,|d|)。丢弃非有限/重复/越物理界点，选最大h，平手依central→forward→backward；真实float坐标仍用三点Lagrange权重。没有两个独立合法点明确失败，不交半梯度。目标和解析约束J按归一化厚度span链式转换，相对J·d每probe重算；不以nominal/guard限制求导探点。</p>
+<p>仅本次已锁基线evaluator缓存最近候选约束四元组，key为完整request identity+little-endian z精确bytes；数组不可写且无可写别名，换一bit/身份、失败或未完成构建不命中。旧矩阵先释放，首次锁基线清缓存，不跨运行共享。除原全拓扑物理working/retained/SLSQP估算，另计8M(V+1)约束缓存、构建临时峰值及逐条件基准对象/位串；均是保守非RSS估算，原资源上限保留，不降网格/删列绕门。2V指目标梯度probe次数，每个完整probe仍按全部原条件块计预算，取消保留上一个完整合法incumbent。</p>
+<p>输出分别报告初始/最终原nominal、guard、F与F/F₀、每行δ/消耗/超额以及最大定向光谱退化与位置。nominal=false但guard=true且F改善的合法候选可在明确确认未达标及退化幅度后应用；epoch/层ID/请求digest/operation/replay绑定和undo保持。小真实物理例与伪造边界负例验证该合同，不代表89层搜索、敏感度多核性能、生产良率或未验证文件后端已通过。</p>
+<p class="source">求解器接口与ftol含义：<a href="https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html">SciPy官方SLSQP文档</a>；本节未更换求解器、损失、F₀正缩放或完整网格。固定初态定向额度与模板选择为本项目实现，不声称全局收敛。</p>
 </section>
 </main>
 <article style="grid-column:2;max-width:1000px">

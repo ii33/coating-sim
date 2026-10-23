@@ -33,6 +33,9 @@ def _for_payload(payload: Mapping[str, Any], suffix: str) -> str:
 def workflow_for_request(request: Any) -> str:
     if isinstance(request, Mapping):
         return _for_payload(request, "request")
+    if (type(request).__module__ == "coat_sim.core.film_ideal_sensitivity_v2"
+            and type(request).__name__ == "FilmIdealSensitivityV2Request"):
+        return "film_ideal_sensitivity"
     for kind in _ALL_KINDS:
         # Exact class ownership is a dispatch hint only; the typed freeze below
         # is the validation boundary and rejects unknown/inconsistent fields.

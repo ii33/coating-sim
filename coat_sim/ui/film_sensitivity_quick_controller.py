@@ -27,7 +27,6 @@ from coat_sim.core.film_sensitivity import (
 )
 from coat_sim.core.film_thickness_error_table import FilmThicknessErrorParameter
 from coat_sim.core.film_thickness_error_table import thickness_error_table_request_from_optimization
-from coat_sim.core.film_ideal_sensitivity import ideal_sensitivity_request_from_optimization
 from coat_sim.core.film_result_service import atomic_film_json
 from coat_sim.core.film_nominal_acceptance import solver_condition_acceptable
 from coat_sim.scheduler import SchedulerClient, freeze_spec
@@ -190,11 +189,17 @@ class FilmSensitivityQuickController(QObject):
         self._table_status = "填写参数表后运行；未填写不等于零。"
         self._table_error = ""
         self._ideal_mode = ""
+        # V2 is the normal ideal-sensitivity workflow.  Policy and per-row
+        # allowances are an independent draft, keyed by the owner's stable
+        # objective IDs so reordering objectives never reassigns an allowance.
+        self._ideal_policy = "bounded_baseline_degradation"
+        self._ideal_objective_rows: list[dict[str, Any]] = []
+        self._ideal_budget_texts: dict[str, str] = {}
         self._ideal_layer_ids: list[str] | None = None
         self._ideal_selection_explicit = False
         self._ideal_options = {"max_iterations": "", "max_evaluations": ""}
         self._ideal_payload: dict[str, Any] | None = None
-        self._ideal_status = "请选择绝对或相对敏感度尺度。"
+        self._ideal_status = "v2 默认采用受控基准退化；请选择绝对或相对尺度，并为每个目标填写百分点额度。"
         self._ideal_error = ""
         self._active_workflow = "legacy"
 
@@ -363,6 +368,14 @@ class FilmSensitivityQuickController(QObject):
     def idealSensitivityMode(self):
         return self._ideal_mode
 
+    @Property(str, notify=changed)
+    def idealSensitivityPolicy(self):
+        return self._ideal_policy
+
+    @Property(list, notify=idealRowsChanged)
+    def idealDegradationObjectives(self):
+        return deepcopy(self._ideal_objective_rows)
+
     @Property(list, notify=idealRowsChanged)
     def idealSensitivityLayers(self):
         return [dict(row, selected=row["layer_id"] in (self._ideal_layer_ids or []))
@@ -388,6 +401,42 @@ class FilmSensitivityQuickController(QObject):
     @Property(str, notify=changed)
     def idealResultSummary(self):
         return self._typed_result_summary("ideal")
+
+    @Property(str, notify=changed)
+    def idealApplyConfirmationSummary(self):
+        payload = self._ideal_payload
+        if payload is None:
+            return "没有可应用的完整验证候选。"
+        try:
+            from coat_sim.core.film_sensitivity_workflow_jobs import workflow_result_from_payload
+            result = workflow_result_from_payload(payload)
+        except (ValueError, TypeError, KeyError, AttributeError):
+            return "候选报告无法通过验证；不会应用。"
+        baseline = getattr(result, "baseline_analysis", None)
+        best = getattr(result, "best_analysis", None)
+        initial_met = getattr(baseline, "nominal_targets_met", None)
+        final_met = getattr(best, "nominal_targets_met", None)
+        nominal = ("通过" if final_met is True else "未通过" if final_met is False else "未知")
+        initial = ("通过" if initial_met is True else "未通过" if initial_met is False else "未知")
+        if getattr(result, "schema_version", 1) != 2:
+            return (f"初态原名义目标：{initial}；最终原名义目标：{nominal}。"
+                    "仅原名义目标通过时可应用。一次应用形成一笔可撤销修改，不会写入项目文件。")
+        if getattr(result, "policy", None) == "strict_nominal":
+            warning = ("最终原名义目标未通过；严格策略禁止应用。"
+                       if final_met is False else "")
+            return (f"初态原名义目标：{initial}；最终原名义目标：{nominal}。"
+                    f"严格名义策略不启用退化额度。{warning} 一次应用形成一笔可撤销修改，不会写入项目文件。")
+        guard = getattr(result, "best_guard", None)
+        if guard is None:
+            guard_line = "最大定向退化：未提供；guard 未通过。"
+        else:
+            maximum_pp = float(guard.max_directional_degradation_fraction) * 100.0
+            guard_line = (f"最大定向退化：{maximum_pp:.7g} pp；"
+                          f"所有逐目标额度{('内' if guard.guard_pass else '外')}。")
+        warning = ("最终原名义目标未通过警示：guard 额度通过不代表原名义目标通过。"
+                   if final_met is False else "")
+        return (f"初态原名义目标：{initial}；最终原名义目标：{nominal}。{guard_line}"
+                f"{warning} 一次应用形成一笔可撤销修改，不会写入项目文件。")
 
     @Property(str, notify=changed)
     def idealStatus(self):
@@ -457,12 +506,46 @@ class FilmSensitivityQuickController(QObject):
         selected = getattr(frozen, "sensitivity_layer_ids", ()) if frozen is not None else ()
         scale = getattr(frozen, "sensitivity_mode", "") if frozen is not None else ""
         baseline = getattr(result, "baseline_analysis", None)
-        return ("理想敏感度优化 · " + str(result.state) + " / " + str(result.termination_reason)
-                + f"\n冻结敏感度尺度：{scale or '未读取'}；列 ID：{self._summary_value(selected)}"
-                + f"\n加权敏感度平方和目标：{self._summary_value(value)}；初态：{self._summary_value(getattr(baseline, 'objective_value', None))}"
-                + f"；原始名义目标通过：{self._summary_value(nominal)}"
-                + ("\n存在可审阅候选，但不会自动应用。" if getattr(result, "best_design", None) is not None
-                   else "\n没有可应用候选。"))
+        schema = getattr(result, "schema_version", 1)
+        policy = getattr(result, "policy", "strict_nominal" if schema == 1 else "")
+        summary = ("理想敏感度优化 · " + str(result.state) + " / " + str(result.termination_reason)
+                   + f"\n冻结敏感度尺度：{scale or '未读取'}；列 ID：{self._summary_value(selected)}"
+                   + f"\n策略：{policy}（schema v{schema}）"
+                   + f"\n原始加权敏感度平方和 F：best={self._summary_value(value)}；"
+                   f"初态={self._summary_value(getattr(baseline, 'objective_value', None))}"
+                   + f"\n归一化求解器 F：best={self._summary_value(getattr(result, 'best_solver_objective_value', None))}；"
+                   f"初态={self._summary_value(getattr(result, 'baseline_solver_objective_value', None))}"
+                   + f"\n初态原始名义目标通过：{self._summary_value(getattr(baseline, 'nominal_targets_met', None))}；"
+                   f"最终原始名义目标通过：{self._summary_value(nominal)}")
+        if schema == 2:
+            improvement_status = getattr(result, "improvement_status", "unavailable")
+            if improvement_status not in {"improved", "no_improvement", "unavailable"}:
+                improvement_status = "unavailable"
+            summary += f"\n敏感度改善状态：{improvement_status}"
+            for caption, guard in (("初态 guard", getattr(result, "baseline_guard", None)),
+                                   ("最终 guard", getattr(result, "best_guard", None))):
+                if guard is None:
+                    summary += f"\n{caption}：未提供"
+                    continue
+                maximum_pp = float(guard.max_directional_degradation_fraction) * 100.0
+                worst = (f"{guard.worst_objective_id} / {guard.wavelength_nm:g} nm / "
+                         f"{guard.angle_deg:g}° / {guard.polarization}"
+                         if guard.worst_objective_id is not None else "无最坏点")
+                summary += (f"\n{caption}：{'通过' if guard.guard_pass else '未通过'}；"
+                            f"最大定向退化 {maximum_pp:.7g} pp；最坏点 {worst}")
+                if caption == "最终 guard":
+                    for row in guard.rows:
+                        summary += (f"\n额度行 {row.objective_id}：{row.delta_percentage_point:g} pp "
+                                    f"({row.delta_fraction:.7g} fraction)；"
+                                    f"退化消耗 {row.consumed_fraction * 100:.7g} pp；"
+                                    f"超额 {row.excess_fraction * 100:.7g} pp；最坏点 "
+                                    f"{row.wavelength_nm:g} nm/{row.angle_deg:g}°/{row.polarization}")
+        summary += ("\n存在可审阅候选；必须显式确认后才会应用。"
+                    if getattr(result, "best_design", None) is not None
+                    else "\n没有可应用候选。")
+        if schema == 2 and nominal is False:
+            summary += "\n警示：原名义目标未通过；guard 额度通过不代表原名义目标通过。"
+        return summary
 
     def _can_apply_workflow(self, workflow):
         payload = self._payload_for_workflow(workflow)
@@ -479,7 +562,23 @@ class FilmSensitivityQuickController(QObject):
                     or result.best_design is None):
                 return False
             analysis = getattr(result, "best_analysis", None)
-            if getattr(analysis, "nominal_targets_met", None) is not True:
+            nominal_met = getattr(analysis, "nominal_targets_met", None) is True
+            schema = getattr(result, "schema_version", 1)
+            if schema == 1:
+                if not nominal_met:
+                    return False
+            elif schema == 2:
+                policy = getattr(result, "policy", None)
+                if policy == "strict_nominal":
+                    if not nominal_met:
+                        return False
+                elif policy == "bounded_baseline_degradation":
+                    if (getattr(result, "usable_candidate", False) is not True
+                            or getattr(result, "guard_pass", False) is not True):
+                        return False
+                else:
+                    return False
+            else:
                 return False
             compute = context.get("project_compute")
             if compute is not None and (compute.editing_frozen or not compute.accepts(context.get("project_operation"))):
@@ -681,6 +780,58 @@ class FilmSensitivityQuickController(QObject):
                  "nominal": f"{row['thickness']['value']:g} {row['thickness']['unit']}"}
                 for index, row in enumerate(base.design_snapshot["front_layers"])
             ]
+            objective_source = getattr(self.owner, "_objectives", ())
+            if not isinstance(objective_source, (list, tuple)):
+                raise ValueError("目标配置不是可读取的有序列表。")
+            objective_ids = [row.get("id") for row in objective_source
+                             if isinstance(row, dict)]
+            if (len(objective_ids) != len(objective_source)
+                    or any(not isinstance(value, str) or not value.strip() for value in objective_ids)
+                    or len(set(objective_ids)) != len(objective_ids)
+                    or len(objective_ids) != len(base.objectives)):
+                raise ValueError("每个当前光学目标必须具有唯一稳定 ID；不会按位置猜测退化额度。")
+            objective_rows = []
+            for index, row in enumerate(objective_source):
+                objective_id = row["id"]
+                metric = str(row.get("metric", "R"))
+                low = row.get("wavelength_min_nm")
+                high = row.get("wavelength_max_nm")
+                try:
+                    low_value, high_value = float(low), float(high)
+                    band = (f"{low_value:g} nm" if low_value == high_value else
+                            f"{low_value:g}–{high_value:g} nm")
+                except (TypeError, ValueError, OverflowError):
+                    band = f"{low}–{high} nm"
+                mode = row.get("mode", "range")
+                lower, upper = row.get("lower_bound_percent"), row.get("upper_bound_percent")
+                target = row.get("target_value_percent")
+                if mode == "value":
+                    try:
+                        direction = f"双向定值：{metric} = {float(target):g}%"
+                    except (TypeError, ValueError, OverflowError):
+                        direction = f"双向定值：{metric} = {target}%"
+                elif lower is not None and upper is not None:
+                    try:
+                        direction = f"双向范围：{float(lower):g}% ≤ {metric} ≤ {float(upper):g}%"
+                    except (TypeError, ValueError, OverflowError):
+                        direction = f"双向范围：{lower}% ≤ {metric} ≤ {upper}%"
+                elif lower is not None:
+                    direction = f"下界：{metric} ≥ {lower}%"
+                elif upper is not None:
+                    direction = f"上界：{metric} ≤ {upper}%"
+                else:
+                    raise ValueError(f"目标 {row.get('name', index + 1)} 没有有限上下界方向。")
+                name = str(row.get("name") or f"目标 {index + 1}")
+                objective_rows.append({
+                    "objective_id": objective_id,
+                    "name": name,
+                    "band": band,
+                    "metric": metric,
+                    "direction": direction,
+                    "budget_text": self._ideal_budget_texts.get(objective_id, ""),
+                    "display": f"{name} · {band} · {direction}",
+                })
+            self._ideal_objective_rows = objective_rows
             current_ids = [row["layer_id"] for row in self._ideal_layer_rows]
             if self._ideal_layer_ids is None or not self._ideal_selection_explicit:
                 self._ideal_layer_ids = list(current_ids)
@@ -723,7 +874,8 @@ class FilmSensitivityQuickController(QObject):
         else:
             self._ideal_error = ""
             self._ideal_status = ("配置已编辑；下方仍保留上次冻结结果，不代表当前草稿。"
-                                  if self._ideal_payload is not None else "请选择绝对或相对敏感度尺度。")
+                                  if self._ideal_payload is not None else
+                                  "v2 默认采用受控基准退化；请选择绝对或相对尺度，并为每个目标填写百分点额度。")
         self.changed.emit()
 
     def _table_row(self, layer_id):
@@ -824,6 +976,28 @@ class FilmSensitivityQuickController(QObject):
         if self._busy or value not in ("", "absolute", "relative"):
             return False
         self._ideal_mode = value
+        self._typed_edit("ideal")
+        return True
+
+    @Slot(str, result=bool)
+    def setIdealSensitivityPolicy(self, value):
+        if self._busy or value not in ("strict_nominal", "bounded_baseline_degradation"):
+            return False
+        self._ideal_policy = value
+        self._typed_edit("ideal")
+        return True
+
+    @Slot(str, str, result=bool)
+    def setIdealDegradationBudget(self, objective_id, value):
+        if self._busy or not isinstance(objective_id, str) or not isinstance(value, str):
+            return False
+        row = next((row for row in self._ideal_objective_rows
+                    if row["objective_id"] == objective_id), None)
+        if row is None:
+            return False
+        self._ideal_budget_texts[objective_id] = value
+        row["budget_text"] = value
+        # Avoid idealRowsChanged while typing, preserving the active editor.
         self._typed_edit("ideal")
         return True
 
@@ -1177,8 +1351,32 @@ class FilmSensitivityQuickController(QObject):
                          if row["layer_id"] in (self._ideal_layer_ids or ()))
         if not selected:
             raise ValueError("至少选择一个理想敏感度厚度列。")
-        return ideal_sensitivity_request_from_optimization(
-            base, sensitivity_mode=self._ideal_mode, sensitivity_layer_ids=selected,
+        if self._ideal_policy not in ("strict_nominal", "bounded_baseline_degradation"):
+            raise ValueError("请选择有效的理想敏感度退化策略。")
+        objective_ids = tuple(row["objective_id"] for row in self._ideal_objective_rows)
+        if len(objective_ids) != len(base.objectives) or not objective_ids:
+            raise ValueError("当前目标列表已变化；请刷新来源后重新核对稳定目标 ID。")
+        budgets = []
+        if self._ideal_policy == "bounded_baseline_degradation":
+            from coat_sim.core.film_ideal_sensitivity_v2 import FilmIdealDegradationBudget
+            for row in self._ideal_objective_rows:
+                text = self._ideal_budget_texts.get(row["objective_id"], "")
+                if not text.strip():
+                    raise ValueError(
+                        f"请为每个当前目标填写退化额度（百分点 pp）；{row['name']} 为空，空白不会按零处理。")
+                try:
+                    delta = float(text.strip())
+                except (ValueError, OverflowError) as exc:
+                    raise ValueError(f"{row['name']} 退化额度必须是有限非负数 pp。") from exc
+                if not math.isfinite(delta) or delta < 0:
+                    raise ValueError(f"{row['name']} 退化额度必须是有限非负数 pp；明确填写 0 合法。")
+                budgets.append(FilmIdealDegradationBudget(
+                    objective_id=row["objective_id"], delta=delta, unit="percentage_point"))
+        from coat_sim.core.film_ideal_sensitivity_v2 import ideal_sensitivity_v2_request_from_optimization
+        return ideal_sensitivity_v2_request_from_optimization(
+            base, sensitivity_mode=self._ideal_mode, policy=self._ideal_policy,
+            objective_ids=objective_ids, budgets=tuple(budgets),
+            sensitivity_layer_ids=selected,
             max_iterations=self._limit(self._ideal_options["max_iterations"], "最大迭代"),
             max_evaluations=self._limit(self._ideal_options["max_evaluations"], "最大评价"),
             strict_lower_bound_objective_indices=(),

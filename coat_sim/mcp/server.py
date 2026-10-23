@@ -1292,8 +1292,11 @@ def plan_film_ideal_sensitivity(payload: dict[str, Any]) -> dict[str, Any]:
     """Read-only freeze a deterministic local-Jacobian sensitivity optimization.
 
     Explicit absolute J*1nm or relative J*d columns are not manufacturing
-    errors. Original nominal bounds remain hard constraints. No error-table
-    value, process preset, probability or implicit k=0 enters this request.
+    errors. Version 1 keeps its original strict nominal policy. Version 2
+    explicitly chooses strict nominal or a user-budgeted fixed-initial-spectrum
+    guard; original nominal acceptance is reported independently. The first
+    complete in-budget execution evaluation locks the baseline, not this plan.
+    No error-table value, process preset, probability or implicit k=0 enters.
     """
     return _plan_independent_sensitivity(payload, "film_ideal_sensitivity")
 

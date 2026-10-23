@@ -40,6 +40,16 @@ ColumnLayout {
                 currentIndex: Math.max(0, model.findIndex(item => item.id === panel.controller.idealSensitivityMode))
                 onActivated: panel.controller.setIdealSensitivityMode(model[currentIndex].id)
             }
+            ThemeControls.ThemeComboBox {
+                objectName: "filmIdealSensitivityPolicyBox"
+                Layout.fillWidth: true
+                enabled: !panel.controller.busy
+                model: [{id: "strict_nominal", label: "严格名义约束：沿用旧硬门"},
+                        {id: "bounded_baseline_degradation", label: "受控基准退化：新 v2 默认"}]
+                textRole: "label"
+                currentIndex: Math.max(0, model.findIndex(item => item.id === panel.controller.idealSensitivityPolicy))
+                onActivated: panel.controller.setIdealSensitivityPolicy(model[currentIndex].id)
+            }
             Label {
                 objectName: "filmIdealSensitivityAssumptionSummary"
                 Layout.fillWidth: true
@@ -49,9 +59,58 @@ ColumnLayout {
             }
             Label {
                 Layout.fillWidth: true
-                text: "敏感列选择与优化变量、上下界分开。初始设计必须满足原始名义硬约束，不添加 margin；若初态不满足，需先恢复可行性。"
+                text: panel.controller.idealSensitivityPolicy === "strict_nominal"
+                      ? "严格策略：初态及候选仍须满足原始名义硬约束，不增加 margin。敏感列、优化变量和原目标上下界彼此独立。"
+                      : "受控退化策略：初态可不满足原目标；搜索仅可在首次完整基准光谱 y0 的逐目标额度内退化。原名义达标与 guard 额度通过分别报告，绝不滚动放宽基准。"
                 color: panel.themeTokens.colorTextMuted
                 wrapMode: Text.WordWrap
+            }
+            ColumnLayout {
+                objectName: "filmIdealDegradationBudgetList"
+                Layout.fillWidth: true
+                spacing: panel.themeTokens.spaceXs
+                visible: panel.controller.idealSensitivityPolicy === "bounded_baseline_degradation"
+                Label {
+                    objectName: "filmIdealDegradationUnitsNote"
+                    Layout.fillWidth: true
+                    text: "每个当前原目标都需填写有限非负退化额度，单位固定为百分点 pp，绝非膜厚相对百分比。空白不会按 0 处理；0 合法，双向行填写 0 时原始完整离散光谱网格的每个波长/角度/偏振条件均冻结。0.1 pp = 0.001 R/T fraction。原目标不平均，重叠目标全部生效。"
+                    color: panel.themeTokens.colorTextMuted
+                    wrapMode: Text.WordWrap
+                }
+                Repeater {
+                    model: panel.controller.idealDegradationObjectives
+                    delegate: RowLayout {
+                        id: degradationRow
+                        required property var modelData
+                        Layout.fillWidth: true
+                        enabled: !panel.controller.busy
+                        Label {
+                            Layout.fillWidth: true
+                            text: degradationRow.modelData.display
+                            color: panel.themeTokens.colorText
+                            wrapMode: Text.WordWrap
+                        }
+                        ThemeControls.ThemeField {
+                            objectName: "filmIdealDegradationBudget_" + degradationRow.modelData.objective_id
+                            Layout.preferredWidth: 112
+                            text: degradationRow.modelData.budget_text
+                            placeholderText: "必填 pp"
+                            accessibleLabel: degradationRow.modelData.name + " 光谱退化额度，百分点 pp"
+                            onTextEdited: panel.controller.setIdealDegradationBudget(
+                                degradationRow.modelData.objective_id, text)
+                        }
+                        Label {
+                            text: "pp"
+                            color: panel.themeTokens.colorTextMuted
+                        }
+                    }
+                }
+                Label {
+                    Layout.fillWidth: true
+                    visible: panel.controller.idealDegradationObjectives.length === 0
+                    text: "暂无当前目标；请先添加并准备至少一个原目标。"
+                    color: panel.themeTokens.colorTextMuted
+                }
             }
             Label {
                 objectName: "filmIdealSensitivityEmptyState"

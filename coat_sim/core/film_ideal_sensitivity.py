@@ -1536,3 +1536,84 @@ def validate_film_ideal_sensitivity_result_payload(
                 "best_analysis",
             )
     return film_ideal_sensitivity_result_to_payload(result)
+
+
+# Schema-2 facade dispatch is additive. Keep every schema-1 dataclass, payload,
+# numerical helper and digest input unchanged, including the default adapter.
+_v1_estimate_film_ideal_sensitivity_resources = estimate_film_ideal_sensitivity_resources
+_v1_freeze_film_ideal_sensitivity_request = freeze_film_ideal_sensitivity_request
+_v1_execute_film_ideal_sensitivity_request = execute_film_ideal_sensitivity_request
+_v1_analyze_film_ideal_sensitivity = analyze_film_ideal_sensitivity
+_v1_film_ideal_sensitivity_request_to_payload = film_ideal_sensitivity_request_to_payload
+_v1_film_ideal_sensitivity_request_from_payload = film_ideal_sensitivity_request_from_payload
+_v1_film_ideal_sensitivity_result_to_payload = film_ideal_sensitivity_result_to_payload
+_v1_film_ideal_sensitivity_result_from_payload = film_ideal_sensitivity_result_from_payload
+_v1_validate_film_ideal_sensitivity_result_payload = validate_film_ideal_sensitivity_result_payload
+
+
+def _v2_module():
+    from . import film_ideal_sensitivity_v2
+    return film_ideal_sensitivity_v2
+
+
+def _is_v2(value):
+    return (getattr(value, "schema_version", None) == 2
+            or isinstance(value, Mapping) and value.get("schema_version") == 2)
+
+
+def estimate_film_ideal_sensitivity_resources(request):  # type: ignore[no-redef]
+    return (_v2_module().estimate_film_ideal_sensitivity_resources(request) if _is_v2(request)
+            else _v1_estimate_film_ideal_sensitivity_resources(request))
+
+
+def freeze_film_ideal_sensitivity_request(service, request):  # type: ignore[no-redef]
+    return (_v2_module().freeze_film_ideal_sensitivity_request(service, request) if _is_v2(request)
+            else _v1_freeze_film_ideal_sensitivity_request(service, request))
+
+
+def execute_film_ideal_sensitivity_request(service, request, **kwargs):  # type: ignore[no-redef]
+    return (_v2_module().execute_film_ideal_sensitivity_request(service, request, **kwargs)
+            if _is_v2(request) else _v1_execute_film_ideal_sensitivity_request(service, request, **kwargs))
+
+
+def analyze_film_ideal_sensitivity(service, request, **kwargs):  # type: ignore[no-redef]
+    return (_v2_module().analyze_film_ideal_sensitivity(service, request, **kwargs)
+            if _is_v2(request) else _v1_analyze_film_ideal_sensitivity(service, request, **kwargs))
+
+
+def film_ideal_sensitivity_request_to_payload(request):  # type: ignore[no-redef]
+    return (_v2_module().film_ideal_sensitivity_request_to_payload(request) if _is_v2(request)
+            else _v1_film_ideal_sensitivity_request_to_payload(request))
+
+
+def film_ideal_sensitivity_request_from_payload(payload):  # type: ignore[no-redef]
+    return (_v2_module().film_ideal_sensitivity_request_from_payload(payload) if _is_v2(payload)
+            else _v1_film_ideal_sensitivity_request_from_payload(payload))
+
+
+def film_ideal_sensitivity_result_to_payload(result):  # type: ignore[no-redef]
+    return (_v2_module().film_ideal_sensitivity_result_to_payload(result) if _is_v2(result)
+            else _v1_film_ideal_sensitivity_result_to_payload(result))
+
+
+def film_ideal_sensitivity_result_from_payload(payload):  # type: ignore[no-redef]
+    return (_v2_module().film_ideal_sensitivity_result_from_payload(payload) if _is_v2(payload)
+            else _v1_film_ideal_sensitivity_result_from_payload(payload))
+
+
+def validate_film_ideal_sensitivity_result_payload(payload, **kwargs):  # type: ignore[no-redef]
+    return (_v2_module().validate_film_ideal_sensitivity_result_payload(payload, **kwargs)
+            if _is_v2(payload) else _v1_validate_film_ideal_sensitivity_result_payload(payload, **kwargs))
+
+
+def ideal_sensitivity_v2_request_from_optimization(base, **kwargs):
+    return _v2_module().ideal_sensitivity_v2_request_from_optimization(base, **kwargs)
+
+
+def __getattr__(name):
+    if name in {"FilmIdealSensitivityV2Request", "FilmIdealSensitivityV2Result",
+                "FilmIdealDegradationBudget", "FilmIdealDegradationGuard",
+                "FilmIdealDegradationRow", "FilmIdealSensitivityBaselineEvidence",
+                "FilmIdealSensitivityBaselineCondition"}:
+        return getattr(_v2_module(), name)
+    raise AttributeError(name)

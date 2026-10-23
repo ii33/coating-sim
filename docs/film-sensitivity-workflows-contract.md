@@ -24,7 +24,8 @@ the new draft. Legacy stored requests keep their original semantics.
 
 The new kinds are `coat_sim.film_ideal_sensitivity_request` and
 `coat_sim.film_thickness_error_table_request`, each with independent version 1
-request/result envelopes. Typed parsers reject unknown fields, nonfinite values,
+request/result envelopes for the table and the original ideal policy. Ideal schema 2
+is a separate explicit policy contract; schema 1 hashes and replay are unchanged. Typed parsers reject unknown fields, nonfinite values,
 invalid identities and unsupported domains. Frozen inputs bind design revision,
 complete ordered layer topology, materials and optical-set data, original
 objectives/grid/angles/polarization, strict operators, and workflow-specific
@@ -45,7 +46,7 @@ material sampling, phases, forward R/T and analytic J alike. Its default keeps
 the legacy linspace implementation. The array must be real, finite, positive,
 one-dimensional, nondecreasing, and match the declared length/endpoints.
 
-## Ideal derivative objective
+## Ideal derivative objective and versioned acceptance
 
 The user must explicitly choose absolute or relative sensitivity. Derivative
 column IDs default to all current front-layer IDs and are frozen separately from
@@ -60,7 +61,7 @@ F is a deterministic local squared norm, not yield, probability or a finite
 manufacturing-error bound. Showing a relative 1% effect multiplies A by .01 and
 its squared objective by .0001; the internal definition is unchanged.
 
-SLSQP retains every original nominal constraint. Analytic constraint J does not
+For original schema 1 and schema 2 `strict_nominal`, SLSQP retains every original nominal constraint. Analytic constraint J does not
 use sensitivity-column scaling. Strict internal slack uses one inward nextafter;
 final acceptance still uses the original physical threshold and >/< operator.
 HR >= remains >=, and IR < remains <. No margin/tolerance is substituted.
@@ -86,6 +87,75 @@ not optical accuracy. Feasible exact F0=0 reaches the nonnegative objective's
 lower bound, not a process certificate. Unrepresentable arithmetic fails rather
 than clipping. None max_iterations leaves SciPy's default in effect, which is
 recorded with the actual SciPy version, not called unlimited.
+
+## Controlled initial-spectrum degradation: ideal schema 2
+
+The new ideal GUI defaults to `bounded_baseline_degradation`, not a process-error
+model. The user must still choose absolute/relative derivative scale and provide
+one explicit nonnegative finite allowance for every original target row. Blank is
+not zero. The alternative `strict_nominal` retains the original hard nominal gate;
+its budgets are empty. Old schema 1 requests are never upgraded or rehashed.
+
+Each stable objective ID has a `percentage_point` allowance: 0.1 percentage point
+is 0.001 of R/T power fraction, not a relative 0.1% change. Allowances bind row IDs,
+not a display position. Reordering rows preserves that identity. Every original
+wavelength, angle and polarization condition remains present, including overlaps.
+For the initial spectrum y0 and candidate spectrum y:
+
+- lower-bound-only row: y >= y0 - delta;
+- upper-bound-only row: y <= y0 + delta;
+- range with both bounds or value row: y0 - delta <= y <= y0 + delta.
+
+These guard comparisons are closed and exact, with no solver tolerance or added
+margin. A one-sided zero allowance still permits improvement in the other
+spectral direction; a two-sided/value zero allowance freezes that row's spectrum.
+Value-mode original nominal tolerance is unchanged. Original strict >/< operators
+remain separate nominal checks. A nominal-failing initial design can start if its
+physical inputs and explicit bounds are legal. This is not target relaxation:
+original `nominal_targets_met` remains independently reported and can stay false.
+
+The request freezes the initial design, material data, full grid, physical-kernel
+identity, objective IDs, policy and budgets. Freezing/planning performs no hidden
+optical baseline evaluation. Execution's first complete forward/J evaluation
+consumes the ordinary raw-block budget and cancellation checks, then locks y0
+once. Its result evidence records ordered condition identities, exact wavelength
+and angle bits, little-endian float64/fraction units, values, request/kernel
+binding and digest. Partial, cancelled or nonfinite baselines cannot lock or claim
+a guard. The request digest does not change during execution. Replay recomputes
+that original baseline and each candidate, verifies the binding, and independently
+checks the exact physical guard and F <= F0. Self-reported analyses or approximate
+comparison tolerances cannot make an out-of-guard candidate applicable.
+
+The deterministic F, relative probe scaling, fixed F/F0 conditioning, analytic
+constraint Jacobian and ftol remain unchanged. Only the constraint bounds depend
+on policy. Incumbents require complete guard success and F <= F0; only a strict
+F decrease is called improved. An unchanged fallback is `no_improvement`, even
+when another stop reason describes budget/solver termination. Finite-difference
+probes need physical bounds, not nominal/guard feasibility, and never become
+incumbents. The guard is always against the fixed launch spectrum, never against
+the last accepted candidate or the current edited design.
+
+Schema 2 additionally selects the largest legal three-point finite-difference
+stencil: central h=min(h_base,left,right), forward h=min(h_base,right/2), backward
+h=min(h_base,left/2), descending h with central/forward/backward tie order. Invalid,
+repeated or out-of-bound points are discarded; actual floating coordinates still
+determine the nonuniform Lagrange weights. This avoids a tiny near-boundary side
+squeezing an otherwise well-scaled one-sided stencil. Schema 1 numerics are not
+changed. Schema 2 caches only the most recent constraint tuple after baseline lock,
+keyed by request identity and exact little-endian z bytes. Immutable arrays have
+no writable aliases; different bits/identity or incomplete construction cannot
+reuse old rows. Baseline evidence, cache storage and construction peak are included
+in the resource estimate; no grid/column reduction bypasses the existing limits.
+
+Reports separate initial/final nominal status, guard status, raw/normalized F,
+per-row allowance/consumption/excess, and maximum directional degradation/location.
+A replay-valid guard-passing improved candidate may be applied while nominal is
+false, only after the existing explicit confirmation now stating that fact and
+the degradation. Source revision/edit epoch, stable layer IDs, request/operation,
+material and project bindings still gate apply, followed by one undo transaction.
+Parameter-table analysis is unaffected and never supplies these budgets or an
+apply candidate. This policy is a user-selected deterministic allowance, not a
+manufacturing-precision recommendation, yield claim or global-optimum guarantee.
 
 ## Parameter table and separate outputs
 

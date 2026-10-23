@@ -174,9 +174,36 @@ def _independent_sensitivity_schema(kind: str, *, table: bool) -> dict[str, Any]
             "max_iterations": {"type": ["integer", "null"], "minimum": 1},
             "solver_objective_ftol": {"const": 1e-10,
                 "description": "Fixed conditioned-objective stopping setting, not a nominal/physical tolerance."}})
+    payload: dict[str, Any] = {"type": "object", "additionalProperties": False,
+                              "required": required, "properties": properties}
+    if not table:
+        # Version 1 remains closed: the explicit v2 policy/budgets are never
+        # silently injected into a stored strict request or its canonical hash.
+        properties["schema_version"] = {"enum": [1, 2]}
+        properties.update({
+            "policy": {"enum": ["strict_nominal", "bounded_baseline_degradation"],
+                "description": "V2 only. Original nominal acceptance is independent of the fixed-baseline spectral guard."},
+            "objective_ids": {"type": "array", "minItems": 1, "uniqueItems": True,
+                "items": {"type": "string", "minLength": 1},
+                "description": "Stable ordered target-row IDs, not guessed positional budget assignments."},
+            "budgets": {"type": "array", "items": {"type": "object", "additionalProperties": False,
+                "required": ["objective_id", "delta", "unit"], "properties": {
+                    "objective_id": {"type": "string", "minLength": 1},
+                    "delta": {"type": "number", "minimum": 0},
+                    "unit": {"const": "percentage_point"}}},
+                "description": "One explicit finite nonnegative allowance per bounded-policy row; 0.1 pp = 0.001 fraction. Empty is not zero."},
+            "kernel_identity": {"type": ["string", "null"],
+                "description": "Frozen physical implementation identity. No pre-submit baseline optical computation."},
+        })
+        v2_fields = ("policy", "objective_ids", "budgets", "kernel_identity")
+        payload["oneOf"] = [
+            {"properties": {"schema_version": {"const": 1}},
+             "not": {"anyOf": [{"required": [name]} for name in v2_fields]}},
+            {"properties": {"schema_version": {"const": 2}},
+             "required": ["policy", "objective_ids", "budgets"]},
+        ]
     return {"type": "object", "additionalProperties": False, "required": ["payload"],
-            "properties": {"payload": {"type": "object", "additionalProperties": False,
-                "required": required, "properties": properties}}}
+            "properties": {"payload": payload}}
 
 
 FILM_IDEAL_SENSITIVITY_PLAN_INPUT_SCHEMA = _independent_sensitivity_schema("film_ideal_sensitivity", table=False)

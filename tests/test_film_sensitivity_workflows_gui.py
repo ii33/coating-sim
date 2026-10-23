@@ -143,6 +143,7 @@ def test_initial_entries_have_no_invented_table_or_ideal_defaults(harness, app):
     assert all(row["bias_unit"] == row["uncertainty_unit"] == row["uncertainty_kind"] == ""
                for row in panel.thicknessErrorRows)
     assert panel.idealSensitivityMode == ""
+    assert panel.idealSensitivityPolicy == "bounded_baseline_degradation"
     assert panel.idealOptions == {"max_iterations": "", "max_evaluations": ""}
     assert len(panel.idealSensitivityLayers) == len(panel.layerErrors)
     assert all(row["selected"] for row in panel.idealSensitivityLayers)
@@ -380,6 +381,8 @@ def test_tab_switch_and_dialog_reopen_preserve_all_workflow_drafts_and_results(h
 
     _bounded_variable(harness)
     assert panel.setIdealSensitivityMode("absolute")
+    # Preserve this legacy regression's former strict hard-gate semantics.
+    assert panel.setIdealSensitivityPolicy("strict_nominal")
     assert panel.setIdealOption("max_iterations", "2")
     assert panel.setIdealOption("max_evaluations", "12")
     assert panel.startIdealSensitivityOptimization(), panel.idealError
@@ -495,6 +498,8 @@ def test_ideal_requires_explicit_scale_and_selected_columns_and_source_fence(har
     assert not panel.startIdealSensitivityOptimization()
     assert "至少选择一个" in panel.idealError
     assert panel.setIdealSensitivityLayer(layer_id, True)
+    # This regression exercises the old nominal-only acceptance path.
+    assert panel.setIdealSensitivityPolicy("strict_nominal")
     assert panel.setIdealOption("max_iterations", "2")
     assert panel.setIdealOption("max_evaluations", "12")
     assert panel.startIdealSensitivityOptimization(), panel.idealError
