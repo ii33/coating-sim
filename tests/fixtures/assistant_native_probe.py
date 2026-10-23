@@ -76,7 +76,11 @@ def app() -> QApplication:
 
 payload = {'pid': os.getpid(), 'mode': mode, 'ok': False, 'phase': 'starting'}
 def write():
-    report.write_text(json.dumps(payload), encoding='utf-8')
+    # The live parent treats existence as readiness. Publish only after the
+    # entire JSON has been written and closed, including subsequent updates.
+    temporary = report.with_suffix('.tmp')
+    temporary.write_text(json.dumps(payload), encoding='utf-8')
+    temporary.replace(report)
 
 class ProbeHost(host_module.AssistantProcessHost):
     def __init__(self, *args):
