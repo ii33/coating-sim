@@ -191,7 +191,10 @@ Rectangle {
             id: plotViewport
             objectName: "filmSpectrumVectorViewport"
             x: 32 + root.yTickLabelWidth + root.themeColors.spaceSm
-            y: Math.max(root.themeColors.spaceSm, root.plotLabelHeight / 2)
+            // Fractional font metrics can put the clip origin on a half pixel.
+            // A whole logical-pixel origin avoids the observed one-row curve
+            // leak at the bottom edge in the Qt 6.12 software renderer.
+            y: Math.ceil(Math.max(root.themeColors.spaceSm, root.plotLabelHeight / 2))
             width: Math.max(1, chartSurface.width - x - root.rightTickMargin)
             height: Math.max(1, chartSurface.height - y
                              - root.plotLabelHeight - root.themeColors.spaceXs * 2

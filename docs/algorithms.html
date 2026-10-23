@@ -2280,6 +2280,7 @@ CIE λair ──► n_air ──► n,k at λvac ──► thickness ──► n
 <p><b>退化范围、自定义设置与默认值：</b>视窗已覆盖整条轴数据域、单一有效波长或平坦q时，该轴不平移，也不自动缩窄或重新居中。用户显式0–100%等范围继续作为应用绘图设置与复位的准确边界；显式选择完全无数据的范围不会在首次拖动时跳到别处。缩放仍沿原锚点与原倍率工作。默认R曲线、自动轴和400–700nm仿真参数不变。联合域从原始全部采样缓存计算，50,001点测试保留原始双精度极值，不从1800显示点或三位小数文本重建域。</p>
 <p><b>实现位置与依据：</b><code>coat_sim/ui/film_simulation_quick_controller.py:_finite_plot_domain / _bounded_pan_axis / panPlot</code>、<code>coat_sim/ui/qml/FilmSpectrumPlot.qml:filmSpectrumInteractions</code>。验证入口：<code>tests/test_film_spectrum_plot_bounds.py</code>、<code>tests/test_film_simulation_quick_ui_refinements.py</code>和<code>tests/test_film_floating_ui.py</code>。有界平移、退化轴锁定和区域判定未找到外部依据，仅为本项目实现；这些显示规则不是光学精度或硬件DPI验收声明。</p>
 <p><b>渲染验收边界：</b>曲线继续使用直接矢量<code>Shape/PathPolyline</code>与原有逻辑坐标变换；不将DPR再次乘入轴布局或曲线坐标。本轮Qt/PySide6 6.12软件后端的真实截图发现既有离屏curve layer在1.5 DPR的纵向偏移；移除多余离屏层，保留两级viewport裁剪。软件验收在1/1.5/2 DPR核对已知25%水平线的真实像素位置、缩放/平移后的已知交点及区域外曲线像素为零；这些结果不声称GPU、多显示器或旧Qt版本全部通过。<a href="https://doc.qt.io/qt-6/qml-qtquick-item.html">Qt官方Item Layers</a>说明离屏层的纹理语义；偏移是本轮实际观测，不宣称该文档确认了上游缺陷。</p>
+<p><b>字体导致的裁剪边界（2026-10-23）：</b>支持的字体尺度可使标签高为19逻辑px，旧绘图区顶边为半像素坐标；Qt 6.12软件截图实测一枚曲线像素落在绘图区底边外。现仅把局部顶边改为<code>ceil(max(spaceSm, labelHeight/2))</code>，高度仍从原可用空间计算；标签和曲线沿同一viewport坐标映射，原数据、轴范围、线宽、矢量渲染和裁剪开关不变。此布局取整为<span class="tag local">本项目约定</span>，未找到外部依据，不推断Qt内部实现原因。回归复用原“区域外曲线像素为零”的严格断言，覆盖默认与上述字体尺度及1/1.5/2 DPR；不代表所有字体、GPU或跨显示器场景已认证。</p>
 </section>
 <section id="film-spectrum-minor-grid-20261019">
 <h2>14i-11b 光谱主次刻度与无标签网格（2026-10-19）</h2>

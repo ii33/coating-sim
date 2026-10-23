@@ -456,6 +456,17 @@ class FilmFloatingUiTests(unittest.TestCase):
         settings.pop("step_nm", None)
         self.assertTrue(controller.setSimulationSettings(settings))
 
+    def test_floating_plot_fractional_font_geometry(self):
+        # This supported font scale gives a 19px label and formerly a 9.5px
+        # viewport origin. Reuse every original pixel/lifecycle assertion.
+        theme = ThemeService.instance()
+        previous_scale = float(theme.current_snapshot["fontScale"])
+        theme.configure(font_scale=1.0)
+        try:
+            self.test_floating_plot_diagnostics_sidebar_and_session_lifecycle()
+        finally:
+            theme.configure(font_scale=previous_scale)
+
     def test_floating_plot_diagnostics_sidebar_and_session_lifecycle(self):
         theme = ThemeService.instance()
         theme.configure(mode="light")
