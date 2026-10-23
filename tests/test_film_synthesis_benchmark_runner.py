@@ -44,7 +44,10 @@ def test_preflight_uses_actual_gui_freeze_and_durable_contract(tmp_path):
     assert not (tmp_path / "result.json").exists()
 
 
-def test_preflight_request_hash_is_stable_despite_new_job_identity(tmp_path):
+def test_preflight_request_hash_is_stable_despite_new_job_identity(tmp_path, monkeypatch):
+    # The frozen AUTO policy deliberately records the memory seen at freeze;
+    # hold that input constant while testing unrelated generated job identity.
+    monkeypatch.setattr("coat_sim.core.compute_resources.available_memory_bytes", lambda: 8 * 1024**3)
     suite = small_suite(tmp_path)
     first = runner.compile_preflight(suite)
     second = runner.compile_preflight(suite)
@@ -205,29 +208,105 @@ def test_candidate_binding_allows_only_top_level_presentation_annotations(real_g
     assert not runner.candidate_evidence_matches(body["candidate_design"], body["training_score"], body["validation_score"])
 
 
-@pytest.mark.parametrize("corruption", ["different_candidate", "missing_training_point", "missing_audit_point"])
+@pytest.mark.parametrize("corruption", ["different_candidate", "missing_training_point", "missing_audit_point",
+    "invalid_result_kind"])
 def test_terminal_success_and_first_success_reject_corrupted_real_evidence(tmp_path, monkeypatch, corruption):
     from coat_sim.core import film_synthesis_jobs
     actual_execute = film_synthesis_jobs.execute_job
     def execute_then_corrupt(*args, **kwargs):
         response = runner.jsonable(actual_execute(*args, **kwargs))
+        assert film_synthesis_jobs.is_synthesis_result(response)
         body = response["result"]
         if corruption == "different_candidate":
             body["candidate_design"]["substrate"]["thickness"]["value"] += 1
         elif corruption == "missing_training_point":
             body["training_score"]["errors"].pop()
-        else:
+        elif corruption == "missing_audit_point":
             body["validation_score"]["errors"].pop()
+        else:
+            response["kind"] = "invalid_synthesis_result_kind"
         return response
     monkeypatch.setattr(film_synthesis_jobs, "execute_job", execute_then_corrupt)
     compiled = runner.compile_preflight(small_suite(tmp_path), workers=1)
-    result = runner.execute_run(compiled["runs"][0], tmp_path / "corrupt-evidence", compiled, Event(), Event())
-    assert result["error"] is None
+    directory = tmp_path / "corrupt-evidence"
+    result = runner.execute_run(compiled["runs"][0], directory, compiled, Event(), Event())
+    assert result["error"]["type"] == "ValueError"
+    assert result["error"]["message"] == "Production execute_job returned an invalid synthesis result"
     summary = result["summary"]
+    assert summary["state"] == "runner_failed"
+    assert summary["targets_met"] is False
     assert summary["strict_raw_targets_met"] is False
     assert summary["first_audited_success_seconds"] is None
-    if corruption == "different_candidate":
-        assert summary["candidate_audit_matches"] is False
+    assert summary["candidate_audit_matches"] is False
+    assert summary["independent_audit_available"] is False
+    assert summary["cleanup"]["verified"] is False
+    assert summary["training_raw_bounds"]["available"] is False
+    assert summary["audit_raw_bounds"]["available"] is False
+    # Rejected production data is preserved for diagnosis, never trusted as
+    # terminal success or a cleanup certificate, even with intact optics.
+    assert result["response"]["result"]["state"] == "completed"
+    assert result["response"]["result"]["targets_met"] is True
+    if corruption == "invalid_result_kind":
+        body = result["response"]["result"]
+        assert runner.candidate_evidence_matches(body["candidate_design"], body["training_score"], body["validation_score"])
+        assert runner.raw_acceptance(compiled["runs"][0]["frozen_request"], body["training_score"])["passed"] is True
+        assert runner.raw_acceptance(compiled["runs"][0]["frozen_request"], body["validation_score"], scope="audit")["passed"] is True
+    saved = json.loads((directory / "result.json").read_text(encoding="utf-8"))
+    assert saved == result
+    events = [json.loads(line) for line in (directory / "progress.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert events[-2]["kind"] == "error"
+    assert events[-1]["kind"] == "terminal"
+    assert events[-1]["summary"] == summary
+    assert events[-1]["error"] == result["error"]
+
+
+@pytest.mark.parametrize("corrupt_body", [False, True])
+def test_rejected_non_object_response_or_body_still_writes_failed_terminal(tmp_path, monkeypatch, corrupt_body):
+    from coat_sim.core import film_synthesis_jobs
+    actual_execute = film_synthesis_jobs.execute_job
+    def execute_then_corrupt(*args, **kwargs):
+        response = runner.jsonable(actual_execute(*args, **kwargs))
+        if corrupt_body:
+            response["result"] = []
+            return response
+        return []
+    monkeypatch.setattr(film_synthesis_jobs, "execute_job", execute_then_corrupt)
+    compiled = runner.compile_preflight(small_suite(tmp_path), workers=1)
+    directory = tmp_path / "invalid-shape"
+    result = runner.execute_run(compiled["runs"][0], directory, compiled, Event(), Event())
+    assert result["error"]["message"] == "Production execute_job returned an invalid synthesis result"
+    if corrupt_body:
+        assert result["response"]["result"] == []
+    else:
+        assert result["response"] == []
+    assert result["summary"]["state"] == "runner_failed"
+    assert result["summary"]["targets_met"] is False
+    assert result["summary"]["strict_raw_targets_met"] is False
+    assert result["summary"]["first_audited_success_seconds"] is None
+    assert json.loads((directory / "result.json").read_text(encoding="utf-8")) == result
+    events = [json.loads(line) for line in (directory / "progress.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert events[-1]["kind"] == "terminal"
+    assert events[-1]["summary"] == result["summary"]
+
+
+def test_rejected_result_does_not_count_as_suite_raw_success(tmp_path, monkeypatch):
+    from coat_sim.core import film_synthesis_jobs
+    actual_execute = film_synthesis_jobs.execute_job
+    def execute_then_corrupt(*args, **kwargs):
+        response = runner.jsonable(actual_execute(*args, **kwargs))
+        response["kind"] = "invalid_synthesis_result_kind"
+        return response
+    monkeypatch.setattr(film_synthesis_jobs, "execute_job", execute_then_corrupt)
+    output = tmp_path / "invalid-suite-result"
+    assert runner.main(["--suite", str(small_suite(tmp_path)), "--workers", "1", "--output", str(output)]) == 1
+    result = json.loads((output / "result.json").read_text(encoding="utf-8"))
+    assert result["state"] == "partial_or_invalid"
+    assert result["complete"] is True
+    assert result["valid_execution"] is False
+    assert result["strict_raw_success_count"] == 0
+    assert result["runs"][0]["summary"]["state"] == "runner_failed"
+    assert result["runs"][0]["summary"]["targets_met"] is False
+    assert result["runs"][0]["summary"]["first_audited_success_seconds"] is None
 
 
 def test_mismatched_checkpoint_cannot_supply_first_success_time(tmp_path, monkeypatch):

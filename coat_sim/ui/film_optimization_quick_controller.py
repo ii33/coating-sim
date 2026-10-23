@@ -131,7 +131,6 @@ def _objective_default(index: int) -> dict:
         "target_value_percent": 5.0,
         "lower_bound_percent": 0.0,
         "upper_bound_percent": 5.0,
-        "synthesis_strict_upper_bound": False,
         "weight": 1.0,
     }
 
@@ -1417,7 +1416,7 @@ class FilmOptimizationQuickController(QObject):
             if not isinstance(raw_objectives, list):
                 raise ValueError("优化目标必须是数组")
             objectives, ids = [], set()
-            target_fields = set(_objective_default(0))
+            target_fields = set(_objective_default(0)) | {"synthesis_strict_upper_bound"}
             for index, raw in enumerate(raw_objectives):
                 if not isinstance(raw, dict) or set(raw) - target_fields:
                     raise ValueError(f"目标 {index + 1} 字段无效")
@@ -1450,8 +1449,11 @@ class FilmOptimizationQuickController(QObject):
                 if row["mode"] == "value":
                     row["lower_bound_percent"] = row["upper_bound_percent"] = row["target_value_percent"]
                 row["mode"] = "range"
-                if type(row["synthesis_strict_upper_bound"]) is not bool:
+                if ("synthesis_strict_upper_bound" in raw
+                        and type(row["synthesis_strict_upper_bound"]) is not bool):
                     raise ValueError("合成严格上界必须为明确的开关")
+                if not row.get("synthesis_strict_upper_bound", False):
+                    row.pop("synthesis_strict_upper_bound", None)
                 if row["lower_bound_percent"] > row["upper_bound_percent"]:
                     raise ValueError(f"目标 {index + 1} 下界不能大于上界")
                 row["weight"] = _number(row["weight"], "目标权重")
@@ -4045,7 +4047,10 @@ class FilmOptimizationQuickController(QObject):
         row = self._objectives[self._selected_objective]
         if enabled and (row.get("mode") != "range" or not str(row.get("upper_bound_percent", "")).strip()):
             return False
-        row["synthesis_strict_upper_bound"] = enabled
+        if enabled:
+            row["synthesis_strict_upper_bound"] = True
+        else:
+            row.pop("synthesis_strict_upper_bound", None)
         self._error = ""
         self._invalidate_result()
         return True

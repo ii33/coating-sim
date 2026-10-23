@@ -110,6 +110,13 @@ def test_example_page_configurations_restore_without_guessing(example):
         # upgrading to today's canonical editor shape.
         assert {key: restored[key] for key in config} == config
         assert set(restored) == set(config) | {"synthesis"}
+        explicit_false = {
+            **restored,
+            "objectives": [{**row, "synthesis_strict_upper_bound": False}
+                           for row in restored["objectives"]],
+        }
+        assert optimization.loadOptimizationConfiguration(explicit_false)
+        assert optimization.exportOptimizationConfiguration() == restored
         synthesis = restored["synthesis"]
         assert synthesis == {
             "options": {key: None for key in (

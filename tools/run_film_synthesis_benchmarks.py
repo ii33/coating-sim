@@ -505,15 +505,18 @@ def execute_run(run, directory, provenance, cancel, stop_all):
         thread.join(timeout=3)
         cpu_observation = observer.finish()
     elapsed = time.monotonic() - started
-    body = (response or {}).get("result", {})
+    # A rejected response is diagnostic data only. In particular, its claimed
+    # terminal state, passing scores and cleanup must not certify this run.
+    accepted_response = response if error is None else {}
+    body = (accepted_response or {}).get("result", {})
     performance = body.get("performance", {})
     cleanup = verify_cleanup(performance)
     training = raw_acceptance(run["frozen_request"], body.get("training_score"))
     audit = raw_acceptance(run["frozen_request"], body.get("validation_score"), scope="audit")
     evidence_matches = candidate_evidence_matches(body.get("candidate_design"), body.get("training_score"), body.get("validation_score"))
     raw_success = (evidence_matches and training["passed"] is True and audit["passed"] is True
-        and (response or {}).get("best_candidate_audit", {}).get("available") is True
-        and (response or {}).get("best_candidate_audit", {}).get("targets_met") is True)
+        and (accepted_response or {}).get("best_candidate_audit", {}).get("available") is True
+        and (accepted_response or {}).get("best_candidate_audit", {}).get("targets_met") is True)
     final_design_hash = sha256_json(_physical_design(body["candidate_design"])) if evidence_matches else None
     matching_success = [row["elapsed_seconds"] for row in audited_success_checkpoints
         if row["design_sha256"] == final_design_hash]
@@ -524,8 +527,8 @@ def execute_run(run, directory, provenance, cancel, stop_all):
         "elapsed_seconds": elapsed, "wall_budget_seconds": run["wall_seconds"],
         "wall_budget_reached": deadline_hit.is_set(), "cooperative_cancel_requested": cancel.is_set(),
         "cooperative_cancel_overrun_seconds": max(0., elapsed - run["wall_seconds"]),
-        "targets_met": body.get("targets_met"), "training_raw_bounds": training, "audit_raw_bounds": audit,
-        "independent_audit_available": (response or {}).get("best_candidate_audit", {}).get("available", False),
+        "targets_met": body.get("targets_met", False), "training_raw_bounds": training, "audit_raw_bounds": audit,
+        "independent_audit_available": (accepted_response or {}).get("best_candidate_audit", {}).get("available", False),
         "strict_raw_targets_met": raw_success, "candidate_audit_matches": evidence_matches,
         "first_audited_success_seconds": first_success_seconds,
         "first_audited_success_scope": "first_raw_passing_checkpoint_matching_terminal_design_or_terminal_elapsed",
