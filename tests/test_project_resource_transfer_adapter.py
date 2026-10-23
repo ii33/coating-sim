@@ -9,7 +9,7 @@ import time
 from typing import cast
 
 import pytest
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QEventLoop, QTimer, Qt, QUrl
 from PySide6.QtTest import QTest
 
 from coat_sim.core.project_resource_service import ProjectResourceService
@@ -29,16 +29,49 @@ def isolated_catalog(global_root):
 
 
 def wait_transfer(controller):
-    for _ in range(1200):
-        if not controller.transferBusy:
-            return
-        QTest.qWait(10)
-        # Pumping Qt events alone can starve the ordinary Python I/O worker
-        # between GIL-releasing system calls. Yield without extending the
-        # existing poll count or changing any transfer/timeout assertion.
-        time.sleep(0)
-    pytest.fail("Resource transfer did not finish: " + str(controller.transferStatus)
-                + "; timing=" + json.dumps(controller.transferDiagnostics, sort_keys=True))
+    """Drive the ordinary Qt loop, with a real 12s operation deadline.
+
+    qWait polling can starve this Python I/O worker on Windows. Completion
+    evidence is checked too: a late completion never passes merely because
+    transferBusy was cleared before the test resumed.
+    """
+    budget_s = 12.0
+    diagnostics = controller.transferDiagnostics
+    rows = diagnostics.get("operations", [])
+    operation = rows[-1] if rows else {}
+    remaining_s = max(0.0, budget_s - operation.get("snapshot_s", 0.0))
+    expired = False
+    if controller.transferBusy and remaining_s > 0:
+        loop, watchdog = QEventLoop(), QTimer()
+        watchdog.setSingleShot(True)
+        watchdog.setTimerType(Qt.TimerType.PreciseTimer)
+
+        def terminal(*_args):
+            if not controller.transferBusy:
+                loop.quit()
+
+        def timeout():
+            nonlocal expired
+            expired = True
+            loop.quit()
+
+        controller.transferOperationFinished.connect(terminal)
+        watchdog.timeout.connect(timeout)
+        started = time.perf_counter()
+        try:
+            watchdog.start(max(0, int(remaining_s * 1000)))
+            loop.exec()
+        finally:
+            watchdog.stop()
+            controller.transferOperationFinished.disconnect(terminal)
+        expired = expired or time.perf_counter() - started > remaining_s
+    diagnostics = controller.transferDiagnostics
+    rows = diagnostics.get("operations", [])
+    operation = rows[-1] if rows else {}
+    late = operation.get("terminal_emit_returned_s", 0.0) > budget_s
+    if expired or controller.transferBusy or late:
+        pytest.fail("Resource transfer did not finish within 12 seconds: " + str(controller.transferStatus)
+                    + "; timing=" + json.dumps(diagnostics, sort_keys=True))
 
 
 @pytest.mark.parametrize("container", ["coatproj", "cproject"])
