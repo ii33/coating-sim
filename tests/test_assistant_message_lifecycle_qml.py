@@ -3,6 +3,7 @@ import time
 from pathlib import Path
 
 import pytest
+import shiboken6
 from PySide6.QtCore import QCoreApplication, QEvent, QPointF, QUrl
 from PySide6.QtQml import QQmlComponent, QQmlEngine
 from PySide6.QtQuick import QQuickWindow
@@ -152,3 +153,6 @@ def test_persisted_error_round_body_survives_real_lifecycle(real_bridge, monkeyp
             reopened._prefs._shutdown_key_lookup()
             reopened._prefs._shutdown_probe_budget()
             reopened._prefs._shutdown_mcp()
+            reopened.deleteLater()
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            assert not shiboken6.isValid(reopened)

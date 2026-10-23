@@ -7,6 +7,8 @@ import sqlite3
 from typing import Any, cast
 
 import pytest
+import shiboken6
+from PySide6.QtCore import QCoreApplication, QEvent
 
 from tests import qt_test_guard  # noqa: F401  # isolate Qt before application imports
 from tests.test_assistant_lifecycle_contract import FakeDiscoveryBus, FakeWorker
@@ -87,6 +89,12 @@ def real_bridge(tmp_path, monkeypatch):
         bridge._prefs._shutdown_key_lookup()
         bridge._prefs._shutdown_probe_budget()
         bridge._prefs._shutdown_mcp()
+        # This fixture creates a parentless QObject owner. Destroy it through
+        # Qt while its children and the GUI thread are still available, rather
+        # than leaving its wrapper cycles to a later Python GC/test boundary.
+        bridge.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        assert not shiboken6.isValid(bridge)
 
 
 def context_record(**overrides):

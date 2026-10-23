@@ -2,6 +2,7 @@
 
 from copy import deepcopy
 import hashlib
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -12,10 +13,15 @@ from coat_sim.core.project_film_service import ProjectFilmService
 from coat_sim.core.project_store import ProjectStore
 from tests.design_test_fixtures import _RECTANGULAR_SOURCE
 from tests.test_asset_catalog_diagnostics import obsolete_source
-from tests.test_project_core import setup_project, file_snapshot
+from tests.test_project_core import setup_project, file_snapshot as _native_file_snapshot
 from tests.test_project_film_service import bound_design, material, EmptyCatalog
 
 pytestmark = pytest.mark.contract
+
+
+def file_snapshot(root):
+    """Manifest paths use POSIX separators on every host."""
+    return {Path(path).as_posix(): content for path, content in _native_file_snapshot(root).items()}
 
 
 def legacy_project(tmp_path):
@@ -264,9 +270,9 @@ def test_retained_file_read_errors_are_project_errors_and_do_not_commit(tmp_path
 
 
 def test_retained_nonordinary_file_metadata_is_rejected_before_read(tmp_path):
-    import os
     from pathlib import Path
     import stat
+    from types import SimpleNamespace
 
     store, service, film_id, source, _process, _configuration, _raw = legacy_project(tmp_path)
     current = service.load_document(film_id)
@@ -281,9 +287,11 @@ def test_retained_nonordinary_file_metadata_is_rejected_before_read(tmp_path):
     def nonordinary_metadata(path, *args, **kwargs):
         info = original(path, *args, **kwargs)
         if path == target:
-            fields = list(info)
-            fields[0] = stat.S_IFDIR | 0o700
-            return os.stat_result(fields)
+            # Rebuilding os.stat_result from its portable tuple drops Windows
+            # st_file_attributes/st_reparse_tag. Keep every native attribute.
+            fields = {name: getattr(info, name) for name in dir(info) if name.startswith("st_")}
+            fields["st_mode"] = stat.S_IFDIR | 0o700
+            return SimpleNamespace(**fields)
         return info
 
     # Only ordinary, self-created files exist. This mock changes metadata, not

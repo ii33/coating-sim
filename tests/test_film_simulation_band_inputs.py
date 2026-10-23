@@ -5,7 +5,7 @@ import tempfile
 import unittest
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QPointF, QSettings, Qt
+from PySide6.QtCore import QCoreApplication, QEvent, QLocale, QPoint, QPointF, QSettings, Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtTest import QTest
@@ -200,8 +200,14 @@ class FilmSimulationBandInputTests(unittest.TestCase):
         self.assertEqual(self.active_name(), "filmSimulationBandMinimumField_1")
         self.assertEqual(
             self.find_item("filmSimulationBandMinimumField_1").property("text"), "")
-        self.assertEqual(
-            self.find_item("filmSimulationBandMaximumField_1").property("text"), "1064")
+        shown = self.find_item("filmSimulationBandMaximumField_1").property("text")
+        # ThemeField formats an unfocused integer through Qt.locale(), which
+        # may legitimately display a grouping separator (for example 1,064).
+        locale = QLocale()
+        self.assertEqual(shown, locale.toString(1064.0, "f", 0))
+        parsed, ok = locale.toDouble(shown)
+        self.assertTrue(ok)
+        self.assertEqual(parsed, 1064.0)
 
         self.enter_text("900")
         QTest.keyClick(self.window, Qt.Key.Key_Tab)
