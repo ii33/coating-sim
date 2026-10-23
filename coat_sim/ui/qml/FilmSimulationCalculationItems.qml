@@ -74,6 +74,29 @@ Rectangle {
         }
         return rows.join("；")
     }
+    function syncCalculationRows() {
+        const items = root.controller.calculationItems
+        if (items.length < calculationRows.count)
+            calculationRows.clear()
+        for (let row = 0; row < items.length; ++row) {
+            if (row < calculationRows.count)
+                calculationRows.setProperty(row, "bandRow", items[row])
+            else
+                calculationRows.append({ bandRow: items[row] })
+        }
+    }
+
+    Component.onCompleted: root.syncCalculationRows()
+
+    Connections {
+        target: root.controller
+        function onCalculationItemsChanged() { root.syncCalculationRows() }
+    }
+
+    ListModel {
+        id: calculationRows
+        dynamicRoles: true
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -301,15 +324,37 @@ Rectangle {
                 }
 
                 Repeater {
-                    model: root.calculationItemsSnapshot
+                    model: calculationRows
                     delegate: Rectangle {
                         id: bandCard
-                        required property var modelData
+                        required property var bandRow
+                        property string minimumDraftText: bandCard.numberText(bandRow.minimum_nm)
+                        property string maximumDraftText: bandCard.numberText(bandRow.maximum_nm)
+                        property bool minimumDraftDirty: false
+                        property bool maximumDraftDirty: false
+                        readonly property var modelData: bandRow
                         Layout.fillWidth: true
                         implicitHeight: cardLayout.implicitHeight + Theme.snapshot.spaceSm * 2
                         radius: Theme.snapshot.radiusSm
                         color: Theme.snapshot.colorSurfaceRaised
                         border.color: Theme.snapshot.colorBorder
+
+                        function numberText(value) {
+                            return value === null || value === undefined ? "" : String(value)
+                        }
+                        function syncDraftText() {
+                            if (minimumDraftDirty && Number.isFinite(Number(minimumDraftText))
+                                    && Number(minimumDraftText) === bandRow.minimum_nm)
+                                minimumDraftDirty = false
+                            if (maximumDraftDirty && Number.isFinite(Number(maximumDraftText))
+                                    && Number(maximumDraftText) === bandRow.maximum_nm)
+                                maximumDraftDirty = false
+                            if (!minimumDraftDirty)
+                                minimumDraftText = numberText(bandRow.minimum_nm)
+                            if (!maximumDraftDirty)
+                                maximumDraftText = numberText(bandRow.maximum_nm)
+                        }
+                        onBandRowChanged: syncDraftText()
 
                         ColumnLayout {
                             id: cardLayout
@@ -339,32 +384,48 @@ Rectangle {
                                 Label { text: "nm"; color: Theme.snapshot.colorTextMuted }
                                 ThemeControls.ThemeField {
                                     id: minimumField
+                                    objectName: "filmSimulationBandMinimumField_"
+                                                 + bandCard.modelData.index
                                     Layout.fillWidth: true
                                     accessibleLabel: "波段下限 nm"
-                                    numericDisplayValue: bandCard.modelData.minimum_nm === null
-                                                         ? "" : bandCard.modelData.minimum_nm
+                                    numericDisplayValue: bandCard.minimumDraftText
                                     numericDisplayDecimals: 3
                                     inputMethodHints: Qt.ImhFormattedNumbersOnly
                                     validator: DoubleValidator {
                                         bottom: 0.000001; top: 1.0e12; decimals: 10
                                     }
+                                    onTextEdited: {
+                                        bandCard.minimumDraftDirty = true
+                                        bandCard.minimumDraftText = text
+                                    }
                                     onEditingFinished: root.controller.setCalculationBand(
-                                        bandCard.modelData.index, Number(text), Number(maximumField.text))
+                                        bandCard.modelData.index,
+                                        minimumField.acceptableInput ? Number(text)
+                                                                    : bandCard.modelData.minimum_nm,
+                                        bandCard.modelData.maximum_nm)
                                 }
                                 Label { text: "至"; color: Theme.snapshot.colorTextMuted }
                                 ThemeControls.ThemeField {
                                     id: maximumField
+                                    objectName: "filmSimulationBandMaximumField_"
+                                                 + bandCard.modelData.index
                                     Layout.fillWidth: true
                                     accessibleLabel: "波段上限 nm"
-                                    numericDisplayValue: bandCard.modelData.maximum_nm === null
-                                                         ? "" : bandCard.modelData.maximum_nm
+                                    numericDisplayValue: bandCard.maximumDraftText
                                     numericDisplayDecimals: 3
                                     inputMethodHints: Qt.ImhFormattedNumbersOnly
                                     validator: DoubleValidator {
                                         bottom: 0.000001; top: 1.0e12; decimals: 10
                                     }
+                                    onTextEdited: {
+                                        bandCard.maximumDraftDirty = true
+                                        bandCard.maximumDraftText = text
+                                    }
                                     onEditingFinished: root.controller.setCalculationBand(
-                                        bandCard.modelData.index, Number(minimumField.text), Number(text))
+                                        bandCard.modelData.index,
+                                        bandCard.modelData.minimum_nm,
+                                        maximumField.acceptableInput ? Number(text)
+                                                                    : bandCard.modelData.maximum_nm)
                                 }
                             }
 
