@@ -3,13 +3,18 @@ from dataclasses import asdict
 import hashlib
 import math
 
-KINDS = frozenset({"single_source", "process", "mask_optimization", "film_optimization", "film_synthesis", "film_sensitivity", "appearance_render", "mask_weights", "mask_field", "point_weights", "python_script"})
+KINDS = frozenset({"single_source", "process", "mask_optimization", "film_optimization", "film_synthesis", "film_sensitivity", "film_ideal_sensitivity", "film_thickness_error_table", "appearance_render", "mask_weights", "mask_field", "point_weights", "python_script"})
 
 
 def canonical_parameters(service, kind, supplied):
     if kind not in KINDS or not isinstance(supplied, dict):
         raise ValueError("invalid_compute_kind: 未知计算种类或参数类型")
     value = dict(supplied)
+    if kind in ("film_ideal_sensitivity", "film_thickness_error_table"):
+        from .film_sensitivity_workflow_jobs import canonical_parameters, workflow_for_request
+        if workflow_for_request(value.get("payload")) != kind:
+            raise ValueError("sensitivity executor differs from request kind")
+        return canonical_parameters(service, value)
     if kind == "appearance_render":
         from .appearance_compute import canonical_appearance_parameters
         return canonical_appearance_parameters(service, value)
@@ -146,6 +151,15 @@ def input_file_fingerprints(service, kind, parameters):
 
 
 def estimate(service, kind, parameters):
+    if kind in ("film_ideal_sensitivity", "film_thickness_error_table"):
+        from .film_sensitivity_workflow_jobs import workflow_request_from_payload, estimate_workflow_resources
+        request = workflow_request_from_payload(parameters["payload"])
+        resources = estimate_workflow_resources(request)
+        return {"summary": ("理想局部导数敏感度优化" if kind == "film_ideal_sensitivity"
+                            else "厚度参数表预期误差分析"),
+                "execution_project_root": str(service.root), "estimated_s": None,
+                "work_index": None, "sample_count": 0, "operations": resources,
+                "basis": "Frozen original optical grid and explicit settings; no process/yield or wall-time prediction"}
     if kind == "appearance_render":
         job = parameters["frozen"]["job"]
         return {"summary": "膜系外观渲染", "estimated_s": None, "work_index": None,

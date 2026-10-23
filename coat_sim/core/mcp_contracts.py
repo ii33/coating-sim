@@ -127,12 +127,77 @@ FILM_SENSITIVITY_SUBMIT_INPUT_SCHEMA: dict[str, Any] = {
         "client_request_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 512}},
 }
 
+
+def _independent_sensitivity_schema(kind: str, *, table: bool) -> dict[str, Any]:
+    """Discovery hints; closed typed deserializers remain authoritative."""
+    properties: dict[str, Any] = {
+        "schema_version": {"const": 1}, "kind": {"const": "coat_sim." + kind + "_request"},
+        "design_snapshot": {"type": "object"}, "design_revision": {"type": "integer", "minimum": 0},
+        "objectives": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+        "frozen_material_snapshot": {"type": ["object", "null"]},
+        "max_evaluations": {"type": ["integer", "null"], "minimum": 1,
+            "description": "Raw forward/Jacobian condition-block budget, not thickness-probe count."},
+        "strict_lower_bound_objective_indices": {"type": "array", "uniqueItems": True,
+            "items": {"type": "integer", "minimum": 0}},
+        "strict_upper_bound_objective_indices": {"type": "array", "uniqueItems": True,
+            "items": {"type": "integer", "minimum": 0}},
+    }
+    required = ["schema_version", "kind", "design_snapshot", "design_revision", "objectives"]
+    if table:
+        required.append("rows")
+        properties.update({
+            "rows": {"type": "array", "minItems": 1, "items": {
+                "type": "object", "additionalProperties": False, "required": ["layer_id"],
+                "properties": {
+                    "layer_id": {"type": "string", "minLength": 1}, "enabled": {"type": "boolean"},
+                    "bias": {"type": ["number", "null"]},
+                    "bias_unit": {"enum": [None, "absolute_nm", "relative_fraction"]},
+                    "uncertainty_kind": {"enum": [None, "undefined", "bounded", "stddev"]},
+                    "uncertainty_magnitude": {"type": ["number", "null"], "minimum": 0},
+                    "uncertainty_unit": {"enum": [None, "absolute_nm", "relative_fraction"]}}},
+                "description": "Null means undefined, not zero. Bias, bounded amplitude and sigma are distinct; no process preset."},
+            "correlation_layer_ids": {"type": "array", "uniqueItems": True, "items": {"type": "string"},
+                "description": "Exact ordered enabled stddev rows; no guessed independent model."},
+            "correlation_matrix": {"type": ["array", "null"], "items": {
+                "type": "array", "items": {"type": "number"}},
+                "description": "Explicit rho, exact symmetry and diagonal 1. Missing rho leaves aggregate sigma unavailable."},
+            "include_finite_bias": {"type": "boolean",
+                "description": "Explicit real bias-only perturbation; unconfigured layers stay nominal and coverage is reported."}})
+    else:
+        required.extend(("variables", "sensitivity_mode"))
+        properties.update({
+            "variables": {"type": "array", "items": {"type": "object"}},
+            "sensitivity_mode": {"enum": ["absolute", "relative"],
+                "description": "J times 1 nm, or J times current physical layer thickness. Unit scales, not process errors/probabilities."},
+            "sensitivity_layer_ids": {"type": ["array", "null"], "uniqueItems": True,
+                "items": {"type": "string"}, "description": "Frozen derivative columns, separate from optimization freedom/bounds."},
+            "max_iterations": {"type": ["integer", "null"], "minimum": 1},
+            "solver_objective_ftol": {"const": 1e-10,
+                "description": "Fixed conditioned-objective stopping setting, not a nominal/physical tolerance."}})
+    return {"type": "object", "additionalProperties": False, "required": ["payload"],
+            "properties": {"payload": {"type": "object", "additionalProperties": False,
+                "required": required, "properties": properties}}}
+
+
+FILM_IDEAL_SENSITIVITY_PLAN_INPUT_SCHEMA = _independent_sensitivity_schema("film_ideal_sensitivity", table=False)
+FILM_ERROR_TABLE_PLAN_INPUT_SCHEMA = _independent_sensitivity_schema("film_thickness_error_table", table=True)
+
+
+def _sensitivity_submit_schema(plan: dict[str, Any]) -> dict[str, Any]:
+    return {"type": "object", "additionalProperties": False, "required": ["payload"],
+        "properties": {"payload": plan["properties"]["payload"],
+            "client_request_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 512}}}
+
+
+FILM_IDEAL_SENSITIVITY_SUBMIT_INPUT_SCHEMA = _sensitivity_submit_schema(FILM_IDEAL_SENSITIVITY_PLAN_INPUT_SCHEMA)
+FILM_ERROR_TABLE_SUBMIT_INPUT_SCHEMA = _sensitivity_submit_schema(FILM_ERROR_TABLE_PLAN_INPUT_SCHEMA)
+
 FILM_SYNTHESIS_ESTIMATE_INPUT_SCHEMA: dict[str, Any] = {
     "type": "object", "additionalProperties": False,
     "required": ["kind", "parameters"],
     "properties": {
         "kind": {"enum": ["single_source", "process", "mask_optimization", "film_optimization",
-            "film_synthesis", "film_sensitivity", "mask_weights", "mask_field", "point_weights", "python_script"]},
+            "film_synthesis", "film_sensitivity", "film_ideal_sensitivity", "film_thickness_error_table", "mask_weights", "mask_field", "point_weights", "python_script"]},
         "parameters": {"type": "object"},
     },
     "allOf": [{"if": {"properties": {"kind": {"const": "film_synthesis"}}, "required": ["kind"]},
@@ -157,7 +222,8 @@ film_design_schema source_quadrature convert_gear_geometry sample_substrate_outl
 sample_substrate_surface calculation_history estimate_calculation convert_time_fields
 list_windows read_window project_editor_snapshot inspect_appearance_asset
 wait_calculation_job mask_optimization_groups ito_electrical_calculate
-list_deleted_builtin_materials plan_film_synthesis plan_film_sensitivity'''.split())
+list_deleted_builtin_materials plan_film_synthesis plan_film_sensitivity
+plan_film_ideal_sensitivity plan_film_thickness_error_table'''.split())
 _WRITE = frozenset('''project_bbs_import_attachment project_bbs_comment project_bbs_write project_open project_research_save project_manage
  developer_report_issue developer_issue_reports developer_access developer_checks
  developer_persona run_python_script write_data_file move_data_path delete_data_path
@@ -170,7 +236,7 @@ _WRITE = frozenset('''project_bbs_import_attachment project_bbs_comment project_
  correction_board_weights correction_board_field selected_point_weights
  planet_center_occlusion_ring export_pdf open_window update_window window_action
  close_window estimate_compute_task estimate_film_optimization submit_film_optimization
- submit_film_synthesis submit_film_sensitivity
+ submit_film_synthesis submit_film_sensitivity submit_film_ideal_sensitivity submit_film_thickness_error_table
  estimate_appearance_render submit_appearance_render request_compute_confirmation
  submit_mask_weights submit_mask_field submit_point_weights submit_python_script
  submit_single_source submit_process_recipe create_default_workflow create_design_workflow

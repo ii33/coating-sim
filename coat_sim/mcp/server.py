@@ -49,6 +49,8 @@ from coat_sim.core.compute_tasks import ComputeTaskStore
 from coat_sim.core.mcp_contracts import (FILM_SYNTHESIS_ESTIMATE_INPUT_SCHEMA,
                                           FILM_SYNTHESIS_PLAN_INPUT_SCHEMA, FILM_SYNTHESIS_SUBMIT_INPUT_SCHEMA,
                                           FILM_SENSITIVITY_PLAN_INPUT_SCHEMA, FILM_SENSITIVITY_SUBMIT_INPUT_SCHEMA,
+                                          FILM_IDEAL_SENSITIVITY_PLAN_INPUT_SCHEMA, FILM_IDEAL_SENSITIVITY_SUBMIT_INPUT_SCHEMA,
+                                          FILM_ERROR_TABLE_PLAN_INPUT_SCHEMA, FILM_ERROR_TABLE_SUBMIT_INPUT_SCHEMA,
                                           ITO_ELECTRICAL_INPUT_SCHEMA,
                                           tool_annotations, validate_mcp_arguments)
 from coat_sim.core.design_files import design_extension
@@ -121,6 +123,10 @@ class CapabilityMCPServer(MCPServer):
         schemas["submit_film_synthesis"] = FILM_SYNTHESIS_SUBMIT_INPUT_SCHEMA
         schemas["plan_film_sensitivity"] = FILM_SENSITIVITY_PLAN_INPUT_SCHEMA
         schemas["submit_film_sensitivity"] = FILM_SENSITIVITY_SUBMIT_INPUT_SCHEMA
+        schemas["plan_film_ideal_sensitivity"] = FILM_IDEAL_SENSITIVITY_PLAN_INPUT_SCHEMA
+        schemas["submit_film_ideal_sensitivity"] = FILM_IDEAL_SENSITIVITY_SUBMIT_INPUT_SCHEMA
+        schemas["plan_film_thickness_error_table"] = FILM_ERROR_TABLE_PLAN_INPUT_SCHEMA
+        schemas["submit_film_thickness_error_table"] = FILM_ERROR_TABLE_SUBMIT_INPUT_SCHEMA
         result = []
         for tool in registered:
             key = "input_schema" if "input_schema" in type(tool).model_fields else "inputSchema"
@@ -1253,6 +1259,66 @@ def submit_film_sensitivity(payload: dict[str, Any], client_request_id: str | No
         return submit_sensitivity(service, payload, client_request_id)
     except (ServiceError, OSError, ValueError, TypeError) as exc:
         raise _error(exc) from exc
+
+
+def _plan_independent_sensitivity(payload, executor):
+    from coat_sim.core.film_sensitivity_workflow_jobs import (
+        prepare_workflow_payload, workflow_for_request, workflow_request_from_payload,
+        estimate_workflow_resources,
+    )
+    try:
+        if workflow_for_request(payload) != executor:
+            raise ValueError("workflow kind differs from the named tool")
+        frozen = prepare_workflow_payload(service.film_design_service, payload)
+        return {"ok": True, "request": frozen,
+                "resources": estimate_workflow_resources(workflow_request_from_payload(frozen)),
+                "execution": "Read-only freeze; use submit tool or coat_sim.film_sensitivity_workflow_cli. No computation/job was started."}
+    except (ValueError, TypeError, KeyError, ArithmeticError) as exc:
+        raise ToolError(f"invalid_arguments: {exc}") from exc
+
+
+def _submit_independent_sensitivity(payload, client_request_id, executor):
+    from coat_sim.core.film_sensitivity_workflow_jobs import submit_workflow, workflow_for_request
+    try:
+        if workflow_for_request(payload) != executor:
+            raise ValueError("workflow kind differs from the named tool")
+        return submit_workflow(service, payload, client_request_id)
+    except (ServiceError, OSError, ValueError, TypeError) as exc:
+        raise _error(exc) from exc
+
+
+@mcp.tool()
+def plan_film_ideal_sensitivity(payload: dict[str, Any]) -> dict[str, Any]:
+    """Read-only freeze a deterministic local-Jacobian sensitivity optimization.
+
+    Explicit absolute J*1nm or relative J*d columns are not manufacturing
+    errors. Original nominal bounds remain hard constraints. No error-table
+    value, process preset, probability or implicit k=0 enters this request.
+    """
+    return _plan_independent_sensitivity(payload, "film_ideal_sensitivity")
+
+
+@mcp.tool()
+def submit_film_ideal_sensitivity(payload: dict[str, Any], client_request_id: str | None = None) -> dict[str, Any]:
+    """Submit ideal sensitivity through normal confirmation and frozen-ID scheduling."""
+    return _submit_independent_sensitivity(payload, client_request_id, "film_ideal_sensitivity")
+
+
+@mcp.tool()
+def plan_film_thickness_error_table(payload: dict[str, Any]) -> dict[str, Any]:
+    """Read-only freeze a nullable per-layer thickness-error parameter table.
+
+    Bias, first-order bounded amplitude and sigma are distinct outputs. Missing
+    correlation does not imply independence; missing values do not mean zero.
+    This analysis never changes the ideal optimization objective or candidate.
+    """
+    return _plan_independent_sensitivity(payload, "film_thickness_error_table")
+
+
+@mcp.tool()
+def submit_film_thickness_error_table(payload: dict[str, Any], client_request_id: str | None = None) -> dict[str, Any]:
+    """Submit independent error-table analysis, retaining normal compute confirmation."""
+    return _submit_independent_sensitivity(payload, client_request_id, "film_thickness_error_table")
 
 
 @mcp.tool()

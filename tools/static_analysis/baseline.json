@@ -7280,16 +7280,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_film_workflow_document.py",
-      "code": "import-not-found",
-      "message": "Cannot find implementation or library stub for module named \"test_film_design_generator_session\"",
-      "scope": "",
-      "anchor": "from test_film_design_generator_session import _MemoryService",
-      "fingerprint": "1ecfd55b80d9f7bbfaefb9d7e2c433869a5f8451f4ae8fce91f1e67ec7dbc544",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/ui/assistant_desktop.py",
       "code": "misc",
       "message": "Cannot assign to a type",
@@ -61869,6 +61859,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "Prune only79 allowances resolved by the reviewed current synthesis/UI integration; verified in full Linux CI report39410651701, no new/increased allowances; preserve existing configuration metadata.",
+  "last_prune_reason": "Remove only the resolved missing-import diagnostic after using the explicit tests package fixture import; preserve all remaining reviewed debt and reject every new diagnostic.",
   "configuration_review_reason": "2026-10-17: add only BSD-3-Clause pypdf 6.21.0 for isolated research PDF extraction; all previous dependency/tool versions, analyzer rules and diagnostic entries remain unchanged. The lock-file digest changes only for this reviewed runtime dependency."
 }

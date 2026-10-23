@@ -15,7 +15,7 @@ from coat_sim.core.film_design import load_design, save_design, validate_design,
 from coat_sim.core.film_design_session import FilmDesignEditSession
 from coat_sim.ui.film_quick_controller import FilmDesignQuickController
 from coat_sim.ui.film_simulation_quick_controller import FilmSimulationQuickController, _display_curve_segments
-from test_film_design_generator_session import _MemoryService
+from tests.test_film_design_generator_session import _MemoryService
 
 _APP = QGuiApplication.instance() or QGuiApplication([])
 

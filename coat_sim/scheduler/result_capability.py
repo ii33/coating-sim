@@ -245,12 +245,32 @@ def validate_film_optimization_result(service, result) -> dict:
     return deepcopy(validated)
 
 
+def claims_sensitivity_result(job) -> bool:
+    """Select typed-only routing, never grant validity or result capability.
+
+    Both the queue executor and the raw discriminator are authoritative routing
+    claims. A malformed or mismatched typed payload must not fall back to a
+    generic simulation asset merely because its validated predicate is false.
+    """
+    if not isinstance(job, dict):
+        return False
+    kinds = ("film_sensitivity", "film_ideal_sensitivity", "film_thickness_error_table")
+    result = job.get("result")
+    return (job.get("kind") in kinds
+            or (isinstance(result, dict)
+                and result.get("kind") in tuple("coat_sim." + kind + "_result" for kind in kinds)))
+
+
 def is_best_candidate_result(result) -> bool:
     """Return whether a terminal result explicitly advertises a verified candidate."""
     if is_film_optimization_result(result):
         return True
-    if is_sensitivity_result(result):
-        return isinstance(result.get("best_design"), dict) and isinstance(result.get("best_analysis"), dict)
+    if claims_sensitivity_result({"result": result}):
+        return (is_sensitivity_result(result)
+                and (result.get("kind") != "coat_sim.film_ideal_sensitivity_result"
+                     or result.get("operation") == "optimize")
+                and isinstance(result.get("best_design"), dict)
+                and isinstance(result.get("best_analysis"), dict))
     from coat_sim.core.film_synthesis_jobs import is_synthesis_result
     if is_synthesis_result(result):
         body = result.get("result", {})
@@ -341,12 +361,18 @@ def job_has_viewable_result(job) -> bool:
     result = job.get("result")
     if not isinstance(result, dict):
         return False
+    if claims_sensitivity_result(job):
+        if not is_sensitivity_result(result):
+            return False
+        from coat_sim.core.film_sensitivity_workflow_jobs import workflow_for_result
+        executor = workflow_for_result(result)
+        return (job.get("kind") == executor
+                and (executor != "film_ideal_sensitivity" or result.get("operation") == "optimize")
+                and job.get("state") in ("succeeded", "failed", "cancelled"))
     if is_legacy_synthesis_result(result):
         # Physical replay is intentionally deferred to the history reader.
         # Old tolerance-based targets_met cannot authorize a current result.
         return job.get("kind") == "film_synthesis" and job.get("state") in ("succeeded", "failed", "cancelled")
-    if is_sensitivity_result(result):
-        return job.get("kind") == "film_sensitivity" and job.get("state") in ("succeeded", "failed", "cancelled")
     if job.get("state") == "succeeded":
         from coat_sim.core.film_synthesis_jobs import is_synthesis_result
         if is_synthesis_result(result):
@@ -369,7 +395,8 @@ def job_has_viewable_result(job) -> bool:
 
 def is_sensitivity_result(result) -> bool:
     from coat_sim.core.film_sensitivity_jobs import is_sensitivity_result as check
-    return check(result)
+    from coat_sim.core.film_sensitivity_workflow_jobs import is_workflow_result
+    return check(result) or is_workflow_result(result)
 
 
 def is_appearance_render_result(result) -> bool:
@@ -410,6 +437,23 @@ def load_best_candidate_checkpoint(root, job_id, *, terminal_state="cancelled"):
         if pointer.is_symlink() or not pointer.resolve().is_relative_to(job_directory):
             raise ValueError("checkpoint pointer escaped its job directory")
         envelope = json.loads(pointer.read_text(encoding="utf-8"))
+        if isinstance(envelope, dict) and envelope.get("kind") in (
+                "coat_sim.film_ideal_sensitivity_checkpoint", "coat_sim.film_thickness_error_table_checkpoint"):
+            from .jobs import JobSpec
+            from .store import SchedulerStore
+            from coat_sim.core.film_sensitivity_workflow_jobs import (
+                validate_checkpoint, deserialize_job_payload, workflow_for_request,
+            )
+            spec_path = job_directory / "spec.json"
+            if spec_path.is_symlink() or not spec_path.resolve().is_relative_to(job_directory):
+                raise ValueError("sensitivity workflow job spec escaped its scheduler directory")
+            spec = JobSpec.parse_frozen_json(spec_path.read_text(encoding="utf-8"))
+            row = SchedulerStore(root).status(job_id)
+            expected = deserialize_job_payload(spec.parameters["payload"])
+            if spec.executor != workflow_for_request(expected) or row.get("input_digest") != spec.fingerprint:
+                raise ValueError("sensitivity workflow checkpoint job identity mismatch")
+            return validate_checkpoint(envelope, expected_job=spec.parameters["payload"],
+                                       terminal_state=terminal_state), ""
         if isinstance(envelope, dict) and envelope.get("kind") == "coat_sim.film_sensitivity_checkpoint":
             from .jobs import JobSpec
             from .store import SchedulerStore

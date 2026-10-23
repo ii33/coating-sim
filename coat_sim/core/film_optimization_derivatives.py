@@ -276,6 +276,7 @@ def _analytic_one_polarization(waves, indices, thickness_nm, layer_ids,
 
 def simulate_with_thickness_jacobian(
     design, materials, variables, settings, *, zero_thickness_layer_ids=(),
+    wavelengths_nm=None,
 ):
     """Simulate a frozen single-front coherent design and its thickness Jacobian.
 
@@ -302,6 +303,12 @@ def simulate_with_thickness_jacobian(
         one front layer stored in nm with an exact numeric zero. The public
         design validator now accepts zero-thickness films directly; the
         temporary placeholder in this path does not change optical evaluation.
+    wavelengths_nm:
+        Optional exact positive, finite, nondecreasing one-dimensional original
+        wavelength array. Its length and endpoints must match settings. When
+        omitted, the existing linspace path is unchanged. When supplied, both
+        material sampling and the returned R/T and Jacobians use this same
+        detached float64 array, without reconstructing chunk interior points.
 
     Returns a mapping with wavelength_nm, R, T, jacobian_R and jacobian_T.
     The Jacobians have shape [wavelength, variable] and units fraction/nm.
@@ -371,8 +378,23 @@ def simulate_with_thickness_jacobian(
     prepared_materials = materials if type(materials) is _PreparedMaterialData else None
     rows_by_id = None if prepared_materials is not None else _checked_material_rows(materials, design)
     use_k = design.get("use_k", True)
-    waves = np.linspace(normalized["wavelength_min_nm"],
-                        normalized["wavelength_max_nm"], normalized["samples"])
+    if wavelengths_nm is None:
+        waves = np.linspace(normalized["wavelength_min_nm"],
+                            normalized["wavelength_max_nm"], normalized["samples"])
+    else:
+        if not isinstance(wavelengths_nm, (Sequence, np.ndarray)) or isinstance(wavelengths_nm, (str, bytes)):
+            raise ValueError("explicit wavelengths_nm must be a one-dimensional real array")
+        raw_waves = np.asarray(wavelengths_nm)
+        if (raw_waves.ndim != 1 or raw_waves.dtype.kind not in "iuf"
+                or any(isinstance(value, (bool, np.bool_)) for value in wavelengths_nm)):
+            raise ValueError("explicit wavelengths_nm must contain real numbers, not bool/complex values")
+        waves = np.array(raw_waves, dtype=np.float64, copy=True)
+        if (waves.shape != (normalized["samples"],) or not np.all(np.isfinite(waves))
+                or np.any(waves <= 0) or np.any(waves[1:] < waves[:-1])):
+            raise ValueError("explicit wavelengths_nm must match samples and be finite, positive and nondecreasing")
+        if (waves[0] != normalized["wavelength_min_nm"]
+                or (len(waves) > 1 and waves[-1] != normalized["wavelength_max_nm"])):
+            raise ValueError("explicit wavelengths_nm endpoints differ from simulation settings")
 
     variable_list = list(variables)
     variable_columns = {}

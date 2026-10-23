@@ -241,6 +241,10 @@ def test_real_qml_actions_capture_unfinished_typing_and_submit_frozen_process(pr
     layer_id = panel.layerErrors[0]["layer_id"]
     with window_runtime(app, process.owner) as (window, warnings):
         click(app, window, window.findChild(QQuickItem, "filmSensitivityOpenButton"))
+        legacy = visual_item(window.contentItem(), "filmSensitivityLegacyTab")
+        assert legacy is not None
+        click(app, window, legacy)
+        assert panel.activeWorkflow == "legacy"
         dialog = window.findChild(QObject, "filmSensitivityDialog")
         assert dialog.property("visible")
         for name in ("filmSensitivityPolicyBox", "filmSensitivitySemanticsBox", "filmSensitivityDistributionBox",
@@ -297,6 +301,10 @@ def test_nominal_candidate_qml_apply_requires_existing_confirmation(process, app
     assert payload["state"] == "partial" and panel.canApply
     with window_runtime(app, process.owner) as (window, warnings):
         click(app, window, window.findChild(QQuickItem, "filmSensitivityOpenButton"))
+        legacy = visual_item(window.contentItem(), "filmSensitivityLegacyTab")
+        assert legacy is not None
+        click(app, window, legacy)
+        assert panel.activeWorkflow == "legacy"
         apply = window.findChild(QQuickItem, "filmSensitivityApplyButton")
         assert apply is not None and apply.isEnabled()
         click(app, window, apply)

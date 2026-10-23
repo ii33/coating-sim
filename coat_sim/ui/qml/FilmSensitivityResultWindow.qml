@@ -9,14 +9,17 @@ import "theme_controls" as ThemeControls
 AppWindow {
     id: window
     required property var controller
-    titleBase: "膜厚敏感性 · 只读历史报告"
+    titleBase: "膜厚敏感度 · 只读历史报告"
     width: 840
     height: 620
     minimumWidth: 620
     minimumHeight: 420
     initialMaximized: false
-    statusText: controller.status
-    statusSeverity: controller.error.length ? "error" : "info"
+    statusText: controller.activeWorkflow === "table" ? controller.tableStatus
+                : controller.activeWorkflow === "ideal" ? controller.idealStatus : controller.status
+    statusSeverity: (controller.activeWorkflow === "table" ? controller.tableError.length
+                     : controller.activeWorkflow === "ideal" ? controller.idealError.length
+                     : controller.error.length) ? "error" : "info"
     color: window.themeColors.colorWindow
     ScrollView {
         anchors.fill: parent
@@ -28,14 +31,30 @@ AppWindow {
             width: parent.width
             Label {
                 Layout.fillWidth: true
+                visible: window.controller.activeWorkflow === "legacy"
                 text: "作业 " + window.controller.jobId + "\n" + window.controller.resultSummary
                 color: window.themeColors.colorText
                 wrapMode: Text.WordWrap
+            }
+            FilmSensitivityWorkflowResultPanel {
+                Layout.fillWidth: true
+                visible: window.controller.activeWorkflow === "table"
+                controller: window.controller
+                themeTokens: window.themeColors
+                workflowKind: "table"
+            }
+            FilmSensitivityWorkflowResultPanel {
+                Layout.fillWidth: true
+                visible: window.controller.activeWorkflow === "ideal"
+                controller: window.controller
+                themeTokens: window.themeColors
+                workflowKind: "ideal"
             }
             Repeater {
                 model: window.controller.scenarioResults
                 delegate: Label {
                     required property var modelData
+                    visible: window.controller.activeWorkflow === "legacy"
                     Layout.fillWidth: true
                     text: modelData.scenario_id + " · 有限场景最大违规 "
                           + Number(modelData.max_error_percent).toPrecision(7) + " 个百分点 · "
@@ -52,6 +71,7 @@ AppWindow {
             }
             Label {
                 Layout.fillWidth: true
+                visible: window.controller.activeWorkflow === "legacy"
                 text: window.controller.error
                 color: window.themeColors.colorError
                 wrapMode: Text.WordWrap

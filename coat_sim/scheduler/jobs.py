@@ -10,7 +10,8 @@ PROTOCOL_VERSION = 1
 MAX_RAYTRACE_SPEC_BYTES = 20 * 1024 * 1024
 EXECUTORS = frozenset({'process', 'process_recipe', 'single_source', 'mask_optimization',
                        'film_optimization', 'mask_weights', 'mask_field', 'point_weights',
-                       'film_synthesis', 'film_sensitivity', 'geometric_raytrace', 'appearance_render', 'python_script', 'probe'})
+                       'film_synthesis', 'film_sensitivity', 'film_ideal_sensitivity',
+                       'film_thickness_error_table', 'geometric_raytrace', 'appearance_render', 'python_script', 'probe'})
 
 def canonical(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False)
@@ -100,6 +101,16 @@ def freeze_spec(service, kind, parameters):
         from coat_sim.core.film_synthesis_jobs import build_job_payload
         payload = build_job_payload(values)
         return JobSpec(kind, {'payload': payload}, {}).to_dict()
+    if kind in ('film_ideal_sensitivity', 'film_thickness_error_table'):
+        if set(values) not in ({'request'}, {'payload'}):
+            raise ValueError('sensitivity workflow requires one independent request')
+        from coat_sim.core.film_sensitivity_workflow_jobs import (
+            build_job_payload as build_workflow_job_payload, workflow_for_request,
+        )
+        request = values.get('request', values.get('payload'))
+        if workflow_for_request(request) != kind:
+            raise ValueError('sensitivity executor differs from request kind')
+        return JobSpec(kind, {'payload': build_workflow_job_payload(service, request)}, {}).to_dict()
     if kind == 'film_sensitivity':
         if set(values) not in ({'request'}, {'payload'}):
             raise ValueError('film_sensitivity requires one independent request')

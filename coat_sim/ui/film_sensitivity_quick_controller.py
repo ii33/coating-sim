@@ -7,6 +7,7 @@ request and never silently changes the source design or nominal acceptance.
 from __future__ import annotations
 
 from copy import deepcopy
+import json
 import math
 from pathlib import Path
 import threading
@@ -24,6 +25,9 @@ from coat_sim.core.film_sensitivity import (
     sensitivity_request_from_optimization,
     validate_film_sensitivity_result_payload,
 )
+from coat_sim.core.film_thickness_error_table import FilmThicknessErrorParameter
+from coat_sim.core.film_thickness_error_table import thickness_error_table_request_from_optimization
+from coat_sim.core.film_ideal_sensitivity import ideal_sensitivity_request_from_optimization
 from coat_sim.core.film_result_service import atomic_film_json
 from coat_sim.core.film_nominal_acceptance import solver_condition_acceptable
 from coat_sim.scheduler import SchedulerClient, freeze_spec
@@ -64,16 +68,24 @@ class _SensitivityTask(QRunnable):
 
     def run(self):
         try:
-            request = freeze_film_sensitivity_request(self.service, self.request)
-            spec = freeze_spec(None, "film_sensitivity", {"request": request})
+            from coat_sim.core.film_sensitivity_workflow_jobs import (
+                freeze_workflow_request, workflow_for_request, validate_workflow_result,
+                terminal_reply,
+            )
+            executor = workflow_for_request(self.request)
+            if executor == "film_sensitivity":
+                request = freeze_film_sensitivity_request(self.service, self.request)
+            else:
+                request = freeze_workflow_request(self.service, self.request)
+            spec = freeze_spec(None, executor, {"request": request})
             if self.cancel.is_set() or self.disconnected.is_set() or not self.admission_check():
                 raise InterruptedError(
                     "Cancelled or source/project changed before admission; no job was submitted."
                 )
             capabilities = self.client.capabilities()
-            if "film_sensitivity" not in capabilities.get("executors", ()):
+            if executor not in capabilities.get("executors", ()):
                 raise ValueError(
-                    "The running local scheduler does not support film_sensitivity; close it normally and restart the application."
+                    f"The running local scheduler does not support {executor}; close it normally and restart the application."
                 )
             if self.cancel.is_set() or self.disconnected.is_set() or not self.admission_check():
                 raise InterruptedError(
@@ -94,11 +106,16 @@ class _SensitivityTask(QRunnable):
                 payload = row.get("result")
                 if not isinstance(payload, dict) or row.get("state") not in ("failed", "cancelled"):
                     raise
-                from coat_sim.core.film_sensitivity_jobs import terminal_reply
                 payload = terminal_reply(payload, row["state"])
-            validated = validate_film_sensitivity_result_payload(
-                payload, expected_request=request, replay=True
-            )
+            if executor == "film_sensitivity":
+                validated = validate_film_sensitivity_result_payload(
+                    payload, expected_request=request, replay=True
+                )
+            else:
+                from coat_sim.core.film_sensitivity_workflow_jobs import result_matches_job
+                if not result_matches_job(payload, spec["parameters"]["payload"]):
+                    raise ValueError("Sensitivity result is not bound to this job request/operation.")
+                validated = validate_workflow_result(payload, expected_request=request, replay=True)
             self.signals.finished.emit(self.generation, validated, "")
         except Exception as exc:
             from coat_sim.scheduler.remote_client import RemoteSubmissionUnknown
@@ -112,6 +129,8 @@ class _SensitivityTask(QRunnable):
 class FilmSensitivityQuickController(QObject):
     changed = Signal()
     layerErrorsChanged = Signal()
+    tableRowsChanged = Signal()
+    idealRowsChanged = Signal()
     overwriteRequested = Signal(str)
 
     def __init__(self, owner: Any, *, client_factory=SchedulerClient):
@@ -138,6 +157,7 @@ class FilmSensitivityQuickController(QObject):
         self._sampling = {"sample_count": "", "seed": ""}
         self._scenario_source: dict[str, Any] | None = None
         self._prepared_source: dict[str, Any] | None = None
+        self._prepared_signature: Any = None
         self._scenario_kind = ""
         self._scenarios: tuple[FilmSensitivityScenario, ...] = ()
         self._options = {"max_evaluations": "200", "max_iterations": "20"}
@@ -145,10 +165,38 @@ class FilmSensitivityQuickController(QObject):
         self._error = ""
         self._payload: dict[str, Any] | None = None
         self._context: dict[str, Any] | None = None
+        self._legacy_context: dict[str, Any] | None = None
+        self._table_context: dict[str, Any] | None = None
+        self._ideal_context: dict[str, Any] | None = None
         self._job_id = ""
+        self._legacy_job_id = ""
+        self._table_job_id = ""
+        self._ideal_job_id = ""
         self._cancel: RemoteCancelEvent | None = None
         self._disconnected = threading.Event()
         self._applied = False
+        self._ideal_applied = False
+        # The ordinary dialog has two independent, explicitly-typed workflows.
+        # Keep their drafts and frozen reports separate from the legacy process
+        # editor above so switching pages cannot migrate assumptions.
+        self._table_rows: list[dict[str, Any]] = []
+        self._ideal_layer_rows: list[dict[str, Any]] = []
+        self._table_correlation_json = ""
+        self._table_correlation_bound_layer_ids: tuple[str, ...] | None = None
+        self._table_correlation_invalidated = False
+        self._table_uncorrelated = False
+        self._table_finite_bias = False
+        self._table_payload: dict[str, Any] | None = None
+        self._table_status = "填写参数表后运行；未填写不等于零。"
+        self._table_error = ""
+        self._ideal_mode = ""
+        self._ideal_layer_ids: list[str] | None = None
+        self._ideal_selection_explicit = False
+        self._ideal_options = {"max_iterations": "", "max_evaluations": ""}
+        self._ideal_payload: dict[str, Any] | None = None
+        self._ideal_status = "请选择绝对或相对敏感度尺度。"
+        self._ideal_error = ""
+        self._active_workflow = "legacy"
 
     @Property(bool, notify=changed)
     def busy(self):
@@ -190,6 +238,10 @@ class FilmSensitivityQuickController(QObject):
     def scenarioDescription(self):
         return self._scenario_description()
 
+    @Property(str, notify=changed)
+    def activeWorkflow(self):
+        return self._active_workflow
+
     def _scenario_description(self) -> str:
         if not self._scenarios:
             return "尚无有效场景；配置或来源设计改变后须重新生成。"
@@ -216,17 +268,245 @@ class FilmSensitivityQuickController(QObject):
 
     @Property(str, notify=changed)
     def jobId(self):
+        if self._active_workflow == "table" and self._table_job_id:
+            return self._table_job_id
+        if self._active_workflow == "ideal" and self._ideal_job_id:
+            return self._ideal_job_id
+        if self._active_workflow == "legacy" and self._legacy_job_id:
+            return self._legacy_job_id
         return self._job_id
+
+    @Property(str, notify=changed)
+    def tableJobId(self):
+        return self._table_job_id
+
+    @Property(str, notify=changed)
+    def idealJobId(self):
+        return self._ideal_job_id
 
     @Property(bool, notify=changed)
     def hasResult(self):
         return self._payload is not None
 
+    @Property(list, notify=tableRowsChanged)
+    def thicknessErrorRows(self):
+        return deepcopy(self._table_rows)
+
+    @Property(str, notify=changed)
+    def tableCorrelationJson(self):
+        return self._table_correlation_json
+
+    @Property(bool, notify=changed)
+    def tableUncorrelated(self):
+        return self._table_uncorrelated
+
+    @Property(bool, notify=changed)
+    def tableIncludeFiniteBias(self):
+        return self._table_finite_bias
+
+    @Property(list, notify=changed)
+    def tableStandardDeviationLayerIds(self):
+        return [row["layer_id"] for row in self._table_rows
+                if row["enabled"] and row["uncertainty_kind"] == "stddev"
+                and isinstance(row["uncertainty_text"], str) and row["uncertainty_text"].strip()]
+
+    def _current_table_stddev_layer_ids(self):
+        return tuple(row["layer_id"] for row in self._table_rows
+                     if row["enabled"] and row["uncertainty_kind"] == "stddev"
+                     and isinstance(row["uncertainty_text"], str)
+                     and row["uncertainty_text"].strip())
+
+    def _table_correlation_identity_error(self, current_ids=None):
+        if not self._table_correlation_json.strip() or self._table_uncorrelated:
+            return ""
+        current_ids = (self._current_table_stddev_layer_ids() if current_ids is None
+                       else tuple(current_ids))
+        bound_ids = self._table_correlation_bound_layer_ids
+        if bound_ids is None or current_ids != bound_ids:
+            self._table_correlation_invalidated = True
+        if not self._table_correlation_invalidated:
+            return ""
+        original = "未绑定" if bound_ids is None else ", ".join(bound_ids) or "无"
+        current = ", ".join(current_ids) or "无"
+        return ("rho 矩阵身份已失效，矩阵文本已保留但不会按新顺序解释。"
+                f"录入时有序标准差层 ID：[{original}]；当前有序标准差层 ID：[{current}]。"
+                "请清空 rho 矩阵文本后，按当前 ID 顺序重新输入；矩阵不会自动重排、平均或修复。")
+
+    def _refresh_table_correlation_identity_error(self):
+        previous = self._table_error
+        message = self._table_correlation_identity_error()
+        if message:
+            self._table_error = message
+        elif self._table_error.startswith("rho 矩阵身份已失效"):
+            self._table_error = ""
+        if self._table_error != previous:
+            self.changed.emit()
+        return message
+
+    @Property(bool, notify=changed)
+    def tableHasResult(self):
+        return self._table_payload is not None
+
+    @Property(str, notify=changed)
+    def tableResultSummary(self):
+        return self._typed_result_summary("table")
+
+    @Property(str, notify=changed)
+    def tableStatus(self):
+        return self._table_status
+
+    @Property(str, notify=changed)
+    def tableError(self):
+        return self._table_error
+
+    @Property(str, notify=changed)
+    def idealSensitivityMode(self):
+        return self._ideal_mode
+
+    @Property(list, notify=idealRowsChanged)
+    def idealSensitivityLayers(self):
+        return [dict(row, selected=row["layer_id"] in (self._ideal_layer_ids or []))
+                for row in self._ideal_layer_rows]
+
+    @Property(str, notify=changed)
+    def idealAssumptionSummary(self):
+        if not self._prepared_source:
+            return "来源尚未准备"
+        layers = self._prepared_source.get("front_layers", ())
+        material_count = len({row.get("material_id") for row in layers})
+        return (f"{len(layers)} 个前表面层、{material_count} 种材料；冻结来源的光学常数/消光系数和原目标网格，"
+                "k/use_k 保持来源值且不默认 k=0；不从参数表读取误差幅度或权重。")
+
+    @Property(dict, notify=changed)
+    def idealOptions(self):
+        return dict(self._ideal_options)
+
+    @Property(bool, notify=changed)
+    def idealHasResult(self):
+        return self._ideal_payload is not None
+
+    @Property(str, notify=changed)
+    def idealResultSummary(self):
+        return self._typed_result_summary("ideal")
+
+    @Property(str, notify=changed)
+    def idealStatus(self):
+        return self._ideal_status
+
+    @Property(str, notify=changed)
+    def idealError(self):
+        return self._ideal_error
+
+    @Property(bool, notify=changed)
+    def idealCanApply(self):
+        return self._can_apply_workflow("ideal")
+
+    def _payload_for_workflow(self, workflow):
+        return self._table_payload if workflow == "table" else self._ideal_payload
+
+    @staticmethod
+    def _summary_value(value):
+        if value is None:
+            return "未提供"
+        try:
+            if hasattr(value, "__dataclass_fields__"):
+                from dataclasses import asdict
+                value = asdict(value)
+            return json.dumps(value, ensure_ascii=False, allow_nan=False, sort_keys=True)
+        except (TypeError, ValueError):
+            if isinstance(value, (list, tuple)):
+                return "、".join(str(item) for item in value)
+            return str(value)
+
+    def _typed_result_summary(self, workflow):
+        payload = self._payload_for_workflow(workflow)
+        if payload is None:
+            return ""
+        from coat_sim.core.film_sensitivity_workflow_jobs import workflow_result_from_payload
+        result = workflow_result_from_payload(payload)
+        analysis = (getattr(result, "analysis", None) if workflow == "table"
+                    else getattr(result, "best_analysis", None))
+        frozen = getattr(result, "frozen_request", None)
+        if workflow == "table":
+            coverage = getattr(analysis, "coverage", None)
+            conditions = getattr(analysis, "conditions", ())
+            layers = getattr(analysis, "layer_summaries", None)
+            correlation = getattr(analysis, "correlation", None)
+            condition_count = len(conditions or ())
+            condition_preview = []
+            for row in list(conditions or ())[:3]:
+                condition_preview.append(
+                    f"{row.wavelength_nm:g} nm/{row.angle_deg:g}° {row.metric}: "
+                    f"bias={self._summary_value(row.linear_bias_value)}, "
+                    f"bounded L1={self._summary_value(row.bounded_first_order_l1)}, "
+                    f"σ={self._summary_value(row.aggregate_sigma)} ({row.aggregate_sigma_status})"
+                )
+            layer_preview = [f"{row.layer_id}: max |dM/dd|={row.max_abs_derivative_per_nm:g}/nm"
+                             for row in list(layers or ())[:8]]
+            return ("参数表预期误差分析 · " + str(result.state) + " / " + str(result.termination_reason)
+                    + "\n覆盖范围：" + self._summary_value(coverage)
+                    + "\n相关性：" + self._summary_value(getattr(correlation, "status", None))
+                    + f"；合并标准差状态：{getattr(analysis, 'aggregate_sigma_status', '未提供')}"
+                    + f"\n条件完成：{getattr(analysis, 'completed_condition_count', 0)}/{getattr(analysis, 'expected_condition_count', condition_count)}"
+                    + f"；原始名义目标通过：{self._summary_value(getattr(analysis, 'nominal_targets_met', None))}"
+                    + "\n条件预览：" + ("；".join(condition_preview) if condition_preview else "无已完成条件")
+                    + "\n逐层灵敏度预览：" + ("；".join(layer_preview) if layer_preview else "无")
+                    + "\n偏差与不确定度分栏呈现，不合并为总概率；此流程不生成候选设计，也不可应用。")
+        value = getattr(analysis, "objective_value", None)
+        nominal = getattr(analysis, "nominal_targets_met", None)
+        selected = getattr(frozen, "sensitivity_layer_ids", ()) if frozen is not None else ()
+        scale = getattr(frozen, "sensitivity_mode", "") if frozen is not None else ""
+        baseline = getattr(result, "baseline_analysis", None)
+        return ("理想敏感度优化 · " + str(result.state) + " / " + str(result.termination_reason)
+                + f"\n冻结敏感度尺度：{scale or '未读取'}；列 ID：{self._summary_value(selected)}"
+                + f"\n加权敏感度平方和目标：{self._summary_value(value)}；初态：{self._summary_value(getattr(baseline, 'objective_value', None))}"
+                + f"；原始名义目标通过：{self._summary_value(nominal)}"
+                + ("\n存在可审阅候选，但不会自动应用。" if getattr(result, "best_design", None) is not None
+                   else "\n没有可应用候选。"))
+
+    def _can_apply_workflow(self, workflow):
+        payload = self._payload_for_workflow(workflow)
+        context = self._table_context if workflow == "table" else self._ideal_context
+        if (payload is None or self._busy or self._closed or context is None
+                or context.get("workflow") != workflow or self.owner.session is None
+                or self.owner.busy or (workflow == "ideal" and self._ideal_applied)):
+            return False
+        try:
+            from coat_sim.core.film_sensitivity_workflow_jobs import workflow_result_from_payload
+            result = workflow_result_from_payload(payload)
+            if (result.state not in {"completed", "partial"} or not result.is_final
+                    or getattr(result, "operation", "") != "optimize"
+                    or result.best_design is None):
+                return False
+            analysis = getattr(result, "best_analysis", None)
+            if getattr(analysis, "nominal_targets_met", None) is not True:
+                return False
+            compute = context.get("project_compute")
+            if compute is not None and (compute.editing_frozen or not compute.accepts(context.get("project_operation"))):
+                return False
+            return (self.owner.session.snapshot().design_revision == context["revision"]
+                    and self.owner._source_edit_epoch() == context["epoch"]
+                    and result.design_revision == context["revision"])
+        except (ValueError, TypeError, KeyError, AttributeError, RuntimeError):
+            return False
+
+    @Slot(int, result=bool)
+    def selectWorkflow(self, index):
+        if type(index) is not int or index not in (0, 1, 2):
+            return False
+        value = ("table", "ideal", "legacy")[index]
+        if value != self._active_workflow:
+            self._active_workflow = value
+            self.changed.emit()
+        return True
+
     @Property(bool, notify=changed)
     def canApply(self):
+        context = self._legacy_context
         return (
             not self._busy
             and not self._applied
+            and self._context_is_current(context)
             and self._payload is not None
             and self._payload.get("is_final") is True
             and self._payload["state"] in {"completed", "partial"}
@@ -235,9 +515,18 @@ class FilmSensitivityQuickController(QObject):
             and (self._payload.get("frozen_request", {}).get("optimization_policy", "robustness_only")
                  != "nominal_preserving" or
                  self._payload.get("best_analysis", {}).get("nominal_targets_met") is True)
-            and self._context is not None
+            and context is not None
             and self.owner.session is not None
         )
+
+    def _context_is_current(self, context):
+        if context is None or self.owner.session is None:
+            return False
+        compute = context.get("project_compute")
+        if compute is not None and (compute.editing_frozen or not compute.accepts(context.get("project_operation"))):
+            return False
+        return (self.owner.session.snapshot().design_revision == context["revision"]
+                and self.owner._source_edit_epoch() == context["epoch"])
 
     @Property(str, notify=changed)
     def resultSummary(self):
@@ -288,12 +577,36 @@ class FilmSensitivityQuickController(QObject):
 
         The history view has no captured source context and cannot apply.
         """
-        film_sensitivity_result_from_payload(payload)
-        self._payload = deepcopy(payload)
+        from coat_sim.core.film_sensitivity_workflow_jobs import workflow_result_from_payload, workflow_for_request
+        result = workflow_result_from_payload(payload)
+        workflow = workflow_for_request(result.frozen_request)
         self._job_id = job_id
         self._context = None
-        self._status = "只读历史敏感性报告；没有绑定当前设计，不可应用。"
-        self._error = ""
+        self._legacy_context = self._table_context = self._ideal_context = None
+        self._applied = self._ideal_applied = False
+        self._active_workflow = ("legacy" if workflow == "film_sensitivity" else
+                                 "table" if workflow == "film_thickness_error_table" else "ideal")
+        message = "只读历史报告；没有绑定当前设计，不可应用。"
+        if workflow == "film_sensitivity":
+            film_sensitivity_result_from_payload(payload)
+            self._payload = deepcopy(payload)
+            self._legacy_job_id = job_id
+            self._status = message
+            self._error = ""
+        elif workflow == "film_thickness_error_table":
+            self._table_payload = deepcopy(payload)
+            self._table_job_id = job_id
+            self._table_context = None
+            self._table_status = message
+            self._table_error = ""
+        elif workflow == "film_ideal_sensitivity":
+            self._ideal_payload = deepcopy(payload)
+            self._ideal_job_id = job_id
+            self._ideal_context = None
+            self._ideal_status = message
+            self._ideal_error = ""
+        else:
+            raise ValueError("unsupported historical sensitivity workflow")
         self.changed.emit()
 
     @Property(list, notify=changed)
@@ -332,6 +645,7 @@ class FilmSensitivityQuickController(QObject):
                 self._scenario_source = None
                 self._scenario_kind = ""
             self._prepared_source = deepcopy(dict(base.design_snapshot))
+            self._prepared_signature = self._request_signature(base)
             previous = {row["layer_id"]: row for row in self._rows}
             self._rows = [
                 {
@@ -345,7 +659,38 @@ class FilmSensitivityQuickController(QObject):
                 }
                 for index, row in enumerate(base.design_snapshot["front_layers"])
             ]
+            previous_table = {row["layer_id"]: row for row in self._table_rows}
+            self._table_rows = [
+                {
+                    "layer_id": row["id"],
+                    "layer_label": f"{index + 1}. {row['material_id']} / {row['optical_set_id']}",
+                    "nominal": f"{row['thickness']['value']:g} {row['thickness']['unit']}",
+                    "enabled": previous_table.get(row["id"], {}).get("enabled", True),
+                    "bias_text": previous_table.get(row["id"], {}).get("bias_text", ""),
+                    "bias_unit": previous_table.get(row["id"], {}).get("bias_unit", ""),
+                    "uncertainty_kind": previous_table.get(row["id"], {}).get("uncertainty_kind", ""),
+                    "uncertainty_text": previous_table.get(row["id"], {}).get("uncertainty_text", ""),
+                    "uncertainty_unit": previous_table.get(row["id"], {}).get("uncertainty_unit", ""),
+                }
+                for index, row in enumerate(base.design_snapshot["front_layers"])
+            ]
+            self._refresh_table_correlation_identity_error()
+            self._ideal_layer_rows = [
+                {"layer_id": row["id"],
+                 "layer_label": f"{index + 1}. {row['material_id']} / {row['optical_set_id']}",
+                 "nominal": f"{row['thickness']['value']:g} {row['thickness']['unit']}"}
+                for index, row in enumerate(base.design_snapshot["front_layers"])
+            ]
+            current_ids = [row["layer_id"] for row in self._ideal_layer_rows]
+            if self._ideal_layer_ids is None or not self._ideal_selection_explicit:
+                self._ideal_layer_ids = list(current_ids)
+            else:
+                current_set = set(current_ids)
+                self._ideal_layer_ids = [row_id for row_id in current_ids
+                                         if row_id in current_set and row_id in self._ideal_layer_ids]
             self.layerErrorsChanged.emit()
+            self.tableRowsChanged.emit()
+            self.idealRowsChanged.emit()
             if not self._rows:
                 raise ValueError("敏感性分析需要已有膜层；先完成自动合成或添加真实膜系。")
             self._error = ""
@@ -356,6 +701,11 @@ class FilmSensitivityQuickController(QObject):
             self.changed.emit()
             return False
 
+    @staticmethod
+    def _request_signature(base):
+        return deepcopy((base.design_revision, base.design_snapshot, base.objectives, base.variables,
+                         base.frozen_material_snapshot, base.acceptable_normalized_error))
+
     def _edit(self):
         self._error = ""
         if self._payload is not None:
@@ -364,6 +714,145 @@ class FilmSensitivityQuickController(QObject):
         self._scenario_source = None
         self._scenario_kind = ""
         self.changed.emit()
+
+    def _typed_edit(self, workflow):
+        if workflow == "table":
+            self._table_error = ""
+            self._table_status = ("参数已编辑；下方仍保留上次冻结结果，不代表当前草稿。"
+                                 if self._table_payload is not None else "填写参数表后运行；未填写不等于零。")
+        else:
+            self._ideal_error = ""
+            self._ideal_status = ("配置已编辑；下方仍保留上次冻结结果，不代表当前草稿。"
+                                  if self._ideal_payload is not None else "请选择绝对或相对敏感度尺度。")
+        self.changed.emit()
+
+    def _table_row(self, layer_id):
+        return next((row for row in self._table_rows if row["layer_id"] == layer_id), None)
+
+    @Slot(str, str, str, result=bool)
+    def setTableDraft(self, layer_id, field, value):
+        if self._busy or not isinstance(layer_id, str) or not isinstance(value, str):
+            return False
+        if field not in ("bias", "uncertainty_magnitude"):
+            return False
+        row = self._table_row(layer_id)
+        if row is None:
+            return False
+        row["bias_text" if field == "bias" else "uncertainty_text"] = value
+        # Intentionally avoid tableRowsChanged while editing, so a QML
+        # Repeater never rebuilds the active editor, selection, or IME state.
+        self._typed_edit("table")
+        self._refresh_table_correlation_identity_error()
+        return True
+
+    @Slot(str, str, str, result=bool)
+    def setTableUnit(self, layer_id, component, unit):
+        if self._busy or component not in ("bias", "uncertainty") or unit not in ("", "absolute_nm", "relative_percent"):
+            return False
+        row = self._table_row(layer_id)
+        if row is None:
+            return False
+        row["bias_unit" if component == "bias" else "uncertainty_unit"] = unit
+        self.tableRowsChanged.emit()
+        self._typed_edit("table")
+        self._refresh_table_correlation_identity_error()
+        return True
+
+    @Slot(str, str, result=bool)
+    def setTableUncertaintyKind(self, layer_id, value):
+        if self._busy or value not in ("", "bounded", "stddev"):
+            return False
+        row = self._table_row(layer_id)
+        if row is None:
+            return False
+        row["uncertainty_kind"] = value
+        self.tableRowsChanged.emit()
+        self._typed_edit("table")
+        self._refresh_table_correlation_identity_error()
+        return True
+
+    @Slot(str, bool, result=bool)
+    def setTableLayerEnabled(self, layer_id, enabled):
+        if self._busy or type(enabled) is not bool:
+            return False
+        row = self._table_row(layer_id)
+        if row is None:
+            return False
+        row["enabled"] = enabled
+        self.tableRowsChanged.emit()
+        self._typed_edit("table")
+        self._refresh_table_correlation_identity_error()
+        return True
+
+    @Slot(str, result=bool)
+    def setTableCorrelationDraft(self, value):
+        if self._busy or not isinstance(value, str):
+            return False
+        was_defined = bool(self._table_correlation_json.strip())
+        is_defined = bool(value.strip())
+        if not is_defined:
+            self._table_correlation_bound_layer_ids = None
+            self._table_correlation_invalidated = False
+        elif not was_defined:
+            self._table_correlation_bound_layer_ids = self._current_table_stddev_layer_ids()
+            self._table_correlation_invalidated = False
+        self._table_correlation_json = value
+        self._typed_edit("table")
+        self._refresh_table_correlation_identity_error()
+        return True
+
+    @Slot(bool, result=bool)
+    def setTableUncorrelated(self, value):
+        if self._busy or type(value) is not bool:
+            return False
+        self._table_uncorrelated = value
+        self.changed.emit()
+        self._typed_edit("table")
+        self._refresh_table_correlation_identity_error()
+        return True
+
+    @Slot(bool, result=bool)
+    def setTableIncludeFiniteBias(self, value):
+        if self._busy or type(value) is not bool:
+            return False
+        self._table_finite_bias = value
+        self._typed_edit("table")
+        return True
+
+    @Slot(str, result=bool)
+    def setIdealSensitivityMode(self, value):
+        if self._busy or value not in ("", "absolute", "relative"):
+            return False
+        self._ideal_mode = value
+        self._typed_edit("ideal")
+        return True
+
+    @Slot(str, bool, result=bool)
+    def setIdealSensitivityLayer(self, layer_id, enabled):
+        if self._busy or not isinstance(layer_id, str) or type(enabled) is not bool:
+            return False
+        current_ids = {row["layer_id"] for row in self._ideal_layer_rows}
+        if layer_id not in current_ids:
+            return False
+        selected = set(self._ideal_layer_ids or ())
+        if enabled:
+            selected.add(layer_id)
+        else:
+            selected.discard(layer_id)
+        self._ideal_layer_ids = [row["layer_id"] for row in self._ideal_layer_rows
+                                 if row["layer_id"] in selected]
+        self._ideal_selection_explicit = True
+        self.idealRowsChanged.emit()
+        self._typed_edit("ideal")
+        return True
+
+    @Slot(str, str, result=bool)
+    def setIdealOption(self, name, value):
+        if self._busy or name not in self._ideal_options or not isinstance(value, str):
+            return False
+        self._ideal_options[name] = value
+        self._typed_edit("ideal")
+        return True
 
     @Slot(str, str, result=bool)
     def setChoice(self, name, value):
@@ -589,6 +1078,195 @@ class FilmSensitivityQuickController(QObject):
             raise ValueError(f"{name} 必须是正整数或留空。")
         return result
 
+    @staticmethod
+    def _optional_decimal(value, name, *, signed):
+        if not isinstance(value, str):
+            raise ValueError(f"{name} 必须是数字文本。")
+        if not value.strip():
+            return None
+        try:
+            result = float(value)
+        except ValueError as exc:
+            raise ValueError(f"{name} 必须是有限数字。") from exc
+        if not math.isfinite(result) or (not signed and result < 0):
+            raise ValueError(f"{name} 必须为有限{'有符号' if signed else '非负'}数。")
+        return result
+
+    def _thickness_error_parameters(self):
+        parameters = []
+        configured = False
+        stddev_ids = []
+        for row in self._table_rows:
+            enabled = row["enabled"]
+            bias = None
+            bias_unit = None
+            uncertainty = None
+            uncertainty_kind = None
+            uncertainty_unit = None
+            raw_bias = row["bias_text"]
+            if raw_bias.strip():
+                if row["bias_unit"] not in ("absolute_nm", "relative_percent"):
+                    raise ValueError(f"请为 {row['layer_label']} 的偏差选择 nm 或 % 单位。")
+                bias = self._optional_decimal(raw_bias, f"{row['layer_label']} 偏差", signed=True)
+                bias_unit = row["bias_unit"]
+                if bias_unit == "relative_percent":
+                    bias /= 100.0
+                    bias_unit = "relative_fraction"
+
+            raw_uncertainty = row["uncertainty_text"]
+            kind = row["uncertainty_kind"]
+            unit = row["uncertainty_unit"]
+            if raw_uncertainty.strip() or kind or unit:
+                if not raw_uncertainty.strip():
+                    raise ValueError(f"请填写 {row['layer_label']} 已设置类型/单位的不确定度数值；空白不是零。")
+                if kind not in ("bounded", "stddev"):
+                    raise ValueError(f"请为 {row['layer_label']} 选择有界或标准差不确定度类型。")
+                if unit not in ("absolute_nm", "relative_percent"):
+                    raise ValueError(f"请为 {row['layer_label']} 的不确定度选择 nm 或 % 单位。")
+                uncertainty = self._optional_decimal(raw_uncertainty, f"{row['layer_label']} 不确定度", signed=False)
+                uncertainty_kind = kind
+                uncertainty_unit = unit
+                if unit == "relative_percent":
+                    uncertainty /= 100.0
+                    uncertainty_unit = "relative_fraction"
+            if enabled and (bias is not None or uncertainty is not None):
+                configured = True
+            if enabled and uncertainty_kind == "stddev" and uncertainty is not None:
+                stddev_ids.append(row["layer_id"])
+            parameters.append(FilmThicknessErrorParameter(
+                layer_id=row["layer_id"], enabled=enabled, bias=bias, bias_unit=bias_unit,
+                uncertainty_kind=uncertainty_kind, uncertainty_magnitude=uncertainty,
+                uncertainty_unit=uncertainty_unit,
+            ))
+        if not configured:
+            raise ValueError("请至少填写一个启用膜层的偏差或不确定度；全空不计算，明确的 0 合法。")
+        return tuple(parameters), tuple(stddev_ids)
+
+    def _build_thickness_error_request(self, base):
+        rows, stddev_ids = self._thickness_error_parameters()
+        identity_error = self._table_correlation_identity_error(stddev_ids)
+        if identity_error:
+            self._table_error = identity_error
+            self.changed.emit()
+            raise ValueError(identity_error)
+        correlation_ids = ()
+        matrix: Any = None
+        if self._table_uncorrelated:
+            if not stddev_ids:
+                raise ValueError("已勾选互不相关，但没有完整配置的标准差行。")
+            correlation_ids = stddev_ids
+            matrix = [[1.0 if i == j else 0.0 for j in range(len(stddev_ids))]
+                      for i in range(len(stddev_ids))]
+        elif self._table_correlation_json.strip():
+            try:
+                matrix = json.loads(self._table_correlation_json)
+            except json.JSONDecodeError as exc:
+                raise ValueError("rho 矩阵 JSON 无法解析；请修正后再计算。") from exc
+            correlation_ids = stddev_ids
+        return thickness_error_table_request_from_optimization(
+            base, rows=rows, correlation_layer_ids=correlation_ids, correlation_matrix=matrix,
+            include_finite_bias=self._table_finite_bias,
+            strict_upper_bound_objective_indices=synthesis_strict_upper_bound_indices(
+                getattr(self.owner, "_objectives", ())),
+        )
+
+    def _build_ideal_request(self, base):
+        if self._ideal_mode not in ("absolute", "relative"):
+            raise ValueError("请选择绝对或相对敏感度尺度；不推定工艺意义或默认单位。")
+        selected = tuple(row["layer_id"] for row in self._ideal_layer_rows
+                         if row["layer_id"] in (self._ideal_layer_ids or ()))
+        if not selected:
+            raise ValueError("至少选择一个理想敏感度厚度列。")
+        return ideal_sensitivity_request_from_optimization(
+            base, sensitivity_mode=self._ideal_mode, sensitivity_layer_ids=selected,
+            max_iterations=self._limit(self._ideal_options["max_iterations"], "最大迭代"),
+            max_evaluations=self._limit(self._ideal_options["max_evaluations"], "最大评价"),
+            strict_lower_bound_objective_indices=(),
+            strict_upper_bound_objective_indices=synthesis_strict_upper_bound_indices(
+                getattr(self.owner, "_objectives", ())),
+        )
+
+    def _start_typed(self, workflow):
+        if self._busy or self._closed or self.owner.busy:
+            return False
+        if self._unknown_submission:
+            message = f"作业 {self._job_id} 的提交状态未知；请先在队列核对，不会自动重复提交。"
+            if workflow == "table":
+                self._table_error = message
+            else:
+                self._ideal_error = message
+            self.changed.emit()
+            return False
+        try:
+            base = self.owner._build_request(require_variables=False, fixed_topology=False)
+            if self._prepared_signature is None:
+                if not self.prepare():
+                    raise ValueError(self.error or "来源设计尚未准备。")
+            elif self._request_signature(base) != self._prepared_signature:
+                raise ValueError("来源设计、目标或材料已变化；请关闭并重新打开此页，复核刷新后的来源再运行。")
+            request = (self._build_thickness_error_request(base) if workflow == "table"
+                       else self._build_ideal_request(base))
+            job_id = uuid4().hex
+            compute = self.owner._project_compute
+            project_operation = compute.capture(job_id) if compute is not None else None
+            metadata = {"summary": ("参数表预期误差分析" if workflow == "table" else "理想敏感度优化"),
+                        "origin": {"surface": "desktop"}}
+            if compute is not None:
+                metadata = compute.metadata(project_operation, metadata)
+            context = {"workflow": workflow, "revision": base.design_revision,
+                       "epoch": self.owner._source_edit_epoch(), "project_operation": project_operation,
+                       "project_compute": compute}
+            client = self.client_factory(getattr(self.owner.service, "root", Path.cwd()))
+            cancel = RemoteCancelEvent(client, job_id, pending_admission=True)
+        except (ValueError, TypeError, KeyError, OverflowError, json.JSONDecodeError) as exc:
+            if workflow == "table":
+                self._table_error = str(exc)
+            else:
+                self._ideal_error = str(exc)
+            self.changed.emit()
+            return False
+
+        self._generation += 1
+        self._active_workflow = workflow
+        if workflow == "table":
+            self._table_payload = None
+            self._table_job_id = job_id
+            self._table_error = ""
+            self._table_status = "正在冻结来源设计、材料、目标网格与参数表后提交独立作业。"
+        else:
+            self._ideal_payload = None
+            self._ideal_job_id = job_id
+            self._ideal_error = ""
+            self._ideal_status = "正在冻结理想敏感度请求与来源材料后提交独立作业。"
+            self._ideal_applied = False
+        self._context, self._job_id, self._cancel = context, job_id, cancel
+        self._busy = True
+        self.changed.emit()
+        revision, epoch = context["revision"], context["epoch"]
+        session, source = self.owner.session, self.owner._source_controller
+
+        def admission_check():
+            project_ok = compute is None or (not compute.editing_frozen and compute.accepts(project_operation))
+            source_ok = session is None or (
+                session.snapshot().design_revision == revision
+                and int(getattr(source, "pendingEditEpoch", 0)) == epoch
+            )
+            return project_ok and source_ok
+
+        self.pool.start(_SensitivityTask(
+            self.owner.service, request, client, job_id, cancel, metadata,
+            self._generation, self._signals, self._disconnected, admission_check,
+        ))
+        return True
+
+    @Slot(result=bool)
+    def startThicknessErrorTableAnalysis(self):
+        return self._start_typed("table")
+
+    @Slot(result=bool)
+    def startIdealSensitivityOptimization(self):
+        return self._start_typed("ideal")
+
     @Slot(str, result=bool)
     def start(self, operation):
         if self._busy or self._closed or self.owner.busy:
@@ -641,6 +1319,7 @@ class FilmSensitivityQuickController(QObject):
             if compute is not None:
                 metadata = compute.metadata(project_operation, metadata)
             context = {
+                "workflow": "legacy",
                 "revision": base.design_revision,
                 "epoch": self.owner._source_edit_epoch(),
                 "project_operation": project_operation,
@@ -653,6 +1332,8 @@ class FilmSensitivityQuickController(QObject):
             self.changed.emit()
             return False
         self._generation += 1
+        self._active_workflow = "legacy"
+        self._legacy_job_id = job_id
         self._context, self._job_id, self._cancel = context, job_id, cancel
         self._payload, self._applied = None, False
         self._busy, self._error = True, ""
@@ -701,14 +1382,28 @@ class FilmSensitivityQuickController(QObject):
                 state="queued",
                 metadata={"search_mode": "sensitivity"},
             )
-        self._status = "独立敏感性作业已进入共享队列；原设计不变。"
+        workflow = self._context.get("workflow", "legacy")
+        message = "独立敏感性作业已进入共享队列；原设计不变。"
+        if workflow == "table":
+            self._table_status = message
+        elif workflow == "ideal":
+            self._ideal_status = message
+        else:
+            self._status = message
         self.changed.emit()
 
     @Slot(int, object)
     def _on_progress(self, generation, value):
         if self._closed or generation != self._generation:
             return
-        self._status = f"{value.get('stage', 'running')} · 评价 {value.get('evaluations', 0)} · {value.get('message', '')}"
+        status = f"{value.get('stage', 'running')} · 评价 {value.get('evaluations', 0)} · {value.get('message', '')}"
+        workflow = (self._context or {}).get("workflow", "legacy")
+        if workflow == "table":
+            self._table_status = status
+        elif workflow == "ideal":
+            self._ideal_status = status
+        else:
+            self._status = status
         self.changed.emit()
 
     @Slot(int, object, str)
@@ -717,11 +1412,23 @@ class FilmSensitivityQuickController(QObject):
             return
         self._busy = False
         self._unknown_submission = error.startswith("submission_unknown:")
-        self._error, self._payload = error, payload
-        if payload is not None:
-            self._status = payload["state"] + " / " + payload["termination_reason"]
+        context = self._context or {}
+        workflow = context.get("workflow", "legacy")
+        if workflow == "table":
+            self._table_error, self._table_payload = error, payload
+            self._table_context = dict(context)
+            self._table_status = (payload["state"] + " / " + payload["termination_reason"]
+                                  if payload is not None else "结果尚不可用；原设计未改变。")
+        elif workflow == "ideal":
+            self._ideal_error, self._ideal_payload = error, payload
+            self._ideal_context = dict(context)
+            self._ideal_status = (payload["state"] + " / " + payload["termination_reason"]
+                                  if payload is not None else "结果尚不可用；原设计未改变。")
         else:
-            self._status = "结果尚不可用；原设计未改变。"
+            self._error, self._payload = error, payload
+            self._legacy_context = dict(context)
+            self._status = (payload["state"] + " / " + payload["termination_reason"]
+                            if payload is not None else "结果尚不可用；原设计未改变。")
         compute = self._context["project_compute"] if self._context else None
         if compute is not None:
             state = (
@@ -740,16 +1447,28 @@ class FilmSensitivityQuickController(QObject):
     def cancel(self):
         if self._busy and self._cancel is not None:
             self._cancel.set()
-            self._status = "已请求取消；等待当前完整光学评价结束，不把取消意图当成已取消。"
+            message = "已请求取消；等待当前完整光学评价结束，不把取消意图当成已取消。"
+            workflow = (self._context or {}).get("workflow", "legacy")
+            if workflow == "table":
+                self._table_status = message
+            elif workflow == "ideal":
+                self._ideal_status = message
+            else:
+                self._status = message
             self.changed.emit()
 
     @Slot(result=bool)
     def applyBest(self):
-        if not self.canApply or self._payload is None or self._context is None:
+        context = self._legacy_context
+        if self._busy or self._payload is None or context is None:
+            return False
+        if not self.canApply:
+            self._error = "来源设计、未提交编辑、材料或项目状态已变化；整个候选未应用。"
+            self.changed.emit()
             return False
         try:
             result = film_sensitivity_result_from_payload(self._payload)
-            accepted = self.owner._apply_sensitivity_candidate(result, self._context)
+            accepted = self.owner._apply_sensitivity_candidate(result, context)
             if not accepted:
                 raise ValueError("来源设计、未提交编辑或项目已变化；整个候选未应用。")
             self._applied = True
@@ -762,9 +1481,41 @@ class FilmSensitivityQuickController(QObject):
         self.changed.emit()
         return True
 
+    @Slot(result=bool)
+    def applySelectedBest(self):
+        if self._active_workflow == "legacy":
+            return self.applyBest()
+        if self._active_workflow != "ideal" or self._ideal_payload is None:
+            return False
+        if not self.idealCanApply:
+            self._ideal_error = "来源设计、未提交编辑、材料或项目状态已变化；整个候选未应用。"
+            self.changed.emit()
+            return False
+        try:
+            from coat_sim.core.film_sensitivity_workflow_jobs import workflow_result_from_payload
+            result = workflow_result_from_payload(self._ideal_payload)
+            if not self.owner._apply_sensitivity_candidate(result, self._ideal_context):
+                raise ValueError("来源设计、未提交编辑或项目已变化；整个敏感度候选未应用。")
+            self._ideal_applied = True
+            self._ideal_status = "理想敏感度最优候选已显式应用；可在设计窗口撤销。"
+            self._ideal_error = ""
+        except (ValueError, TypeError, RuntimeError) as exc:
+            self._ideal_error = str(exc)
+            self.changed.emit()
+            return False
+        self.changed.emit()
+        return True
+
     @Slot(str, bool, result=bool)
     def saveReport(self, path, overwrite=False):
-        if self._busy or self._payload is None:
+        workflow = self._active_workflow
+        if workflow == "table":
+            payload = self._table_payload
+        elif workflow == "ideal":
+            payload = self._ideal_payload
+        else:
+            payload = self._payload
+        if self._busy or payload is None:
             return False
         try:
             target = Path(path).expanduser()
@@ -773,10 +1524,21 @@ class FilmSensitivityQuickController(QObject):
             if target.exists() and not overwrite:
                 self.overwriteRequested.emit(str(target))
                 return False
-            atomic_film_json(target, self._payload, overwrite=overwrite)
-            self._status, self._error = "完整敏感性报告已保存：" + str(target), ""
+            atomic_film_json(target, payload, overwrite=overwrite)
+            message = "完整敏感性报告已保存：" + str(target)
+            if workflow == "table":
+                self._table_status, self._table_error = message, ""
+            elif workflow == "ideal":
+                self._ideal_status, self._ideal_error = message, ""
+            else:
+                self._status, self._error = message, ""
         except (ValueError, OSError) as exc:
-            self._error = str(exc)
+            if workflow == "table":
+                self._table_error = str(exc)
+            elif workflow == "ideal":
+                self._ideal_error = str(exc)
+            else:
+                self._error = str(exc)
             self.changed.emit()
             return False
         self.changed.emit()
@@ -785,7 +1547,13 @@ class FilmSensitivityQuickController(QObject):
     @Slot(QUrl, bool, result=bool)
     def saveReportUrl(self, url, overwrite=False):
         if not url.isLocalFile():
-            self._error = "请选择本地 JSON 文件位置。"
+            message = "请选择本地 JSON 文件位置。"
+            if self._active_workflow == "table":
+                self._table_error = message
+            elif self._active_workflow == "ideal":
+                self._ideal_error = message
+            else:
+                self._error = message
             self.changed.emit()
             return False
         return self.saveReport(url.toLocalFile(), overwrite)

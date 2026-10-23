@@ -375,6 +375,9 @@ def _film_reply_matches_payload(reply, payload):
         expected: Any
         actual: Any
         kind = reply.get('kind')
+        if kind in ('coat_sim.film_ideal_sensitivity_result', 'coat_sim.film_thickness_error_table_result'):
+            from coat_sim.core.film_sensitivity_workflow_jobs import result_matches_job
+            return result_matches_job(reply, payload)
         if kind == 'coat_sim.film_sensitivity_result':
             from coat_sim.core.film_sensitivity_jobs import result_matches_job
             return result_matches_job(reply, payload)
@@ -407,9 +410,10 @@ def _completed_film_cancel_reply(reply, expected_payload=None):
     from .result_capability import is_film_optimization_result, is_synthesis_result
     if expected_payload is not None and not _film_reply_matches_payload(reply, expected_payload):
         return None
-    from coat_sim.core.film_sensitivity_jobs import is_sensitivity_result, cancelled_reply
+    from .result_capability import is_sensitivity_result
+    from coat_sim.core.film_sensitivity_workflow_jobs import terminal_reply
     if is_sensitivity_result(reply):
-        return cancelled_reply(reply)
+        return terminal_reply(reply, 'cancelled')
     if is_synthesis_result(reply):
         saved = deepcopy(reply)
         body = saved['result']
@@ -486,6 +490,10 @@ def run(root, job_id, owner_pid, owner_instance):
             reply = execute_job(spec.parameters, cancel, report,
                                 directory / 'best-candidate.json', write_json,
                                 execution_project_root=business_root)
+        elif spec.executor in ('film_ideal_sensitivity', 'film_thickness_error_table'):
+            from coat_sim.core.film_sensitivity_workflow_jobs import execute_job as execute_workflow_job
+            reply = execute_workflow_job(spec.parameters, cancel, report,
+                                        directory / 'best-candidate.json', write_json)
         elif spec.executor == 'film_sensitivity':
             from coat_sim.core.film_sensitivity_jobs import execute_job as execute_sensitivity_job
             reply = execute_sensitivity_job(spec.parameters, cancel, report,
@@ -541,13 +549,14 @@ def run(root, job_id, owner_pid, owner_instance):
             else: raise ValueError('executor_not_registered')
         if cancel.is_set():
             saved = (_completed_film_cancel_reply(reply, spec.parameters.get('payload'))
-                if spec.executor in ('film_synthesis', 'film_optimization', 'film_sensitivity') else None)
+                if spec.executor in ('film_synthesis', 'film_optimization', 'film_sensitivity',
+                                     'film_ideal_sensitivity', 'film_thickness_error_table') else None)
             if saved is None:
                 raise InterruptedError('cancelled')
             outcome = {'state': 'cancelled', 'result': saved, 'error_code': 'cancelled',
                 'error': 'Cancelled by user', 'cancel_snapshot': {'source': 'worker_completed_reply',
                     'replay_performed': False}}
-        elif spec.executor == 'film_sensitivity' and reply.get('state') == 'failed':
+        elif spec.executor in ('film_sensitivity', 'film_ideal_sensitivity', 'film_thickness_error_table') and reply.get('state') == 'failed':
             outcome = {'state': 'failed', 'result': reply, 'error_code': 'algorithm_failed',
                        'error': reply.get('message') or 'Sensitivity evaluation failed.'}
         else:
@@ -556,7 +565,8 @@ def run(root, job_id, owner_pid, owner_instance):
     except BaseException as exc:
         traceback.print_exc()
         partial_result, unavailable_reason = None, ''
-        cancelled_film = (spec is not None and spec.executor in ('film_synthesis', 'film_optimization', 'film_sensitivity')
+        cancelled_film = (spec is not None and spec.executor in ('film_synthesis', 'film_optimization', 'film_sensitivity',
+                          'film_ideal_sensitivity', 'film_thickness_error_table')
                           and (isinstance(exc, InterruptedError) or cancel.is_set()))
         if cancelled_film:
             unavailable_reason = ('Cancelled before a complete current worker reply was available; '

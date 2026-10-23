@@ -373,14 +373,14 @@ class Scheduler:
             outcome['result'] = None
             outcome.pop('result_unavailable_reason', None)
             return outcome
-        if self.memory_status(job_id).get('kind') == 'film_sensitivity':
+        if self.memory_status(job_id).get('kind') in ('film_sensitivity', 'film_ideal_sensitivity', 'film_thickness_error_table'):
             existing = (outcome or {}).get('result')
             if isinstance(existing, dict) and is_sensitivity_result(existing) and self._bound_film_reply(job_id, existing):
                 if outcome.get('state') in ('failed', 'cancelled'):
-                    from coat_sim.core.film_sensitivity_jobs import terminal_reply
+                    from coat_sim.core.film_sensitivity_workflow_jobs import terminal_reply
                     return {**dict(outcome), 'result': terminal_reply(existing, outcome['state'])}
                 return dict(outcome)
-        if (self.memory_status(job_id).get('kind') in ('film_synthesis', 'film_optimization', 'film_sensitivity')
+        if (self.memory_status(job_id).get('kind') in ('film_synthesis', 'film_optimization', 'film_sensitivity', 'film_ideal_sensitivity', 'film_thickness_error_table')
                 and (outcome or {}).get('state') == 'cancelled'):
             from .result_capability import is_film_optimization_result, is_synthesis_result
             existing = (outcome or {}).get('result')
@@ -391,7 +391,7 @@ class Scheduler:
                 return {**dict(outcome or {}), 'result': None,
                     'result_unavailable_reason': ('No complete current worker reply is available; '
                         'checkpoint retained for explicit review without cancellation replay.')}
-        if self.memory_status(job_id).get('kind') in ('film_synthesis', 'film_sensitivity'):
+        if self.memory_status(job_id).get('kind') in ('film_synthesis', 'film_sensitivity', 'film_ideal_sensitivity', 'film_thickness_error_table'):
             from .result_capability import load_best_candidate_checkpoint
             candidate, reason = load_best_candidate_checkpoint(self.root, job_id,
                 terminal_state=(outcome or {}).get('state', 'cancelled'))
@@ -419,7 +419,7 @@ class Scheduler:
         if self.memory_status(job_id).get('kind') == 'appearance_render':
             outcome['result'] = None
             return outcome
-        if self.memory_status(job_id).get('kind') == 'film_sensitivity':
+        if self.memory_status(job_id).get('kind') in ('film_sensitivity', 'film_ideal_sensitivity', 'film_thickness_error_table'):
             from .worker import _completed_film_cancel_reply
             saved = _completed_film_cancel_reply((previous or {}).get('result'))
             if saved is not None and self._bound_film_reply(job_id, saved):
@@ -568,6 +568,8 @@ class Scheduler:
                 if state == 'succeeded':
                     raise ValueError('job_result_invalid_shape: expected a result object')
                 raise ValueError('job_not_complete: ' + str(state))
+            if is_sensitivity_result(result) and not self._bound_film_reply(value['job_id'], result):
+                raise ValueError('job_result_invalid_sensitivity: frozen queue input identity mismatch')
             if result.get('kind') == 'appearance_render':
                 from .result_capability import validate_appearance_render_result
                 try:
@@ -577,7 +579,7 @@ class Scheduler:
                         require_registered_artifact=True)
                 except Exception as exc:
                     raise ValueError('job_result_invalid_appearance: ' + str(exc)) from exc
-            if state in ('failed', 'cancelled'):
+            if state in ('failed', 'cancelled') and not is_sensitivity_result(result):
                 artifacts = result.get('result_artifacts') or []
                 if not is_best_candidate_result(result):
                     raise ValueError('job_result_unavailable: no verified candidate is available')

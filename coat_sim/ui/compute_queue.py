@@ -23,7 +23,7 @@ from coat_sim.scheduler import SchedulerClient
 from coat_sim.scheduler.result_capability import (
     is_best_candidate_result, is_film_optimization_result,
     is_geometric_raytrace_result, is_synthesis_result, is_sensitivity_result,
-    is_legacy_synthesis_result,
+    is_legacy_synthesis_result, claims_sensitivity_result, job_has_viewable_result,
     validate_film_optimization_result,
 )
 from coat_sim.ui.icons import window_icon
@@ -67,22 +67,25 @@ def _read_queue_result(service, store, job_id, asset_path=None):
     """Dispatch a queue result by its typed product kind."""
     job = store.read_job(job_id)
     result = _require_result_payload(job)
-    if result.get('kind') == 'coat_sim.film_synthesis_result':
+    if claims_sensitivity_result(job):
+        if not is_sensitivity_result(result):
+            raise ValueError('Typed sensitivity result kind/schema is invalid.')
         if job.get('job_id') != job_id:
-            raise ValueError('Synthesis result belongs to another queue job.')
-        _require_synthesis_job_binding(getattr(store, 'root', None), job, result)
-        from coat_sim.core.film_synthesis_jobs import replay_synthesis_result
-        normalized = replay_synthesis_result(result)
-        # Keep the complete immutable source separate from the read-only replay.
-        # Routing rechecks both this source and the current JobSpec afterwards.
-        return _SynthesisQueueResult(deepcopy(job), normalized), ''
-    if is_sensitivity_result(result):
-        if job.get('kind') != 'film_sensitivity':
-            raise ValueError('Typed sensitivity result does not belong to a film_sensitivity queue job.')
-        from coat_sim.core.film_sensitivity import validate_film_sensitivity_result_payload
-        from coat_sim.core.film_sensitivity_jobs import (
-            deserialize_job_payload, result_matches_job, terminal_reply,
-        )
+            raise ValueError('Typed sensitivity result belongs to another queue job.')
+        if job.get('state') not in ('succeeded', 'failed', 'cancelled'):
+            raise ValueError('Typed sensitivity result requires a terminal queue job.')
+        from coat_sim.core.film_sensitivity_workflow_jobs import workflow_for_result, validate_workflow_result
+        executor = workflow_for_result(result)
+        if job.get('kind') != executor:
+            raise ValueError('Typed sensitivity result does not belong to this queue executor.')
+        if executor == 'film_sensitivity':
+            from coat_sim.core.film_sensitivity_jobs import (
+                deserialize_job_payload, result_matches_job, terminal_reply,
+            )
+        else:
+            from coat_sim.core.film_sensitivity_workflow_jobs import (
+                deserialize_job_payload, result_matches_job, terminal_reply,
+            )
         from coat_sim.scheduler.jobs import JobSpec
         if not isinstance(job_id, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', job_id):
             raise ValueError('Invalid sensitivity queue identity.')
@@ -96,13 +99,22 @@ def _read_queue_result(service, store, job_id, asset_path=None):
             spec = JobSpec.parse_frozen_json(spec_path.read_text(encoding='utf-8'))
         except (OSError, TypeError, ValueError) as exc:
             raise ValueError('Sensitivity queue input identity is unavailable or invalid.') from exc
-        if (spec.executor != 'film_sensitivity' or spec.fingerprint != job.get('input_digest')
+        if (spec.executor != executor or spec.fingerprint != job.get('input_digest')
                 or not result_matches_job(result, spec.parameters.get('payload'))):
             raise ValueError('Sensitivity result is not bound to this frozen queue input identity.')
         if job.get('state') in ('failed', 'cancelled'):
             result = terminal_reply(result, job['state'])
-        return validate_film_sensitivity_result_payload(result,
+        return validate_workflow_result(result,
             expected_request=deserialize_job_payload(spec.parameters['payload']), replay=True), ''
+    if result.get('kind') == 'coat_sim.film_synthesis_result':
+        if job.get('job_id') != job_id:
+            raise ValueError('Synthesis result belongs to another queue job.')
+        _require_synthesis_job_binding(getattr(store, 'root', None), job, result)
+        from coat_sim.core.film_synthesis_jobs import replay_synthesis_result
+        normalized = replay_synthesis_result(result)
+        # Keep the complete immutable source separate from the read-only replay.
+        # Routing rechecks both this source and the current JobSpec afterwards.
+        return _SynthesisQueueResult(deepcopy(job), normalized), ''
     if (job.get('state') in ('failed', 'cancelled')
             and not is_best_candidate_result(result)):
         raise ValueError(job.get('result_unavailable_reason')
@@ -278,6 +290,9 @@ def _annotate_result_availability(root, rows, *, synthesis_cache=None):
             row['synthesisNominalStatus'] = 'unknown'
             row['synthesisAcceptanceSummary'] = '原门限名义验收：未知；后台核查尚未通过。'
         if row.get('state') not in ('succeeded', 'failed', 'cancelled'):
+            if claims_sensitivity_result(row):
+                row.update(resultAvailable=False,
+                    resultUnavailableReason='Typed sensitivity result requires a terminal queue job.')
             raw = row.get('result')
             if isinstance(raw, dict) and raw.get('kind') == 'coat_sim.film_synthesis_result':
                 row.update(resultAvailable=False,
@@ -291,14 +306,14 @@ def _annotate_result_availability(root, rows, *, synthesis_cache=None):
             row['resultAvailable'] = False
             row['resultUnavailableReason'] = row.get('result_unavailable_reason') or str(exc)
             continue
+        if claims_sensitivity_result(row):
+            row['resultAvailable'] = job_has_viewable_result(row)
+            row['resultUnavailableReason'] = ('' if row['resultAvailable'] else
+                'Typed sensitivity result kind/schema or queue identity is invalid.')
+            continue
         if is_film_optimization_result(result):
             row['resultAvailable'] = True
             row['resultUnavailableReason'] = ''
-            continue
-        if is_sensitivity_result(result):
-            row['resultAvailable'] = row.get('kind') == 'film_sensitivity'
-            row['resultUnavailableReason'] = ('' if row['resultAvailable'] else
-                'Typed sensitivity result does not belong to this job kind.')
             continue
         if result.get('kind') == 'coat_sim.film_synthesis_result':
             _annotate_synthesis_acceptance(root, row, result, synthesis_cache)
@@ -349,14 +364,14 @@ def _annotate_result_availability(root, rows, *, synthesis_cache=None):
             row['resultAvailable'] = False
             row['resultUnavailableReason'] = row.get('result_unavailable_reason') or str(exc)
             continue
+        if claims_sensitivity_result(row):
+            row['resultAvailable'] = job_has_viewable_result(row)
+            row['resultUnavailableReason'] = ('' if row['resultAvailable'] else
+                'Typed sensitivity result kind/schema or queue identity is invalid.')
+            continue
         if is_film_optimization_result(result):
             row['resultAvailable'] = True
             row['resultUnavailableReason'] = ''
-            continue
-        if is_sensitivity_result(result):
-            row['resultAvailable'] = row.get('kind') == 'film_sensitivity'
-            row['resultUnavailableReason'] = ('' if row['resultAvailable'] else
-                'Typed sensitivity result does not belong to this job kind.')
             continue
         if result.get('kind') == 'coat_sim.film_synthesis_result':
             # Already admitted by the first background pass, never replay twice.

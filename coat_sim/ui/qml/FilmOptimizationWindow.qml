@@ -165,14 +165,14 @@ AppWindow {
     ThemeControls.ThemeDialogBase {
         id: sensitivityDialog
         objectName: "filmSensitivityDialog"
-        title: "独立膜厚敏感性分析 / 优化"
+        title: "膜厚敏感度与预期误差"
         modal: true
         anchors.centerIn: parent
         width: Math.min(920, window.width - window.themeTokens.spaceLg * 2)
         height: Math.min(780, window.height - window.themeTokens.spaceLg * 2)
         standardButtons: Dialog.Close
         closePolicy: Popup.CloseOnEscape
-        contentItem: FilmSensitivityPanel {
+        contentItem: FilmSensitivityWorkflowPanel {
             controller: window.controller.sensitivityController
             themeTokens: window.themeTokens
             onApplyRequested: sensitivityApplyDialog.open()
@@ -182,17 +182,19 @@ AppWindow {
     ThemeControls.ThemeDialogBase {
         id: sensitivityApplyDialog
         objectName: "filmSensitivityApplyConfirmDialog"
-        title: "应用独立误差目标候选？"
+        title: "应用敏感度优化候选？"
         modal: true
         anchors.centerIn: parent
         width: Math.min(520, window.width - 40)
         standardButtons: Dialog.Yes | Dialog.No
         contentItem: Label {
-            text: "原名义指标与有限误差场景请分别查看报告；保持名义策略不额外加余量，纯降敏策略可能使名义指标退化。确认将完整评分的最优候选应用到来源设计？来源版本变化时会整次拒绝。"
+            text: window.controller.sensitivityController.activeWorkflow === "legacy"
+                  ? "确认将旧高级兼容页的完整评分候选应用到来源设计？来源版本变化时会整次拒绝；一次应用形成一笔可撤销修改，不会写入项目文件。"
+                  : "确认将完整评分的理想敏感度候选应用到来源设计？仅在原始名义硬约束通过且来源版本未变化时接受；一次应用形成一笔可撤销修改，不会写入项目文件。"
             color: window.themeTokens.colorText
             wrapMode: Text.WordWrap
         }
-        onAccepted: window.controller.sensitivityController.applyBest()
+        onAccepted: window.controller.sensitivityController.applySelectedBest()
     }
     FileDialog {
         id: sensitivityReportDialog
