@@ -69,6 +69,8 @@ def film_synthesis_request_from_payload(payload: Mapping[str, Any], *, require_f
         raise FilmSynthesisPayloadError(f"invalid synthesis request: {exc}") from exc
     if require_frozen and request.frozen_material_snapshot is None:
         raise FilmSynthesisPayloadError("CLI requires a complete frozen material snapshot")
+    if require_frozen and request.randomize_template_search and request.structure_search_seed is None:
+        raise FilmSynthesisPayloadError("frozen template search requires a resolved structure_search_seed")
     return request_id, request, _normalize_specs(payload["physical_structures"])
 
 
@@ -136,6 +138,8 @@ def film_synthesis_request_to_payload(request_id: str, request: FilmSynthesisReq
     request = _validated(request)
     if request.frozen_material_snapshot is None:
         raise FilmSynthesisPayloadError("only frozen requests can be serialized for execution")
+    if request.randomize_template_search and request.structure_search_seed is None:
+        raise FilmSynthesisPayloadError("frozen template search requires a resolved structure_search_seed")
     raw_request = asdict(request)
     raw_request["strict_upper_bound_objective_indices"] = list(request.strict_upper_bound_objective_indices)
     return {"schema_version": SCHEMA_VERSION, "kind": REQUEST_KIND,

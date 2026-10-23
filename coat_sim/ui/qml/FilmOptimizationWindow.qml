@@ -1273,6 +1273,53 @@ AppWindow {
                                         currentIndex: (window.controller.synthesisOptions.search_strategy ?? "hybrid") === "hybrid" ? 0 : 1
                                         onActivated: window.controller.setSynthesisOption("search_strategy", model[currentIndex].id)
                                     }
+                                    CheckBox {
+                                        objectName: "filmSynthesisRandomizeTemplateSearchField"
+                                        text: "随机化模板搜索"
+                                        checked: window.controller.synthesisOptions.randomize_template_search ?? false
+                                        onToggled: {
+                                            if (!window.controller.setSynthesisOption("randomize_template_search", checked))
+                                                checked = Qt.binding(() => window.controller.synthesisOptions.randomize_template_search ?? false)
+                                        }
+                                        Accessible.name: text
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Label { text: "模板搜索种子"; Layout.preferredWidth: 155 }
+                                        ThemeControls.ThemeField {
+                                            objectName: "filmSynthesisStructureSearchSeedField"
+                                            Layout.fillWidth: true
+                                            text: window.controller.synthesisStructureSearchSeedText
+                                            placeholderText: "留空自动"
+                                            enabled: window.controller.synthesisOptions.randomize_template_search ?? false
+                                            accessibleLabel: "模板搜索种子，留空自动"
+                                            accessibleDescription: "十进制整数 0 至 4294967295；关闭随机化时保留输入，正式冻结任务时生成自动种子。"
+                                            inputMethodHints: Qt.ImhDigitsOnly
+                                            onTextEdited: window.controller.setSynthesisStructureSearchSeedText(text)
+                                            onAccepted: window.controller.finishSynthesisStructureSearchSeedEdit()
+                                            onEditingFinished: window.controller.finishSynthesisStructureSearchSeedEdit()
+                                        }
+                                    }
+                                    Label {
+                                        objectName: "filmSynthesisStructureSearchSeedError"
+                                        Layout.fillWidth: true
+                                        visible: window.controller.synthesisStructureSearchSeedError.length > 0
+                                        text: window.controller.synthesisStructureSearchSeedError
+                                        color: window.themeTokens.colorText
+                                        wrapMode: Text.WordWrap
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Label { text: "实际种子"; Layout.preferredWidth: 155 }
+                                        ThemeControls.ThemeField {
+                                            objectName: "filmSynthesisActualStructureSearchSeedField"
+                                            Layout.fillWidth: true
+                                            readOnly: true
+                                            text: window.controller.synthesisActualStructureSearchSeedText
+                                            placeholderText: "任务冻结后显示"
+                                            accessibleLabel: "模板搜索实际种子"
+                                        }
+                                    }
                                     ThemeControls.ThemeComboBox {
                                         objectName: "filmSynthesisWeightingBox"
                                         Layout.fillWidth: true

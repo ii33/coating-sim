@@ -100,6 +100,9 @@ def build_job_payload(parameters: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(parameters, Mapping) or set(parameters) != {
             "payload", "physical_structure_metadata"}:
         raise ValueError("film_synthesis job parameters are invalid")
+    # Admission owns entropy resolution. Queue construction and replay must
+    # never turn an unresolved request into a different random search.
+    film_synthesis_request_from_payload(parameters["payload"])
     canonical, _ = prepare_film_synthesis_payload(None, parameters["payload"])
     request_id, request, structures = film_synthesis_request_from_payload(canonical)
     if structures:

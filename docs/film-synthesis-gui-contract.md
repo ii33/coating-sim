@@ -58,3 +58,28 @@ Recovered historical synthesis envelopes may contain null for unsaved cumulative
 Controller的只读conditionErrorsEmptySummary基于已绑定typed synthesis payload的候选审计事实提供两处空条件列表文案：无完整独审为未知，不以空列表推断全部通过。任务targets_met仍是任务训练/独审综合真值，候选事实与任务取消状态分开；Apply资格及来源保护不放宽。角度准备启动失败或准备后的提交提前拒绝时，清理该未提交attempt的project operation与prepared job ID，不将它们带入下一次操作。
 
 无候选cancelled/not_found显示明确终态；历史结果保持只读保护并显示历史身份，不把人为只读标记说成原设计已修改。裸片基线图例绑定结果自身的合成身份，避免之后修改算法草稿改变旧结果含义。Controller继续是状态唯一所有者，QML只读呈现。新回归为tests/test_film_synthesis_deepseek_closeout_gui.py。
+
+
+## Optional template randomization / 2026-10-24
+
+The existing synthesis page adds a default-off randomization switch and a plain
+seed text field (blank means automatic). The controller exclusively owns the
+raw draft, validation error, boolean option, parsed `structure_search_seed`,
+and read-only actual-seed display. The text field uses no floating-point
+formatter: decimal integers 0..4294967295 are exact, including 0. Fractions,
+booleans, signs, exponent notation, negatives and overflow fail. Enter, Tab
+and blur validate without clearing the draft. Off disables seed editing and
+retains the draft; a blank off draft builds the existing seed 0. Invalid text
+blocks build/start/export/close and remains visible for correction.
+
+Property reads, switch changes and raw-request builds never generate entropy.
+The core resolves an enabled blank seed once at formal submission freeze. Both
+synchronous admission and asynchronous angle preparation read the actual seed
+from that same frozen request; the existing operation guard rejects stale
+callbacks. Invalidation/configuration load clears the actual display. History
+reads only a validated frozen result. Editor configuration keeps an automatic
+seed blank; frozen tasks/results keep its actual integer for replay. Worker
+cancellation and termination do not choose another seed or change application
+and undo confirmation rules. This is a search strategy, not a manufacturing
+error model, and adds no new window or geometry exception. The formulas and
+limitations are documented in algorithms.html#film-template-randomization-20261024.

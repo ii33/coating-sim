@@ -246,6 +246,12 @@ class CoatService:
     def estimate_compute_task(self, kind, parameters):
         from .compute_estimation import estimate, input_file_fingerprints
         from .compute_tasks import ComputeTaskStore
+        if kind == "film_synthesis":
+            from .film_synthesis_io import film_synthesis_request_from_payload
+            _, synthesis_request, _ = film_synthesis_request_from_payload(
+                parameters["payload"], require_frozen=False)
+            if synthesis_request.randomize_template_search and synthesis_request.structure_search_seed is None:
+                raise ValueError("freeze randomized template search before estimation to resolve structure_search_seed")
         values = canonical_compute_parameters(self, kind, parameters)
         legacy = {key: value for key, value in values.items() if key not in ("algorithm", "algorithm_options")}
         algorithm = values.get("algorithm", "fast")

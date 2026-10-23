@@ -59,6 +59,12 @@ FILM_SYNTHESIS_PLAN_INPUT_SCHEMA: dict[str, Any] = {
             "request_id": {"type": "string", "minLength": 1, "maxLength": 128},
             "request": {"type": "object", "additionalProperties": True,
                 "properties": {
+                    "randomize_template_search": {
+                        "type": "boolean", "default": False,
+                        "description": "Optional extra thickness starts beside admitted deterministic templates; preserves existing search when off. No guarantee of escape or speedup."},
+                    "structure_search_seed": {
+                        "type": ["integer", "null"], "minimum": 0, "maximum": 4294967295,
+                        "description": "One uint32 root seed (0 is valid). With randomization enabled, null is resolved once by plan/freeze. Estimate, queued execution and CLI replay require the resolved integer."},
                     "parallel_batch_size": {
                         "type": ["integer", "null"], "minimum": 1,
                         "description": "Hybrid logical candidate batch; null=AUTO resolved at freeze from requested/available CPU. Not a promise of this many concurrent workers: candidate, memory, frame and budget admission can reduce actual parallelism."},

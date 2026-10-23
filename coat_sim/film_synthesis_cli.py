@@ -138,7 +138,7 @@ def main(argv=None) -> int:
             sys.stdout.write(json.dumps(response, ensure_ascii=False, allow_nan=False) + "\n")
             sys.stdout.flush()
             return 0
-        request_id, _, _ = film_synthesis_request_from_payload(envelope, require_frozen=False)
+        request_id, _, _ = film_synthesis_request_from_payload(envelope)
         paths = [path for path in (args.request, args.output, args.checkpoint, args.cancel_file) if path is not None]
         resolved = [path.resolve() for path in paths]
         if len(set(resolved)) != len(resolved):

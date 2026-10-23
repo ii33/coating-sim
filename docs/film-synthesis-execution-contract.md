@@ -1,6 +1,6 @@
 # Film synthesis execution contract
 
-Updated: 2026-10-22
+Updated: 2026-10-24
 
 ## Purpose and boundary
 
@@ -18,9 +18,50 @@ Inputs and outputs use nanometres for wavelengths, layer thicknesses, and geomet
 
 ## Default automatic reflector search (2026-10-21)
 
-The GUI default bare-environment route now supplies automatic periodic/chirped/multistack and objective-derived single/coupled/matched-cavity proposals, fixed-topology thickness DE and analytic interior refinement without requiring `physical_structures` or a user prescription. `structure_search_seed` is a nonnegative integer (default 0 when absent in an old request). Explicit real seed designs keep their existing path. The core remains the unique owner of candidate budgets, ordered commits, cancellation and independent audit; proposal/refinement helpers may not perform separate uncounted physical work.
+The GUI default bare-environment route now supplies automatic periodic/chirped/multistack and objective-derived single/coupled/matched-cavity proposals, fixed-topology thickness DE and analytic interior refinement without requiring `physical_structures` or a user prescription. `structure_search_seed` is an integer in 0..4294967295 (default 0); optional template randomization is described below. Explicit real seed designs keep their existing path. The core remains the unique owner of candidate budgets, ordered commits, cancellation and independent audit; proposal/refinement helpers may not perform separate uncounted physical work.
 
 `performance.search` records structural proposals/skips, global population generations/box provenance, local refinement diagnostics and consumed feasible candidates by layer count. Proposal boxes, quantum counts and layer estimates are project search conventions, not manufacturing caps or global-coverage certificates. The new automatic reflector ranking prioritizes original raw violation before cost and records zero layer penalty. Range interior guidance does not rewrite saved targets. Ordinary range bounds remain inclusive with the existing normalized tolerance, for all routes and R/T metrics. Optional `strict_lower_bound_objective_indices` (default empty tuple; JSON array) explicitly requires actual > lower_bound for every corresponding training and independent audit point, in addition to ordinary tolerance. Entries are unique non-boolean integers indexing range objectives with a lower bound. No objective is implicitly made strict merely because it requests positive R. Old payloads remain inclusive. Archive selection, cancelled best-candidate handoff, per-objective review and serialized matching-audit validation share the same strict predicate. Completed audit status is never inferred from mean loss or worker heartbeat.
+
+## Optional template randomization (2026-10-24)
+
+`randomize_template_search` defaults to `false`. It adds a thickness start
+beside an admitted deterministic template. Existing DE, low-dimensional,
+needle and explicit `structure_search_seed` behavior stays unchanged when
+the switch is off. Archive insertion, worker result ordering, ties, the
+objective, and ordinary/sensitivity optimization are not randomized.
+
+The sole seed field is `structure_search_seed`, an integer from 0 through
+4294967295 inclusive; booleans, fractions, negatives and overflow fail. Zero
+is valid. An enabled draft can have `null`: formal core freeze chooses one
+seed and replaces it with the actual integer. Planning through
+`prepare_film_synthesis_payload` / `plan_film_synthesis` performs that freeze.
+Estimation rejects an unresolved automatic draft without drawing entropy.
+Serialization, queue construction and replay require the resolved integer;
+none silently chooses another seed. Frozen requests/results preserve it,
+including cancellation and checkpoint recovery.
+
+For each admitted base, spare candidate, physical-evaluation, stage, memory,
+time and cancellation budgets permit at most one extra start. Construction
+uses correlated log thickness perturbations and performs no TMM. Only illegal
+or duplicate draws are retried, at most three times. No spare quota or no legal
+start retains the base with a reason. Positive optimizable layers move; zero
+and fixed layers, materials, topology and all manufacturing bounds stay intact.
+Forward/Jacobian/refinement work uses the existing production guards and
+independent audit. No extra work is hidden as a free restart.
+
+PCG64 streams derive from algorithm version, actual root seed, canonical
+physical template identity, stage and restart index. Temporary layer IDs,
+process IDs and completion order do not enter the stream. Diagnostics record
+actual seed, algorithm version, PCG64, NumPy version, attempts and skips. Equal
+seed/configuration reconstructs starts on the same numerical stack; wall-time
+stopping and different numerical libraries can change final results. This
+does not guarantee escape from a local optimum. Formula and illustrated limits
+are in the [algorithm entry](algorithms.html#film-template-randomization-20261024).
+
+Enabled hybrid/classic template screening currently scores BASE and its extra
+sequentially so completed BASE work survives cancellation. This new screening
+branch does not accelerate with more workers; other existing parallel stages
+retain their behavior. No speedup claim is made for randomization.
 
 ## Result and progress
 

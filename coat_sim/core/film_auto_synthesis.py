@@ -29,6 +29,8 @@ from .optical_constants import UNITS_TO_UM, prepare_optical_set
 from .film_nominal_acceptance import nominal_targets_pass, solver_acceptable
 from .film_synthesis_absorption import (annotate_synthesis_design, assumes_unknown_k_zero,
                                         sample_synthesis_optical)
+from .film_synthesis_randomization import (validate_template_seed, randomized_template_start,
+    template_randomization_metadata)
 
 
 if TYPE_CHECKING:
@@ -65,6 +67,7 @@ class _SearchDiagnostics(TypedDict):
     cluster_structure_schedule: NotRequired[dict[str, object]]
     hybrid: NotRequired[dict[str, Any]]
     design_archive: NotRequired[dict[str, Any]]
+    template_randomization: NotRequired[dict[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -113,7 +116,7 @@ class FilmSynthesisRequest:
     cpu_workers: int = 1
     forward_backend: str = "cpu"
     forward_device: Mapping[str, Any] | None = None
-    structure_search_seed: int = 0
+    structure_search_seed: int | None = 0
     strict_lower_bound_objective_indices: tuple[int, ...] = ()
     ar_structure_mode: str = "clustered"
     max_seconds: float | None = None
@@ -127,6 +130,7 @@ class FilmSynthesisRequest:
     resource_guard_resolution: Mapping[str, Any] | None = None
     strict_upper_bound_objective_indices: tuple[int, ...] = ()
     parallel_batch_size: int | None = None
+    randomize_template_search: bool = False
 
 
 @dataclass(frozen=True)
@@ -329,8 +333,7 @@ def _validated(request):
         raise ValueError("automatic synthesis requires use_k=True to retain absorption")
     if type(request.ar_structure_mode) is not str or request.ar_structure_mode not in {"clustered", "v23_matching"}:
         raise ValueError("ar_structure_mode must be clustered or v23_matching")
-    if type(request.structure_search_seed) is not int or request.structure_search_seed < 0:
-        raise ValueError("structure_search_seed must be a nonnegative integer")
+    validate_template_seed(request.structure_search_seed, enabled=request.randomize_template_search)
     if type(request.cpu_workers) is not int or request.cpu_workers < 0:
         raise ValueError("cpu_workers must be a nonnegative integer (0=auto, 1=serial)")
     if request.parallel_batch_size is not None and (
@@ -535,8 +538,14 @@ def freeze_film_synthesis_request(service: Any, request: FilmSynthesisRequest,
         from .film_performance import available_cpu_workers
         available = available_cpu_workers()
         batch_size = max(1, min(result.cpu_workers or available, available))
+    resolved_template_seed = result.structure_search_seed
+    if result.randomize_template_search and resolved_template_seed is None:
+        # The only entropy owner. Validation/property reads and stream
+        # derivation never draw, and replay already has an integer.
+        from secrets import randbits
+        resolved_template_seed = randbits(32)
     return replace(result, seed_designs=tuple(seeds), resource_guard_resolution=resource_resolution,
-                   parallel_batch_size=batch_size)
+                   parallel_batch_size=batch_size, structure_search_seed=resolved_template_seed)
 
 
 def _feasible(request, design):
@@ -699,6 +708,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
     """
     started = monotonic()
     request = _validated(request)
+    template_seed_provenance = ("auto_entropy_at_freeze" if request.randomize_template_search
+        and request.structure_search_seed is None else "explicit_or_frozen")
     stop_event = _SynthesisStopEvent(cancel_event,
         None if request.max_seconds is None else started + request.max_seconds)
     cancel_event = stop_event
@@ -741,6 +752,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
     audited_signatures = set()
     pending_structural_scans: dict[int, Generator[StructuralProposal, None, None]] = {}
     pending_structural_proposals: dict[int, StructuralProposal] = {}
+    # Persistent proposal generators consult the current slice, rather than
+    # retaining the work counter of the call that first constructed them.
+    legacy_template_work_admission: list[Callable[[Any], bool]] = [lambda proposal: True]
     cavity_stream: list[Generator[StructuralProposal, None, None] | None] = [None]
     cavity_stream_epoch = [None]
     matching_stream: list[Generator[StructuralProposal, None, None] | None] = [None]
@@ -842,6 +856,81 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         _check_cancel(cancel_event)
         if request.max_evaluations is not None and evaluations + reserved_training_slots >= request.max_evaluations - 1:
             raise _Stopped("evaluation_limit")
+
+    def extra_template_start(proposal, *, stage, candidate_slots, cancel_check=None,
+                             resource_check=None, jacobian=False):
+        """Construct only after reserving base+extra candidate/physical slots.
+
+        This branch is never called when off. The caller keeps BASE first and
+        must dispatch its extra before admitting another deterministic template.
+        Physical work and subsequent local refinement retain existing owners.
+        """
+        from .film_synthesis_global import StructuralProposal
+        from .film_synthesis_archive import physical_design_hash
+        check = cancel_check or check_training_admission
+        _check_cancel(cancel_event)
+        metadata = search_diagnostics["template_randomization"]
+        record = dict(stage=stage, parent_physical_hash=physical_design_hash(proposal.design),
+            status="skipped", attempts=0, reserved_candidate_slots=0,
+            reason="insufficient_extra_candidate_or_physical_budget_base_retained")
+        metadata["templates"].append(record)
+        if candidate_slots < 2:
+            emit("template_randomization", json.dumps(record, sort_keys=True), proposal.design)
+            return None
+        check()
+        record["reserved_candidate_slots"] = 2
+        if resource_check is not None:
+            resource_check(proposal.design, jacobian=jacobian)
+        else:
+            # Legacy work has no hybrid stage owner. Admission still uses the
+            # frozen shared numerical resource guard before any extra draw/F/J.
+            limit = _resolve_synthesis_resource_guard(request)["effective_bytes"]
+            estimate = _synthesis_working_set_estimate_bytes(request,
+                len(proposal.design["front_layers"]), jacobian=jacobian)
+            if limit is not None and estimate > limit:
+                record.update(reason="resource_guard_base_retained", estimated_bytes=estimate,
+                              effective_max_working_set_bytes=limit)
+                emit("template_randomization", json.dumps(record, sort_keys=True), proposal.design)
+                return None
+        assert request.structure_search_seed is not None
+        randomized, outcome = randomized_template_start(proposal.design,
+            root_seed=request.structure_search_seed, stage=stage,
+            minimum_nm=request.minimum_nonzero_thickness_nm,
+            maximum_nm=request.max_layer_thickness_nm,
+            total_maximum_nm=request.max_total_thickness_nm, feasible=feasible,
+            cancel_check=check, seen_hashes=randomized_template_hashes)
+        record.update(outcome)
+        emit("template_randomization", json.dumps(record, sort_keys=True), proposal.design)
+        if randomized is None:
+            return None
+        randomized_template_hashes.add(outcome["result_physical_hash"])
+        return StructuralProposal(randomized, dict(proposal.provenance,
+            template_randomization=dict(outcome, algorithm_version=metadata["algorithm_version"],
+                effective_seed=request.structure_search_seed)))
+
+    randomized_template_hashes: set[str] = set()
+
+    def legacy_template_stream(source, *, stage, jacobian=False, extra_admit=lambda proposal: True):
+        """Enabled-only additive stream; caller consumes BASE before extra."""
+        try:
+            for proposal in source:
+                yield proposal
+                if targets_verified():
+                    return
+                # BASE has been consumed; reserve one remaining training slot
+                # for the extra (the final independent audit stays reserved).
+                remaining = (2 if request.max_evaluations is None else
+                    request.max_evaluations - evaluations - reserved_training_slots)
+                if not extra_admit(proposal):
+                    remaining = 0
+                extra = extra_template_start(proposal, stage=stage,
+                    candidate_slots=remaining, jacobian=jacobian)
+                if extra is not None:
+                    yield extra
+        finally:
+            close = getattr(source, "close", None)
+            if close is not None:
+                close()
 
     prepared_training: list[_PreparedStructureEvaluator | None] = [None]
 
@@ -1257,6 +1346,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
     def run_hybrid(initial):
         """One shared staged search; strict archive and real explorer are distinct."""
         nonlocal cycle, terminal_hybrid_cleanup
+        assert request.structure_search_seed is not None  # Formal freeze resolved auto.
+        hybrid_structure_seed = request.structure_search_seed
         frozen_snapshot = request.frozen_material_snapshot
         assert frozen_snapshot is not None
         from .film_synthesis_archive import physical_design_hash
@@ -1719,7 +1810,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 while streams and misses < len(streams) and not targets_verified():
                     stage_check()
                     prior_proposals: list[StructuralProposal] = []
-                    while streams and len(prior_proposals) < batch_remaining() and misses < len(streams):
+                    while (streams and len(prior_proposals) < batch_remaining() and misses < len(streams)
+                           and (not request.randomize_template_search or not prior_proposals)):
                         stage_check()
                         source_cursor %= len(streams)
                         source = streams[source_cursor]
@@ -1747,6 +1839,44 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                             prior_proposals.append(proposal)
                     if not prior_proposals:
                         break
+                    if request.randomize_template_search:
+                        # Reserve a BASE/extra pair independently of execution
+                        # width. Even frozen batch quantum=1 can consume the
+                        # two reserved starts in source order, in two batches.
+                        assert active_slice is not None
+                        slots = active_slice[1] - evaluations - reserved_training_slots - active_slice[0].get("reserved_audit_slots", 0)
+                        if request.max_evaluations is not None:
+                            slots = min(slots, request.max_evaluations - evaluations - reserved_training_slots - 1)
+                        extra = extra_template_start(prior_proposals[0], stage="hybrid_template",
+                            candidate_slots=slots, cancel_check=stage_check, resource_check=resource_check)
+                        if extra is not None:
+                            prior_proposals.append(extra)
+                        screened = []
+                        for prior in prior_proposals:
+                            # Commit each complete physical result immediately;
+                            # cancellation during extra work retains its BASE.
+                            values = hybrid_batch_evaluate([dict(design=prior.design)], phase="hybrid_prior")
+                            if not values:
+                                break
+                            raw = values[0]
+                            archive(raw, audit_eligible=False, provenance=prior.provenance, operator="engineering_prior")
+                            emit("structure_proposal", json.dumps(prior.provenance, sort_keys=True), raw["design"], raw["score"])
+                            if (not explorer["design"]["front_layers"] or score_sse(raw) < score_sse(explorer)):
+                                explorer = raw
+                            screened.append(raw)
+                        # Pair slots cannot be consumed by a BASE audit. Once
+                        # both starts are scored, use the unchanged audit rule.
+                        for raw in screened:
+                            if (raw["score"]["max_error"] <= request.acceptable_normalized_error
+                                    and solver_acceptable(request, raw["score"])):
+                                if (evaluations < active_slice[1] and
+                                        (active_slice[2] is None or monotonic() < active_slice[2])):
+                                    audit_archive(raw, allow_feedback_repair=False)
+                                else:
+                                    details["deferred_prior_audits"] = details.get("deferred_prior_audits", 0) + 1
+                            if targets_verified():
+                                break
+                        continue
                     values = None  # Release the preceding batch before new physical work.
                     values = hybrid_batch_evaluate([dict(design=p.design) for p in prior_proposals], phase="hybrid_prior")
                     # A resource-limited batch can return a prefix. Preserve
@@ -1804,7 +1934,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                                                 for k in range(1, dimension)])
                     evolution = DifferentialEvolutionProposals(np.zeros(dimension),
                         np.full(dimension, -.35), np.full(dimension, .35),
-                        seed=request.structure_search_seed + cycle + entry.insertion_index, population_size=6)
+                        seed=hybrid_structure_seed + cycle + entry.insertion_index, population_size=6)
                     for _generation in range(2):
                         losses = np.full(len(evolution.population), np.inf)
                         global_proposals: list[tuple[int, Any]] = []
@@ -1894,7 +2024,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     evaluate=probe_evaluate, position_samples=request.position_samples + 2 * min(2, no_negative_rounds),
                     valley_refinement_rounds=request.needle_position_refinement_rounds,
                     max_needles=request.needle_batch_size, max_layers=request.max_layers,
-                    seed=request.structure_search_seed + cycle, max_probes=probe_quota, genuine_only=True,
+                    seed=hybrid_structure_seed + cycle, max_probes=probe_quota, genuine_only=True,
                     gradient=lambda value, ids: weighted_sse_loss_gradient(request, value, ids)[1],
                     on_probe=on_probe, stop_check=scan_stop_requested, admit=resource_admit,
                     evaluate_batch=probe_evaluate_batch, probe_batch_size=batch_quantum)
@@ -2056,6 +2186,15 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             _check_cancel(cancel_event)
             emit("freezing", "冻结目标、基片和显式膜材")
             request = freeze_film_synthesis_request(service, request, cancel_event=cancel_event)
+            assert request.structure_search_seed is not None  # Every execution uses an explicit frozen root.
+            resolved_structure_seed = request.structure_search_seed
+            if request.randomize_template_search:
+                metadata = template_randomization_metadata(request.structure_search_seed,
+                    provenance=template_seed_provenance)
+                search_diagnostics["template_randomization"] = dict(metadata, enabled=True, templates=[],
+                    quota_policy="BASE retained; at most one legal extra per admitted template; reserve candidate/physical slots before drawing; original final audit slot retained",
+                    replay_scope="same seed/config reconstruct starts; wall-time-limited final output is not bitwise guaranteed")
+                emit("template_randomization_config", json.dumps(metadata, sort_keys=True))
             snapshot = request.frozen_material_snapshot
             execution.configure(_proxy(request))
             if snapshot is None:
@@ -2113,7 +2252,19 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     simple_start["feasible"] = feasible_simple_count
                     raw = evaluate(trial, gpu_forward=forward is not None)
                     emit("ar_simple_start", "Scored legal homogeneous-layer prior before multicluster screening", trial, raw["score"], material_id=ref.material_id)
+                    extra_raw = None
+                    if request.randomize_template_search:
+                        from .film_synthesis_global import StructuralProposal
+                        slots = (2 if request.max_evaluations is None else request.max_evaluations - evaluations)
+                        extra = extra_template_start(StructuralProposal(trial, dict(family="homogeneous")),
+                            stage="legacy_homogeneous_template", candidate_slots=slots)
+                        if extra is not None:
+                            extra_raw = evaluate(extra.design, gpu_forward=forward is not None)
+                            emit("structure_proposal", json.dumps(extra.provenance, sort_keys=True), extra.design, extra_raw["score"])
+                            archive(extra_raw, audit_eligible=False, provenance=extra.provenance, operator="engineering_prior")
                     archive(raw)
+                    if extra_raw is not None and not targets_verified():
+                        archive(extra_raw, provenance=extra.provenance, operator="engineering_prior")
                     if targets_verified():
                         simple_start["audited_pass"] = True
                         emit("ar_simple_targets_verified", "Simple prior passed the same independent physical audit; complex search remains available for unmet targets", trial, raw["score"])
@@ -2201,8 +2352,13 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     control = (original, dict(family=original_metadata["family"], demand_tier="existing"))
                     original_work = sample_points * max(1, len(original["design"]["front_layers"]))
                     start["source_first"] = original_work >= STRUCTURAL_PREFIX_POINT_LAYER_QUANTUM
+                batch_work: int = 0
                 source = iter_multispectral_hr_proposals(request,
                     cancel_check=check_training_admission, report=multi_report)
+                if request.randomize_template_search:
+                    source = legacy_template_stream(source, stage="legacy_multispectral_template",
+                        extra_admit=lambda proposal: batch_work + sample_points * max(1,
+                            len(proposal.design["front_layers"])) <= STRUCTURAL_PREFIX_POINT_LAYER_QUANTUM)
                 source_exhausted = False
                 pending_source: StructuralProposal | None = None
                 try:
@@ -2300,8 +2456,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     hr_start["latest_optimizer_progress"] = deepcopy(details)
                     hr_start["evaluations_used"] = evaluations - initial_evaluations
                     emit(stage, json.dumps(details, sort_keys=True), candidate["design"], candidate["score"])
-                for proposal in iter_dual_substack_hr_proposals(request,
-                        cancel_check=check_training_admission, report=hr_report):
+                hr_source = iter_dual_substack_hr_proposals(request,
+                    cancel_check=check_training_admission, report=hr_report)
+                for proposal in hr_source:
                     check_training_admission()
                     entry: dict[str, object] = dict(proposal.provenance,
                         layer_count=len(proposal.design["front_layers"]), state="evaluating_prior")
@@ -2310,6 +2467,16 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     entry["initial_training_min_R"] = min(error.actual for error in raw_hr["score"]["errors"])
                     emit("hr_minimax_prior", json.dumps(entry, sort_keys=True), raw_hr["design"], raw_hr["score"])
                     archive(raw_hr, audit_eligible=False)
+                    if request.randomize_template_search:
+                        slots = (2 if request.max_evaluations is None else request.max_evaluations - evaluations)
+                        extra = extra_template_start(proposal, stage="legacy_hr_template",
+                            candidate_slots=slots, jacobian=True)
+                        if extra is not None:
+                            extra_hr = evaluate(extra.design, jacobian=True)
+                            archive(extra_hr, audit_eligible=False, provenance=extra.provenance, operator="engineering_prior")
+                            emit("hr_minimax_prior", json.dumps(extra.provenance, sort_keys=True), extra_hr["design"], extra_hr["score"])
+                            if rank(extra_hr) < rank(raw_hr):
+                                raw_hr = extra_hr
                     if (raw_hr["score"]["max_error"] <= request.acceptable_normalized_error
                             and solver_acceptable(request, raw_hr["score"])):
                         audit_archive(raw_hr, allow_feedback_repair=False)
@@ -2409,6 +2576,10 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 # speculative physical work. Keep only one complete best per
                 # family, rather than retaining every full evaluated design.
                 chunk_size = min(64, max(2, 2 * execution.workers))
+                if request.randomize_template_search:
+                    # Consume BASE before the wrapper reserves its extra, so
+                    # physical admission never depends on speculative workers.
+                    chunk_size = 1
                 search_diagnostics["structure_batch_policy"] = dict(
                     cpu_chunk_size=chunk_size, maximum_chunk_size=64,
                     policy="min(64,max(2,2*effective_requested_workers)); ordered parent consumption",
@@ -2483,11 +2654,18 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         cancel_check=check_training_admission, report=structural_report)
                 if epoch not in pending_structural_scans:
                     pending_structural_scans[epoch] = merged_proposals()
+                    if request.randomize_template_search:
+                        pending_structural_scans[epoch] = legacy_template_stream(
+                            pending_structural_scans[epoch], stage="legacy_structure_template",
+                            extra_admit=lambda proposal: legacy_template_work_admission[0](proposal))
                 proposals = pending_structural_scans[epoch]
                 exhausted = yielded = False
                 stage_work = consumed = 0
                 keepers: dict[object, tuple[Mapping[str, Any], Mapping[str, Any]]] = {}
                 sample_points = sum(o.wavelength_samples * len(o.angles_deg) for o in request.objectives)
+                if request.randomize_template_search:
+                    legacy_template_work_admission[0] = lambda proposal: (work_quantum is None or
+                        stage_work + sample_points * max(1, len(proposal.design["front_layers"])) <= work_quantum)
                 def commit(proposal, value):
                     entry = dict(proposal.provenance, layer_count=len(proposal.design["front_layers"]),
                                  max_error=value["score"]["max_error"], rms=value["score"]["weighted_rms_error"])
@@ -2636,7 +2814,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                             lower_parameters=lower.tolist(), upper_parameters=upper.tolist(),
                             bound_source="project proposal box: [0.35/expansion, 2*expansion] times current topology thickness; expansion=1+0.25*epoch; intersect explicit layer bounds; not manufacturing limits",
                             population_size=population_size, stage_generations=4, completed_generations=0,
-                            seed=request.structure_search_seed + epoch, epoch=epoch, expansion=expansion, coverage_complete=False, stop_reason="stage_quantum")
+                            seed=resolved_structure_seed + epoch, epoch=epoch, expansion=expansion, coverage_complete=False, stop_reason="stage_quantum")
                         if parameterization == "structure":
                             global_record["bound_source"] = "project log-parameter box: uniform scale/ramp +/-log(1.2), HL ratio +/-log(1.15), times epoch expansion; not manufacturing limits"
                             global_record["mapping"] = "d_i'=d_i*exp(a+b*t_pair+c*s_HL); t_pair in [-1,1], s_HL +/-1"
@@ -2652,7 +2830,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                                 global_record["symmetry_groups"] = metadata["symmetry_groups"]
                                 global_record["symmetry_seed_projection"] = symmetric_basis != seed_value["design"]
                         search_diagnostics["global_search"].append(global_record)
-                        evolution = DifferentialEvolutionProposals(initial, lower, upper, seed=request.structure_search_seed + epoch, population_size=population_size)
+                        evolution = DifferentialEvolutionProposals(initial, lower, upper, seed=resolved_structure_seed + epoch, population_size=population_size)
                         global_best = seed_value
                         for generation in range(5):
                             check_training_admission()
@@ -2740,6 +2918,18 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             for seed_design in request.seed_designs:
                 seed_value = evaluate(seed_design, jacobian=True)
                 emit("seed_design", "Scored arbitrary real layer-sequence starting design", seed_design, seed_value["score"])
+                if request.randomize_template_search:
+                    from .film_synthesis_global import StructuralProposal
+                    archive(seed_value, audit_eligible=False)
+                    slots = (2 if request.max_evaluations is None else request.max_evaluations - evaluations)
+                    extra = extra_template_start(StructuralProposal(deepcopy(dict(seed_design)), dict(family="user_seed")),
+                        stage="legacy_seed_template", candidate_slots=slots, jacobian=True)
+                    if extra is not None:
+                        extra_seed = evaluate(extra.design, jacobian=True)
+                        archive(extra_seed, audit_eligible=False, provenance=extra.provenance, operator="engineering_prior")
+                        emit("seed_design", json.dumps(extra.provenance, sort_keys=True), extra_seed["design"], extra_seed["score"])
+                        if rank(extra_seed) < rank(seed_value):
+                            seed_value = extra_seed
                 candidate = polish(replace_materials(seed_value))
                 audit_archive(candidate)
                 branches.append(candidate)

@@ -26,7 +26,28 @@ SYNTHESIS_SEARCH_DEFAULTS = {
     "needle_pre_local": False, "needle_position_refinement_rounds": 1,
     "max_working_set_bytes": 0,
     "parallel_batch_size": None,
+    "randomize_template_search": False,
+    "structure_search_seed": None,
 }
+
+
+def synthesis_structure_search_seed(value: Any) -> int | None:
+    """Parse a decimal uint32 seed without any floating point conversion."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    if type(value) is int:
+        seed = value
+    elif isinstance(value, str) and value.strip().isascii() and value.strip().isdigit():
+        # Bound length before int() also rejects excessive input deterministically.
+        digits = value.strip().lstrip("0") or "0"
+        if len(digits) > 10:
+            raise ValueError("模板搜索种子须为 0..4294967295 的十进制整数，或留空自动")
+        seed = int(digits, 10)
+    else:
+        raise ValueError("模板搜索种子须为 0..4294967295 的十进制整数，或留空自动")
+    if not 0 <= seed <= 0xFFFFFFFF:
+        raise ValueError("模板搜索种子须为 0..4294967295 的十进制整数，或留空自动")
+    return seed
 
 
 def synthesis_options(values: Mapping[str, Any]) -> dict[str, Any]:
@@ -34,6 +55,14 @@ def synthesis_options(values: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("Unknown synthesis constraint")
     result = dict(SYNTHESIS_DEFAULT_OPTIONS)
     for name, raw in values.items():
+        if name == "structure_search_seed":
+            result[name] = synthesis_structure_search_seed(raw)
+            continue
+        if name == "randomize_template_search":
+            if type(raw) is not bool:
+                raise ValueError("randomize_template_search must be an explicit boolean")
+            result[name] = raw
+            continue
         if name == "parallel_batch_size" and (raw is None or (isinstance(raw, str)
                 and (not raw.strip() or raw.strip().lower() == "auto"))):
             result[name] = None
@@ -139,6 +168,9 @@ def build_synthesis_request(base: FilmOptimizationRequest, references, options,
     environment["expression"] = {"text": "", "symbols": {}, "in_sync": True}
     # Preserve the actual physical environment; unsupported incidence/loss is
     # rejected by the core validator, never silently converted by the UI.
+    parsed_options = synthesis_options(options)
+    if not parsed_options.get("randomize_template_search", False) and parsed_options.get("structure_search_seed") is None:
+        parsed_options["structure_search_seed"] = 0
     return _validated(FilmSynthesisRequest(environment, base.objectives, tuple(references),
         design_revision=base.design_revision,
         acceptable_normalized_error=base.acceptable_normalized_error,
@@ -148,7 +180,7 @@ def build_synthesis_request(base: FilmOptimizationRequest, references, options,
         cpu_workers=synthesis_cpu_workers(cpu_workers),
         forward_backend=forward_backend,
         forward_device=validate_forward_device(forward_device, forward_backend),
-        **synthesis_options(options)))
+        **parsed_options))
 
 
 def synthesis_base_request(request: FilmSynthesisRequest) -> FilmOptimizationRequest:

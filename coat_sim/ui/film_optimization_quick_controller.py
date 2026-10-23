@@ -42,6 +42,7 @@ from coat_sim.scheduler.desktop import (
 from coat_sim.ui.film_synthesis_quick_adapter import (
     SYNTHESIS_DEFAULT_OPTIONS, SynthesisQuickResult, build_synthesis_request,
     synthesis_base_request, synthesis_cpu_workers, synthesis_options, synthesis_result_view, synthesis_spec,
+    synthesis_structure_search_seed,
     synthesis_strict_upper_bound_indices,
     synthesis_preview_handoff,
     verify_synthesis_file_references,
@@ -1052,6 +1053,10 @@ class FilmOptimizationQuickController(QObject):
         self._candidate_applied = False
         self._search_mode = "fixed_topology"
         self._synthesis_options = dict(SYNTHESIS_DEFAULT_OPTIONS)
+        self._synthesis_options.update(randomize_template_search=False, structure_search_seed=None)
+        self._synthesis_structure_search_seed_text = ""
+        self._synthesis_structure_search_seed_error = ""
+        self._synthesis_actual_structure_search_seed: int | None = None
         self._synthesis_cpu_workers = 0
         self._synthesis_forward_backend = "cpu"
         self._synthesis_forward_device: dict[str, Any] | None = None
@@ -1388,6 +1393,8 @@ class FilmOptimizationQuickController(QObject):
     @Slot(result="QVariantMap")
     def exportOptimizationConfiguration(self) -> dict:
         """Return JSON-only editor state; commit an angle draft or reject export."""
+        if self._search_mode == "synthesis":
+            synthesis_structure_search_seed(self._synthesis_structure_search_seed_text)
         if not self._commit_pending_angle_draft():
             raise ValueError(self._error or "请先完成角度输入")
         if self._pending_edit_error or self._objective_bounds_pending():
@@ -1587,6 +1594,8 @@ class FilmOptimizationQuickController(QObject):
                     "use_current_seed", "material_rows", "assume_unknown_k_zero"}:
                 raise ValueError("Invalid synthesis configuration")
             synthesis_values = synthesis_options(synthesis_config.get("options", {}))
+            synthesis_values.setdefault("randomize_template_search", False)
+            synthesis_values.setdefault("structure_search_seed", None)
             synthesis_workers = synthesis_cpu_workers(synthesis_config.get("cpu_workers", 0))
             synthesis_forward_backend = synthesis_config.get("forward_backend", "cpu")
             synthesis_forward_device = synthesis_config.get("forward_device")
@@ -1658,6 +1667,10 @@ class FilmOptimizationQuickController(QObject):
             self._search_mode, self._structure_mode = search_mode, structure_mode
             self._compute_target.setTask("film_synthesis" if search_mode == "synthesis" else "film_optimization")
             self._synthesis_options, self._synthesis_use_current_seed = synthesis_values, synthesis_seed
+            search_seed = synthesis_values["structure_search_seed"]
+            self._synthesis_structure_search_seed_text = "" if search_seed is None else str(search_seed)
+            self._synthesis_structure_search_seed_error = ""
+            self._synthesis_actual_structure_search_seed = None
             self._synthesis_cpu_workers = synthesis_workers
             self._synthesis_forward_backend = synthesis_forward_backend
             self._synthesis_forward_device = deepcopy(synthesis_forward_device)
@@ -2114,6 +2127,7 @@ class FilmOptimizationQuickController(QObject):
             self.changed.emit()
 
     def _invalidate_result(self) -> None:
+        self._synthesis_actual_structure_search_seed = None
         self._live_display.clear_analysis()
         self._sync_film_execution_target()
         if not self._configuration_loading:
@@ -3854,6 +3868,7 @@ class FilmOptimizationQuickController(QObject):
         return not self._structure_material_error
 
     def _build_synthesis_request(self, *, prepared_angles=None):
+        synthesis_structure_search_seed(self._synthesis_structure_search_seed_text)
         from coat_sim.core.film_optimization_needle import FilmNeedleMaterialReference
         base = self._build_request(require_variables=False, fixed_topology=False,
                                    prepared_angles=prepared_angles)
@@ -3870,6 +3885,8 @@ class FilmOptimizationQuickController(QObject):
                                        strict_upper_bound_objective_indices=synthesis_strict_upper_bound_indices(self._objectives))
 
     def _synthesis_configuration_error(self):
+        if self._synthesis_structure_search_seed_error:
+            return self._synthesis_structure_search_seed_error
         if self._pending_edit_error:
             return self._error or "请完成当前输入"
         if self._structure_material_error:
@@ -3904,6 +3921,45 @@ class FilmOptimizationQuickController(QObject):
     @Property(dict, notify=changed)
     def synthesisOptions(self):
         return dict(self._synthesis_options)
+
+    @Property(str, notify=changed)
+    def synthesisStructureSearchSeedText(self) -> str:
+        return self._synthesis_structure_search_seed_text
+
+    @Property(str, notify=changed)
+    def synthesisStructureSearchSeedError(self) -> str:
+        return self._synthesis_structure_search_seed_error
+
+    @Property(str, notify=changed)
+    def synthesisActualStructureSearchSeedText(self) -> str:
+        seed = self._synthesis_actual_structure_search_seed
+        return "" if seed is None else str(seed)
+
+    @Slot(str, result=bool)
+    def setSynthesisStructureSearchSeedText(self, text: str) -> bool:
+        if (self._busy or self._shutting_down
+                or not self._synthesis_options.get("randomize_template_search", False)):
+            return False
+        self._synthesis_structure_search_seed_text = text
+        try:
+            seed = synthesis_structure_search_seed(text)
+        except ValueError as exc:
+            self._synthesis_structure_search_seed_error = str(exc)
+            self._invalidate_result()
+            return False
+        self._synthesis_structure_search_seed_error = ""
+        self._synthesis_options["structure_search_seed"] = seed
+        self._error = ""
+        self._invalidate_result()
+        return True
+
+    @Slot(result=bool)
+    def finishSynthesisStructureSearchSeedEdit(self) -> bool:
+        if self._synthesis_structure_search_seed_error:
+            self._error = self._synthesis_structure_search_seed_error
+            self.changed.emit()
+            return False
+        return True
 
     @Property(int, notify=changed)
     def synthesisCpuWorkers(self) -> int:
@@ -4069,6 +4125,10 @@ class FilmOptimizationQuickController(QObject):
             return False
         self._clear_pending_edit_error("synthesis:" + name)
         self._synthesis_options = values
+        if name == "structure_search_seed":
+            seed = values[name]
+            self._synthesis_structure_search_seed_text = "" if seed is None else str(seed)
+            self._synthesis_structure_search_seed_error = ""
         self._error = ""
         self._invalidate_result()
         return True
@@ -4704,6 +4764,8 @@ class FilmOptimizationQuickController(QObject):
             self.changed.emit()
             return False
         self._frozen_request = base_request
+        self._synthesis_actual_structure_search_seed = (
+            request.structure_search_seed if self._search_mode == "synthesis" else None)
         self._synthesis_editable_snapshot = deepcopy(editable_snapshot)
         self._completion_handoff_done = False
         self._result = None
@@ -5178,6 +5240,7 @@ class FilmOptimizationQuickController(QObject):
         self._synthesis_editable_snapshot = None
         self._result = view.optimization_result
         self._frozen_request = synthesis_base_request(request)
+        self._synthesis_actual_structure_search_seed = request.structure_search_seed
         self._structure_result = None
         self._inspection_objectives = objectives
         self._result_application_eligible = False
@@ -5761,6 +5824,10 @@ class FilmOptimizationQuickController(QObject):
 
     @Slot()
     def requestClose(self) -> None:
+        if (not self._busy and self._search_mode == "synthesis"
+                and self._synthesis_structure_search_seed_error):
+            self.finishSynthesisStructureSearchSeedEdit()
+            return
         if not self._busy and not self._commit_pending_angle_draft():
             self.changed.emit()
             return

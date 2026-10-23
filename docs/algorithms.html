@@ -12,6 +12,7 @@
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px solid #c8e0db;border-radius:8px;padding:16px;font-size:.88rem;line-height:1.5}</style>
 </head>
 <body>
+<p class="source">算法补充日期：2026-10-24；新增 <a href="#film-template-randomization-20261024">14as 可选模板随机厚度起点</a>，默认关闭，实际 seed 随请求冻结。</p>
 <p class="source">实时光谱与展示评分补充：2026-10-23，见<a href="#candidate-display-score">14ar</a>；仅复用已算结果，默认关闭谱预览，展示分不改变优化目标。</p>
 <p class="source">当前敏感性入口收口：2026-10-23，见<a href="#film-ideal-local-sensitivity-20261023">14ao</a>、<a href="#film-thickness-error-table-20261023">14ap</a>与<a href="#film-ideal-controlled-degradation-20261023">14aq</a>。仅当前理想schema 2与独立参数表schema 1；旧工艺场景入口、旧理想schema与兼容面板已删除，不迁移或fallback。</p>
 <p class="source">真实混合多进程补充：2026-10-23，见<a href="#film-hybrid-parallel-20261023">14am</a>；请求数、逻辑批次与实际派发分开，不承诺整流程线性加速。</p>
@@ -28,7 +29,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
   <div class="eyebrow">Optical Coating / Algorithm Atlas</div>
   <h1>光学镀膜<br>算法图解与参考来源</h1>
   <p>从独立基片、蒸发源、修正板、机器与工艺文件，到行星运动、射线通量、膜厚归一化和预计用时。本文依据当前代码写成，可离线阅读；公式描述的是本项目的计算模型。</p>
-<div class="meta"><span class="pill">版本：机器 v5 · 工艺 v7 · 源 v2；材料交换包 v1、安全导入冲突预览与原子回滚)</span><span class="pill">更新：2026-10-23（固定初始光谱受控退化理想优化v2、旧strict版本兼容；真实混合多核、原门限与容差分离、冠军物理压缩与拒绝统计；周期0显式时间/评价/取消统一预算；高反自动结构/全局搜索、材料谱向量复用与同预算验收、显式严格下界与跨类别冻结基准；活动光路材料校验与从零合成审计；优化目标上下限统一与角度范围显式确认；厚度编辑精度、零厚层与优化边界；冻结服务边界与单点归一化；研究证据与单层光谱反演；修正板不设数量上限、完整依赖快照与逐板遮挡；工程文件格式契约说明；优化多角网格与计算量人工顶值移除；TFCalc明文层表导入；外观逐光线精确 TMM 与独立波长 CPU 进程并行；Qt Quick 显式峰谷统计波段、波长通带与场景图曲线预览；多孔厚盖、独立源采样、无固定最大网格与计算隔离；工艺环境、工作气体及零碰撞直达束；材料库、已设计源工艺选择、盖孔射线与快扫描空间分布；桌面仿真共享队列、逐批进度、无固定步数上限、100%快算默认与Å/s界面；五项上下文预算、硬限与安全压缩、后台流合并与固定设计绘图；平滑轮廓、全膜系目标选优与评分进度；凭据反馈与有界模型候选兼容探测；待决选项、模式放行、诊断未读摘要、结果队列身份修复、紧凑产物；计算量估算、后台串行队列、源板分组优化与跨段选区；完整设备回退、成功设备记忆、临时仿真资产包、可选 PDF、历史闭合与滚动高度缓存；批量膜系、物理层表导入、固定图表、工具原文归档与任务成本、视口文本增量渲染；批量工具契约、演示工作流、逐回合展示与复制、撤回确认、本地助手调试、实际生效参数快照、LPAC启动修复；容量自适应上下文、轮次关闭、插话与排队、剪贴板图片、系统语言与语气、开发访问；逐层修正板、轮廓优化、工艺快算、估时、上下文用量、请求续约、原生档位缓存、滚动跟随、二维 CAD 与加工图、模型 Token 上限、缓存命中统计、富文本与开发门禁；修正板视口设备路由、反向滚动与可选输入诊断）</span><span class="pill">单位：mm · s · rpm · nm · px；助手 Token / 字符 / 附件字节</span><span class="pill">离线单文件 HTML</span></div>
+<div class="meta"><span class="pill">版本：机器 v5 · 工艺 v7 · 源 v2；材料交换包 v1、安全导入冲突预览与原子回滚)</span><span class="pill">更新：2026-10-24（固定初始光谱受控退化理想优化v2、旧strict版本兼容；真实混合多核、原门限与容差分离、冠军物理压缩与拒绝统计；周期0显式时间/评价/取消统一预算；高反自动结构/全局搜索、材料谱向量复用与同预算验收、显式严格下界与跨类别冻结基准；活动光路材料校验与从零合成审计；优化目标上下限统一与角度范围显式确认；厚度编辑精度、零厚层与优化边界；冻结服务边界与单点归一化；研究证据与单层光谱反演；修正板不设数量上限、完整依赖快照与逐板遮挡；工程文件格式契约说明；优化多角网格与计算量人工顶值移除；TFCalc明文层表导入；外观逐光线精确 TMM 与独立波长 CPU 进程并行；Qt Quick 显式峰谷统计波段、波长通带与场景图曲线预览；多孔厚盖、独立源采样、无固定最大网格与计算隔离；工艺环境、工作气体及零碰撞直达束；材料库、已设计源工艺选择、盖孔射线与快扫描空间分布；桌面仿真共享队列、逐批进度、无固定步数上限、100%快算默认与Å/s界面；五项上下文预算、硬限与安全压缩、后台流合并与固定设计绘图；平滑轮廓、全膜系目标选优与评分进度；凭据反馈与有界模型候选兼容探测；待决选项、模式放行、诊断未读摘要、结果队列身份修复、紧凑产物；计算量估算、后台串行队列、源板分组优化与跨段选区；完整设备回退、成功设备记忆、临时仿真资产包、可选 PDF、历史闭合与滚动高度缓存；批量膜系、物理层表导入、固定图表、工具原文归档与任务成本、视口文本增量渲染；批量工具契约、演示工作流、逐回合展示与复制、撤回确认、本地助手调试、实际生效参数快照、LPAC启动修复；容量自适应上下文、轮次关闭、插话与排队、剪贴板图片、系统语言与语气、开发访问；逐层修正板、轮廓优化、工艺快算、估时、上下文用量、请求续约、原生档位缓存、滚动跟随、二维 CAD 与加工图、模型 Token 上限、缓存命中统计、富文本与开发门禁；修正板视口设备路由、反向滚动与可选输入诊断）</span><span class="pill">单位：mm · s · rpm · nm · px；助手 Token / 字符 / 附件字节</span><span class="pill">离线单文件 HTML</span></div>
 <p class="source">补充更新：2026-10-05——通过服务接口执行的非 CPU 沉积仿真使用一次任务一个短生命周期计算进程；Windows 子进程关闭管道时把 WinError 109 视作 EOF，避免计算完成后误记失败。</p>
 <p class="source">cub 接口补齐更新：2026-10-05。三路径提交、材料业务工具、机器工程检查和 AI 资产导出契约；未覆盖在线模型及实机校准。</p>
 <p class="source">GUI接线更新：2026-10-20。14t从零合成与14u物理结构已进入现有优化页/参数侧栏；入口与状态边界见<a href="film-synthesis-gui-guide.md">使用指南</a>、<a href="film-synthesis-gui-stage-report-20261020.md">同源GUI验收</a>。原GUI接线无数值公式变更；后续显式未知k近似策略见<a href="#film-synthesis-unknown-k-20261020">14v</a>，默认严格且不会静默回退。</p>
@@ -64,6 +65,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <p class="source" style="grid-column:1/-1">结构合成更新：2026-10-12。新增14o至14o-2：实验性经典零厚敏感度针插、有界已有层增长与分组局部精修；独立结构请求与固定层序/有限试插分开，Dmax是硬约束。补充验证切片、真实求值计数与增长前局部边界检查。接口见 <a href="film-structure-optimization-contract.md">结构合成契约</a>，操作见 <a href="film-structure-optimization-guide.md">使用指南</a>，实际验收见 本轮状态 <span class="historical-reference">（历史验证记录，未随公开源码发布）</span>。</p>
 <p class="source">存储格式补充：2026-10-18。工程 BBS、助手精简记忆和可恢复文件清理均为非物理持久化契约，不改变仿真公式、坐标或数值精度。见<a href="#engineering-notes-storage-20261018">工程记录与助手工作区格式</a>。</p>
 <nav aria-label="章节目录">
+<a href="#film-template-randomization-20261024">14as 可选模板随机化（2026-10-24）</a>
 <a href="#film-multispectral-minimax-20261022">14ah 分窗高反先验与联合R/T门限精修（2026-10-22）</a>
 <a href="#film-synthesis-audit-20261020">14t 从零生长、最坏违规与独立极值审计（2026-10-20）</a>
 <a href="#film-physical-structures-20261020">14u 可展开的物理结构族（2026-10-20）</a>
@@ -3216,6 +3218,26 @@ close/shutdown/history/late old operation: do not trigger automatic apply</pre>
 <p><strong>身份与传输：</strong>job/digest/generation/context/sequence 全绑定；远端正式接纳可能加入 device binding，GUI 以实际接纳摘要而非原 spec 猜测。控制用服务端 CAS，旧 on 不能覆盖新 off，取消/终态拒新控制；status/events 仅附 RAM 最新包，不进入 durable scheduler_events 或标量 progress。坏包只丢展示，不杀优化；正式结果、重放、设计 edit epoch 和应用确认保留。既有 immutable 条件行只保留有限引用，不保留 Jacobian；128 KiB 是包上限，不冒称整个优化进程内存上限。</p>
 <p><strong>实现与验证：</strong><code>film_candidate_display.py</code>、普通/合成/敏感度评价钩子、<code>scheduler/film_display.py</code>、<code>film_candidate_display_controller.py</code>、<code>FilmOptimizationWindow.qml</code>。固定 seed/评价预算开关对照验证原 forward/J/eval/incumbent 相同，4097原点例抽为1024显示点，慢UI51帧仅1排队唤醒。小例非最坏耗时证明，长大网格 RSS/慢盘/真实 IPC 和远程仍按平台独立验收。完整跨模块合同见<a href="film-live-display-contract.md">实时展示与评分合同</a>。</p>
 <p class="source"><strong>来源：</strong>此标量分式评分、90/5/5偏好、锚点、前十与限频均为本项目约定，未找到外部依据，不声称光学最优或工艺良率。线程边界参考<a href="https://doc.qt.io/qt-6/threads-qobject.html">Qt 官方 Threads and QObjects</a>；其线程规则不为本项目评分背书。</p>
+</section>
+<section id="film-template-randomization-20261024">
+<h2>14as · 可选模板随机厚度起点</h2>
+<p>更新：2026-10-24。用途：在自动合成的确定性物理模板旁增加有限的随机厚度初值，探索不同搜索路径。输入为已准入模板、实际 <code>structure_search_seed</code>、阶段及重启索引、可优化变量和原物理约束；输出至多一个合法额外起点及原因记录。默认 <code>randomize_template_search=false</code>，关闭时新增流不取样、候选顺序不变，既有 DE/针插 seed 规则不变。仅适用于自动合成/模板搜索，不改变普通局部优化或敏感性优化。</p>
+<p>坐标为从入射侧至基底的原层序，厚度 d 使用 nm；随机量及对数位移无量纲。固定层和零厚层保持原值，零不取对数；材料模型、层数、层序、目标和每层/总厚边界不变。不投影或裁剪到物理边界，非法初值只能重抽或放弃。</p>
+<div class="formula">z₀ ∼ N(0,1); zⱼ = 0.85 zⱼ₋₁ + √(1−0.85²) ξⱼ;<br>εⱼ, ξⱼ ∼ N(0,1) 独立; δⱼ = clip(0.12 zⱼ + 0.06 εⱼ, −0.35, 0.35); d′ⱼ = dⱼ exp(δⱼ).</div>
+<figure class="figure"><svg viewBox="0 0 850 170" role="img" aria-label="模板基准和预算内随机起点流程">
+<rect x="12" y="35" width="170" height="74" rx="8" fill="#e3f1ed"/><text x="28" y="65" class="svgtext">确定性模板 base</text><text x="28" y="91" class="svgsmall">原路径始终保留</text>
+<path d="M182 72H220M206 64L220 72L206 80" fill="none" stroke="#087f78" stroke-width="2"/>
+<rect x="222" y="35" width="175" height="74" rx="8" fill="#fff2dd"/><text x="237" y="65" class="svgtext">检查额外计算配额</text><text x="237" y="91" class="svgsmall">候选/评价/时间/取消</text>
+<path d="M397 72H435M421 64L435 72L421 80" fill="none" stroke="#087f78" stroke-width="2"/>
+<rect x="437" y="35" width="180" height="74" rx="8" fill="#e3f1ed"/><text x="452" y="65" class="svgtext">独立 PCG64 扰动</text><text x="452" y="91" class="svgsmall">仅非法/重复最多抽3次</text>
+<path d="M617 72H655M641 64L655 72L641 80" fill="none" stroke="#087f78" stroke-width="2"/>
+<rect x="657" y="35" width="181" height="74" rx="8" fill="#e3f1ed"/><text x="670" y="65" class="svgtext">原物理评分与独审</text><text x="670" y="91" class="svgsmall">至多一个额外起点</text>
+<text x="228" y="143" class="svgsmall">无配额或无合法扰动：保留 base，记录跳过原因；不免费重启。</text></svg>
+<figcaption>图14as：新增随机流只构造厚度起点，所有物理评价和精修仍使用原生产预算、取消、档案和独立审计；谱差不能成为重新抽样的理由。</figcaption></figure>
+<p>种子严格为整数 0…4294967295（含0），拒绝 bool、小数和越界值。启用且留空时只在正式冻结时抽一次，冻结请求、任务、结果及恢复保存实际整数；属性读取和估算不抽种子，离线执行拒绝未解析 seed。派生键为算法版本、实际 root seed、规范化物理身份、stage、restart_index，经 SHA-256 域分离后初始化 PCG64；临时层 ID、任务 UUID、PID、worker 及完成顺序不参与。记录算法版本、PCG64、NumPy 版本和实际 seed。同配置/数值栈可重建初值，不承诺不同数值库或时间截止下最终结果逐位相同。</p>
+<p>实现：<code>coat_sim/core/film_synthesis_randomization.py</code>、<code>film_auto_synthesis.py</code>；冻结/重放在 <code>film_synthesis_io.py</code>、<code>film_synthesis_jobs.py</code>；现有优化页 controller 和 <code>FilmOptimizationWindow.qml</code> 只编辑草稿及显示实际 seed。默认相关系数0.85、两尺度0.12/0.06、对数截幅0.35、最多3抽均为<span class="tag local">本项目约定</span>，未找到外部依据，仅为本项目实现。它不是工艺误差模型，不证明跳出局部极小或普遍提速；独立有限网格审计仍不构成连续谱证书。</p>
+<p class="source">原始组件依据：<a href="https://numpy.org/doc/stable/reference/random/bit_generators/pcg64.html">NumPy 官方 PCG64</a>、<a href="https://numpy.org/doc/stable/reference/random/parallel.html">NumPy 官方并行随机流</a>。这些资料说明随机数组件，不为本项目光学扰动常数或搜索效果背书。执行边界见 <a href="film-synthesis-execution-contract.md">执行合同</a>。</p>
+<p>开启本选项后，模板筛选的 base/extra 当前顺序执行以保留取消前的完整 base；增加 worker 不加速此新筛选分支，其余既有并行阶段不变。本功能未证明搜索质量或端到端速度提升。</p>
 </section>
 </main>
 <article style="grid-column:2;max-width:1000px">
