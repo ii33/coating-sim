@@ -428,7 +428,12 @@ def test_auto_logical_batch_is_frozen_and_real_width_can_exceed_four(monkeypatch
     monkeypatch.setattr(parallel, 'MIN_PARALLEL_WORK', 0)
     available = parallel.available_cpu_workers()
     expected = min(6, available)
-    request = _problem(workers=6, budget=100, memory=2 * 1024**3, batch_size=None)
+    # This scheduling test still requires real positive per-worker CPU evidence.
+    # The old 31-point microtasks were shorter than Windows' observed process
+    # accounting quantum and could honestly record zero. Increase only physical
+    # fixture work; do not alter production timers, counters or the threshold.
+    request = _problem(workers=6, budget=100, samples=4097,
+        memory=2 * 1024**3, batch_size=None)
     assert request.parallel_batch_size == expected
     serial_request = replace(request, cpu_workers=1)
     replay = synthesis.freeze_film_synthesis_request(None, serial_request)
@@ -447,6 +452,12 @@ def test_auto_logical_batch_is_frozen_and_real_width_can_exceed_four(monkeypatch
     assert all(r['source_prefix_batch_quantum'] == expected for r in rows)
     assert max(r['effective_workers'] for r in rows) == expected
     assert perf['cleanup_complete']
+    print(json.dumps(dict(requested_workers=6, frozen_logical_quantum=request.parallel_batch_size,
+        original_grid_points=request.objectives[0].wavelength_samples,
+        worker_pids=perf['worker_pids'], worker_cpu_by_pid=perf['worker_cpu_by_pid'],
+        submitted_tasks=perf['submitted_tasks'], completed_tasks=perf['completed_tasks'],
+        unknown_tasks=perf['unknown_tasks'], cleanup_complete=perf['cleanup_complete'],
+        maximum_estimated_batch_bytes=max(r['estimated_peak_bytes'] for r in rows))))
 
 
 def test_legacy_auto_batch_default_remains_none_for_innocent_identity_compatibility():
