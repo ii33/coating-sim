@@ -17,11 +17,20 @@ The format is `dev.YYYYMMDD.NN`:
 Before publishing a new version to `main`, run:
 
 ```bash
-python tools/app_version.py check
 python tools/app_version.py bump
+python tools/app_version.py check --previous-version LAST_PUBLISHED_VERSION
 ```
+
+Replace `LAST_PUBLISHED_VERSION` with the exact version from the previous
+published `main` commit. The publication check rejects an unchanged or older
+version and rejects a missing/invalid version rather than inventing one. A
+plain `check` only validates file syntax; it is not evidence that a publication
+advanced its version. Every ordinary `main` publication must advance this file,
+including small follow-up fixes. Do not substitute the Git SHA for this value.
 
 `show` prints the current version and any explicitly supplied Git SHA. The
 About page and desktop startup log read the same packaged version value. The
 offline installer records it in its manifest and carries the version text into
-the frozen application.
+the frozen application. Source-update installation receipts read this same
+file after updating. The separate Windows Python host's `FileVersion` and
+`ProductVersion` describe its runtime and are not the application version.

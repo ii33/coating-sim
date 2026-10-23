@@ -209,7 +209,7 @@ def capture_simulation_asset(service, role: str, path, *, expected_sha256=None, 
         raise ProjectError("invalid_document", "Unsupported binary input role")
     check_cancel()
     with service._operation(mutate=True):
-        records, data = service.store._read_all()
+        records, data = service.store._read_operation_inputs()
         baseline = service.store.manifest
     source = Path(os.path.abspath(Path(path).expanduser()))
     signature = file_signature(source)
@@ -217,7 +217,7 @@ def capture_simulation_asset(service, role: str, path, *, expected_sha256=None, 
     metadata = metadata_for_file(source, role,
         f"assets/{generation}/{identity}{ROLE_SUFFIXES[role]}", expected_sha256=expected_sha256)
     duplicate = next((old for old, row in records.items() if row["kind"] == "binary_asset" and
-        all(data[old][key] == metadata[key] for key in ("role", "size", "sha256"))), None)
+        all(data[old].get(key) == metadata[key] for key in ("role", "size", "sha256"))), None)
     if duplicate is not None:
         # Do not reuse a corrupt owned file merely because its metadata agrees.
         service.store.binary_asset_path(duplicate)
@@ -263,7 +263,7 @@ def save_simulation_resource(service, kind: str, payload: Mapping, *, document_i
     if set(supplied) - {"deposition", "area_spectrum", "environment_spectrum"}:
         raise ProjectError("invalid_document", "Unknown simulation asset source slot")
     with service._operation(mutate=True):
-        records, data = service.store._read_all()
+        records, data = service.store._read_operation_inputs()
         baseline = service.store.manifest
         original = None
         if document_id is not None:
@@ -297,7 +297,8 @@ def save_simulation_resource(service, kind: str, payload: Mapping, *, document_i
             source = Path(os.path.abspath(Path(supplied.get(slot, owner[field])).expanduser()))
             expected_hash = owner.get("sha256", owner.get("asset_sha256"))
             existing = next((identity for identity, row in records.items()
-                if row["kind"] == "binary_asset" and data[identity]["role"] == role and
+                if row["kind"] == "binary_asset" and data[identity].get("role") == role and
+                isinstance(data[identity].get("payload_path"), str) and
                 source == service.root / data[identity]["payload_path"]), None)
             if existing is not None:
                 metadata = data[existing]
@@ -314,7 +315,7 @@ def save_simulation_resource(service, kind: str, payload: Mapping, *, document_i
                 service.store.asset_limits.check_total(total)
                 captured = capture_asset({"path": str(source)}, metadata, temporary / (identity + ROLE_SUFFIXES[role]))
                 duplicate = next((old for old, row in records.items() if row["kind"] == "binary_asset" and
-                    all(data[old][key] == metadata[key] for key in ("role", "size", "sha256"))), None)
+                    all(data[old].get(key) == metadata[key] for key in ("role", "size", "sha256"))), None)
                 if duplicate is not None:
                     # A matching envelope is not proof that previously owned
                     # bytes are still intact. Inputs added in this transaction
@@ -343,6 +344,7 @@ def save_simulation_resource(service, kind: str, payload: Mapping, *, document_i
         else:
             data[document_id] = normalized
         service.store._rebind_file_references(records, data, [document_id])
+        records.required_ids.add(document_id)
         with service.store.stage_asset_publications(records, data, incoming, existing_spool_bytes=total) as prepared:
             with service._operation(mutate=True):
                 service.store._current()

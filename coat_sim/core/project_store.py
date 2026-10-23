@@ -438,7 +438,10 @@ class ProjectStore:
         data, content = read_json(target)
         if _digest(content) != row["sha256"]:
             raise ProjectError("integrity_error", "Project document digest does not match: " + row["id"])
-        normalized = normalize_document(row["kind"], data)
+        try:
+            normalized = normalize_document(row["kind"], data)
+        except ProjectError as exc:
+            raise ProjectError(exc.code, f"{row['kind']} {row['path']}: {exc}") from exc
         if normalized != data:
             raise ProjectError("invalid_document", "Persisted project document is not normalized: " + row["id"])
         return normalized
@@ -455,6 +458,17 @@ class ProjectStore:
                 raise ProjectError("capacity_exceeded", "Managed project input JSON exceeds the safety capacity limit")
         self._validate_graph(records, data)
         return _CapturedRecords(deepcopy(records), self._fingerprint), data
+
+    @_store_operation
+    def _read_operation_inputs(self):
+        """Capture local-operation context without accepting unrelated schemas.
+
+        The scoped publication boundary validates the actual changed documents,
+        their dependencies and affected consumers. Whole-project snapshots keep
+        using the separate strict ``_read_all`` contract.
+        """
+        from .project_operation_scope import capture_inputs
+        return capture_inputs(self, max_project_bytes=MAX_PROJECT_BYTES)
 
     @_store_operation
     def snapshot_saved_inputs(self, *, verify_assets=True) -> dict:
@@ -509,6 +523,9 @@ class ProjectStore:
         the final writer boundary exclusive rename plus descriptor publication.
         """
         from .project_binary_assets import capture_asset, file_signature, ROLE_SUFFIXES
+        from .project_operation_scope import ScopedRecords, prepare_publication
+        if isinstance(records, ScopedRecords):
+            records, data, _retained = prepare_publication(self, records, data)
         sources = self.asset_sources(records, data, overrides=assets)
         new_ids = [identity for identity in sources
                    if not (self.root / data[identity]["payload_path"]).exists()]
@@ -564,8 +581,10 @@ class ProjectStore:
         for identity, row in records.items():
             if row["kind"] != "optical_material" or identity not in data:
                 continue
-            material = data[identity]["material"]
-            key = material["id"]
+            material = data[identity].get("material")
+            key = material.get("id") if isinstance(material, Mapping) else None
+            if not isinstance(key, str) or not key:
+                raise ProjectError("reference_unconfirmed", "Project optical material identity cannot be confirmed: " + identity)
             if key.casefold() in folded:
                 raise ProjectError("dependency_conflict", "Duplicate project optical material ID: " + key)
             folded[key.casefold()] = identity
@@ -761,17 +780,29 @@ class ProjectStore:
     def _publish(self, records, data, *, default=None, change_default=False, assets=None,
                  expected_fingerprint: str | None = None, discussion_only: bool = False,
                  film_only: bool = False) -> dict[str, str]:
+        before = self._fingerprint
         result = self._publish_transaction(records, data, default=default, change_default=change_default,
             assets=assets, expected_fingerprint=expected_fingerprint, discussion_only=discussion_only,
             film_only=film_only)
-        self._notify_changes()
+        if self._fingerprint != before:
+            self._notify_changes()
         return result
 
     @_store_operation
     def _publish_transaction(self, records, data, *, default=None, change_default=False, assets=None,
                              expected_fingerprint: str | None = None,
                              discussion_only: bool = False, film_only: bool = False) -> dict[str, str]:
+        from .project_operation_scope import ScopedRecords, prepare_publication
         retained = {}
+        scoped_operation = isinstance(records, ScopedRecords)
+        operation_fingerprint = getattr(records, "fingerprint", self._fingerprint)
+        if scoped_operation:
+            if discussion_only or film_only:
+                raise ProjectError("invalid_document", "Scoped operations cannot mix partial-publication contracts")
+            records, data, retained = prepare_publication(
+                self, records, data,
+                required_ids=(() if not change_default or default is None else (default,)),
+            )
         if film_only:
             if (discussion_only or change_default or assets is not None or set(records) != set(data)
                     or sum(row["kind"] == "film" for row in records.values()) != 1):
@@ -809,7 +840,7 @@ class ProjectStore:
             retained = {key: deepcopy(row) for key, row in previous.items() if key not in records}
         if len(set(records) | set(retained)) > MAX_PROJECT_DOCUMENTS:
             raise ProjectError("capacity_exceeded", "Project has too many managed input documents")
-        captured_fingerprint = getattr(records, "fingerprint", self._fingerprint)
+        captured_fingerprint = operation_fingerprint
         if captured_fingerprint != self._fingerprint:
             raise ProjectError("stale_project", "Project changed after its documents were captured")
         if expected_fingerprint is not None and expected_fingerprint != captured_fingerprint:
@@ -833,6 +864,10 @@ class ProjectStore:
             attempt += 1
             revision_directory = base_revision + "-" + str(attempt)
         occupied: dict[str, set[str]] = {}
+        for row in retained.values():
+            category = PROJECT_TYPED_DIRECTORY_BY_KIND[row["kind"]]
+            occupied.setdefault(category, set()).add(
+                unicodedata.normalize("NFKC", PurePosixPath(row["path"]).name).casefold())
         from .resource_information import resource_display_name
         changed_records = deepcopy(publication_records)
         changed_data = {key: deepcopy(data[key]) for key in changed_records}
@@ -848,7 +883,7 @@ class ProjectStore:
                 target = PurePosixPath(owner[field]).stem
                 if target not in dependencies[identity]:
                     raise ProjectError("dependency_conflict", "Ambiguous dependency while rebasing project")
-                owner[field] = target + EXTENSIONS[changed_records[target]["kind"]]
+                owner[field] = target + EXTENSIONS[records[target]["kind"]]
         self._validate_graph({**records, **changed_records}, {**data, **changed_data})
         content = {key: json_bytes(document) for key, document in changed_data.items()}
         if any(len(encoded) > MAX_FILE_BYTES for encoded in content.values()):
@@ -860,12 +895,12 @@ class ProjectStore:
             try:
                 reject_links(path)
                 info = path.lstat()
-                if film_only and not stat.S_ISREG(info.st_mode):
+                if (film_only or scoped_operation) and not stat.S_ISREG(info.st_mode):
                     raise ProjectError("unsafe_path", "Preserved project JSON must be an ordinary file: " + row["id"])
                 size = info.st_size
                 if size > MAX_FILE_BYTES:
                     raise ProjectError("capacity_exceeded", "Managed project JSON document exceeds size limit")
-                if film_only:
+                if film_only or scoped_operation:
                     # Verify preserved bytes without accepting or migrating
                     # obsolete schemas. No unrelated resource is written.
                     with path.open("rb") as stream:
@@ -887,12 +922,14 @@ class ProjectStore:
         proposed = _manifest(proposed)
         # Validate every process closure with existing slot/geometry rules before
         # commit. This does not require any source file and starts no calculation.
-        preview = _PreparedProject(self.root, proposed, self._fingerprint, changed_data)
-        for identity, row in changed_records.items():
+        preview = _PreparedProject(self.root, proposed, self._fingerprint, {**data, **changed_data})
+        for identity, row in records.items():
             if row["kind"] in ("process", "deposition_configuration"):
                 preview.resolve_document(identity)
+        if change_default and default is not None:
+            preview.resolve_document(default)
         asset_sources = self.asset_sources(changed_records, changed_data, overrides=assets)
-        if discussion_only:
+        if discussion_only or (scoped_operation and asset_sources):
             # Keep the aggregate binary I/O quota across preserved resources.
             retained_asset_bytes = sum(self._read_record(row)["size"] for row in retained.values()
                                        if row["kind"] == "binary_asset")
@@ -907,6 +944,21 @@ class ProjectStore:
             try:
                 if self._fingerprint != captured_fingerprint:
                     raise ProjectError("stale_project", "Project changed while its save was prepared")
+                if scoped_operation:
+                    # Recheck the retained raw-byte evidence at the commit
+                    # boundary too; a diagnostic catalog is not a write proof.
+                    for row in retained.values():
+                        path = self.root / managed_document_path(row["path"], row["kind"], row["id"])
+                        reject_links(path)
+                        if not stat.S_ISREG(path.lstat().st_mode):
+                            raise ProjectError("unsafe_path", "Preserved project JSON must be an ordinary file: " + row["id"])
+                        with path.open("rb") as stream:
+                            preserved = stream.read(MAX_FILE_BYTES + 1)
+                        if len(preserved) > MAX_FILE_BYTES or _digest(preserved) != row["sha256"]:
+                            raise ProjectError("integrity_error", "Preserved project document digest does not match: " + row["id"])
+                    if (not publication_records and proposed["documents"] == self._manifest["documents"]
+                            and proposed["default_configuration_id"] == self._manifest["default_configuration_id"]):
+                        return {row["id"]: row["sha256"] for row in proposed["documents"]}
                 reject_links(stage)
                 stage.mkdir(parents=False, exist_ok=False)
                 stage_created = True
@@ -998,7 +1050,7 @@ class ProjectStore:
                 # Each service may own a different operation lock. Return this
                 # writer's immutable revision receipt before another writer
                 # can replace the shared store's current manifest.
-                return {key: row["sha256"] for key, row in changed_records.items()}
+                return {row["id"]: row["sha256"] for row in proposed["documents"]}
             except (OSError, ProjectError) as exc:
                 for directory, identity, files in published_directories:
                     if not _rollback_published_directory(directory, identity, files):
@@ -1024,7 +1076,7 @@ class ProjectStore:
 
     @_store_operation
     def import_document(self, path, materials: Mapping | None = None) -> str:
-        records, data = self._read_all()
+        records, data = self._read_operation_inputs()
         root_path = Path(os.path.abspath(Path(path).expanduser()))
         reject_links(root_path)
         if materials is None:
@@ -1099,8 +1151,11 @@ class ProjectStore:
         supplied = {key: normalize_optical_material(value) for key, value in materials.items()}
         if any(key != value["id"] for key, value in supplied.items()):
             raise ProjectError("dependency_conflict", "Explicit material mapping keys must match material IDs")
+        required = document_material_references(kind, document)
+        if not required:
+            return
         material_index = cls._material_index(records, data)
-        for material_id, set_id in document_material_references(kind, document):
+        for material_id, set_id in required:
             explicit = supplied.get(material_id)
             existing_id = material_index.get(material_id)
             if existing_id is not None and explicit is not None and data[existing_id]["material"] != explicit:
@@ -1128,8 +1183,7 @@ class ProjectStore:
         self._current()
         previous = self._index()
         normalized = normalize_document("film", document)
-        records = _CapturedRecords({}, self._fingerprint)
-        data = {}
+        records, data = self._read_operation_inputs()
         if document_id is not None:
             identifier(document_id)
             row = previous.get(document_id)
@@ -1146,27 +1200,11 @@ class ProjectStore:
             data[document_id] = normalized
         elif expected_revision is not None:
             raise ProjectError("invalid_document", "A new film cannot have an expected saved revision")
-        required = {key.casefold() for key, _ in document_material_references("film", normalized)}
-        for key, row in previous.items():
-            if row["kind"] != "optical_material":
-                continue
-            # Only inspect identity for unrelated optical records. Selected
-            # records use the same strict normalization as ordinary reads.
-            raw, content = read_json(self.root / row["path"])
-            if _digest(content) != row["sha256"]:
-                raise ProjectError("integrity_error", "Project optical material digest does not match: " + key)
-            material_id = raw.get("material", {}).get("id") if isinstance(raw, dict) and isinstance(raw.get("material"), dict) else None
-            if not isinstance(material_id, str) or not material_id:
-                raise ProjectError("invalid_document", "Project optical material has no unambiguous identity: " + key)
-            if material_id.casefold() in required:
-                records[key] = deepcopy(row)
-                data[key] = self._read_record(row)
         self._ensure_material_dependencies(records, data, "film", normalized, materials)
         if document_id is None:
             document_id = self._add_document(records, data, "film", normalized)
-        elif normalized == old and all(key in previous for key in records):
-            return document_id
-        self._publish(records, data, film_only=True)
+        records.required_ids.add(document_id)
+        self._publish(records, data)
         return document_id
 
     @_store_operation
@@ -1175,7 +1213,7 @@ class ProjectStore:
         """Create a managed typed draft with explicit project-local dependencies."""
         if kind not in KINDS:
             raise ProjectError("invalid_document", "Unsupported managed document kind")
-        records, data = self._read_all()
+        records, data = self._read_operation_inputs()
         normalized = normalize_document(kind, document)
         if kind in ("film", "expression_template"):
             self._ensure_material_dependencies(records, data, kind, normalized, materials)
@@ -1206,7 +1244,7 @@ class ProjectStore:
     @_store_operation
     def write_documents(self, new_documents=(), *, updates=None, expected_revisions=None) -> list[str]:
         """Publish explicit managed creations and updates in a single transaction."""
-        records, data = self._read_all()
+        records, data = self._read_operation_inputs()
         updates = {} if updates is None else updates
         expected = {} if expected_revisions is None else expected_revisions
         if not isinstance(updates, Mapping) or not isinstance(expected, Mapping) or set(expected) - set(updates):
@@ -1232,6 +1270,7 @@ class ProjectStore:
         if not created and not updates:
             return []
         self._rebind_file_references(records, data, [*created, *updates])
+        records.required_ids.update([*created, *updates])
         default, change_default = self._saved_configuration_target(records, [*created, *updates])
         self._publish(records, data, default=default, change_default=change_default)
         return created
@@ -1240,7 +1279,7 @@ class ProjectStore:
     def remove_document(self, document_id: str, *, expected_revision: str | None = None) -> None:
         """Remove an unreferenced logical document; immutable old generations remain."""
         identifier(document_id)
-        records, data = self._read_all()
+        records, data = self._read_operation_inputs()
         if document_id not in records:
             raise ProjectError("missing_document", "Project document ID does not exist")
         if records[document_id]["kind"] == "project_bbs_post":
@@ -1282,7 +1321,7 @@ class ProjectStore:
         """
         if not isinstance(updates, Mapping) or not updates:
             raise ProjectError("invalid_document", "A save transaction needs document updates")
-        records, data = self._read_all()
+        records, data = self._read_operation_inputs()
         expected = {} if expected_revisions is None else dict(expected_revisions)
         if set(expected) - set(updates):
             raise ProjectError("invalid_document", "Expected revision has no matching update")
@@ -1300,6 +1339,7 @@ class ProjectStore:
                 raise ProjectError("dependency_conflict", "Saving a template cannot change its template ID")
             data[identity] = normalized
         self._rebind_file_references(records, data, updates)
+        records.required_ids.update(updates)
         default, change_default = self._saved_configuration_target(records, updates, default_configuration_id)
         self._publish(records, data, default=default, change_default=change_default)
 
@@ -1310,7 +1350,7 @@ class ProjectStore:
                                       make_default: bool = True, description: str | None = None,
                                       notes: str | None = None) -> tuple[str, str]:
         """Atomically save a process, configuration and latest-saved opening root."""
-        records, data = self._read_all()
+        records, data = self._read_operation_inputs()
         normalized = normalize_document("process", process_document)
         if process_document_id is None:
             process_document_id = self._add_document(records, data, "process", normalized)
@@ -1334,7 +1374,7 @@ class ProjectStore:
     @_store_operation
     def add_deposition_configuration(self, name: str, process_document_id: str, parameters=None, *,
                                      description: str | None = None, notes: str | None = None) -> str:
-        records, data = self._read_all()
+        records, data = self._read_operation_inputs()
         document = normalize_document("deposition_configuration", {
             "kind": "coat_sim.deposition_configuration", "version": 1, "name": name,
             "process_document_id": process_document_id, "parameters": {} if parameters is None else parameters,
@@ -1352,7 +1392,7 @@ class ProjectStore:
         UUID filename. Import external files first; saving never follows them.
         """
         identifier(document_id)
-        records, data = self._read_all()
+        records, data = self._read_operation_inputs()
         if document_id not in records:
             raise ProjectError("missing_document", "Project document ID does not exist")
         kind = records[document_id]["kind"]
@@ -1367,21 +1407,25 @@ class ProjectStore:
             raise ProjectError("invalid_document", "Explicit optical resource transfer requires a film or expression template")
         data[document_id] = normalized
         self._rebind_file_references(records, data, [document_id])
+        records.required_ids.add(document_id)
         default, change_default = self._saved_configuration_target(records, [document_id])
         previous = self._index()
-        if (set(records) == set(previous) and data == {key: self._read_record(row) for key, row in previous.items()}
+        if (set(records) == set(previous) and data[document_id] == self._read_record(previous[document_id])
                 and (not change_default or self._manifest["default_configuration_id"] == default)):
+            self.resolve_document(document_id)
             return
         self._publish(records, data, default=default, change_default=change_default)
 
     @_store_operation
     def set_default_configuration(self, configuration_id: str | None) -> None:
-        records, data = self._read_all()
+        records, data = self._read_operation_inputs()
         if configuration_id is not None:
             identifier(configuration_id)
             if configuration_id not in records or records[configuration_id]["kind"] != "deposition_configuration":
                 raise ProjectError("dependency_conflict", "Default root must be an existing deposition configuration")
         if configuration_id == self._manifest["default_configuration_id"]:
+            if configuration_id is not None:
+                self.resolve_document(configuration_id)
             return
         self._publish(records, data, default=configuration_id, change_default=True)
 

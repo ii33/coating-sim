@@ -513,7 +513,7 @@ def _project_catalog_snapshot(path, asset_limits) -> dict:
     manifest = _manifest(manifest)
     store = ProjectStore(root, manifest, hashlib.sha256(content).hexdigest(),
                          project_file=path, asset_limits=asset_limits)
-    records, documents, assets, warnings = {}, {}, {}, []
+    records, documents, assets, warnings, unavailable = {}, {}, {}, [], []
     for row in manifest["documents"]:
         identity = row["id"]
         try:
@@ -525,6 +525,10 @@ def _project_catalog_snapshot(path, asset_limits) -> dict:
             if isinstance(exc, ProjectError) and exc.code in {"capacity_exceeded", "unsafe_path"}:
                 raise
             warnings.append(f"{root / row['path']}: {exc}")
+            unavailable.append({"id": identity, "kind": row["kind"],
+                "name": PurePosixPath(row["path"]).stem, "summary": "不支持的资产；请按当前格式重建。",
+                "notes": str(exc), "dependencies": list(row["dependencies"]),
+                "read_only": True, "unsupported": True})
     while True:
         materials = ProjectStore._material_index(records, documents)
         invalid = []
@@ -542,10 +546,15 @@ def _project_catalog_snapshot(path, asset_limits) -> dict:
             documents.pop(identity)
             assets.pop(identity, None)
             warnings.append(f"{root / row['path']}: {error}")
+            unavailable.append({"id": identity, "kind": row["kind"],
+                "name": PurePosixPath(row["path"]).stem, "summary": "资产依赖不可用；不能计算或导出。",
+                "notes": str(error), "dependencies": list(row["dependencies"]),
+                "read_only": True, "unsupported": True})
     manifest["documents"] = list(records.values())
     if manifest["default_configuration_id"] not in records:
         manifest["default_configuration_id"] = None
-    snapshot = {"manifest": manifest, "documents": documents, "_warnings": warnings}
+    snapshot = {"manifest": manifest, "documents": documents, "_warnings": warnings,
+                "_unavailable_rows": unavailable}
     if assets:
         snapshot["assets"] = assets
     _validate_snapshot(snapshot, asset_limits)
@@ -741,6 +750,7 @@ class ProjectResourceExchange:
         return {"catalog_id": catalog_id, "source_type": source_type,
                 "source_path": source_path, "name": snapshot["manifest"]["name"],
                 "categories": sorted({row["kind"] for row in rows}), "rows": rows,
+                "unavailable_rows": deepcopy(snapshot.get("_unavailable_rows", [])),
                 "warnings": list(snapshot.get("_warnings", []))}
 
     @staticmethod
@@ -781,6 +791,9 @@ class ProjectResourceExchange:
     def preview_resource_transfer(self, catalog_id, selected_ids, target="project") -> dict:
         self._assert_live()
         catalog = self._catalog(catalog_id)
+        unavailable = {row["id"] for row in catalog.snapshot.get("_unavailable_rows", [])}
+        if isinstance(selected_ids, (list, tuple)) and unavailable.intersection(selected_ids):
+            raise ProjectError("unsupported_resource", "所选资产不符合当前格式或依赖不可用；请重建或明确删除，不能导出或复制。")
         selected, closure = _selection(catalog.snapshot, selected_ids)
         store = None
         target_service = None

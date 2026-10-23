@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
+import shutil
+import subprocess
+import sys
+
+import pytest
 
 from coat_sim.version import (
     BuildIdentity,
@@ -66,3 +71,56 @@ def test_bump_rejects_invalid_value_and_ordinal_overflow() -> None:
         pass
     else:
         raise AssertionError("ordinal overflow must be explicit")
+
+
+@pytest.mark.parametrize("previous,current,accepted", [
+    ("dev.20261019.06", "dev.20261023.01", True),
+    ("dev.20261023.09", "dev.20261023.10", True),
+    ("dev.20261023.10", "dev.20261023.10", False),
+    ("dev.20261023.10", "dev.20261023.09", False),
+    ("dev.20261024.01", "dev.20261023.99", False),
+    ("unknown", "dev.20261023.01", False),
+])
+def test_publication_check_requires_real_version_advancement(tmp_path, monkeypatch, capsys,
+                                                          previous, current, accepted):
+    from tools import app_version
+
+    version = tmp_path / "version.txt"
+    version.write_text(current + "\n", encoding="utf-8")
+    monkeypatch.setattr(app_version, "VERSION_FILE", version)
+    assert app_version.main(["check", "--previous-version", previous]) == (0 if accepted else 1)
+    output = capsys.readouterr()
+    assert bool(output.err) is not accepted
+    assert version.read_text(encoding="utf-8") == current + "\n"
+
+
+@pytest.mark.parametrize("contents", [None, "unknown\n", "dev.20260230.01\n"])
+def test_publication_check_missing_or_invalid_version_is_an_explicit_error(tmp_path, monkeypatch, capsys, contents):
+    from tools import app_version
+
+    version = tmp_path / "version.txt"
+    if contents is not None:
+        version.write_text(contents, encoding="utf-8")
+    monkeypatch.setattr(app_version, "VERSION_FILE", version)
+    assert app_version.main(["check", "--previous-version", "dev.20261019.06"]) == 1
+    assert str(version) in capsys.readouterr().err
+
+
+def test_packaged_module_uses_its_own_authoritative_version_resource(tmp_path):
+    # Model the existing frozen-resource layout, without an installed app or
+    # importing the source-tree module as a hidden fallback.
+    packaged = tmp_path / "installed" / "coat_sim"
+    packaged.mkdir(parents=True)
+    shutil.copy2(VERSION_FILE, packaged / "version.txt")
+    shutil.copy2(VERSION_FILE.with_name("version.py"), packaged / "version.py")
+    code = (
+        "import importlib.util,sys; "
+        f"spec=importlib.util.spec_from_file_location('packaged_version',{str(packaged / 'version.py')!r}); "
+        "module=importlib.util.module_from_spec(spec); sys.modules[spec.name]=module; "
+        "spec.loader.exec_module(module); print(module.APP_VERSION)"
+    )
+    result = subprocess.run([sys.executable, "-I", "-c", code], check=True, capture_output=True, text=True)
+    assert result.stdout.strip() == read_version() != UNKNOWN_VERSION
+    (packaged / "version.txt").unlink()
+    missing = subprocess.run([sys.executable, "-I", "-c", code], check=True, capture_output=True, text=True)
+    assert missing.stdout.strip() == UNKNOWN_VERSION

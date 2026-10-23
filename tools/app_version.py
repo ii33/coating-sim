@@ -24,7 +24,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("show", help="show the packaged version and optional Git SHA")
-    subparsers.add_parser("check", help="validate the authoritative version file")
+    check = subparsers.add_parser("check", help="validate the authoritative version file")
+    check.add_argument("--previous-version", help="require advancement beyond the last published version")
     subparsers.add_parser("bump", help="advance the UTC+8 daily publication ordinal")
     args = parser.parse_args(argv)
 
@@ -38,9 +39,18 @@ def main(argv: list[str] | None = None) -> int:
         except (OSError, UnicodeError) as exc:
             print(f"Cannot read {VERSION_FILE}: {exc}", file=sys.stderr)
             return 1
-        if parse_internal_version(current) is None:
+        parsed = parse_internal_version(current)
+        if parsed is None:
             print(f"Invalid internal version in {VERSION_FILE}: {current!r}", file=sys.stderr)
             return 1
+        if args.previous_version is not None:
+            previous = parse_internal_version(args.previous_version)
+            if previous is None:
+                print(f"Invalid previous internal version: {args.previous_version!r}", file=sys.stderr)
+                return 1
+            if parsed <= previous:
+                print(f"Internal version must advance beyond {args.previous_version}: {current}", file=sys.stderr)
+                return 1
         print(f"Internal version is valid: {current}")
         return 0
 

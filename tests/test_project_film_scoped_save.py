@@ -164,12 +164,18 @@ def test_film_scope_rejects_an_obsolete_source_in_its_declared_dependency_closur
     assert file_snapshot(store.root) == before
 
 
-def test_film_scope_keeps_ordinary_source_creation_and_default_open_strict(tmp_path):
+def test_local_source_creation_is_scoped_but_actual_source_and_default_read_stay_strict(tmp_path):
     store, _service, _film_id, source, process, _configuration, _raw = legacy_project(tmp_path)
     before = file_snapshot(store.root)
+    created = store.create_document("source", deepcopy(_RECTANGULAR_SOURCE))
+    assert store.resolve_document(created)["root_document_id"] == created
+    after = file_snapshot(store.root)
+    assert all(after[path] == content for path, content in before.items()
+               if path != store.project_file.relative_to(store.root).as_posix())
+    unchanged = file_snapshot(store.root)
     with pytest.raises(ProjectError, match="aperture_kind"):
-        store.create_document("source", deepcopy(_RECTANGULAR_SOURCE))
-    assert file_snapshot(store.root) == before
+        store.create_document("source", obsolete_source())
+    assert file_snapshot(store.root) == unchanged
     # An opening/default process still resolves all of its own sources strictly.
     assert store.resolve_document(process)["root_document_id"] == process
     with pytest.raises(ProjectError, match="aperture_kind"):

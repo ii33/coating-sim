@@ -34,7 +34,7 @@ LocalComponents.AppWindow {
     }
     function inspectAsset(identity) {
         const row = allRows.find(function(item) { return item.id === identity })
-        if (row && librarySource && (row.kind === "material_profile" || row.kind === "optical_material"))
+        if (row && !row.unsupported && librarySource && (row.kind === "material_profile" || row.kind === "optical_material"))
             resourceBridge.openMaterialAsset(identity)
         else
             informationId = identity
@@ -53,14 +53,17 @@ LocalComponents.AppWindow {
     readonly property string resultMessage: resourceBridge ? resourceBridge.libraryMessage : ""
     function browserKind(kind) { return kind === "optical_material" ? "material_profile" : kind }
     readonly property var allRows: {
-        const rows = catalog.rows || []
+        const rows = (catalog.rows || []).concat(catalog.unavailable_rows || [])
         // A profile and its optical projection share one material identity.
         // Keep optical-only records that have no editable profile companion.
-        const profiles = rows.filter(row => row.kind === "material_profile").map(row => row.material_id)
+        const profiles = rows.filter(row => row.kind === "material_profile" && !!row.material_id).map(row => row.material_id)
         return rows.filter(row => row.kind !== "optical_material" || profiles.indexOf(row.material_id) < 0)
     }
     readonly property bool globalSource: catalog.source_type === "global"
     property var selectedIds: []
+    readonly property bool selectionSupported: selectedIds.every(function(identity) {
+        return allRows.some(function(row) { return row.id === identity && !row.unsupported })
+    })
     property string informationId: ""
     property string categoryKey: ""
     property bool materialSectionRequested: false
@@ -133,7 +136,7 @@ LocalComponents.AppWindow {
         const query = searchField.text.trim().toLowerCase()
         return allRows.filter(function(row) {
             return browserKind(row.kind) === kind
-                && (kind !== "material_profile"
+                && (row.unsupported || kind !== "material_profile"
                     || browserMaterialCategories(row).indexOf(materialUse) >= 0)
                 && (!query || String(row.name || "").toLowerCase().indexOf(query) >= 0
                     || String(row.summary || "").toLowerCase().indexOf(query) >= 0)
@@ -239,7 +242,7 @@ LocalComponents.AppWindow {
                 window.selectedIds = window.selectedIds.filter(function(value) {
                     return window.allRows.some(function(row) {
                         return row.id === value && window.browserKind(row.kind) === window.categoryKey
-                            && (window.browserKind(row.kind) !== "material_profile"
+                            && (row.unsupported || window.browserKind(row.kind) !== "material_profile"
                                 || window.browserMaterialCategories(row).indexOf(window.materialUse) >= 0)
                     })
                 })
@@ -526,7 +529,7 @@ LocalComponents.AppWindow {
                     ThemeControls.ThemeButton {
                         objectName: "globalResourcesExportButton"
                         text: window.librarySource ? "导出所选…" : "预览导入" + window.libraryLabel
-                        enabled: !window.operationBusy && window.selectedIds.length > 0
+                        enabled: !window.operationBusy && window.selectedIds.length > 0 && window.selectionSupported
                         onClicked: {
                             window.focusReturnItem = this
                             if (window.librarySource)
@@ -674,7 +677,8 @@ LocalComponents.AppWindow {
                                     }
                                     ThemeControls.ThemeLabel {
                                         width: parent.width
-                                        text: resourceRow.modelData.asset_role === "bbs_attachment" ? "BBS 附件"
+                                        text: resourceRow.modelData.unsupported ? "不支持的资产 · 仅可查看诊断或删除"
+                                            : resourceRow.modelData.asset_role === "bbs_attachment" ? "BBS 附件"
                                             : window.kindLabel(String(resourceRow.modelData.kind))
                                         muted: true
                                         wrapMode: Text.Wrap

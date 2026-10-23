@@ -169,7 +169,8 @@ class AssetLibraryActions(ProjectResourceTransferController):
             return
         if kind == "preview":
             self._deletion_plan = result
-            self._deletion_message = "请审阅资产组成、引用检查结果与回收方式，再明确确认。"
+            self._deletion_message = ("此资产不受当前格式支持；确认后删除，不能将其恢复为当前可编辑资产。"
+                if result.get("unsupported") else "请审阅资产组成与引用检查结果，再明确确认删除。")
             self.deletionPreviewReady.emit()
         elif kind == "history":
             self._deletion_records = result
@@ -177,7 +178,9 @@ class AssetLibraryActions(ProjectResourceTransferController):
             self.deletionHistoryReady.emit()
         else:
             self._deletion_plan = {}
-            self._deletion_message = ("资产已回收，可从回收记录恢复。位置：" if kind == "apply" else "资产已恢复。位置：") + str(result.get("recovery_path", ""))
+            self._deletion_message = (("资产已删除；不支持的内容不作为当前资产恢复。"
+                if not result.get("recoverable", True) else "资产已删除。既有恢复记录位置：")
+                if kind == "apply" else "资产已恢复。位置：") + str(result.get("recovery_path", ""))
             if kind == "apply" and self._material_bridge is not None:
                 affected = set(result.get("affected_ids", []))
                 current = self._material_bridge.currentId
@@ -202,7 +205,8 @@ class AssetLibraryActions(ProjectResourceTransferController):
                 or catalog.get("source_path") != self._library_path
                 or catalog.get("source_type") != self._library_scope):
             return self._asset_action_error("每次只回收一个当前资产库中的真实资产；导入来源不可删除。")
-        row = next((row for row in catalog.get("rows", []) if row["id"] == ids[0]), None)
+        rows = [*catalog.get("rows", []), *catalog.get("unavailable_rows", [])]
+        row = next((row for row in rows if row["id"] == ids[0]), None)
         if row is None:
             return self._asset_action_error("所选资产已变化，请刷新后重新选择。")
         if self._library_scope == "global" and row["kind"] == "binary_asset":

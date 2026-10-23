@@ -73,11 +73,12 @@ def _selection(snapshot: dict, selected_ids: list[str]) -> dict:
     affected = {identity}
     blockers = []
     kind = records[identity]["kind"]
-    if kind in {"material_profile", "optical_material"}:
-        material_id = snapshot["documents"][identity]["material"]["id"]
+    unsupported = identity in snapshot.get("_unsupported_ids", [])
+    if not unsupported and kind in {"material_profile", "optical_material"}:
+        material_id = _material_identity(snapshot, identity)
         companions = {key for key, row in records.items()
                       if row["kind"] in {"material_profile", "optical_material"}
-                      and snapshot["documents"][key]["material"]["id"].casefold() == material_id.casefold()}
+                      and _material_identity(snapshot, key).casefold() == material_id.casefold()}
         if kind == "optical_material" and any(records[key]["kind"] == "material_profile" for key in companions):
             blockers.append(_block("paired_material", "此光学数据属于材料资产，请选择材料资产并审阅其组成后回收。",
                                    resource_ids=sorted(companions)))
@@ -92,14 +93,31 @@ def _selection(snapshot: dict, selected_ids: list[str]) -> dict:
         if key not in affected and referenced:
             blockers.append(_block("referenced_asset", "仍有已保存资产引用所选资产；不会级联删除。",
                                    resource_id=key, kind=row["kind"],
-                                   name=resource_display_name(row["kind"], snapshot["documents"][key]),
+                                   name=_selection_name(snapshot, key, row),
                                    references=referenced))
     rows = [{"id": key, "kind": records[key]["kind"],
-             "name": resource_display_name(records[key]["kind"], snapshot["documents"][key]),
+             "name": _selection_name(snapshot, key, records[key]),
              "selected": key == identity, "same_asset_component": key != identity}
             for key in sorted(affected)]
+    unsupported = bool(affected.intersection(snapshot.get("_unsupported_ids", [])))
     return {"selected_ids": [identity], "affected_ids": sorted(affected), "rows": rows,
-            "blockers": blockers, "action": "recycle_asset"}
+            "blockers": blockers, "unsupported": unsupported,
+            "action": "delete_unsupported_asset" if unsupported else "recycle_asset"}
+
+
+def _material_identity(snapshot, identity):
+    document = snapshot["documents"][identity]
+    material = document.get("material")
+    value = material.get("id") if isinstance(material, dict) else None
+    if not isinstance(value, str) or not value:
+        raise ProjectError("reference_unconfirmed", "材料资产身份无法确认，未删除任何关联内容：" + identity)
+    return value
+
+
+def _selection_name(snapshot, identity, row):
+    if identity in snapshot.get("_unsupported_ids", []):
+        return Path(row["path"]).stem
+    return resource_display_name(row["kind"], snapshot["documents"][identity])
 
 
 class AssetDeletionService:
@@ -170,7 +188,7 @@ class AssetDeletionService:
                 material_id = getattr(bridge, "_saved_id", None)
                 if material_id:
                     current = next((key for key, row in records.items() if row["kind"] == "material_profile"
-                                    and snapshot["documents"][key]["material"]["id"] == material_id), None)
+                                    and _material_identity(snapshot, key) == material_id), None)
                 related = current in affected_set or bool(affected_set.intersection(records.get(current, {}).get("dependencies", [])))
                 own_clean_details = (controller is getattr(self.service, "_asset_library_view_owner", None)
                                      and library_view_owner_matches(self.service, controller))
@@ -205,12 +223,23 @@ class AssetDeletionService:
                          "same_asset_component": key not in selection["selected_ids"]}
                         for key in selection["affected_ids"]]
             else:
-                selection = _selection(snapshot, selected_ids)
-                selection["blockers"].extend(self._live_blockers(selection["affected_ids"], snapshot))
+                # The browser may isolate malformed rows for presentation.
+                # Its filtered dependency list is never a deletion proof.
+                store = self.service.store
+                records, documents = store._read_operation_inputs()
+                complete = {"manifest": store.manifest, "documents": documents,
+                    "_unsupported_ids": [row["id"] for row in snapshot.get("_unavailable_rows", [])]}
+                if (complete["manifest"]["revision"] != snapshot["manifest"]["revision"]
+                        or any(row not in complete["manifest"]["documents"]
+                               for row in snapshot["manifest"]["documents"])):
+                    raise ProjectError("stale_project", "工程已变化，请重新预览删除。")
+                selection = _selection(complete, selected_ids)
+                selection["blockers"].extend(self._live_blockers(selection["affected_ids"], complete))
                 rows = selection["rows"]
             plan_id = uuid4().hex
             public = {key: deepcopy(selection[key]) for key in
                       ("selected_ids", "affected_ids", "blockers", "action")}
+            public["unsupported"] = bool(selection.get("unsupported"))
             public["rows"] = deepcopy(rows)
             public.update(plan_id=plan_id, scope=self.scope, can_apply=not public["blockers"])
             public["snapshot_sha256"] = _digest(snapshot)
@@ -237,6 +266,11 @@ class AssetDeletionService:
                     self._plans.pop(next(iter(self._plans)))
                 self._plans[plan_id] = {"catalog_id": catalog_id, "snapshot": snapshot,
                                        "selection": selection, "public": public}
+                if self.scope == "project":
+                    from .project_operation_scope import ScopedRecords
+                    assert isinstance(records, ScopedRecords)
+                    self._plans[plan_id]["project_fingerprint"] = records.fingerprint
+                    self._plans[plan_id]["unsupported_ids"] = complete["_unsupported_ids"]
             return deepcopy(public)
 
     def cancel(self, plan_id: str) -> None:
@@ -317,16 +351,28 @@ class AssetDeletionService:
 
     def _apply_project(self, plan: dict) -> dict:
         store = self.service.store
-        expected_fingerprint = store._fingerprint
-        current = store.snapshot_saved_inputs()
-        if _digest(current) != _digest(plan["snapshot"]):
+        expected_fingerprint = plan["project_fingerprint"]
+        records, documents = store._read_operation_inputs()
+        current = {"manifest": store.manifest, "documents": documents,
+                   "_unsupported_ids": plan.get("unsupported_ids", [])}
+        if records.fingerprint != expected_fingerprint:
             raise ProjectError("stale_project", "工程已变化，请重新预览回收。")
         selection = _selection(current, plan["selection"]["selected_ids"])
         if selection["blockers"] or selection["affected_ids"] != plan["selection"]["affected_ids"]:
             raise ProjectError("deletion_blocked", "工程引用关系已变化，未作移除。")
+        if self._live_blockers(selection["affected_ids"], current):
+            raise ProjectError("deletion_blocked", "编辑/任务状态已变化，请重新预览删除。")
         affected = set(selection["affected_ids"])
-        records = {row["id"]: deepcopy(row) for row in current["manifest"]["documents"]}
-        documents = deepcopy(current["documents"])
+        if selection["unsupported"]:
+            # Unsupported content is never normalized into a usable asset or
+            # given a new legacy restoration protocol. Normal immutable source
+            # generations remain untouched; only its active manifest row goes.
+            for key in affected:
+                records.pop(key)
+                documents.pop(key)
+            store._publish(records, documents, expected_fingerprint=expected_fingerprint)
+            return {"scope": "project", "affected_ids": sorted(affected),
+                    "action": "delete_unsupported_asset", "recoverable": False}
         archived_records = [records[key] for key in sorted(affected)]
         archived_data = {key: documents[key] for key in sorted(affected)}
         receipt_id = uuid4().hex
@@ -395,15 +441,14 @@ class AssetDeletionService:
                 return result | {"restored": result.get("state") == "restored"}
             receipt = self._read_receipt(receipt_id)
             expected_fingerprint = self.service.store._fingerprint
-            current = self.service.store.snapshot_saved_inputs()
+            records, documents = self.service.store._read_operation_inputs()
+            current = {"manifest": self.service.store.manifest, "documents": documents}
             affected = [row["id"] for row in receipt["records"]]
             blockers = self._live_blockers(affected, current)
             if blockers:
                 raise ProjectError("deletion_blocked", "当前工程仍有相关编辑或任务，暂不能恢复资产。")
-            records = {row["id"]: row for row in current["manifest"]["documents"]}
             if set(affected).intersection(records):
                 raise ProjectError("destination_exists", "同身份资产已存在；恢复不会覆盖当前内容。")
-            documents = deepcopy(current["documents"])
             records.update({row["id"]: row for row in receipt["records"]})
             documents.update(receipt["documents"])
             self.service.store._publish(records, documents, expected_fingerprint=expected_fingerprint)

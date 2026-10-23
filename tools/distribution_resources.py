@@ -4,7 +4,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from datetime import datetime
 from pathlib import Path, PurePosixPath
+import re
 import shutil
 import stat
 import tempfile
@@ -12,6 +14,33 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC_MANIFEST = Path(__file__).with_name("distribution_static_manifest.json")
+
+
+def validate_application_version(source_root: Path) -> str:
+    """Require the real bounded application-version resource before packaging."""
+    version_file = source_root / "coat_sim" / "version.txt"
+    _validate_path(version_file)
+    try:
+        with version_file.open("rb") as stream:
+            content = stream.read(129)
+        value = content.decode("utf-8").strip()
+    except (OSError, UnicodeError) as exc:
+        raise RuntimeError(f"Cannot read required application version {version_file}: {exc}") from exc
+    # This build helper is also loaded by file from outside the source root.
+    # Keep the current publication grammar standalone; conformance is tested
+    # against the application reader, with no package/path fallback.
+    match = re.fullmatch(r"dev\.(\d{8})\.(\d{2})", value)
+    valid = False
+    if match is not None and int(match[2]) > 0:
+        try:
+            datetime.strptime(match[1], "%Y%m%d")
+        except ValueError:
+            pass
+        else:
+            valid = True
+    if len(content) > 128 or not valid:
+        raise RuntimeError(f"Invalid required application version in {version_file}")
+    return value
 
 
 def sha256(path: Path) -> str:
@@ -84,8 +113,11 @@ def stage_source_snapshot(destination: Path) -> list[dict[str, object]]:
     """Freeze application sources for distribution resource validation."""
     _validate_path(destination)
     _validate_path(ROOT)
+    version = validate_application_version(ROOT)
     destination.mkdir(parents=True, exist_ok=False)
     copy_tree(ROOT / "coat_sim", destination / "coat_sim")
+    if validate_application_version(destination) != version:
+        raise RuntimeError("Application version changed during source staging")
     for relative in (
         Path("launcher.py"), Path("launcher.pyw"), Path("README.md"), Path("LICENSE"),
         Path("tools") / "launch_desktop.pyw", Path("tools") / "build_desktop_host.py",
@@ -218,6 +250,7 @@ def prepare_static_data(stage: Path, source_root: Path = ROOT) -> list[str]:
 
 
 def add_qt_and_source_data_arguments(command: list[str], data_stage: Path, source_root: Path) -> None:
+    validate_application_version(source_root)
     from PySide6.QtCore import QLibraryInfo
     qml = Path(QLibraryInfo.path(QLibraryInfo.LibraryPath.QmlImportsPath))
     if not qml.is_dir():

@@ -4,7 +4,10 @@ import os
 import hashlib
 from pathlib import Path
 import sys
+import subprocess
 from types import ModuleType, SimpleNamespace
+
+import pytest
 
 from tools import distribution_resources as builder
 
@@ -54,6 +57,7 @@ def _make_minimal_source_tree(root: Path) -> None:
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(relative.encode("utf-8"))
+    (root / "coat_sim/version.txt").write_text("dev.20261023.01\n", encoding="utf-8")
 
 
 def test_application_resources_snapshot_and_data_mapping_include_license_and_documentation(
@@ -78,6 +82,9 @@ def test_application_resources_snapshot_and_data_mapping_include_license_and_doc
         assert relative in staged_paths
         assert (snapshot / relative).read_bytes() == (source_root / relative).read_bytes()
     assert (snapshot / "LICENSE").read_bytes() == (source_root / "LICENSE").read_bytes()
+    assert (snapshot / "coat_sim/version.txt").read_bytes() == (source_root / "coat_sim/version.txt").read_bytes()
+    version_record = next(row for row in records if row["path"] == "coat_sim/version.txt")
+    assert version_record["sha256"] == hashlib.sha256((source_root / "coat_sim/version.txt").read_bytes()).hexdigest()
 
     qml_imports = tmp_path / "qt-qml-imports"
     qml_imports.mkdir()
@@ -110,6 +117,58 @@ def test_application_resources_snapshot_and_data_mapping_include_license_and_doc
     assert mappings["LICENSE"] == "."
     assert str(snapshot / "coat_sim/core/resources") + os.pathsep + "coat_sim/core/resources" in command
     assert (snapshot / "coat_sim/core/resources/reference_sources.json").is_file()
+
+
+@pytest.mark.parametrize("contents", [None, b"unknown\n", b"dev.20260230.01\n", b"\xff", b"x" * 129])
+def test_staging_and_frozen_mapping_reject_missing_or_invalid_application_version(tmp_path, monkeypatch, contents):
+    source = tmp_path / "source"
+    _make_minimal_source_tree(source)
+    version = source / "coat_sim/version.txt"
+    if contents is None:
+        version.unlink()
+    else:
+        version.write_bytes(contents)
+    monkeypatch.setattr(builder, "ROOT", source)
+    destination = tmp_path / "snapshot"
+    with pytest.raises(RuntimeError, match="application version"):
+        builder.stage_source_snapshot(destination)
+    assert not destination.exists()
+    command = ["unchanged"]
+    with pytest.raises(RuntimeError, match="application version"):
+        builder.add_qt_and_source_data_arguments(command, tmp_path / "data", source)
+    assert command == ["unchanged"]
+
+
+@pytest.mark.parametrize("value", [
+    "dev.20261023.01", "dev.20261023.99", "dev.20261023.00", "dev.20260230.01",
+    "dev.20261023.1", "dev.20261023.100", "dev.20261023.01\n", "unknown", "",
+])
+def test_standalone_package_version_grammar_matches_current_application_reader(tmp_path, value):
+    from coat_sim.version import parse_internal_version
+
+    version = tmp_path / "coat_sim/version.txt"
+    version.parent.mkdir()
+    version.write_text(value, encoding="utf-8")
+    if parse_internal_version(value) is None:
+        with pytest.raises(RuntimeError, match="application version"):
+            builder.validate_application_version(tmp_path)
+    else:
+        assert builder.validate_application_version(tmp_path) == value.strip()
+
+
+def test_distribution_helper_loads_by_file_without_source_root_on_module_path(tmp_path):
+    script = Path(builder.__file__).resolve()
+    root = script.parent.parent
+    code = (
+        "import importlib.util,sys; "
+        f"spec=importlib.util.spec_from_file_location('standalone_distribution',{str(script)!r}); "
+        "module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module); "
+        f"print(module.validate_application_version(module.Path({str(root)!r}))); "
+        "assert 'coat_sim' not in sys.modules"
+    )
+    completed = subprocess.run([sys.executable, "-I", "-c", code], cwd=tmp_path,
+                               check=True, capture_output=True, text=True)
+    assert completed.stdout.strip() == (root / "coat_sim/version.txt").read_text(encoding="utf-8").strip()
 
 
 def test_application_resources_stages_cie_local_license_targets_at_data_root(
