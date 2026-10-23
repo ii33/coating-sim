@@ -79,3 +79,19 @@ publication and selected transfer. Thus `Dose` and `dose` are separate IDs; only
 an exact ID match offers reuse/overwrite/copy conflict decisions. Material-ID
 normalization is unchanged. The generic operation scope does not invent a new
 case-insensitive template identity.
+
+Transfer completion diagnostics keep at most 16 compact operation records in
+memory. Times are monotonic seconds relative to each admission, distinguishing
+worker start, operation return, the future-done callback, main-thread polling and terminal
+signal delivery. No document/tuple payload, path, private data or persistent log
+is retained. Read-only `transferDiagnostics` does not poll, emit extra UI updates,
+change the 10ms timer, extend timeouts or alter transaction/generation gates.
+A finished worker is not a delivered terminal UI operation.
+
+The future callback timestamp is an observation after the Future becomes done,
+not an atomic-state-transition timestamp; a main-thread done poll can legally
+precede that callback under scheduling races. Both observations are retained.
+
+Each record includes its read-only `snapshot_s`, measured from that operation
+admission, so deadline evidence can be related to worker/callback/poll times
+without treating a later cleanup observation as the earlier failure state.

@@ -397,6 +397,7 @@ LocalComponents.AppWindow {
                 Layout.fillWidth: true
                 Item { Layout.fillWidth: true }
                 ThemeControls.ThemeButton {
+                    objectName: "globalResourcesPreviewCancelButton"
                     text: "取消"
                     enabled: window.cancellable
                     onClicked: {

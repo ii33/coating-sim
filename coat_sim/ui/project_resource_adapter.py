@@ -5,13 +5,14 @@ remain workspace-owned until the whole project is explicitly closed.
 """
 from __future__ import annotations
 from copy import deepcopy
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import math
 from pathlib import Path
 from typing import Any, cast
-from threading import Event
+from threading import Event, Lock
 from time import perf_counter
 from PySide6.QtCore import QObject, Property, QMetaObject, Qt, QUrl, Signal, Slot, QTimer
 from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent, QQmlContext
@@ -110,6 +111,36 @@ def _stage_information_edit(owner, name, summary, notes, expected_token):
 _TRANSFER_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="project-resource-transfer")
 
 
+class _ResourceTransferTiming:
+    """Small monotonic timing evidence; contains no document payload or path."""
+
+    def __init__(self, generation, kind):
+        self._lock = Lock()
+        self.origin = perf_counter()
+        self._values: dict[str, Any] = {"generation": generation, "kind": kind, "admitted_s": 0.0,
+                        "poll_count": 0}
+
+    def mark(self, field, **values):
+        with self._lock:
+            self._values[field] = perf_counter() - self.origin
+            self._values.update(values)
+
+    def polled(self):
+        now = perf_counter() - self.origin
+        with self._lock:
+            self._values.setdefault("first_poll_s", now)
+            self._values["last_poll_s"] = now
+            self._values["poll_count"] += 1
+
+    def future_done(self, _future):
+        # The callback only records Python numbers, never calls a QObject.
+        self.mark("future_callback_s")
+
+    def snapshot(self):
+        with self._lock:
+            return dict(self._values, snapshot_s=perf_counter() - self.origin)
+
+
 class _ResourceTransferTask:
     """A pure-Python worker result, polled by the owner's main-thread QTimer.
 
@@ -123,14 +154,18 @@ class _ResourceTransferTask:
         self.catalog_id = catalog_id
         self.cancelled = Event()
         self.future: Any = None
+        self.timing = _ResourceTransferTiming(generation, kind)
 
     def run(self):
         started = perf_counter()
+        self.timing.mark("worker_started_s")
         result, error = None, ""
         try:
             result = self.operation()
         except Exception as exc:
             error = str(exc)
+        finally:
+            self.timing.mark("operation_finished_s", result_type=type(result).__name__, error_present=bool(error))
         if self.cancelled.is_set():
             # Only inspection/preview can be cancelled. Release detached read
             # tokens after the running read, never underneath that read.
@@ -145,6 +180,7 @@ class _ResourceTransferTask:
             except Exception:
                 pass
             result = None
+        self.timing.mark("worker_returned_s", cancelled=self.cancelled.is_set())
         return result, error, perf_counter() - started
 
 
@@ -177,6 +213,7 @@ class ProjectResourceTransferController(QObject):
         self._transfer_generation = 0
         self._transfer_tasks: dict[int, _ResourceTransferTask] = {}
         self._transfer_timings: dict[str, float] = {}
+        self._transfer_diagnostics: OrderedDict[int, _ResourceTransferTiming] = OrderedDict()
         self._dispose_after_transfer = False
         self._transfer_poll = QTimer(self)
         self._transfer_poll.setInterval(10)
@@ -258,6 +295,15 @@ class ProjectResourceTransferController(QObject):
     def transferTimings(self):
         return dict(self._transfer_timings)
 
+    @Property(dict, notify=transferChanged)
+    def transferDiagnostics(self):
+        """Explicit reads only; no poll signal, persisted log or extra worker."""
+        return {"clock": "perf_counter_relative_seconds", "capacity": 16,
+                "timer_active": self._transfer_poll.isActive(),
+                "active_generation": self._transfer_generation,
+                "pending_count": len(self._transfer_tasks),
+                "operations": [record.snapshot() for record in self._transfer_diagnostics.values()]}
+
     @staticmethod
     def _transfer_location(value):
         value = str(value)
@@ -294,26 +340,45 @@ class ProjectResourceTransferController(QObject):
         generation = self._transfer_generation
         task = _ResourceTransferTask(generation, kind, operation, self.service, catalog_id)
         self._transfer_tasks[generation] = task
+        self._transfer_diagnostics[generation] = task.timing
+        while len(self._transfer_diagnostics) > 16:
+            self._transfer_diagnostics.popitem(last=False)
         self._transfer_busy = True
         self._transfer_applying = kind == "apply"
         self._transfer_status = {"inspect": "正在读取并校验资源…", "preview": "正在校验依赖与冲突…",
                                  "apply": "正在提交所选资源，开始后无法取消；请等待结果。"}[kind]
         self.transferChanged.emit()
+        task.timing.mark("busy_signal_returned_s")
+        task.timing.mark("executor_submit_started_s")
         task.future = _TRANSFER_EXECUTOR.submit(task.run)
+        task.timing.mark("executor_submit_returned_s")
+        task.future.add_done_callback(task.timing.future_done)
         self._transfer_poll.start()
+        task.timing.mark("poll_timer_started_s")
         return True
 
     @Slot()
     def _poll_transfer_tasks(self):
         for generation, task in tuple(self._transfer_tasks.items()):
+            task.timing.polled()
             if task.future is not None and task.future.done():
-                result, error, elapsed = task.future.result()
-                self._on_transfer_result(generation, task.kind, result, error, elapsed)
+                task.timing.mark("done_poll_s")
+                try:
+                    reply = task.future.result()
+                    task.timing.mark("reply_observed_s", reply_type=type(reply).__name__,
+                                     reply_length=len(reply) if isinstance(reply, (tuple, list)) else None)
+                    result, error, elapsed = reply
+                    self._on_transfer_result(generation, task.kind, result, error, elapsed)
+                except Exception as exc:
+                    task.timing.mark("delivery_exception_s", exception_type=type(exc).__name__)
+                    raise
         if not self._transfer_tasks:
             self._transfer_poll.stop()
 
     def _on_transfer_result(self, generation, kind, result, error, elapsed):
         task = self._transfer_tasks.pop(generation, None)
+        if task is not None:
+            task.timing.mark("delivery_started_s")
         if generation != self._transfer_generation:
             # Cancel can race the gap between worker completion and delivery
             # before its main-thread poll. Such a late token must still be released.
@@ -324,6 +389,8 @@ class ProjectResourceTransferController(QObject):
                     self.service.cancel_resource_transfer(result["plan_id"])
                     if task is not None and task.catalog_id:
                         self.service.release_resource_catalog(task.catalog_id)
+            if task is not None:
+                task.timing.mark("discarded_s")
             return
         self._transfer_busy = False
         self._transfer_applying = False
@@ -361,7 +428,11 @@ class ProjectResourceTransferController(QObject):
         # Report a delivered foreground operation, not merely a cleared busy
         # flag. Invalidated read generations return above after token cleanup;
         # they cannot complete a newer inspection or preview for the UI.
+        if task is not None:
+            task.timing.mark("terminal_emit_started_s")
         self.transferOperationFinished.emit(generation, kind, not bool(error), error)
+        if task is not None:
+            task.timing.mark("terminal_emit_returned_s")
         if self._dispose_after_transfer:
             dispose = getattr(self, "dispose", None)
             if callable(dispose):

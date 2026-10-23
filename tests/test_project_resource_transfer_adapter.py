@@ -1,5 +1,6 @@
 """Selective transfer facade cancellation, draft isolation and Qt lifetime."""
 from copy import deepcopy
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -31,11 +32,12 @@ def wait_transfer(controller):
         if not controller.transferBusy:
             return
         QTest.qWait(10)
-    pytest.fail("Resource transfer did not finish: " + str(controller.transferStatus))
+    pytest.fail("Resource transfer did not finish: " + str(controller.transferStatus)
+                + "; timing=" + json.dumps(controller.transferDiagnostics, sort_keys=True))
 
 
 @pytest.mark.parametrize("container", ["coatproj", "cproject"])
-def test_selective_import_cancel_and_apply_preserve_active_dirty_draft(project, tmp_path, container):
+def test_selective_import_cancel_and_apply_preserve_active_dirty_draft(project, tmp_path, container, record_testsuite_property):
     _app, stores, _host, _film, resources, view = project
     _window, controller = view("process")
     controller.bridge.setMetadata("description", "active unsaved process")
@@ -94,6 +96,8 @@ def test_selective_import_cancel_and_apply_preserve_active_dirty_draft(project, 
     assert len(reopened.list_documents("source")) == 1
     assert stores["First"].manifest["default_configuration_id"] is None
     assert not controller.applyTransfer({})
+    record_testsuite_property("transfer_diagnostics_" + container,
+                              json.dumps(controller.transferDiagnostics, sort_keys=True))
 
 
 def test_transfer_plan_invalidation_and_failures_keep_target_unchanged(tmp_path):
