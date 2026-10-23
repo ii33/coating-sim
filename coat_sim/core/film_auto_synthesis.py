@@ -728,6 +728,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
     completed_training_best = None
     completed_training_validation = None
     fully_scored_evaluations = 0
+    terminal_hybrid_cleanup: Callable[[], None] | None = None
     candidate_provenance = {}
     search_diagnostics: _SearchDiagnostics = {"structural_proposals": [], "global_search": [],
         "layer_distribution": {}, "local_refinement": []}
@@ -1240,7 +1241,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
 
     def run_hybrid(initial):
         """One shared staged search; strict archive and real explorer are distinct."""
-        nonlocal cycle
+        nonlocal cycle, terminal_hybrid_cleanup
         frozen_snapshot = request.frozen_material_snapshot
         assert frozen_snapshot is not None
         from .film_synthesis_archive import physical_design_hash
@@ -1521,8 +1522,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 and np.allclose(a[key]["actual_values"], b[key]["actual_values"], atol=2e-11, rtol=2e-10)
                 for key in a))
 
-        def physical_cleanup(value):
-            cleaned = cleanup_batch_needle_design(value["design"], frozen_snapshot)
+        def physical_cleanup(value, *, cleaned=None):
+            if cleaned is None:
+                cleaned = cleanup_batch_needle_design(value["design"], frozen_snapshot)
             if cleaned.design == value["design"] or not feasible(cleaned.design):
                 return value
             current = value
@@ -1539,6 +1541,70 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     parent_hash=physical_design_hash(value["design"]), operator="exact_zero_same_reference_merge")
             emit("hybrid_cleanup", json.dumps(metadata, sort_keys=True), candidate["design"], candidate["score"])
             return candidate
+
+        def cleanup_champion(*, terminal=False):
+            # The explorer may still be an older endpoint when a growth slice
+            # expires. Compress the independently retained real champion too,
+            # without replacing that endpoint with the champion's topology.
+            assert best is not None
+            value = best
+            cleaned = cleanup_batch_needle_design(value["design"], frozen_snapshot)
+            record = dict(source_physical_hash=physical_design_hash(value["design"]),
+                source_layer_count=len(value["design"]["front_layers"]),
+                proposed_layer_count=len(cleaned.design["front_layers"]),
+                terminal=terminal, independent_audit_performed=False,
+                promoted_to_strict_champion=False, evaluations_used=0)
+            if cleaned.design == value["design"]:
+                if terminal:
+                    details["terminal_champion_cleanup"] = dict(record, status="not_needed")
+                return value
+            record["status"] = "pending"
+            details.setdefault("champion_cleanup", []).append(record)
+            if terminal:
+                details["terminal_champion_cleanup"] = record
+            if not feasible(cleaned.design):
+                record["status"] = "skipped_physical_constraints"
+                return value
+            before = evaluations
+            started_slice = False
+            try:
+                if terminal:
+                    # Only a real, feasible topology change admits work. The
+                    # ordinary training guard still reserves the audit slot.
+                    begin_slice("terminal_champion_cleanup", 1., 2)
+                    started_slice = True
+                result = physical_cleanup(value, cleaned=cleaned)
+                record.update(status="complete", full_original_spectral_equivalence=True,
+                    result_physical_hash=physical_design_hash(result["design"]),
+                    promoted_to_strict_champion=best["design"] == result["design"],
+                    selected_physical_hash=physical_design_hash(best["design"]))
+                return result
+            except _Stopped as exc:
+                record.update(status="skipped_" + str(exc))
+                if not terminal:
+                    raise
+                return value
+            except (SynthesisStageBudget, SynthesisResourceGuard) as exc:
+                record["status"] = ("skipped_resource_guard" if isinstance(exc, SynthesisResourceGuard)
+                                    else "skipped_stage_budget")
+                if not terminal:
+                    raise
+                return value
+            except _StructureCancelled:
+                record["status"] = "interrupted_cancel_or_time_limit"
+                raise
+            except (ValueError, ArithmeticError, RuntimeError):
+                record["status"] = "failed"
+                raise
+            finally:
+                record["evaluations_used"] = evaluations - before
+                if started_slice:
+                    end_slice(record["status"])
+
+        def finish_champion_cleanup():
+            cleanup_champion(terminal=True)
+
+        terminal_hybrid_cleanup = finish_champion_cleanup
 
         def report(event):
             search_diagnostics["structural_proposals"].append(deepcopy(event))
@@ -1906,6 +1972,10 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
 
             begin_slice("deletion_and_same_reference_merge", .15, 16)
             try:
+                champion_before = best
+                cleaned_champion = cleanup_champion()
+                if explorer["design"] == champion_before["design"]:
+                    explorer = cleaned_champion
                 explorer = physical_cleanup(explorer)
                 parents = design_archive.select_parents(2)
                 for entry in parents:
@@ -1958,6 +2028,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 archive_context.clear()
             # Parent owns one independent audit and its original full-constraint
             # acceptance. Audit feedback cannot consume the next scan reserve.
+            terminal_hybrid_cleanup()
             audit_archive(best, allow_feedback_repair=False)
             details["completed_rotations"] = cycle
             details["real_growth_rounds"] = total_real_growth
@@ -2829,6 +2900,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         # A wall deadline, like cancellation, never admits a new final audit.
         if best is not None and state != "cancelled" and reason != "time_limit":
             try:
+                if terminal_hybrid_cleanup is not None:
+                    terminal_hybrid_cleanup()
                 audit_archive(best, allow_feedback_repair=request.search_strategy == "legacy")
                 if audited_best is not None:
                     validated_training, validation = audited_best

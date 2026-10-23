@@ -50,8 +50,23 @@ python tools/run_static_analysis.py check
 
 受控Windows验收已完成原生19工作进程专项：19个真实PID均有正CPU增量，31项任务全完成，固定冻结批次串并一致并退出清理；3 GiB护栏的最高估计约2.64 GiB。17.90秒是该有界任务耗时，不是加速比。
 
-另一个6-worker调度用例原来仅31个波长点，单次真实评价0.85–2.73ms；49项任务全部完成/消费、unknown为0，但部分PID诚实记录CPU增量0。独立进程CPU API诊断观察到15.625ms的计时量化，并非PID、单位或累加错误。此补丁仅把该用例的物理网格提高到4097点，保留每PID正CPU、实际进程数、同冻结批次串并一致及清理的全部断言。不改生产计时器、不改成纳秒接口、不降200000生产阈值、不伪造非零；也不改变默认1 nm采样或用户目标。新fixture仍须在该Windows主机复验，不能用云端结果替代。
+另一个6-worker调度用例原来仅31个波长点，单次真实评价0.85–2.73ms；49项任务全部完成/消费、unknown为0，但部分PID诚实记录CPU增量0。独立进程CPU API诊断观察到15.625ms的计时量化，并非PID、单位或累加错误。此补丁仅把该用例的物理网格提高到4097点，保留每PID正CPU、实际进程数、同冻结批次串并一致及清理的全部断言。不改生产计时器、不改成纳秒接口、不降200000生产阈值、不伪造非零；也不改变默认1 nm采样或用户目标。受控Windows主机已在17e0c4d上复验通过：6个真实PID的CPU增量0.09375–0.21875秒，48任务完成，原11项断言、串并一致和OS进程退出均通过；这些是实机结果，不以云端结果替代。
 
 ## 同阶段集成回归修正
 
 原完整CI的quick组发现两项兼容/统计问题，未撤销失败记录或放宽验收：旧示例目标不应被静默增加显式false的严格合成字段，现仅将false规范化为缺省，true仍保存、非布尔仍拒绝，原完整配置相等及实际优化断言保留；基准runner正式拒绝的响应只保留诊断，不再从其自报终态/分数/清理得出成功统计，新增身份、畸形响应及套件计数负例。后者的完整模块33项通过，原正式物理和完整网格门禁不变。完整发布SHA的CI须另读真实终态，不因本地定向通过而称所有tiers已绿。
+
+## 冠军清理的真实核心修复
+
+完整CI另外发现默认hybrid在原12评价预算下返回两个同源半QW层，旧GUI的单层与保存/漂移断言失败。两层的物理分数和名义通过本来都是真实的；问题是有限生长刚归档冠军即遇阶段预算，探索终态仍旧，压缩只处理探索端，尚未生成、评分可合法合并的冠军。未将测试改legacy、未增加旧预算、未删除原断言。
+
+当前改为先检查真实冠军，终审前再对后续冠军作有界检查；完整原谱重新计算及谱等价核查后才按原排名归档，新层表仍须自己的独审。原12评价请求现在仍11次总评价、一次真实合并重算，返回111.78861788617887nm单层并独审通过；真实探索终态不被冠军重置。新增10项直接正式JobSpec回归通过，覆盖制造厚限、不同optical_set、独审留槽、资源护栏、取消、墙钟截止及观察者异常。清理完成、实际被选为冠军、独审三者分别报告，详见[冠军清理合同](film-synthesis-champion-cleanup-contract.md)。
+
+有权限运行现有本地scheduler端点的环境可复验原GUI节点：
+
+```text
+python -m pytest -q tests/test_film_synthesis_terminal_cleanup.py
+python -m pytest -q tests/test_film_synthesis_gui_review.py::test_qml_n0_grows_real_single_layer_and_freezes_current_targets_and_materials tests/test_film_synthesis_gui_review.py::test_project_qml_synthesis_new_material_closure_survives_save_or_drift_undo
+```
+
+前一命令不创建scheduler服务，不能代替后一命令的GUI/保存/漂移验收；受限云环境没有重试被拒的端点。准确发布SHA的所有CI tiers仍须分别读取实际终态。
