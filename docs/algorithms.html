@@ -66,6 +66,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <p class="source" style="grid-column:1/-1">结构合成更新：2026-10-12。新增14o至14o-2：实验性经典零厚敏感度针插、有界已有层增长与分组局部精修；独立结构请求与固定层序/有限试插分开，Dmax是硬约束。补充验证切片、真实求值计数与增长前局部边界检查。接口见 <a href="film-structure-optimization-contract.md">结构合成契约</a>，操作见 <a href="film-structure-optimization-guide.md">使用指南</a>，实际验收见 本轮状态 <span class="historical-reference">（历史验证记录，未随公开源码发布）</span>。</p>
 <p class="source">存储格式补充：2026-10-18。工程 BBS、助手精简记忆和可恢复文件清理均为非物理持久化契约，不改变仿真公式、坐标或数值精度。见<a href="#engineering-notes-storage-20261018">工程记录与助手工作区格式</a>。</p>
 <nav aria-label="章节目录">
+<a href="#film-current-benchmark-20261024">14au 通用膜系基准的当前格式登记（2026-10-24）</a>
 <a href="#film-band-criteria-20261024">14at 波段平均值与逐点双约束（2026-10-24）</a>
 <a href="#film-template-randomization-20261024">14as 可选模板随机化（2026-10-24）</a>
 <a href="#film-multispectral-minimax-20261022">14ah 分窗高反先验与联合R/T门限精修（2026-10-22）</a>
@@ -3240,6 +3241,20 @@ close/shutdown/history/late old operation: do not trigger automatic apply</pre>
 <p>实现：<code>coat_sim/core/film_synthesis_randomization.py</code>、<code>film_auto_synthesis.py</code>；冻结/重放在 <code>film_synthesis_io.py</code>、<code>film_synthesis_jobs.py</code>；现有优化页 controller 和 <code>FilmOptimizationWindow.qml</code> 只编辑草稿及显示实际 seed。默认相关系数0.85、两尺度0.12/0.06、对数截幅0.35、最多3抽均为<span class="tag local">本项目约定</span>，未找到外部依据，仅为本项目实现。它不是工艺误差模型，不证明跳出局部极小或普遍提速；独立有限网格审计仍不构成连续谱证书。</p>
 <p class="source">原始组件依据：<a href="https://numpy.org/doc/stable/reference/random/bit_generators/pcg64.html">NumPy 官方 PCG64</a>、<a href="https://numpy.org/doc/stable/reference/random/parallel.html">NumPy 官方并行随机流</a>。这些资料说明随机数组件，不为本项目光学扰动常数或搜索效果背书。执行边界见 <a href="film-synthesis-execution-contract.md">执行合同</a>。</p>
 <p>开启本选项后，模板筛选的 base/extra 当前顺序执行以保留取消前的完整 base；增加 worker 不加速此新筛选分支，其余既有并行阶段不变。本功能未证明搜索质量或端到端速度提升。</p>
+</section>
+<section id="film-current-benchmark-20261024">
+<h2>14au 通用膜系基准的当前格式登记（2026-10-24）</h2>
+<p>用途：为跨膜系类别、多个随机种子的公平算法比较提供可运行的当前请求输入，而不是继续精修一个多光谱案例。输入为历史 16 类、49 条逐点目标，输出为新的显式 mean/pointwise 基准清单；不在运行时读取或迁移旧格式，不改写历史证据。</p>
+<div class="formula">pointwise.enabled = true；mean.enabled = false；原始上下界与 strict 比较逐条保持。</div>
+<svg viewBox="0 0 760 110" role="img" aria-label="历史案例独立保留，新清单经过逐字段核对和48次冻结解码检查，不等于光学验收">
+<rect x="5" y="20" width="195" height="65" rx="8" fill="#e9f4f1"/><text x="20" y="47" font-size="16">历史 16 类案例保持不变</text><text x="20" y="70" font-size="14">原材料、阈值、网格与边界</text>
+<path d="M205 52 H250" stroke="#087f78" stroke-width="3"/><text x="215" y="42" font-size="14">→</text>
+<rect x="255" y="20" width="230" height="65" rx="8" fill="#e9f4f1"/><text x="270" y="47" font-size="16">新清单：当前嵌套约束</text><text x="270" y="70" font-size="14">逐字段对应；均值关闭</text>
+<path d="M490 52 H535" stroke="#087f78" stroke-width="3"/><text x="500" y="42" font-size="14">→</text>
+<rect x="540" y="20" width="215" height="65" rx="8" fill="#fff2dd"/><text x="552" y="47" font-size="16">48 个 case/seed 冻结解码</text><text x="552" y="70" font-size="14">不是优化或物理验收</text></svg>
+<p>单位保持 nm、度与 0–1 的 R/T 比例，默认种子 0/1/2；单层厚度、总厚度和层数限制均来自原案例。历史 qualification 仅作历史标签，不授予新运行通过状态。逐点是否达标的判定等价，但当前按波段、角度和梯形积分质量归一的聚合评分与旧等采样点评分不等价，因此必须在同一当前评分合同下配对比较，不能将新旧分数差当成算法收益。</p>
+<p>实现：<code>benchmarks/film_synthesis/20261024/representative-suite-current-pointwise.json</code>；验证 <code>tests/test_film_current_representative_suite.py</code> 调用现有 <code>tools/run_film_synthesis_benchmarks.py</code> 的真实 GUI 适配、材料冻结、JobSpec 与持久解码，不运行 TMM。原 checkout 字节哈希和仅归一 CRLF/LF 的哈希分列，另逐字段检查物理输入。旧清单仍被当前 runner 拒绝。</p>
+<p>范围限制：这是基准格式资格检查，不是新算法、全局最优、制造验证或连续域证书。原 wall 限制不等于进程树 CPU 硬预算；后续比较须独立验证 CPU/F-only/FJ 总账、固定审计预算、每个种子的最终提名，并同时报告可行率、违约、N 与总厚度。此登记规则是本项目约定，未找到外部依据，仅为本项目实现。</p>
 </section>
 </main>
 <article style="grid-column:2;max-width:1000px">

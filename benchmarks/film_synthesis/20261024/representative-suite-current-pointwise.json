@@ -1,0 +1,2264 @@
+{
+  "schema_version": 2,
+  "suite_id": "film-synthesis-current-pointwise-20261024",
+  "frozen_utc": "2026-10-24T02:36:00Z",
+  "material_catalog": "data/optical_catalog.json",
+  "catalog_sha256": "c70ac5f83fc217e72a97e0f42a5f421c9bcc22dd2ab236ac65e22d975e97396a",
+  "defaults": {
+    "seeds": [
+      0,
+      1,
+      2
+    ],
+    "wall_seconds": 120,
+    "workers": 2,
+    "validation_samples_multiplier": 5,
+    "acceptable_normalized_error": 0,
+    "math_threads": 1,
+    "process_priority": "below_normal",
+    "training_max_step_nm": 5,
+    "audit_dense_max_step_nm": 1,
+    "audit_offset_half_dense_step": true
+  },
+  "success_rule": "All enabled original pointwise bounds, with original strict flags, on training and independently frozen audit grids. Mean constraints disabled. Finite-grid evidence only; guard intervals have no requirement.",
+  "cases": [
+    {
+      "id": "ar_v_visible",
+      "category": "V AR",
+      "difficulty": "representative",
+      "substrate": {
+        "material_id": "builtin_zns_literature_20261004",
+        "optical_set_id": "ri_zns_amotchkina_nk"
+      },
+      "materials": [
+        {
+          "material_id": "builtin_research_YbF3_film",
+          "optical_set_id": "ri_ybf3_amotchkina_n"
+        },
+        {
+          "material_id": "builtin_zns_literature_20261004",
+          "optical_set_id": "ri_zns_amotchkina_nk"
+        }
+      ],
+      "assume_lossless": true,
+      "substrate_model": "single-sided semi-infinite optical substrate; sourced film constants are not bulk-specific measurements",
+      "objectives": [
+        {
+          "wavelength_min_nm": 540,
+          "wavelength_max_nm": 560,
+          "wavelength_samples": 5,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "s",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": null,
+            "upper_bound": 0.002,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 540,
+          "wavelength_max_nm": 560,
+          "wavelength_samples": 5,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "p",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": null,
+            "upper_bound": 0.002,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        }
+      ],
+      "guard_nm": [
+        [
+          500,
+          540
+        ],
+        [
+          560,
+          600
+        ]
+      ],
+      "guard_semantics": "No objective in transition intervals. Boundaries may be plotted separately; no performance threshold implied.",
+      "max_layers": 20,
+      "min_thickness_nm": 10,
+      "max_thickness_nm": 350,
+      "max_total_thickness_nm": 3000,
+      "max_cycles": null,
+      "max_evaluations": null,
+      "wall_seconds": 120,
+      "known_k_policy": "Retain every sourced k and its domain. Unknown k rejects unless this case explicitly opts in.",
+      "reference_not_injected": true,
+      "historical_qualification": {
+        "status": "qualified_conditional_unknown_k_zero",
+        "evidence": "qualification/ar-qualification-v2.json#ar_v_visible",
+        "scope": "finite dense/offset/extrema model only; no continuous certificate"
+      }
+    },
+    {
+      "id": "ar_w_visible",
+      "category": "W AR",
+      "difficulty": "representative",
+      "substrate": {
+        "material_id": "builtin_zns_literature_20261004",
+        "optical_set_id": "ri_zns_amotchkina_nk"
+      },
+      "materials": [
+        {
+          "material_id": "builtin_research_MgF2_film",
+          "optical_set_id": "ri_mgf2_rodriguez_de_marcos"
+        },
+        {
+          "material_id": "builtin_zns_literature_20261004",
+          "optical_set_id": "ri_zns_amotchkina_nk"
+        }
+      ],
+      "assume_lossless": false,
+      "substrate_model": "single-sided semi-infinite optical substrate; sourced film constants are not bulk-specific measurements",
+      "objectives": [
+        {
+          "wavelength_min_nm": 445,
+          "wavelength_max_nm": 455,
+          "wavelength_samples": 3,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "s",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": null,
+            "upper_bound": 0.005,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 445,
+          "wavelength_max_nm": 455,
+          "wavelength_samples": 3,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "p",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": null,
+            "upper_bound": 0.005,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 645,
+          "wavelength_max_nm": 655,
+          "wavelength_samples": 3,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "s",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": null,
+            "upper_bound": 0.005,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 645,
+          "wavelength_max_nm": 655,
+          "wavelength_samples": 3,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "p",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": null,
+            "upper_bound": 0.005,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        }
+      ],
+      "guard_nm": [
+        [
+          400,
+          445
+        ],
+        [
+          455,
+          645
+        ],
+        [
+          655,
+          700
+        ]
+      ],
+      "guard_semantics": "No objective in transition intervals. Boundaries may be plotted separately; no performance threshold implied.",
+      "max_layers": 20,
+      "min_thickness_nm": 10,
+      "max_thickness_nm": 350,
+      "max_total_thickness_nm": 3000,
+      "max_cycles": null,
+      "max_evaluations": null,
+      "wall_seconds": 120,
+      "known_k_policy": "Retain every sourced k and its domain. Unknown k rejects unless this case explicitly opts in.",
+      "reference_not_injected": true,
+      "historical_qualification": {
+        "status": "qualified_source_nk",
+        "evidence": "qualification/ar-qualification-v2.json#ar_w_visible",
+        "scope": "finite dense/offset/extrema model only; no continuous certificate"
+      }
+    },
+    {
+      "id": "ar_broad_visible",
+      "category": "broad AR",
+      "difficulty": "representative",
+      "substrate": {
+        "material_id": "builtin_zns_literature_20261004",
+        "optical_set_id": "ri_zns_amotchkina_nk"
+      },
+      "materials": [
+        {
+          "material_id": "builtin_research_MgF2_film",
+          "optical_set_id": "ri_mgf2_rodriguez_de_marcos"
+        },
+        {
+          "material_id": "builtin_zns_literature_20261004",
+          "optical_set_id": "ri_zns_amotchkina_nk"
+        }
+      ],
+      "assume_lossless": false,
+      "substrate_model": "single-sided semi-infinite optical substrate; sourced film constants are not bulk-specific measurements",
+      "objectives": [
+        {
+          "wavelength_min_nm": 450,
+          "wavelength_max_nm": 650,
+          "wavelength_samples": 41,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "s",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": null,
+            "upper_bound": 0.01,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 450,
+          "wavelength_max_nm": 650,
+          "wavelength_samples": 41,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "p",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": null,
+            "upper_bound": 0.01,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        }
+      ],
+      "guard_nm": [
+        [
+          400,
+          450
+        ],
+        [
+          650,
+          700
+        ]
+      ],
+      "guard_semantics": "No objective in transition intervals. Boundaries may be plotted separately; no performance threshold implied.",
+      "max_layers": 20,
+      "min_thickness_nm": 10,
+      "max_thickness_nm": 350,
+      "max_total_thickness_nm": 3000,
+      "max_cycles": null,
+      "max_evaluations": null,
+      "wall_seconds": 120,
+      "known_k_policy": "Retain every sourced k and its domain. Unknown k rejects unless this case explicitly opts in.",
+      "reference_not_injected": true,
+      "historical_qualification": {
+        "status": "qualified_source_nk",
+        "evidence": "qualification/ar-qualification-v2.json#ar_broad_visible",
+        "scope": "finite dense/offset/extrema model only; no continuous certificate"
+      }
+    },
+    {
+      "id": "ar_ultrabroad_visible",
+      "category": "ultrabroad AR",
+      "difficulty": "difficult_exploration",
+      "substrate": {
+        "material_id": "builtin_zns_literature_20261004",
+        "optical_set_id": "ri_zns_amotchkina_nk"
+      },
+      "materials": [
+        {
+          "material_id": "builtin_research_MgF2_film",
+          "optical_set_id": "ri_mgf2_rodriguez_de_marcos"
+        },
+        {
+          "material_id": "builtin_research_SiO2_film",
+          "optical_set_id": "ri_sio2_rodriguez_de_marcos"
+        },
+        {
+          "material_id": "builtin_zns_literature_20261004",
+          "optical_set_id": "ri_zns_amotchkina_nk"
+        }
+      ],
+      "assume_lossless": false,
+      "substrate_model": "single-sided semi-infinite optical substrate; sourced film constants are not bulk-specific measurements",
+      "objectives": [
+        {
+          "wavelength_min_nm": 400,
+          "wavelength_max_nm": 900,
+          "wavelength_samples": 101,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "s",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": null,
+            "upper_bound": 0.02,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 400,
+          "wavelength_max_nm": 900,
+          "wavelength_samples": 101,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "p",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": null,
+            "upper_bound": 0.02,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        }
+      ],
+      "guard_nm": [],
+      "guard_semantics": "No objective in transition intervals. Boundaries may be plotted separately; no performance threshold implied.",
+      "max_layers": 32,
+      "min_thickness_nm": 10,
+      "max_thickness_nm": 500,
+      "max_total_thickness_nm": 5000,
+      "max_cycles": null,
+      "max_evaluations": null,
+      "wall_seconds": 120,
+      "known_k_policy": "Retain every sourced k and its domain. Unknown k rejects unless this case explicitly opts in.",
+      "reference_not_injected": true,
+      "historical_qualification": {
+        "status": "pending",
+        "evidence": null,
+        "scope": "finite dense/offset/extrema model only; no continuous certificate"
+      }
+    },
+    {
+      "id": "hr_narrow_visible",
+      "category": "HR",
+      "difficulty": "representative",
+      "substrate": {
+        "material_id": "builtin_research_SiO2_film",
+        "optical_set_id": "ri_sio2_rodriguez_de_marcos"
+      },
+      "materials": [
+        {
+          "material_id": "builtin_research_MgF2_film",
+          "optical_set_id": "ri_mgf2_rodriguez_de_marcos"
+        },
+        {
+          "material_id": "builtin_zns_literature_20261004",
+          "optical_set_id": "ri_zns_amotchkina_nk"
+        }
+      ],
+      "assume_lossless": false,
+      "substrate_model": "single-sided semi-infinite optical substrate; sourced film constants are not bulk-specific measurements",
+      "objectives": [
+        {
+          "wavelength_min_nm": 680,
+          "wavelength_max_nm": 720,
+          "wavelength_samples": 9,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "s",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.99,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 680,
+          "wavelength_max_nm": 720,
+          "wavelength_samples": 9,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "p",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.99,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        }
+      ],
+      "guard_nm": [
+        [
+          650,
+          680
+        ],
+        [
+          720,
+          750
+        ]
+      ],
+      "guard_semantics": "No objective in transition intervals. Boundaries may be plotted separately; no performance threshold implied.",
+      "max_layers": 20,
+      "min_thickness_nm": 10,
+      "max_thickness_nm": 350,
+      "max_total_thickness_nm": 3000,
+      "max_cycles": null,
+      "max_evaluations": null,
+      "wall_seconds": 120,
+      "known_k_policy": "Retain every sourced k and its domain. Unknown k rejects unless this case explicitly opts in.",
+      "reference_not_injected": true,
+      "historical_qualification": {
+        "status": "qualified_source_nk",
+        "evidence": "qualification/reference-qualification-v1.1.json",
+        "scope": "finite dense/offset/extrema model only; no continuous certificate"
+      }
+    },
+    {
+      "id": "hr_user_600_900",
+      "category": "user broadband HR",
+      "difficulty": "representative",
+      "substrate": {
+        "material_id": "builtin_research_ZnS_substrate",
+        "optical_set_id": "ri_zns_debenham_n"
+      },
+      "materials": [
+        {
+          "material_id": "builtin_zns_literature_20261004",
+          "optical_set_id": "ri_zns_amotchkina_nk"
+        },
+        {
+          "material_id": "builtin_research_YbF3_film",
+          "optical_set_id": "ri_ybf3_amotchkina_n"
+        }
+      ],
+      "assume_lossless": true,
+      "substrate_model": "single-sided semi-infinite optical substrate; sourced film constants are not bulk-specific measurements",
+      "objectives": [
+        {
+          "wavelength_min_nm": 600,
+          "wavelength_max_nm": 900,
+          "wavelength_samples": 301,
+          "angles_deg": [
+            40,
+            50
+          ],
+          "polarization": "unpolarized",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.99,
+            "upper_bound": 1.0,
+            "strict_lower": true,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        }
+      ],
+      "guard_nm": [
+        [
+          550,
+          600
+        ],
+        [
+          900,
+          950
+        ]
+      ],
+      "guard_semantics": "No objective in transition intervals. Boundaries may be plotted separately; no performance threshold implied.",
+      "max_layers": null,
+      "min_thickness_nm": null,
+      "max_thickness_nm": null,
+      "max_total_thickness_nm": null,
+      "max_cycles": null,
+      "max_evaluations": null,
+      "wall_seconds": 120,
+      "known_k_policy": "Retain every sourced k and its domain. Unknown k rejects unless this case explicitly opts in.",
+      "reference_not_injected": true,
+      "historical_qualification": {
+        "status": "confirmed_three_seeds_pre_explicit_strict_field",
+        "evidence": "results/hr600_900-confirm-v2.json",
+        "scope": "finite dense/offset/extrema model only; no continuous certificate"
+      }
+    },
+    {
+      "id": "hr_broad_visible",
+      "category": "broad HR",
+      "difficulty": "difficult_exploration",
+      "substrate": {
+        "material_id": "builtin_research_SiO2_film",
+        "optical_set_id": "ri_sio2_rodriguez_de_marcos"
+      },
+      "materials": [
+        {
+          "material_id": "builtin_research_MgF2_film",
+          "optical_set_id": "ri_mgf2_rodriguez_de_marcos"
+        },
+        {
+          "material_id": "builtin_zns_literature_20261004",
+          "optical_set_id": "ri_zns_amotchkina_nk"
+        }
+      ],
+      "assume_lossless": false,
+      "substrate_model": "single-sided semi-infinite optical substrate; sourced film constants are not bulk-specific measurements",
+      "objectives": [
+        {
+          "wavelength_min_nm": 400,
+          "wavelength_max_nm": 700,
+          "wavelength_samples": 61,
+          "angles_deg": [
+            0,
+            30
+          ],
+          "polarization": "s",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.98,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 400,
+          "wavelength_max_nm": 700,
+          "wavelength_samples": 61,
+          "angles_deg": [
+            0,
+            30
+          ],
+          "polarization": "p",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.98,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        }
+      ],
+      "guard_nm": [],
+      "guard_semantics": "No objective in transition intervals. Boundaries may be plotted separately; no performance threshold implied.",
+      "max_layers": 32,
+      "min_thickness_nm": 10,
+      "max_thickness_nm": 500,
+      "max_total_thickness_nm": 5000,
+      "max_cycles": null,
+      "max_evaluations": null,
+      "wall_seconds": 120,
+      "known_k_policy": "Retain every sourced k and its domain. Unknown k rejects unless this case explicitly opts in.",
+      "reference_not_injected": true,
+      "historical_qualification": {
+        "status": "pending",
+        "evidence": null,
+        "scope": "finite dense/offset/extrema model only; no continuous certificate"
+      }
+    },
+    {
+      "id": "hr_ultrabroad_visible",
+      "category": "ultrabroad HR",
+      "difficulty": "difficult_exploration",
+      "substrate": {
+        "material_id": "builtin_research_SiO2_film",
+        "optical_set_id": "ri_sio2_rodriguez_de_marcos"
+      },
+      "materials": [
+        {
+          "material_id": "builtin_research_MgF2_film",
+          "optical_set_id": "ri_mgf2_rodriguez_de_marcos"
+        },
+        {
+          "material_id": "builtin_zns_literature_20261004",
+          "optical_set_id": "ri_zns_amotchkina_nk"
+        }
+      ],
+      "assume_lossless": false,
+      "substrate_model": "single-sided semi-infinite optical substrate; sourced film constants are not bulk-specific measurements",
+      "objectives": [
+        {
+          "wavelength_min_nm": 400,
+          "wavelength_max_nm": 1000,
+          "wavelength_samples": 121,
+          "angles_deg": [
+            0,
+            30
+          ],
+          "polarization": "s",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.95,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 400,
+          "wavelength_max_nm": 1000,
+          "wavelength_samples": 121,
+          "angles_deg": [
+            0,
+            30
+          ],
+          "polarization": "p",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.95,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        }
+      ],
+      "guard_nm": [],
+      "guard_semantics": "No objective in transition intervals. Boundaries may be plotted separately; no performance threshold implied.",
+      "max_layers": 64,
+      "min_thickness_nm": 10,
+      "max_thickness_nm": 1000,
+      "max_total_thickness_nm": 12000,
+      "max_cycles": null,
+      "max_evaluations": null,
+      "wall_seconds": 120,
+      "known_k_policy": "Retain every sourced k and its domain. Unknown k rejects unless this case explicitly opts in.",
+      "reference_not_injected": true,
+      "historical_qualification": {
+        "status": "pending",
+        "evidence": null,
+        "scope": "finite dense/offset/extrema model only; no continuous certificate"
+      }
+    },
+    {
+      "id": "splitter_narrow_normal",
+      "category": "50/50 splitter",
+      "difficulty": "representative",
+      "substrate": {
+        "material_id": "builtin_research_SiO2_film",
+        "optical_set_id": "ri_sio2_rodriguez_de_marcos"
+      },
+      "materials": [
+        {
+          "material_id": "builtin_research_MgF2_film",
+          "optical_set_id": "ri_mgf2_rodriguez_de_marcos"
+        },
+        {
+          "material_id": "builtin_zns_literature_20261004",
+          "optical_set_id": "ri_zns_amotchkina_nk"
+        }
+      ],
+      "assume_lossless": false,
+      "substrate_model": "single-sided semi-infinite optical substrate; sourced film constants are not bulk-specific measurements",
+      "objectives": [
+        {
+          "wavelength_min_nm": 540,
+          "wavelength_max_nm": 560,
+          "wavelength_samples": 5,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "s",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.45,
+            "upper_bound": 0.55,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 540,
+          "wavelength_max_nm": 560,
+          "wavelength_samples": 5,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "p",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.45,
+            "upper_bound": 0.55,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 540,
+          "wavelength_max_nm": 560,
+          "wavelength_samples": 5,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "s",
+          "metric": "T",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.43,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 540,
+          "wavelength_max_nm": 560,
+          "wavelength_samples": 5,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "p",
+          "metric": "T",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.43,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        }
+      ],
+      "guard_nm": [
+        [
+          500,
+          540
+        ],
+        [
+          560,
+          600
+        ]
+      ],
+      "guard_semantics": "No objective in transition intervals. Boundaries may be plotted separately; no performance threshold implied.",
+      "max_layers": 32,
+      "min_thickness_nm": 10,
+      "max_thickness_nm": 500,
+      "max_total_thickness_nm": 5000,
+      "max_cycles": null,
+      "max_evaluations": null,
+      "wall_seconds": 120,
+      "known_k_policy": "Retain every sourced k and its domain. Unknown k rejects unless this case explicitly opts in.",
+      "reference_not_injected": true,
+      "historical_qualification": {
+        "status": "qualified_source_nk",
+        "evidence": "qualification/filter-splitter-qualification-v2.json",
+        "scope": "finite dense/offset/extrema model only; no continuous certificate"
+      }
+    },
+    {
+      "id": "bpf_narrow_visible",
+      "category": "transmission bandpass",
+      "difficulty": "representative",
+      "substrate": {
+        "material_id": "builtin_research_SiO2_film",
+        "optical_set_id": "ri_sio2_rodriguez_de_marcos"
+      },
+      "materials": [
+        {
+          "material_id": "builtin_research_MgF2_film",
+          "optical_set_id": "ri_mgf2_rodriguez_de_marcos"
+        },
+        {
+          "material_id": "builtin_research_TiO2_film",
+          "optical_set_id": "ri_tio2_jolivet_amorphous"
+        }
+      ],
+      "assume_lossless": false,
+      "substrate_model": "single-sided semi-infinite optical substrate; sourced film constants are not bulk-specific measurements",
+      "objectives": [
+        {
+          "wavelength_min_nm": 549.75,
+          "wavelength_max_nm": 550.25,
+          "wavelength_samples": 6,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "s",
+          "metric": "T",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.95,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 549.75,
+          "wavelength_max_nm": 550.25,
+          "wavelength_samples": 6,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "p",
+          "metric": "T",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.95,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 500,
+          "wavelength_max_nm": 520,
+          "wavelength_samples": 5,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "s",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.95,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 500,
+          "wavelength_max_nm": 520,
+          "wavelength_samples": 5,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "p",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.95,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 580,
+          "wavelength_max_nm": 600,
+          "wavelength_samples": 5,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "s",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.95,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 580,
+          "wavelength_max_nm": 600,
+          "wavelength_samples": 5,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "p",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.95,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        }
+      ],
+      "guard_nm": [
+        [
+          520,
+          549.75
+        ],
+        [
+          550.25,
+          580
+        ]
+      ],
+      "guard_semantics": "No objective in transition intervals. Boundaries may be plotted separately; no performance threshold implied.",
+      "max_layers": 32,
+      "min_thickness_nm": 10,
+      "max_thickness_nm": 500,
+      "max_total_thickness_nm": 5000,
+      "max_cycles": null,
+      "max_evaluations": null,
+      "wall_seconds": 120,
+      "known_k_policy": "Retain every sourced k and its domain. Unknown k rejects unless this case explicitly opts in.",
+      "reference_not_injected": true,
+      "historical_qualification": {
+        "status": "pending_reference_optimization_source_variant_v2b",
+        "evidence": null,
+        "scope": "finite dense/offset/extrema model only; no continuous certificate"
+      }
+    },
+    {
+      "id": "mixed_hr_ar_visible",
+      "category": "mixed HR/AR",
+      "difficulty": "representative",
+      "substrate": {
+        "material_id": "builtin_research_SiO2_film",
+        "optical_set_id": "ri_sio2_rodriguez_de_marcos"
+      },
+      "materials": [
+        {
+          "material_id": "builtin_research_MgF2_film",
+          "optical_set_id": "ri_mgf2_rodriguez_de_marcos"
+        },
+        {
+          "material_id": "builtin_zns_literature_20261004",
+          "optical_set_id": "ri_zns_amotchkina_nk"
+        }
+      ],
+      "assume_lossless": false,
+      "substrate_model": "single-sided semi-infinite optical substrate; sourced film constants are not bulk-specific measurements",
+      "objectives": [
+        {
+          "wavelength_min_nm": 680,
+          "wavelength_max_nm": 720,
+          "wavelength_samples": 9,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "s",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.95,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 680,
+          "wavelength_max_nm": 720,
+          "wavelength_samples": 9,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "p",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.95,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 520,
+          "wavelength_max_nm": 540,
+          "wavelength_samples": 5,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "s",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": null,
+            "upper_bound": 0.02,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 520,
+          "wavelength_max_nm": 540,
+          "wavelength_samples": 5,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "p",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": null,
+            "upper_bound": 0.02,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        }
+      ],
+      "guard_nm": [
+        [
+          540,
+          680
+        ]
+      ],
+      "guard_semantics": "No objective in transition intervals. Boundaries may be plotted separately; no performance threshold implied.",
+      "max_layers": 32,
+      "min_thickness_nm": 10,
+      "max_thickness_nm": 500,
+      "max_total_thickness_nm": 5000,
+      "max_cycles": null,
+      "max_evaluations": null,
+      "wall_seconds": 120,
+      "known_k_policy": "Retain every sourced k and its domain. Unknown k rejects unless this case explicitly opts in.",
+      "reference_not_injected": true,
+      "historical_qualification": {
+        "status": "exploratory_production_audited_success_dense_request; fresh_frozen_suite_pending",
+        "evidence": "qualification/de-production-case-v2.json",
+        "scope": "finite dense/offset/extrema model only; no continuous certificate"
+      }
+    },
+    {
+      "id": "ar_nir",
+      "category": "NIR AR",
+      "difficulty": "difficult_exploration",
+      "substrate": {
+        "material_id": "builtin_research_Ge_film",
+        "optical_set_id": "ri_ge_amotchkina_film"
+      },
+      "materials": [
+        {
+          "material_id": "builtin_research_MgF2_film",
+          "optical_set_id": "ri_mgf2_rodriguez_de_marcos"
+        },
+        {
+          "material_id": "builtin_research_Ge_film",
+          "optical_set_id": "ri_ge_amotchkina_film"
+        }
+      ],
+      "assume_lossless": false,
+      "substrate_model": "single-sided semi-infinite optical substrate; sourced film constants are not bulk-specific measurements",
+      "objectives": [
+        {
+          "wavelength_min_nm": 1200,
+          "wavelength_max_nm": 1600,
+          "wavelength_samples": 81,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "s",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": null,
+            "upper_bound": 0.03,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 1200,
+          "wavelength_max_nm": 1600,
+          "wavelength_samples": 81,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "p",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": null,
+            "upper_bound": 0.03,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        }
+      ],
+      "guard_nm": [],
+      "guard_semantics": "No objective in transition intervals. Boundaries may be plotted separately; no performance threshold implied.",
+      "max_layers": 32,
+      "min_thickness_nm": 10,
+      "max_thickness_nm": 1000,
+      "max_total_thickness_nm": 10000,
+      "max_cycles": null,
+      "max_evaluations": null,
+      "wall_seconds": 120,
+      "known_k_policy": "Retain every sourced k and its domain. Unknown k rejects unless this case explicitly opts in.",
+      "reference_not_injected": true,
+      "historical_qualification": {
+        "status": "pending",
+        "evidence": null,
+        "scope": "finite dense/offset/extrema model only; no continuous certificate"
+      }
+    },
+    {
+      "id": "hr_ir_known_domain",
+      "category": "IR HR",
+      "difficulty": "difficult_exploration",
+      "substrate": {
+        "material_id": "builtin_research_Ge_film",
+        "optical_set_id": "ri_ge_amotchkina_film"
+      },
+      "materials": [
+        {
+          "material_id": "builtin_research_Ge_film",
+          "optical_set_id": "ri_ge_amotchkina_film"
+        },
+        {
+          "material_id": "builtin_research_YbF3_film",
+          "optical_set_id": "ri_ybf3_amotchkina_nk"
+        }
+      ],
+      "assume_lossless": false,
+      "substrate_model": "single-sided semi-infinite optical substrate; sourced film constants are not bulk-specific measurements",
+      "objectives": [
+        {
+          "wavelength_min_nm": 9200,
+          "wavelength_max_nm": 10800,
+          "wavelength_samples": 321,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "s",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.95,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 9200,
+          "wavelength_max_nm": 10800,
+          "wavelength_samples": 321,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "p",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.95,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        }
+      ],
+      "guard_nm": [],
+      "guard_semantics": "No objective in transition intervals. Boundaries may be plotted separately; no performance threshold implied.",
+      "max_layers": 64,
+      "min_thickness_nm": 10,
+      "max_thickness_nm": 3000,
+      "max_total_thickness_nm": 60000,
+      "max_cycles": null,
+      "max_evaluations": null,
+      "wall_seconds": 120,
+      "known_k_policy": "Retain every sourced k and its domain. Unknown k rejects unless this case explicitly opts in.",
+      "reference_not_injected": true,
+      "historical_qualification": {
+        "status": "pending",
+        "evidence": null,
+        "scope": "finite dense/offset/extrema model only; no continuous certificate"
+      }
+    },
+    {
+      "id": "bpf_broad_v1",
+      "category": "broad transmission bandpass",
+      "difficulty": "difficult_exploration",
+      "substrate": {
+        "material_id": "builtin_research_SiO2_film",
+        "optical_set_id": "ri_sio2_rodriguez_de_marcos"
+      },
+      "materials": [
+        {
+          "material_id": "builtin_research_MgF2_film",
+          "optical_set_id": "ri_mgf2_rodriguez_de_marcos"
+        },
+        {
+          "material_id": "builtin_zns_literature_20261004",
+          "optical_set_id": "ri_zns_amotchkina_nk"
+        },
+        {
+          "material_id": "builtin_research_TiO2_film",
+          "optical_set_id": "ri_tio2_jolivet_amorphous"
+        }
+      ],
+      "assume_lossless": false,
+      "substrate_model": "single-sided semi-infinite optical substrate; sourced film constants are not bulk-specific measurements",
+      "objectives": [
+        {
+          "wavelength_min_nm": 500,
+          "wavelength_max_nm": 600,
+          "wavelength_samples": 21,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "s",
+          "metric": "T",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.95,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 500,
+          "wavelength_max_nm": 600,
+          "wavelength_samples": 21,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "p",
+          "metric": "T",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.95,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 400,
+          "wavelength_max_nm": 450,
+          "wavelength_samples": 11,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "s",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.95,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 400,
+          "wavelength_max_nm": 450,
+          "wavelength_samples": 11,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "p",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.95,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 650,
+          "wavelength_max_nm": 700,
+          "wavelength_samples": 11,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "s",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.95,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 650,
+          "wavelength_max_nm": 700,
+          "wavelength_samples": 11,
+          "angles_deg": [
+            0
+          ],
+          "polarization": "p",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.95,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        }
+      ],
+      "guard_nm": [
+        [
+          450,
+          500
+        ],
+        [
+          600,
+          650
+        ]
+      ],
+      "guard_semantics": "No objective in transition intervals. Boundaries may be plotted separately; no performance threshold implied.",
+      "max_layers": 32,
+      "min_thickness_nm": 10,
+      "max_thickness_nm": 500,
+      "max_total_thickness_nm": 5000,
+      "max_cycles": null,
+      "max_evaluations": null,
+      "wall_seconds": 120,
+      "known_k_policy": "Retain every sourced k and its domain. Unknown k rejects unless this case explicitly opts in.",
+      "reference_not_injected": true,
+      "historical_qualification": {
+        "status": "pending",
+        "evidence": null,
+        "scope": "finite dense/offset/extrema model only; no continuous certificate"
+      }
+    },
+    {
+      "id": "splitter_broad_v1",
+      "category": "broad oblique splitter",
+      "difficulty": "difficult_exploration",
+      "substrate": {
+        "material_id": "builtin_research_SiO2_film",
+        "optical_set_id": "ri_sio2_rodriguez_de_marcos"
+      },
+      "materials": [
+        {
+          "material_id": "builtin_research_MgF2_film",
+          "optical_set_id": "ri_mgf2_rodriguez_de_marcos"
+        },
+        {
+          "material_id": "builtin_zns_literature_20261004",
+          "optical_set_id": "ri_zns_amotchkina_nk"
+        }
+      ],
+      "assume_lossless": false,
+      "substrate_model": "single-sided semi-infinite optical substrate; sourced film constants are not bulk-specific measurements",
+      "objectives": [
+        {
+          "wavelength_min_nm": 450,
+          "wavelength_max_nm": 650,
+          "wavelength_samples": 41,
+          "angles_deg": [
+            45
+          ],
+          "polarization": "s",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.45,
+            "upper_bound": 0.55,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 450,
+          "wavelength_max_nm": 650,
+          "wavelength_samples": 41,
+          "angles_deg": [
+            45
+          ],
+          "polarization": "p",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.45,
+            "upper_bound": 0.55,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        }
+      ],
+      "guard_nm": [
+        [
+          400,
+          450
+        ],
+        [
+          650,
+          700
+        ]
+      ],
+      "guard_semantics": "No objective in transition intervals. Boundaries may be plotted separately; no performance threshold implied.",
+      "max_layers": 32,
+      "min_thickness_nm": 10,
+      "max_thickness_nm": 500,
+      "max_total_thickness_nm": 5000,
+      "max_cycles": null,
+      "max_evaluations": null,
+      "wall_seconds": 120,
+      "known_k_policy": "Retain every sourced k and its domain. Unknown k rejects unless this case explicitly opts in.",
+      "reference_not_injected": true,
+      "historical_qualification": {
+        "status": "pending",
+        "evidence": null,
+        "scope": "finite dense/offset/extrema model only; no continuous certificate"
+      }
+    },
+    {
+      "id": "mixed_multispectral_v1",
+      "category": "mixed three-window HR/AR",
+      "difficulty": "difficult_exploration",
+      "substrate": {
+        "material_id": "builtin_research_SiO2_film",
+        "optical_set_id": "ri_sio2_rodriguez_de_marcos"
+      },
+      "materials": [
+        {
+          "material_id": "builtin_research_MgF2_film",
+          "optical_set_id": "ri_mgf2_rodriguez_de_marcos"
+        },
+        {
+          "material_id": "builtin_zns_literature_20261004",
+          "optical_set_id": "ri_zns_amotchkina_nk"
+        }
+      ],
+      "assume_lossless": false,
+      "substrate_model": "single-sided semi-infinite optical substrate; sourced film constants are not bulk-specific measurements",
+      "objectives": [
+        {
+          "wavelength_min_nm": 450,
+          "wavelength_max_nm": 500,
+          "wavelength_samples": 11,
+          "angles_deg": [
+            0,
+            30
+          ],
+          "polarization": "s",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": null,
+            "upper_bound": 0.02,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 450,
+          "wavelength_max_nm": 500,
+          "wavelength_samples": 11,
+          "angles_deg": [
+            0,
+            30
+          ],
+          "polarization": "p",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": null,
+            "upper_bound": 0.02,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 650,
+          "wavelength_max_nm": 750,
+          "wavelength_samples": 21,
+          "angles_deg": [
+            0,
+            30
+          ],
+          "polarization": "s",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.99,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 650,
+          "wavelength_max_nm": 750,
+          "wavelength_samples": 21,
+          "angles_deg": [
+            0,
+            30
+          ],
+          "polarization": "p",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.99,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 850,
+          "wavelength_max_nm": 950,
+          "wavelength_samples": 21,
+          "angles_deg": [
+            0,
+            30
+          ],
+          "polarization": "s",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": null,
+            "upper_bound": 0.02,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        },
+        {
+          "wavelength_min_nm": 850,
+          "wavelength_max_nm": 950,
+          "wavelength_samples": 21,
+          "angles_deg": [
+            0,
+            30
+          ],
+          "polarization": "p",
+          "metric": "R",
+          "pointwise": {
+            "enabled": true,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": null,
+            "upper_bound": 0.02,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "mean": {
+            "enabled": false,
+            "mode": "range",
+            "target_value": null,
+            "lower_bound": 0.0,
+            "upper_bound": 1.0,
+            "strict_lower": false,
+            "strict_upper": false
+          },
+          "weight": 1.0,
+          "normalization_scale": 1.0
+        }
+      ],
+      "guard_nm": [
+        [
+          500,
+          650
+        ],
+        [
+          750,
+          850
+        ]
+      ],
+      "guard_semantics": "No objective in transition intervals. Boundaries may be plotted separately; no performance threshold implied.",
+      "max_layers": 32,
+      "min_thickness_nm": 10,
+      "max_thickness_nm": 500,
+      "max_total_thickness_nm": 5000,
+      "max_cycles": null,
+      "max_evaluations": null,
+      "wall_seconds": 120,
+      "known_k_policy": "Retain every sourced k and its domain. Unknown k rejects unless this case explicitly opts in.",
+      "reference_not_injected": true,
+      "historical_qualification": {
+        "status": "pending",
+        "evidence": null,
+        "scope": "finite dense/offset/extrema model only; no continuous certificate"
+      }
+    }
+  ],
+  "blocked_unchanged_v1": [
+    {
+      "id": "ir_mixed_v1",
+      "bands": "3000-5000 AR R<=.1; 8000-12000 HR R>=.95",
+      "status": "blocked_material_domain",
+      "reason": "selected sourced YbF3 n/k covers only 9016.8-12000nm; no clipping, no unknown-k-zero silently"
+    }
+  ],
+  "historical_matrix": "manifest.json",
+  "note": "This v2 pins actual materials and one difficulty per case for runnable default-chain experiments. It adds smaller representatives without replacing or relaxing v1 difficult goals. Reference prescriptions are never supplied as default seeds.",
+  "supersedes": {
+    "file": "representative-suite-v2.json",
+    "sha256": "61d2c533164f425409db83ba748c0215c45b24a498c819f8e90720f6e84fdad3",
+    "reason": "Preflight found user-HR Debenham substrate attached to film material ID. Correct to actual saved-request builtin_research_ZnS_substrate. No optimization had run under v2 suite. All goals, budgets, caps, other material bindings unchanged."
+  },
+  "provenance": {
+    "source_suite": "benchmarks/film_synthesis/20261021/representative-suite-v2.1.json",
+    "source_sha256": "204ca45630e424b6d73e69c895ebf08583a4d04e18ea711ce87d0656dbda74db",
+    "source_commit": "99066e7c5d18664dadc96b3b88ca28b27b799f3e",
+    "attainment": "original pointwise bounds and strict comparisons preserved",
+    "score_equivalence": false,
+    "score_note": "Current angle/band/trapezoidal masses differ from historical equal-sample aggregation. Compare algorithm arms only under the same current scoring contract.",
+    "qualification": "schema-only; no new optical or optimization evidence",
+    "source_lf_sha256": "204ca45630e424b6d73e69c895ebf08583a4d04e18ea711ce87d0656dbda74db",
+    "source_hash_note": "source_sha256 records the registration checkout bytes; source_lf_sha256 permits only Git checkout CRLF/LF differences, never changed JSON content."
+  }
+}

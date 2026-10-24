@@ -1,7 +1,7 @@
 """Run frozen representative suites through the GUI request/durable job chain.
 
 Example (the output directory must not exist and must be below system Temp):
-  .venv/Scripts/python.exe tools/run_film_synthesis_benchmarks.py --suite benchmarks/film_synthesis/20261021/representative-suite-v2.1.json --case ar_v_visible --seed 0 --workers 2 --output TEMP/new-benchmark
+  .venv/Scripts/python.exe tools/run_film_synthesis_benchmarks.py --suite benchmarks/film_synthesis/20261024/representative-suite-current-pointwise.json --case ar_v_visible --seed 0 --workers 2 --output TEMP/new-benchmark
 
 No application service, user project, scheduler store or test fixture is opened.
 Wall budgets come exclusively from the frozen suite. Cancellation is cooperative.
