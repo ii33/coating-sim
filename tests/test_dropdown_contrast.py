@@ -2,17 +2,60 @@
 from pathlib import Path
 import os
 import pytest
-from PySide6.QtCore import QPoint, QPointF, Qt, QUrl
+from PySide6.QtCore import QObject, QPoint, QPointF, Qt, QUrl
 from PySide6.QtGui import QColor, QGuiApplication
 from PySide6.QtQml import QQmlComponent, QQmlEngine
 from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtTest import QTest
+from shiboken6 import getCppPointer, isValid
 from coat_sim.ui.theme_service import ThemeEngineBridge
 from coat_sim.ui.theme_tokens import build_theme_snapshot
 from tests.test_scoped_resource_libraries import qml
 from tests.test_project_module_selector import runtime as runtime, events
 
 pytestmark = [pytest.mark.qt, pytest.mark.contract]
+
+
+def _qml_object_identity(obj: QObject | None) -> dict[str, object] | None:
+    if obj is None:
+        return None
+    result: dict[str, object] = {"valid": isValid(obj), "python_type": type(obj).__name__}
+    if isValid(obj):
+        parent = obj.parent()
+        result.update(cpp=getCppPointer(obj)[0], object_name=obj.objectName(),
+                      qml_type=obj.metaObject().className(),
+                      ownership=QQmlEngine.objectOwnership(obj).name,
+                      parent_cpp=getCppPointer(parent)[0] if parent is not None else None)
+    return result
+
+
+def _picker_lookup_evidence(engine, component, window, picker, field):
+    """Read failed-lookup evidence without waiting, recreating, or accepting a fallback."""
+    evidence = {"engine": _qml_object_identity(engine),
+                "component": _qml_object_identity(component),
+                "source_url": component.url().toString(),
+                "component_status": component.status().name,
+                "qml_errors": component.errorString(),
+                "root": _qml_object_identity(window),
+                "picker": _qml_object_identity(picker),
+                "field": _qml_object_identity(field)}
+    if isValid(window):
+        children = window.findChildren(QObject)
+        evidence["qobject_descendant_count"] = len(children)
+        evidence["root_children"] = [_qml_object_identity(child) for child in window.children()]
+        evidence["named_qobject_descendants"] = [_qml_object_identity(child) for child in children
+                                                 if child.objectName()]
+        visual_items = []
+        pending = [window.contentItem()]
+        while pending:
+            item = pending.pop()
+            if item is None:
+                continue
+            if item.objectName():
+                visual_items.append(_qml_object_identity(item))
+            pending.extend(item.childItems())
+        evidence["named_visual_items"] = visual_items
+    return evidence
 
 
 def contrast(first, second):
@@ -146,7 +189,13 @@ Window {
         QTest.qWait(35)
         picker = window.findChild(QQuickItem, "picker")
         field = window.findChild(QQuickItem, "picker_input")
-        assert picker is not None and field is not None
+        lookup_evidence = ""
+        if picker is None or field is None:
+            try:
+                lookup_evidence = str(_picker_lookup_evidence(engine, component, window, picker, field))
+            except Exception as error:
+                lookup_evidence = f"Failed to capture picker lookup evidence: {type(error).__name__}: {error}"
+        assert picker is not None and field is not None, lookup_evidence
         field.forceActiveFocus()
         QTest.keyClick(window, Qt.Key.Key_Down)
         QTest.qWait(35)
