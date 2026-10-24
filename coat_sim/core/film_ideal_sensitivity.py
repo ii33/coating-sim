@@ -1,4 +1,4 @@
-"""Current ideal sensitivity requests, results, policies and strict schema2 I/O.
+"""Current ideal sensitivity requests, results, policies and strict schema3 I/O.
 
 Numerical evaluation and the single current SLSQP executor live in the private
 core. No historical sensitivity request format is accepted.
@@ -13,8 +13,9 @@ import numpy as np
 
 from .film_optimization import (FilmConditionError, FilmOptimizationObjective,
     FilmOptimizationRequest, FilmThicknessVariable)
+from .film_objective_payload import objective_from_payload
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 REQUEST_KIND = "coat_sim.film_ideal_sensitivity_request"
 RESULT_KIND = "coat_sim.film_ideal_sensitivity_result"
 POLICIES = ("strict_nominal", "bounded_baseline_degradation")
@@ -44,14 +45,13 @@ class FilmIdealSensitivityRequest:
     max_iterations: int | None = None
     max_evaluations: int | None = None
     frozen_material_snapshot: Mapping[str, Any] | None = None
-    strict_lower_bound_objective_indices: tuple[int, ...] = ()
-    strict_upper_bound_objective_indices: tuple[int, ...] = ()
     solver_objective_ftol: float = 1e-10
     schema_version: int = SCHEMA_VERSION
     policy: str = "bounded_baseline_degradation"
     objective_ids: tuple[str, ...] = ()
     budgets: tuple[FilmIdealDegradationBudget, ...] = ()
     kernel_identity: str | None = None
+    guard_directions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -61,6 +61,7 @@ class FilmIdealSensitivityAnalysis:
     nominal_max_normalized_error: float
     nominal_weighted_rms_error: float
     nominal_conditions: tuple[FilmConditionError, ...]
+    full_grid_values: tuple[float, ...]
 
 
 @dataclass(frozen=True)
@@ -221,7 +222,7 @@ def _validate(request):
     if not isinstance(request, FilmIdealSensitivityRequest):
         raise ValueError("request must be a FilmIdealSensitivityRequest")
     if type(request.schema_version) is not int or request.schema_version != SCHEMA_VERSION:
-        raise ValueError("ideal sensitivity requires schema_version 2")
+        raise ValueError("ideal sensitivity requires schema_version 3")
     base = _core._validate_physical(request)
     if request.policy not in POLICIES:
         raise ValueError("unknown ideal sensitivity policy")
@@ -266,11 +267,16 @@ def _validate(request):
         objectives=base.objectives,
         variables=base.variables,
         sensitivity_layer_ids=base.sensitivity_layer_ids,
-        strict_lower_bound_objective_indices=base.strict_lower_bound_objective_indices,
-        strict_upper_bound_objective_indices=base.strict_upper_bound_objective_indices,
         objective_ids=ids,
         budgets=tuple(normalized),
     )
+    directions = _core._sequence(result.guard_directions, "guard_directions")
+    if directions and (len(directions) != len(ids)
+                       or any(d not in ("lower", "upper", "both") for d in directions)):
+        raise ValueError("guard_directions must explicitly identify every objective direction")
+    if result.kernel_identity is not None and not directions:
+        raise ValueError("frozen requests require explicit guard_directions")
+    result = replace(result, guard_directions=directions)
     if result.kernel_identity is not None and result.kernel_identity != _core._kernel_identity():
         raise ValueError("frozen physical kernel identity differs from the current implementation")
     return result
@@ -286,8 +292,6 @@ def ideal_sensitivity_request_from_optimization(
     sensitivity_layer_ids: tuple[str, ...] | None = None,
     max_iterations: int | None = None,
     max_evaluations: int | None = None,
-    strict_lower_bound_objective_indices: tuple[int, ...] = (),
-    strict_upper_bound_objective_indices: tuple[int, ...] = (),
 ) -> FilmIdealSensitivityRequest:
     if not isinstance(base, FilmOptimizationRequest):
         raise ValueError("base must be a FilmOptimizationRequest")
@@ -303,8 +307,6 @@ def ideal_sensitivity_request_from_optimization(
             max_iterations=max_iterations,
             max_evaluations=max_evaluations,
             frozen_material_snapshot=deepcopy(base.frozen_material_snapshot),
-            strict_lower_bound_objective_indices=tuple(strict_lower_bound_objective_indices),
-            strict_upper_bound_objective_indices=tuple(strict_upper_bound_objective_indices),
             policy=policy,
             objective_ids=objective_ids,
             budgets=budgets,
@@ -323,10 +325,12 @@ def estimate_film_ideal_sensitivity_resources(request):
             * len(o.angles_deg)
             * (
                 2
-                if o.mode == "value" or (o.lower_bound is not None and o.upper_bound is not None)
+                if direction == "both"
                 else 1
             )
-            for i, o in zip(request.objective_ids, request.objectives, strict=True)
+            for o, direction in zip(request.objectives,
+                                    request.guard_directions or _core._guard_directions(request),
+                                    strict=True)
         )
         n = base["free_variables"]
         modern = n * (n + 1) // 2 + 3 * m * n + 9 * m + 8 * n * n + 35 * n + 28
@@ -373,6 +377,7 @@ def _freeze_materials(service, request):
             design_snapshot=base.design_snapshot,
             frozen_material_snapshot=base.frozen_material_snapshot,
             kernel_identity=_core._kernel_identity(),
+            guard_directions=request.guard_directions or _core._guard_directions(request),
         )
     )
 
@@ -449,13 +454,7 @@ def film_ideal_sensitivity_request_from_payload(payload):
     ):
         raise ValueError("every budget requires explicit objective_id, delta and unit")
     try:
-        data["objectives"] = tuple(
-            replace(
-                _core._record(FilmOptimizationObjective, row, "objective"),
-                angles_deg=tuple(row.get("angles_deg", (0.0,))),
-            )
-            for row in data["objectives"]
-        )
+        data["objectives"] = tuple(objective_from_payload(row) for row in data["objectives"])
         data["variables"] = tuple(
             _core._record(FilmThicknessVariable, row, "variable") for row in data["variables"]
         )
@@ -745,9 +744,7 @@ def validate_film_ideal_sensitivity_result_payload(
             for a in o.angles_deg
             for w in np.linspace(o.wavelength_min_nm, o.wavelength_max_nm, o.wavelength_samples)
         )
-        baseline_values = np.asarray(
-            [row.actual for row in result.baseline_analysis.nominal_conditions]
-        )
+        baseline_values = np.asarray(result.baseline_analysis.full_grid_values)
         synthetic = _core._Evaluation(
             result.baseline_analysis,
             baseline_values,
@@ -764,7 +761,7 @@ def validate_film_ideal_sensitivity_result_payload(
         if result.best_analysis is not None:
             synthetic_best = _core._Evaluation(
                 result.best_analysis,
-                np.asarray([row.actual for row in result.best_analysis.nominal_conditions]),
+                np.asarray(result.best_analysis.full_grid_values),
                 synthetic.nominal_jacobian,
                 conditions,
             )

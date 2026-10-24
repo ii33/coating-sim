@@ -39,8 +39,8 @@ def canonical_film_parameters(service, supplied):
     from .film_optimization import _validate_optimization_controls
     from coat_sim.scheduler.result_capability import film_optimization_service
     if (not isinstance(raw, dict) or raw.get("kind") != REQUEST_KIND
-            or type(raw.get("schema_version")) is not int or raw["schema_version"] != 1):
-        raise ValueError("only v1 serialized film thickness requests are supported")
+            or type(raw.get("schema_version")) is not int or raw["schema_version"] != 2):
+        raise ValueError("only current v2 serialized film thickness requests are supported")
     json.dumps(raw, allow_nan=False)
     request = deserialize_request(raw)
     _validate_optimization_controls(request)

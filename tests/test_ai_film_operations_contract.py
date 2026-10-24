@@ -33,6 +33,7 @@ from coat_sim.core.api import CoatService
 # Load imported factory bindings before any package-level test patch.
 from coat_sim.scheduler import submission as _scheduler_submission
 from coat_sim.core.compute_tasks import ComputeTaskStore
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import (
     FilmOptimizationObjective,
     FilmOptimizationRequest,
@@ -391,11 +392,7 @@ class RegisteredFilmServiceContractTests(unittest.TestCase):
         self.request = serialize_request(FilmOptimizationRequest(
             design_snapshot=deepcopy(self.design), design_revision=23,
             variables=(FilmThicknessVariable("front", "assistant-layer", 80.0, 120.0),),
-            objectives=(FilmOptimizationObjective(
-                wavelength_min_nm=500.0, wavelength_max_nm=600.0,
-                wavelength_samples=3, angles_deg=(0.0, 45.0),
-                polarization="unpolarized", metric="R", mode="value", target_value=0.1,
-            ),),
+            objectives=(FilmOptimizationObjective(pointwise=FilmObjectiveConstraint(mode="value", target_value=0.1, lower_bound=None, upper_bound=None), wavelength_min_nm=500.0, wavelength_max_nm=600.0, wavelength_samples=3, angles_deg=(0.0, 45.0), polarization="unpolarized", metric="R"),),
             max_iterations=2, max_evaluations=8,
         ))
         self.assistant = AssistantStore(self.root / "artifacts/assistant/state.sqlite3")

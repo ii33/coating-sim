@@ -14,6 +14,7 @@ import pytest
 from coat_sim.core import film_candidate_display as display
 from coat_sim.core.film_batch_de import BatchEvaluation, run_batch_de
 from coat_sim.core.film_design import new_design
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint, FilmObjectiveCoverage
 from coat_sim.core.film_optimization import FilmConditionError, FilmOptimizationObjective, optimize_film_design
 from tests.film_performance_fixtures import fixture
 from tests.test_film_optimization_forward_cache import _request
@@ -29,34 +30,47 @@ def design(thickness=100., *, unit="nm", identifier="row"):
 
 
 def objective(samples=3):
-    return FilmOptimizationObjective(500., 600., samples, mode="range", upper_bound=.2)
+    return FilmOptimizationObjective(500., 600., samples, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=.2))
 
 
 def rows(target, actual=.1):
     return tuple(FilmConditionError(0, float(wave), angle, target.polarization, target.metric,
-        actual, target.target_value, target.lower_bound, target.upper_bound,
-        max(0., actual - (target.upper_bound or 1.)), max(0., actual - (target.upper_bound or 1.)))
+        actual, target.pointwise.target_value, target.pointwise.lower_bound, target.pointwise.upper_bound,
+        max(0., actual - (target.pointwise.upper_bound or 1.)), max(0., actual - (target.pointwise.upper_bound or 1.)),
+        wavelength_min_nm=target.wavelength_min_nm, wavelength_max_nm=target.wavelength_max_nm,
+        strict_lower=target.pointwise.strict_lower, strict_upper=target.pointwise.strict_upper)
         for angle in target.angles_deg
         for wave in np.linspace(target.wavelength_min_nm, target.wavelength_max_nm, target.wavelength_samples))
 
 
+def coverage(target, actual=.1):
+    waves = tuple(map(float, np.linspace(target.wavelength_min_nm,
+        target.wavelength_max_nm, target.wavelength_samples)))
+    return tuple(FilmObjectiveCoverage(0, angle, waves, (actual,) * len(waves))
+        for angle in target.angles_deg)
+
+
 def harness(target=None, *, enabled=True, strict_lower=(), strict_upper=()):
     target = target or objective()
+    target = replace(target, pointwise=replace(target.pointwise,
+        strict_lower=0 in strict_lower, strict_upper=0 in strict_upper))
     clock = [0.]
     control = {"enabled": enabled, "objective_index": 0, "angle_deg": 0., "metric": target.metric}
     packets: list[dict[str, Any]] = []
     observer = display.CandidateDisplayObserver(context_id="frozen-test-context", objectives=(target,),
-        control_provider=lambda: control, publish_callback=packets.append, clock=lambda: clock[0],
-        strict_lower_bound_objective_indices=strict_lower,
-        strict_upper_bound_objective_indices=strict_upper)
+        control_provider=lambda: control, publish_callback=packets.append, clock=lambda: clock[0])
     return observer, packets, clock, control
 
 
 def record(observer, thickness=100., *, target=None, actual=.1, best=False, **kwargs):
     target = target or observer.objectives[0]
-    observer.record(design(thickness), weighted_rms_error=max(0., actual - (target.upper_bound or 1.)),
-        max_normalized_error=max(0., actual - (target.upper_bound or 1.)),
-        condition_rows=rows(target, actual), physical_thickness_nm=[thickness], is_best=best, **kwargs)
+    target = replace(target, pointwise=replace(target.pointwise,
+        strict_lower=observer.objectives[0].pointwise.strict_lower,
+        strict_upper=observer.objectives[0].pointwise.strict_upper))
+    observer.record(design(thickness), weighted_rms_error=max(0., actual - (target.pointwise.upper_bound or 1.)),
+        max_normalized_error=max(0., actual - (target.pointwise.upper_bound or 1.)),
+        condition_rows=rows(target, actual), raw_coverage=coverage(target, actual),
+        physical_thickness_nm=[thickness], is_best=best, **kwargs)
 
 
 def test_display_score_has_nominal_tiers_and_strict_complexity_monotonicity():
@@ -101,7 +115,9 @@ def test_all_physical_rows_count_including_zero_and_back_not_substrate():
     observer, packets, _clock, _control = harness()
     stack = design(0.)
     stack["back_layers"] = [dict(stack["front_layers"][0], id="back", thickness={"value": .2, "unit": "um"})]
-    observer.record(stack, weighted_rms_error=0., max_normalized_error=0., condition_rows=rows(objective()),
+    target = observer.objectives[0]
+    observer.record(stack, weighted_rms_error=0., max_normalized_error=0., condition_rows=rows(target),
+        raw_coverage=coverage(target),
         physical_thickness_nm={"back": 200., "row": 0.}, is_best=True)
     summary = packets[-1]["current"]
     assert summary["layer_count"] == 2 and summary["total_thickness_nm"] == 200.
@@ -151,15 +167,15 @@ def test_current_view_switch_reports_missing_metric_without_new_computation():
 
 
 def test_strict_nominal_e_zero_is_not_solver_feasible_and_value_is_exact():
-    target = replace(objective(), lower_bound=.1, upper_bound=None)
+    target = replace(objective(), pointwise=replace(objective().pointwise, lower_bound=.1, upper_bound=None))
     observer, packets, _clock, _control = harness(target, strict_lower=(0,))
     record(observer, target=target, actual=.1)
     assert not packets[-1]["current"]["nominal_pass"]
-    target = replace(objective(), upper_bound=.1)
+    target = replace(objective(), pointwise=replace(objective().pointwise, upper_bound=.1))
     observer, packets, _clock, _control = harness(target, strict_upper=(0,))
     record(observer, target=target, actual=.1)
     assert not packets[-1]["current"]["nominal_pass"]
-    value = replace(objective(), mode="value", upper_bound=None, target_value=.1)
+    value = replace(objective(), pointwise=replace(objective().pointwise, mode="value", upper_bound=None, target_value=.1))
     observer, packets, _clock, _control = harness(value)
     record(observer, target=value, actual=np.nextafter(.1, 1.))
     assert not packets[-1]["current"]["nominal_pass"]
@@ -175,12 +191,13 @@ def test_same_length_wrong_grid_and_other_scope_never_enter_top_ten():
 
 def test_metadata_only_requires_actual_complete_count_and_explicit_nominal():
     observer, packets, _clock, _control = harness()
-    arguments = dict(weighted_rms_error=0., max_normalized_error=0., condition_rows=None,
+    arguments = dict(weighted_rms_error=.1, max_normalized_error=.1, condition_rows=None,
+                     raw_coverage=coverage(observer.objectives[0], .3),
                      physical_thickness_nm=[100.], nominal_pass=False)
     observer.record(design(), **arguments)
     assert not observer._top
     observer.record(design(), **arguments, condition_count=3)
-    assert packets[-1]["current"]["availability"] == "waiting"
+    assert packets[-1]["current"]["availability"] == "available"
     assert packets[-1]["current"]["nominal_pass"] is False
 
 
@@ -237,10 +254,11 @@ def test_publish_failure_consumes_time_slot_without_stopping_candidate_tracking(
     assert observer.last_error.startswith("OSError")
 
 
-def test_ephemeral_existing_spectrum_provider_is_gated_and_never_retained():
+def test_raw_coverage_preview_needs_no_ephemeral_spectrum_provider():
     observer, packets, clock, control = harness(enabled=False)
     observer.record(design(), weighted_rms_error=0., max_normalized_error=0., condition_rows=None,
-        nominal_pass=True, condition_count=3, physical_thickness_nm=[100.], publish=False)
+        raw_coverage=coverage(observer.objectives[0]), nominal_pass=True, condition_count=3,
+        physical_thickness_nm=[100.], publish=False)
     calls = []
     def source(_selection, _limit):
         calls.append(1)
@@ -251,14 +269,14 @@ def test_ephemeral_existing_spectrum_provider_is_gated_and_never_retained():
     control["enabled"] = True
     clock[0] = 1.
     observer.refresh(spectrum_provider=source)
-    assert len(calls) == 1 and packets[-1]["current"]["availability"] == "available"
+    assert not calls and packets[-1]["current"]["availability"] == "available"
     clock[0] = 1.5
     observer.refresh(spectrum_provider=source)
-    assert len(calls) == 1
+    assert not calls
     assert not any(value is source for value in vars(observer).values())
     clock[0] = 2.
     observer.refresh()
-    assert packets[-1]["current"]["availability"] == "waiting"
+    assert packets[-1]["current"]["availability"] == "available"
 
 
 def test_batch_live_current_uses_last_atomic_input_not_chunk_best(monkeypatch):
@@ -347,7 +365,7 @@ def test_batch_metadata_exact_nominal_reduce_matches_full_condition_checker(monk
     from coat_sim.core.film_nominal_acceptance import nominal_condition_pass
     service, stack, frozen = fixture(layers=2)
     request = _request(stack, frozen, budget=7)
-    target = replace(request.objectives[0], target_value=1.)
+    target = replace(request.objectives[0], pointwise=replace(request.objectives[0].pointwise, target_value=1.))
     request = replace(request, objectives=(target,), solver="differential_evolution",
                       execution_mode="deferred_batch", batch_size=3)
     def supplied(_forward, points, **_kwargs):
@@ -359,7 +377,7 @@ def test_batch_metadata_exact_nominal_reduce_matches_full_condition_checker(monk
     optimize_film_design(service, request, candidate_observer=observer)
     current = packets[-1]["current"]
     assert current["source"] == "film_optimization_batch"
-    assert current["nominal_pass"] is nominal_condition_pass(target, actual)
+    assert current["nominal_pass"] is nominal_condition_pass(target.pointwise, actual)
     assert current["condition_count"] == target.wavelength_samples
 
 

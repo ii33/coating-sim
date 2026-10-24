@@ -23,7 +23,7 @@ from coat_sim.core.film_synthesis_io import film_synthesis_request_to_payload, f
 from coat_sim.core.project_film_session import ProjectFilmWorkspace
 from coat_sim.scheduler.result_capability import is_synthesis_result, job_has_viewable_result
 from coat_sim.ui.compute_queue import (
-    _LegacySynthesisQueueResult, _annotate_result_availability, _read_queue_result,
+    _SynthesisQueueResult, _annotate_result_availability, _read_queue_result,
 )
 from coat_sim.ui.film_synthesis_quick_adapter import synthesis_result_view
 from coat_sim.ui.project_compute_views import _wire_project_queue_results
@@ -48,17 +48,10 @@ def _nominal_negative():
     return request, synthesize_film_design(None, request)
 
 
-def _legacy_row(root=None):
+def _current_row(root=None):
     _request, result = _nominal_negative()
-    payload = film_synthesis_result_to_payload("legacy-surface", result)
-    payload.pop("acceptance_semantics")
-    payload["result"].pop("solver_acceptable")
-    payload["result"]["frozen_request"].pop("strict_upper_bound_objective_indices")
-    payload["result"].update(state="completed", targets_met=True,
-                             termination_reason="validated_targets_met")
-    payload["best_candidate_audit"]["targets_met"] = True
-    payload["review"]["targets_met"] = True
-    row = {"job_id": "legacy-job", "kind": "film_synthesis", "state": "succeeded",
+    payload = film_synthesis_result_to_payload("current-surface", result)
+    row = {"job_id": "current-job", "kind": "film_synthesis", "state": "succeeded",
            "result": payload,
            "origin": {"project_id": "project-a", "project_root": "/project-a"}}
     if root is not None:
@@ -66,10 +59,22 @@ def _legacy_row(root=None):
     return row
 
 
+def _legacy_row(root=None):
+    row = _current_row(root)
+    payload = row['result']
+    payload['schema_version'] = 1
+    payload.pop('acceptance_semantics')
+    payload['result'].pop('solver_acceptable')
+    payload['result'].update(state='completed', targets_met=True, termination_reason='validated_targets_met')
+    payload['best_candidate_audit']['targets_met'] = True
+    payload['review']['targets_met'] = True
+    return row
+
+
 def _bind_row(root, row):
     from coat_sim.core.film_synthesis_jobs import build_job_payload
     from coat_sim.scheduler.jobs import JobSpec, canonical
-    request_payload = {"schema_version": 1, "kind": "coat_sim.film_synthesis_request",
+    request_payload = {"schema_version": 2, "kind": "coat_sim.film_synthesis_request",
         "request_id": row["result"]["request_id"],
         "request": row["result"]["result"]["frozen_request"], "physical_structures": []}
     spec = JobSpec("film_synthesis", {"payload": build_job_payload({
@@ -144,10 +149,10 @@ def test_cli_actual_point04_vs_point0395_separates_acceptance_and_keeps_request(
     assert completed.returncode == 0, completed.stdout + completed.stderr
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert is_synthesis_result(payload)
-    assert payload["acceptance_semantics"] == "nominal_bounds_v1"
+    assert payload["acceptance_semantics"] == "band_criteria_v2"
     assert payload["result"]["targets_met"] is False
     assert payload["result"]["solver_acceptable"] is True
-    assert payload["result"]["frozen_request"]["objectives"][0]["upper_bound"] == .0395
+    assert payload["result"]["frozen_request"]["objectives"][0]["pointwise"]["upper_bound"] == .0395
     assert payload["result"]["frozen_request"]["acceptable_normalized_error"] == .001
     assert payload["result"]["training_score"]["errors"][0]["actual"] == pytest.approx(.04)
     acceptance = [json.loads(line) for line in completed.stderr.splitlines()
@@ -165,23 +170,23 @@ def test_real_qml_strict_upper_checkbox_roundtrips_without_changing_bound_or_ord
         try:
             scene.click(scene.item("filmOptimizationTargetsTab"))
             checkbox = scene.item("filmSynthesisStrictUpperBoundCheck")
-            original_bound = controller._build_synthesis_request().objectives[0].upper_bound
+            original_bound = controller._build_synthesis_request().objectives[0].pointwise.upper_bound
             before = session.snapshot().design
             assert not checkbox.property("checked")
             scene.click(checkbox)
             assert checkbox.property("checked")
-            assert controller._build_synthesis_request().strict_upper_bound_objective_indices == (0,)
-            assert controller._build_synthesis_request().objectives[0].upper_bound == original_bound
+            assert controller._build_synthesis_request().objectives[0].pointwise.strict_upper is True
+            assert controller._build_synthesis_request().objectives[0].pointwise.upper_bound == original_bound
             saved = json.loads(json.dumps(controller.exportOptimizationConfiguration()))
-            assert saved["objectives"][0]["synthesis_strict_upper_bound"] is True
+            assert saved["objectives"][0]["pointwise"]["strict_upper"] is True
             assert controller.setSearchMode("fixed_topology")
             assert not checkbox.isVisible()
             ordinary = controller._build_request()
             assert not hasattr(ordinary, "strict_upper_bound_objective_indices")
             assert not controller.setSynthesisStrictUpperBound(False)
             assert controller.loadOptimizationConfiguration(saved)
-            assert controller._build_synthesis_request().strict_upper_bound_objective_indices == (0,)
-            assert controller._build_synthesis_request().objectives[0].upper_bound == original_bound
+            assert controller._build_synthesis_request().objectives[0].pointwise.strict_upper is True
+            assert controller._build_synthesis_request().objectives[0].pointwise.upper_bound == original_bound
             assert session.snapshot().design == before
         finally:
             scene.close()
@@ -194,7 +199,7 @@ def test_real_qml_physical_candidate_never_turns_tolerance_into_green_nominal_ba
         assert controller.setSearchMode("synthesis")
         assert controller.setObjectiveField("wavelength_min_nm", "550")
         assert controller.setObjectiveField("wavelength_max_nm", "550")
-        assert controller.setObjectiveField("upper_bound_percent", str(upper_percent))
+        assert controller.setObjectiveField("pointwise.upper_bound_percent", str(upper_percent))
         assert controller.setStructureMaterialSelected("acceptance-film", "film-set", True)
         assert controller.setSynthesisOption("max_evaluations", 12 if upper_percent == 0. else 3)
         assert controller.setSynthesisOption("max_cycles", 1)
@@ -228,43 +233,43 @@ def test_real_qml_physical_candidate_never_turns_tolerance_into_green_nominal_ba
             assert "求解容差可接受：通过" in summary
             assert "不添加制造余量" in summary
             per_objective = controller.synthesisObjectiveAudit[0]["display"]
-            expected_bound = f"= {upper_percent / 100.}" if upper_percent == 0. else f"≤ {upper_percent / 100.}"
+            expected_bound = f"= {upper_percent:g}%" if upper_percent == 0. else f"≤ {upper_percent:g}%"
             assert expected_bound in per_objective
-            assert "原门限名义验收：未通过" in per_objective
+            assert "原约束验收：未通过" in per_objective
             assert not controller.canApply
             assert session.snapshot().design == before
         finally:
             scene.close()
 
 
-def test_legacy_serialized_history_replays_off_ui_thread_and_keeps_original_file(app, tmp_path, monkeypatch):
+def test_current_serialized_history_replays_off_ui_thread_and_keeps_original_file(app, tmp_path, monkeypatch):
     import coat_sim.core.film_synthesis_jobs as jobs
-    row = _legacy_row(tmp_path)
+    row = _current_row(tmp_path)
     path = tmp_path / "old-job.json"
     path.write_text(json.dumps(row), encoding="utf-8")
     original = path.read_bytes()
     store = _FileStore(path)
-    assert not is_synthesis_result(row["result"])
+    assert is_synthesis_result(row["result"])
     assert job_has_viewable_result(row)
     listed = deepcopy(row)
     _annotate_result_availability(tmp_path, [listed])
     assert listed["resultAvailable"] is True
     thread_ids = []
-    replay = jobs.normalize_legacy_synthesis_result
+    replay = jobs.replay_synthesis_result
 
     def recorded_replay(value):
         thread_ids.append(threading.get_ident())
         return replay(value)
 
-    monkeypatch.setattr(jobs, "normalize_legacy_synthesis_result", recorded_replay)
+    monkeypatch.setattr(jobs, "replay_synthesis_result", recorded_replay)
     with ThreadPoolExecutor(max_workers=1) as pool:
         loaded, asset_path = pool.submit(_read_queue_result, None, store, row["job_id"]).result(timeout=15)
-    assert isinstance(loaded, _LegacySynthesisQueueResult) and asset_path == ""
+    assert isinstance(loaded, _SynthesisQueueResult) and asset_path == ""
     assert thread_ids and thread_ids[0] != threading.get_ident()
     assert loaded.source_job == json.loads(original)
     assert loaded.payload["result"]["targets_met"] is False
     assert loaded.payload["result"]["solver_acceptable"] is True
-    assert loaded.payload["legacy_compatibility"]["read_only"] is True
+    assert loaded.payload["physical_replay_verification"]["read_only"] is True
     queue, inspected = _route_legacy(store, loaded)
     assert len(inspected) == 1 and "read-only" in queue.status
     assert inspected[0][1]["best_candidate_audit"]["targets_met"] is False
@@ -272,14 +277,14 @@ def test_legacy_serialized_history_replays_off_ui_thread_and_keeps_original_file
 
 
 @pytest.mark.parametrize("tamper", ["persisted_source", "job", "payload", "replaced_with_normalized"])
-def test_legacy_history_handoff_rejects_changed_source_cross_job_or_cache(tamper, app, tmp_path):
-    row = _legacy_row(tmp_path)
+def test_current_history_handoff_rejects_changed_source_cross_job_or_cache(tamper, app, tmp_path):
+    row = _current_row(tmp_path)
     path = tmp_path / "old-job.json"
     path.write_text(json.dumps(row), encoding="utf-8")
     store = _FileStore(path)
     with ThreadPoolExecutor(max_workers=1) as pool:
         loaded, _ = pool.submit(_read_queue_result, None, store, row["job_id"]).result(timeout=15)
-    assert isinstance(loaded, _LegacySynthesisQueueResult)
+    assert isinstance(loaded, _SynthesisQueueResult)
     emitted_job, emitted_payload = None, None
     if tamper == "persisted_source":
         row["input_digest"] = "changed-frozen-input"
@@ -303,13 +308,14 @@ def test_legacy_history_handoff_rejects_changed_source_cross_job_or_cache(tamper
 
 @pytest.mark.parametrize("bad", [0, 1, "false", None])
 def test_strict_upper_parser_never_silently_drops_invalid_flags(bad):
-    from coat_sim.ui.film_synthesis_quick_adapter import synthesis_strict_upper_bound_indices
-    with pytest.raises(ValueError, match="explicit boolean"):
-        synthesis_strict_upper_bound_indices([{"mode": "range", "upper_bound_percent": 3.,
-                                               "synthesis_strict_upper_bound": bad}])
+    from coat_sim.ui.film_optimization_quick_controller import _constraint_editor_default, _validate_editor_criteria
+    pointwise = _constraint_editor_default(True, 3.)
+    pointwise['strict_upper'] = bad
+    with pytest.raises(ValueError, match='strict_upper'):
+        _validate_editor_criteria(dict(pointwise=pointwise, mean=_constraint_editor_default(False), weight=1.))
 
 
-def test_ordinary_v1_request_still_rejects_synthesis_only_field():
+def test_ordinary_v2_request_still_rejects_removed_synthesis_field():
     from coat_sim.core.film_optimization import FilmOptimizationRequest
     from coat_sim.core.film_optimization_job import deserialize_request, serialize_request
     request, _result = _nominal_negative()
@@ -323,12 +329,14 @@ def test_ordinary_v1_request_still_rejects_synthesis_only_field():
 def test_mcp_schema_describes_strict_operator_and_separate_solver_tolerance():
     from coat_sim.core.mcp_contracts import FILM_SYNTHESIS_PLAN_INPUT_SCHEMA
     properties = FILM_SYNTHESIS_PLAN_INPUT_SCHEMA["properties"]["payload"]["properties"]["request"]["properties"]
-    assert properties["strict_upper_bound_objective_indices"]["uniqueItems"] is True
-    assert "strict <" in properties["strict_upper_bound_objective_indices"]["description"]
+    assert 'strict_upper_bound_objective_indices' not in properties
+    pointwise = properties['objectives']['items']['properties']['pointwise']['properties']
+    assert pointwise['strict_upper']['type'] == 'boolean'
+    assert 'strict <' in pointwise['strict_upper']['description']
     assert "does not relax nominal" in properties["acceptable_normalized_error"]["description"]
 
 
-def test_real_project_inspector_retains_legacy_replay_read_only(app, tmp_path, monkeypatch):
+def test_real_project_inspector_retains_current_replay_read_only(app, tmp_path, monkeypatch):
     from PySide6.QtCore import QEvent
     from coat_sim.core.project_film_session import ProjectFilmWorkspace
     from coat_sim.core.project_store import MANIFEST_FILENAME, ProjectStore
@@ -347,7 +355,7 @@ def test_real_project_inspector_retains_legacy_replay_read_only(app, tmp_path, m
     controller = FilmOptimizationQuickController(source)
     scene = None
     try:
-        row = _legacy_row(tmp_path)
+        row = _current_row(tmp_path)
         row["origin"] = {"project_id": workspace.binding.project_id,
                          "project_root": str(workspace.binding.root)}
         path = tmp_path / "legacy-project-job.json"
@@ -364,7 +372,7 @@ def test_real_project_inspector_retains_legacy_replay_read_only(app, tmp_path, m
         assert controller.hasCandidate and controller.canSave
         assert not controller.targetsMet and not controller.canApply
         assert controller._result_application_eligible is False
-        assert "Read-only legacy history" in str(controller.property("synthesisAuditSummary"))
+        assert "Read-only history" in str(controller.property("synthesisAuditSummary"))
         assert "只读历史合成候选" in str(controller.property("progressText"))
         scene = _Scene(controller, "FilmOptimizationWindow.qml")
         assert scene.window.property("statusSeverity") == "warning"
@@ -373,7 +381,7 @@ def test_real_project_inspector_retains_legacy_replay_read_only(app, tmp_path, m
         assert not controller.confirmApplyCandidate()
         assert workspace.editor.snapshot().design == before.design
         assert workspace.editor.snapshot().design_revision == before.design_revision
-        assert json.loads(path.read_text(encoding="utf-8"))["result"]["result"]["targets_met"] is True
+        assert json.loads(path.read_text(encoding="utf-8"))["result"]["result"]["targets_met"] is False
     finally:
         controller.shutdown(1000)
         if scene is not None:
@@ -398,7 +406,7 @@ def test_actual_queue_qml_execution_success_is_not_nominal_success(app, tmp_path
 
     if case == "legacy":
         row = _legacy_row()
-        request_payload = {"schema_version": 1, "kind": "coat_sim.film_synthesis_request",
+        request_payload = {"schema_version": 2, "kind": "coat_sim.film_synthesis_request",
             "request_id": row["result"]["request_id"],
             "request": row["result"]["result"]["frozen_request"], "physical_structures": []}
     else:
@@ -425,15 +433,15 @@ def test_actual_queue_qml_execution_success_is_not_nominal_success(app, tmp_path
     row.update(summary="Nominal queue optics", stateLabel="执行完成" if row["state"] == "succeeded" else row["state"],
                durationLabel="未知", progress={}, finished_at=datetime.now(timezone.utc).isoformat())
     _annotate_result_availability(tmp_path, [row])
-    assert row["resultAvailable"] is (case != "wrong_binding")
+    assert row["resultAvailable"] is (case not in {"wrong_binding", "legacy"})
     if case == "nominal_fail":
         assert row["result"]["result"]["state"] == "not_found" and row["state"] == "succeeded"
         assert row["synthesisNominalStatus"] == "failed"
         assert "原门限名义验收：未通过" in row["synthesisAcceptanceSummary"]
         assert "求解容差可接受：通过" in row["synthesisAcceptanceSummary"]
     elif case == "legacy":
-        assert row["synthesisNominalStatus"] == "failed"
-        assert "旧达标标志未采用" in row["synthesisAcceptanceSummary"]
+        assert row["synthesisNominalStatus"] == "unknown"
+        assert row["resultAvailable"] is False
     elif case == "wrong_binding":
         assert row["synthesisNominalStatus"] == "unknown"
         assert "绑定未核实" in row["synthesisAcceptanceSummary"]
@@ -473,3 +481,25 @@ def test_actual_queue_qml_execution_success_is_not_nominal_success(app, tmp_path
         shiboken6.delete(view)
         shiboken6.delete(engine)
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def test_previous_schema_history_is_rejected_before_replay_and_preserves_file(app, tmp_path, monkeypatch):
+    import coat_sim.core.film_synthesis_jobs as jobs
+    row = _legacy_row(tmp_path)
+    path = tmp_path / 'unsupported-job.json'
+    path.write_text(json.dumps(row), encoding='utf-8')
+    original = path.read_bytes()
+    called = []
+    def forbidden(*_args):
+        called.append(True)
+        raise AssertionError('unsupported history must not enter physical replay')
+    # The public replay entry validates the schema; numerical replay must never start.
+    monkeypatch.setattr(jobs, '_replay_synthesis_result', forbidden)
+    assert not is_synthesis_result(row['result'])
+    assert not job_has_viewable_result(row)
+    _annotate_result_availability(tmp_path, [row])
+    assert row['resultAvailable'] is False and row['synthesisNominalStatus'] == 'unknown'
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with pytest.raises(ValueError):
+            pool.submit(_read_queue_result, None, _FileStore(path), row['job_id']).result(timeout=15)
+    assert called == [] and path.read_bytes() == original

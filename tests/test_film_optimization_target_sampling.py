@@ -27,6 +27,7 @@ from coat_sim.ui.film_optimization_quick_controller import (
     FilmOptimizationQuickController,
     FilmOptimizationSourceSnapshot,
 )
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import (
     FilmOptimizationObjective, FilmOptimizationRequest, optimize_film_design,
 )
@@ -162,9 +163,14 @@ def test_new_targets_use_one_nm_step_and_saved_point_count_stays_intact(tmp_path
         assert second["id"] != first["id"]
 
         saved = controller.exportOptimizationConfiguration()
-        saved["objectives"][0]["wavelength_samples"] = 31
-        saved["objectives"][0].pop("sampling_basis")
-        saved["objectives"][0].pop("wavelength_step_nm")
+        legacy = deepcopy(saved)
+        legacy["version"] = 1
+        legacy["objectives"][0]["wavelength_samples"] = 31
+        legacy["objectives"][0].pop("sampling_basis")
+        legacy["objectives"][0].pop("wavelength_step_nm")
+        assert not controller.loadOptimizationConfiguration(legacy)
+        saved["objectives"][0].update(wavelength_samples=31, sampling_basis="samples")
+        assert saved["version"] == 2
         assert controller.loadOptimizationConfiguration(saved)
         restored = controller._objectives[0]
         assert restored["sampling_basis"] == "samples"
@@ -212,8 +218,9 @@ def test_range_controller_angles_participate_in_core_worst_condition_score(
             wavelength_samples=2, sampling_basis="samples",
             angle_sampling_mode="range", angle_min_deg=0.0,
             angle_max_deg=30.0, angle_step_deg=30.0,
-            mode="range", lower_bound_percent=40.0, upper_bound_percent=40.0,
         )
+        assert controller.setObjectiveField("pointwise.upper_bound_percent", 40.0)
+        assert controller.setObjectiveField("pointwise.lower_bound_percent", 40.0)
         controller._max_evaluations = 1
         request = controller._build_request()
         assert request.objectives[0].angles_deg == (0.0, 30.0)
@@ -378,6 +385,7 @@ def test_angle_range_zero_width_and_old_nonuniform_points_round_trip(tmp_path):
 
         old = controller.exportOptimizationConfiguration()
         legacy = deepcopy(old)
+        legacy["version"] = 1
         objective = legacy["objectives"][0]
         objective.pop("angle_sampling_mode")
         objective.pop("angle_min_deg")
@@ -386,7 +394,11 @@ def test_angle_range_zero_width_and_old_nonuniform_points_round_trip(tmp_path):
         objective.pop("actual_angle_step_deg")
         objective.pop("angle_sample_count")
         objective["angles_text"] = "0, 13.5, 47"
-        assert controller.loadOptimizationConfiguration(legacy)
+        assert not controller.loadOptimizationConfiguration(legacy)
+        current = deepcopy(old)
+        current["objectives"][0].update(angle_sampling_mode="points", angles_text="0, 13.5, 47")
+        assert current["version"] == 2
+        assert controller.loadOptimizationConfiguration(current)
         assert controller._objectives[0]["angle_sampling_mode"] == "points"
         assert controller.exportOptimizationConfiguration()["objectives"][0]["angles_text"] == "0, 13.5, 47"
         with pytest.raises(ValueError, match="确认"):
@@ -408,11 +420,7 @@ def test_queue_inspection_restores_explicit_multi_angle_plot_choices(tmp_path, m
     ))
     request = FilmOptimizationRequest(
         design_snapshot=design, design_revision=1, variables=(),
-        objectives=(FilmOptimizationObjective(
-            wavelength_min_nm=500.0, wavelength_max_nm=600.0,
-            wavelength_samples=3, angles_deg=(0.0, 13.5, 47.0),
-            mode="value", target_value=.35,
-        ),),
+        objectives=(FilmOptimizationObjective(pointwise=FilmObjectiveConstraint(mode="value", target_value=.35, lower_bound=None, upper_bound=None), wavelength_min_nm=500.0, wavelength_max_nm=600.0, wavelength_samples=3, angles_deg=(0.0, 13.5, 47.0)),),
     )
     monkeypatch.setattr(module, "_film_result_from_queue", lambda _payload: object())
     monkeypatch.setattr(module, "deserialize_request", lambda _request: request)
@@ -424,11 +432,11 @@ def test_queue_inspection_restores_explicit_multi_angle_plot_choices(tmp_path, m
         assert [row["value"] for row in _rows_property(controller, "plotAngles")] == [0.0, 13.5, 47.0]
         assert controller._inspection_objectives is not None
         historical = controller._inspection_objectives[0]
-        assert historical["mode"] == "range"
-        assert historical["lower_bound_percent"] == historical["upper_bound_percent"] == 35
+        assert historical["pointwise"]["mode"] == "value"
+        assert historical["pointwise"]["lower_bound_percent"] == historical["pointwise"]["upper_bound_percent"] == 35
         # Historical inspection must not replace the editable source targets.
-        assert controller.property("selectedObjective")["lower_bound_percent"] == 0
-        assert controller.property("selectedObjective")["upper_bound_percent"] == 5
+        assert controller.property("selectedObjective")["pointwise"]["lower_bound_percent"] == 0
+        assert controller.property("selectedObjective")["pointwise"]["upper_bound_percent"] == 5
     finally:
         _dispose(controller)
 
@@ -981,9 +989,9 @@ def test_invalid_sampling_edit_preserves_last_legal_row_and_blocks_start(
         assert not controller.setObjectiveField(field, value)
         assert controller._objectives[0] == original
         if field == "wavelength_max_nm":
-            assert "波长下限" in str(controller.property("objectiveBoundsError"))
+            assert "波长范围" in str(controller.property("objectiveBoundsError"))
             assert controller.property("selectedObjective")[field] == str(value)
-            with pytest.raises(ValueError, match="波长下限"):
+            with pytest.raises(ValueError, match="波长范围"):
                 controller._build_request()
         else:
             assert controller._pending_edit_error
@@ -1050,8 +1058,8 @@ def test_duplicate_objective_has_independent_identity_and_editable_copy(tmp_path
         for field, value in (("angles_text", "0, 30, 45"),
                              ("wavelength_step_nm", 7),
                              ("polarization", "p"), ("weight", 2.75),
-                             ("lower_bound_percent", 1.5),
-                             ("upper_bound_percent", 9.0)):
+                             ("pointwise.lower_bound_percent", 1.5),
+                             ("pointwise.upper_bound_percent", 9.0)):
             assert controller.setObjectiveField(field, value)
         original = deepcopy(controller._objectives[0])
         assert controller.duplicateSelectedObjective()
@@ -1059,8 +1067,7 @@ def test_duplicate_objective_has_independent_identity_and_editable_copy(tmp_path
         assert copied["id"] != original["id"]
         assert copied["name"] == original["name"] + " 副本"
         for field in ("angles_text", "sampling_basis", "wavelength_step_nm",
-                      "wavelength_samples", "polarization", "weight",
-                      "lower_bound_percent", "upper_bound_percent"):
+                      "wavelength_samples", "polarization", "weight", "pointwise", "mean"):
             assert copied[field] == original[field]
         assert controller.setObjectiveField("angles_text", "12")
         assert controller.setObjectiveField("weight", 8)

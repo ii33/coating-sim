@@ -301,7 +301,7 @@ def main():
         pass
 
     from coat_sim.core.film_design import new_design
-    from coat_sim.core.film_optimization import FilmOptimizationObjective
+    from coat_sim.core.film_optimization import FilmObjectiveConstraint, FilmOptimizationObjective
     from coat_sim.core.film_physical_structures import (
         FilmBraggStackSection, FilmStructureMaterialBinding, FilmStructureSpec,
         FilmOpticalLayerSpec, FilmCoupledCavitySection, generate_physical_structure,
@@ -311,11 +311,11 @@ def main():
 
     cases = []
     service, env, syn_rows = synthetic_service()
-    single = make_request(env, (FilmOptimizationObjective(550, 550, 1, metric="R", mode="range", upper_bound=.001),),
+    single = make_request(env, (FilmOptimizationObjective(550, 550, 1, metric="R", pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=.001)),),
                           ("match",), cycles=4, evaluations=300, max_layers=4, stagnation=3)
-    n0 = make_request(env, (FilmOptimizationObjective(550, 550, 1, metric="R", mode="range", upper_bound=.05),),
+    n0 = make_request(env, (FilmOptimizationObjective(550, 550, 1, metric="R", pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=.05)),),
                       ("match",), cycles=4, evaluations=100, max_layers=4, stagnation=3)
-    refl_req = make_request(env, (FilmOptimizationObjective(550, 550, 1, metric="R", mode="range", lower_bound=.9),),
+    refl_req = make_request(env, (FilmOptimizationObjective(550, 550, 1, metric="R", pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=.9, upper_bound=None)),),
                             ("low", "high"), cycles=2, evaluations=100, max_layers=32, stagnation=3)
     refl_frozen = __import__("coat_sim.core.film_auto_synthesis", fromlist=["freeze_film_synthesis_request"]).freeze_film_synthesis_request(service, refl_req)
     spec = FilmStructureSpec("multistack", (FilmStructureMaterialBinding("H", "high", "nk"),
@@ -366,14 +366,14 @@ def main():
             validation_wavelengths_nm=(4400., 4500., 4709., 4712., 4950., 5000., 5050., 5326., 5329., 5600., 5700.))
         control_seed = generate_physical_structure(control_env, control_spec,
             __import__("coat_sim.core.film_auto_synthesis", fromlist=["freeze_film_synthesis_request"]).freeze_film_synthesis_request(
-                control_service, make_request(control_env, (FilmOptimizationObjective(5000., 5000., 1, metric="T", mode="range", lower_bound=0.),),
+                control_service, make_request(control_env, (FilmOptimizationObjective(5000., 5000., 1, metric="T", pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=0., upper_bound=None)),),
                     ("low", "high"), cycles=1, evaluations=20, max_layers=32)).frozen_material_snapshot)
         control_objectives = (
-            FilmOptimizationObjective(4709., 4712., 4, metric="T", mode="range", lower_bound=.99),
-            FilmOptimizationObjective(5326., 5329., 4, metric="T", mode="range", lower_bound=.99),
-            FilmOptimizationObjective(4950., 5050., 11, metric="T", mode="range", upper_bound=.06),
-            FilmOptimizationObjective(4400., 4500., 11, metric="T", mode="range", upper_bound=.06),
-            FilmOptimizationObjective(5600., 5700., 11, metric="T", mode="range", upper_bound=.06),
+            FilmOptimizationObjective(4709., 4712., 4, metric="T", pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=.99, upper_bound=None)),
+            FilmOptimizationObjective(5326., 5329., 4, metric="T", pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=.99, upper_bound=None)),
+            FilmOptimizationObjective(4950., 5050., 11, metric="T", pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=.06)),
+            FilmOptimizationObjective(4400., 4500., 11, metric="T", pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=.06)),
+            FilmOptimizationObjective(5600., 5700., 11, metric="T", pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=.06)),
         )
         control_req = make_request(control_env, control_objectives, ("low", "high"),
             cycles=1, evaluations=100, max_layers=32, stagnation=1, seed_designs=(control_seed.candidate_design,))
@@ -406,8 +406,7 @@ def main():
             response = simulate_frozen(str(repo_root), frozen)
             value = float(response["R"][0])
             baseline.append({"wavelength_nm": wave, "bare_substrate_R": value})
-            base_targets.append(FilmOptimizationObjective(wave, wave, 1, metric="R", mode="range",
-                upper_bound=max(0.0, value - .005)))
+            base_targets.append(FilmOptimizationObjective(wave, wave, 1, metric="R", pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=max(0.0, value - .005))))
         real_req = make_request(real_env, base_targets, ("ZnS", "GST-a", "GST-c"),
             cycles=args.dual_max_cycles, evaluations=args.dual_max_evaluations,
             max_layers=48, stagnation=6)

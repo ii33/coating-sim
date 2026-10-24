@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from coat_sim.core.film_auto_synthesis import synthesize_film_design
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationObjective
 from coat_sim.core.film_synthesis_archive import physical_design_hash
 from coat_sim.core.film_synthesis_refinement import (
@@ -20,8 +21,7 @@ pytestmark = pytest.mark.algorithm
 
 def _single_layer_problem(*, fixed=False):
     _, base = setup_problem()
-    request = replace(base, objectives=(FilmOptimizationObjective(
-        550., 550., 1, mode='value', target_value=0.),),
+    request = replace(base, objectives=(FilmOptimizationObjective(550., 550., 1, pointwise=FilmObjectiveConstraint(mode='value', target_value=0., lower_bound=None, upper_bound=None)),),
         minimum_nonzero_thickness_nm=1. if fixed else None,
         max_layer_thickness_nm=1. if fixed else None)
     design = deepcopy(base.environment)
@@ -158,8 +158,8 @@ def test_unlimited_evaluation_budget_continues_after_per_stage_quanta():
     service, request = setup_problem(low=550., high=550., samples=1)
     request = replace(request, search_strategy='hybrid', max_evaluations=None,
         max_seconds=None, max_cycles=3, max_layers=2,
-        objectives=(FilmOptimizationObjective(550., 550., 1, mode='value', target_value=0.),
-                    FilmOptimizationObjective(550., 550., 1, mode='value', target_value=1.)),
+        objectives=(FilmOptimizationObjective(550., 550., 1, pointwise=FilmObjectiveConstraint(mode='value', target_value=0., lower_bound=None, upper_bound=None)),
+                    FilmOptimizationObjective(550., 550., 1, pointwise=FilmObjectiveConstraint(mode='value', target_value=1., lower_bound=None, upper_bound=None))),
         acceptable_normalized_error=0.)
     result = synthesize_film_design(service, request)
     hybrid = result.performance['search']['hybrid']

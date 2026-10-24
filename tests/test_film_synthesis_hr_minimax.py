@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from coat_sim.core.film_auto_synthesis import FilmSynthesisRequest
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationObjective
 from coat_sim.core import film_synthesis_hr_minimax as minimax
 
@@ -14,8 +15,7 @@ pytestmark = pytest.mark.algorithm
 
 
 def problem(*, total_cap=None):
-    objectives = tuple(FilmOptimizationObjective(500., 600., 2, angles_deg=(0., 30.),
-        polarization=pol, metric="R", mode="range", lower_bound=.9)
+    objectives = tuple(FilmOptimizationObjective(500., 600., 2, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=.9, upper_bound=None), angles_deg=(0., 30.), polarization=pol, metric="R")
         for pol in ("s", "p"))
     request = FilmSynthesisRequest({}, objectives, (), minimum_nonzero_thickness_nm=.5,
         max_layer_thickness_nm=10., max_total_thickness_nm=total_cap)
@@ -83,8 +83,17 @@ def test_real_solver_improves_actual_minimum_preserves_scores_and_total(cap, met
         assert all(sum(d) <= cap for d in calls)
 
 
-@pytest.mark.parametrize("corruption", ["missing", "duplicate", "angle", "wave", "jac_missing", "jac_shape", "jac_nan", "actual_inf"])
-def test_invalid_complete_responses_are_rejected(corruption):
+@pytest.mark.parametrize("corruption, message", [
+    ("missing", "multispectral response is missing original conditions"),
+    ("duplicate", "multispectral response repeats or changes an original condition"),
+    ("angle", "multispectral response repeats or changes an original condition"),
+    ("wave", "multispectral response grid/values differ from original conditions"),
+    ("jac_missing", "multispectral response requires exactly the optimized layer Jacobians"),
+    ("jac_shape", "multispectral response Jacobian shape/values are invalid"),
+    ("jac_nan", "multispectral response Jacobian shape/values are invalid"),
+    ("actual_inf", "multispectral response grid/values differ from original conditions"),
+])
+def test_invalid_complete_responses_are_rejected(corruption, message):
     request, initial, evaluate, _ = problem()
     bad = deepcopy(initial)
     row = bad["responses"][0]
@@ -104,7 +113,7 @@ def test_invalid_complete_responses_are_rejected(corruption):
         row["jacobian_values_by_layer_id"]["layer-0"][0] = float("nan")
     else:
         row["actual_values"][0] = float("inf")
-    with pytest.raises(ValueError, match="HR response"):
+    with pytest.raises(ValueError, match="^" + message + "$"):
         minimax.refine_hr_minimax(request, bad, evaluate=evaluate, archive=lambda *a, **k: None)
 
 

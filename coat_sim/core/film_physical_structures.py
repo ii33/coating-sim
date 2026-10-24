@@ -6,6 +6,8 @@ See docs/film-physical-structures-contract.md and docs/algorithms.html.
 """
 from __future__ import annotations
 
+from .film_objective_criteria import FilmObjectiveConstraint
+
 from copy import deepcopy
 from dataclasses import MISSING, asdict, dataclass, fields
 import hashlib
@@ -508,7 +510,7 @@ def dual_window_ar_objectives(*, max_reflectance: float, samples_per_window: int
     ceiling = _fraction(max_reflectance, 'max_reflectance')
     samples = _count(samples_per_window, 'samples_per_window', 2)
     return tuple(FilmOptimizationObjective(lo, hi, samples, tuple(angles_deg), polarization,
-        metric='R', mode='range', upper_bound=ceiling) for lo, hi in ((3000., 5000.), (8000., 12000.)))
+        metric='R', pointwise=FilmObjectiveConstraint(lower_bound=None, upper_bound=ceiling)) for lo, hi in ((3000., 5000.), (8000., 12000.)))
 
 
 def dual_passband_objectives(*, min_transmittance: float, max_stop_transmittance: float,
@@ -523,7 +525,7 @@ def dual_passband_objectives(*, min_transmittance: float, max_stop_transmittance
         raise ValueError('dual passband requires explicit stopbands')
     bands = ((3000., 5000.), (8000., 12000.))
     result = [FilmOptimizationObjective(lo, hi, samples, tuple(angles_deg), polarization,
-        metric='T', mode='range', lower_bound=floor) for lo, hi in bands]
+        metric='T', pointwise=FilmObjectiveConstraint(lower_bound=floor, upper_bound=None)) for lo, hi in bands]
     for band in stopbands_nm:
         if not isinstance(band, (tuple, list)) or len(band) != 2:
             raise ValueError('stopband must contain two endpoints')
@@ -531,7 +533,7 @@ def dual_passband_objectives(*, min_transmittance: float, max_stop_transmittance
         if lo >= hi or any(max(lo,a) <= min(hi,b) for a,b in bands):
             raise ValueError('stopband must be ordered and disjoint from passbands')
         result.append(FilmOptimizationObjective(lo, hi, samples, tuple(angles_deg), polarization,
-            metric='T', mode='range', upper_bound=ceiling))
+            metric='T', pointwise=FilmObjectiveConstraint(lower_bound=None, upper_bound=ceiling)))
     return tuple(result)
 
 
@@ -546,7 +548,7 @@ def six_line_ar_objectives(*, max_reflectance: float,
     if len(set(waves)) != 6:
         raise ValueError('six-line target wavelengths must be distinct')
     return tuple(FilmOptimizationObjective(w, w, 1, tuple(angles_deg), polarization,
-        metric='R', mode='range', upper_bound=ceiling) for w in waves)
+        metric='R', pointwise=FilmObjectiveConstraint(lower_bound=None, upper_bound=ceiling)) for w in waves)
 
 
 def _fraction(value, label):

@@ -18,6 +18,7 @@ from PySide6.QtGui import QGuiApplication, QWindow
 from PySide6.QtQml import QQmlApplicationEngine
 
 from coat_sim.core.film_design_service import FilmDesignService, active_material_references
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import (
     FilmOptimizationObjective, FilmOptimizationRequest, FilmThicknessVariable,
     freeze_film_optimization_request,
@@ -133,7 +134,7 @@ def spectrum_case(tmp_path, monkeypatch, *, route='launcher', ready=True):
         frozen_request = freeze_film_optimization_request(service, FilmOptimizationRequest(base.design,
             base.design_revision,
             (FilmThicknessVariable('front', design['front_layers'][0]['id'], 0., None),),
-            (FilmOptimizationObjective(550., 550., 1, mode='range', upper_bound=.001),),
+            (FilmOptimizationObjective(550., 550., 1, pointwise=FilmObjectiveConstraint(mode='range', target_value=None, lower_bound=None, upper_bound=.001)),),
             max_iterations=2, max_evaluations=8))
         harness = SimpleNamespace(source=source, controller=optimization, base=base, request=frozen_request,
             simulation=simulation, calls=calls, gate=gate, desktop=desktop, handle=handle,

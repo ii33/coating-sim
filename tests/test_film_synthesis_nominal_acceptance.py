@@ -9,9 +9,37 @@ import pytest
 
 from coat_sim.core.film_auto_synthesis import synthesize_film_design
 from coat_sim.core.film_synthesis_io import film_synthesis_result_to_payload
+from coat_sim.core.film_objective_criteria import reduce_objective_responses
+from coat_sim.core.film_optimization_scoring import reduction_score
+from tests.test_film_synthesis_strict_bounds import _with_strict
 from tests.test_film_auto_synthesis import setup_problem
 
 pytestmark = pytest.mark.algorithm
+
+
+def _single_line_score(request, actual):
+    responses = tuple(dict(objective_index=i, angle_deg=angle,
+        wavelength_nm=[o.wavelength_min_nm], actual_values=[actual])
+        for i, o in enumerate(request.objectives) for angle in o.angles_deg)
+    reduced = reduce_objective_responses(request.objectives, responses,
+        tolerance=request.acceptable_normalized_error)
+    return reduction_score(reduced, request.acceptable_normalized_error)
+
+
+def _set_single_line_audit_actual(request, value, actual):
+    from coat_sim.core.film_synthesis_audit import objective_constraint_status
+    for response in value['responses']:
+        assert len(response['wavelength_nm']) == 1
+        response['actual_values'] = [actual]
+    reduced = reduce_objective_responses(request.objectives, value['responses'],
+        tolerance=request.acceptable_normalized_error)
+    value['score'].update(reduction_score(reduced, request.acceptable_normalized_error))
+    value['score']['audit_coverage'] = reduced.coverage
+    statuses = objective_constraint_status(request.objectives, reduced.conditions,
+                                           request.acceptable_normalized_error)
+    value['score']['audit']['objective_status'] = statuses
+    value['audit']['objective_status'] = statuses
+    return value
 
 
 def test_tolerance_does_not_turn_bare_point04_into_nominal_point0395_pass():
@@ -35,23 +63,21 @@ def test_tolerance_does_not_turn_bare_point04_into_nominal_point0395_pass():
     assert payload["review"]["per_objective"][0]["targets_met"] is False
     assert payload["review"]["per_objective"][0]["solver_acceptable"] is True
     assert request.acceptable_normalized_error == .001
-    assert request.objectives[0].upper_bound == .0395
+    assert request.objectives[0].pointwise.upper_bound == .0395
 
 
 def test_explicit_strict_upper_bound_exact_equality_and_neighbours():
     from coat_sim.core.film_nominal_acceptance import nominal_targets_pass
-    from coat_sim.core.film_optimization import FilmConditionError
     service, request = setup_problem(upper=.03, low=550, high=550, samples=1)
-    request = replace(request, strict_upper_bound_objective_indices=(0,))
+    request = _with_strict(request, upper=(0,))
     def score(actual):
-        violation = max(0., actual - .03)
-        return {"max_error": violation, "errors": (FilmConditionError(
-            0, 550., 0., "unpolarized", "R", actual, None, None, .03,
-            violation, violation),)}
+        return _single_line_score(request, actual)
+
     assert not nominal_targets_pass(request, score(.03))
     assert nominal_targets_pass(request, score(float(np.nextafter(.03, -np.inf))))
     assert not nominal_targets_pass(request, score(float(np.nextafter(.03, np.inf))))
-    assert nominal_targets_pass(replace(request, strict_upper_bound_objective_indices=()), score(.03))
+    inclusive = _with_strict(request)
+    assert nominal_targets_pass(inclusive, _single_line_score(inclusive, .03))
 
 
 def test_stale_tolerance_based_result_is_not_trusted_as_current_history():
@@ -69,7 +95,7 @@ def test_stale_tolerance_based_result_is_not_trusted_as_current_history():
 
 
 @pytest.mark.parametrize("upper", [.0395, .05])
-def test_legacy_history_is_read_only_replayed_and_relabels_old_tolerance(upper):
+def test_legacy_history_is_rejected_without_silently_relabeling_old_tolerance(upper):
     from coat_sim.core.film_synthesis_jobs import (is_synthesis_result,
         normalize_legacy_synthesis_result)
     service, request = setup_problem(upper=upper)
@@ -78,19 +104,22 @@ def test_legacy_history_is_read_only_replayed_and_relabels_old_tolerance(upper):
     legacy = film_synthesis_result_to_payload("legacy-replay", result)
     legacy.pop("acceptance_semantics")
     legacy["result"].pop("solver_acceptable")
-    legacy["result"]["frozen_request"].pop("strict_upper_bound_objective_indices")
+    legacy["schema_version"] = 1
     legacy["result"]["targets_met"] = True
     legacy["result"]["state"] = "completed"
     legacy["result"]["termination_reason"] = "validated_targets_met"
     original = deepcopy(legacy)
-    current = normalize_legacy_synthesis_result(legacy)
+    with pytest.raises(ValueError, match="legacy"):
+        normalize_legacy_synthesis_result(legacy)
     assert legacy == original
-    assert is_synthesis_result(current)
-    assert current["legacy_compatibility"]["read_only"] is True
-    assert current["legacy_compatibility"]["physical_replay_performed"] is True
-    assert current["result"]["targets_met"] is (upper == .05)
-    assert current["result"]["solver_acceptable"] is True
-    assert current["result"]["state"] == ("completed" if upper == .05 else "not_found")
+    assert not is_synthesis_result(legacy)
+    # Rejection preserves the stored old claims instead of fabricating current
+    # physical evidence or a green nominal result from the old tolerance flag.
+    assert legacy['result']['targets_met'] is True
+    assert legacy['result']['state'] == 'completed'
+    assert result.targets_met is (upper == .05)
+    assert result.solver_acceptable is True
+    assert result.state == ('completed' if upper == .05 else 'not_found')
 
 
 @pytest.mark.parametrize("mutation", ["actual", "score", "design", "missing_grid", "wrong_target"])
@@ -115,14 +144,14 @@ def test_legacy_history_replay_rejects_altered_evidence(mutation):
 
 def test_positive_physical_violation_cannot_hide_in_normalization_underflow():
     from coat_sim.core.film_nominal_acceptance import nominal_targets_pass, solver_acceptable
-    from coat_sim.core.film_optimization import FilmConditionError
     _, request = setup_problem(upper=.03, low=550, high=550, samples=1)
     request = replace(request, objectives=(replace(request.objectives[0], normalization_scale=1e308),))
     actual = float(np.nextafter(.03, np.inf))
     normalized = (actual - .03) / 1e308
     assert normalized == 0.
-    score = {"max_error": normalized, "errors": (FilmConditionError(
-        0, 550., 0., "unpolarized", "R", actual, None, None, .03, normalized, normalized),)}
+    score = _single_line_score(request, actual)
+    assert score['max_error'] == normalized
+
     assert not nominal_targets_pass(request, score)
     assert solver_acceptable(request, score)
 
@@ -133,10 +162,7 @@ def test_full_original_training_and_independent_audit_are_both_required(monkeypa
     original = audit.audit_frozen_synthesis_candidate
     def audit_inside_bound(*args, **kwargs):
         value = original(*args, **kwargs)
-        value["score"]["errors"] = tuple(replace(row, actual=.039,
-            normalized_violation=0., weighted_normalized_violation=0.) for row in value["score"]["errors"])
-        value["score"]["max_error"] = 0.
-        return value
+        return _set_single_line_audit_actual(args[0], value, .039)
     monkeypatch.setattr(audit, "audit_frozen_synthesis_candidate", audit_inside_bound)
     result = synthesize_film_design(service, replace(request, max_evaluations=2))
     assert result.validation_complete
@@ -163,23 +189,27 @@ def test_sparse_or_incomplete_audit_cannot_certify_nominal_success():
 
 
 @pytest.mark.parametrize("indices", [(True,), (-1,), (1,), (0, 0), "0"])
-def test_strict_upper_indices_validate_without_weakening_optimization_schema(indices):
+def test_nested_strict_upper_flags_validate_without_weakening_optimization_schema(indices):
     from coat_sim.core.film_auto_synthesis import _validated
     _, request = setup_problem(upper=.03)
     with pytest.raises(ValueError, match="strict_upper"):
-        _validated(replace(request, strict_upper_bound_objective_indices=indices))
+        _validated(replace(request, objectives=(replace(request.objectives[0],
+            pointwise=replace(request.objectives[0].pointwise, strict_upper=indices)),)))
 
 
-def test_strict_upper_request_roundtrip_and_legacy_default():
+def test_strict_upper_request_roundtrip_and_legacy_rejection():
     from coat_sim.core.film_auto_synthesis import freeze_film_synthesis_request
     from coat_sim.core.film_synthesis_io import (film_synthesis_request_to_payload,
         film_synthesis_request_from_payload)
     service, request = setup_problem(upper=.03)
-    frozen = freeze_film_synthesis_request(service, replace(request, strict_upper_bound_objective_indices=(0,)))
+    frozen = freeze_film_synthesis_request(service, _with_strict(request, upper=(0,)))
     payload = film_synthesis_request_to_payload("strict-upper", frozen)
-    assert film_synthesis_request_from_payload(payload)[1].strict_upper_bound_objective_indices == (0,)
-    payload["request"].pop("strict_upper_bound_objective_indices")
-    assert film_synthesis_request_from_payload(payload)[1].strict_upper_bound_objective_indices == ()
+    assert payload['schema_version'] == 2
+    assert film_synthesis_request_from_payload(payload)[1].objectives[0].pointwise.strict_upper is True
+    payload['schema_version'] = 1
+    payload['request']['strict_upper_bound_objective_indices'] = [0]
+    with pytest.raises(ValueError):
+        film_synthesis_request_from_payload(payload)
 
 
 def test_audit_strict_upper_equality_is_not_nominal_even_if_raw_violation_zero():
@@ -188,24 +218,27 @@ def test_audit_strict_upper_equality_is_not_nominal_even_if_raw_violation_zero()
     service, request = setup_problem(upper=.05, low=550, high=550, samples=1)
     frozen = freeze_film_synthesis_request(service, request)
     actual = audit_frozen_synthesis_candidate(frozen, frozen.environment)["score"]["errors"][0].actual
-    strict = replace(frozen, objectives=(replace(frozen.objectives[0], upper_bound=actual),),
-        strict_upper_bound_objective_indices=(0,), max_evaluations=2)
+    strict = replace(frozen, objectives=(replace(frozen.objectives[0], pointwise=replace(frozen.objectives[0].pointwise, upper_bound=actual, strict_upper=True)),),
+        max_evaluations=2)
     result = synthesize_film_design(None, strict)
     assert result.training_score is not None and result.validation_score is not None
     assert result.training_score["max_error"] == result.validation_score["max_error"] == 0.
     assert not result.targets_met
     assert result.solver_acceptable is False
     assert result.validation_score["audit"]["objective_status"][0]["targets_met"] is False
-    inclusive = synthesize_film_design(None, replace(strict, strict_upper_bound_objective_indices=()))
+    inclusive = synthesize_film_design(None, _with_strict(strict))
     assert inclusive.targets_met and inclusive.solver_acceptable
 
 
 @pytest.mark.parametrize("field", ["strict_upper_bound_objective_indices", "strict_lower_bound_objective_indices", "solver_acceptable"])
-def test_ordinary_optimization_v1_still_rejects_synthesis_only_fields(field):
-    from coat_sim.core.film_optimization import FilmOptimizationRequest
+def test_ordinary_optimization_v2_still_rejects_removed_request_fields(field):
+    from coat_sim.core.film_optimization import FilmOptimizationRequest, FilmThicknessVariable
     from coat_sim.core.film_optimization_job import serialize_request, deserialize_request
     _, request = setup_problem(upper=.03)
-    ordinary = FilmOptimizationRequest(request.environment, 0, (), request.objectives)
+    design = deepcopy(request.environment)
+    design['front_layers'] = [dict(id='variable', material_id='low', optical_set_id='nk',
+                                    thickness=dict(value=20., unit='nm'))]
+    ordinary = FilmOptimizationRequest(design, 0, (FilmThicknessVariable('front', 'variable', 0., 200.),), request.objectives)
     payload = serialize_request(ordinary)
     deserialize_request(payload)
     payload[field] = [0] if field.endswith("indices") else True
@@ -215,13 +248,14 @@ def test_ordinary_optimization_v1_still_rejects_synthesis_only_fields(field):
 
 def test_nominal_subtolerance_offgrid_failure_is_retained_as_private_feedback():
     from coat_sim.core.film_synthesis_feedback import SparseFeedbackRegistry
-    from coat_sim.core.film_optimization import FilmConditionError
     _, request = setup_problem(upper=.03)
     registry = SparseFeedbackRegistry(request)
     actual = .0305
     violation = actual - .03
+    from coat_sim.core.film_optimization import FilmConditionError
     error = FilmConditionError(0, 523.75, 0., "unpolarized", "R", actual,
-                              None, None, .03, violation, violation)
+                              None, request.objectives[0].pointwise.lower_bound, .03, violation, violation,
+                              wavelength_min_nm=520., wavelength_max_nm=580.)
     assert violation < request.acceptable_normalized_error
     assert registry.record_audit({"errors": (error,)}) == 1
     assert registry.snapshot().points[0].wavelength_nm == 523.75
@@ -233,10 +267,7 @@ def test_audited_champion_requires_nominal_training_as_well_as_audit(monkeypatch
     original = audit.audit_frozen_synthesis_candidate
     def audit_inside_bound(*args, **kwargs):
         value = original(*args, **kwargs)
-        value["score"]["errors"] = tuple(replace(row, actual=.039,
-            normalized_violation=0., weighted_normalized_violation=0.) for row in value["score"]["errors"])
-        value["score"]["max_error"] = 0.
-        return value
+        return _set_single_line_audit_actual(args[0], value, .039)
     monkeypatch.setattr(audit, "audit_frozen_synthesis_candidate", audit_inside_bound)
     result = synthesize_film_design(service, replace(request, search_strategy="hybrid",
         max_evaluations=10, max_cycles=1))

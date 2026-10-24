@@ -367,13 +367,17 @@ def run_batch_de(
                         for item in batch:
                             metrics = (item.value.get("display_metrics")
                                        if isinstance(item.value, dict) else None)
-                            if not (type(metrics) is tuple and len(metrics) == 4 and
-                                    all(type(value) in (float, int, bool) for value in metrics)):
+                            from .film_objective_criteria import FilmObjectiveCoverage
+                            if not (type(metrics) is tuple and len(metrics) == 5
+                                    and all(type(value) in (float, int) for value in metrics[:2])
+                                    and type(metrics[2]) is bool and type(metrics[3]) is int
+                                    and type(metrics[4]) is tuple and metrics[4]
+                                    and all(type(row) is FilmObjectiveCoverage for row in metrics[4])):
                                 metrics = None
                             observations.append(BatchEvaluation(item.key, item.surrogate,
                                 MappingProxyType({"display_metrics": metrics})))
-                        # Only small coordinate/scalar observations are detached;
-                        # never duplicate raw spectral or Jacobian payloads.
+                        # Detach coordinates/scalars and retain the immutable
+                        # raw-coverage tuple by reference; never copy spectra/J.
                         coordinates = np.frombuffer(chunk_points.tobytes(), dtype=float).reshape(chunk_points.shape)
                         accepted_callback(tuple(observations), coordinates, evaluations, generations)
                     except Exception:

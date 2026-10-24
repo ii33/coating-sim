@@ -1,5 +1,7 @@
 # Frozen synthesis history replay contract
 
+当前更新（2026-10-24）：波段 mean/pointwise 两组、版本、raw coverage 与严格判定以[双约束契约](film-band-criteria-contract.md)为准。旧 flat 目标与旧协议不迁移。
+
 Date: 2026-10-22
 
 ## Inputs, ownership and admission

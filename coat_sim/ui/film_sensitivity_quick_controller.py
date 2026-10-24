@@ -22,7 +22,6 @@ from coat_sim.core.film_thickness_error_table import thickness_error_table_reque
 from coat_sim.core.film_result_service import atomic_film_json
 from coat_sim.scheduler import SchedulerClient, freeze_spec
 from coat_sim.scheduler.desktop import RemoteCancelEvent, observe_job, submit_local_with_receipt
-from coat_sim.ui.film_synthesis_quick_adapter import synthesis_strict_upper_bound_indices
 
 
 class _Signals(QObject):
@@ -419,6 +418,13 @@ class FilmSensitivityQuickController(QObject):
                    f"初态={self._summary_value(getattr(result, 'baseline_solver_objective_value', None))}"
                    + f"\n初态原始名义目标通过：{self._summary_value(getattr(baseline, 'nominal_targets_met', None))}；"
                    f"最终原始名义目标通过：{self._summary_value(nominal)}")
+        direction_names = {"lower": "仅下降", "upper": "仅上升", "both": "双向"}
+        directions = getattr(frozen, "guard_directions", ())
+        identifiers = getattr(frozen, "objective_ids", ())
+        if len(directions) == len(identifiers) and directions:
+            summary += "\n冻结逐点退化方向：" + "；".join(
+                f"{identifier}：{direction_names.get(direction, direction)}"
+                for identifier, direction in zip(identifiers, directions, strict=True))
         improvement_status = getattr(result, "improvement_status", "unavailable")
         if improvement_status not in {"improved", "no_improvement", "unavailable"}:
             improvement_status = "unavailable"
@@ -466,7 +472,7 @@ class FilmSensitivityQuickController(QObject):
                 return False
             analysis = getattr(result, "best_analysis", None)
             nominal_met = getattr(analysis, "nominal_targets_met", None) is True
-            if result.schema_version != 2:
+            if result.schema_version != 3:
                 return False
             if result.policy == "strict_nominal":
                 if not nominal_met:
@@ -599,25 +605,25 @@ class FilmSensitivityQuickController(QObject):
                             f"{low_value:g}–{high_value:g} nm")
                 except (TypeError, ValueError, OverflowError):
                     band = f"{low}–{high} nm"
-                mode = row.get("mode", "range")
-                lower, upper = row.get("lower_bound_percent"), row.get("upper_bound_percent")
-                target = row.get("target_value_percent")
-                if mode == "value":
-                    try:
-                        direction = f"双向定值：{metric} = {float(target):g}%"
-                    except (TypeError, ValueError, OverflowError):
-                        direction = f"双向定值：{metric} = {target}%"
-                elif lower is not None and upper is not None:
-                    try:
-                        direction = f"双向范围：{float(lower):g}% ≤ {metric} ≤ {float(upper):g}%"
-                    except (TypeError, ValueError, OverflowError):
-                        direction = f"双向范围：{lower}% ≤ {metric} ≤ {upper}%"
-                elif lower is not None:
-                    direction = f"下界：{metric} ≥ {lower}%"
-                elif upper is not None:
-                    direction = f"上界：{metric} ≤ {upper}%"
-                else:
-                    raise ValueError(f"目标 {row.get('name', index + 1)} 没有有限上下界方向。")
+                objective = base.objectives[index]
+                criteria = []
+                for kind, caption in (("mean", "波段均值"), ("pointwise", "逐点")):
+                    constraint = getattr(objective, kind)
+                    if not constraint.enabled:
+                        continue
+                    if constraint.mode == "value":
+                        target = f"{metric} = {constraint.target_value * 100:g}%"
+                    else:
+                        sides = []
+                        if constraint.lower_bound is not None:
+                            sign = ">" if constraint.strict_lower else "≥"
+                            sides.append(f"{metric} {sign} {constraint.lower_bound * 100:g}%")
+                        if constraint.upper_bound is not None:
+                            sign = "<" if constraint.strict_upper else "≤"
+                            sides.append(f"{metric} {sign} {constraint.upper_bound * 100:g}%")
+                        target = "，".join(sides)
+                    criteria.append(f"{caption}：{target}")
+                direction = "；".join(criteria)
                 name = str(row.get("name") or f"目标 {index + 1}")
                 objective_rows.append({
                     "objective_id": objective_id,
@@ -918,8 +924,6 @@ class FilmSensitivityQuickController(QObject):
         return thickness_error_table_request_from_optimization(
             base, rows=rows, correlation_layer_ids=correlation_ids, correlation_matrix=matrix,
             include_finite_bias=self._table_finite_bias,
-            strict_upper_bound_objective_indices=synthesis_strict_upper_bound_indices(
-                getattr(self.owner, "_objectives", ())),
         )
 
     def _build_ideal_request(self, base):
@@ -957,9 +961,6 @@ class FilmSensitivityQuickController(QObject):
             sensitivity_layer_ids=selected,
             max_iterations=self._limit(self._ideal_options["max_iterations"], "最大迭代"),
             max_evaluations=self._limit(self._ideal_options["max_evaluations"], "最大评价"),
-            strict_lower_bound_objective_indices=(),
-            strict_upper_bound_objective_indices=synthesis_strict_upper_bound_indices(
-                getattr(self.owner, "_objectives", ())),
         )
 
     def _start_typed(self, workflow):

@@ -17,8 +17,7 @@ def notch_problem(*, max_evaluations=80):
     optical = service.materials.records["glass"]["optical_sets"][0]
     optical.update(wavelengths=[450., 574.8, 575., 575.2, 700.],
                    n=[3., 3., 1., 3., 3.], k=[0.] * 5)
-    objective = replace(base.objectives[0], upper_bound=None, lower_bound=.05,
-                        angles_deg=(0., 20.), polarization="s")
+    objective = replace(base.objectives[0], pointwise=replace(base.objectives[0].pointwise, upper_bound=None, lower_bound=.05), angles_deg=(0., 20.), polarization="s")
     seed = deepcopy(base.environment)
     seed["front_layers"] = [dict(id="notch-seed", material_id="high", optical_set_id="nk",
                                   thickness=dict(value=5., unit="nm"), note="synthetic seed")]
@@ -128,21 +127,28 @@ def test_new_feedback_snapshot_never_reuses_previous_local_cache(monkeypatch):
         second = fun(point)
         assert first[0] == second[0]
         assert (first[1] == second[1]).all()
+        solver_values.append((float(first[0]), float(first[1][0])))
         return SimpleNamespace(message="same-point cache probe", nit=0)
     monkeypatch.setattr(import_module("scipy.optimize"), "minimize", minimize)
     losses: list[float] = []
+    # Equal failures would have the same normalized guide loss in both
+    # snapshots. Give the new wavelength a distinct response and derivative
+    # so stale cross-invocation loss/J caches cannot satisfy this test.
+    physical_by_wave = {575.: (.4, .01), 525.: (.5, .02)}
+    solver_values: list[tuple[float, float]] = []
     for wave in (575., 525.):
-        assert registry.record_audit({"errors": (error_for(request, 0, wave, .4),)}) == 1
+        assert registry.record_audit({"errors": (error_for(request, 0, wave, physical_by_wave[wave][0]),)}) == 1
         snapshot = registry.snapshot()
         before = len(calls)
         def extra(objectives, snapshot=snapshot):
             calls.append((snapshot.revision, tuple(o.wavelength_min_nm for o in objectives)))
             local = replace(request, objectives=objectives)
-            errors = tuple(error_for(local, i, o.wavelength_min_nm, .4, o.angles_deg[0])
-                           for i, o in enumerate(objectives))
+            errors = tuple(error_for(local, i, o.wavelength_min_nm,
+                physical_by_wave[o.wavelength_min_nm][0], o.angles_deg[0]) for i, o in enumerate(objectives))
             responses = tuple(dict(objective_index=i, angle_deg=o.angles_deg[0],
-                wavelength_nm=[o.wavelength_min_nm], actual_values=[.4],
-                jacobian_values_by_layer_id={"layer": [0.]}) for i, o in enumerate(objectives))
+                wavelength_nm=[o.wavelength_min_nm], actual_values=[physical_by_wave[o.wavelength_min_nm][0]],
+                jacobian_values_by_layer_id={"layer": [physical_by_wave[o.wavelength_min_nm][1]]})
+                for i, o in enumerate(objectives))
             return dict(design=base["design"], score=dict(errors=errors), responses=responses)
         def guided(_design, _snapshot=snapshot, _extra=extra, **_kwargs):
             return augment_feedback_guide(request, base, _snapshot, evaluate_points=_extra)
@@ -153,7 +159,21 @@ def test_new_feedback_snapshot_never_reuses_previous_local_cache(monkeypatch):
             candidate_key=feedback_candidate_key)
         assert len(calls) - before == 2  # Initial + once per invocation, never the cache probes.
         losses.append(float(details["interior_loss"]))
+    assert calls == [(1, (575.,)), (1, (575.,)), (2, (525., 575.)), (2, (525., 575.))]
     assert calls[-1][1] == (525., 575.)
+    # The base is inside its guide bounds. Each auxiliary band is a singleton
+    # with one angle/mode; equal weights divide the second guide into halves.
+    # The interior guide shifts .1 down by tolerance .01 times scale .02.
+    guided_upper, scale = .1 - .01 * .02, .02
+    old_residual, new_residual = (.4 - guided_upper) / scale, (.5 - guided_upper) / scale
+    expected_losses = [old_residual**2, (old_residual**2 + new_residual**2) / 2]
+    expected_gradients = [2 * old_residual * .01 / scale,
+                          old_residual * .01 / scale + new_residual * .02 / scale]
+    assert losses == pytest.approx(expected_losses)
+    assert [value[0] for value in solver_values] == pytest.approx(expected_losses)
+    # SciPy receives phase coordinates x=d/(100 nm), so its gradient is the
+    # physical per-nm derivative times the declared quarter-wave scale.
+    assert [value[1] for value in solver_values] == pytest.approx([100. * g for g in expected_gradients])
     assert losses[1] > losses[0]
 
 

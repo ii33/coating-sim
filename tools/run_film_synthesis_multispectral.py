@@ -113,6 +113,7 @@ def _run(args: argparse.Namespace) -> int:
         execute_job, is_synthesis_result,
     )
     from coat_sim.core.film_synthesis_io import film_synthesis_request_to_payload
+    from coat_sim.core.film_nominal_acceptance import nominal_targets_pass
 
     protocol_path = (ROOT / args.protocol).resolve()
     if not protocol_path.is_relative_to(ROOT.resolve()):
@@ -188,9 +189,8 @@ def _run(args: argparse.Namespace) -> int:
         nonlocal first_audit_pass_seconds
         atomic_json(Path(path), value)
         score = value.get("validation_score", {})
-        errors = score.get("errors", []) if isinstance(score, dict) else []
-        if (first_audit_pass_seconds is None and errors
-                and all(row.get("normalized_violation") == 0 for row in errors)):
+        if (first_audit_pass_seconds is None
+                and nominal_targets_pass(request, score, independent_audit=True)):
             first_audit_pass_seconds = time.perf_counter() - start
 
     def monitor() -> None:

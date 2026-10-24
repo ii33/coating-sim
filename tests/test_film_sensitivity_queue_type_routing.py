@@ -162,20 +162,20 @@ def _optimization_shape() -> dict[str, Any]:
     """Existing cheap optimization capability, without numerical replay mocks."""
     quality = {'metric': 'max_normalized_error', 'value': .1, 'direction': 'minimize',
                'weighted_max_normalized_error': .1, 'weighted_rms_error': .1,
-               'targets_met': False}
+               'targets_met': False, 'solver_acceptable': False}
     return {
-        'schema_version': 1, 'kind': 'coat_sim.film_optimization_result',
-        'request': {'schema_version': 1, 'kind': 'coat_sim.film_optimization_request',
+        'schema_version': 2, 'kind': 'coat_sim.film_optimization_result',
+        'request': {'schema_version': 2, 'kind': 'coat_sim.film_optimization_request',
                     'design_revision': 7, 'frozen_material_snapshot': {'sha256': 'f' * 64}},
-        'candidate': {'schema_version': 1, 'kind': 'coat_sim.film_optimization_candidate',
+        'candidate': {'schema_version': 2, 'kind': 'coat_sim.film_optimization_candidate',
                       'design_revision': 7, 'design': {}, 'thickness_nm': {},
-                      'quality': quality, 'per_condition_errors': [],
+                      'quality': quality, 'per_condition_errors': [], 'raw_coverage': [],
                       'iterations': 0, 'evaluations': 1},
-        'partial_result': {'schema_version': 1, 'kind': 'best_candidate',
+        'partial_result': {'schema_version': 2, 'kind': 'best_candidate',
                            'best_so_far': True, 'candidate_verified': True,
                            'quality': {'metric': quality['metric'], 'value': quality['value']},
                            'artifact_kind': 'coat_sim.film_optimization_candidate',
-                           'artifact_schema_version': 1},
+                           'artifact_schema_version': 2},
     }
 
 

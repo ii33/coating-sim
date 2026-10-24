@@ -1,5 +1,7 @@
 # Independent ideal sensitivity and thickness-parameter analysis
 
+当前更新（2026-10-24）：波段 mean/pointwise 两组、版本、raw coverage 与严格判定以[双约束契约](film-band-criteria-contract.md)为准。旧 flat 目标与旧协议不迁移。
+
 Updated 2026-10-23. Only the current ideal schema 2 and parameter-table schema 1
 are accepted. Removed process/scenario requests and ideal schema 1 are explicitly
 unsupported; there is no conversion, compatibility page or fallback parser.

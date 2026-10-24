@@ -15,7 +15,7 @@ import signal
 import sys
 import threading
 import time
-from typing import TYPE_CHECKING, Any, Protocol, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 if TYPE_CHECKING:
     import numpy as np
@@ -54,6 +54,36 @@ def _atomic_json(path: Path, value: Any) -> None:
     temp.replace(path)
 
 
+REQUEST_CONTRACT_VERSION = 2
+
+
+def _assert_current_request_shape(request: Any) -> None:
+    """Reject historical requests before imports, source activation or work."""
+    objective_fields = {
+        "wavelength_min_nm", "wavelength_max_nm", "wavelength_samples", "angles_deg",
+        "polarization", "metric", "pointwise", "mean", "weight", "normalization_scale",
+    }
+    constraint_fields = {
+        "enabled", "mode", "target_value", "lower_bound", "upper_bound", "strict_lower", "strict_upper",
+    }
+    if (not isinstance(request, dict) or
+            any(name in request for name in ("strict_lower_bound_objective_indices",
+                                            "strict_upper_bound_objective_indices")) or
+            not isinstance(request.get("objectives"), (tuple, list)) or not request["objectives"]):
+        raise ValueError("Unsupported legacy request format; current schema 2 requires complete nested mean/pointwise criteria. Historical frozen suites are not migrated.")
+    for objective in request["objectives"]:
+        if (not isinstance(objective, dict) or set(objective) != objective_fields or
+                any(not isinstance(objective[name], dict) or set(objective[name]) != constraint_fields
+                    for name in ("mean", "pointwise"))):
+            raise ValueError("Unsupported legacy request format; current schema 2 requires complete nested mean/pointwise criteria. Historical frozen suites are not migrated.")
+
+
+def _current_objectives(request: dict[str, Any]):
+    _assert_current_request_shape(request)
+    from coat_sim.core.film_objective_payload import objective_from_payload
+    return tuple(objective_from_payload(row) for row in request["objectives"])
+
+
 def _load_manifest(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as stream:
         manifest = json.load(stream)
@@ -64,6 +94,8 @@ def _load_manifest(path: Path) -> dict[str, Any]:
     if (not manifest.get("smoke_bundle")
             and len(manifest["entries"]) != manifest.get("suite_request_count")):
         raise ValueError("Full bundle does not contain every frozen representative-suite case")
+    for entry in manifest["entries"]:
+        _assert_current_request_shape(entry.get("request") if isinstance(entry, dict) else None)
     return manifest
 
 
@@ -90,7 +122,8 @@ def _mean_metrics(request: dict[str, Any], score: Any) -> dict[str, Any]:
     import numpy as np
     trapezoid = cast(_ScalarTrapezoid, import_module("scipy.integrate").trapezoid)
     body = _jsonable(score) if score is not None else {}
-    rows = body.get("errors", []) if isinstance(body, dict) else []
+    rows = body.get("coverage", []) if isinstance(body, dict) else []
+    _current_objectives(request)
     objectives = request["objectives"]
     multiplier = request.get("validation_samples_multiplier", 1)
     groups = []
@@ -105,10 +138,9 @@ def _mean_metrics(request: dict[str, Any], score: Any) -> dict[str, Any]:
                 actual_by_wave = {}
                 for row in rows:
                     if (row.get("objective_index") == objective_index
-                            and float(row.get("angle_deg", -999)) == float(angle)
-                            and row.get("polarization") == polarization):
-                        wavelength = float(row["wavelength_nm"])
-                        actual_by_wave[wavelength] = float(row["actual"])
+                            and row.get("angle_deg") == angle):
+                        actual_by_wave = dict(zip(row["wavelength_nm"], row["actual_values"], strict=True))
+                        break
                 missing = [wave for wave in waves if wave not in actual_by_wave]
                 if missing:
                     groups.append({"objective_index": objective_index, "metric": metric,
@@ -121,7 +153,8 @@ def _mean_metrics(request: dict[str, Any], score: Any) -> dict[str, Any]:
                     mean_lambda = mean_loglambda = values[0]
                     measure = "discrete_line_actual"
                 else:
-                    mean_lambda = float(trapezoid(values, x=waves) / (hi - lo))
+                    from coat_sim.core.film_objective_criteria import wavelength_measure
+                    mean_lambda = float(wavelength_measure(waves, lo, hi) @ np.asarray(values))
                     log_waves = np.log(np.asarray(waves, dtype=float))
                     mean_loglambda = float(trapezoid(values, x=log_waves) / (log_waves[-1] - log_waves[0]))
                     measure = "fixed_dense_grid_trapezoid"
@@ -164,116 +197,87 @@ def _mean_metrics(request: dict[str, Any], score: Any) -> dict[str, Any]:
         "groups": groups}
 
 
-def _plain_number(value: object) -> TypeGuard[int | float]:
-    return type(value) in (int, float)
-
-
 def _raw_bounds(request: dict[str, Any], score: Any, *, scope: str) -> dict[str, Any]:
+    """Report the production nominal verdict from complete current evidence."""
+    from types import SimpleNamespace
+    import numpy as np
+    from coat_sim.core.film_nominal_acceptance import complete_original_score, nominal_condition_pass
+    from coat_sim.core.film_objective_payload import condition_from_payload
+
+    if scope not in {"training", "audit"}:
+        raise ValueError("Unknown score grid scope")
+    objectives = _current_objectives(request)
     body = _jsonable(score) if score is not None else {}
-    rows = body.get("errors", []) if isinstance(body, dict) else []
-    strict = set(request.get("strict_lower_bound_objective_indices", ()))
-    missing: list[dict[str, int | float]] = []
-    violating = []
+    if not isinstance(body, dict) or not isinstance(body.get("errors"), list):
+        return {"available": False, "passed": None, "condition_count": 0}
+    criteria_request = SimpleNamespace(objectives=objectives,
+        acceptable_normalized_error=request.get("acceptable_normalized_error", 0.),
+        validation_samples_multiplier=request.get("validation_samples_multiplier", 1))
+    complete = complete_original_score(criteria_request, body, independent_audit=scope == "audit")
+    required: set[tuple[int, float, str, float | None]] = set()
+    raw_required = dense_count = offset_count = 0
+    for index, objective in enumerate(objectives):
+        count = objective.wavelength_samples
+        if scope == "audit" and count > 1:
+            count = (count - 1) * criteria_request.validation_samples_multiplier + 1
+        dense = list(map(float, np.linspace(objective.wavelength_min_nm, objective.wavelength_max_nm, count)))
+        waves = list(dense)
+        dense_count += count * len(objective.angles_deg)
+        if scope == "audit" and count > 1:
+            step = (objective.wavelength_max_nm - objective.wavelength_min_nm) / (count - 1)
+            offsets = list(map(float, np.linspace(dense[0] + step / 2, dense[-1] - step / 2, count - 1)))
+            waves.extend(offsets)
+            offset_count += len(offsets) * len(objective.angles_deg)
+        raw_required += len(waves) * len(objective.angles_deg)
+        for angle in objective.angles_deg:
+            if objective.mean.enabled:
+                required.add((index, angle, "mean", None))
+            if objective.pointwise.enabled:
+                required.update((index, angle, "pointwise", wave) for wave in waves)
+    seen: set[tuple[int, float, str, float | None]] = set()
     invalid = []
-    seen_all: set[tuple[int, float, float]] = set()
-    dense_count = offset_count = required_total = 0
-    known = set(range(len(request["objectives"])))
-    for row in rows:
-        index = row.get("objective_index") if isinstance(row, dict) else None
-        if type(index) is not int or index not in known:
-            invalid.append("unknown_objective_index")
-    for index, objective in enumerate(request["objectives"]):
-        base_count = int(objective["wavelength_samples"])
-        sample_count = base_count
-        if scope == "audit" and base_count > 1:
-            sample_count = (base_count - 1) * request.get("validation_samples_multiplier", 1) + 1
-        dense_waves = [float(objective["wavelength_min_nm"])] if sample_count == 1 else [
-            float(value) for value in __import__("numpy").linspace(
-                objective["wavelength_min_nm"], objective["wavelength_max_nm"], sample_count)]
-        waves = list(dense_waves)
-        if scope == "audit" and sample_count > 1:
-            step = (objective["wavelength_max_nm"] - objective["wavelength_min_nm"]) / (sample_count - 1)
-            offset_waves = [float(value) for value in __import__("numpy").linspace(
-                objective["wavelength_min_nm"] + step / 2,
-                objective["wavelength_max_nm"] - step / 2, sample_count - 1)]
-            waves.extend(offset_waves)
-            offset_count += len(offset_waves) * len(objective["angles_deg"])
-        dense_count += len(dense_waves) * len(objective["angles_deg"])
-        required: set[tuple[float, float]] = set()
-        for angle in objective["angles_deg"]:
-            required.update((float(angle), wave) for wave in waves)
-        required_total += len(required)
-        seen: set[tuple[float, float]] = set()
-        for row in rows:
-            if not isinstance(row, dict) or row.get("objective_index") != index:
-                continue
-            angle, wave, actual = row.get("angle_deg"), row.get("wavelength_nm"), row.get("actual")
-            if (not _plain_number(angle) or not _plain_number(wave)
-                    or not _plain_number(actual)
-                    or not all(math.isfinite(float(value)) for value in (angle, wave, actual))):
-                violating.append({"objective_index": index, "reason": "non_numeric_condition"})
-                continue
-            if (row.get("metric") != objective.get("metric")
-                    or row.get("polarization") != objective.get("polarization")
-                    or any(row.get(key) != objective.get(key) for key in
-                           ("target_value", "lower_bound", "upper_bound"))):
-                invalid.append("condition_metadata_differs_from_frozen_objective")
-                continue
-            point = (float(angle), float(wave))
-            if (angle not in objective["angles_deg"]
-                    or wave < objective["wavelength_min_nm"]
-                    or wave > objective["wavelength_max_nm"]):
-                invalid.append("condition_outside_frozen_objective_domain")
-            whole_point = (index, point[0], point[1])
-            if whole_point in seen_all:
+    violating = []
+    for saved in body["errors"]:
+        try:
+            row = condition_from_payload(saved)
+            identity = row.objective_index, row.angle_deg, row.reduction, row.wavelength_nm
+            if identity in seen:
                 invalid.append("duplicate_condition")
-            seen_all.add(whole_point)
-            if point in required:
-                seen.add(point)
-            elif scope == "training":
-                invalid.append("unexpected_training_condition")
-            lower, upper = objective.get("lower_bound"), objective.get("upper_bound")
-            if ((lower is not None and (actual <= lower if index in strict else actual < lower))
-                    or (upper is not None and actual > upper)):
-                violating.append({"objective_index": index, "wavelength_nm": wave,
-                                  "angle_deg": angle, "actual": actual})
-            if objective.get("mode", "range") == "value":
-                target = objective.get("target_value")
-                scale = objective.get("normalization_scale", 1.0)
-                tolerance = request.get("acceptable_normalized_error", 0.0)
-                if (not _plain_number(target) or not _plain_number(scale)
-                        or not _plain_number(tolerance) or scale <= 0 or tolerance < 0
-                        or abs(float(actual) - float(target)) > float(tolerance) * float(scale)):
-                    violating.append({"objective_index": index, "wavelength_nm": wave,
-                        "angle_deg": angle, "actual": actual, "target_value": target,
-                        "value_tolerance": float(cast(float, tolerance)) * float(cast(float, scale))})
-        missing.extend({"objective_index": index, "wavelength_nm": wave, "angle_deg": angle}
-                       for angle, wave in sorted(required - seen))
-    audit = body.get("audit") if scope == "audit" else None
+            seen.add(identity)
+            objective = objectives[row.objective_index]
+            constraint = getattr(objective, row.reduction)
+            if not constraint.enabled:
+                invalid.append("disabled_condition")
+            if not nominal_condition_pass(constraint, row.actual):
+                violating.append(saved)
+        except (TypeError, ValueError, KeyError, AttributeError, IndexError):
+            invalid.append("invalid_current_condition")
+    missing = required - seen
+    unexpected = seen - required if scope == "training" else set()
     audit_valid = scope != "audit"
-    if scope == "audit" and isinstance(audit, dict):
-        fields = ("dense_points", "offset_points", "unique_condition_points", "physical_evaluations",
-                  "wavelength_points", "extra_points", "completed_extrema", "bracket_count")
-        audit_valid = (all(type(audit.get(name)) is int and audit[name] >= 0 for name in fields)
-            and audit["dense_points"] == dense_count and audit["offset_points"] == offset_count
-            and audit["unique_condition_points"] == len(rows)
-            and audit["physical_evaluations"] >= 1
-            and audit["wavelength_points"] >= dense_count + offset_count
-            and audit["wavelength_points"] >= len(rows)
-            and audit["extra_points"] == audit["wavelength_points"] - dense_count
-            and audit["completed_extrema"] == audit["bracket_count"]
-            and audit.get("continuous_certificate") is False
-            and audit.get("rms_measure") == "fixed_dense_grid_only"
-            and isinstance(audit.get("objective_status"), list)
-            and len(audit["objective_status"]) == len(request["objectives"]))
-    complete = not missing and not invalid and audit_valid
+    if scope == "audit":
+        audit = body.get("audit")
+        if isinstance(audit, dict):
+            fields = ("dense_points", "offset_points", "unique_condition_points", "physical_evaluations",
+                      "wavelength_points", "extra_points", "completed_extrema", "bracket_count")
+            audit_valid = (all(type(audit.get(name)) is int and audit[name] >= 0 for name in fields)
+                and audit["dense_points"] == dense_count and audit["offset_points"] == offset_count
+                and audit["extra_points"] == audit["wavelength_points"] - dense_count
+                and audit["completed_extrema"] == audit["bracket_count"]
+                and audit.get("continuous_certificate") is False
+                and audit.get("rms_measure") == "fixed_dense_grid_only"
+                and isinstance(audit.get("objective_status"), list)
+                and len(audit["objective_status"]) == len(objectives))
+    if not complete:
+        invalid.append("incomplete_or_inconsistent_current_criteria_evidence")
+    complete = complete and audit_valid
     return {"available": complete, "passed": complete and not violating,
-        "scope": "saved_raw_conditions_only_no_continuous_certificate",
-        "strict_lower_objective_indices": sorted(strict),
-        "required_condition_count": required_total,
-        "missing_required_conditions": len(missing), "invalid_conditions": invalid[:8],
-        "violating_conditions": len(violating), "audit_metadata_valid": audit_valid,
-        "worst_examples": violating[:8]}
+        "scope": "saved_current_criteria_only_no_continuous_certificate", "grid_scope": scope,
+        "condition_count": len(body["errors"]), "required_condition_count": len(required),
+        "required_raw_point_count": raw_required,
+        "missing_required_conditions": len(missing), "unexpected_condition_count": len(unexpected),
+        "invalid_conditions": invalid[:8], "violating_conditions": len(violating),
+        "audit_metadata_valid": audit_valid, "worst_examples": violating[:8]}
 
 
 def _loaded_git_paths(root: Path) -> dict[str, str]:
@@ -539,7 +543,7 @@ def run_one(entry: dict[str, Any], *, mode: str, workers: int, output: Path,
 
     from coat_sim.core.film_auto_synthesis import synthesize_film_design
     from coat_sim.core.film_synthesis_io import film_synthesis_request_from_payload, film_synthesis_result_to_payload
-    request_payload = {"schema_version": 1, "kind": "coat_sim.film_synthesis_request",
+    request_payload = {"schema_version": REQUEST_CONTRACT_VERSION, "kind": "coat_sim.film_synthesis_request",
         "request_id": entry["request_id"], "request": request_json, "physical_structures": []}
     request_id, request, structures = film_synthesis_request_from_payload(request_payload)
     if request_id != entry["request_id"] or structures:
@@ -767,7 +771,7 @@ def run_bundle(manifest_path: Path, *, case: str | None = None, seed: int | None
             request["cpu_workers"] = chosen_workers
             _mode_for_request(request, mode)
             decoded_id, _, structures = film_synthesis_request_from_payload({
-                "schema_version": 1, "kind": "coat_sim.film_synthesis_request",
+                "schema_version": REQUEST_CONTRACT_VERSION, "kind": "coat_sim.film_synthesis_request",
                 "request_id": item["request_id"], "request": request, "physical_structures": []})
             if decoded_id != item["request_id"] or structures:
                 raise ValueError("Production request decoder changed identity or found dynamic structures")

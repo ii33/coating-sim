@@ -9,6 +9,7 @@ import pytest
 from coat_sim.core import film_ideal_sensitivity as ideal
 from coat_sim.core import _film_ideal_sensitivity_core as core
 from coat_sim.core import film_optimization_derivatives as derivatives
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationObjective, FilmThicknessVariable
 from tests.test_film_ideal_sensitivity import problem
 
@@ -42,11 +43,7 @@ def scalar_fixture(*, layers=2, mode="absolute", metric="mixed", absorption=Fals
             row["thickness"] = dict(value=value / 1000 if unit == "um" else value * 4 * n / 550,
                                     unit=unit)
     metrics = ("R", "T") if metric == "mixed" else (metric,)
-    objectives = tuple(FilmOptimizationObjective(
-        502.1 + i, 646.7 - i, samples - i, (40.0, 47.5), polarization, m, "range",
-        lower_bound=0.0, weight=3.7 if i else 0.13,
-        normalization_scale=0.21 if i else 0.83,
-    ) for i, m in enumerate(metrics))
+    objectives = tuple(FilmOptimizationObjective(502.1 + i, 646.7 - i, samples - i, (40.0, 47.5), polarization, m, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=0.0, upper_bound=None), weight=3.7 if i else 0.13, normalization_scale=0.21 if i else 0.83) for i, m in enumerate(metrics))
     request = replace(request, design_snapshot=design, variables=variables,
                       sensitivity_layer_ids=selected, objectives=objectives, max_evaluations=None,
                       objective_ids=tuple(f"objective-{i}" for i in range(len(objectives))))
@@ -96,9 +93,11 @@ def test_scalar_omits_forward_nominal_objects_and_new_cache(monkeypatch):
     def forbidden(*_args, **_kwargs):
         raise AssertionError("scalar probe requested a complete nominal/value object")
 
-    for name in ("simulate_with_thickness_jacobian", "FilmConditionError",
+    from coat_sim.core import film_objective_criteria as criteria
+    for name in ("simulate_with_thickness_jacobian", "reduce_objective_responses",
                  "FilmIdealSensitivityAnalysis", "_Evaluation"):
         monkeypatch.setattr(core, name, forbidden)
+    monkeypatch.setattr(criteria, "FilmConditionError", forbidden)
     monkeypatch.setattr(derivatives, "coherent_rta", forbidden)
     assert evaluator.scalar_objective(changed) > 0
     # Same scalar miss twice must still perform all its blocks, not use a new cache.

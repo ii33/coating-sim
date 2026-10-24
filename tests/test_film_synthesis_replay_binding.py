@@ -39,7 +39,7 @@ def _history(root, *, upper=.05, low=550., high=550., samples=1, legacy=False):
     if legacy:
         payload.pop("acceptance_semantics")
         payload["result"].pop("solver_acceptable")
-        payload["result"]["frozen_request"].pop("strict_upper_bound_objective_indices")
+        payload["schema_version"] = 1
     row = {"job_id": "bound-history-job", "kind": "film_synthesis", "state": "succeeded",
         "result": payload, "origin": {"project_id": "project-a", "project_root": "/project-a"}}
     _bind_row(root, row)
@@ -82,7 +82,7 @@ def test_stale_saved_spectra_never_open_or_turn_green(tmp_path, mutation, legacy
         if legacy:
             row["result"].pop("acceptance_semantics")
             row["result"]["result"].pop("solver_acceptable")
-            row["result"]["result"]["frozen_request"].pop("strict_upper_bound_objective_indices")
+            row["result"]["schema_version"] = 1
     _persist(path, row)
     original = path.read_bytes()
     listed = deepcopy(row)
@@ -91,7 +91,7 @@ def test_stale_saved_spectra_never_open_or_turn_green(tmp_path, mutation, legacy
     assert listed["synthesisNominalStatus"] == "unknown"
     with ThreadPoolExecutor(max_workers=1) as pool:
         future = pool.submit(_read_queue_result, None, _FileStore(path), row["job_id"])
-        with pytest.raises(ValueError, match="physical|frozen|identity|safely"):
+        with pytest.raises(ValueError, match="physical|frozen|identity|safely|schema|binding"):
             future.result(timeout=15)
     assert path.read_bytes() == original
 
@@ -222,7 +222,10 @@ def test_small_status_cache_never_authorizes_changed_source(tmp_path, monkeypatc
         snapshot["materials"][0]["name"] += " changed"
     elif change in {"targets", "grid"}:
         objective = row["result"]["result"]["frozen_request"]["objectives"][0]
-        objective["upper_bound" if change == "targets" else "wavelength_min_nm"] = .03 if change == "targets" else 549.
+        if change == 'targets':
+            objective['pointwise']['upper_bound'] = .03
+        else:
+            objective['wavelength_min_nm'] = 549.
     elif change == "layer_id":
         row["result"] = film_synthesis_result_to_payload("bound-history", _coordinated_candidate(result))
         row["result"]["result"]["candidate_design"]["front_layers"][0]["id"] = "changed-id"
@@ -252,7 +255,11 @@ def test_replay_compares_every_actual_not_just_passing_aggregates(tmp_path):
     payload = row["result"]
     assert payload["result"]["training_score"]["max_error"] == 0.
     payload["result"]["training_score"]["errors"][1]["actual"] = .041
-    # Still below .05: max/RMS and normalized/weighted violations remain zero.
+    raw = payload['result']['training_score']['coverage'][0]
+    changed = list(raw['actual_values'])
+    changed[1] = .041
+    raw['actual_values'] = changed
+    # Coherent raw evidence is still below .05: max/RMS and normalized/weighted violations remain zero.
     assert is_synthesis_result(payload)
     with pytest.raises(ValueError, match="physical condition does not replay"):
         replay_synthesis_result(payload)
@@ -278,21 +285,29 @@ def test_listing_background_proof_preserves_nominal_solver_split(tmp_path, upper
 
 
 @pytest.mark.parametrize("legacy", [False, True])
-def test_old_optional_execution_field_keeps_original_frozen_identity(tmp_path, legacy):
+def test_current_explicit_execution_default_keeps_identity_and_legacy_schema_is_rejected(tmp_path, legacy):
     row, path, result = _history(tmp_path, legacy=legacy)
     body = row["result"]["result"]
-    body["frozen_request"].pop("resource_guard_resolution")
-    # Persist a genuine old JobSpec, rather than running today's submission
-    # builder, which intentionally resolves newly submitted execution defaults.
+    body["frozen_request"]["resource_guard_resolution"] = None
+    # Explicit None is part of current frozen identity. Persist that exact
+    # JobSpec instead of running the submission builder, which resolves defaults.
     spec_path = tmp_path / "artifacts/runtime/scheduler/jobs" / row["job_id"] / "spec.json"
     original_spec = JobSpec.parse_frozen_json(spec_path.read_text(encoding="utf-8"))
     parameters = deepcopy(original_spec.parameters)
-    parameters["payload"]["request"]["request"].pop("resource_guard_resolution")
+    parameters["payload"]["request"]["request"]["resource_guard_resolution"] = None
     spec = JobSpec("film_synthesis", parameters, original_spec.inputs)
     spec_path.write_text(canonical(spec.to_dict()), encoding="utf-8")
     row["input_digest"] = spec.fingerprint
     _persist(path, row)
     original = path.read_bytes()
+    if legacy:
+        assert not is_synthesis_result(row['result'])
+        _annotate_result_availability(tmp_path, [row])
+        assert row['resultAvailable'] is False and row['synthesisNominalStatus'] == 'unknown'
+        with pytest.raises(ValueError):
+            _read_queue_result(None, _FileStore(path), row['job_id'])
+        assert path.read_bytes() == original
+        return
     loaded, _ = _read_queue_result(None, _FileStore(path), row["job_id"])
     assert isinstance(loaded, _SynthesisQueueResult)
     assert loaded.payload["result"]["frozen_request"]["resource_guard_resolution"] is None

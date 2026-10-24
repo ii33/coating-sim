@@ -17,6 +17,8 @@ import numpy as np
 
 from .film_design import validate_design
 from .film_nominal_acceptance import nominal_condition_pass
+from .film_objective_criteria import FilmConditionError, reduce_objective_responses
+from .film_objective_payload import condition_from_payload, objective_from_payload
 from .optical_constants import prepare_optical_set
 from .film_optimization import (FilmOptimizationObjective, FilmOptimizationRequest,
                                 FilmThicknessVariable, _checked_frozen_snapshot)
@@ -25,7 +27,7 @@ from .film_optimization_needle import _normalize_objectives, _physical_layer_thi
 
 REQUEST_KIND = "coat_sim.film_thickness_error_table_request"
 RESULT_KIND = "coat_sim.film_thickness_error_table_result"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 MAX_RETAINED_RESULT_BYTES = 256 * 1024**2
 MAX_WORKING_BYTES = 256 * 1024**2
 MAX_CHUNK_SAMPLES = 4096
@@ -60,8 +62,6 @@ class FilmThicknessErrorTableRequest:
     correlation_layer_ids: tuple[str, ...] = ()
     correlation_matrix: tuple[tuple[float, ...], ...] | None = None
     include_finite_bias: bool = False
-    strict_lower_bound_objective_indices: tuple[int, ...] = ()
-    strict_upper_bound_objective_indices: tuple[int, ...] = ()
     frozen_material_snapshot: Mapping[str, Any] | None = None
     max_evaluations: int | None = None
 
@@ -104,7 +104,7 @@ class FilmThicknessErrorTableCondition:
     polarization: str
     metric: str
     nominal_value: float
-    nominal_condition_pass: bool
+    nominal_condition_pass: bool | None
     bias_shift: float | None
     linear_bias_value: float | None
     bounded_first_order_l1: float | None
@@ -144,6 +144,8 @@ class FilmThicknessErrorTableAnalysis:
     conditions: tuple[FilmThicknessErrorTableCondition, ...]
     layer_summaries: tuple[FilmThicknessErrorLayerSummary, ...]
     material_k_policy: str
+    nominal_conditions: tuple[FilmConditionError, ...]
+    finite_bias_conditions: tuple[FilmConditionError, ...]
 
 
 @dataclass(frozen=True)
@@ -198,6 +200,25 @@ def _json(value: Any) -> Any:
         raise ValueError("thickness-error table data must be finite JSON") from exc
 
 
+def _pointwise_pass(objective, actual):
+    # A raw sample has no mean acceptance label; only its enabled local target
+    # can supply a local verdict. Complete-band verdicts use the reducer below.
+    return (nominal_condition_pass(objective.pointwise, actual)
+            if objective.pointwise.enabled else None)
+
+
+def _reduce_conditions(request, conditions, value_field):
+    frames = []
+    for index, objective in enumerate(request.objectives):
+        for angle in objective.angles_deg:
+            rows = [row for row in conditions
+                    if row.objective_index == index and row.angle_deg == angle]
+            frames.append(dict(objective_index=index, angle_deg=angle,
+                               wavelength_nm=[row.wavelength_nm for row in rows],
+                               actual_values=[getattr(row, value_field) for row in rows]))
+    return reduce_objective_responses(request.objectives, frames)
+
+
 def _defined(row: FilmThicknessErrorParameter) -> bool:
     return row.bias is not None or row.uncertainty_magnitude is not None
 
@@ -242,7 +263,9 @@ def estimate_film_thickness_error_table_resources(request: FilmThicknessErrorTab
     columns = sum(row.enabled and _defined(row) for row in request.rows)
     sigma = sum(row.enabled and row.uncertainty_kind == "stddev" and
                 row.uncertainty_magnitude is not None for row in request.rows)
-    retained = count * 2048 + len(request.rows) * 4096 + sigma * sigma * 96
+    # Keep raw error rows and both nominal/finite-bias reduced target records.
+    # Enabling only a mean never removes the independent per-point evidence.
+    retained = count * 4096 + len(request.rows) * 4096 + sigma * sigma * 96
     physical_layers = (len(request.design_snapshot["front_layers"]) +
                        len(request.design_snapshot.get("back_layers", ())))
     chunk = max((min(o.wavelength_samples, MAX_CHUNK_SAMPLES) for o in request.objectives), default=0)
@@ -336,20 +359,9 @@ def _validate(request: FilmThicknessErrorTableRequest) -> FilmThicknessErrorTabl
         raise ValueError("finite bias recomputation requires at least one explicitly defined enabled bias")
     if request.max_evaluations is not None and (type(request.max_evaluations) is not int or request.max_evaluations < 1):
         raise ValueError("max_evaluations must be a positive integer or null")
-    strict = {}
-    for name, bound in (("strict_lower_bound_objective_indices", "lower_bound"),
-                        ("strict_upper_bound_objective_indices", "upper_bound")):
-        indices = _sequence(getattr(request, name), name)
-        if (any(type(i) is not int or not 0 <= i < len(objectives) for i in indices) or
-                len(set(indices)) != len(indices) or any(objectives[i].mode != "range" or
-                getattr(objectives[i], bound) is None for i in indices)):
-            raise ValueError(f"{name} must uniquely identify objectives with that range bound")
-        strict[name] = indices
     ids = _sequence(request.correlation_layer_ids, "correlation_layer_ids")
     request = replace(request, design_snapshot=design, objectives=objectives,
-                      rows=tuple(normalized), correlation_layer_ids=ids,
-                      strict_lower_bound_objective_indices=strict["strict_lower_bound_objective_indices"],
-                      strict_upper_bound_objective_indices=strict["strict_upper_bound_objective_indices"])
+                      rows=tuple(normalized), correlation_layer_ids=ids)
     resources = estimate_film_thickness_error_table_resources(request)
     if (resources["estimated_retained_result_bytes"] > MAX_RETAINED_RESULT_BYTES or
             resources["estimated_working_bytes"] > MAX_WORKING_BYTES):
@@ -366,16 +378,14 @@ def _validate(request: FilmThicknessErrorTableRequest) -> FilmThicknessErrorTabl
 def thickness_error_table_request_from_optimization(base: FilmOptimizationRequest, *,
     rows: tuple[FilmThicknessErrorParameter, ...], correlation_layer_ids: tuple[str, ...] = (),
     correlation_matrix: tuple[tuple[float, ...], ...] | None = None,
-    include_finite_bias: bool = False, strict_lower_bound_objective_indices: tuple[int, ...] = (),
-    strict_upper_bound_objective_indices: tuple[int, ...] = (),
+    include_finite_bias: bool = False,
     max_evaluations: int | None = None,
 ) -> FilmThicknessErrorTableRequest:
     if not isinstance(base, FilmOptimizationRequest):
         raise ValueError("base must be a FilmOptimizationRequest")
     return _validate(FilmThicknessErrorTableRequest(deepcopy(base.design_snapshot), base.design_revision,
         tuple(base.objectives), tuple(rows), tuple(correlation_layer_ids), correlation_matrix,
-        include_finite_bias, tuple(strict_lower_bound_objective_indices),
-        tuple(strict_upper_bound_objective_indices), deepcopy(base.frozen_material_snapshot), max_evaluations))
+        include_finite_bias, deepcopy(base.frozen_material_snapshot), max_evaluations))
 
 
 def freeze_film_thickness_error_table_request(service: Any,
@@ -584,12 +594,17 @@ def execute_film_thickness_error_table_request(service: Any, request: FilmThickn
         aggregate = ("partial" if "numerical_indeterminate" in statuses else
                      "available" if statuses == {"available"} else
                      "unavailable" if "missing_information" in statuses else "not_configured")
+        nominal = _reduce_conditions(request, conditions, "nominal_value") if complete else None
+        finite = (_reduce_conditions(request, conditions, "finite_bias_value")
+                  if complete and request.include_finite_bias else None)
         return FilmThicknessErrorTableAnalysis(coverage, correlation, expected, len(conditions), complete,
-            all(row.nominal_condition_pass for row in conditions) if complete else None,
-            all(row.finite_bias_condition_pass for row in conditions) if complete and request.include_finite_bias else None,
+            None if nominal is None else nominal.nominal_pass,
+            None if finite is None else finite.nominal_pass,
             "defined_subset_only" if request.include_finite_bias else None, aggregate,
             tuple(conditions), tuple(summaries),
-            "source_k_required" if request.design_snapshot["use_k"] else "explicit_use_k_false_idealization")
+            "source_k_required" if request.design_snapshot["use_k"] else "explicit_use_k_false_idealization",
+            () if nominal is None else nominal.conditions, () if finite is None else finite.conditions)
+
 
     def result(state, reason, message="", is_final=True):
         return FilmThicknessErrorTableResult(state, reason, request.design_revision, analysis(),
@@ -691,14 +706,12 @@ def execute_film_thickness_error_table_request(service: Any, request: FilmThickn
                                     sigma_amplitudes, correlation.matrix)
                         actual = float(nominal[offset])
                         finite_actual = None if finite is None else float(finite[offset])
-                        strict = dict(strict_lower=index in request.strict_lower_bound_objective_indices,
-                                      strict_upper=index in request.strict_upper_bound_objective_indices)
                         conditions.append(FilmThicknessErrorTableCondition(index, float(wave), float(angle),
                             objective.polarization, objective.metric, actual,
-                            nominal_condition_pass(objective, actual, **strict), bias_shift,
+                            _pointwise_pass(objective, actual), bias_shift,
                             None if bias_shift is None else _finite(actual + bias_shift, "linear bias value"),
                             bound, aggregate_sigma, sigma_status, finite_actual,
-                            None if finite_actual is None else nominal_condition_pass(objective, finite_actual, **strict)))
+                            None if finite_actual is None else _pointwise_pass(objective, finite_actual)))
                         stats = next_stats
                     emit("block_complete")
                     if checkpoint_callback is not None:
@@ -746,9 +759,8 @@ def film_thickness_error_table_request_to_payload(request: FilmThicknessErrorTab
 def film_thickness_error_table_request_from_payload(payload: Mapping[str, Any]) -> FilmThicknessErrorTableRequest:
     data = _envelope(payload, FilmThicknessErrorTableRequest, REQUEST_KIND)
     try:
-        data["objectives"] = tuple(replace(_record(FilmOptimizationObjective, row, "objective"),
-            angles_deg=_sequence(row.get("angles_deg", (0.,)), "angles_deg"))
-            for row in _sequence(data["objectives"], "objectives"))
+        data["objectives"] = tuple(objective_from_payload(row)
+                                   for row in _sequence(data["objectives"], "objectives"))
         data["rows"] = tuple(_record(FilmThicknessErrorParameter, row, "parameter row")
                              for row in _sequence(data["rows"], "rows"))
         return _validate(_record(FilmThicknessErrorTableRequest, data, "request"))
@@ -771,6 +783,8 @@ def _analysis_from_payload(payload):
         _sequence(correlation.matrix, "correlation matrix")))
     return replace(record, coverage=_record(FilmThicknessErrorTableCoverage, coverage_data, "coverage"),
         correlation=correlation,
+        nominal_conditions=tuple(condition_from_payload(row) for row in record.nominal_conditions),
+        finite_bias_conditions=tuple(condition_from_payload(row) for row in record.finite_bias_conditions),
         conditions=tuple(_record(FilmThicknessErrorTableCondition, row, "condition") for row in
                          _sequence(record.conditions, "conditions")),
         layer_summaries=tuple(_record(FilmThicknessErrorLayerSummary, row, "layer summary") for row in
@@ -861,10 +875,8 @@ def _validate_result(result):
         _finite(row.wavelength_nm, "wavelength_nm")
         _finite(row.angle_deg, "angle_deg")
         _finite(row.nominal_value, "nominal value")
-        strict = dict(strict_lower=i in request.strict_lower_bound_objective_indices,
-                      strict_upper=i in request.strict_upper_bound_objective_indices)
-        if type(row.nominal_condition_pass) is not bool or row.nominal_condition_pass != nominal_condition_pass(o, row.nominal_value, **strict):
-            raise ValueError("nominal acceptance differs from unchanged original bounds")
+        if row.nominal_condition_pass is not _pointwise_pass(o, row.nominal_value):
+            raise ValueError("raw pointwise acceptance differs from its enabled constraint")
         for name in ("bias_shift", "linear_bias_value", "bounded_first_order_l1", "aggregate_sigma", "finite_bias_value"):
             if getattr(row, name) is not None:
                 value = _finite(getattr(row, name), name)
@@ -877,7 +889,7 @@ def _validate_result(result):
         if has_bias and row.linear_bias_value != row.nominal_value + row.bias_shift:
             raise ValueError("linear bias value differs from nominal + signed bias shift")
         if request.include_finite_bias:
-            if row.finite_bias_value is None or type(row.finite_bias_condition_pass) is not bool or row.finite_bias_condition_pass != nominal_condition_pass(o, row.finite_bias_value, **strict):
+            if row.finite_bias_value is None or row.finite_bias_condition_pass is not _pointwise_pass(o, row.finite_bias_value):
                 raise ValueError("finite bias value/acceptance is missing or inconsistent")
         elif row.finite_bias_value is not None or row.finite_bias_condition_pass is not None:
             raise ValueError("finite bias was not requested")
@@ -891,12 +903,16 @@ def _validate_result(result):
                 raise ValueError("invalid aggregate sigma condition status")
         if row.aggregate_sigma_status != status or (row.aggregate_sigma is not None) != (status == "available"):
             raise ValueError("aggregate sigma presence/status differs from explicit correlation information")
-    nominal = all(row.nominal_condition_pass for row in analysis.conditions) if analysis.conditions_complete else None
-    finite = (all(row.finite_bias_condition_pass for row in analysis.conditions)
+    nominal = (_reduce_conditions(request, analysis.conditions, "nominal_value")
+               if analysis.conditions_complete else None)
+    finite = (_reduce_conditions(request, analysis.conditions, "finite_bias_value")
               if request.include_finite_bias and analysis.conditions_complete else None)
-    if (analysis.nominal_targets_met is not nominal or analysis.finite_bias_targets_met is not finite or
-            analysis.finite_bias_scope != ("defined_subset_only" if request.include_finite_bias else None)):
-        raise ValueError("target flags or finite scope differ from full original-grid coverage")
+    if (analysis.nominal_targets_met is not (None if nominal is None else nominal.nominal_pass)
+            or analysis.finite_bias_targets_met is not (None if finite is None else finite.nominal_pass)
+            or analysis.nominal_conditions != (() if nominal is None else nominal.conditions)
+            or analysis.finite_bias_conditions != (() if finite is None else finite.conditions)
+            or analysis.finite_bias_scope != ("defined_subset_only" if request.include_finite_bias else None)):
+        raise ValueError("enabled band target flags/evidence differ from full original-grid reduction")
     statuses = {row.aggregate_sigma_status for row in analysis.conditions}
     aggregate = ("partial" if "numerical_indeterminate" in statuses else "available" if statuses == {"available"}
                  else "unavailable" if "missing_information" in statuses else "not_configured")

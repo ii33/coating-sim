@@ -1,5 +1,6 @@
 """Worker-level contracts for the opt-in deferred film batch mode."""
 from __future__ import annotations
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 
 from dataclasses import replace
 from threading import Event
@@ -374,11 +375,8 @@ def test_batch_multicondition_optical_domains_replay(double, thickness):
     if double:
         variables += (FilmThicknessVariable('back', 'back-0', 40., 110.),)
     request = replace(request, variables=variables, objectives=(
-        FilmOptimizationObjective(500., 650., 11, angles_deg=(0., 37.),
-                                  polarization='s', metric='R', target_value=0.2),
-        FilmOptimizationObjective(530., 670., 9, angles_deg=(15.,),
-                                  polarization='p', metric='T', mode='range',
-                                  lower_bound=0.4, upper_bound=0.9),
+        FilmOptimizationObjective(500., 650., 11, pointwise=FilmObjectiveConstraint(mode="value", target_value=0.2, lower_bound=None, upper_bound=None), angles_deg=(0., 37.), polarization='s', metric='R'),
+        FilmOptimizationObjective(530., 670., 9, pointwise=FilmObjectiveConstraint(mode='range', target_value=None, lower_bound=0.4, upper_bound=0.9), angles_deg=(15.,), polarization='p', metric='T'),
     ))
     _, payload = _frozen_job(service, request)
     checkpoints = []

@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from coat_sim.core import film_optimization_structure as structure
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationObjective
 from tests.test_film_optimization_structure import _request, _service
 
@@ -21,8 +22,7 @@ def prepared_problem():
     design["front_layers"].append(dict(id="second", material_id="struct_high", optical_set_id="high20",
         thickness=dict(value=65., unit="nm"), note="prepared test"))
     base = _request(design)
-    objectives = tuple(FilmOptimizationObjective(470., 680., 5, angles_deg=(0.,30.),
-        polarization=pol, metric=metric, mode="range", lower_bound=.15, upper_bound=.85)
+    objectives = tuple(FilmOptimizationObjective(470., 680., 5, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=.15, upper_bound=.85), angles_deg=(0.,30.), polarization=pol, metric=metric)
         for metric in ("R","T") for pol in ("s","p"))
     request = replace(base, base_request=replace(base.base_request, objectives=objectives))
     frozen = structure.freeze_film_structure_optimization_request(service, request)

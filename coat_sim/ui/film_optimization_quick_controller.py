@@ -31,8 +31,9 @@ from coat_sim.core.film_optimization import (
     FilmThicknessVariable,
     freeze_film_optimization_request,
 )
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint, FilmObjectiveCoverage, validate_objective_criteria
 from coat_sim.core.film_optimization_preview import create_optimization_preview_handoff
-from coat_sim.core.film_optimization_job import CANDIDATE_KIND, RESULT_KIND, deserialize_request
+from coat_sim.core.film_optimization_job import CANDIDATE_KIND, RESULT_KIND, CONTRACT_VERSION, deserialize_request
 from coat_sim.scheduler import SchedulerClient, freeze_spec
 from coat_sim.scheduler.desktop import (
     RemoteCancelEvent,
@@ -43,7 +44,6 @@ from coat_sim.ui.film_synthesis_quick_adapter import (
     SYNTHESIS_DEFAULT_OPTIONS, SynthesisQuickResult, build_synthesis_request,
     synthesis_base_request, synthesis_cpu_workers, synthesis_options, synthesis_result_view, synthesis_spec,
     synthesis_structure_search_seed,
-    synthesis_strict_upper_bound_indices,
     synthesis_preview_handoff,
     verify_synthesis_file_references,
 )
@@ -110,6 +110,52 @@ def _edited_thickness_bound(value, label: str) -> float:
     return result
 
 
+def _constraint_editor_default(enabled: bool, upper: float = 100.0) -> dict:
+    return {"enabled": enabled, "mode": "range", "target_value_percent": None,
+            "lower_bound_percent": 0.0, "upper_bound_percent": upper,
+            "strict_lower": False, "strict_upper": False}
+
+
+def _constraint_editor_from_request(constraint: FilmObjectiveConstraint) -> dict:
+    return {"enabled": constraint.enabled, "mode": constraint.mode,
+            "target_value_percent": (None if constraint.target_value is None
+                                     else constraint.target_value * 100),
+            "lower_bound_percent": ((constraint.target_value or 0.0) * 100
+                                    if constraint.mode == "value" else
+                                    (constraint.lower_bound or 0.0) * 100),
+            "upper_bound_percent": ((constraint.target_value or 0.0) * 100
+                                    if constraint.mode == "value" else
+                                    (1.0 if constraint.upper_bound is None else constraint.upper_bound) * 100),
+            "strict_lower": constraint.strict_lower, "strict_upper": constraint.strict_upper}
+
+
+def _constraint_from_editor(row: dict) -> FilmObjectiveConstraint:
+    # Disabled drafts remain editor state and never enter the frozen calculation.
+    if not row["enabled"]:
+        return FilmObjectiveConstraint(enabled=False)
+    lower = _number(row["lower_bound_percent"], "目标下限%") / 100
+    upper = _number(row["upper_bound_percent"], "目标上限%") / 100
+    mode: Literal["value", "range"] = (
+        "value" if lower == upper and not (row["strict_lower"] or row["strict_upper"]) else "range")
+    return FilmObjectiveConstraint(enabled=True, mode=mode,
+        target_value=lower if mode == "value" else None,
+        lower_bound=lower if mode == "range" else None,
+        upper_bound=upper if mode == "range" else None,
+        strict_lower=row["strict_lower"], strict_upper=row["strict_upper"])
+
+
+def _validate_editor_criteria(row: dict) -> None:
+    validate_objective_criteria({"pointwise": _constraint_from_editor(row["pointwise"]),
+        "mean": _constraint_from_editor(row["mean"]),
+        "weight": row["weight"], "normalization_scale": 1.0})
+
+
+_CRITERION_BOUNDS_FIELDS = frozenset(
+    f"{group}.{bound}_bound_percent" for group in ("mean", "pointwise")
+    for bound in ("lower", "upper"))
+_OBJECTIVE_BOUNDS_FIELDS = _CRITERION_BOUNDS_FIELDS | {"wavelength_min_nm", "wavelength_max_nm"}
+
+
 def _objective_default(index: int) -> dict:
     return {
         "id": uuid4().hex,
@@ -129,10 +175,8 @@ def _objective_default(index: int) -> dict:
         "angles_text": "0",
         "polarization": "unpolarized",
         "metric": "R",
-        "mode": "range",
-        "target_value_percent": 5.0,
-        "lower_bound_percent": 0.0,
-        "upper_bound_percent": 5.0,
+        "pointwise": _constraint_editor_default(True, 5.0),
+        "mean": _constraint_editor_default(False, 100.0),
         "weight": 1.0,
     }
 
@@ -498,13 +542,13 @@ def _film_result_from_queue(value: Any) -> FilmOptimizationResult:
         from coat_sim.core.film_optimization_structure import film_structure_result_from_payload
 
         return film_structure_result_from_payload(value)
-    if (not isinstance(value, dict) or value.get("schema_version") != 1
+    if (not isinstance(value, dict) or value.get("schema_version") != CONTRACT_VERSION
             or value.get("kind") != RESULT_KIND):
         raise ValueError("queue result is not a typed film optimization result")
     request = deserialize_request(value.get("request", {}))
     candidate = value.get("candidate")
     if (not isinstance(candidate, dict) or candidate.get("kind") != CANDIDATE_KIND
-            or candidate.get("schema_version") != 1):
+            or candidate.get("schema_version") != CONTRACT_VERSION):
         raise ValueError("queue result is missing its verified candidate")
     if candidate.get("design_revision") != request.design_revision:
         raise ValueError("queue result revision does not match its frozen request")
@@ -568,6 +612,11 @@ def _film_result_from_queue(value: Any) -> FilmOptimizationResult:
         validation_per_condition_errors=tuple(
             FilmConditionError(**row) for row in validation_errors),
         validation_message=validation_message,
+        solver_acceptable=quality["solver_acceptable"],
+        validation_solver_acceptable=solver_validation.get("validation_solver_acceptable"),
+        raw_coverage=tuple(FilmObjectiveCoverage(**row) for row in candidate["raw_coverage"]),
+        validation_raw_coverage=tuple(FilmObjectiveCoverage(**row)
+            for row in solver_validation.get("validation_raw_coverage", [])),
     )
 
 
@@ -1323,7 +1372,7 @@ class FilmOptimizationQuickController(QObject):
         """Apply a current ideal candidate, fenced by both source edit versions."""
         from coat_sim.core.film_ideal_sensitivity import FilmIdealSensitivityResult
 
-        if not isinstance(result, FilmIdealSensitivityResult) or result.schema_version != 2:
+        if not isinstance(result, FilmIdealSensitivityResult) or result.schema_version != 3:
             return False
         if result.policy == "strict_nominal":
             if result.best_analysis is None or result.best_analysis.nominal_targets_met is not True:
@@ -1390,6 +1439,17 @@ class FilmOptimizationQuickController(QObject):
                 source_destroyed.connect(self.markSourceClosed)
                 self._source_connections.append((source_destroyed, self.markSourceClosed))
 
+    def _export_objective_editor_rows(self) -> list[dict]:
+        rows = deepcopy(self._objectives)
+        for row in rows:
+            for group in ("mean", "pointwise"):
+                drafts = {field.split(".", 1)[1]: literal
+                    for (objective_id, field), literal in self._objective_range_drafts.items()
+                    if objective_id == row["id"] and field.startswith(group + ".")}
+                if drafts:
+                    row[group]["bounds_drafts"] = drafts
+        return rows
+
     @Slot(result="QVariantMap")
     def exportOptimizationConfiguration(self) -> dict:
         """Return JSON-only editor state; commit an angle draft or reject export."""
@@ -1400,8 +1460,8 @@ class FilmOptimizationQuickController(QObject):
         if self._pending_edit_error or self._objective_bounds_pending():
             raise ValueError(self._error or "请先修正尚未提交的优化输入")
         return {
-            "version": 1,
-            "objectives": deepcopy(self._objectives),
+            "version": 2,
+            "objectives": self._export_objective_editor_rows(),
             "variables": [{key: deepcopy(row[key]) for key in
                            ("side", "layer_id", "enabled", "lower_nm", "upper_nm")}
                           for row in self._variables],
@@ -1447,53 +1507,56 @@ class FilmOptimizationQuickController(QObject):
             allowed = {"version", "objectives", "variables", "solver", "search_mode",
                        "structure_mode", "structure_options", "structure_materials", "synthesis"}
             if (set(configuration) - allowed or type(configuration.get("version")) is not int
-                    or configuration.get("version") != 1):
+                    or configuration.get("version") != 2):
                 raise ValueError("优化配置版本或字段不受支持")
             defaults = deepcopy(self._configuration_defaults)
             raw_objectives = configuration.get("objectives", defaults["objectives"])
             if not isinstance(raw_objectives, list):
                 raise ValueError("优化目标必须是数组")
             objectives, ids = [], set()
-            target_fields = set(_objective_default(0)) | {"synthesis_strict_upper_bound"}
+            target_fields = set(_objective_default(0))
             for index, raw in enumerate(raw_objectives):
-                if not isinstance(raw, dict) or set(raw) - target_fields:
-                    raise ValueError(f"目标 {index + 1} 字段无效")
+                if (not isinstance(raw, dict) or set(raw) - target_fields
+                        or not {"pointwise", "mean"}.issubset(raw)):
+                    raise ValueError(f"目标 {index + 1} 字段无效；需要当前版本的两组约束")
                 row = {**_objective_default(index), **deepcopy(raw)}
-                # Older saved rows had a point count but no sampling basis.
-                # Keep that explicit count instead of applying the new 1 nm default.
-                if "sampling_basis" not in raw and "wavelength_samples" in raw:
-                    row["sampling_basis"] = "samples"
-                elif "sampling_basis" not in raw and "wavelength_step_nm" in raw:
-                    row["sampling_basis"] = "step"
-                # Configuration schema v1 originally stored a free-form angle
-                # list. Preserve it exactly, including nonuniform legacy lists.
-                if "angle_sampling_mode" not in raw:
-                    row["angle_sampling_mode"] = "points" if "angles_text" in raw else "range"
                 if not isinstance(row["id"], str) or not row["id"] or row["id"] in ids:
-                    raise ValueError("目标 ID 必须为非空且互不重复的字符串")
+                    raise ValueError("目标 ID 必须为非空且不重复的字符串")
                 ids.add(row["id"])
                 row = _resolve_objective_sampling(row)
                 row = _resolve_angle_sampling(row)
                 if (row["polarization"] not in {"s", "p", "unpolarized"}
-                        or row["metric"] not in {"R", "T"}
-                        or row["mode"] not in {"value", "range"}):
-                    raise ValueError(f"目标 {index + 1} 偏振、指标或类型无效")
-                for name in ("target_value_percent", "lower_bound_percent", "upper_bound_percent"):
-                    row[name] = _number(row[name], name)
-                    if not 0 <= row[name] <= 100:
-                        raise ValueError(f"目标 {index + 1} R/T 百分比须在 0 到 100 之间")
-                # A value target has an exact bounds representation; keep one
-                # canonical editable form rather than a hidden target mode.
-                if row["mode"] == "value":
-                    row["lower_bound_percent"] = row["upper_bound_percent"] = row["target_value_percent"]
-                row["mode"] = "range"
-                if ("synthesis_strict_upper_bound" in raw
-                        and type(row["synthesis_strict_upper_bound"]) is not bool):
-                    raise ValueError("合成严格上界必须为明确的开关")
-                if not row.get("synthesis_strict_upper_bound", False):
-                    row.pop("synthesis_strict_upper_bound", None)
-                if row["lower_bound_percent"] > row["upper_bound_percent"]:
-                    raise ValueError(f"目标 {index + 1} 下界不能大于上界")
+                        or row["metric"] not in {"R", "T"}):
+                    raise ValueError(f"目标 {index + 1} 偏振或指标无效")
+                for group in ("mean", "pointwise"):
+                    constraint = row[group]
+                    fields = set(_constraint_editor_default(True))
+                    if (not isinstance(constraint, dict) or set(constraint) - fields - {"bounds_drafts"}
+                            or not fields.issubset(constraint)):
+                        raise ValueError(f"{group} 约束字段无效")
+                    if any(type(constraint[key]) is not bool for key in ("enabled", "strict_lower", "strict_upper")):
+                        raise ValueError(f"{group} 开关必须为布尔值")
+                    if constraint["mode"] not in {"value", "range"}:
+                        raise ValueError(f"{group} 约束模式无效")
+                    for bound_field in ("lower_bound_percent", "upper_bound_percent"):
+                        constraint[bound_field] = _number(constraint[bound_field], bound_field)
+                        if not 0 <= constraint[bound_field] <= 100:
+                            raise ValueError("R/T 百分数必须在 0 到 100 之间")
+                    if constraint["target_value_percent"] is not None:
+                        constraint["target_value_percent"] = _number(constraint["target_value_percent"], "目标值%")
+                        if not 0 <= constraint["target_value_percent"] <= 100:
+                            raise ValueError("目标值必须在 0 到 100% 之间")
+                    if constraint["mode"] == "value":
+                        if constraint["target_value_percent"] is None:
+                            raise ValueError("精确值模式需要目标值")
+                        constraint["lower_bound_percent"] = constraint["upper_bound_percent"] = constraint["target_value_percent"]
+                    drafts = constraint.get("bounds_drafts", {})
+                    if (not isinstance(drafts, dict) or set(drafts) - {"lower_bound_percent", "upper_bound_percent"}
+                            or any(not isinstance(value, str) for value in drafts.values())):
+                        raise ValueError("上下限草稿字段无效")
+                    if constraint["enabled"] and drafts:
+                        raise ValueError("启用的约束含未提交的上下限草稿")
+                _validate_editor_criteria(row)
                 row["weight"] = _number(row["weight"], "目标权重")
                 if row["weight"] <= 0:
                     raise ValueError("目标权重必须大于 0")
@@ -1657,6 +1720,10 @@ class FilmOptimizationQuickController(QObject):
             self._objective_range_drafts.clear()
             self._objective_range_errors.clear()
             self._objective_range_display.clear()
+            for objective in objectives:
+                for group in ("mean", "pointwise"):
+                    for field, literal in objective[group].pop("bounds_drafts", {}).items():
+                        self._objective_range_drafts[(objective["id"], f"{group}.{field}")] = literal
             self._objectives, self._variables = objectives, variables
             self._selected_objective = 0 if objectives else -1
             self._plot_objective, self._plot_angle = 0, 0.0
@@ -2160,108 +2227,114 @@ class FilmOptimizationQuickController(QObject):
 
     @Property("QVariantMap", notify=changed)
     def selectedObjective(self) -> dict:
-        if 0 <= self._selected_objective < len(self._objectives):
-            row = dict(self._objectives[self._selected_objective])
-            objective_id = str(row.get("id", ""))
-            for field in ("lower_bound_percent", "upper_bound_percent",
-                          "wavelength_min_nm", "wavelength_max_nm"):
-                key = (objective_id, field)
-                draft = self._objective_range_drafts.get(
-                    key, self._objective_range_display.get(key))
-                if draft is not None:
+        if not 0 <= self._selected_objective < len(self._objectives):
+            return {}
+        row = deepcopy(self._objectives[self._selected_objective])
+        for field in _OBJECTIVE_BOUNDS_FIELDS:
+            key = (row["id"], field)
+            draft = self._objective_range_drafts.get(key, self._objective_range_display.get(key))
+            if draft is not None:
+                if "." in field:
+                    group, bound = field.split(".", 1)
+                    row[group][bound] = draft
+                else:
                     row[field] = draft
-            return row
-        return {}
+        return row
+
+    def _objective_draft_is_active(self, objective_id: str, field: str) -> bool:
+        if "." not in field:
+            return True
+        group = field.split(".", 1)[0]
+        row = next((row for row in self._objectives if row["id"] == objective_id), None)
+        return row is not None and bool(row[group]["enabled"])
 
     @Property(str, notify=changed)
     def objectiveBoundsError(self) -> str:
+        return self._selected_objective_bounds_error()
+
+    def _selected_objective_bounds_error(self) -> str:
         if not 0 <= self._selected_objective < len(self._objectives):
             return ""
-        objective_id = str(self._objectives[self._selected_objective].get("id", ""))
-        return "\n".join(
-            message for (error_objective, _group), message in self._objective_range_errors.items()
-            if error_objective == objective_id)
+        objective_id = self._objectives[self._selected_objective]["id"]
+        return "\n".join(message for (oid, group), message in self._objective_range_errors.items()
+            if oid == objective_id and (group == "wavelength" or self._objective_draft_is_active(oid, group + ".lower_bound_percent")))
 
     def _objective_bounds_pending(self) -> bool:
-        return bool(self._objective_range_drafts or self._objective_range_errors)
+        return any(self._objective_draft_is_active(oid, field)
+                   for oid, field in self._objective_range_drafts) or self._objective_bounds_invalid()
 
     def _objective_bounds_invalid(self) -> bool:
-        return bool(self._objective_range_errors)
+        return any(group == "wavelength" or self._objective_draft_is_active(oid, group + ".lower_bound_percent")
+                   for oid, group in self._objective_range_errors)
 
     @Slot(str, str)
     def setObjectiveBoundsDraft(self, field: str, text: str) -> None:
-        """Keep the editor's literal text without validating during typing."""
-        if (self._busy or self._shutting_down
-                or field not in {"lower_bound_percent", "upper_bound_percent",
-                                 "wavelength_min_nm", "wavelength_max_nm"}
+        """Keep literal text through focus changes without rebuilding controls."""
+        if (self._busy or self._shutting_down or field not in _OBJECTIVE_BOUNDS_FIELDS
                 or not 0 <= self._selected_objective < len(self._objectives)):
             return
-        objective_id = str(self._objectives[self._selected_objective].get("id", ""))
-        self._objective_range_drafts[(objective_id, field)] = str(text)
+        row = self._objectives[self._selected_objective]
+        self._objective_range_drafts[(row["id"], field)] = str(text)
         self.changed.emit()
 
     @Slot(str, str, result=bool)
     def commitObjectiveBoundsDraft(self, field: str, text: str) -> bool:
-        """Validate a bounds pair at Enter/blur while retaining invalid text."""
-        if (self._busy or self._shutting_down
-                or field not in {"lower_bound_percent", "upper_bound_percent",
-                                 "wavelength_min_nm", "wavelength_max_nm"}
+        if (self._busy or self._shutting_down or field not in _OBJECTIVE_BOUNDS_FIELDS
                 or not 0 <= self._selected_objective < len(self._objectives)):
             return False
         index = self._selected_objective
         row = self._objectives[index]
-        objective_id = str(row.get("id", ""))
-        group = ("target" if field in {"lower_bound_percent", "upper_bound_percent"}
-                 else "wavelength")
+        objective_id = row["id"]
+        group = field.split(".", 1)[0] if "." in field else "wavelength"
         drafts = self._objective_range_drafts
         drafts[(objective_id, field)] = str(text)
+        updated = deepcopy(row)
+        if group != "wavelength" and not row[group]["enabled"]:
+            self.changed.emit()
+            self._persist_configuration()
+            return True
+        pair = (tuple(f"{group}.{name}_bound_percent" for name in ("lower", "upper"))
+                if group != "wavelength" else ("wavelength_min_nm", "wavelength_max_nm"))
         try:
-            if field in {"lower_bound_percent", "upper_bound_percent"}:
-                lower = _number(drafts.get((objective_id, "lower_bound_percent"),
-                                           row["lower_bound_percent"]), "\u76ee\u6807\u4e0b\u9650%")
-                upper = _number(drafts.get((objective_id, "upper_bound_percent"),
-                                           row["upper_bound_percent"]), "\u76ee\u6807\u4e0a\u9650%")
-                if not 0 <= lower <= 100 or not 0 <= upper <= 100:
-                    raise ValueError("\u76ee\u6807\u4e0a\u4e0b\u9650\u5fc5\u987b\u5728 0 \u5230 100% \u4e4b\u95f4\u3002")
-                if lower > upper:
-                    raise ValueError("\u76ee\u6807\u4e0b\u9650\u4e0d\u80fd\u5927\u4e8e\u76ee\u6807\u4e0a\u9650\uff1b\u8bf7\u4fee\u6539\u4e0b\u9650\u6216\u4e0a\u9650\u3002")
+            if group != "wavelength":
+                constraint = updated[group]
+                lower, upper = (_number(drafts.get((objective_id, key), constraint[key.split(".")[1]]), key)
+                                for key in pair)
+                if not 0 <= lower <= upper <= 100:
+                    raise ValueError("目标上下限必须满足 0 ≤ 下限 ≤ 上限 ≤ 100%。")
+                constraint.update(lower_bound_percent=lower, upper_bound_percent=upper,
+                                  mode="range", target_value_percent=None)
+                _validate_editor_criteria(updated)
             else:
-                wavelength_min = _number(drafts.get((objective_id, "wavelength_min_nm"),
-                                                    row["wavelength_min_nm"]), "\u6ce2\u957f\u4e0b\u9650 nm")
-                wavelength_max = _number(drafts.get((objective_id, "wavelength_max_nm"),
-                                                    row["wavelength_max_nm"]), "\u6ce2\u957f\u4e0a\u9650 nm")
-                if wavelength_min <= 0 or wavelength_max <= 0:
-                    raise ValueError("\u6ce2\u957f\u8303\u56f4\u5fc5\u987b\u5927\u4e8e 0 nm\u3002")
-                if wavelength_min > wavelength_max:
-                    raise ValueError("\u6ce2\u957f\u4e0b\u9650\u4e0d\u80fd\u5927\u4e8e\u4e0a\u9650\uff1b\u8bf7\u4fee\u6539\u8303\u56f4\u3002")
-                updated = _resolve_objective_sampling({
-                    **row, "wavelength_min_nm": wavelength_min,
-                    "wavelength_max_nm": wavelength_max,
-                }, edited_field=field)
+                low, high = (_number(drafts.get((objective_id, key), row[key]), key) for key in pair)
+                if low <= 0 or low > high:
+                    raise ValueError("波长范围必须满足 0 < 下限 ≤ 上限（nm）。")
+                updated = _resolve_objective_sampling({**updated, pair[0]: low, pair[1]: high}, edited_field=field)
         except (TypeError, ValueError, OverflowError) as exc:
             self._objective_range_errors[(objective_id, group)] = str(exc)
             self._error = str(exc)
             self.changed.emit()
             return False
-
-        if field in {"lower_bound_percent", "upper_bound_percent"}:
-            updated = deepcopy(row)
-            updated["lower_bound_percent"] = lower
-            updated["upper_bound_percent"] = upper
-            updated["mode"] = "range"
         self._objectives[index] = updated
-        pair = ("lower_bound_percent", "upper_bound_percent") if field in {
-            "lower_bound_percent", "upper_bound_percent"} else ("wavelength_min_nm", "wavelength_max_nm")
-        raw_pair_texts = {pair_field: drafts.get((objective_id, pair_field))
-                          for pair_field in pair}
-        drafts.pop((objective_id, pair[0]), None)
-        drafts.pop((objective_id, pair[1]), None)
-        for pair_field in pair:
-            raw_text = text if pair_field == field else raw_pair_texts[pair_field]
-            if raw_text is not None:
-                self._objective_range_display[(objective_id, pair_field)] = raw_text
+        for key in pair:
+            literal = drafts.pop((objective_id, key), None)
+            if literal is not None:
+                self._objective_range_display[(objective_id, key)] = literal
         self._objective_range_errors.pop((objective_id, group), None)
-        self._error = next(iter(self._objective_range_errors.values()), "")
+        self._error = self._selected_objective_bounds_error()
+        self._invalidate_result()
+        return True
+
+    @Slot(str, bool, result=bool)
+    def setObjectiveConstraintEnabled(self, group: str, enabled: bool) -> bool:
+        if (self._busy or self._shutting_down or group not in {"mean", "pointwise"}
+                or type(enabled) is not bool or not 0 <= self._selected_objective < len(self._objectives)):
+            return False
+        row = self._objectives[self._selected_objective]
+        row[group]["enabled"] = enabled
+        # Preserve half typed disabled text. Enabling restores it for correction;
+        # active drafts prevent submitting or exporting until committed.
+        self._error = ""
         self._invalidate_result()
         return True
 
@@ -2362,27 +2435,65 @@ class FilmOptimizationQuickController(QObject):
         if self._result is None or not 0 <= self._plot_objective < len(objectives):
             return {}
         objective = objectives[self._plot_objective]
-        rows = [row for row in self._result.per_condition_errors
-                if row.objective_index == self._plot_objective
-                and math.isclose(row.angle_deg, self._plot_angle, abs_tol=1e-10)]
-        rows.sort(key=lambda row: row.wavelength_nm)
-        if not rows:
+        raw = next((row for row in self._result.raw_coverage
+            if row.objective_index == self._plot_objective
+            and math.isclose(row.angle_deg, self._plot_angle, abs_tol=1e-10)), None)
+        if raw is None:
             return {}
         original = self._baseline.get((self._plot_objective, self._plot_angle), {})
+        criterion = objective["pointwise"]
         return {
-            "wavelength_nm": [row.wavelength_nm for row in rows],
+            "wavelength_nm": list(raw.wavelength_nm),
             "baseline": list(original.get("actual", [])),
             "baseline_label": "N=0 空栈基线" if self._synthesis_payload is not None else "原设计",
-            "candidate": [row.actual for row in rows],
+            "candidate": list(raw.actual_values),
             "metric": objective["metric"],
-            "mode": objective["mode"],
-            "target_value": (float(objective["target_value_percent"]) / 100.0
-                             if objective["mode"] == "value" else None),
-            "lower_bound": (float(objective["lower_bound_percent"]) / 100.0
-                            if objective["mode"] == "range" and str(objective["lower_bound_percent"]).strip() else None),
-            "upper_bound": (float(objective["upper_bound_percent"]) / 100.0
-                            if objective["mode"] == "range" and str(objective["upper_bound_percent"]).strip() else None),
+            "mode": criterion["mode"],
+            "target_value": (float(criterion["target_value_percent"]) / 100.0
+                             if criterion["enabled"] and criterion["mode"] == "value" else None),
+            "lower_bound": (float(criterion["lower_bound_percent"]) / 100.0
+                            if criterion["enabled"] and criterion["mode"] == "range" else None),
+            "upper_bound": (float(criterion["upper_bound_percent"]) / 100.0
+                            if criterion["enabled"] and criterion["mode"] == "range" else None),
         }
+
+    @staticmethod
+    def _criterion_status_text(status: dict) -> str:
+        lines = []
+        for group, title in (("mean", "平均值"), ("pointwise", "绝对值（逐点）")):
+            item = status[group]
+            if not item["enabled"]:
+                lines.append(f"{title}：未启用")
+                continue
+            if item["mode"] == "value":
+                bounds = f"= {item['target_value'] * 100:.6g}%"
+            else:
+                low, high = item["lower_bound"], item["upper_bound"]
+                bounds = (f"{'>' if item['strict_lower'] else '≥'} {low * 100:.6g}%" if low is not None else "")
+                if high is not None:
+                    bounds += ("，" if bounds else "") + f"{'<' if item['strict_upper'] else '≤'} {high * 100:.6g}%"
+            worst = f"{item['worst_angle_deg']:g}°"
+            if item["worst_wavelength_nm"] is not None:
+                worst += f" / {item['worst_wavelength_nm']:.6g} nm"
+            lines.append(f"{title}：{'通过' if item['targets_met'] else '未通过'}（{bounds}）；"
+                f"最差角 {worst}，实际 {item['worst_actual'] * 100:.6g}%")
+        return "\n".join(lines)
+
+    @Property(str, notify=changed)
+    def objectiveCriteriaSummary(self) -> str:
+        if self._result is None or self._frozen_request is None:
+            return ""
+        from coat_sim.core.film_synthesis_audit import objective_constraint_status
+        errors = (self._result.validation_per_condition_errors
+                  if self._result.validation_complete else self._result.per_condition_errors)
+        if not errors:
+            return ""
+        statuses = objective_constraint_status(self._frozen_request.objectives, errors,
+            self._frozen_request.acceptable_normalized_error)
+        scope = "独立验证" if self._result.validation_complete else "仅训练网格（未完成独立验证）"
+        return scope + "\n" + "\n".join(f"目标 {row['objective_index'] + 1} · {row['metric']} · "
+            f"{row['wavelength_min_nm']:g}–{row['wavelength_max_nm']:g} nm\n"
+            + self._criterion_status_text(row) for row in statuses)
 
     @Property("QVariantList", notify=changed)
     def conditionErrors(self) -> list[dict]:
@@ -2393,7 +2504,9 @@ class FilmOptimizationQuickController(QObject):
                       key=lambda row: row.normalized_violation, reverse=True)[:24]
         return [{
             "objective": row.objective_index + 1,
-            "wavelength": f"{row.wavelength_nm:.4g} nm",
+            "wavelength": (f"{row.wavelength_nm:.4g} nm" if row.wavelength_nm is not None
+                           else f"{row.wavelength_min_nm:g}–{row.wavelength_max_nm:g} nm · 平均值"),
+            "reduction": row.reduction,
             "angle": f"{row.angle_deg:g}°",
             "polarization": row.polarization,
             "metric": row.metric,
@@ -2796,9 +2909,10 @@ class FilmOptimizationQuickController(QObject):
         if any(row.get("angle_sampling_mode") != "range" for row in self._objectives):
             return "目标含显式角度配置；请逐个重新确认角度范围与精度，原角度未自动更改。"
         for row in self._objectives:
-            low, high = row["lower_bound_percent"], row["upper_bound_percent"]
-            if not (0 <= low <= high <= 100):
-                return "目标上下限须满足 0 ≤ 下限 ≤ 上限 ≤ 100%。"
+            try:
+                _validate_editor_criteria(row)
+            except (TypeError, ValueError, KeyError) as exc:
+                return str(exc)
         if self._search_mode == "fixed_topology" and require_thickness_bounds:
             for row in self._variables:
                 if not row["enabled"]:
@@ -3238,8 +3352,8 @@ class FilmOptimizationQuickController(QObject):
     def _condition_target(row) -> str:
         if row.target_value is not None:
             return f"目标 {row.target_value * 100:.4g}%"
-        low = "无下限" if row.lower_bound is None else f"≥{row.lower_bound * 100:.4g}%"
-        high = "无上限" if row.upper_bound is None else f"≤{row.upper_bound * 100:.4g}%"
+        low = "无下限" if row.lower_bound is None else f"{'>' if row.strict_lower else '≥'}{row.lower_bound * 100:.4g}%"
+        high = "无上限" if row.upper_bound is None else f"{'<' if row.strict_upper else '≤'}{row.upper_bound * 100:.4g}%"
         return f"{low}，{high}"
 
     @Slot(int)
@@ -3358,8 +3472,7 @@ class FilmOptimizationQuickController(QObject):
             return False
         if not 0 <= self._selected_objective < len(self._objectives):
             return False
-        if field in {"lower_bound_percent", "upper_bound_percent",
-                     "wavelength_min_nm", "wavelength_max_nm"}:
+        if field in _OBJECTIVE_BOUNDS_FIELDS:
             return self.commitObjectiveBoundsDraft(field, str(value))
         if self._objective_bounds_pending():
             return False
@@ -3369,8 +3482,7 @@ class FilmOptimizationQuickController(QObject):
         allowed = {
             "name", "wavelength_min_nm", "wavelength_max_nm", "wavelength_samples",
             "wavelength_step_nm", "angle_sampling_mode", "angle_min_deg", "angle_max_deg",
-            "angle_step_deg", "angles_text", "polarization", "metric", "mode",
-            "target_value_percent", "lower_bound_percent", "upper_bound_percent", "weight",
+            "angle_step_deg", "angles_text", "polarization", "metric", "weight",
         }
         if field not in allowed:
             return False
@@ -3392,27 +3504,19 @@ class FilmOptimizationQuickController(QObject):
             return False
         if field == "metric" and value not in ("R", "T"):
             return False
-        if field == "mode" and value not in ("value", "range"):
-            return False
         updated = deepcopy(row)
         try:
             if field == "wavelength_samples":
                 value = _integer(value, "波长采样点数", 1)
-            elif field in ("polarization", "metric", "mode", "angle_sampling_mode"):
+            elif field in ("polarization", "metric", "angle_sampling_mode"):
                 value = str(value)
             elif field not in ("name", "angles_text"):
                 value = _number(value, {
                     "wavelength_min_nm": "波长下限", "wavelength_max_nm": "波长上限",
-                    "wavelength_step_nm": "采样步长", "target_value_percent": "目标值（%）",
-                    "lower_bound_percent": "目标下限（%）", "upper_bound_percent": "目标上限（%）",
+                    "wavelength_step_nm": "采样步长",
                     "weight": "目标权重",
                 }.get(field, field))
             updated[field] = str(value).strip() if field in ("name", "angles_text") else value
-            if field == "target_value_percent" or (field == "mode" and value == "value"):
-                updated["lower_bound_percent"] = updated["upper_bound_percent"] = updated["target_value_percent"]
-            updated["mode"] = "range"
-            if not 0 <= updated["lower_bound_percent"] <= updated["upper_bound_percent"] <= 100:
-                raise ValueError("目标上下限须满足 0 ≤ 下限 ≤ 上限 ≤ 100%。")
             if field in {"wavelength_min_nm", "wavelength_max_nm", "wavelength_samples", "wavelength_step_nm"}:
                 updated = _resolve_objective_sampling(updated, edited_field=field)
             if field in {"angle_min_deg", "angle_max_deg", "angle_step_deg", "angle_sampling_mode"}:
@@ -3436,10 +3540,6 @@ class FilmOptimizationQuickController(QObject):
                 exc = ValueError("入射角列表过大，无法转换为显式点列")
             self._record_pending_edit_error(error_key, str(exc))
             return False
-        if field == "target_value_percent" or (field == "mode" and value == "value"):
-            objective_id = str(updated.get("id", ""))
-            self._objective_range_display.pop((objective_id, "lower_bound_percent"), None)
-            self._objective_range_display.pop((objective_id, "upper_bound_percent"), None)
         self._objectives[self._selected_objective] = updated
         if not self._clear_pending_edit_error(error_key):
             return False
@@ -3653,10 +3753,7 @@ class FilmOptimizationQuickController(QObject):
                 samples = 1
             angles = (self._angles_for_row(row) if prepared_angles is None
                       else tuple(prepared_angles[index]))
-            mode: Literal["value", "range"] = (
-                "value" if row["lower_bound_percent"] == row["upper_bound_percent"]
-                and not (self._search_mode == "synthesis" and row.get("synthesis_strict_upper_bound", False))
-                else "range")
+            _validate_editor_criteria(row)
             objectives.append(FilmOptimizationObjective(
                 wavelength_min_nm=low,
                 wavelength_max_nm=high,
@@ -3664,13 +3761,8 @@ class FilmOptimizationQuickController(QObject):
                 angles_deg=angles,
                 polarization=row["polarization"],
                 metric=row["metric"],
-                mode=mode,
-                target_value=(float(row["lower_bound_percent"]) / 100.0
-                              if mode == "value" else None),
-                lower_bound=(float(row["lower_bound_percent"]) / 100.0
-                             if mode == "range" and str(row["lower_bound_percent"]).strip() else None),
-                upper_bound=(float(row["upper_bound_percent"]) / 100.0
-                             if mode == "range" and str(row["upper_bound_percent"]).strip() else None),
+                pointwise=_constraint_from_editor(row["pointwise"]),
+                mean=_constraint_from_editor(row["mean"]),
                 weight=_number(row["weight"], f"目标 {index + 1} 权重"),
                 normalization_scale=1.0,
             ))
@@ -3881,8 +3973,7 @@ class FilmOptimizationQuickController(QObject):
                                        self._synthesis_assume_unknown_k_zero,
                                        cpu_workers=self._synthesis_cpu_workers,
                                        forward_backend=self._synthesis_forward_backend,
-                                       forward_device=self._synthesis_forward_device,
-                                       strict_upper_bound_objective_indices=synthesis_strict_upper_bound_indices(self._objectives))
+                                       forward_device=self._synthesis_forward_device)
 
     def _synthesis_configuration_error(self):
         if self._synthesis_structure_search_seed_error:
@@ -4145,13 +4236,10 @@ class FilmOptimizationQuickController(QObject):
                 or not 0 <= self._selected_objective < len(self._objectives)
                 or type(enabled) is not bool):
             return False
-        row = self._objectives[self._selected_objective]
-        if enabled and (row.get("mode") != "range" or not str(row.get("upper_bound_percent", "")).strip()):
+        row = self._objectives[self._selected_objective]["pointwise"]
+        if enabled and not row["enabled"]:
             return False
-        if enabled:
-            row["synthesis_strict_upper_bound"] = True
-        else:
-            row.pop("synthesis_strict_upper_bound", None)
+        row["strict_upper"] = enabled
         self._error = ""
         self._invalidate_result()
         return True
@@ -4260,29 +4348,15 @@ class FilmOptimizationQuickController(QObject):
     @Property(list, notify=changed)
     def synthesisObjectiveAudit(self):
         rows = deepcopy((self._synthesis_payload or {}).get("review", {}).get("per_objective", []))
-        frozen = (self._synthesis_payload or {}).get("result", {}).get("frozen_request", {})
-        objectives = frozen.get("objectives", [])
         for row in rows:
             index = row["objective_index"]
-            objective = objectives[index] if 0 <= index < len(objectives) else {}
-            lower = objective.get("lower_bound")
-            upper = objective.get("upper_bound")
-            lower_op = ">" if index in frozen.get("strict_lower_bound_objective_indices", []) else "≥"
-            upper_op = "<" if index in frozen.get("strict_upper_bound_objective_indices", []) else "≤"
-            bounds = (f"{lower_op} {lower}" if lower is not None else "")
-            bounds += (("，" if bounds else "") + f"{upper_op} {upper}" if upper is not None else "")
-            if objective.get("mode") == "value":
-                bounds = f"= {objective.get('target_value')}"
-            quality = (f"原门限名义验收：{self._synthesis_acceptance_text(row.get('targets_met'))}；"
-                       f"求解容差可接受：{self._synthesis_acceptance_text(row.get('solver_acceptable'))}")
+            quality = (f"原约束验收：{self._synthesis_acceptance_text(row.get('targets_met'))}；"
+                       f"求解容差：{self._synthesis_acceptance_text(row.get('solver_acceptable'))}")
             if row.get("score_scope") == "training":
-                quality += (f"\n仅训练网格：名义{self._synthesis_acceptance_text(row.get('training_targets_met'))}，"
-                            f"求解容差{self._synthesis_acceptance_text(row.get('training_solver_acceptable'))}；无完整独立核查")
-            row["display"] = (f"目标 {row['objective_index'] + 1} | {row['metric']} | "
-                f"{row['wavelength_min_nm']}–{row['wavelength_max_nm']} nm | "
-                f"原门限 {bounds or '精确值目标'}\n{quality}\n"
-                f"最坏点 {row['worst_wavelength_nm']} nm / {row['worst_angle_deg']}°，"
-                f"实际值 {row['worst_actual']}，最大归一化违规 {row['max_normalized_error']}")
+                quality += "\n仅训练网格；未完成独立验证"
+            row["display"] = (f"目标 {index + 1} | {row['metric']} | "
+                f"{row['wavelength_min_nm']}–{row['wavelength_max_nm']} nm\n{quality}\n"
+                + self._criterion_status_text(row))
         return rows
 
     @Property(str, notify=changed)
@@ -5158,13 +5232,8 @@ class FilmOptimizationQuickController(QObject):
                            angle_sampling_mode="points",
                            angles_text=", ".join(str(value) for value in objective.angles_deg),
                            polarization=objective.polarization, metric=objective.metric,
-                           mode="range",
-                           target_value_percent=(objective.target_value or 0.0) * 100,
-                           lower_bound_percent=((objective.target_value or 0.0) * 100
-                                                if objective.mode == "value" else (objective.lower_bound or 0.0) * 100),
-                           upper_bound_percent=((objective.target_value or 0.0) * 100
-                                                if objective.mode == "value" else
-                                                objective.upper_bound * 100 if objective.upper_bound is not None else 100.0))
+                           pointwise=_constraint_editor_from_request(objective.pointwise),
+                           mean=_constraint_editor_from_request(objective.mean))
                 row = _resolve_angle_sampling(row)
                 objectives.append(row)
         except Exception as exc:
@@ -5211,7 +5280,7 @@ class FilmOptimizationQuickController(QObject):
                 raise ValueError("The originating project generation is no longer current")
             view = synthesis_result_view(payload)
             from coat_sim.core.film_synthesis_io import film_synthesis_request_from_payload
-            envelope = {"schema_version": 1, "kind": "coat_sim.film_synthesis_request",
+            envelope = {"schema_version": 2, "kind": "coat_sim.film_synthesis_request",
                         "request_id": "history-" + str(job_id)[:100], "physical_structures": [],
                         "request": payload["result"]["frozen_request"]}
             _, request, _ = film_synthesis_request_from_payload(envelope)
@@ -5222,11 +5291,8 @@ class FilmOptimizationQuickController(QObject):
                            wavelength_max_nm=objective.wavelength_max_nm,
                            wavelength_samples=objective.wavelength_samples,
                            metric=objective.metric, polarization=objective.polarization,
-                           mode=objective.mode,
-                           target_value_percent=(objective.target_value or 0) * 100,
-                           lower_bound_percent=(objective.lower_bound or objective.target_value or 0) * 100,
-                           upper_bound_percent=(objective.upper_bound if objective.upper_bound is not None else
-                                                objective.target_value if objective.target_value is not None else 1) * 100,
+                           pointwise=_constraint_editor_from_request(objective.pointwise),
+                           mean=_constraint_editor_from_request(objective.mean),
                            angle_sampling_mode="points", angles_text=", ".join(str(v) for v in objective.angles_deg))
                 objectives.append(row)
         except (ValueError, TypeError, KeyError) as exc:

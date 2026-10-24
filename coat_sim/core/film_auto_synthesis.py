@@ -27,6 +27,7 @@ from .film_optimization_structure import (
 )
 from .optical_constants import UNITS_TO_UM, prepare_optical_set
 from .film_nominal_acceptance import nominal_targets_pass, solver_acceptable
+from .film_objective_criteria import active_constraints
 from .film_synthesis_absorption import (annotate_synthesis_design, assumes_unknown_k_zero,
                                         sample_synthesis_optical)
 from .film_synthesis_randomization import (validate_template_seed, randomized_template_start,
@@ -89,8 +90,8 @@ class FilmSynthesisRequest:
     acceptance. parallel_batch_size=None is AUTO, resolved once at freeze from
     requested/available CPUs and preserved as a positive logical quantum when
     execution cpu_workers changes for serial/parallel replay. Range bounds
-    remain inclusive unless their objective index is
-    explicitly listed in strict_lower/strict_upper_bound_objective_indices.
+    use the independently enabled pointwise/mean constraints and their nested
+    strict bounds for nominal acceptance.
     """
 
     environment: Mapping[str, Any]
@@ -117,18 +118,15 @@ class FilmSynthesisRequest:
     forward_backend: str = "cpu"
     forward_device: Mapping[str, Any] | None = None
     structure_search_seed: int | None = 0
-    strict_lower_bound_objective_indices: tuple[int, ...] = ()
     ar_structure_mode: str = "clustered"
     max_seconds: float | None = None
     search_strategy: str = "hybrid"
-    objective_weighting: str = "equal_window"
     archive_capacity: int = 32
     needle_batch_size: int = 6
     needle_pre_local: bool = False
     needle_position_refinement_rounds: int = 1
     max_working_set_bytes: int | None = 0
     resource_guard_resolution: Mapping[str, Any] | None = None
-    strict_upper_bound_objective_indices: tuple[int, ...] = ()
     parallel_batch_size: int | None = None
     randomize_template_search: bool = False
 
@@ -187,18 +185,6 @@ class FilmSynthesisResult:
     performance: Mapping[str, Any] = field(default_factory=dict)
     candidate_provenance: Mapping[str, Any] = field(default_factory=dict)
     solver_acceptable: bool | None = None
-
-
-def strict_lower_bounds_pass(request, score):
-    """Explicit strict lower checks for in-memory or JSON condition scores."""
-    indices = set(request.strict_lower_bound_objective_indices)
-    if not indices:
-        return True
-    def field(row, key):
-        return row[key] if isinstance(row, Mapping) else getattr(row, key)
-    errors = [row for row in score.get("errors", ()) if field(row, "objective_index") in indices]
-    return (indices <= {field(row, "objective_index") for row in errors}
-            and all(field(row, "actual") > request.objectives[field(row, "objective_index")].lower_bound for row in errors))
 
 
 def _number(value, name, *, zero=False):
@@ -294,9 +280,8 @@ def _synthesis_working_set_estimate_bytes(request: FilmSynthesisRequest, layer_c
     points = sum(o.wavelength_samples * len(o.angles_deg) for o in request.objectives)
     estimate = 128 * 1024**2 + points * count * (64 if jacobian else 32)
     if epigraph:
-        constraints = sum(o.wavelength_samples * len(o.angles_deg) * (
-            2 if o.mode == "value" else int(o.lower_bound is not None) + int(o.upper_bound is not None))
-            for o in request.objectives)
+        from .film_objective_criteria import signed_bound_count
+        constraints = signed_bound_count(request.objectives)
         estimate += 16 * constraints * (count + 1)
     return estimate
 
@@ -306,8 +291,6 @@ def _validated(request):
         raise ValueError("request must be FilmSynthesisRequest")
     if type(request.search_strategy) is not str or request.search_strategy not in {"hybrid", "legacy"}:
         raise ValueError("search_strategy must be hybrid or legacy")
-    if type(request.objective_weighting) is not str or request.objective_weighting not in {"equal_window", "point_count"}:
-        raise ValueError("objective_weighting must be equal_window or point_count")
     for field_name, minimum in (("archive_capacity", 2), ("needle_batch_size", 1),
                                 ("needle_position_refinement_rounds", 0)):
         if type(getattr(request, field_name)) is not int or getattr(request, field_name) < minimum:
@@ -346,24 +329,6 @@ def _validated(request):
     objectives = _normalize_objectives(request.objectives)
     if not objectives:
         raise ValueError("at least one objective is required")
-    strict_indices = request.strict_lower_bound_objective_indices
-    if not isinstance(strict_indices, (tuple, list)):
-        raise ValueError("strict_lower_bound_objective_indices must be a sequence")
-    if any(type(index) is not int or index < 0 or index >= len(objectives) for index in strict_indices):
-        raise ValueError("strict_lower_bound_objective_indices must contain valid nonboolean objective indices")
-    if len(set(strict_indices)) != len(strict_indices):
-        raise ValueError("strict_lower_bound_objective_indices must be unique")
-    if any(objectives[index].mode != "range" or objectives[index].lower_bound is None for index in strict_indices):
-        raise ValueError("strict lower bounds require range objectives with an explicit lower_bound")
-    strict_upper_indices = request.strict_upper_bound_objective_indices
-    if not isinstance(strict_upper_indices, (tuple, list)):
-        raise ValueError("strict_upper_bound_objective_indices must be a sequence")
-    if any(type(index) is not int or index < 0 or index >= len(objectives) for index in strict_upper_indices):
-        raise ValueError("strict_upper_bound_objective_indices must contain valid nonboolean objective indices")
-    if len(set(strict_upper_indices)) != len(strict_upper_indices):
-        raise ValueError("strict_upper_bound_objective_indices must be unique")
-    if any(objectives[index].mode != "range" or objectives[index].upper_bound is None for index in strict_upper_indices):
-        raise ValueError("strict upper bounds require range objectives with an explicit upper_bound")
     if not isinstance(request.candidate_materials, (tuple, list)) or not request.candidate_materials:
         raise ValueError("explicit candidate materials are required")
     refs = set()
@@ -422,8 +387,6 @@ def _validated(request):
         seeds.append(seed)
     return replace(request, environment=design, objectives=objectives, seed_designs=tuple(seeds), forward_device=forward_device,
                    resource_guard_resolution=resource_guard_resolution,
-                   strict_lower_bound_objective_indices=tuple(strict_indices),
-                   strict_upper_bound_objective_indices=tuple(strict_upper_indices),
                    candidate_materials=tuple(request.candidate_materials),
                    growth_quarter_wave_fractions=tuple(float(v) for v in request.growth_quarter_wave_fractions),
                    **numeric)
@@ -779,6 +742,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         record_candidate(candidate_observer, value["design"],
             weighted_rms_error=value["score"]["weighted_rms_error"],
             max_normalized_error=value["score"]["max_error"], condition_rows=value["score"]["errors"],
+            raw_coverage=value["score"]["coverage"],
             physical_thickness_nm=tuple(row["thickness"]["value"]
                 for side in ("front_layers", "back_layers") for row in value["design"].get(side, ())),
             is_best=is_best, is_current=is_current, iterations=cycle, evaluations=evaluations,
@@ -1026,38 +990,31 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
 
     def rank(candidate):
         legacy = _synthesis_candidate_rank(candidate, 0.0)
-        strict_indices = set(request.strict_lower_bound_objective_indices) | set(request.strict_upper_bound_objective_indices)
+        strict_active = any(c.strict_lower or c.strict_upper
+                            for o in request.objectives for _, c in active_constraints(o))
+        passed = nominal_targets_pass(request, candidate["score"])
         if request.search_strategy == "hybrid":
-            if not strict_indices:
-                return (int(not nominal_targets_pass(request, candidate["score"])), *legacy)
+            if not strict_active:
+                return (int(not passed), *legacy)
             score = candidate["score"]
-            passed = nominal_targets_pass(request, score)
             rows = candidate["design"]["front_layers"]
             cost = (len(rows), sum(row["thickness"]["value"] for row in rows))
             if passed:
                 return (0, *cost, score["max_error"], score["weighted_rms_error"])
             return (1, score["max_error"], score["weighted_rms_error"], *cost)
-        if not (automatic_reflector_route or automatic_matching_route) and not strict_indices:
-            return (int(not nominal_targets_pass(request, candidate["score"])), *legacy)
+        if not (automatic_reflector_route or automatic_matching_route) and not strict_active:
+            return (int(not passed), *legacy)
         score = candidate["score"]
-        # Raw optical merit guides automatic structural search. Only explicitly
-        # selected strict bounds change the operator; ordinary saved range
-        # objectives retain their original inclusive bounds, without tolerance.
-        slack_indices = set(request.strict_lower_bound_objective_indices)
-        if not slack_indices and automatic_reflector_route:
-            slack_indices = {i for i, objective in enumerate(request.objectives)
-                             if objective.metric == "R" and objective.mode == "range"
-                             and objective.lower_bound is not None}
-        slacks = [error.actual - request.objectives[error.objective_index].lower_bound
-                  for error in score.get("errors", ()) if error.objective_index in slack_indices]
-        slacks.extend(request.objectives[error.objective_index].upper_bound - error.actual
-            for error in score.get("errors", ())
-            if error.objective_index in request.strict_upper_bound_objective_indices)
-        slack = min(slacks, default=0.0) if score["max_error"] == 0 else 0.0
-        optical = (score["max_error"], -slack, *legacy)
-        if strict_indices:
-            return (0 if nominal_targets_pass(request, score) else 1, *optical)
-        return (int(not nominal_targets_pass(request, score)), *optical)
+        slacks = []
+        for error in score.get("errors", ()):
+            criterion = getattr(request.objectives[error.objective_index], error.reduction)
+            if criterion.strict_lower or (automatic_reflector_route
+                    and criterion.mode == "range" and criterion.lower_bound is not None):
+                slacks.append(error.actual - criterion.lower_bound)
+            if criterion.strict_upper:
+                slacks.append(criterion.upper_bound - error.actual)
+        slack = min(slacks, default=0.) if score["max_error"] == 0 else 0.
+        return (int(not passed), score["max_error"], -slack, *legacy)
 
     def audit_archive(value, *, allow_feedback_repair=True):
         nonlocal audited_best, completed_training_validation
@@ -1373,7 +1330,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             # Hybrid AUTO follows its frozen request rather than the legacy
             # executor default of eight. Available CPUs remain an actual cap.
             execution.workers = min(batch_quantum, execution.available_workers)
-        details: dict[str, Any] = dict(strategy="hybrid", objective_weighting=request.objective_weighting,
+        details: dict[str, Any] = dict(strategy="hybrid",
             objective_masses=synthesis_window_masses(request).tolist(), stages=[], needle_scans=[],
             parallel_batches=[],
             exploration_endpoints=[], resource_skips=[], original_grid_points=sum(
@@ -2278,9 +2235,10 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             )
             multispectral_route = multispectral_prior_eligible(request)
             separated_hr_only = multispectral_route and all(
-                o.metric == "R" and o.mode == "range"
-                and o.lower_bound is not None and o.lower_bound >= .5
-                and (o.upper_bound is None or o.upper_bound >= 1.)
+                o.metric == "R" and not o.mean.enabled and o.pointwise.enabled
+                and o.pointwise.mode == "range" and o.pointwise.lower_bound is not None
+                and o.pointwise.lower_bound >= .5
+                and (o.pointwise.upper_bound is None or o.pointwise.upper_bound >= 1.)
                 for o in request.objectives)
 
             def multispectral_prefix(existing=()):

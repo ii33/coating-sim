@@ -179,7 +179,7 @@ def build_bundle(suite_path: Path = DEFAULT_SUITE, *, case: str | None = None,
             "request_decoder": "coat_sim.core.film_synthesis_io.film_synthesis_request_from_payload",
             "mode_values": ["clustered", "v23_matching"],
             "timeout_source": "frozen request manifest; CLI may reduce the wall budget",
-            "acceptance_note": "raw training and dense/offset/extrema audit remain independent; means are descriptive only",
+            "acceptance_note": "raw coverage and enabled mean/pointwise criteria remain independent evidence; mean uses only the fixed dense integration grid; descriptive means do not override enabled criteria",
             "install_command": "python -m pip install -r requirements-cloud.txt",
         },
     }

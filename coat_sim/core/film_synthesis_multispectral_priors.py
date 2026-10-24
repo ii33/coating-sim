@@ -24,8 +24,8 @@ class _InvalidPrior(Exception):
 
 def _hr_objectives(request):
     return tuple((i, o) for i, o in enumerate(request.objectives)
-        if o.metric == "R" and o.mode == "range" and o.weight > 0
-        and o.lower_bound is not None and o.lower_bound >= .5)
+        if o.pointwise.enabled and not o.mean.enabled and o.metric == "R" and o.pointwise.mode == "range" and o.weight > 0
+        and o.pointwise.lower_bound is not None and o.pointwise.lower_bound >= .5)
 
 
 def merged_hr_windows(request):
@@ -50,7 +50,7 @@ def multispectral_prior_eligible(request):
     if not hr:
         return False
     pure = len(hr) == len(request.objectives) and all(
-        o.upper_bound is None or o.upper_bound >= 1. for _, o in hr)
+        o.pointwise.upper_bound is None or o.pointwise.upper_bound >= 1. for _, o in hr)
     return bool(not request.seed_designs and len(request.candidate_materials) >= 2
         and (request.max_layers is None or (type(request.max_layers) is int and request.max_layers >= 2))
         and request.frozen_material_snapshot is not None
@@ -183,12 +183,12 @@ def iter_multispectral_hr_proposals(request, *, epoch=0,
                     raise _InvalidPrior("layer budget cannot cover derived HR centers")
                 centers = [lo if lo == hi else math.exp(math.log(lo) + (i + .5) * math.log(hi / lo) / center_count)
                            for i in range(center_count)]
-                target = min(max(o.lower_bound for o in objectives), math.nextafter(1., 0.))
+                target = min(max(o.pointwise.lower_bound for o in objectives), math.nextafter(1., 0.))
                 estimated = max(1, math.ceil(math.log((1 + math.sqrt(target)) /
                     (1 - math.sqrt(target))) / (2 * math.log(ratio))))
                 window_specs.append(dict(deepcopy(window), centers_nm=centers,
                     contrast=ratio, fractional_stopband=delta, estimated_pairs_per_center=estimated,
-                    target_lower_bound=max(o.lower_bound for o in objectives),
+                    target_lower_bound=max(o.pointwise.lower_bound for o in objectives),
                     phase_angle_deg=(conditions[0][0] + conditions[-1][0]) / 2,
                     high=first if sign == 1 else second, low=second if sign == 1 else first))
                 witnesses.append([dict(row, ratio=(row["ratio"] if sign == 1 else 1 / row["ratio"]))

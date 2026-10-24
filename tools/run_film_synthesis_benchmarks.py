@@ -23,7 +23,7 @@ import tempfile
 import threading
 import time
 import traceback
-from typing import Any, TypeGuard, TypedDict, cast
+from typing import Any, TypedDict
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -73,7 +73,8 @@ def configure_process() -> dict[str, Any]:
 def source_identity(repo_root: Path = ROOT) -> dict[str, Any]:
     paths = sorted((repo_root / "coat_sim").rglob("*.py"))
     paths += [repo_root / "tools" / name for name in (
-        "run_film_synthesis_benchmarks.py", "run_film_synthesis_acceptance.py")]
+        "run_film_synthesis_benchmarks.py", "run_film_synthesis_acceptance.py",
+        "run_film_synthesis_cloud.py")]
     hashes = {path.relative_to(repo_root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
               for path in paths}
     return {"source_sha256": sha256_json(hashes), "source_hashes": hashes}
@@ -105,6 +106,9 @@ def load_suite(path: Path, repo_root: Path = ROOT):
         raise ValueError("Case IDs must be safe path components")
     if len(set(identifiers)) != len(identifiers):
         raise ValueError("Duplicate case ID")
+    from tools.run_film_synthesis_cloud import _assert_current_request_shape
+    for case in cases:
+        _assert_current_request_shape(case)
     catalog_path = _inside_repo(repo_root, suite["material_catalog"])
     catalog_bytes = catalog_path.read_bytes()
     catalog_hash = hashlib.sha256(catalog_bytes).hexdigest()
@@ -122,7 +126,8 @@ def build_case_request(case, defaults, rows, seed, workers):
     """Adapt manifest fields to actual GUI contracts, then freeze real optics."""
     from coat_sim.core.film_auto_synthesis import freeze_film_synthesis_request
     from coat_sim.core.film_design import new_design
-    from coat_sim.core.film_optimization import FilmOptimizationObjective, FilmOptimizationRequest
+    from coat_sim.core.film_optimization import FilmOptimizationRequest
+    from coat_sim.core.film_objective_payload import objective_from_payload
     from coat_sim.core.film_optimization_needle import FilmNeedleMaterialReference
     from coat_sim.ui.film_synthesis_quick_adapter import build_synthesis_request
     if type(seed) is not int or seed < 0:
@@ -134,9 +139,9 @@ def build_case_request(case, defaults, rows, seed, workers):
     environment = new_design(name=case["id"], design_id="benchmark-" + case["id"])
     environment["substrate"].update(case["substrate"])
     environment["substrate"]["mode"] = "semi_infinite"
-    objectives = tuple(FilmOptimizationObjective(
-        **{**item, "angles_deg": tuple(item["angles_deg"]), "mode": "range"})
-        for item in case["objectives"])
+    from tools.run_film_synthesis_cloud import _assert_current_request_shape
+    _assert_current_request_shape(case)
+    objectives = tuple(objective_from_payload(item) for item in case["objectives"])
     base = FilmOptimizationRequest(environment, 0, (), objectives,
         acceptable_normalized_error=defaults.get("acceptable_normalized_error", 0),
         validation_samples_multiplier=defaults.get("validation_samples_multiplier", 5))
@@ -148,8 +153,7 @@ def build_case_request(case, defaults, rows, seed, workers):
         "max_total_thickness_nm": case.get("max_total_thickness_nm")}
     request = build_synthesis_request(base, references, options, use_current_seed=False,
         assume_unknown_k_zero=case["assume_lossless"], cpu_workers=workers, forward_backend="cpu")
-    request = replace(request, structure_search_seed=seed,
-        strict_lower_bound_objective_indices=tuple(case.get("strict_lower_bound_objective_indices", ())))
+    request = replace(request, structure_search_seed=seed)
     service = AcceptanceService(rows)
     return service, freeze_film_synthesis_request(service, request)
 
@@ -228,97 +232,12 @@ def candidate_evidence_matches(design, training, validation):
 
 
 def raw_acceptance(request, score, *, scope="training"):
-    """Check original raw bounds and complete production sample evidence.
-
-    Training is the exact Cartesian grid. Audit must retain every dense and
-    shifted midpoint condition; additional extrema are allowed inside its domain.
-    No tolerance is applied to physical acceptance bounds or grid identities.
-    """
-    import numpy as np
-    if scope not in {"training", "audit"}:
-        raise ValueError("Unknown score grid scope")
-    score = jsonable(score)
-    if not isinstance(score, dict) or not isinstance(score.get("errors"), list):
-        return {"available": False, "passed": None, "condition_count": 0}
-    objectives = request["objectives"]
-    strict = set(request.get("strict_lower_bound_objective_indices", []))
-    errors = score["errors"]
-    required: set[tuple[int, float, float]] = set()
-    dense_count = offset_count = 0
-    for index, objective in enumerate(objectives):
-        low, high = objective["wavelength_min_nm"], objective["wavelength_max_nm"]
-        count = objective["wavelength_samples"]
-        if scope == "audit" and count != 1:
-            count = (count - 1) * request["validation_samples_multiplier"] + 1
-        waves = [float(wave) for wave in np.linspace(low, high, count)]
-        dense_count += len(waves) * len(objective["angles_deg"])
-        if scope == "audit" and count > 1 and low != high:
-            step = (high - low) / (count - 1)
-            offset = [float(wave) for wave in np.linspace(low + .5 * step, high - .5 * step, count - 1)]
-            offset_count += len(offset) * len(objective["angles_deg"])
-            waves += offset
-        required.update((index, float(angle), wave) for angle in objective["angles_deg"] for wave in waves)
-    seen: set[tuple[int, float, float]] = set()
-    invalid = []
-    failed = []
-    def finite_number(value: object) -> TypeGuard[int | float]:
-        return type(value) in (int, float) and math.isfinite(cast(int | float, value))
-    for row in errors:
-        if not isinstance(row, dict):
-            invalid.append("condition_not_object")
-            continue
-        row_index = row.get("objective_index")
-        if type(row_index) is not int or not 0 <= row_index < len(objectives):
-            invalid.append("invalid_objective_index")
-            continue
-        objective = objectives[row_index]
-        angle, wave, actual = (row.get(key) for key in ("angle_deg", "wavelength_nm", "actual"))
-        if (not finite_number(angle) or not finite_number(wave) or not finite_number(actual)
-                or angle not in objective["angles_deg"]
-                or not objective["wavelength_min_nm"] <= wave <= objective["wavelength_max_nm"]
-                or row.get("metric") != objective["metric"]
-                or row.get("polarization") != objective["polarization"]
-                or any(row.get(key) != objective.get(key) for key in ("target_value", "lower_bound", "upper_bound"))):
-            invalid.append("condition_differs_from_frozen_objective")
-            continue
-        point = (row_index, float(angle), float(wave))
-        if point in seen:
-            invalid.append("duplicate_condition")
-        seen.add(point)
-        lower, upper = objective.get("lower_bound"), objective.get("upper_bound")
-        passed = ((lower is None or (actual > lower if row_index in strict else actual >= lower))
-            and (upper is None or actual <= upper))
-        if not passed:
-            failed.append({key: row[key] for key in ("objective_index", "wavelength_nm", "angle_deg", "actual")})
-    missing = required - seen
-    unexpected = seen - required if scope == "training" else set()
-    metadata_valid = True
-    if scope == "audit":
-        audit = score.get("audit")
-        metadata_valid = isinstance(audit, dict)
-        if isinstance(audit, dict):
-            integer_fields = ("dense_points", "offset_points", "unique_condition_points", "physical_evaluations",
-                "wavelength_points", "extra_points", "completed_extrema", "bracket_count")
-            metadata_valid = (all(type(audit.get(name)) is int and audit[name] >= 0 for name in integer_fields)
-                and audit["dense_points"] == dense_count and audit["offset_points"] == offset_count
-                and audit["unique_condition_points"] == len(errors)
-                and audit["physical_evaluations"] >= 1
-                and audit["wavelength_points"] >= dense_count + offset_count
-                and audit["wavelength_points"] >= len(errors)
-                and audit["extra_points"] == audit["wavelength_points"] - dense_count
-                and audit["completed_extrema"] == audit["bracket_count"]
-                and audit.get("continuous_certificate") is False
-                and audit.get("rms_measure") == "fixed_dense_grid_only"
-                and isinstance(audit.get("objective_status"), list)
-                and len(audit["objective_status"]) == len(objectives))
-    complete = not invalid and not missing and not unexpected and metadata_valid
-    return {"available": complete, "passed": complete and not failed,
-            "condition_count": len(errors), "required_condition_count": len(required),
-            "missing_condition_count": len(missing), "unexpected_condition_count": len(unexpected),
-            "invalid_conditions": invalid[:8], "audit_metadata_valid": metadata_valid if scope == "audit" else None,
-            "violating_condition_count": len(failed), "worst_examples": failed[:8],
-            "strict_lower_objective_indices": sorted(strict), "grid_scope": scope,
-            "scope": "saved_sampled_conditions_only_no_continuous_certificate"}
+    """Use the current production criteria verifier for both benchmark routes."""
+    from tools.run_film_synthesis_cloud import _raw_bounds
+    verdict = _raw_bounds(request, score, scope=scope)
+    return {**verdict,
+        "missing_condition_count": verdict.get("missing_required_conditions", 0),
+        "violating_condition_count": verdict.get("violating_conditions", 0)}
 
 
 def verify_cleanup(performance):

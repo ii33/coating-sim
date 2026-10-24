@@ -20,7 +20,9 @@ from .film_optimization import (
     freeze_film_optimization_request,
     optimize_film_design,
 )
-from .film_optimization_scoring import score_condition, weighted_rms_error
+from .film_objective_criteria import reduce_objective_responses, validate_objective_criteria
+from .film_objective_payload import (condition_from_payload, coverage_from_payload,
+                                     objective_from_payload, objective_to_payload)
 
 
 JOB_KIND = "coat_sim.film_optimization_job"
@@ -30,13 +32,15 @@ STRUCTURE_REQUEST_KIND = "coat_sim.film_structure_optimization_request"
 STRUCTURE_RESULT_KIND = "coat_sim.film_structure_optimization_result"
 CANDIDATE_KIND = "coat_sim.film_optimization_candidate"
 CHECKPOINT_KIND = "coat_sim.film_optimization_checkpoint"
-CONTRACT_VERSION = 1
+CONTRACT_VERSION = 2
 
 _REQUEST_REQUIRED_FIELDS = {
     "schema_version", "kind", "design_snapshot", "design_revision",
     "variables", "objectives", "max_iterations", "max_evaluations",
     "initial_step_fraction", "min_step_fraction",
     "acceptable_normalized_error", "frozen_material_snapshot",
+    "solver", "seed", "multistart_count", "population_size",
+    "validation_samples_multiplier",
 }
 _SOLVER_REQUEST_FIELDS = {
     "solver", "seed", "multistart_count", "population_size",
@@ -52,6 +56,7 @@ _SOLVER_VALIDATION_FIELDS = {
     "validation_complete", "validation_max_normalized_error",
     "validation_weighted_rms_error", "validation_targets_met",
     "validation_per_condition_errors", "validation_message",
+    "validation_solver_acceptable", "validation_raw_coverage",
 }
 
 
@@ -88,7 +93,7 @@ def serialize_request(request: FilmOptimizationRequest) -> dict[str, Any]:
         "design_snapshot": deepcopy(dict(request.design_snapshot)),
         "design_revision": request.design_revision,
         "variables": [asdict(item) for item in request.variables],
-        "objectives": [asdict(item) for item in request.objectives],
+        "objectives": [objective_to_payload(item) for item in request.objectives],
         "max_iterations": request.max_iterations,
         "max_evaluations": request.max_evaluations,
         "initial_step_fraction": request.initial_step_fraction,
@@ -121,6 +126,7 @@ def deserialize_request(value: Mapping[str, Any]) -> FilmOptimizationRequest:
 
         return film_structure_request_from_payload(value)  # type: ignore[return-value]
     if (not isinstance(value, Mapping)
+            or type(value.get("schema_version")) is not int
             or value.get("schema_version") != CONTRACT_VERSION
             or value.get("kind") != REQUEST_KIND):
         raise ValueError("film optimization request kind/version is invalid")
@@ -130,11 +136,7 @@ def deserialize_request(value: Mapping[str, Any]) -> FilmOptimizationRequest:
         raise ValueError("film optimization request fields are invalid")
     try:
         variables = tuple(FilmThicknessVariable(**item) for item in value["variables"])
-        objectives = tuple(
-            FilmOptimizationObjective(
-                **{**item, "angles_deg": tuple(item.get("angles_deg", ()))})
-            for item in value["objectives"]
-        )
+        objectives = tuple(objective_from_payload(item) for item in value["objectives"])
         request = FilmOptimizationRequest(
             design_snapshot=deepcopy(value["design_snapshot"]),
             design_revision=value["design_revision"], variables=variables,
@@ -144,11 +146,11 @@ def deserialize_request(value: Mapping[str, Any]) -> FilmOptimizationRequest:
             min_step_fraction=value["min_step_fraction"],
             acceptable_normalized_error=value["acceptable_normalized_error"],
             frozen_material_snapshot=deepcopy(value["frozen_material_snapshot"]),
-            solver=value.get("solver", "baseline"),
-            seed=value.get("seed", 0),
-            multistart_count=value.get("multistart_count", 4),
-            population_size=value.get("population_size", 12),
-            validation_samples_multiplier=value.get("validation_samples_multiplier", 2),
+            solver=value["solver"],
+            seed=value["seed"],
+            multistart_count=value["multistart_count"],
+            population_size=value["population_size"],
+            validation_samples_multiplier=value["validation_samples_multiplier"],
             execution_mode=value.get("execution_mode", "serial"),
             batch_size=value.get("batch_size", 16),
             execution_device=deepcopy(value.get("execution_device")),
@@ -163,6 +165,7 @@ def deserialize_request(value: Mapping[str, Any]) -> FilmOptimizationRequest:
     )
     from .film_optimization import _validate_execution_controls
     _validate_execution_controls(request)
+    _validate_replay_request(request)
     return request
 
 
@@ -230,7 +233,9 @@ def _service_with_frozen_materials(service: Any,
 def _candidate_payload(request: FilmOptimizationRequest, *, design: Mapping[str, Any],
                        thickness_nm: Mapping[str, Any], max_error: float,
                        weighted_max_error: float, weighted_rms_error: float,
-                       targets_met: bool, per_condition_errors: list[dict[str, Any]],
+                       targets_met: bool, solver_acceptable: bool,
+                       per_condition_errors: list[dict[str, Any]],
+                       raw_coverage: list[dict[str, Any]],
                        iterations: int, evaluations: int) -> dict[str, Any]:
     return {
         "schema_version": CONTRACT_VERSION,
@@ -245,8 +250,10 @@ def _candidate_payload(request: FilmOptimizationRequest, *, design: Mapping[str,
             "weighted_max_normalized_error": float(weighted_max_error),
             "weighted_rms_error": float(weighted_rms_error),
             "targets_met": bool(targets_met),
+            "solver_acceptable": bool(solver_acceptable),
         },
         "per_condition_errors": deepcopy(per_condition_errors),
+        "raw_coverage": deepcopy(raw_coverage),
         "iterations": int(iterations),
         "evaluations": int(evaluations),
     }
@@ -302,6 +309,8 @@ def _solver_validation_payload(result: FilmOptimizationResult) -> dict[str, Any]
         "validation_max_normalized_error": result.validation_max_normalized_error,
         "validation_weighted_rms_error": result.validation_weighted_rms_error,
         "validation_targets_met": result.validation_targets_met,
+        "validation_solver_acceptable": result.validation_solver_acceptable,
+        "validation_raw_coverage": [asdict(row) for row in result.validation_raw_coverage],
         "validation_per_condition_errors": [
             asdict(item) for item in result.validation_per_condition_errors
         ],
@@ -319,7 +328,8 @@ def serialize_result(request: FilmOptimizationRequest,
         max_error=result.max_normalized_error,
         weighted_max_error=result.weighted_max_normalized_error,
         weighted_rms_error=result.weighted_rms_error,
-        targets_met=result.targets_met,
+        targets_met=result.targets_met, solver_acceptable=result.solver_acceptable,
+        raw_coverage=[asdict(row) for row in result.raw_coverage],
         per_condition_errors=[asdict(item) for item in result.per_condition_errors],
         iterations=result.iterations, evaluations=result.evaluations,
     )
@@ -334,7 +344,8 @@ def serialize_checkpoint(request: FilmOptimizationRequest,
     """Create a typed queue result from one fully evaluated optimizer incumbent."""
     if not isinstance(checkpoint, Mapping):
         raise ValueError("film optimization checkpoint must be a mapping")
-    if (checkpoint.get("schema_version") != CONTRACT_VERSION
+    if (type(checkpoint.get("schema_version")) is not int
+            or checkpoint.get("schema_version") != CONTRACT_VERSION
             or checkpoint.get("kind") != CHECKPOINT_KIND):
         raise ValueError("film optimization checkpoint kind/version is invalid")
     if request.frozen_material_snapshot is None:
@@ -349,7 +360,8 @@ def serialize_checkpoint(request: FilmOptimizationRequest,
         max_error=checkpoint["max_normalized_error"],
         weighted_max_error=checkpoint["weighted_max_normalized_error"],
         weighted_rms_error=checkpoint["weighted_rms_error"],
-        targets_met=checkpoint["targets_met"],
+        targets_met=checkpoint["targets_met"], solver_acceptable=checkpoint["solver_acceptable"],
+        raw_coverage=checkpoint["raw_coverage"],
         per_condition_errors=checkpoint["per_condition_errors"],
         iterations=checkpoint["iterations"], evaluations=checkpoint["evaluations"],
     )
@@ -371,6 +383,7 @@ def _replay_candidate_scores(
     worker_service: Any,
     candidate: Mapping[str, Any],
     objectives: tuple[FilmOptimizationObjective, ...] | list[FilmOptimizationObjective],
+    *, tolerance: float = 0.,
 ) -> dict[str, Any]:
     """Evaluate one fixed candidate on an explicitly supplied grid.
 
@@ -380,80 +393,46 @@ def _replay_candidate_scores(
     """
     import numpy as np
 
-    errors: list[dict[str, Any]] = []
-    normalized_errors: list[float] = []
-    condition_weights: list[float] = []
-    max_error = 0.0
-    weighted_max_error = 0.0
+    responses: list[dict[str, Any]] = []
     for objective_index, objective in enumerate(objectives):
         waves = np.linspace(
             objective.wavelength_min_nm, objective.wavelength_max_nm,
             objective.wavelength_samples,
         )
         for angle in objective.angles_deg:
-            chunk_start = 0
-            while chunk_start < len(waves):
-                chunk_end = min(chunk_start + 10001, len(waves))
-                chunk_waves = waves[chunk_start:chunk_end]
-                settings = {
+            for start in range(0, len(waves), 10001):
+                chunk_waves = waves[start:start + 10001]
+                response = worker_service.simulate(candidate, {
                     "wavelength_min_nm": float(chunk_waves[0]),
                     "wavelength_max_nm": float(chunk_waves[-1]),
-                    "samples": int(len(chunk_waves)),
-                    "angle_deg": angle,
+                    "samples": int(len(chunk_waves)), "angle_deg": angle,
                     "polarization": objective.polarization,
                     "first_surface": candidate.get("first_surface", "front"),
-                }
-                response = worker_service.simulate(candidate, settings)
+                })
                 actual_values = np.asarray(response[objective.metric], dtype=float)
                 actual_waves = np.asarray(response["wavelength_nm"], dtype=float)
-                if (actual_values.shape != chunk_waves.shape
-                        or actual_waves.shape != chunk_waves.shape
-                        or not np.all(np.isfinite(actual_values))
-                        or not np.allclose(actual_waves, chunk_waves, rtol=0, atol=1e-9)):
-                    raise ValueError("film simulation returned invalid replay samples")
-                for wavelength, actual in zip(chunk_waves, actual_values):
-                    if objective.mode == "value":
-                        violation = abs(float(actual) - float(objective.target_value))
-                    else:
-                        violation = max(
-                            0.0,
-                            (float(objective.lower_bound) - float(actual)
-                             if objective.lower_bound is not None else 0.0),
-                            (float(actual) - float(objective.upper_bound)
-                             if objective.upper_bound is not None else 0.0),
-                        )
-                    normalized_error, weighted_error = score_condition(
-                        violation, objective.normalization_scale, objective.weight)
-                    max_error = max(max_error, normalized_error)
-                    weighted_max_error = max(weighted_max_error, weighted_error)
-                    normalized_errors.append(normalized_error)
-                    condition_weights.append(objective.weight)
-                    errors.append({
-                        "objective_index": objective_index,
-                        "wavelength_nm": float(wavelength),
-                        "angle_deg": float(angle),
-                        "polarization": objective.polarization,
-                        "metric": objective.metric,
-                        "actual": float(actual),
-                        "target_value": objective.target_value,
-                        "lower_bound": objective.lower_bound,
-                        "upper_bound": objective.upper_bound,
-                        "normalized_violation": normalized_error,
-                        "weighted_normalized_violation": weighted_error,
-                    })
-                # ``chunk_waves`` is a slice of the objective's one global
-                # linspace. Continue at the first not-yet-scored index: an
-                # overlapping endpoint would count the same condition twice.
-                chunk_start = chunk_end
-    if not errors:
-        raise ValueError("candidate replay has no objective conditions")
+                if (actual_values.shape != chunk_waves.shape or
+                        actual_waves.shape != chunk_waves.shape or
+                        not np.all(np.isfinite(actual_values)) or
+                        actual_waves[0] != chunk_waves[0] or actual_waves[-1] != chunk_waves[-1] or
+                        np.any(np.diff(actual_waves) <= 0) or
+                        not np.allclose(actual_waves, chunk_waves, rtol=0, atol=1e-9)):
+                    raise ValueError("candidate replay returned invalid objective samples")
+                responses.append({
+                    "objective_index": objective_index, "angle_deg": float(angle),
+                    "wavelength_nm": chunk_waves, "actual_values": actual_values,
+                })
+    reduction = reduce_objective_responses(objectives, responses, tolerance=tolerance)
     return {
-        "max_normalized_error": max_error,
-        "weighted_max_normalized_error": weighted_max_error,
-        "weighted_rms_error": weighted_rms_error(
-            normalized_errors, condition_weights),
-        "per_condition_errors": errors,
+        "max_normalized_error": reduction.max_error,
+        "weighted_max_normalized_error": reduction.weighted_max_error,
+        "weighted_rms_error": reduction.weighted_rms_error,
+        "targets_met": reduction.nominal_pass,
+        "solver_acceptable": reduction.solver_acceptable,
+        "per_condition_errors": [asdict(row) for row in reduction.conditions],
+        "raw_coverage": [asdict(row) for row in reduction.coverage],
     }
+
 
 
 def _same_number(value: Any, expected: float) -> bool:
@@ -540,30 +519,7 @@ def _validate_replay_request(request: FilmOptimizationRequest) -> None:
             raise ValueError("polarization must be s, p or unpolarized")
         if objective.metric not in ("R", "T"):
             raise ValueError("metric must be R or T")
-        if objective.mode not in ("value", "range"):
-            raise ValueError("objective mode must be value or range")
-        weight = finite(objective.weight, "weight")
-        scale = finite(objective.normalization_scale, "normalization_scale")
-        if weight <= 0 or scale <= 0:
-            raise ValueError("objective weight and normalization_scale must be positive")
-        if objective.mode == "value":
-            if objective.target_value is None or objective.lower_bound is not None or objective.upper_bound is not None:
-                raise ValueError("value objectives require target_value and no bounds")
-            target = finite(objective.target_value, "target_value")
-            if not 0 <= target <= 1:
-                raise ValueError("R/T target_value must be in [0, 1]")
-        else:
-            if objective.target_value is not None or (
-                    objective.lower_bound is None and objective.upper_bound is None):
-                raise ValueError("range objectives require one or both bounds and no target_value")
-            lower = (None if objective.lower_bound is None else
-                     finite(objective.lower_bound, "lower_bound"))
-            upper = (None if objective.upper_bound is None else
-                     finite(objective.upper_bound, "upper_bound"))
-            if ((lower is not None and not 0 <= lower <= 1)
-                    or (upper is not None and not 0 <= upper <= 1)
-                    or (lower is not None and upper is not None and lower > upper)):
-                raise ValueError("R/T range bounds must lie in [0, 1] and be ordered")
+        validate_objective_criteria(objective)
     _validation_objectives(request)
 
 
@@ -572,16 +528,42 @@ def _validate_replayed_errors(recorded_errors: Any,
                               label: str) -> None:
     if not isinstance(recorded_errors, list) or len(recorded_errors) != len(replay_errors):
         raise ValueError(f"{label} condition data is incomplete")
-    for recorded, actual in zip(recorded_errors, replay_errors):
+    for recorded, actual in zip(recorded_errors, replay_errors, strict=True):
+        condition_from_payload(recorded)
         if not isinstance(recorded, dict) or set(recorded) != set(actual):
             raise ValueError(f"{label} condition data is invalid")
         for key, actual_value in actual.items():
             recorded_value = recorded[key]
-            if isinstance(actual_value, (int, float)) and not isinstance(actual_value, bool):
+            if isinstance(actual_value, bool):
+                if type(recorded_value) is not bool or recorded_value is not actual_value:
+                    raise ValueError(f"{label} condition boolean labels do not match replay")
+            elif key == "objective_index":
+                if type(recorded_value) is not int or recorded_value != actual_value:
+                    raise ValueError(f"{label} condition objective index does not match replay")
+            elif isinstance(actual_value, (int, float)):
                 if not _same_number(recorded_value, float(actual_value)):
                     raise ValueError(f"{label} condition values do not match replay")
             elif recorded_value != actual_value:
                 raise ValueError(f"{label} condition labels do not match replay")
+
+
+def _validate_replayed_coverage(recorded_coverage: Any, replay_coverage: list[dict[str, Any]],
+                                label: str) -> None:
+    if not isinstance(recorded_coverage, list) or len(recorded_coverage) != len(replay_coverage):
+        raise ValueError(f"{label} raw spectral coverage is incomplete")
+    for recorded, expected in zip(recorded_coverage, replay_coverage, strict=True):
+        row = coverage_from_payload(recorded)
+        if (type(row.objective_index) is not int or
+                row.objective_index != expected["objective_index"] or
+                not _same_number(row.angle_deg, expected["angle_deg"]) or
+                row.angle_deg != expected["angle_deg"] or
+                row.wavelength_nm != tuple(expected["wavelength_nm"]) or
+                any(not _same_number(wave, actual) for wave, actual in
+                    zip(row.wavelength_nm, expected["wavelength_nm"], strict=True)) or
+                len(row.actual_values) != len(expected["actual_values"]) or
+                any(not _same_number(value, actual) for value, actual in
+                    zip(row.actual_values, expected["actual_values"], strict=True))):
+            raise ValueError(f"{label} raw spectral coverage does not match replay")
 
 
 def _validation_objectives(request: FilmOptimizationRequest) -> tuple[FilmOptimizationObjective, ...]:
@@ -628,25 +610,31 @@ def _validate_solver_validation(
                                     metadata["validation_max_normalized_error"])
                 or not _same_number(metadata["validation_weighted_rms_error"],
                                     metadata["validation_weighted_rms_error"])
-                or type(metadata["validation_targets_met"]) is not bool):
+                or type(metadata["validation_targets_met"]) is not bool
+                or type(metadata["validation_solver_acceptable"]) is not bool):
             raise ValueError("completed holdout-validation metadata is incomplete")
         replay = _replay_candidate_scores(
-            worker_service, candidate, _validation_objectives(request))
+            worker_service, candidate, _validation_objectives(request),
+            tolerance=request.acceptable_normalized_error)
         if not (_same_number(metadata["validation_max_normalized_error"],
                              replay["max_normalized_error"])
                 and _same_number(metadata["validation_weighted_rms_error"],
                                  replay["weighted_rms_error"])
                 and metadata["validation_targets_met"] is
-                (replay["max_normalized_error"] <= request.acceptable_normalized_error)):
+                replay["targets_met"]
+                and metadata["validation_solver_acceptable"] is replay["solver_acceptable"]):
             raise ValueError("holdout-validation scores do not match replay")
         _validate_replayed_errors(
             metadata["validation_per_condition_errors"],
             replay["per_condition_errors"], "holdout-validation")
+        _validate_replayed_coverage(metadata["validation_raw_coverage"], replay["raw_coverage"], "holdout-validation")
     else:
         if (metadata["validation_max_normalized_error"] is not None
                 or metadata["validation_weighted_rms_error"] is not None
                 or metadata["validation_targets_met"] is not None
-                or metadata["validation_per_condition_errors"] != []):
+                or metadata["validation_per_condition_errors"] != []
+                or metadata["validation_solver_acceptable"] is not None
+                or metadata["validation_raw_coverage"] != []):
             raise ValueError("incomplete holdout validation must not claim scores")
         if state == "completed" and metadata["validation_message"] == "":
             raise ValueError("completed result must explain incomplete holdout validation")
@@ -671,7 +659,8 @@ def validate_checkpoint(service: Any, checkpoint: Mapping[str, Any]) -> dict[str
         raise ValueError("film optimization result message is invalid")
     if "solver_validation" in checkpoint and state is None:
         raise ValueError("training-only checkpoints cannot contain holdout metadata")
-    if (checkpoint.get("schema_version") != CONTRACT_VERSION
+    if (type(checkpoint.get("schema_version")) is not int
+            or checkpoint.get("schema_version") != CONTRACT_VERSION
             or checkpoint.get("kind") != RESULT_KIND):
         raise ValueError("film optimization result kind/version is invalid")
     json.dumps(dict(checkpoint), sort_keys=True, ensure_ascii=False, allow_nan=False)
@@ -688,10 +677,11 @@ def validate_checkpoint(service: Any, checkpoint: Mapping[str, Any]) -> dict[str
     candidate_payload = checkpoint["candidate"]
     candidate_fields = {
         "schema_version", "kind", "design_revision", "design", "thickness_nm",
-        "quality", "per_condition_errors", "iterations", "evaluations",
+        "quality", "per_condition_errors", "raw_coverage", "iterations", "evaluations",
     }
     if (not isinstance(candidate_payload, dict)
             or set(candidate_payload) != candidate_fields
+            or type(candidate_payload.get("schema_version")) is not int
             or candidate_payload.get("schema_version") != CONTRACT_VERSION
             or candidate_payload.get("kind") != CANDIDATE_KIND):
         raise ValueError("film optimization candidate kind/version is invalid")
@@ -705,10 +695,11 @@ def validate_checkpoint(service: Any, checkpoint: Mapping[str, Any]) -> dict[str
     if (not isinstance(quality, dict)
             or set(quality) != {"metric", "value", "direction",
                                 "weighted_max_normalized_error",
-                                "weighted_rms_error", "targets_met"}
+                                "weighted_rms_error", "targets_met", "solver_acceptable"}
             or quality.get("metric") != "max_normalized_error"
             or quality.get("direction") != "minimize"
-            or type(quality.get("targets_met")) is not bool):
+            or type(quality.get("targets_met")) is not bool
+            or type(quality.get("solver_acceptable")) is not bool):
         raise ValueError("film optimization candidate quality is invalid")
     partial = checkpoint["partial_result"]
     if (not isinstance(partial, dict)
@@ -716,11 +707,13 @@ def validate_checkpoint(service: Any, checkpoint: Mapping[str, Any]) -> dict[str
                 "schema_version", "kind", "best_so_far", "candidate_verified",
                 "quality", "artifact_kind", "artifact_schema_version",
             }
+            or type(partial.get("schema_version")) is not int
             or partial.get("schema_version") != CONTRACT_VERSION
             or partial.get("kind") != "best_candidate"
             or partial.get("best_so_far") is not True
             or partial.get("candidate_verified") is not True
             or partial.get("artifact_kind") != CANDIDATE_KIND
+            or type(partial.get("artifact_schema_version")) is not int
             or partial.get("artifact_schema_version") != CONTRACT_VERSION
             or partial.get("quality") != {"metric": quality["metric"],
                                            "value": quality["value"]}):
@@ -761,18 +754,21 @@ def validate_checkpoint(service: Any, checkpoint: Mapping[str, Any]) -> dict[str
     worker_service = _service_with_frozen_materials(
         service, frozen_snapshot)
     training_replay = _replay_candidate_scores(
-        worker_service, candidate, request.objectives)
+        worker_service, candidate, request.objectives,
+        tolerance=request.acceptable_normalized_error)
     if not (_same_number(quality["value"], training_replay["max_normalized_error"])
             and _same_number(quality["weighted_max_normalized_error"],
                              training_replay["weighted_max_normalized_error"])
             and _same_number(quality["weighted_rms_error"],
                              training_replay["weighted_rms_error"])
             and quality.get("targets_met") is
-            (training_replay["max_normalized_error"] <= request.acceptable_normalized_error)):
+            training_replay["targets_met"]
+            and quality.get("solver_acceptable") is training_replay["solver_acceptable"]):
         raise ValueError("checkpoint quality does not match the evaluated candidate")
     _validate_replayed_errors(
         candidate_payload["per_condition_errors"],
         training_replay["per_condition_errors"], "checkpoint")
+    _validate_replayed_coverage(candidate_payload["raw_coverage"], training_replay["raw_coverage"], "checkpoint")
     if "solver_validation" in checkpoint:
         _validate_solver_validation(
             request, candidate, checkpoint["solver_validation"], state,
@@ -804,47 +800,44 @@ def validate_completed_structure_cancel_result(payload: Mapping[str, Any]) -> No
             or dict(result.best_thickness_nm) != topology["layer_thickness_nm"]):
         raise ValueError("structure cancel layer IDs/thickness map do not match topology")
 
-    def check_score(errors, objectives, maximum, weighted_maximum, rms, targets_met):
-        cursor = 0
-        normalized, weighted, weights = [], [], []
-        for index, objective in enumerate(objectives):
-            for angle in objective.angles_deg:
-                for sample in range(objective.wavelength_samples):
-                    wave = (objective.wavelength_min_nm if objective.wavelength_samples == 1 else
-                        objective.wavelength_min_nm + (objective.wavelength_max_nm - objective.wavelength_min_nm)
-                        * sample / (objective.wavelength_samples - 1))
-                    error = errors[cursor]
-                    cursor += 1
-                    if (error.objective_index != index or not _same_number(error.wavelength_nm, wave)
-                            or not _same_number(error.angle_deg, angle) or error.metric != objective.metric
-                            or error.polarization != objective.polarization
-                            or error.target_value != objective.target_value or error.lower_bound != objective.lower_bound
-                            or error.upper_bound != objective.upper_bound):
-                        raise ValueError("structure cancel saved conditions differ from frozen objectives")
-                    violation = (abs(error.actual - objective.target_value) if objective.mode == "value" else
-                        max(0., 0. if objective.lower_bound is None else objective.lower_bound - error.actual,
-                            0. if objective.upper_bound is None else error.actual - objective.upper_bound))
-                    norm, weight = score_condition(violation, objective.normalization_scale, objective.weight)
-                    if (not _same_number(error.normalized_violation, norm)
-                            or not _same_number(error.weighted_normalized_violation, weight)):
-                        raise ValueError("structure cancel saved condition scores are inconsistent")
-                    normalized.append(norm)
-                    weighted.append(weight)
-                    weights.append(objective.weight)
-        if (cursor != len(errors) or not _same_number(maximum, max(normalized))
-                or not _same_number(weighted_maximum, max(weighted))
-                or not _same_number(rms, weighted_rms_error(normalized, weights))
-                or targets_met is not (max(normalized) <= request.base_request.acceptable_normalized_error)):
+    def check_score(errors, coverage, objectives, maximum, weighted_maximum, rms,
+                    targets_met, solver_acceptable):
+        from types import SimpleNamespace
+        from .film_nominal_acceptance import complete_original_score
+
+        score = {"errors": errors, "coverage": coverage, "max_error": maximum,
+                 "weighted_max_error": weighted_maximum, "weighted_rms_error": rms}
+        criteria_request = SimpleNamespace(
+            objectives=objectives,
+            acceptable_normalized_error=request.base_request.acceptable_normalized_error,
+        )
+        if not complete_original_score(criteria_request, score):
+            raise ValueError("structure cancel saved conditions or raw grid differ from frozen objectives")
+        reduced = reduce_objective_responses(
+            objectives, coverage,
+            tolerance=request.base_request.acceptable_normalized_error,
+        )
+        if (not _same_number(maximum, reduced.max_error) or
+                not _same_number(weighted_maximum, reduced.weighted_max_error) or
+                not _same_number(rms, reduced.weighted_rms_error) or
+                targets_met is not reduced.nominal_pass or
+                solver_acceptable is not reduced.solver_acceptable):
             raise ValueError("structure cancel aggregate score is inconsistent")
+        _validate_replayed_errors([asdict(row) for row in errors],
+                                 [asdict(row) for row in reduced.conditions], "structure cancel")
 
     base = result.base_result
-    check_score(base.per_condition_errors, request.base_request.objectives,
-        base.max_normalized_error, base.weighted_max_normalized_error, base.weighted_rms_error, base.targets_met)
+    check_score(base.per_condition_errors, base.raw_coverage, request.base_request.objectives,
+                base.max_normalized_error, base.weighted_max_normalized_error,
+                base.weighted_rms_error, base.targets_met, base.solver_acceptable)
     if base.validation_complete:
         errors = base.validation_per_condition_errors
-        check_score(errors, _validation_objectives(request.base_request), base.validation_max_normalized_error,
-            max(error.weighted_normalized_violation for error in errors),
-            base.validation_weighted_rms_error, base.validation_targets_met)
+        check_score(errors, base.validation_raw_coverage, _validation_objectives(request.base_request),
+                    base.validation_max_normalized_error,
+                    max(error.weighted_normalized_violation for error in errors),
+                    base.validation_weighted_rms_error, base.validation_targets_met,
+                    base.validation_solver_acceptable)
+
 
 
 def execute_film_optimization_job(
@@ -871,6 +864,7 @@ def execute_film_optimization_job(
     if performance_callback is not None and not callable(performance_callback):
         raise TypeError("performance_callback must be callable")
     if (not isinstance(payload, Mapping)
+            or type(payload.get("schema_version")) is not int
             or payload.get("schema_version") != CONTRACT_VERSION
             or payload.get("kind") != JOB_KIND):
         raise ValueError("film optimization job kind/version is invalid")

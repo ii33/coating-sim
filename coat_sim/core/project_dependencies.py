@@ -268,7 +268,7 @@ def film_references(data: dict) -> list[tuple[str, str]]:
     rows.extend(data[key] for key in ("incident_medium", "exit_medium") if data[key]["kind"] == "material")
     optimization = data.get("workflow_settings", {}).get("optimization", {})
     if "structure_materials" in optimization:
-        if type(optimization.get("version")) is not int or optimization["version"] != 1:
+        if type(optimization.get("version")) is not int or optimization["version"] != 2:
             raise ProjectError("unsupported_version", "Unsupported film optimization material-reference configuration version")
         candidates = optimization["structure_materials"]
         if not isinstance(candidates, list) or len(candidates) > 64:

@@ -709,22 +709,31 @@ AppWindow {
                                             currentIndex: Math.max(0, model.indexOf(window.controller.selectedObjective.metric))
                                             onActivated: window.controller.setObjectiveField("metric", currentText)
                                         }
-                                        Label { text: "目标范围 (%)"; color: window.themeTokens.colorText }
+                                        CheckBox {
+                                            objectName: "filmOptimizationMeanEnabledCheck"
+                                            text: "平均值 (%)"
+                                            checked: window.controller.selectedObjective.mean?.enabled ?? false
+                                            onToggled: {
+                                                window.controller.setObjectiveConstraintEnabled("mean", checked)
+                                                checked = Qt.binding(() => window.controller.selectedObjective.mean?.enabled ?? false)
+                                            }
+                                        }
                                         RowLayout {
-                                            objectName: "filmOptimizationTargetBoundsRow"
+                                            objectName: "filmOptimizationMeanTargetBoundsRow"
                                             Layout.fillWidth: true
                                             spacing: window.themeTokens.spaceXs
                                             ThemeControls.ThemeField {
-                                                accessibleLabel: "目标下限（%）"
-                                                objectName: "filmOptimizationLowerBoundField"
+                                                accessibleLabel: "平均值下限（%）"
+                                                objectName: "filmOptimizationMeanLowerBoundField"
+                                                enabled: window.controller.selectedObjective.mean?.enabled ?? false
                                                 Layout.fillWidth: true
                                                 Layout.minimumWidth: 64
                                                 preserveNumericDisplayText: true
-                                                numericDisplayValue: window.controller.selectedObjective.lower_bound_percent ?? ""
-                                                onTextEdited: window.controller.setObjectiveBoundsDraft("lower_bound_percent", text)
+                                                numericDisplayValue: window.controller.selectedObjective.mean?.lower_bound_percent ?? ""
+                                                onTextEdited: window.controller.setObjectiveBoundsDraft("mean.lower_bound_percent", text)
                                                 function commitDraft() {
                                                     if (!numericValueEdited) return
-                                                    window.controller.commitObjectiveBoundsDraft("lower_bound_percent", numericEditText)
+                                                    window.controller.commitObjectiveBoundsDraft("mean.lower_bound_percent", numericEditText)
                                                     numericValueEdited = false
                                                 }
                                                 onAccepted: commitDraft()
@@ -732,16 +741,66 @@ AppWindow {
                                             }
                                             Label { text: "–"; color: window.themeTokens.colorTextMuted }
                                             ThemeControls.ThemeField {
-                                                accessibleLabel: "目标上限（%）"
-                                                objectName: "filmOptimizationUpperBoundField"
+                                                accessibleLabel: "平均值上限（%）"
+                                                objectName: "filmOptimizationMeanUpperBoundField"
+                                                enabled: window.controller.selectedObjective.mean?.enabled ?? false
                                                 Layout.fillWidth: true
                                                 Layout.minimumWidth: 64
                                                 preserveNumericDisplayText: true
-                                                numericDisplayValue: window.controller.selectedObjective.upper_bound_percent ?? ""
-                                                onTextEdited: window.controller.setObjectiveBoundsDraft("upper_bound_percent", text)
+                                                numericDisplayValue: window.controller.selectedObjective.mean?.upper_bound_percent ?? ""
+                                                onTextEdited: window.controller.setObjectiveBoundsDraft("mean.upper_bound_percent", text)
                                                 function commitDraft() {
                                                     if (!numericValueEdited) return
-                                                    window.controller.commitObjectiveBoundsDraft("upper_bound_percent", numericEditText)
+                                                    window.controller.commitObjectiveBoundsDraft("mean.upper_bound_percent", numericEditText)
+                                                    numericValueEdited = false
+                                                }
+                                                onAccepted: commitDraft()
+                                                onEditingFinished: commitDraft()
+                                            }
+                                        }
+                                        CheckBox {
+                                            objectName: "filmOptimizationEnabledCheck"
+                                            text: "绝对值（逐点） (%)"
+                                            checked: window.controller.selectedObjective.pointwise?.enabled ?? false
+                                            onToggled: {
+                                                window.controller.setObjectiveConstraintEnabled("pointwise", checked)
+                                                checked = Qt.binding(() => window.controller.selectedObjective.pointwise?.enabled ?? false)
+                                            }
+                                        }
+                                        RowLayout {
+                                            objectName: "filmOptimizationTargetBoundsRow"
+                                            Layout.fillWidth: true
+                                            spacing: window.themeTokens.spaceXs
+                                            ThemeControls.ThemeField {
+                                                accessibleLabel: "绝对值（逐点）下限（%）"
+                                                objectName: "filmOptimizationLowerBoundField"
+                                                enabled: window.controller.selectedObjective.pointwise?.enabled ?? false
+                                                Layout.fillWidth: true
+                                                Layout.minimumWidth: 64
+                                                preserveNumericDisplayText: true
+                                                numericDisplayValue: window.controller.selectedObjective.pointwise?.lower_bound_percent ?? ""
+                                                onTextEdited: window.controller.setObjectiveBoundsDraft("pointwise.lower_bound_percent", text)
+                                                function commitDraft() {
+                                                    if (!numericValueEdited) return
+                                                    window.controller.commitObjectiveBoundsDraft("pointwise.lower_bound_percent", numericEditText)
+                                                    numericValueEdited = false
+                                                }
+                                                onAccepted: commitDraft()
+                                                onEditingFinished: commitDraft()
+                                            }
+                                            Label { text: "–"; color: window.themeTokens.colorTextMuted }
+                                            ThemeControls.ThemeField {
+                                                accessibleLabel: "绝对值（逐点）上限（%）"
+                                                objectName: "filmOptimizationUpperBoundField"
+                                                enabled: window.controller.selectedObjective.pointwise?.enabled ?? false
+                                                Layout.fillWidth: true
+                                                Layout.minimumWidth: 64
+                                                preserveNumericDisplayText: true
+                                                numericDisplayValue: window.controller.selectedObjective.pointwise?.upper_bound_percent ?? ""
+                                                onTextEdited: window.controller.setObjectiveBoundsDraft("pointwise.upper_bound_percent", text)
+                                                function commitDraft() {
+                                                    if (!numericValueEdited) return
+                                                    window.controller.commitObjectiveBoundsDraft("pointwise.upper_bound_percent", numericEditText)
                                                     numericValueEdited = false
                                                 }
                                                 onAccepted: commitDraft()
@@ -762,12 +821,12 @@ AppWindow {
                                             Layout.columnSpan: 2
                                             Layout.fillWidth: true
                                             visible: window.controller.searchMode === "synthesis"
-                                            enabled: !window.controller.busy
-                                            text: "此目标使用严格上界 <（等于上限不通过）"
-                                            checked: window.controller.selectedObjective.synthesis_strict_upper_bound ?? false
+                                            enabled: !window.controller.busy && (window.controller.selectedObjective.pointwise?.enabled ?? false)
+                                            text: "逐点约束使用严格上界 <（等于上限不通过）"
+                                            checked: window.controller.selectedObjective.pointwise?.strict_upper ?? false
                                             onToggled: {
                                                 window.controller.setSynthesisStrictUpperBound(checked)
-                                                checked = Qt.binding(() => window.controller.selectedObjective.synthesis_strict_upper_bound ?? false)
+                                                checked = Qt.binding(() => window.controller.selectedObjective.pointwise?.strict_upper ?? false)
                                             }
                                         }
                                         Label { text: "目标权重"; color: window.themeTokens.colorText }
@@ -1319,15 +1378,6 @@ AppWindow {
                                             placeholderText: "任务冻结后显示"
                                             accessibleLabel: "模板搜索实际种子"
                                         }
-                                    }
-                                    ThemeControls.ThemeComboBox {
-                                        objectName: "filmSynthesisWeightingBox"
-                                        Layout.fillWidth: true
-                                        model: [{id: "equal_window", label: "探索 merit：每窗口归一 / 保留用户目标权重"},
-                                                {id: "point_count", label: "探索 merit：按原始点数加权"}]
-                                        textRole: "label"
-                                        currentIndex: (window.controller.synthesisOptions.objective_weighting ?? "equal_window") === "equal_window" ? 0 : 1
-                                        onActivated: window.controller.setSynthesisOption("objective_weighting", model[currentIndex].id)
                                     }
                                     RowLayout {
                                         Layout.fillWidth: true
@@ -2424,6 +2474,14 @@ AppWindow {
                 }
             }
             Label {
+                objectName: "filmOptimizationCriteriaSummary"
+                visible: window.controller.objectiveCriteriaSummary.length > 0
+                Layout.fillWidth: true
+                text: window.controller.objectiveCriteriaSummary
+                wrapMode: Text.WordWrap
+                color: window.themeTokens.colorText
+            }
+            Label {
                 objectName: "filmOptimizationRunMetadataSummary"
                 visible: window.controller.hasCandidate && window.controller.searchMode === "fixed_topology"
                 Layout.fillWidth: true
@@ -2467,7 +2525,7 @@ AppWindow {
                     required property var modelData
                     Layout.fillWidth: true
                     text: "目标 " + modelData.objective + " · " + modelData.wavelength
-                          + " nm · " + modelData.angle + "° · " + modelData.metric
+                          + " · " + modelData.angle + " · " + modelData.metric
                           + "=" + modelData.actual + " · 违约 " + modelData.violation
                     color: modelData.normalized_violation > 0
                            ? window.themeTokens.colorWarning : window.themeTokens.colorTextMuted

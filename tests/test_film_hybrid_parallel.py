@@ -309,8 +309,7 @@ def test_early_audited_success_reports_completed_unused_physical_candidates(monk
     seed = deepcopy(request.environment)
     seed['front_layers'] = [dict(id='explicit-ar-seed', material_id='low', optical_set_id='nk',
         thickness=dict(value=550. / (4 * np.sqrt(1.5)), unit='nm'))]
-    request = replace(request, objectives=(replace(request.objectives[0], wavelength_min_nm=520.,
-        wavelength_max_nm=580., upper_bound=.005),), seed_designs=(seed,))
+    request = replace(request, objectives=(replace(request.objectives[0], pointwise=replace(request.objectives[0].pointwise, upper_bound=.005), wavelength_min_nm=520., wavelength_max_nm=580.),), seed_designs=(seed,))
     result = synthesis.synthesize_film_design(None, request)
     assert result.targets_met and result.validation_complete
     perf = result.performance

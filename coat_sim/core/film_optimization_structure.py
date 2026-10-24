@@ -19,6 +19,7 @@ import numpy as np
 from .film_design import MAX_LAYERS, physical_thickness_nm, validate_design
 from .film_optimization import (
     FilmConditionError,
+    FilmObjectiveCoverage,
     FilmOptimizationObjective,
     FilmOptimizationProgress,
     FilmOptimizationRequest,
@@ -36,7 +37,8 @@ from .film_optimization_needle import (
     _physical_layer_thickness,
     _result_from_score,
 )
-from .film_optimization_scoring import candidate_key, score_condition, weighted_rms_error
+from .film_optimization_scoring import reduction_score
+from .film_objective_criteria import reduce_objective_responses
 from .optical_constants import prepare_optical_set
 
 
@@ -152,6 +154,22 @@ class FilmStructureOptimizationResult:
     @property
     def targets_met(self) -> bool:
         return self.base_result.targets_met
+
+    @property
+    def solver_acceptable(self) -> bool:
+        return self.base_result.solver_acceptable
+
+    @property
+    def raw_coverage(self) -> tuple[FilmObjectiveCoverage, ...]:
+        return self.base_result.raw_coverage
+
+    @property
+    def validation_solver_acceptable(self) -> bool | None:
+        return self.base_result.validation_solver_acceptable
+
+    @property
+    def validation_raw_coverage(self) -> tuple[FilmObjectiveCoverage, ...]:
+        return self.base_result.validation_raw_coverage
 
 
 class _StructureCancelled(Exception):
@@ -385,7 +403,7 @@ def film_structure_request_to_payload(request: FilmStructureOptimizationRequest)
     if frozen is not None:
         frozen = _checked_frozen_snapshot(frozen, design)
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "kind": "coat_sim.film_structure_optimization_request",
         "mode": request.mode,
         "base_request": {
@@ -433,7 +451,7 @@ def film_structure_request_from_payload(payload: Mapping[str, Any]) -> FilmStruc
         raise ValueError("structure request payload must be a mapping")
     if "solver" in payload or "solver_id" in payload:
         raise ValueError("structure request payload must not include solver or solver_id")
-    if payload.get("schema_version") != 1 or payload.get("kind") != "coat_sim.film_structure_optimization_request":
+    if payload.get("schema_version") != 2 or payload.get("kind") != "coat_sim.film_structure_optimization_request":
         raise ValueError("structure request payload kind/version is invalid")
     base_data = payload.get("base_request")
     limits = payload.get("limits")
@@ -443,10 +461,8 @@ def film_structure_request_from_payload(payload: Mapping[str, Any]) -> FilmStruc
     if "solver" in base_data or "solver_id" in base_data:
         raise ValueError("structure base_request payload must not include a solver identifier")
     variables = tuple(FilmThicknessVariable(**row) for row in base_data.get("variables", []))
-    objectives = tuple(FilmOptimizationObjective(**{
-        **row,
-        "angles_deg": tuple(row.get("angles_deg", (0.0,))),
-    }) for row in base_data.get("objectives", []))
+    from .film_objective_payload import objective_from_payload
+    objectives = tuple(objective_from_payload(row) for row in base_data.get("objectives", []))
     base = FilmOptimizationRequest(
         design_snapshot=deepcopy(base_data["design_snapshot"]),
         design_revision=base_data["design_revision"],
@@ -668,6 +684,9 @@ def evaluate_frozen_structure_candidate(
                     raise ValueError("analytic Jacobian returned an invalid shape")
                 returned_waves = np.asarray(response["wavelength_nm"], dtype=float).reshape(-1)
                 if (values.shape != chunk_waves.shape or returned_waves.shape != chunk_waves.shape or
+                        returned_waves[0] != chunk_waves[0] or returned_waves[-1] != chunk_waves[-1] or
+                        np.any(np.diff(returned_waves) <= 0) or
+                        not np.allclose(returned_waves, chunk_waves, rtol=0, atol=1e-9) or
                         not np.all(np.isfinite(values))):
                     raise ValueError("analytic film response contains invalid samples")
                 value_chunks.append(values)
@@ -688,80 +707,19 @@ def evaluate_frozen_structure_candidate(
                 }
             responses.append(response_row)
 
-    score_errors: list[FilmConditionError] = []
-    normalized: list[float] = []
-    weights: list[float] = []
-    maximum = weighted_maximum = smooth_loss = 0.0
-    gradient = np.zeros(len(variable_rows), dtype=float)
-    response_cursor = 0
-    for objective_index, objective in enumerate(objective_rows):
-        for _angle in objective.angles_deg:
-            response = responses[response_cursor]
-            response_cursor += 1
-            actual_values = np.asarray(response["actual_values"], dtype=float)
-            waves = np.asarray(response["wavelength_nm"], dtype=float)
-            if (actual_values.shape != (objective.wavelength_samples,) or
-                    waves.shape != actual_values.shape):
-                raise ValueError(
-                    "film simulation returned invalid objective samples "
-                    f"({actual_values.size} values, {waves.size} wavelengths; "
-                    f"{objective.wavelength_samples} requested)"
-                )
-            jacobian_by_id = response.get("jacobian_values_by_layer_id", {})
-            for sample_index, (wave, actual) in enumerate(zip(waves, actual_values)):
-                actual_value = float(actual)
-                if objective.mode == "value":
-                    signed = actual_value - float(objective.target_value)
-                    active = True
-                elif objective.lower_bound is not None and actual_value < objective.lower_bound:
-                    signed = actual_value - float(objective.lower_bound)
-                    active = True
-                elif objective.upper_bound is not None and actual_value > objective.upper_bound:
-                    signed = actual_value - float(objective.upper_bound)
-                    active = True
-                else:
-                    signed = 0.0
-                    active = False
-                norm_error, weighted_error = score_condition(
-                    abs(signed), objective.normalization_scale, objective.weight)
-                maximum = max(maximum, norm_error)
-                weighted_maximum = max(weighted_maximum, weighted_error)
-                normalized.append(norm_error)
-                weights.append(objective.weight)
-                sqrt_weight = math.sqrt(objective.weight)
-                residual = signed * sqrt_weight / objective.normalization_scale
-                smooth_loss += residual * residual
-                score_errors.append(FilmConditionError(
-                    objective_index=objective_index,
-                    wavelength_nm=float(wave),
-                    angle_deg=float(response["angle_deg"]),
-                    polarization=objective.polarization,
-                    metric=objective.metric,
-                    actual=actual_value,
-                    target_value=objective.target_value,
-                    lower_bound=objective.lower_bound,
-                    upper_bound=objective.upper_bound,
-                    normalized_violation=norm_error,
-                    weighted_normalized_violation=weighted_error,
-                ))
-                if with_jacobian and active and residual != 0:
-                    for column, variable in enumerate(variable_rows):
-                        derivative = float(jacobian_by_id[variable.layer_id][sample_index])
-                        gradient[column] += (
-                            2.0 * residual * sqrt_weight * derivative /
-                            objective.normalization_scale
-                        )
+    reduction = reduce_objective_responses(
+        objective_rows, responses,
+        layer_ids=tuple(variable.layer_id for variable in variable_rows),
+        tolerance=request.base_request.acceptable_normalized_error,
+    )
+    residuals = reduction.residual_vector
+    smooth_loss = float(residuals @ residuals)
+    gradient = 2.0 * reduction.jacobian_matrix.T @ residuals
     if not np.all(np.isfinite(gradient)) or not math.isfinite(smooth_loss):
         raise ValueError("nonfinite smooth structure objective or gradient")
-    rms = weighted_rms_error(normalized, weights)
     score = {
         "design": deepcopy(candidate),
-        "errors": tuple(score_errors),
-        "max_error": float(maximum),
-        "weighted_max_error": float(weighted_maximum),
-        "weighted_rms_error": float(rms),
-        "key": candidate_key(maximum, rms,
-                             request.base_request.acceptable_normalized_error),
+        **reduction_score(reduction, request.base_request.acceptable_normalized_error),
     }
     return {
         "design": deepcopy(candidate),
@@ -1290,8 +1248,10 @@ def _as_structure_result(
         validation_weighted_rms_error=(
             float(validation["score"]["weighted_rms_error"]) if complete else None),
         validation_targets_met=(
-            bool(validation["score"]["max_error"] <= request.base_request.acceptable_normalized_error)
-            if complete else None),
+            bool(validation["score"]["nominal_pass"])
+            if complete and validation is not None else None),
+        validation_solver_acceptable=(bool(validation["score"]["solver_acceptable"]) if validation is not None else None),
+        validation_raw_coverage=(validation["score"]["coverage"] if validation is not None else ()),
         validation_per_condition_errors=(tuple(validation["score"]["errors"]) if complete else ()),
         validation_message=("completed holdout validation" if complete else
                             str(best.get("validation_message", "validation not completed"))),
@@ -1390,6 +1350,7 @@ def optimize_film_design_with_structure(
         record_candidate(candidate_observer, value["design"],
             weighted_rms_error=value["score"]["weighted_rms_error"],
             max_normalized_error=value["score"]["max_error"], condition_rows=value["score"]["errors"],
+            raw_coverage=value["score"]["coverage"],
             physical_thickness_nm=physical_layer_thicknesses(value["design"], frozen),
             is_best=is_best, is_current=is_current, iterations=int(counters["local_iterations"]),
             evaluations=int(counters["objective_evaluations"]), source="film_structure", scope="training")
@@ -2270,14 +2231,16 @@ def film_structure_result_to_payload(
         "weighted_max_normalized_error": float(base.weighted_max_normalized_error),
         "weighted_rms_error": float(base.weighted_rms_error),
         "targets_met": bool(base.targets_met),
+        "solver_acceptable": bool(base.solver_acceptable),
         "validation_complete": bool(base.validation_complete),
         "validation_max_normalized_error": base.validation_max_normalized_error,
         "validation_weighted_rms_error": base.validation_weighted_rms_error,
         "validation_targets_met": base.validation_targets_met,
+        "validation_solver_acceptable": base.validation_solver_acceptable,
         "termination_reason": base.termination_reason,
     }
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "kind": "coat_sim.film_structure_optimization_result",
         "request": request_payload,
         "state": str(base.state),
@@ -2287,6 +2250,8 @@ def film_structure_result_to_payload(
             "design": deepcopy(dict(base.best_design)),
             "thickness_nm": {str(key): float(value) for key, value in base.best_thickness_nm.items()},
             "quality": quality,
+            "raw_coverage": [asdict(row) for row in base.raw_coverage],
+            "validation_raw_coverage": [asdict(row) for row in base.validation_raw_coverage],
             "per_condition_errors": [_condition_error_payload(item) for item in base.per_condition_errors],
             "validation_per_condition_errors": [
                 _condition_error_payload(item) for item in base.validation_per_condition_errors],
@@ -2328,7 +2293,7 @@ def film_structure_checkpoint_to_payload(
 def film_structure_result_from_payload(payload: Mapping[str, Any]) -> FilmStructureOptimizationResult:
     from .film_structure_payload_contract import validate_structure_result_payload_schema
     validate_structure_result_payload_schema(payload)
-    if not isinstance(payload, Mapping) or payload.get("schema_version") != 1 or payload.get("kind") != "coat_sim.film_structure_optimization_result":
+    if not isinstance(payload, Mapping) or payload.get("schema_version") != 2 or payload.get("kind") != "coat_sim.film_structure_optimization_result":
         raise ValueError("structure result payload kind/version is invalid")
     request = film_structure_request_from_payload(payload.get("request"))
     candidate = payload.get("candidate")
@@ -2339,8 +2304,9 @@ def film_structure_result_from_payload(payload: Mapping[str, Any]) -> FilmStruct
     quality = candidate.get("quality")
     if not isinstance(quality, Mapping):
         raise ValueError("candidate quality is malformed")
-    errors = tuple(FilmConditionError(**row) for row in candidate.get("per_condition_errors", []))
-    validation_errors = tuple(FilmConditionError(**row) for row in candidate.get("validation_per_condition_errors", []))
+    from .film_objective_payload import condition_from_payload, coverage_from_payload
+    errors = tuple(condition_from_payload(row) for row in candidate.get("per_condition_errors", []))
+    validation_errors = tuple(condition_from_payload(row) for row in candidate.get("validation_per_condition_errors", []))
     base = FilmOptimizationResult(
         state=payload.get("state", "completed"),
         design_revision=int(candidate.get("design_revision", request.base_request.design_revision)),
@@ -2350,6 +2316,9 @@ def film_structure_result_from_payload(payload: Mapping[str, Any]) -> FilmStruct
         weighted_max_normalized_error=float(quality["weighted_max_normalized_error"]),
         weighted_rms_error=float(quality["weighted_rms_error"]),
         targets_met=bool(quality["targets_met"]),
+        solver_acceptable=bool(quality["solver_acceptable"]),
+        raw_coverage=tuple(coverage_from_payload(row) for row in candidate["raw_coverage"]),
+        validation_raw_coverage=tuple(coverage_from_payload(row) for row in candidate["validation_raw_coverage"]),
         per_condition_errors=errors,
         iterations=int(structure.get("counters", {}).get("local_iterations", 0)),
         evaluations=int(structure.get("counters", {}).get("objective_evaluations", 0)),
@@ -2367,6 +2336,7 @@ def film_structure_result_from_payload(payload: Mapping[str, Any]) -> FilmStruct
             None if quality.get("validation_weighted_rms_error") is None
             else float(quality["validation_weighted_rms_error"])),
         validation_targets_met=quality.get("validation_targets_met"),
+        validation_solver_acceptable=quality.get("validation_solver_acceptable"),
         validation_per_condition_errors=validation_errors,
         validation_message=("completed holdout validation" if quality.get("validation_complete")
                             else "validation not completed"),
@@ -2596,8 +2566,10 @@ def validate_film_structure_payload(service: Any, payload: Mapping[str, Any]) ->
     ):
         if not math.isclose(float(getattr(expected, field)), float(actual), rel_tol=1e-9, abs_tol=1e-10):
             raise ValueError(f"candidate {field} does not match frozen replay")
-    if bool(expected.targets_met) != bool(train["score"]["max_error"] <= request.base_request.acceptable_normalized_error):
+    if bool(expected.targets_met) != bool(train["score"]["nominal_pass"]):
         raise ValueError("candidate targets_met flag does not match replay")
+    if bool(expected.solver_acceptable) != bool(train["score"]["solver_acceptable"]):
+        raise ValueError("candidate solver_acceptable flag does not match replay")
     physical = _physical_layers(design, frozen)
     if set(expected.best_thickness_nm) != set(physical) or any(
             not math.isclose(float(expected.best_thickness_nm[key]), float(value), rel_tol=1e-10, abs_tol=1e-10)
@@ -2617,6 +2589,20 @@ def validate_film_structure_payload(service: Any, payload: Mapping[str, Any]) ->
                 elif not math.isclose(float(left[key]), float(right[key]), rel_tol=1e-9, abs_tol=1e-10):
                     return False
         return True
+    def coverage_matches(actual_coverage, expected_coverage) -> bool:
+        if len(actual_coverage) != len(expected_coverage):
+            return False
+        for actual_row, expected_row in zip(actual_coverage, expected_coverage, strict=True):
+            if (actual_row.objective_index != expected_row.objective_index or
+                    actual_row.angle_deg != expected_row.angle_deg or
+                    actual_row.wavelength_nm != expected_row.wavelength_nm or
+                    len(actual_row.actual_values) != len(expected_row.actual_values) or
+                    not np.allclose(actual_row.actual_values, expected_row.actual_values,
+                                    rtol=1e-9, atol=1e-10)):
+                return False
+        return True
+    if not coverage_matches(expected.raw_coverage, train["score"]["coverage"]):
+        raise ValueError("raw training coverage does not match frozen replay")
     if not errors_match(expected.per_condition_errors, train["score"]["errors"]):
         raise ValueError("per-condition training errors do not match frozen replay")
     if expected.validation_complete:
@@ -2630,14 +2616,19 @@ def validate_film_structure_payload(service: Any, payload: Mapping[str, Any]) ->
                 float(expected.validation_weighted_rms_error),
                 float(validation["score"]["weighted_rms_error"]), rel_tol=1e-9, abs_tol=1e-10):
             raise ValueError("validation RMS does not match frozen replay")
-        validation_met = validation["score"]["max_error"] <= request.base_request.acceptable_normalized_error
+        validation_met = validation["score"]["nominal_pass"]
+        if expected.validation_solver_acceptable is not bool(validation["score"]["solver_acceptable"]):
+            raise ValueError("candidate validation_solver_acceptable flag does not match replay")
         if expected.validation_targets_met is not validation_met:
             raise ValueError("validation target flag does not match frozen replay")
+        if not coverage_matches(expected.validation_raw_coverage, validation["score"]["coverage"]):
+            raise ValueError("raw validation coverage does not match frozen replay")
         if not errors_match(expected.validation_per_condition_errors, validation["score"]["errors"]):
             raise ValueError("per-condition validation errors do not match frozen replay")
     elif (expected.validation_max_normalized_error is not None or
           expected.validation_weighted_rms_error is not None or
-          expected.validation_targets_met is not None or expected.validation_per_condition_errors):
+          expected.validation_targets_met is not None or expected.validation_solver_acceptable is not None or expected.validation_per_condition_errors or
+          expected.validation_raw_coverage):
         raise ValueError("incomplete holdout must not carry validation metrics")
     if payload.get("state") != expected.state:
         raise ValueError("top-level state does not match candidate result state")

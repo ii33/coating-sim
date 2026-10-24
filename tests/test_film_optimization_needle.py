@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from coat_sim.core.film_design_service import FilmDesignService
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import (
     FilmOptimizationObjective,
     FilmOptimizationRequest,
@@ -63,16 +64,7 @@ def _service(tmp_path):
 
 
 def _objective(target_value: float = 0.0):
-    return FilmOptimizationObjective(
-        wavelength_min_nm=550.0,
-        wavelength_max_nm=550.0,
-        wavelength_samples=1,
-        angles_deg=(0.0,),
-        polarization="unpolarized",
-        metric="R",
-        mode="value",
-        target_value=target_value,
-    )
+    return FilmOptimizationObjective(pointwise=FilmObjectiveConstraint(mode="value", target_value=target_value, lower_bound=None, upper_bound=None), wavelength_min_nm=550.0, wavelength_max_nm=550.0, wavelength_samples=1, angles_deg=(0.0,), polarization="unpolarized", metric="R")
 
 
 def _request(design, objective, *, base_options=None, needle_options=None):

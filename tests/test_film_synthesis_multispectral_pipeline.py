@@ -7,6 +7,7 @@ from threading import Event
 import pytest
 
 from coat_sim.core import film_auto_synthesis as synthesis
+from coat_sim.core.film_nominal_acceptance import nominal_targets_pass
 from coat_sim.core import film_synthesis_multispectral_priors as priors
 from coat_sim.core import film_synthesis_multispectral_minimax as minimax
 from tests.test_film_synthesis_multispectral_priors import problem
@@ -95,9 +96,9 @@ def test_parent_strict_rank_champion_is_audited_when_helper_returns_equal_initia
         variable_ids=ids, with_jacobian=True)
     actuals = [row['actual_values'][0] for row in raw['responses']]
     assert min(actuals) >= .5
-    request = replace(request, objectives=tuple(replace(o, lower_bound=float(y))
-        for o, y in zip(request.objectives, actuals, strict=True)),
-        strict_lower_bound_objective_indices=(0, 1), max_evaluations=30,
+    request = replace(request, objectives=tuple(replace(o, pointwise=replace(o.pointwise,
+        lower_bound=float(y), strict_lower=True)) for o, y in zip(request.objectives, actuals, strict=True)),
+        max_evaluations=30,
         validation_samples_multiplier=2)
     monkeypatch.setattr(priors, 'iter_multispectral_hr_proposals', lambda *a, **kw: iter([proposal]))
     observed = []
@@ -110,7 +111,7 @@ def test_parent_strict_rank_champion_is_audited_when_helper_returns_equal_initia
         for row, delta in zip(trial['front_layers'], direction, strict=True):
             row['thickness']['value'] += float(delta)
         value = evaluate(trial, jacobian=True)
-        assert synthesis.strict_lower_bounds_pass(request, value['score'])
+        assert nominal_targets_pass(request, value['score'])
         archive(value, audit_eligible=False)
         observed.append(value['design'])
         return initial, {'method': 'strict champion regression stub'}
@@ -118,4 +119,4 @@ def test_parent_strict_rank_champion_is_audited_when_helper_returns_equal_initia
     result = synthesis.synthesize_film_design(None, request)
     assert observed and result.targets_met and result.validation_complete
     assert result.candidate_design == observed[0]
-    assert synthesis.strict_lower_bounds_pass(request, result.validation_score)
+    assert nominal_targets_pass(request, result.validation_score)

@@ -35,9 +35,6 @@ def observer(request, *, enabled=True, publish=None, control=None):
         context_id="sensitivity-display-test", objectives=request.objectives,
         control_provider=control or (lambda: {"enabled": enabled}),
         publish_callback=publish or packets.append, clock=lambda: next(tick),
-        strict_lower_bound_objective_indices=getattr(
-            request, "strict_lower_bound_objective_indices", ()),
-        strict_upper_bound_objective_indices=request.strict_upper_bound_objective_indices,
     )
     return result, packets
 
@@ -285,9 +282,7 @@ def test_selected_metric_and_angle_use_only_sampled_complete_nominal_grid_withou
     import json
 
     service, request = ideal_problem()
-    objective = replace(request.objectives[0], wavelength_min_nm=500.0,
-        wavelength_max_nm=600.0, wavelength_samples=2049, angles_deg=(0.0, 42.0),
-        metric="T", polarization="p", upper_bound=1.0)
+    objective = replace(request.objectives[0], pointwise=replace(request.objectives[0].pointwise, upper_bound=1.0), wavelength_min_nm=500.0, wavelength_max_nm=600.0, wavelength_samples=2049, angles_deg=(0.0, 42.0), metric="T", polarization="p")
     request = ideal.freeze_film_ideal_sensitivity_request(
         service, replace(request, objectives=(objective,), max_evaluations=2))
     control = {"enabled": True, "objective_index": 0, "angle_deg": 42.0, "metric": "T"}

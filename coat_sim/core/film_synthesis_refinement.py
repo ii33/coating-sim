@@ -5,12 +5,16 @@ conventions. Original objectives, physical scoring and acceptance stay owned by
 synthesis; no physical call, budget or cancellation owner is introduced here.
 """
 from copy import deepcopy
+from dataclasses import replace
 from importlib import import_module
 import math
 from typing import Callable, Literal, Mapping, Protocol, Sequence, TypedDict, cast
 
 import numpy as np
 from numpy.typing import NDArray
+
+from .film_objective_criteria import (active_constraints, normalized_band_weights,
+    reduce_objective_responses, signed_bound_count, validate_objective_criteria)
 
 
 class _InequalityConstraint(TypedDict):
@@ -37,64 +41,70 @@ class _LocalMinimizer(Protocol):
                  options: Mapping[str, int | float]) -> _LocalMinimizerResult: ...
 
 
-def interior_bounds(objective, acceptable):
-    lower, upper = objective.lower_bound, objective.upper_bound
-    if objective.mode != 'range':
+def interior_bounds(constraint, acceptable, normalization_scale=1.):
+    """Project search convention: slightly interior range targets, per mode."""
+    lower, upper = constraint.lower_bound, constraint.upper_bound
+    if constraint.mode != 'range':
         return lower, upper
     width = (1.0 if upper is None else upper) - (0.0 if lower is None else lower)
     if width <= 0:
         return lower, upper
     def margin(bound):
-        # Project numerical guide floor, independent of acceptance tolerance;
-        # zero requested violation must not collapse the guide to roundoff.
-        return min(width * .1, max(width * .001, 8 * math.ulp(float(bound)), acceptable * objective.normalization_scale))
+        return min(width * .1, max(width * .001, 8 * math.ulp(float(bound)), acceptable * normalization_scale))
     return (lower if lower is None or lower <= 0 else lower + margin(lower),
             upper if upper is None or upper >= 1 else upper - margin(upper))
 
 
-def _interior_response_residual(objective, response, acceptable):
-    actual = np.asarray(response['actual_values'], float)
-    if not np.all(np.isfinite(actual)):
-        raise ValueError('nonfinite interior refinement response')
-    if objective.mode == 'value':
-        return actual - objective.target_value
-    lower, upper = interior_bounds(objective, acceptable)
-    residual = np.zeros_like(actual)
-    if lower is not None:
-        residual = np.minimum(actual - lower, 0.)
-    if upper is not None:
-        residual += np.maximum(actual - upper, 0.)
-    return residual
+def _interior_objectives(objectives, acceptable):
+    result = []
+    for objective in objectives:
+        changed = {}
+        for name, constraint in active_constraints(objective):
+            if constraint.mode == 'range':
+                lower, upper = interior_bounds(constraint, acceptable, objective.normalization_scale)
+                changed[name] = replace(constraint, lower_bound=lower, upper_bound=upper)
+        candidate = replace(objective, **changed)
+        validate_objective_criteria(objective)
+        try:
+            validate_objective_criteria(candidate)
+        except ValueError:
+            # Tight coupled constraints may leave no common interior. Their
+            # exact original feasible boundary remains the valid search guide.
+            candidate = objective
+        result.append(candidate)
+    return tuple(result)
+
+
+def _guide_reductions(request, value, layer_ids=(), *, interior=False):
+    """Reduce each complete physical band before including private audit guides."""
+    groups = [(request.objectives, value['responses'])]
+    groups.extend(value.get('_feedback_response_groups', ()))
+    for objectives, responses in groups:
+        if interior:
+            objectives = _interior_objectives(objectives, request.acceptable_normalized_error)
+        yield reduce_objective_responses(objectives, responses, layer_ids=tuple(layer_ids),
+                                         tolerance=request.acceptable_normalized_error)
+
+
+def _reduction_loss_gradient(reductions, layer_ids):
+    loss, gradient = 0., np.zeros(len(layer_ids))
+    for reduction in reductions:
+        residual = reduction.residual_vector
+        loss += float(residual @ residual)
+        gradient += 2 * (residual @ reduction.jacobian_matrix)
+    if not math.isfinite(loss) or not np.all(np.isfinite(gradient)):
+        raise ValueError('nonfinite reduced objective loss or derivative')
+    return float(loss), gradient
 
 
 def interior_loss(request, value):
-    """Compute the guide from existing physical responses, without a Jacobian."""
-    loss = 0.0
-    for response in value['responses']:
-        objective = request.objectives[response['objective_index']]
-        residual = _interior_response_residual(objective, response, request.acceptable_normalized_error)
-        factor = objective.weight / objective.normalization_scale**2
-        loss += factor * float(residual @ residual)
-    if not math.isfinite(loss):
-        raise ValueError('nonfinite interior refinement loss')
-    return loss
+    """Compute an active-mode interior guide from cached complete responses."""
+    return _reduction_loss_gradient(_guide_reductions(request, value, interior=True), ())[0]
 
 
 def interior_loss_gradient(request, value, layer_ids):
-    """Return sum weighted interior hinge squares and derivatives per nm."""
-    gradient = np.zeros(len(layer_ids))
-    loss = 0.0
-    for response in value['responses']:
-        objective = request.objectives[response['objective_index']]
-        residual = _interior_response_residual(objective, response, request.acceptable_normalized_error)
-        factor = objective.weight / objective.normalization_scale**2
-        loss += factor * float(residual @ residual)
-        jacobian = response['jacobian_values_by_layer_id']
-        for i, identifier in enumerate(layer_ids):
-            gradient[i] += 2 * factor * float(residual @ np.asarray(jacobian[identifier], float))
-    if not math.isfinite(loss) or not np.all(np.isfinite(gradient)):
-        raise ValueError('nonfinite interior refinement loss or derivative')
-    return loss, gradient
+    """Use the shared physical reduction and its analytic derivative."""
+    return _reduction_loss_gradient(_guide_reductions(request, value, layer_ids, interior=True), layer_ids)
 
 
 def refine_synthesis_candidate(request, initial, *, evaluate, archive, quarter_nm,
@@ -132,7 +142,11 @@ def refine_synthesis_candidate(request, initial, *, evaluate, archive, quarter_n
     # ULP. Associate the guide with the original retained candidate rather
     # than borrowing a recomputed candidate's loss or exporting a sentinel.
     initial_loss = interior_loss(request, initial) if initial.get('responses') else None
-    key_function = (lambda value, loss: (float(value['score']['max_error']), loss)) if candidate_key is None else candidate_key
+    def original_key(value, loss):
+        score = value['score']
+        return (int(not score.get('nominal_pass', score['max_error'] == 0.)),
+                float(score['max_error']), float(score.get('weighted_rms_error', loss)), loss)
+    key_function = original_key if candidate_key is None else candidate_key
     best_loss = initial_loss
     best_key = key_function(initial, math.inf if initial_loss is None else initial_loss)
     best_loss_source = ('initial_cached_responses' if initial_loss is not None
@@ -145,7 +159,8 @@ def refine_synthesis_candidate(request, initial, *, evaluate, archive, quarter_n
         max_iterations=max_iterations, lower_nm=low.tolist(), upper_nm=high.tolist(),
         bounds_source='project phase trust box d0 +/- quarter_nm/2 intersect explicit layer limits',
         fixed_layer_ids=[identifier for identifier, lo, hi in zip(ids, low, high, strict=True) if lo == hi],
-        interior_bounds=[interior_bounds(o, request.acceptable_normalized_error) for o in request.objectives],
+        interior_bounds=[{name: interior_bounds(c, request.acceptable_normalized_error, o.normalization_scale)
+                          for name, c in active_constraints(o)} for o in request.objectives],
         reason='running', iterations=0, physical_candidates=0)
 
     def objective(point):
@@ -206,51 +221,16 @@ class SynthesisResourceGuard(Exception):
 
 
 def synthesis_window_masses(request):
-    """Explicit normalized user weights, optionally multiplied by point count."""
-    logs = np.asarray([math.log(o.weight) for o in request.objectives], float)
-    weighting = getattr(request, 'objective_weighting', 'equal_window')
-    if weighting == 'point_count':
-        logs += np.log([o.wavelength_samples * len(o.angles_deg) for o in request.objectives])
-    elif weighting != 'equal_window':
-        raise ValueError('objective_weighting must be equal_window or point_count')
-    weights = np.exp(logs - np.max(logs))
-    return weights / np.sum(weights)
+    """Normalized user band weights; physical wavelength measure is independent."""
+    return normalized_band_weights(request.objectives)
 
 
 def weighted_sse_loss_gradient(request, value, layer_ids=()):
-    """Threshold-outside SSE and analytic nm gradient on ALL original rows.
-
-    equal_window gives each objective its normalized user weight regardless of
-    wavelength/angle sample count. point_count reproduces per-condition mass
-    explicitly. Neither guide changes the original max-violation acceptance.
-    """
+    """Canonical active-band SSE and analytic nm gradient, without optics."""
     from .film_synthesis_multispectral_minimax import _signed_bounds
     ids = tuple(layer_ids)
-    _signed_bounds(request, value, ids)  # exact original grid and Jacobian audit
-    masses = synthesis_window_masses(request)
-    loss = 0.
-    gradient = np.zeros(len(ids))
-    for row in value['responses']:
-        index = row['objective_index']
-        objective = request.objectives[index]
-        actual = np.asarray(row['actual_values'], float)
-        if objective.mode == 'value':
-            residual = actual - objective.target_value
-        else:
-            residual = np.zeros_like(actual)
-            if objective.lower_bound is not None:
-                residual += np.minimum(actual - objective.lower_bound, 0.)
-            if objective.upper_bound is not None:
-                residual += np.maximum(actual - objective.upper_bound, 0.)
-        residual /= objective.normalization_scale
-        factor = masses[index] / (objective.wavelength_samples * len(objective.angles_deg))
-        loss += factor * float(residual @ residual)
-        for column, identifier in enumerate(ids):
-            derivative = np.asarray(row['jacobian_values_by_layer_id'][identifier], float)
-            gradient[column] += 2 * factor * float(residual @ (derivative / objective.normalization_scale))
-    if not math.isfinite(loss) or not np.all(np.isfinite(gradient)):
-        raise ValueError('nonfinite full-original weighted SSE or analytic derivative')
-    return float(loss), gradient
+    _signed_bounds(request, value, ids)  # complete original grid/Jacobian contract
+    return _reduction_loss_gradient(_guide_reductions(request, value, ids), ids)
 
 
 def _coordinate_thicknesses_nm(point, scales, lower, upper, initial_point, initial_nm):
@@ -401,7 +381,6 @@ def refine_synthesis_explorer(request, initial, *, evaluate, archive,
         fixed_layer_ids=list(ids) if upper is not None and lower == upper else [],
         free_thickness_variables=0 if upper is not None and lower == upper else len(ids),
         all_original_conditions=True, independent_layer_variables=list(ids),
-        objective_weighting=getattr(request, 'objective_weighting', 'equal_window'),
         objective_masses=synthesis_window_masses(request).tolist())
 
 
@@ -439,9 +418,7 @@ def refine_synthesis_full_minimax(request, initial, *, evaluate, archive,
     t_terminal = None
     full_feasibility = None
     rejected_infeasible_trials = 0
-    condition_count = sum(o.wavelength_samples * len(o.angles_deg) * (
-        2 if o.mode == 'value' else int(o.lower_bound is not None) + int(o.upper_bound is not None))
-        for o in request.objectives)
+    condition_count = signed_bound_count(request.objectives)
 
     def data(x):
         nonlocal cache_x, cache_data, cache_value, best, terminal, calls, rejected_infeasible_trials
@@ -471,7 +448,8 @@ def refine_synthesis_full_minimax(request, initial, *, evaluate, archive,
         cache_x, cache_data, cache_value = x.copy(), (q, jac * scales), value
         terminal = value
         calls += 1
-        if (value['score']['max_error'], value['score']['weighted_rms_error']) < (best['score']['max_error'], best['score']['weighted_rms_error']):
+        from .film_synthesis_multispectral_minimax import _score_key
+        if _score_key(value) < _score_key(best):
             best = value
         archive(value, audit_eligible=False)
         progress('hybrid_full_minimax_trial', value, dict(physical_candidates=calls,

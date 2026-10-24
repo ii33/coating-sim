@@ -7,6 +7,7 @@ from threading import Event
 import pytest
 
 from coat_sim.core.film_auto_synthesis import freeze_film_synthesis_request
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationObjective
 from coat_sim.core.film_synthesis_audit import audit_frozen_synthesis_candidate
 from coat_sim.core.film_optimization_structure import _StructureCancelled
@@ -33,8 +34,7 @@ def test_actual_high_q_cavity_peak_is_found_between_dense_and_shifted_nodes():
     # stress test, not a claimed real-material or literature reproduction.
     for identifier, index in [('glass', 1.), ('low', 1.3), ('high', 2.2)]:
         service.materials.records[identifier]['optical_sets'][0]['n'] = [index] * 3
-    request = replace(request, objectives=(FilmOptimizationObjective(
-        549., 551., 3, metric='T', mode='range', upper_bound=.01),))
+    request = replace(request, objectives=(FilmOptimizationObjective(549., 551., 3, pointwise=FilmObjectiveConstraint(mode='range', target_value=None, lower_bound=None, upper_bound=.01), metric='T'),))
     frozen = freeze_film_synthesis_request(service, request)
     design = deepcopy(dict(frozen.environment))
     center = 550.123456

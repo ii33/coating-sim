@@ -6,6 +6,7 @@ from threading import Event
 import pytest
 
 from coat_sim.core.film_auto_synthesis import freeze_film_synthesis_request
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationObjective, FilmOptimizationRequest
 from coat_sim.core.film_optimization_needle import FilmNeedleMaterialReference
 from coat_sim.core.film_synthesis_jobs import execute_job, is_synthesis_result
@@ -27,8 +28,7 @@ def _problem(tmp_path, *, seed=False, seed_multiple=1., alternate_set=False, bud
         library.write(film, update=True)
     design["front_layers"] = []
     design["substrate"]["sides"] = "single"
-    objective = FilmOptimizationObjective(550., 550., 1, metric="R", mode="range",
-                                          lower_bound=0., upper_bound=.001)
+    objective = FilmOptimizationObjective(550., 550., 1, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=0., upper_bound=.001), metric="R")
     base = FilmOptimizationRequest(design, 19, (), (objective,), acceptable_normalized_error=0.)
     request = build_synthesis_request(base,
         (FilmNeedleMaterialReference("acceptance-film", "film-set"),),

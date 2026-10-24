@@ -15,6 +15,7 @@ from coat_sim.core import film_auto_synthesis as synthesis
 from coat_sim.core import film_synthesis_matching as matching
 from coat_sim.core.film_auto_synthesis import FilmSynthesisRequest, freeze_film_synthesis_request
 from coat_sim.core.film_design import new_design, validate_design
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationObjective
 from coat_sim.core.film_optimization_needle import FilmNeedleMaterialReference
 from coat_sim.core.film_optimization_structure import evaluate_frozen_structure_candidate
@@ -30,7 +31,7 @@ def matching_request(**limits):
         material["optical_sets"][0].update(wavelength_min=350., wavelength_max=950.,
                                           wavelengths=[350., 550., 950.])
     request = FilmSynthesisRequest(base.environment,
-        (FilmOptimizationObjective(400., 900., 5, metric="R", mode="range", upper_bound=.02),),
+        (FilmOptimizationObjective(400., 900., 5, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=.02), metric="R"),),
         (*base.candidate_materials, FilmNeedleMaterialReference("glass", "nk")), **limits)
     return service, freeze_film_synthesis_request(service, request)
 
@@ -45,8 +46,7 @@ def real_matching_request():
     environment = new_design(design_id="matching-real-source-test")
     environment["substrate"].update(case["substrate"])
     environment["assume_lossless"] = case["assume_lossless"]
-    objectives = tuple(FilmOptimizationObjective(**{**row, "angles_deg": tuple(row["angles_deg"]),
-        "mode": "range"}) for row in case["objectives"])
+    objectives = tuple(FilmOptimizationObjective(**{**{key: value for key, value in row.items() if key not in {"mode", "target_value", "lower_bound", "upper_bound"}}, "angles_deg": tuple(row["angles_deg"]), "pointwise": FilmObjectiveConstraint(mode="range", lower_bound=row.get("lower_bound"), upper_bound=row.get("upper_bound"))}) for row in case["objectives"])
     request = FilmSynthesisRequest(environment, objectives,
         tuple(FilmNeedleMaterialReference(**row) for row in case["materials"]),
         minimum_nonzero_thickness_nm=case["min_thickness_nm"],
@@ -81,22 +81,25 @@ def test_first_sweep_covers_all_materials_pair_counts_wavelengths_and_directions
     assert request.environment["front_layers"] == []
 
 
-@pytest.mark.parametrize("changes", [
-    {"metric": "T"}, {"weight": 0.}, {"lower_bound": .98, "upper_bound": .99},
-    {"lower_bound": .9, "upper_bound": None}, {"upper_bound": 1.},
-    {"mode": "value", "upper_bound": None, "target_value": .99},
+@pytest.mark.parametrize("common_changes, pointwise_changes", [
+    ({"metric": "T"}, {}), ({"weight": 0.}, {}),
+    ({}, {"lower_bound": .98, "upper_bound": .99}),
+    ({}, {"lower_bound": .9, "upper_bound": None}), ({}, {"upper_bound": 1.}),
+    ({}, {"mode": "value", "lower_bound": None, "upper_bound": None, "target_value": .99}),
 ])
-def test_matching_requires_pure_positive_weight_ar_objectives(changes):
+def test_matching_requires_pure_positive_weight_ar_objectives(common_changes, pointwise_changes):
     _, request = matching_request()
-    changed = replace(request, objectives=(replace(request.objectives[0], **changes),))
+    objective = request.objectives[0]
+    changed = replace(request, objectives=(replace(objective, **common_changes,
+        pointwise=replace(objective.pointwise, **pointwise_changes)),))
     assert matching.matching_objectives(changed) == ()
     assert list(matching.iter_matching_proposals(changed)) == []
 
 
 def test_zero_ceiling_and_low_value_activate_and_single_material_returns_no_pair():
     _, request = matching_request()
-    for objective in (replace(request.objectives[0], upper_bound=0.),
-                      replace(request.objectives[0], mode="value", upper_bound=None, target_value=.01)):
+    for objective in (replace(request.objectives[0], pointwise=replace(request.objectives[0].pointwise, upper_bound=0.)),
+                      replace(request.objectives[0], pointwise=replace(request.objectives[0].pointwise, mode="value", lower_bound=None, upper_bound=None, target_value=.01))):
         assert next(matching.iter_matching_proposals(replace(request, objectives=(objective,))))
     assert list(matching.iter_matching_proposals(replace(request,
         candidate_materials=request.candidate_materials[:1]))) == []

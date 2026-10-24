@@ -5,6 +5,8 @@ here. A run freezes score preferences; runtime controls only select its preview.
 """
 from __future__ import annotations
 
+from dataclasses import asdict
+
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 import math
@@ -131,8 +133,10 @@ class FilmCandidateDisplayController(QObject):
         index = self._selection["objective_index"]
         if 0 <= index < len(self._objectives):
             objective = self._objectives[index]
-            result.update(target_value=objective.target_value, lower_bound=objective.lower_bound,
-                          upper_bound=objective.upper_bound)
+            result.update(target_value=objective.pointwise.target_value if objective.pointwise.enabled else None,
+                lower_bound=objective.pointwise.lower_bound if objective.pointwise.enabled else None,
+                upper_bound=objective.pointwise.upper_bound if objective.pointwise.enabled else None,
+                mean_constraint=asdict(objective.mean))
         return result
 
     @staticmethod

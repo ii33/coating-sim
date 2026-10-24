@@ -15,6 +15,7 @@ from coat_sim.core import film_auto_synthesis as synthesis
 from coat_sim.core import film_synthesis_global as global_search
 from coat_sim.core.film_auto_synthesis import FilmSynthesisRequest, freeze_film_synthesis_request
 from coat_sim.core.film_design import new_design, validate_design
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationObjective
 from coat_sim.core.film_optimization_needle import FilmNeedleMaterialReference
 from coat_sim.core.film_optimization_structure import evaluate_frozen_structure_candidate
@@ -27,9 +28,9 @@ pytestmark = pytest.mark.algorithm
 def bandpass_request(**limits):
     service, base = setup_problem()
     objectives = (
-        FilmOptimizationObjective(549.75, 550.25, 3, metric="T", mode="range", lower_bound=.95),
-        FilmOptimizationObjective(500., 520., 3, metric="R", mode="range", lower_bound=.95),
-        FilmOptimizationObjective(580., 600., 3, metric="R", mode="range", lower_bound=.95),
+        FilmOptimizationObjective(549.75, 550.25, 3, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=.95, upper_bound=None), metric="T"),
+        FilmOptimizationObjective(500., 520., 3, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=.95, upper_bound=None), metric="R"),
+        FilmOptimizationObjective(580., 600., 3, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=.95, upper_bound=None), metric="R"),
     )
     request = FilmSynthesisRequest(base.environment, objectives, base.candidate_materials,
                                   **limits)
@@ -47,8 +48,7 @@ def real_bandpass_request():
     environment = new_design(design_id="bandpass-proposal-real-source-test")
     environment["substrate"].update(case["substrate"])
     environment["assume_lossless"] = case["assume_lossless"]
-    objectives = tuple(FilmOptimizationObjective(**{**row, "angles_deg": tuple(row["angles_deg"]),
-                                                   "mode": "range"}) for row in case["objectives"])
+    objectives = tuple(FilmOptimizationObjective(**{**{key: value for key, value in row.items() if key not in {"mode", "target_value", "lower_bound", "upper_bound"}}, "angles_deg": tuple(row["angles_deg"]), "pointwise": FilmObjectiveConstraint(mode="range", lower_bound=row.get("lower_bound"), upper_bound=row.get("upper_bound"))}) for row in case["objectives"])
     request = FilmSynthesisRequest(environment, objectives,
         tuple(FilmNeedleMaterialReference(**row) for row in case["materials"]),
         max_layers=32, minimum_nonzero_thickness_nm=10., max_layer_thickness_nm=500.,
@@ -80,9 +80,9 @@ def test_initial_topology_coverage_is_single_coupled_and_end_matched_and_unscore
 @pytest.mark.parametrize("change", [
     lambda objectives: objectives[:2],
     lambda objectives: objectives[1:],
-    lambda objectives: (replace(objectives[0], lower_bound=None, upper_bound=.2), *objectives[1:]),
+    lambda objectives: (replace(objectives[0], pointwise=replace(objectives[0].pointwise, lower_bound=None, upper_bound=.2)), *objectives[1:]),
     lambda objectives: (replace(objectives[0], weight=0), *objectives[1:]),
-    lambda objectives: (objectives[0], replace(objectives[1], lower_bound=None, upper_bound=.1), objectives[2]),
+    lambda objectives: (objectives[0], replace(objectives[1], pointwise=replace(objectives[1].pointwise, lower_bound=None, upper_bound=.1)), objectives[2]),
     lambda objectives: (objectives[0], replace(objectives[1], wavelength_max_nm=550.), objectives[2]),
 ])
 def test_bandpass_detection_requires_positive_bracketed_transmission(change):
@@ -94,7 +94,7 @@ def test_bandpass_detection_requires_positive_bracketed_transmission(change):
 
 def test_value_goals_activate_and_equivalent_polarizations_do_not_duplicate_designs():
     _, request = bandpass_request(max_layers=5)
-    values = tuple(replace(o, mode="value", target_value=o.lower_bound, lower_bound=None)
+    values = tuple(replace(o, pointwise=replace(o.pointwise, mode="value", target_value=o.pointwise.lower_bound, lower_bound=None))
                    for o in request.objectives)
     single = list(global_search.iter_bandpass_proposals(replace(request, objectives=values)))
     repeated = list(global_search.iter_bandpass_proposals(replace(request, objectives=(*values, *values))))

@@ -220,7 +220,7 @@ def test_legacy_classic_template_scores_base_then_actual_extra(monkeypatch):
     from coat_sim.core import film_synthesis_global as global_search
     from coat_sim.core import film_synthesis_hr_priors as hr_priors
     service, request = setup_problem(upper=1., low=550., high=550., samples=1)
-    request = replace(request, objectives=(replace(request.objectives[0], lower_bound=.999999),),
+    request = replace(request, objectives=(replace(request.objectives[0], pointwise=replace(request.objectives[0].pointwise, lower_bound=.999999)),),
         randomize_template_search=True, structure_search_seed=0,
         max_evaluations=8, max_cycles=1, cpu_workers=2, max_working_set_bytes=None)
     design = design_with_layers()

@@ -14,6 +14,7 @@ from coat_sim.core.api import CoatService
 from coat_sim.core.film_auto_synthesis import FilmSynthesisRequest, freeze_film_synthesis_request
 from coat_sim.core.film_design import new_design
 from coat_sim.core.film_design_service import FilmDesignService
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationObjective
 from coat_sim.core.film_optimization_needle import FilmNeedleMaterialReference
 from coat_sim.core.film_synthesis_io import film_synthesis_request_to_payload
@@ -56,7 +57,7 @@ def _request():
     seed["front_layers"] = [{"id": "known-ar-layer", "material_id": "low", "optical_set_id": "nk",
         "thickness": {"value": 550. / (4. * np.sqrt(1.5)), "unit": "nm"}}]
     request = FilmSynthesisRequest(environment=environment,
-        objectives=(FilmOptimizationObjective(550., 550., 1, mode="range", upper_bound=0.001),),
+        objectives=(FilmOptimizationObjective(550., 550., 1, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=0.001)),),
         candidate_materials=(FilmNeedleMaterialReference("low", "nk"),),
         max_cycles=1, max_evaluations=12, position_samples=1,
         seed_designs=(seed,), design_revision=41)
@@ -85,7 +86,7 @@ def _cancel_payload():
     environment = new_design(design_id="scheduler-synthesis-unsolved")
     environment["substrate"].update(material_id="glass", optical_set_id="nk")
     request = FilmSynthesisRequest(environment=environment,
-        objectives=(FilmOptimizationObjective(500., 600., 2, mode="range", upper_bound=0.06),),
+        objectives=(FilmOptimizationObjective(500., 600., 2, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=0.06)),),
         candidate_materials=(FilmNeedleMaterialReference("low", "nk"),),
         max_cycles=None, max_evaluations=None, position_samples=1,
         stagnation_cycles=100000)

@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 import signal
 import threading
-from typing import Any
 import unittest
 
 from tools.export_film_synthesis_cloud import build_bundle, import_closure
@@ -16,6 +15,51 @@ from tools.run_film_synthesis_cloud import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def current_objective(low=550., high=550., samples=1, *, metric="R", angles=(0.,),
+                      pointwise=True, mean=False, upper=1.):
+    from coat_sim.core.film_objective_payload import objective_to_payload
+    from coat_sim.core.film_optimization import FilmObjectiveConstraint, FilmOptimizationObjective
+    return objective_to_payload(FilmOptimizationObjective(low, high, samples,
+        angles_deg=angles, metric=metric, polarization="s",
+        pointwise=FilmObjectiveConstraint(enabled=pointwise, lower_bound=None, upper_bound=upper),
+        mean=FilmObjectiveConstraint(enabled=mean, lower_bound=None, upper_bound=upper)))
+
+
+def score_evidence(request, dense, audit=None):
+    from dataclasses import asdict
+    from coat_sim.core.film_objective_payload import objective_from_payload
+    from coat_sim.core.film_objective_criteria import reduce_objective_responses
+    objectives = tuple(objective_from_payload(row) for row in request["objectives"])
+    reduced = reduce_objective_responses(objectives, dense)
+    rows = reduced.conditions
+    audit_reduced = None
+    if audit is not None:
+        audit_reduced = reduce_objective_responses(objectives, audit)
+        rows = tuple(row for row in rows if row.reduction == "mean") + tuple(
+            row for row in audit_reduced.conditions if row.reduction == "pointwise")
+    score = {"errors": [asdict(row) for row in rows],
+        "coverage": [asdict(row) for row in reduced.coverage],
+        "max_error": max(row.normalized_violation for row in rows),
+        "weighted_max_error": max(row.weighted_normalized_violation for row in rows),
+        "weighted_rms_error": reduced.weighted_rms_error}
+    if audit_reduced is not None:
+        dense_count = sum(len(row.wavelength_nm) for row in reduced.coverage)
+        raw_count = sum(len(row.wavelength_nm) for row in audit_reduced.coverage)
+        offsets = sum(max(0, len(row.wavelength_nm) - 1) for row in reduced.coverage)
+        score["audit_coverage"] = [asdict(row) for row in audit_reduced.coverage]
+        score["audit"] = dict(dense_points=dense_count, offset_points=offsets,
+            unique_condition_points=raw_count, physical_evaluations=1,
+            wavelength_points=raw_count, extra_points=raw_count - dense_count,
+            completed_extrema=0, bracket_count=0, continuous_certificate=False,
+            rms_measure="fixed_dense_grid_only", objective_status=[{} for _ in objectives])
+    import json
+    return json.loads(json.dumps(score))
+
+
+def frame(index, waves, values, angle=0.):
+    return dict(objective_index=index, angle_deg=angle, wavelength_nm=waves, actual_values=values)
 
 
 class FilmSynthesisCloudBundleTests(unittest.TestCase):
@@ -49,10 +93,13 @@ class FilmSynthesisCloudBundleTests(unittest.TestCase):
         self.assertIs(signal.getsignal(signal.SIGTERM), original)
 
     def test_git_mode_refuses_missing_checkout_identity_before_calculation(self):
+        import json
         import tempfile
         from tools.run_film_synthesis_cloud import run_bundle
-        manifest = ROOT / "benchmarks/film_synthesis/20261021/cloud-requests.json"
         with tempfile.TemporaryDirectory() as output:
+            manifest = Path(output) / "current-manifest.json"
+            manifest.write_text(json.dumps({"kind": "film_synthesis_git_requests", "schema_version": 1,
+                "smoke_bundle": True, "entries": [{"request": {"objectives": [current_objective()]}}]}), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "repo-root and --expect-commit"):
                 run_bundle(manifest, output=Path(output) / "unused", preflight=True)
 
@@ -80,48 +127,18 @@ class FilmSynthesisCloudBundleTests(unittest.TestCase):
         finally:
             sys.path[:] = original
 
-    def test_git_frozen_requests_match_fresh_production_optics_and_targets(self):
+    def test_historical_git_requests_are_unsupported_and_keep_original_bytes(self):
         import json
         from tools.run_film_synthesis_acceptance import sha256_json
-        manifest = json.loads((ROOT / "benchmarks/film_synthesis/20261021/cloud-requests.json").read_text(encoding="utf-8"))
-        fresh = build_bundle(seed=0, workers=2, repo_root=ROOT)
-        self.assertEqual(manifest["kind"], "film_synthesis_git_requests")
-        self.assertEqual([entry["case"] for entry in manifest["entries"]], [entry["case"] for entry in fresh["entries"]])
-        for stored, actual in zip(manifest["entries"], fresh["entries"], strict=True):
-            # Preserve the historical request bytes/identity. Added execution
-            # controls have explicit current defaults, but cannot excuse any
-            # change to an original optical input, target, grid or option.
+        from tools.run_film_synthesis_cloud import _load_manifest
+        path = ROOT / "benchmarks/film_synthesis/20261021/cloud-requests.json"
+        original = path.read_bytes()
+        manifest = json.loads(original)
+        for stored in manifest["entries"]:
             self.assertEqual(stored["request_sha256"], sha256_json(stored["request"]))
-            self.assertEqual(actual["request_sha256"], sha256_json(actual["request"]))
-            current_request = dict(actual["request"])
-            added_defaults: dict[str, Any] = {
-                "max_seconds": None, "search_strategy": "hybrid",
-                "objective_weighting": "equal_window", "archive_capacity": 32,
-                "needle_batch_size": 6, "needle_pre_local": False,
-                "needle_position_refinement_rounds": 1, "max_working_set_bytes": 0,
-                "strict_upper_bound_objective_indices": [],
-                "parallel_batch_size": 2,
-            }
-            for name, expected in added_defaults.items():
-                self.assertNotIn(name, stored["request"])
-                self.assertEqual(current_request.pop(name), expected)
-            resolution = current_request.pop("resource_guard_resolution")
-            self.assertNotIn("resource_guard_resolution", stored["request"])
-            self.assertEqual(set(resolution), {
-                "version", "mode", "requested_bytes", "effective_bytes", "available_bytes", "basis"})
-            self.assertEqual(resolution["version"], 1)
-            self.assertEqual(resolution["mode"], "auto")
-            self.assertEqual(resolution["requested_bytes"], 0)
-            if resolution["available_bytes"] is not None:
-                self.assertEqual(resolution["basis"], "half_available_memory_at_freeze")
-                self.assertEqual(resolution["effective_bytes"], resolution["available_bytes"] // 2)
-            else:
-                from coat_sim.core.film_auto_synthesis import SYNTHESIS_WORKING_SET_FALLBACK_BYTES
-                self.assertIn(resolution["basis"], {
-                    "unknown_memory_fallback", "memory_probe_error_fallback", "invalid_memory_fallback"})
-                self.assertEqual(resolution["effective_bytes"], SYNTHESIS_WORKING_SET_FALLBACK_BYTES)
-            self.assertEqual(stored["request"], current_request)
-            self.assertEqual(stored["wall_seconds"], 120)
+        with self.assertRaisesRegex(ValueError, "Unsupported legacy request format"):
+            _load_manifest(path)
+        self.assertEqual(path.read_bytes(), original)
 
     def test_import_closure_is_core_only_and_contains_algorithm_branches(self):
         modules = import_closure(ROOT)
@@ -135,122 +152,137 @@ class FilmSynthesisCloudBundleTests(unittest.TestCase):
         self.assertFalse(any(any(part in {"ui", "qml", "agent", "scheduler"}
                                  for part in module.split(".")) for module in modules))
 
-    def test_frozen_public_suite_exports_the_eight_phase_cases_without_search(self):
-        suite = ROOT / "benchmarks" / "film_synthesis" / "20261021" / "representative-suite-v2.1.json"
-        bundle = build_bundle(suite, seed=0, workers=2, repo_root=ROOT)
+    def test_current_explicit_fixture_exports_nested_requests_without_search(self):
+        import tempfile
+        from tests.test_film_synthesis_benchmark_runner import small_suite
+        with tempfile.TemporaryDirectory() as output:
+            suite = small_suite(Path(output))
+            bundle = build_bundle(suite, case="tiny_production_contract", seed=0, workers=2, repo_root=ROOT)
         self.assertEqual(bundle["kind"], "film_synthesis_pure_cpu_bundle")
-        self.assertEqual(len(bundle["entries"]), 8)
-        self.assertEqual(len(bundle["entries"]), bundle["suite_request_count"])
-        self.assertEqual(bundle["defaults"]["wall_seconds"], 120)
-        self.assertEqual(bundle["defaults"]["workers"], 2)
-        for entry in bundle["entries"]:
-            self.assertIsNotNone(entry["request"].get("frozen_material_snapshot"))
-            self.assertEqual(entry["wall_seconds"], 120)
-            self.assertIn("ar_structure_mode", entry["request"])
-        self.assertIn("GUI request builder", bundle["execution_contract"].get("freeze_provenance", ""))
+        self.assertEqual(len(bundle["entries"]), 1)
+        objective = bundle["entries"][0]["request"]["objectives"][0]
+        self.assertTrue(objective["pointwise"]["enabled"])
+        self.assertFalse(objective["mean"]["enabled"])
+        self.assertNotIn("mode", objective)
+        self.assertNotIn("strict_lower_bound_objective_indices", bundle["entries"][0]["request"])
 
-    def test_audit_means_use_dense_points_only_and_preserve_raw_bounds(self):
-        request = {
-            "validation_samples_multiplier": 2,
-            "strict_lower_bound_objective_indices": [],
-            "objectives": [{"wavelength_min_nm": 1.0, "wavelength_max_nm": 3.0,
-                "wavelength_samples": 2, "metric": "R", "lower_bound": 0.0,
-                "upper_bound": 5.0, "angles_deg": [0.0], "polarization": "s"}],
-        }
-        score = {"errors": [
-            {"objective_index": 0, "angle_deg": 0.0, "polarization": "s", "metric": "R", "lower_bound": 0.0, "upper_bound": 5.0, "wavelength_nm": 1.0, "actual": 0.0},
-            {"objective_index": 0, "angle_deg": 0.0, "polarization": "s", "metric": "R", "lower_bound": 0.0, "upper_bound": 5.0, "wavelength_nm": 2.0, "actual": 2.0},
-            {"objective_index": 0, "angle_deg": 0.0, "polarization": "s", "metric": "R", "lower_bound": 0.0, "upper_bound": 5.0, "wavelength_nm": 3.0, "actual": 4.0},
-            {"objective_index": 0, "angle_deg": 0.0, "polarization": "s", "metric": "R", "lower_bound": 0.0, "upper_bound": 5.0, "wavelength_nm": 1.5, "actual": 50.0},
-            {"objective_index": 0, "angle_deg": 0.0, "polarization": "s", "metric": "R", "lower_bound": 0.0, "upper_bound": 5.0, "wavelength_nm": 2.5, "actual": 50.0},
-        ], "audit": {"dense_points": 3, "offset_points": 2,
-                   "unique_condition_points": 5, "physical_evaluations": 1,
-                   "wavelength_points": 5, "extra_points": 2,
-                   "completed_extrema": 0, "bracket_count": 0,
-                   "objective_status": [{}], "continuous_certificate": False,
-                   "rms_measure": "fixed_dense_grid_only"}}
+    def test_current_cloud_preflight_uses_schema_two_decoder_without_search(self):
+        import json
+        import tempfile
+        from unittest.mock import patch
+        from tests.test_film_synthesis_benchmark_runner import small_suite
+        from tools.run_film_synthesis_cloud import run_bundle
+        from coat_sim.core import film_synthesis_io
+        decoded_versions = []
+        original = film_synthesis_io.film_synthesis_request_from_payload
+        def decode(payload):
+            decoded_versions.append(payload["schema_version"])
+            return original(payload)
+        with tempfile.TemporaryDirectory() as output:
+            root = Path(output)
+            bundle = build_bundle(small_suite(root), case="tiny_production_contract", seed=0, workers=1, repo_root=ROOT)
+            manifest = root / "current-manifest.json"
+            manifest.write_text(json.dumps(bundle), encoding="utf-8")
+            with patch("tools.run_film_synthesis_cloud._source_fingerprint",
+                       return_value={"bundle_source_sha256": "unit-source-identity"}), \
+                 patch.object(film_synthesis_io, "film_synthesis_request_from_payload", side_effect=decode):
+                checked = run_bundle(manifest, output=root / "not-created", preflight=True)
+            self.assertFalse((root / "not-created").exists())
+        self.assertEqual(decoded_versions, [2])
+        self.assertTrue(checked["preflight_only"])
+
+    def test_historical_suite_is_not_exported_under_current_acceptance(self):
+        suite = ROOT / "benchmarks/film_synthesis/20261021/representative-suite-v2.1.json"
+        original = suite.read_bytes()
+        with self.assertRaisesRegex(ValueError, "Unsupported legacy request format"):
+            build_bundle(suite, seed=0, workers=2, repo_root=ROOT)
+        self.assertEqual(suite.read_bytes(), original)
+
+    def test_audit_means_use_raw_dense_coverage_and_preserve_nested_pointwise_bounds(self):
+        request = {"validation_samples_multiplier": 2, "acceptable_normalized_error": 0.,
+            "objectives": [current_objective(1., 3., 2, upper=.5)]}
+        score = score_evidence(request, [frame(0, [1., 2., 3.], [0., .2, .4])],
+                               [frame(0, [1., 1.5, 2., 2.5, 3.], [0., .9, .2, .9, .4])])
         mean = _mean_metrics(request, score)
-        self.assertEqual(mean["mean_lambda"], 2.0)
+        self.assertAlmostEqual(mean["mean_lambda"], .2)
         import math
-        expected_log_mean = (math.log(2) + 3 * (math.log(3) - math.log(2))) / math.log(3)
-        self.assertAlmostEqual(mean["mean_loglambda"], expected_log_mean)
+        expected_log = (.1 * math.log(2) + .3 * (math.log(3) - math.log(2))) / math.log(3)
+        self.assertAlmostEqual(mean["mean_loglambda"], expected_log)
         self.assertFalse(mean["extrema_and_half_step_offsets_included"])
         checked = _raw_bounds(request, score, scope="audit")
+        self.assertTrue(checked["available"])
         self.assertFalse(checked["passed"])
         self.assertEqual(checked["violating_conditions"], 2)
 
-    def test_line_target_reports_the_actual_sample(self):
-        request = {"validation_samples_multiplier": 5, "objectives": [{
-            "wavelength_min_nm": 550, "wavelength_max_nm": 550, "wavelength_samples": 1,
-            "angles_deg": [0, 30], "polarization": "unpolarized"}]}
-        score = {"errors": [
-            {"objective_index": 0, "angle_deg": 0, "polarization": "unpolarized", "metric": "R", "wavelength_nm": 550, "actual": 0.2},
-            {"objective_index": 0, "angle_deg": 30, "polarization": "unpolarized", "metric": "R", "wavelength_nm": 550, "actual": 0.4},
-        ]}
+    def test_meanonly_audit_retains_raw_offsets_without_activating_pointwise_acceptance(self):
+        request = {"validation_samples_multiplier": 2, "acceptable_normalized_error": 0.,
+            "objectives": [current_objective(1., 3., 2, pointwise=False, mean=True, upper=.3)]}
+        score = score_evidence(request, [frame(0, [1., 2., 3.], [0., .2, .4])],
+                               [frame(0, [1., 1.5, 2., 2.5, 3.], [0., .9, .2, .9, .4])])
+        self.assertIsNone(score["errors"][0]["wavelength_nm"])
+        self.assertAlmostEqual(_mean_metrics(request, score)["mean_lambda"], .2)
+        checked = _raw_bounds(request, score, scope="audit")
+        self.assertTrue(checked["passed"])
+        self.assertEqual(checked["required_condition_count"], 1)
+        self.assertEqual(checked["required_raw_point_count"], 5)
+        score["audit_coverage"][0]["wavelength_nm"].pop(1)
+        score["audit_coverage"][0]["actual_values"].pop(1)
+        self.assertFalse(_raw_bounds(request, score, scope="audit")["passed"])
+
+    def test_line_target_reports_complete_raw_sample_for_each_angle(self):
+        request = {"validation_samples_multiplier": 5,
+            "objectives": [current_objective(angles=(0., 30.))]}
+        score = score_evidence(request, [frame(0, [550.], [.2]), frame(0, [550.], [.4], angle=30.)])
         mean = _mean_metrics(request, score)
-        self.assertAlmostEqual(mean["mean_lambda"], 0.3)
-        self.assertAlmostEqual(mean["mean_loglambda"], 0.3)
+        self.assertAlmostEqual(mean["mean_lambda"], .3)
+        self.assertAlmostEqual(mean["mean_loglambda"], .3)
         self.assertTrue(all(group["measure"] == "discrete_line_actual" for group in mean["groups"]))
 
-    def test_mixed_metrics_keep_separate_means_without_cross_metric_aggregate(self):
-        objectives = []
-        errors = []
-        for index, (metric, actual) in enumerate((("R", 0.2), ("T", 0.8))):
-            objectives.append({"metric": metric, "wavelength_min_nm": 550,
-                "wavelength_max_nm": 550, "wavelength_samples": 1,
-                "angles_deg": [0], "polarization": "unpolarized"})
-            errors.append({"objective_index": index, "angle_deg": 0,
-                "polarization": "unpolarized", "metric": metric,
-                "wavelength_nm": 550, "actual": actual})
-        mean = _mean_metrics({"objectives": objectives}, {"errors": errors})
+    def test_mixed_metrics_keep_separate_raw_means(self):
+        request = {"objectives": [current_objective(metric="R"), current_objective(metric="T")]}
+        score = score_evidence(request, [frame(0, [550.], [.2]), frame(1, [550.], [.8])])
+        mean = _mean_metrics(request, score)
         self.assertIsNone(mean["mean_lambda"])
-        self.assertIsNone(mean["mean_loglambda"])
         self.assertEqual(mean["reason"], "mixed_metrics_have_no_combined_physical_mean")
-        self.assertEqual(mean["by_metric"]["R"]["mean_lambda"], 0.2)
-        self.assertEqual(mean["by_metric"]["T"]["mean_loglambda"], 0.8)
+        self.assertEqual(mean["by_metric"]["R"]["mean_lambda"], .2)
+        self.assertEqual(mean["by_metric"]["T"]["mean_loglambda"], .8)
 
-    def test_raw_acceptance_rejects_unknown_duplicate_and_out_of_domain_conditions(self):
-        request = {"acceptable_normalized_error": 0, "strict_lower_bound_objective_indices": [],
-            "validation_samples_multiplier": 2,
-            "objectives": [{"wavelength_min_nm": 1.0, "wavelength_max_nm": 2.0,
-                "wavelength_samples": 2, "angles_deg": [0.0], "polarization": "s",
-                "metric": "R", "mode": "range", "target_value": None,
-                "lower_bound": None, "upper_bound": 1.0}]}
-        row = {"objective_index": 0, "angle_deg": 0.0, "polarization": "s",
-            "metric": "R", "wavelength_nm": 1.0, "actual": 0.5,
-            "target_value": None, "lower_bound": None, "upper_bound": 1.0}
-        cases = [
-            ([{**row, "objective_index": 9}], "unknown_objective_index"),
-            ([row, dict(row)], "duplicate_condition"),
-            ([{**row, "wavelength_nm": 0.5}], "condition_outside_frozen_objective_domain"),
-            ([{**row, "polarization": "p"}], None),
-        ]
-        for rows, reason in cases:
-            checked = _raw_bounds(request, {"errors": rows}, scope="training")
-            self.assertFalse(checked["available"])
-            if reason:
-                self.assertIn(reason, checked["invalid_conditions"])
+    def test_current_raw_acceptance_rejects_unknown_duplicate_and_outside_conditions(self):
+        from copy import deepcopy
+        request = {"acceptable_normalized_error": 0., "objectives": [current_objective(1., 2., 2)]}
+        score = score_evidence(request, [frame(0, [1., 2.], [.2, .4])])
+        self.assertTrue(_raw_bounds(request, score, scope="training")["passed"])
+        for corruption in ("unknown", "duplicate", "outside", "polarization"):
+            broken = deepcopy(score)
+            if corruption == "duplicate":
+                broken["errors"].append(dict(broken["errors"][0]))
+            else:
+                key, value = {"unknown": ("objective_index", 9), "outside": ("wavelength_nm", .5),
+                              "polarization": ("polarization", "p")}[corruption]
+                broken["errors"][0][key] = value
+            self.assertFalse(_raw_bounds(request, broken, scope="training")["available"])
 
-    def test_audit_requires_complete_metadata_and_rejects_out_of_domain_extrema(self):
-        request = {"acceptable_normalized_error": 0, "strict_lower_bound_objective_indices": [],
-            "validation_samples_multiplier": 1,
-            "objectives": [{"wavelength_min_nm": 1.0, "wavelength_max_nm": 2.0,
-                "wavelength_samples": 1, "angles_deg": [0.0], "polarization": "s",
-                "metric": "R", "mode": "range", "target_value": None,
-                "lower_bound": None, "upper_bound": 1.0}]}
-        row = {"objective_index": 0, "angle_deg": 0.0, "polarization": "s",
-            "metric": "R", "wavelength_nm": 1.5, "actual": 0.5,
-            "target_value": None, "lower_bound": None, "upper_bound": 1.0}
-        complete_audit = {"dense_points": 1, "offset_points": 0, "unique_condition_points": 1,
-            "physical_evaluations": 1, "wavelength_points": 1, "extra_points": 0,
-            "completed_extrema": 0, "bracket_count": 0, "continuous_certificate": False,
-            "rms_measure": "fixed_dense_grid_only", "objective_status": [{}]}
-        missing = _raw_bounds(request, {"errors": [row]}, scope="audit")
-        self.assertFalse(missing["available"])
-        outside = _raw_bounds(request, {"errors": [{**row, "wavelength_nm": 2.5}],
-                                       "audit": complete_audit}, scope="audit")
-        self.assertFalse(outside["available"])
-        self.assertIn("condition_outside_frozen_objective_domain", outside["invalid_conditions"])
+    def test_legacy_raw_objective_is_explicitly_unsupported(self):
+        request = {"objectives": [{"mode": "range", "upper_bound": .5}]}
+        with self.assertRaisesRegex(ValueError, "Unsupported legacy request format"):
+            _raw_bounds(request, {"errors": []}, scope="training")
+        with self.assertRaisesRegex(ValueError, "Unsupported legacy request format"):
+            _mean_metrics(request, {})
+
+    def test_audit_rejects_incomplete_metadata_and_raw_coverage(self):
+        from copy import deepcopy
+        request = {"validation_samples_multiplier": 2, "acceptable_normalized_error": 0.,
+            "objectives": [current_objective(1., 2., 2)]}
+        score = score_evidence(request, [frame(0, [1., 1.5, 2.], [.2, .3, .4])],
+                               [frame(0, [1., 1.25, 1.5, 1.75, 2.], [.2, .25, .3, .35, .4])])
+        self.assertTrue(_raw_bounds(request, score, scope="audit")["passed"])
+        for field, value in (("completed_extrema", 1), ("dense_points", 0), ("offset_points", 0),
+                             ("continuous_certificate", True), ("unique_condition_points", 1)):
+            broken = deepcopy(score)
+            broken["audit"][field] = value
+            self.assertFalse(_raw_bounds(request, broken, scope="audit")["available"])
+        score["audit_coverage"][0]["wavelength_nm"][-1] = 2.5
+        self.assertFalse(_raw_bounds(request, score, scope="audit")["available"])
 
 
 if __name__ == "__main__":

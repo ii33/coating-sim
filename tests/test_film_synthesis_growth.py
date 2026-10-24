@@ -282,7 +282,7 @@ def test_proposal_ids_reserve_all_layers_and_each_other_deterministically():
 
 def test_previous_generated_ids_continue_with_real_probes_growth_and_frozen_replay(monkeypatch):
     service, request = setup_problem(low=550., high=550., samples=1, materials=("low", "high"))
-    request = replace(request, objectives=(replace(request.objectives[0], upper_bound=None, lower_bound=.99999),),
+    request = replace(request, objectives=(replace(request.objectives[0], pointwise=replace(request.objectives[0].pointwise, upper_bound=None, lower_bound=.99999)),),
                       max_cycles=2, max_evaluations=1500, position_samples=1,
                       growth_quarter_wave_fractions=(1.,))
     names = ("auto-2-0-0", "split-2-1-0", "growth-2-0-0",
@@ -336,8 +336,7 @@ def test_saved_seven_layer_dual_ir_seed_retains_audited_candidate_on_bounded_rep
                 ("split-19-13-1", "low", 288.1544964162034),
                 ("growth-15-4-0", "low", 354.3583770681443),
                 ("growth-11-7-0", "low", 353.37015543768706))
-    objectives = tuple(replace(request.objectives[0], wavelength_min_nm=lo, wavelength_max_nm=hi,
-                               wavelength_samples=61, upper_bound=.01) for lo, hi in ((3000., 5000.), (8000., 12000.)))
+    objectives = tuple(replace(request.objectives[0], pointwise=replace(request.objectives[0].pointwise, upper_bound=.01), wavelength_min_nm=lo, wavelength_max_nm=hi, wavelength_samples=61) for lo, hi in ((3000., 5000.), (8000., 12000.)))
     request = replace(request, objectives=objectives, max_cycles=2, max_evaluations=400,
                       seed_designs=(seed(request, [layer(*row) for row in geometry]),))
     first = synthesis.synthesize_film_design(service, request)
@@ -360,7 +359,7 @@ def test_actual_audited_checkpoint_restore_then_deleted_branch_regrowth_keeps_id
              "checkpoint-old-3", "checkpoint-old-4", "checkpoint-old-5")
     rows = [layer(name, "low" if i % 2 == 0 else "high",
                   550 / (4 * (np.sqrt(1.5) if i % 2 == 0 else 2.2))) for i, name in enumerate(names)]
-    request = replace(request, objectives=(replace(request.objectives[0], upper_bound=None, lower_bound=.99999),),
+    request = replace(request, objectives=(replace(request.objectives[0], pointwise=replace(request.objectives[0].pointwise, upper_bound=None, lower_bound=.99999)),),
                       seed_designs=(seed(request, rows),), max_cycles=1, max_evaluations=500,
                       position_samples=1, growth_quarter_wave_fractions=(1.,))
     frozen = synthesis.freeze_film_synthesis_request(service, request)
@@ -404,7 +403,7 @@ def test_run_wide_ids_reserve_other_seeds_archives_and_discarded_proposals(monke
     roots = ("auto-1-0-0", "split-1-0-0", "growth-1-0-0")
     first_seed = seed(request, [layer(name, "high", 62.5) for name in roots])
     second_seed = seed(request, [layer(name + "-1", "high", 62.5) for name in roots])
-    request = replace(request, objectives=(replace(request.objectives[0], upper_bound=None, lower_bound=.99999),),
+    request = replace(request, objectives=(replace(request.objectives[0], pointwise=replace(request.objectives[0].pointwise, upper_bound=None, lower_bound=.99999)),),
                       seed_designs=(first_seed, second_seed), max_cycles=1, max_evaluations=600,
                       position_samples=0, growth_quarter_wave_fractions=(1.,))
     initial_ids = {r["id"] for d in request.seed_designs for r in d["front_layers"]}

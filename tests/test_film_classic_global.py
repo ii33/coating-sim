@@ -261,7 +261,7 @@ def test_zero_thickness_keeps_slot_and_uses_actual_bare_substrate_physics(monkey
     from types import SimpleNamespace
     service, request = setup(waves=(550.,), upper=0., low=550., high=550., samples=1, materials=('low',))
     shared = request.enumeration.shared_request
-    objective = replace(shared.objectives[0], mode='value', target_value=.04, upper_bound=None)
+    objective = replace(shared.objectives[0], pointwise=replace(shared.objectives[0].pointwise, mode='value', target_value=.04, upper_bound=None))
     request = replace(request, enumeration=replace(request.enumeration, shared_request=replace(
         shared, objectives=(objective,), acceptable_normalized_error=1e-12)))
     class ZeroBackend:
@@ -289,8 +289,7 @@ def test_zero_thickness_keeps_slot_and_uses_actual_bare_substrate_physics(monkey
 def test_known_reflector_same_seed_and_budget_has_honest_failed_and_passing_pairs():
     service, request = setup(templates=('hr_hl_qw',), waves=(550.,), pairs=(1, 2, 3))
     shared = request.enumeration.shared_request
-    objective = replace(shared.objectives[0], wavelength_min_nm=540., wavelength_max_nm=560.,
-        lower_bound=.9, upper_bound=None)
+    objective = replace(shared.objectives[0], pointwise=replace(shared.objectives[0].pointwise, lower_bound=.9, upper_bound=None), wavelength_min_nm=540., wavelength_max_nm=560.)
     request = replace(request, max_generations=1, enumeration=replace(request.enumeration,
         shared_request=replace(shared, objectives=(objective,), max_evaluations=150)))
     result = search_film_design_from_classics(service, request)
@@ -331,9 +330,8 @@ def test_search_preserves_real_dispersion_and_nonzero_k_in_frozen_materials():
 def test_mixed_rt_value_and_range_multiangle_polarization_semantics():
     service, request = setup(waves=(550.,), upper=1., materials=('low',))
     shared = request.enumeration.shared_request
-    r = replace(shared.objectives[0], wavelength_min_nm=550., wavelength_max_nm=550., wavelength_samples=1,
-        polarization='s', angles_deg=(0., 30.), upper_bound=1., weight=1e-4)
-    t = replace(r, metric='T', mode='value', target_value=0., upper_bound=None, polarization='p', weight=1e4)
+    r = replace(shared.objectives[0], pointwise=replace(shared.objectives[0].pointwise, upper_bound=1.), wavelength_min_nm=550., wavelength_max_nm=550., wavelength_samples=1, polarization='s', angles_deg=(0., 30.), weight=1e-4)
+    t = replace(r, pointwise=replace(r.pointwise, mode='value', target_value=0., upper_bound=None), metric='T', polarization='p', weight=1e4)
     request = replace(request, max_generations=1, enumeration=replace(request.enumeration,
         shared_request=replace(shared, objectives=(r, t), acceptable_normalized_error=1e-6)))
     result = search_film_design_from_classics(service, request)

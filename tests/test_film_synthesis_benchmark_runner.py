@@ -13,14 +13,25 @@ from tools.run_film_synthesis_acceptance import atomic_json
 SUITE = runner.ROOT / "benchmarks/film_synthesis/20261021/representative-suite-v2.1.json"
 
 
+def current_objective(low=550., high=550., samples=1, *, angles=(0.,), lower=None, upper=1., strict_lower=False):
+    from coat_sim.core.film_objective_payload import objective_to_payload
+    from coat_sim.core.film_optimization import FilmObjectiveConstraint, FilmOptimizationObjective
+    return objective_to_payload(FilmOptimizationObjective(low, high, samples,
+        angles_deg=angles, polarization="s", metric="R",
+        pointwise=FilmObjectiveConstraint(lower_bound=lower, upper_bound=upper, strict_lower=strict_lower)))
+
+
 def small_suite(tmp_path, **changes):
     suite = json.loads(SUITE.read_text(encoding="utf-8"))
     case = deepcopy(suite["cases"][0])
-    case.update(id="tiny_production_contract", max_evaluations=2, wall_seconds=3,
-        objectives=[dict(wavelength_min_nm=550, wavelength_max_nm=550,
-            wavelength_samples=1, metric="R", lower_bound=None, upper_bound=1,
-            angles_deg=[0], polarization="s")])
+    case.pop("strict_lower_bound_objective_indices", None)
+    case.pop("strict_upper_bound_objective_indices", None)
+    case.pop("qualification", None)
+    case.update(id="tiny_production_contract", category="current nested contract test",
+                max_evaluations=2, wall_seconds=3, objectives=[current_objective()])
     case.update(changes)
+    suite["suite_id"] = "current-nested-contract-test"
+    suite["success_rule"] = "Current nested mean/pointwise criteria contract test."
     suite["cases"] = [case]
     suite["defaults"]["seeds"] = [0]
     path = tmp_path / "suite.json"
@@ -84,30 +95,45 @@ def test_output_is_new_and_restricted_to_temp(tmp_path):
     with pytest.raises(ValueError, match="Temp"):
         runner.reserve_output(Path(tempfile.gettempdir()))
     with pytest.raises(ValueError, match="Temp"):
-        runner.reserve_output(runner.ROOT / "unwanted-benchmark-output")
+        runner.reserve_output(Path(tempfile.gettempdir()).parent / "not-temp-benchmark-output")
 
 
 def single_condition(lower, upper, actual):
-    objective = dict(wavelength_min_nm=600., wavelength_max_nm=600., wavelength_samples=1,
-        angles_deg=[0.], metric="R", polarization="s", lower_bound=lower, upper_bound=upper)
-    request = {"objectives": [objective], "strict_lower_bound_objective_indices": [0] if lower else []}
-    row = dict(objective_index=0, wavelength_nm=600., angle_deg=0., actual=actual,
-        metric="R", polarization="s", lower_bound=lower, upper_bound=upper)
-    return request, row
+    from dataclasses import asdict
+    from coat_sim.core.film_objective_criteria import reduce_objective_responses
+    from coat_sim.core.film_objective_payload import objective_from_payload
+    objective = current_objective(600., 600., 1, lower=lower, upper=upper,
+                                  strict_lower=lower is not None)
+    request = {"objectives": [objective], "acceptable_normalized_error": 0.,
+               "validation_samples_multiplier": 1}
+    reduced = reduce_objective_responses((objective_from_payload(objective),), [{
+        "objective_index": 0, "angle_deg": 0., "wavelength_nm": [600.], "actual_values": [actual]}])
+    score = {"errors": [asdict(row) for row in reduced.conditions],
+             "coverage": [asdict(row) for row in reduced.coverage],
+             "max_error": reduced.max_error, "weighted_max_error": reduced.weighted_max_error,
+             "weighted_rms_error": reduced.weighted_rms_error}
+    return request, score
 
 
-def test_raw_acceptance_obeys_original_strict_lower_without_epsilon():
-    request, row = single_condition(.99, None, .99)
-    assert runner.raw_acceptance(request, {"errors": [row]})["passed"] is False
-    row["actual"] = .990000000000001
-    assert runner.raw_acceptance(request, {"errors": [row]})["passed"] is True
+def test_raw_acceptance_obeys_original_nested_strict_lower_without_epsilon():
+    request, score = single_condition(.99, None, .99)
+    assert runner.raw_acceptance(request, score)["passed"] is False
+    request, score = single_condition(.99, None, .990000000000001)
+    assert runner.raw_acceptance(request, score)["passed"] is True
     assert runner.raw_acceptance(request, {"errors": []})["passed"] is False
     assert runner.raw_acceptance(request, None)["passed"] is None
 
 
 def test_raw_acceptance_does_not_treat_tolerated_upper_violation_as_pass():
-    request, row = single_condition(None, .01, .010000000000001)
-    assert runner.raw_acceptance(request, {"errors": [row], "max_error": 1e-15})["passed"] is False
+    request, score = single_condition(None, .01, .010000000000001)
+    assert runner.raw_acceptance(request, score)["passed"] is False
+
+
+def test_historical_frozen_suite_is_explicitly_unsupported_and_unchanged():
+    original = SUITE.read_bytes()
+    with pytest.raises(ValueError, match="Unsupported legacy request format"):
+        runner.compile_preflight(SUITE, seed=0, workers=1)
+    assert SUITE.read_bytes() == original
 
 
 def test_real_tiny_execute_job_retains_counters_audit_and_closes_executor(tmp_path):
@@ -136,8 +162,7 @@ def test_real_tiny_execute_job_retains_counters_audit_and_closes_executor(tmp_pa
 @pytest.fixture(scope="module")
 def real_grid_evidence(tmp_path_factory):
     directory = tmp_path_factory.mktemp("runner-real-grid")
-    objective = dict(wavelength_min_nm=540., wavelength_max_nm=560., wavelength_samples=3,
-        angles_deg=[0., 30.], metric="R", polarization="s", lower_bound=None, upper_bound=1.)
+    objective = current_objective(540., 560., 3, angles=(0., 30.))
     compiled = runner.compile_preflight(small_suite(directory, objectives=[objective]), workers=1)
     result = runner.execute_run(compiled["runs"][0], directory / "actual-production",
         compiled, Event(), Event())

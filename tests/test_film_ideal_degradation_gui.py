@@ -164,7 +164,7 @@ def test_bounded_default_requires_each_budget_and_keeps_id_associations(harness)
     assert panel.setIdealDegradationBudget(first["objective_id"], "0")
     base = harness.owner._build_request(require_variables=False, fixed_topology=False)
     request = panel._build_ideal_request(base)
-    assert request.schema_version == 2
+    assert request.schema_version == 3
     assert request.policy == "bounded_baseline_degradation"
     assert request.objective_ids == (first["objective_id"],)
     assert [(b.objective_id, b.delta, b.unit) for b in request.budgets] == [
@@ -244,15 +244,15 @@ def test_nominal_false_guard_pass_candidate_requires_explicit_confirm_and_is_one
     harness.session.design["front_layers"] = [layer]
     harness.session.design_revision += 1
     harness.owner.refreshDesign()
-    assert harness.owner.setObjectiveField("upper_bound_percent", 100.)
-    assert harness.owner.setObjectiveField("lower_bound_percent", 99.)
+    assert harness.owner.setObjectiveField("pointwise.upper_bound_percent", 100.)
+    assert harness.owner.setObjectiveField("pointwise.lower_bound_percent", 99.)
     assert harness.panel.prepare(), harness.panel.error
     _bounded_variable(harness)
     payload = _run_ideal(harness, budget="0.1", max_iterations="12", max_evaluations="60")
 
     from coat_sim.core.film_sensitivity_workflow_jobs import workflow_result_from_payload
     result = workflow_result_from_payload(payload)
-    assert result.schema_version == 2
+    assert result.schema_version == 3
     assert result.policy == "bounded_baseline_degradation"
     assert result.state in {"completed", "partial"}, result.termination_reason
     assert result.baseline_analysis is not None and not result.baseline_analysis.nominal_targets_met
@@ -346,7 +346,7 @@ def test_equal_F_no_improvement_is_explicit_even_at_evaluation_limit(harness):
 
     from coat_sim.core.film_sensitivity_workflow_jobs import workflow_result_from_payload
     result = workflow_result_from_payload(payload)
-    assert result.schema_version == 2
+    assert result.schema_version == 3
     assert result.termination_reason == "evaluation_limit"
     assert result.improvement_status == "no_improvement"
     assert result.best_analysis.objective_value == result.baseline_analysis.objective_value

@@ -15,6 +15,7 @@ from coat_sim.core.film_classic_local import (
     film_classic_local_request_to_payload, freeze_film_classic_local_request,
     iter_classic_seed_specs, optimize_film_design_from_classics,
 )
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationObjective
 from coat_sim.core.film_optimization_needle import FilmNeedleMaterialReference
 from tests.test_film_auto_synthesis import setup_problem
@@ -44,7 +45,7 @@ def test_explicit_full_catalog_role_product_and_pair_counts_without_truncation()
 
 def test_every_requested_seed_returned_with_per_objective_results_and_applicability():
     service, request = problem(templates=None, waves=(550.,), pairs=(1,), upper=1.)
-    second = FilmOptimizationObjective(520, 580, 3, (0., 35.), 'p', 'T', 'range', lower_bound=0.)
+    second = FilmOptimizationObjective(520, 580, 3, (0., 35.), 'p', 'T', pointwise=FilmObjectiveConstraint(mode='range', target_value=None, lower_bound=0., upper_bound=None))
     request = replace(request, shared_request=replace(request.shared_request,
         objectives=(*request.shared_request.objectives, second)))
     original = deepcopy(dict(request.shared_request.environment))
@@ -81,8 +82,7 @@ def test_off_center_classic_seed_improves_locally_and_keeps_baseline():
 
 def test_explicit_reflector_pair_range_against_known_quarter_wave_baseline():
     service, request = problem(templates=('hr_hl_qw',), waves=(550.,), pairs=(1, 2, 3))
-    target = replace(request.shared_request.objectives[0], wavelength_min_nm=540., wavelength_max_nm=560.,
-        lower_bound=.9, upper_bound=None)
+    target = replace(request.shared_request.objectives[0], pointwise=replace(request.shared_request.objectives[0].pointwise, lower_bound=.9, upper_bound=None), wavelength_min_nm=540., wavelength_max_nm=560.)
     request = replace(request, shared_request=replace(request.shared_request, objectives=(target,)), max_local_iterations=3)
     result = optimize_film_design_from_classics(service, request)
     assert result.coverage_complete and result.planned == 12

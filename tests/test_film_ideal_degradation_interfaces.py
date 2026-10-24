@@ -1,4 +1,4 @@
-"""Current schema 2 policies through the real typed job, CLI and readonly MCP paths."""
+"""Current schema 3 policies through the real typed job, CLI and readonly MCP paths."""
 from __future__ import annotations
 
 from copy import deepcopy
@@ -13,6 +13,7 @@ import pytest
 
 from coat_sim.core import film_ideal_sensitivity as ideal
 from coat_sim.core import film_sensitivity_workflow_jobs as jobs
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationObjective
 from coat_sim.scheduler.jobs import JobSpec, freeze_spec
 from coat_sim.scheduler.worker import _completed_film_cancel_reply, _film_reply_matches_payload
@@ -23,8 +24,7 @@ pytestmark = pytest.mark.algorithm
 
 def problem(*, budget=.1, maximum=100, lower=.99):
     service, original = strict_problem(max_evaluations=maximum, max_iterations=25)
-    original = replace(original, objectives=(FilmOptimizationObjective(
-        550., 550., 1, mode='range', lower_bound=lower),))
+    original = replace(original, objectives=(FilmOptimizationObjective(550., 550., 1, pointwise=FilmObjectiveConstraint(mode='range', target_value=None, lower_bound=lower, upper_bound=None)),))
     request = replace(original,
         policy='bounded_baseline_degradation', objective_ids=('stable-HR-target',),
         budgets=(ideal.FilmIdealDegradationBudget('stable-HR-target', budget, 'percentage_point'),))
@@ -35,7 +35,7 @@ def test_real_nominal_failing_guard_candidate_keeps_exact_job_identity_and_check
     service, request = problem()
     frozen = jobs.freeze_workflow_request(service, request)
     original = jobs.workflow_request_to_payload(frozen)
-    assert original['schema_version'] == 2 and original['policy'] == 'bounded_baseline_degradation'
+    assert original['schema_version'] == 3 and original['policy'] == 'bounded_baseline_degradation'
     assert not any(key.startswith('baseline_') for key in original)
     spec = JobSpec.parse_frozen(freeze_spec(None, 'film_ideal_sensitivity', {'request': frozen}))
     checkpoints: list[tuple[str, dict[str, Any]]] = []
@@ -108,7 +108,7 @@ def test_mcp_discovery_accepts_only_current_ideal_schema_without_table_fields():
         jobs.workflow_request_from_payload(missing_unit)
     _service, strict = strict_problem()
     current = jobs.workflow_request_to_payload(strict)
-    assert current['schema_version'] == 2 and current['policy'] == 'strict_nominal'
+    assert current['schema_version'] == 3 and current['policy'] == 'strict_nominal'
     assert contracts.validate_mcp_arguments(schema, {'payload': current}) == {'payload': current}
     old = deepcopy(current)
     old['schema_version'] = 1

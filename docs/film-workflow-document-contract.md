@@ -1,5 +1,7 @@
 # 膜系工作流文档契约
 
+当前更新（2026-10-24）：波段 mean/pointwise 两组、版本、raw coverage 与严格判定以[双约束契约](film-band-criteria-contract.md)为准。旧 flat 目标与旧协议不迁移。
+
 日期：2026-10-15
 
 `.cfilm` 仍是 UTF-8 JSON、膜系 schema v1。新增可选 `workflow_settings` 根字段，包含 `simulation` / `optimization` 对象。旧文件缺字段时使用各页面默认设置，不强制改名或写入新字段。文件和 SQLite 存储都复用 `validate_design` / `FilmDesignService`，不引入按文件路径同步状态。

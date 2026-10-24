@@ -7,6 +7,7 @@ import pytest
 from coat_sim.core import film_auto_synthesis as synthesis
 from coat_sim.core import film_synthesis_ar_clusters as clusters
 from coat_sim.core import film_synthesis_matching as matching
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationObjective
 from tests.test_film_auto_synthesis import setup_problem
 
@@ -44,8 +45,7 @@ def test_unmet_objective_retains_matching_and_cluster_search():
     service, base = setup_problem(upper=.05)
     # The first objective is easy; the second remains impossible over a band.
     request = replace(base, ar_structure_mode="clustered", max_evaluations=50,
-        objectives=(*base.objectives, FilmOptimizationObjective(600., 640., 5,
-            metric="R", mode="range", upper_bound=0.)))
+        objectives=(*base.objectives, FilmOptimizationObjective(600., 640., 5, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=0.), metric="R")))
     event, stages = Event(), []
     def observe(item):
         stages.append(item.stage)
@@ -67,7 +67,7 @@ def test_terminal_search_snapshot_follows_real_family_cleanup(monkeypatch, stop)
     service, base = setup_problem(upper=.05)
     request = replace(base, ar_structure_mode="clustered", max_evaluations=50,
         max_seconds=60., objectives=(*base.objectives,
-            FilmOptimizationObjective(600., 640., 5, metric="R", mode="range", upper_bound=0.)))
+            FilmOptimizationObjective(600., 640., 5, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=0.), metric="R")))
     generated, closed = {"matching": 0, "cluster": 0}, []
     for name, module, attribute in (("matching", matching, "iter_matching_proposals"),
                                     ("cluster", clusters, "iter_ar_cluster_proposals")):

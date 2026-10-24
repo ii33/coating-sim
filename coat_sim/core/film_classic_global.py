@@ -6,6 +6,7 @@ No local polish, layer insertion, catalog mutation or session application.
 """
 from __future__ import annotations
 
+
 from collections.abc import Callable, Mapping
 from copy import deepcopy
 from dataclasses import asdict, dataclass, fields, replace
@@ -372,14 +373,14 @@ def search_film_design_from_classics(service: Any, request: FilmClassicGlobalReq
 
 def film_classic_global_request_to_payload(request: FilmClassicGlobalRequest) -> dict[str, Any]:
     request = _validate(request)
-    return dict(schema_version=1, kind="coat_sim.film_classic_global_request", **{
+    return dict(schema_version=2, kind="coat_sim.film_classic_global_request", **{
         **asdict(request), "enumeration": film_classic_local_request_to_payload(request.enumeration)})
 
 
 def film_classic_global_request_from_payload(payload: Mapping[str, Any]) -> FilmClassicGlobalRequest:
     allowed = {f.name for f in fields(FilmClassicGlobalRequest)}
     if (not isinstance(payload, Mapping) or set(payload) - allowed - {"schema_version", "kind"}
-            or type(payload.get("schema_version")) is not int or payload.get("schema_version") != 1
+            or type(payload.get("schema_version")) is not int or payload.get("schema_version") != 2
             or payload.get("kind") != "coat_sim.film_classic_global_request"):
         raise ValueError("invalid classic global request payload")
     data = deepcopy(dict(payload))

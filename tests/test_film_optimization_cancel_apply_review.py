@@ -20,6 +20,7 @@ import pytest
 from PySide6.QtCore import QCoreApplication, QObject, QSettings, Signal
 from PySide6.QtGui import QGuiApplication
 
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import (
     FilmOptimizationObjective, FilmOptimizationRequest, FilmOptimizationResult,
     FilmThicknessVariable, freeze_film_optimization_request,
@@ -51,7 +52,7 @@ def review(app, tmp_path, monkeypatch):
     request = freeze_film_optimization_request(service, FilmOptimizationRequest(
         design_snapshot=deepcopy(dict(base.design)), design_revision=base.design_revision,
         variables=(FilmThicknessVariable('front', design['front_layers'][0]['id'], 0., None),),
-        objectives=(FilmOptimizationObjective(550., 550., 1, mode='range', upper_bound=.001),),
+        objectives=(FilmOptimizationObjective(550., 550., 1, pointwise=FilmObjectiveConstraint(mode='range', target_value=None, lower_bound=None, upper_bound=.001)),),
         max_iterations=2, max_evaluations=8))
     refreshes: list[dict[str, Any]] = []
     saves: list[Any] = []
@@ -401,7 +402,7 @@ def test_real_typed_n0_cancel_retains_new_training_topology_without_reauditing(r
     environment['front_layers'] = []
     strategy_options: dict[str, Any] = {'search_strategy': 'legacy'} if strategy == 'legacy' else {}
     request = freeze_film_synthesis_request(review.service, FilmSynthesisRequest(
-        environment, (FilmOptimizationObjective(550., 550., 1, mode='range', upper_bound=.03),),
+        environment, (FilmOptimizationObjective(550., 550., 1, pointwise=FilmObjectiveConstraint(mode='range', target_value=None, lower_bound=None, upper_bound=.03)),),
         (FilmNeedleMaterialReference('acceptance-film', 'film-set'),),
         design_revision=review.base.design_revision, max_cycles=1,
         max_evaluations=None, seed_designs=(deepcopy(environment),), **strategy_options))

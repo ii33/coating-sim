@@ -5,6 +5,8 @@ Every attempted seed retains its own applicability and independent validation.
 """
 from __future__ import annotations
 
+from .film_objective_payload import objective_from_payload
+
 from collections.abc import Callable, Iterator, Mapping
 from copy import deepcopy
 from dataclasses import asdict, dataclass, fields, replace
@@ -22,7 +24,6 @@ from .film_auto_synthesis import (
 )
 from .film_design import MAX_LAYERS
 from .film_design_templates import MAX_PAIRS, TemplateGenerationError, build_preview, template_catalog
-from .film_optimization import FilmOptimizationObjective
 from .film_optimization_needle import FilmNeedleMaterialReference
 from .film_optimization_structure import _StructureCancelled, evaluate_frozen_structure_candidate
 from .optical_constants import prepare_optical_set
@@ -436,21 +437,20 @@ def optimize_film_design_from_classics(service: Any, request: FilmClassicLocalRe
 
 def film_classic_local_request_to_payload(request: FilmClassicLocalRequest) -> dict[str, Any]:
     request = _validate(request)
-    return dict(schema_version=1, kind="coat_sim.film_classic_local_request", **asdict(request))
+    return dict(schema_version=2, kind="coat_sim.film_classic_local_request", **asdict(request))
 
 
 def film_classic_local_request_from_payload(payload: Mapping[str, Any]) -> FilmClassicLocalRequest:
     allowed = {f.name for f in fields(FilmClassicLocalRequest)}
     if (not isinstance(payload, Mapping) or set(payload) - allowed - {"schema_version", "kind"}
-            or type(payload.get("schema_version")) is not int or payload.get("schema_version") != 1
+            or type(payload.get("schema_version")) is not int or payload.get("schema_version") != 2
             or payload.get("kind") != "coat_sim.film_classic_local_request"):
         raise ValueError("invalid classic local request payload")
     data = deepcopy(dict(payload))
     data.pop("schema_version")
     data.pop("kind")
     raw = data["shared_request"]
-    raw["objectives"] = tuple(FilmOptimizationObjective(**{**r, "angles_deg": tuple(r.get("angles_deg", (0.0,)))})
-                              for r in raw["objectives"])
+    raw["objectives"] = tuple(objective_from_payload(r) for r in raw["objectives"])
     raw["candidate_materials"] = tuple(FilmNeedleMaterialReference(**r) for r in raw["candidate_materials"])
     data["shared_request"] = FilmSynthesisRequest(**raw)
     return _validate(FilmClassicLocalRequest(**data))

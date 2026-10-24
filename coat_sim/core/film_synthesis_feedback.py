@@ -1,8 +1,8 @@
-"""Run-owned sparse audit points and immutable local-refinement guides.
+"""Run-owned immutable audit guides; raw spectra and active errors stay distinct.
 
-Guides are private optimizer values, never training scores or audit evidence.
-The caller owns complete-audit admission, physical evaluation, budgets and
-cancellation. Each local invocation must keep one snapshot for its lifetime.
+Pointwise failures add sparse wavelengths. Mean failures add the complete dense
+band for that angle, so no worst wavelength is invented for an integral failure.
+The parent owns optical work, budgets, cancellation and independent acceptance.
 """
 from __future__ import annotations
 
@@ -11,20 +11,21 @@ from dataclasses import dataclass, replace
 import math
 from typing import TYPE_CHECKING, Any, Callable, Mapping
 
-from .film_nominal_acceptance import nominal_condition_pass
 from .film_optimization import FilmOptimizationObjective
-from .film_optimization_scoring import score_condition
+from .film_objective_criteria import reduce_objective_responses
 
 if TYPE_CHECKING:
     from .film_auto_synthesis import FilmSynthesisRequest
 
 
-@dataclass(frozen=True, order=True)
+@dataclass(frozen=True)
 class FeedbackPoint:
     objective_index: int
-    wavelength_nm: float
+    wavelength_nm: float | None
     angle_deg: float
     polarization: str
+    reduction: str = "pointwise"
+    wavelength_grid_nm: tuple[float, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -33,8 +34,6 @@ class FeedbackSnapshot:
     points: tuple[FeedbackPoint, ...]
     objectives: tuple[FilmOptimizationObjective, ...]
     acceptable_normalized_error: float
-    strict_lower_bound_objective_indices: tuple[int, ...]
-    strict_upper_bound_objective_indices: tuple[int, ...] = ()
 
 
 def _field(error: Any, name: str) -> Any:
@@ -47,98 +46,122 @@ def _number(value: Any) -> float:
     return float(value)
 
 
-def _checked_error(error: Any, objectives: tuple[FilmOptimizationObjective, ...]) -> tuple[FeedbackPoint, float, float]:
-    index = _field(error, "objective_index")
+def _isolated_objective(objective, reduction, *, wave=None, angle=None, samples=None):
+    changes = dict(pointwise=replace(objective.pointwise, enabled=reduction == "pointwise"),
+                   mean=replace(objective.mean, enabled=reduction == "mean"))
+    if wave is not None:
+        changes.update(wavelength_min_nm=wave, wavelength_max_nm=wave, wavelength_samples=1)
+    if angle is not None:
+        changes['angles_deg'] = (angle,)
+    if samples is not None:
+        changes['wavelength_samples'] = samples
+    return replace(objective, **changes)
+
+
+def _checked_error(error, objectives):
+    index = _field(error, 'objective_index')
     if type(index) is not int or not 0 <= index < len(objectives):
-        raise ValueError("feedback objective index is invalid")
+        raise ValueError('feedback objective index is invalid')
     objective = objectives[index]
-    wave, angle = _number(_field(error, "wavelength_nm")), _number(_field(error, "angle_deg"))
-    if (not objective.wavelength_min_nm <= wave <= objective.wavelength_max_nm
-            or angle not in objective.angles_deg
-            or any(_field(error, key) != getattr(objective, key)
-                   for key in ("polarization", "metric", "target_value", "lower_bound", "upper_bound"))):
-        raise ValueError("feedback condition differs from its original objective")
-    actual = _number(_field(error, "actual"))
-    if objective.mode == "value":
-        if objective.target_value is None:
-            raise ValueError("feedback value objective requires a target")
-        violation = abs(actual - objective.target_value)
-    else:
-        violation = max(0., 0. if objective.lower_bound is None else objective.lower_bound - actual,
-            0. if objective.upper_bound is None else actual - objective.upper_bound)
-    normalized, _ = score_condition(violation, objective.normalization_scale, objective.weight)
-    if not math.isclose(_number(_field(error, "normalized_violation")), normalized,
+    reduction = _field(error, 'reduction')
+    if reduction not in ('pointwise', 'mean'):
+        raise ValueError('feedback reduction is invalid')
+    criterion = getattr(objective, reduction)
+    if not criterion.enabled:
+        raise ValueError('feedback condition uses a disabled constraint')
+    angle = _number(_field(error, 'angle_deg'))
+    wave = _field(error, 'wavelength_nm')
+    if (angle not in objective.angles_deg
+            or any(_field(error, key) != getattr(objective, key) for key in ('polarization', 'metric'))
+            or any(_field(error, key) != getattr(criterion, key)
+                   for key in ('target_value', 'lower_bound', 'upper_bound', 'strict_lower', 'strict_upper'))):
+        raise ValueError('feedback condition differs from its original objective')
+    if reduction == 'pointwise':
+        wave = _number(wave)
+        if not objective.wavelength_min_nm <= wave <= objective.wavelength_max_nm:
+            raise ValueError('feedback wavelength differs from its original objective')
+    elif wave is not None:
+        raise ValueError('mean feedback cannot identify a worst wavelength')
+    if (_field(error, 'wavelength_min_nm') != objective.wavelength_min_nm
+            or _field(error, 'wavelength_max_nm') != objective.wavelength_max_nm):
+        raise ValueError('feedback condition differs from its original band')
+    actual = _number(_field(error, 'actual'))
+    # A singleton physical value checks only the selected constraint. Full-band
+    # averaging is separately verified against coverage before mean admission.
+    test_wave = objective.wavelength_min_nm if wave is None else wave
+    isolated = _isolated_objective(objective, reduction, wave=test_wave, angle=angle)
+    reduced = reduce_objective_responses((isolated,), (dict(objective_index=0, angle_deg=angle,
+        wavelength_nm=[test_wave], actual_values=[actual]),))
+    normalized = reduced.max_error
+    if not math.isclose(_number(_field(error, 'normalized_violation')), normalized,
                         rel_tol=1e-10, abs_tol=1e-12):
-        raise ValueError("feedback violation differs from its original objective")
-    return FeedbackPoint(index, wave, angle, objective.polarization), actual, normalized
-
-
-def _strict_failed(index: int, actual: float, objectives: tuple[FilmOptimizationObjective, ...],
-                   strict_indices: tuple[int, ...], strict_upper_indices: tuple[int, ...] = ()) -> bool:
-    objective = objectives[index]
-    if index in strict_indices:
-        if objective.lower_bound is None:
-            raise ValueError("strict feedback objective requires an explicit lower bound")
-        if actual <= objective.lower_bound:
-            return True
-    if index in strict_upper_indices:
-        if objective.upper_bound is None:
-            raise ValueError("strict feedback objective requires an explicit upper bound")
-        if actual >= objective.upper_bound:
-            return True
-    return False
+        raise ValueError('feedback violation differs from its original objective')
+    return FeedbackPoint(index, wave, angle, objective.polarization, reduction), actual, normalized, reduced.nominal_pass
 
 
 def _same_wave(left: float, right: float) -> bool:
     return abs(left - right) <= 4 * max(math.ulp(left), math.ulp(right))
 
 
-def _on_training_grid(point: FeedbackPoint, objective: FilmOptimizationObjective) -> bool:
+def _on_training_grid(point, objective):
+    if point.reduction != 'pointwise':
+        return False
     low, high, count = objective.wavelength_min_nm, objective.wavelength_max_nm, objective.wavelength_samples
     if count == 1 or low == high:
         return _same_wave(point.wavelength_nm, low)
     index = round((point.wavelength_nm - low) / (high - low) * (count - 1))
-    grid_wave = low + (high - low) * index / (count - 1)
-    return _same_wave(point.wavelength_nm, grid_wave)
+    return _same_wave(point.wavelength_nm, low + (high - low) * index / (count - 1))
+
+
+def _point_key(point):
+    return (point.objective_index, point.angle_deg, point.polarization, point.reduction,
+            0. if point.wavelength_nm is None else point.wavelength_nm, point.wavelength_grid_nm)
 
 
 class SparseFeedbackRegistry:
-    """Accumulate worst failing conditions from caller-committed complete audits.
-
-    This does not verify that an audit was completed: call only after the
-    parent's existing complete-audit commit. Validate every row before mutation.
-    One worst failure per objective/angle/polarization is admitted per audit;
-    exact condition identities are retained without wavelength rounding.
-    """
+    """Admit active failed conditions only after the parent's complete audit."""
 
     def __init__(self, request: FilmSynthesisRequest):
         self._objectives = tuple(request.objectives)
         self._acceptable = request.acceptable_normalized_error
-        self._strict = tuple(request.strict_lower_bound_objective_indices)
-        self._strict_upper = tuple(request.strict_upper_bound_objective_indices)
         self._points: set[FeedbackPoint] = set()
         self._revision = 0
 
     def record_audit(self, score: Mapping[str, Any]) -> int:
-        worst: dict[tuple[int, float, str], tuple[tuple[bool, float, float], FeedbackPoint]] = {}
-        for error in score["errors"]:
-            point, actual, normalized = _checked_error(error, self._objectives)
-            strict_failure = _strict_failed(point.objective_index, actual, self._objectives,
-                self._strict, self._strict_upper)
-            if nominal_condition_pass(self._objectives[point.objective_index], actual,
-                    strict_lower=point.objective_index in self._strict,
-                    strict_upper=point.objective_index in self._strict_upper):
+        coverage = {(_field(row, 'objective_index'), _field(row, 'angle_deg')): row
+                    for row in score.get('coverage', ())}
+        worst: dict[tuple[int, float, str, str], tuple[tuple[bool, float, float], FeedbackPoint]] = {}
+        for error in score['errors']:
+            point, actual, normalized, passed = _checked_error(error, self._objectives)
+            if passed:
                 continue
-            if _on_training_grid(point, self._objectives[point.objective_index]):
+            objective = self._objectives[point.objective_index]
+            if point.reduction == 'mean':
+                raw = coverage.get((point.objective_index, point.angle_deg))
+                if raw is None:
+                    raise ValueError('mean audit feedback requires complete band coverage')
+                waves = tuple(_field(raw, 'wavelength_nm'))
+                isolated = _isolated_objective(objective, 'mean', angle=point.angle_deg, samples=len(waves))
+                reduced = reduce_objective_responses((isolated,), (dict(objective_index=0,
+                    angle_deg=point.angle_deg, wavelength_nm=waves, actual_values=_field(raw, 'actual_values')),))
+                if not math.isclose(reduced.conditions[0].actual, actual, rel_tol=1e-12, abs_tol=1e-14):
+                    raise ValueError('mean feedback differs from its complete band integral')
+                point = replace(point, wavelength_grid_nm=waves)
+            elif _on_training_grid(point, objective):
                 continue
-            if any(old.objective_index == point.objective_index
-                   and old.angle_deg == point.angle_deg and old.polarization == point.polarization
-                   and _same_wave(old.wavelength_nm, point.wavelength_nm) for old in self._points):
+            if any(old.objective_index == point.objective_index and old.angle_deg == point.angle_deg
+                   and old.polarization == point.polarization and old.reduction == point.reduction
+                   and (old.wavelength_grid_nm == point.wavelength_grid_nm if point.reduction == 'mean'
+                        else old.wavelength_nm is not None and point.wavelength_nm is not None
+                        and _same_wave(old.wavelength_nm, point.wavelength_nm)) for old in self._points):
                 continue
-            group = (point.objective_index, point.angle_deg, point.polarization)
-            severity = (strict_failure, normalized, -point.wavelength_nm)
+            group = (point.objective_index, point.angle_deg, point.polarization, point.reduction)
+            criterion = getattr(objective, point.reduction)
+            strict_failure = ((criterion.strict_lower and actual <= criterion.lower_bound)
+                              or (criterion.strict_upper and actual >= criterion.upper_bound))
+            severity = (strict_failure, normalized, -(point.wavelength_nm or 0.))
             if group not in worst or severity > worst[group][0]:
-                worst[group] = (severity, point)
+                worst[group] = severity, point
         additions = {entry[1] for entry in worst.values()} - self._points
         if additions:
             self._points.update(additions)
@@ -146,98 +169,79 @@ class SparseFeedbackRegistry:
         return len(additions)
 
     def snapshot(self) -> FeedbackSnapshot:
-        return FeedbackSnapshot(self._revision, tuple(sorted(self._points)),
-            self._objectives, self._acceptable, self._strict, self._strict_upper)
+        return FeedbackSnapshot(self._revision, tuple(sorted(self._points, key=_point_key)),
+                                self._objectives, self._acceptable)
 
 
 def augment_feedback_guide(request: FilmSynthesisRequest, base: Mapping[str, Any],
                            snapshot: FeedbackSnapshot, *,
                            evaluate_points: Callable[[tuple[FilmOptimizationObjective, ...]], Mapping[str, Any]]) -> dict[str, Any]:
-    """Add singleton responses to a private copy; keep the original base intact.
+    """Keep original band responses intact and reduce supplemental guides apart.
 
-    ``evaluate_points`` evaluates the same design with these temporary singleton
-    objectives and the same requested Jacobian. It must use the parent's physical
-    accounting and stop checks. The resulting score is temporary guide metadata;
-    original grid errors/RMS/weights remain unmodified. Restore before archiving
-    or export. No callback occurs for an empty snapshot.
+    Auxiliary singleton pointwise bands or complete dense mean bands retain their
+    own quadrature. They never alter original indices, training scores or export.
     """
     if (tuple(request.objectives) != snapshot.objectives
-            or request.acceptable_normalized_error != snapshot.acceptable_normalized_error
-            or tuple(request.strict_lower_bound_objective_indices) != snapshot.strict_lower_bound_objective_indices
-            or tuple(request.strict_upper_bound_objective_indices) != snapshot.strict_upper_bound_objective_indices):
-        raise ValueError("feedback snapshot belongs to different objective conditions")
-    if "_feedback_base" in base:
-        raise ValueError("a feedback guide cannot be augmented twice")
-    for point in snapshot.points:
-        if type(point.objective_index) is not int or not 0 <= point.objective_index < len(snapshot.objectives):
-            raise ValueError("feedback snapshot objective index is invalid")
-        objective = snapshot.objectives[point.objective_index]
-        if (not objective.wavelength_min_nm <= _number(point.wavelength_nm) <= objective.wavelength_max_nm
-                or _number(point.angle_deg) not in objective.angles_deg
-                or point.polarization != objective.polarization):
-            raise ValueError("feedback snapshot point differs from its original objective")
-    base_errors = [_checked_error(error, snapshot.objectives) for error in base["score"]["errors"]]
-    strict_failed = any(_strict_failed(p.objective_index, actual, snapshot.objectives,
-        snapshot.strict_lower_bound_objective_indices,
-        snapshot.strict_upper_bound_objective_indices) for p, actual, _ in base_errors)
+            or request.acceptable_normalized_error != snapshot.acceptable_normalized_error):
+        raise ValueError('feedback snapshot belongs to different objective conditions')
+    if '_feedback_base' in base:
+        raise ValueError('a feedback guide cannot be augmented twice')
+    if not base.get('responses') and snapshot.points:
+        raise ValueError('feedback refinement requires complete base responses')
+    base_reduction = reduce_objective_responses(request.objectives, base.get('responses', ()),
+                                               tolerance=request.acceptable_normalized_error)
     guide = deepcopy(dict(base))
-    responses = list(guide.get("responses", ()))
-    maximum = _number(base["score"]["max_error"])
+    maximum, failed = base_reduction.max_error, not base_reduction.nominal_pass
     if snapshot.points:
-        if not responses:
-            raise ValueError("feedback refinement requires complete base responses")
-        objectives = tuple(replace(snapshot.objectives[p.objective_index],
-            wavelength_min_nm=p.wavelength_nm, wavelength_max_nm=p.wavelength_nm,
-            wavelength_samples=1, angles_deg=(p.angle_deg,)) for p in snapshot.points)
+        objective_list: list[FilmOptimizationObjective] = []
+        for point in snapshot.points:
+            if type(point.objective_index) is not int or not 0 <= point.objective_index < len(snapshot.objectives):
+                raise ValueError('feedback snapshot objective index is invalid')
+            objective = snapshot.objectives[point.objective_index]
+            if (point.reduction not in ('pointwise', 'mean')
+                    or not getattr(objective, point.reduction).enabled
+                    or point.angle_deg not in objective.angles_deg or point.polarization != objective.polarization):
+                raise ValueError('feedback snapshot point differs from its original objective')
+            if point.reduction == 'pointwise':
+                wave = _number(point.wavelength_nm)
+                if not objective.wavelength_min_nm <= wave <= objective.wavelength_max_nm or point.wavelength_grid_nm:
+                    raise ValueError('feedback snapshot point has an invalid wavelength')
+                isolated = _isolated_objective(objective, 'pointwise', wave=wave, angle=point.angle_deg)
+            else:
+                if point.wavelength_nm is not None or not point.wavelength_grid_nm:
+                    raise ValueError('mean feedback requires its complete band grid')
+                isolated = _isolated_objective(objective, 'mean', angle=point.angle_deg,
+                                               samples=len(point.wavelength_grid_nm))
+            objective_list.append(isolated)
+        objectives: tuple[FilmOptimizationObjective, ...] = tuple(objective_list)
         extra = evaluate_points(objectives)
-        if extra["design"] != base["design"]:
-            raise ValueError("feedback response belongs to another design")
-        errors, extra_responses = tuple(extra["score"]["errors"]), tuple(extra["responses"])
-        if len(errors) != len(objectives) or len(extra_responses) != len(objectives):
-            raise ValueError("feedback evaluation is missing singleton conditions")
-        by_index = {}
-        for error in errors:
-            local, actual, normalized = _checked_error(error, objectives)
-            if local.objective_index in by_index:
-                raise ValueError("feedback evaluation repeats a singleton condition")
-            by_index[local.objective_index] = actual
-            point = snapshot.points[local.objective_index]
-            maximum = max(maximum, normalized)
-            strict_failed = strict_failed or _strict_failed(point.objective_index, actual,
-                snapshot.objectives, snapshot.strict_lower_bound_objective_indices,
-                snapshot.strict_upper_bound_objective_indices)
-        seen = set()
-        for response in extra_responses:
-            local_index = response["objective_index"]
-            if type(local_index) is not int or local_index not in by_index or local_index in seen:
-                raise ValueError("feedback response objective index is invalid")
-            seen.add(local_index)
-            point = snapshot.points[local_index]
-            if (response["angle_deg"] != point.angle_deg
-                    or tuple(response["wavelength_nm"]) != (point.wavelength_nm,)
-                    or tuple(response["actual_values"]) != (by_index[local_index],)):
-                raise ValueError("feedback response differs from its singleton condition")
-            remapped = deepcopy(dict(response))
-            remapped["objective_index"] = point.objective_index
-            responses.append(remapped)
-    guide["responses"] = tuple(responses)
-    guide["score"]["max_error"] = maximum
-    guide["_feedback_base"] = base
-    guide["_feedback_revision"] = snapshot.revision
-    guide["_feedback_strict_failed"] = strict_failed
+        if extra['design'] != base['design']:
+            raise ValueError('feedback response belongs to another design')
+        responses = tuple(extra['responses'])
+        reduced = reduce_objective_responses(objectives, responses, tolerance=request.acceptable_normalized_error)
+        if len(reduced.conditions) != len(objectives):
+            raise ValueError('feedback evaluation is missing reduced conditions')
+        for condition in reduced.conditions:
+            point = snapshot.points[condition.objective_index]
+            raw = next(row for row in reduced.coverage if row.objective_index == condition.objective_index)
+            expected = (point.wavelength_nm,) if point.reduction == 'pointwise' else point.wavelength_grid_nm
+            if raw.wavelength_nm != expected:
+                raise ValueError('feedback response differs from its admitted audit grid')
+        guide['_feedback_response_groups'] = ((objectives, responses),)
+        maximum, failed = max(maximum, reduced.max_error), failed or not reduced.nominal_pass
+    guide['score']['max_error'] = maximum
+    guide['_feedback_base'] = base
+    guide['_feedback_revision'] = snapshot.revision
+    guide['_feedback_strict_failed'] = failed
     return guide
 
 
 def restore_feedback_base(value: Mapping[str, Any]) -> Mapping[str, Any]:
-    """Return the exact base value; no guide fields or responses cross export."""
-    return value.get("_feedback_base", value)
+    """Return the exact base value before archival or export."""
+    return value.get('_feedback_base', value)
 
 
 def feedback_candidate_key(value: Mapping[str, Any], loss: float) -> tuple[int, float, float]:
-    """Rank only candidates from one fixed snapshot inside a local invocation.
-
-    Strict equality remains a failure even when raw normalized violation is zero.
-    Interior margins enter ``loss`` only; independent acceptance is unchanged.
-    """
-    return (int(bool(value.get("_feedback_strict_failed", False))),
-            _number(value["score"]["max_error"]), _number(loss))
+    """Nominal active conditions precede numerical guide loss within a snapshot."""
+    return (int(bool(value.get('_feedback_strict_failed', False))),
+            _number(value['score']['max_error']), _number(loss))

@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from coat_sim.core import film_auto_synthesis as synthesis
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationObjective
 from coat_sim.core.film_synthesis_archive import SynthesisDesignArchive, physical_design_hash
 from coat_sim.core.film_synthesis_refinement import (
@@ -76,11 +77,11 @@ def _guide_value(request, design, actuals, derivatives=None):
                 row['jacobian_values_by_layer_id'] = {'x': np.broadcast_to(derivatives[i], actual.shape).copy()}
             responses.append(row)
             for value in actual:
-                if objective.mode == 'value':
-                    violation = abs(value - objective.target_value) / objective.normalization_scale
+                if objective.pointwise.mode == 'value':
+                    violation = abs(value - objective.pointwise.target_value) / objective.normalization_scale
                 else:
-                    violation = max(0., 0. if objective.lower_bound is None else objective.lower_bound - value,
-                                    0. if objective.upper_bound is None else value - objective.upper_bound) / objective.normalization_scale
+                    violation = max(0., 0. if objective.pointwise.lower_bound is None else objective.pointwise.lower_bound - value,
+                                    0. if objective.pointwise.upper_bound is None else value - objective.pointwise.upper_bound) / objective.normalization_scale
                 errors.append(dict(objective_index=i, normalized_violation=float(violation)))
     maximum = max(e['normalized_violation'] for e in errors)
     return dict(design=deepcopy(design), responses=responses,
@@ -90,9 +91,8 @@ def _guide_value(request, design, actuals, derivatives=None):
 
 def test_equal_window_sse_does_not_let_ir_point_count_dominate_and_keeps_user_weights():
     _, base = setup_problem()
-    objectives = tuple(FilmOptimizationObjective(500., 600., count,
-        angles_deg=(0., 30.), mode='value', target_value=0., weight=weight)
-        for count, weight in ((1, 1.), (101, 3.)))
+    objectives = tuple(FilmOptimizationObjective(500., 600., count, pointwise=FilmObjectiveConstraint(mode='value', target_value=0., lower_bound=None, upper_bound=None), angles_deg=(0., 30.), weight=weight)
+        for count, weight in ((2, 1.), (101, 3.)))
     request = replace(base, objectives=objectives)
     design = deepcopy(base.environment)
     design['front_layers'] = [layer('x')]
@@ -101,8 +101,19 @@ def test_equal_window_sse_does_not_let_ir_point_count_dominate_and_keeps_user_we
     assert synthesis_window_masses(request) == pytest.approx([.25, .75])
     assert loss == pytest.approx(.25 * .2**2 + .75 * .4**2)
     assert gradient == pytest.approx([2 * (.25 * .2 + .75 * .4 * 2)])
-    point_request = replace(request, objective_weighting='point_count')
-    assert synthesis_window_masses(point_request) == pytest.approx([1 / 304, 303 / 304])
+    denser = replace(request, objectives=tuple(replace(o, wavelength_samples=count)
+        for o, count in zip(objectives, (17, 501), strict=True)))
+    denser_value = _guide_value(denser, design, [.2, .4], [1., 2.])
+    assert synthesis_window_masses(denser) == pytest.approx([.25, .75])
+    assert weighted_sse_loss_gradient(denser, denser_value, ('x',))[0] == pytest.approx(loss)
+    both = replace(request, objectives=(replace(objectives[0], mean=FilmObjectiveConstraint(
+        mode='value', target_value=0., lower_bound=None, upper_bound=None)), objectives[1]))
+    both_value = _guide_value(both, design, [.2, .4], [1., 2.])
+    both_loss, both_gradient = weighted_sse_loss_gradient(both, both_value, ('x',))
+    assert both_loss == pytest.approx(loss)
+    assert both_gradient == pytest.approx(gradient)
+    with pytest.raises(TypeError, match='objective_weighting'):
+        replace(request, objective_weighting='point_count')
     incomplete = deepcopy(value)
     incomplete['responses'].pop()
     with pytest.raises(ValueError, match='missing original'):
@@ -111,8 +122,7 @@ def test_equal_window_sse_does_not_let_ir_point_count_dominate_and_keeps_user_we
 
 def test_sse_real_terminal_continues_even_when_strict_max_worsens(monkeypatch):
     _, base = setup_problem()
-    request = replace(base, objectives=tuple(FilmOptimizationObjective(550., 550., 1,
-        mode='value', target_value=0.) for _ in range(2)))
+    request = replace(base, objectives=tuple(FilmOptimizationObjective(550., 550., 1, pointwise=FilmObjectiveConstraint(mode='value', target_value=0., lower_bound=None, upper_bound=None)) for _ in range(2)))
     design = deepcopy(dict(request.environment))
     design['front_layers'] = [layer('x', thickness=1.)]
     def evaluate(trial, **kwargs):
@@ -140,8 +150,7 @@ def test_sse_real_terminal_continues_even_when_strict_max_worsens(monkeypatch):
 
 def test_sse_stage_budget_keeps_last_accepted_not_last_line_search(monkeypatch):
     _, base = setup_problem()
-    request = replace(base, objectives=(FilmOptimizationObjective(550., 550., 1,
-        mode='value', target_value=0.),))
+    request = replace(base, objectives=(FilmOptimizationObjective(550., 550., 1, pointwise=FilmObjectiveConstraint(mode='value', target_value=0., lower_bound=None, upper_bound=None)),))
     design = deepcopy(dict(request.environment))
     design['front_layers'] = [layer('x', thickness=1.)]
     def evaluate(trial, **kwargs):
@@ -161,8 +170,7 @@ def test_sse_stage_budget_keeps_last_accepted_not_last_line_search(monkeypatch):
 
 def test_full_slsqp_checks_every_original_constraint_and_not_optimizer_t(monkeypatch):
     _, base = setup_problem()
-    request = replace(base, objectives=(FilmOptimizationObjective(500., 600., 3,
-        angles_deg=(0., 30.), mode='range', lower_bound=.9),))
+    request = replace(base, objectives=(FilmOptimizationObjective(500., 600., 3, pointwise=FilmObjectiveConstraint(mode='range', target_value=None, lower_bound=.9, upper_bound=None), angles_deg=(0., 30.)),))
     design = deepcopy(dict(request.environment))
     design['front_layers'] = [layer('x', thickness=1.)]
     def evaluate(trial, **kwargs):
@@ -191,6 +199,7 @@ def test_hybrid_reserves_real_needle_and_minimax_work_after_busy_prior_prefix(mo
     result = synthesis.synthesize_film_design(service, request)
     hybrid = result.performance['search']['hybrid']
     assert result.frozen_request.search_strategy == 'hybrid'
+    assert hybrid['objective_masses'] == pytest.approx([1.])
     stages = {row['stage']: row for row in hybrid['stages']}
     assert stages['engineering_prior_screen']['evaluations_used'] < 100 // 3
     assert stages['analytic_needle_scan']['evaluations_used'] > 0
@@ -222,17 +231,15 @@ def test_new_request_defaults_to_hybrid_without_hidden_layer_limit():
     _, base = setup_problem()
     request = synthesis.FilmSynthesisRequest(base.environment, base.objectives, base.candidate_materials)
     assert request.search_strategy == 'hybrid'
-    assert request.objective_weighting == 'equal_window'
+    assert not hasattr(request, 'objective_weighting')
+    assert synthesis_window_masses(request) == pytest.approx([1.])
     assert request.max_layers is None
     assert request.minimum_nonzero_thickness_nm is None
 
 
 def test_real_four_window_hybrid_keeps_original_conditions_and_shared_priors():
     service, base = setup_problem()
-    objectives = tuple(FilmOptimizationObjective(wave, wave, 1,
-        angles_deg=(0., 30.), mode='range',
-        lower_bound=.99 if index < 2 else None,
-        upper_bound=None if index < 2 else .001)
+    objectives = tuple(FilmOptimizationObjective(wave, wave, 1, pointwise=FilmObjectiveConstraint(mode='range', target_value=None, lower_bound=.99 if index < 2 else None, upper_bound=None if index < 2 else .001), angles_deg=(0., 30.))
         for index, wave in enumerate((480., 520., 600., 650.)))
     request = replace(base, objectives=objectives, search_strategy='hybrid',
                       max_cycles=1, max_evaluations=140, acceptable_normalized_error=0.)
@@ -336,7 +343,7 @@ def test_real_scipy_all_fixed_thickness_bounds_are_valid_and_not_missing_nit(fix
 def test_sse_fixed_bound_diagnostics_use_actual_zero_free_variables():
     _, base = setup_problem()
     request = replace(base, minimum_nonzero_thickness_nm=10., max_layer_thickness_nm=10.,
-        objectives=(FilmOptimizationObjective(550., 550., 1, mode='value', target_value=0.),))
+        objectives=(FilmOptimizationObjective(550., 550., 1, pointwise=FilmObjectiveConstraint(mode='value', target_value=0., lower_bound=None, upper_bound=None)),))
     design = deepcopy(dict(request.environment))
     design['front_layers'] = [layer('x', thickness=10.)]
     def evaluate(trial, **kwargs):
@@ -352,8 +359,7 @@ def test_auto_resource_guard_admits_original_106_layer_full_grid_on_sufficient_m
     from coat_sim.core import compute_resources
     _, request = setup_problem()
     request = replace(request, search_strategy='hybrid', max_working_set_bytes=0,
-        objectives=tuple(FilmOptimizationObjective(low, high, samples,
-            angles_deg=tuple(np.linspace(39., 51., 25)), mode='range', upper_bound=.03)
+        objectives=tuple(FilmOptimizationObjective(low, high, samples, pointwise=FilmObjectiveConstraint(mode='range', target_value=None, lower_bound=None, upper_bound=.03), angles_deg=tuple(np.linspace(39., 51., 25)))
             for low, high, samples in ((580., 920., 341), (1044., 1084., 41),
                                       (3000., 5000., 2001), (7000., 12000., 5001))))
     monkeypatch.setattr(compute_resources, 'available_memory_bytes', lambda: 9_225_568_256)
@@ -422,15 +428,14 @@ def test_auto_resource_guard_probe_error_and_zero_headroom_are_not_assumed_suffi
 
 
 @pytest.mark.parametrize('limit', (1024, 1_610_612_736, 3_221_225_472, None))
-def test_old_explicit_resource_cap_or_null_replay_keeps_exact_policy_without_measurement(monkeypatch, limit):
+def test_current_explicit_resource_cap_or_null_replay_is_exact_and_missing_field_is_rejected(monkeypatch, limit):
     from coat_sim.core import compute_resources
     from coat_sim.core.film_synthesis_io import film_synthesis_request_to_payload, film_synthesis_request_from_payload
     service, request = setup_problem()
     measurements = []
     monkeypatch.setattr(compute_resources, 'available_memory_bytes', lambda: measurements.append('unexpected'))
     frozen = synthesis.freeze_film_synthesis_request(service, replace(request, max_working_set_bytes=limit))
-    payload = film_synthesis_request_to_payload('old-explicit-resource-replay', frozen)
-    payload['request'].pop('resource_guard_resolution')  # Actual pre-auto v1 wire shape.
+    payload = film_synthesis_request_to_payload('current-explicit-resource-replay', frozen)
     _, old, _ = film_synthesis_request_from_payload(payload)
     replay = synthesis.freeze_film_synthesis_request(None, old)
     assert replay.max_working_set_bytes == limit
@@ -438,6 +443,9 @@ def test_old_explicit_resource_cap_or_null_replay_keeps_exact_policy_without_mea
     assert replay.resource_guard_resolution['requested_bytes'] == limit
     assert replay.resource_guard_resolution['effective_bytes'] == limit
     assert replay.resource_guard_resolution['mode'] == ('disabled' if limit is None else 'explicit')
+    payload['request'].pop('resource_guard_resolution')
+    with pytest.raises(ValueError, match='requires every field'):
+        film_synthesis_request_from_payload(payload)
     assert not measurements
 
 

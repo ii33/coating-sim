@@ -272,10 +272,10 @@ def _optimizer(gui):
     objective_form = cast(dict[str, Any], controller.property("selectedObjective"))
     assert objective_form["wavelength_min_nm"] == "550"
     assert objective_form["wavelength_max_nm"] == "550"
-    assert objective_form["upper_bound_percent"] == "0.1"
+    assert objective_form["pointwise"]["upper_bound_percent"] == "0.1"
     objective_request = controller._build_synthesis_request().objectives[0]
     assert (objective_request.wavelength_min_nm, objective_request.wavelength_max_nm,
-            objective_request.upper_bound) == (550., 550., .001)
+            objective_request.pointwise.upper_bound) == (550., 550., .001)
     assert controller.acceptableErrorPercent == 0.
     assert controller.canStart, (controller.error, controller.statusText, controller._source_stale, controller._active_configuration_error())
     _wait(lambda: cast(QObject, controller.property("computeTarget")).property("canSubmit"))
@@ -437,7 +437,7 @@ def test_qml_n0_grows_real_single_layer_and_freezes_current_targets_and_material
     frozen = json.loads(spec_path.read_text(encoding="utf-8"))["parameters"]["payload"]["request"]["request"]
     assert frozen["environment"]["front_layers"] == [] and frozen["seed_designs"] == []
     objective = frozen["objectives"][0]
-    assert (objective["wavelength_min_nm"], objective["wavelength_max_nm"], objective["upper_bound"]) == (550., 550., .001)
+    assert (objective["wavelength_min_nm"], objective["wavelength_max_nm"], objective["pointwise"]["upper_bound"]) == (550., 550., .001)
     assert frozen["candidate_materials"] == [{"material_id": "acceptance-film", "optical_set_id": "film-set"}]
     film = next(row for row in frozen["frozen_material_snapshot"]["materials"] if row["id"] == "acceptance-film")
     assert film["optical_sets"][0]["n"] == [1.23, 1.23]
@@ -476,8 +476,8 @@ def test_qml_real_queue_heartbeat_then_cancel_retains_audited_candidate_facts(gu
     assert controller.setSynthesisOption("max_cycles", "")
     assert controller.setSynthesisOption("max_evaluations", "")
     assert controller.duplicateSelectedObjective()
-    assert controller.setObjectiveField("upper_bound_percent", 100.)
-    assert controller.setObjectiveField("lower_bound_percent", 90.)
+    assert controller.setObjectiveField("pointwise.upper_bound_percent", 100.)
+    assert controller.setObjectiveField("pointwise.lower_bound_percent", 90.)
     original = source.session.snapshot()
     refreshes = []
 

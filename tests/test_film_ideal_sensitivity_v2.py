@@ -15,9 +15,9 @@ import pytest
 from coat_sim.core import film_ideal_sensitivity as v2
 from coat_sim.core import _film_ideal_sensitivity_core as core
 from coat_sim.core.film_optimization import FilmOptimizationRequest
-from tests.test_film_ideal_sensitivity import problem
+from tests.test_film_ideal_sensitivity import problem, with_strict_bounds
 
-# Exercise the canonical current schema2 public API.
+# Exercise the canonical current schema3 public API.
 ideal = cast(Any, import_module("coat_sim.core.film_ideal_sensitivity"))
 
 pytestmark = pytest.mark.algorithm
@@ -59,7 +59,7 @@ def test_real_nominal_failed_initial_can_start_and_improve_and_replay():
     assert result.baseline_guard.guard_pass and result.best_guard.guard_pass
     assert ideal.film_ideal_sensitivity_request_to_payload(result.frozen_request) == before
     payload = ideal.film_ideal_sensitivity_result_to_payload(result)
-    assert payload["schema_version"] == 2 and payload["policy"] == request.policy
+    assert payload["schema_version"] == 3 and payload["policy"] == request.policy
     assert (
         ideal.validate_film_ideal_sensitivity_result_payload(
             payload, expected_request=frozen, replay=True
@@ -107,13 +107,7 @@ def test_closed_pointwise_directional_guard_and_zero_allowance(
     mode, lower, upper, lower_side, upper_side, delta
 ):
     service, request = request_v2(delta=delta)
-    objective = replace(
-        request.objectives[0],
-        mode=mode,
-        lower_bound=lower,
-        upper_bound=upper,
-        target_value=0.2 if mode == "value" else None,
-    )
+    objective = replace(request.objectives[0], pointwise=replace(request.objectives[0].pointwise, mode=mode, lower_bound=lower, upper_bound=upper, target_value=0.2 if mode == "value" else None))
     request = replace(request, objectives=(objective,))
     frozen, _ev, data, evidence = evaluated(service, request)
     y0 = data.values[0]
@@ -137,8 +131,8 @@ def test_closed_pointwise_directional_guard_and_zero_allowance(
 def test_overlapping_rows_cannot_average_or_compensate_and_budgets_follow_ids():
     service, request = request_v2()
     objectives = (
-        replace(request.objectives[0], upper_bound=0.01),
-        replace(request.objectives[0], lower_bound=0.02, upper_bound=None),
+        replace(request.objectives[0], pointwise=replace(request.objectives[0].pointwise, upper_bound=0.01)),
+        replace(request.objectives[0], pointwise=replace(request.objectives[0].pointwise, lower_bound=0.02, upper_bound=None)),
     )
     request = replace(
         request,
@@ -223,12 +217,12 @@ def test_explicit_current_adapter_preserves_general_inputs_and_requires_policy_c
     )
     assert type(request) is ideal.FilmIdealSensitivityRequest
     assert request.variables == ordinary.variables and request.sensitivity_mode == "relative"
-    assert ideal.film_ideal_sensitivity_request_to_payload(request)["schema_version"] == 2
+    assert ideal.film_ideal_sensitivity_request_to_payload(request)["schema_version"] == 3
     with pytest.raises(TypeError):
         ideal.ideal_sensitivity_request_from_optimization(base, sensitivity_mode="absolute")
 
 
-def test_current_hash_serialization_strict_nominal_and_schema1_rejection():
+def test_current_hash_serialization_strict_nominal_and_schema2_rejection():
     service, request = request_v2(policy="strict_nominal", upper=0.001)
     payload = ideal.film_ideal_sensitivity_request_to_payload(request)
     expected = dict(kind=ideal.REQUEST_KIND, **asdict(ideal._validate(request)))
@@ -238,7 +232,7 @@ def test_current_hash_serialization_strict_nominal_and_schema1_rejection():
     ).hexdigest()
     assert core._request_identity(request) == identity
     rejected = deepcopy(payload)
-    rejected["schema_version"] = 1
+    rejected["schema_version"] = 2
     with pytest.raises(ValueError, match="schema"):
         ideal.film_ideal_sensitivity_request_from_payload(rejected)
     result = ideal.execute_film_ideal_sensitivity_request(service, request)
@@ -253,12 +247,10 @@ def test_current_hash_serialization_strict_nominal_and_schema1_rejection():
 def test_nominal_equality_remains_independent_from_closed_degradation_guard(strict):
     service, request = request_v2(delta=0.0)
     frozen, _ev, data, _baseline = evaluated(service, request)
-    objective = replace(request.objectives[0], upper_bound=float(data.values[0]))
-    request = replace(
-        request,
-        objectives=(objective,),
-        strict_upper_bound_objective_indices=(0,) if strict else (),
-    )
+    objective = replace(request.objectives[0], pointwise=replace(request.objectives[0].pointwise, upper_bound=float(data.values[0])))
+    request = replace(request, objectives=(objective,))
+    if strict:
+        request = with_strict_bounds(request, upper=(0,))
     result = ideal.analyze_film_ideal_sensitivity(service, request)
     assert result.baseline_analysis.nominal_targets_met is (not strict)
     assert result.baseline_guard.guard_pass
@@ -561,7 +553,7 @@ def test_zero_budget_real_upper_can_improve_without_worsening_and_value_is_froze
     request = replace(
         request,
         objectives=(
-            replace(request.objectives[0], mode="value", target_value=0.1, upper_bound=None),
+            replace(request.objectives[0], pointwise=replace(request.objectives[0].pointwise, mode="value", target_value=0.1, upper_bound=None)),
         ),
     )
     result = ideal.execute_film_ideal_sensitivity_request(service, request)
@@ -717,7 +709,8 @@ def test_replay_checks_actual_guard_without_reusing_response_compare_tolerance()
         best_guard=guard,
     )
     payload = ideal.film_ideal_sensitivity_result_to_payload(altered)
-    ideal.validate_film_ideal_sensitivity_result_payload(payload, replay=False)
+    with pytest.raises(ValueError, match="guard"):
+        ideal.validate_film_ideal_sensitivity_result_payload(payload, replay=False)
     with pytest.raises(ValueError, match="guard"):
         ideal.validate_film_ideal_sensitivity_result_payload(payload, replay=True)
 
@@ -786,11 +779,11 @@ def test_kernel_identity_binds_public_and_private_current_implementation(monkeyp
         ideal.film_ideal_sensitivity_request_to_payload(frozen)
 
 
-def test_current_result_parser_rejects_schema1_instead_of_adapting():
+def test_current_result_parser_rejects_schema2_instead_of_adapting():
     service, request = request_v2()
     result = ideal.analyze_film_ideal_sensitivity(service, request)
     payload = ideal.film_ideal_sensitivity_result_to_payload(result)
-    payload["schema_version"] = 1
+    payload["schema_version"] = 2
     with pytest.raises(ValueError, match="schema"):
         ideal.film_ideal_sensitivity_result_from_payload(payload)
 

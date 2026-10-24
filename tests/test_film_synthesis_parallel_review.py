@@ -24,6 +24,7 @@ from coat_sim.core.film_auto_synthesis import (
     FilmSynthesisResult, _proxy, freeze_film_synthesis_request, synthesize_film_design,
 )
 from coat_sim.core.film_design_service import FilmDesignService
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationObjective
 from coat_sim.core.film_optimization_structure import (
     _insert_at_site, _site_records, evaluate_frozen_structure_candidate,
@@ -291,7 +292,7 @@ def test_real_inflight_cancel_closes_actual_workers_and_wrappers_and_keeps_archi
     glass.update(wavelength_min=500., wavelength_max=600., wavelengths=[500., 550., 600.],
         n=[1.5, 2.5, 1.5])
     request = freeze_film_synthesis_request(service, replace(request,
-        objectives=(FilmOptimizationObjective(500., 600., 2, mode="range", upper_bound=.06),),
+        objectives=(FilmOptimizationObjective(500., 600., 2, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=.06)),),
         frozen_material_snapshot=None))
     event = Event()
     original = parallel.OrderedEvaluationExecutor.take

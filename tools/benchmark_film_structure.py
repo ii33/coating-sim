@@ -9,6 +9,7 @@ separately from the optimizer's fixed budget.
 
 from __future__ import annotations
 
+
 import argparse
 import copy
 from dataclasses import asdict, is_dataclass, replace
@@ -189,7 +190,7 @@ def make_initial_design(service: Any, case: Mapping[str, Any]) -> dict[str, Any]
 
 def build_objectives(case: Mapping[str, Any]):
     _runtime_import_paths()
-    from coat_sim.core.film_optimization import FilmOptimizationObjective
+    from coat_sim.core.film_optimization import FilmObjectiveConstraint, FilmOptimizationObjective
 
     training = case["training"]
     angles = tuple(float(value) for value in training["angles_deg"])
@@ -199,19 +200,7 @@ def build_objectives(case: Mapping[str, Any]):
         weight = float(band["total_band_weight"]) / (len(angles) * len(polarizations))
         for angle in angles:
             for polarization in polarizations:
-                rows.append(FilmOptimizationObjective(
-                    wavelength_min_nm=float(band["wavelength_nm"][0]),
-                    wavelength_max_nm=float(band["wavelength_nm"][1]),
-                    wavelength_samples=int(band["samples"]),
-                    angles_deg=(angle,),
-                    polarization=polarization,
-                    metric=band["metric"],
-                    mode="range",
-                    lower_bound=float(band["lower_bound"]),
-                    upper_bound=float(band["upper_bound"]),
-                    weight=weight,
-                    normalization_scale=float(band["normalization_scale"]),
-                ))
+                rows.append(FilmOptimizationObjective(pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=float(band["lower_bound"]), upper_bound=float(band["upper_bound"])), wavelength_min_nm=float(band["wavelength_nm"][0]), wavelength_max_nm=float(band["wavelength_nm"][1]), wavelength_samples=int(band["samples"]), angles_deg=(angle,), polarization=polarization, metric=band["metric"], weight=weight, normalization_scale=float(band["normalization_scale"])))
     return tuple(rows)
 
 

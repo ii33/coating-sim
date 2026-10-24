@@ -7,6 +7,7 @@ import pytest
 
 from coat_sim.core.film_design import new_design, validate_design
 from coat_sim.core.film_design_service import FilmDesignService
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationObjective, FilmOptimizationRequest
 from coat_sim.core.film_optimization_needle import FilmNeedleMaterialReference
 from coat_sim.core.film_optimization_structure import (
@@ -60,8 +61,7 @@ def _problem(rows=None):
     design['front_layers'] = deepcopy(rows if rows is not None else [_row('original-host')])
     service = _Service(records)
     base = FilmOptimizationRequest(design_snapshot=design, design_revision=0,
-        variables=(), objectives=(FilmOptimizationObjective(450., 800., 9,
-            mode='range', upper_bound=.01, angles_deg=(0., 37.), polarization='unpolarized'),))
+        variables=(), objectives=(FilmOptimizationObjective(450., 800., 9, pointwise=FilmObjectiveConstraint(mode='range', target_value=None, lower_bound=None, upper_bound=.01), angles_deg=(0., 37.), polarization='unpolarized'),))
     request = FilmStructureOptimizationRequest(base,
         candidate_materials=(FilmNeedleMaterialReference('needle', 'nk'),
                              FilmNeedleMaterialReference('host', 'nk')),

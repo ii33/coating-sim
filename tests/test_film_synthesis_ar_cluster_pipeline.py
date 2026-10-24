@@ -22,13 +22,14 @@ def test_ar_mode_rejects_invalid_or_unimplemented_models(mode):
         synthesis._validated(replace(request, ar_structure_mode=mode))
 
 
-def test_mode_payload_roundtrip_and_legacy_default():
+def test_mode_payload_roundtrip_rejects_missing_current_field():
     service, request = setup_problem()
     frozen = synthesis.freeze_film_synthesis_request(service, request)
     payload = film_synthesis_request_to_payload('ar-mode-test', frozen)
     assert film_synthesis_request_from_payload(payload)[1].ar_structure_mode == 'v23_matching'
     payload['request'].pop('ar_structure_mode')
-    assert film_synthesis_request_from_payload(payload)[1].ar_structure_mode == 'clustered'
+    with pytest.raises(ValueError, match='fields'):
+        film_synthesis_request_from_payload(payload)
 
 
 def test_explicit_legacy_gui_cluster_route_runs_global_before_gradient_and_cancels_cleanly(tmp_path):
@@ -98,7 +99,8 @@ def test_default_gui_hybrid_typed_job_cancels_after_real_analytic_probe(tmp_path
     request = build_synthesis_request(base, fixture.candidate_materials, options,
         use_current_seed=False, cpu_workers=1)
     assert request.search_strategy == "hybrid" and request.ar_structure_mode == "clustered"
-    assert request.objective_weighting == "equal_window" and request.max_working_set_bytes == 0
+    assert not hasattr(request, "objective_weighting")
+    assert request.max_working_set_bytes == 0
     assert request.seed_designs == ()
     frozen = synthesis.freeze_film_synthesis_request(service, request)
     job = JobSpec.parse_frozen(synthesis_spec(service, frozen)).to_spec()
@@ -123,6 +125,7 @@ def test_default_gui_hybrid_typed_job_cancels_after_real_analytic_probe(tmp_path
                for item in result["trace"])
     search = result["performance"]["search"]
     hybrid = search["hybrid"]
+    assert hybrid["objective_masses"] == pytest.approx([1.])
     assert [row["stage"] for row in hybrid["stages"]] == [
         "engineering_prior_screen", "local_global_exploration", "analytic_needle_scan"]
     assert all(row["evaluations_used"] > 0 for row in hybrid["stages"])

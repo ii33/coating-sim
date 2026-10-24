@@ -8,6 +8,7 @@ current imported source. Synthetic k=0 fixtures make no real-material claim.
 """
 from __future__ import annotations
 
+
 import argparse
 from dataclasses import fields, replace
 import hashlib
@@ -59,21 +60,20 @@ def case_acceptance_passed(name, result, *, partial=False):
 def build_case(name, workers, wavelength_samples=4001):
     from tools.run_film_synthesis_acceptance import synthetic_service, make_request
     from coat_sim.core.film_auto_synthesis import FilmSynthesisRequest
-    from coat_sim.core.film_optimization import FilmOptimizationObjective
+    from coat_sim.core.film_optimization import FilmObjectiveConstraint, FilmOptimizationObjective
     service, environment, rows = synthetic_service()
     if name == 'smoke':
-        objective = FilmOptimizationObjective(550, 550, 1, mode='range', upper_bound=.05)
+        objective = FilmOptimizationObjective(550, 550, 1, pointwise=FilmObjectiveConstraint(mode='range', target_value=None, lower_bound=None, upper_bound=.05))
         request = make_request(environment, [objective], ['match'], cycles=1)
         note = 'Bare substrate already meets R<=0.05; harness plumbing only, no parallel speed claim.'
     elif name == 'ar':
-        objective = FilmOptimizationObjective(520, 580, 9, mode='range', upper_bound=.001)
+        objective = FilmOptimizationObjective(520, 580, 9, pointwise=FilmObjectiveConstraint(mode='range', target_value=None, lower_bound=None, upper_bound=.001))
         request = make_request(environment, [objective], ['match', 'low', 'high'], cycles=4)
         note = 'Known synthetic quarter-wave AR solution; stops on audited target or explicit four cycles.'
     else:
         # Bare-start one-cycle workload: all insertion positions/materials and
         # growth fractions are identical for every worker configuration.
-        objective = FilmOptimizationObjective(450, 900, wavelength_samples, angles_deg=(0., 30., 60.),
-            mode='range', lower_bound=.999999)
+        objective = FilmOptimizationObjective(450, 900, wavelength_samples, pointwise=FilmObjectiveConstraint(mode='range', target_value=None, lower_bound=.999999, upper_bound=None), angles_deg=(0., 30., 60.))
         request = make_request(environment, [objective], ['match', 'low', 'high'],
             cycles=3 if name == 'multilayer' else 1,
             growth=(.25, .5, .75, 1., 1.5, 2., 3., 4.))

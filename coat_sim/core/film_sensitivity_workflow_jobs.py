@@ -27,8 +27,11 @@ def _for_payload(payload: Mapping[str, Any], suffix: str) -> str:
     if payload.get("kind") == "coat_sim.film_sensitivity_" + suffix:
         raise ValueError("unsupported sensitivity format: process sensitivity has been removed")
     if (payload.get("kind") == "coat_sim.film_ideal_sensitivity_" + suffix
+            and (type(payload.get("schema_version")) is not int or payload["schema_version"] != 3)):
+        raise ValueError("unsupported sensitivity format: ideal sensitivity requires schema 3")
+    if (payload.get("kind") == "coat_sim.film_thickness_error_table_" + suffix
             and (type(payload.get("schema_version")) is not int or payload["schema_version"] != 2)):
-        raise ValueError("unsupported sensitivity format: ideal sensitivity requires schema 2")
+        raise ValueError("unsupported sensitivity format: thickness error table requires schema 2")
     for kind in WORKFLOW_KINDS:
         if payload.get("kind") == "coat_sim." + kind + "_" + suffix:
             return kind

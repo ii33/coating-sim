@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING, Any, Callable, Literal, Mapping, Protocol, Seq
 import numpy as np
 from numpy.typing import NDArray
 
+from .film_objective_criteria import active_constraints
+
 if TYPE_CHECKING:
     from .film_auto_synthesis import FilmSynthesisRequest
 
@@ -48,45 +50,27 @@ class _Minimize(Protocol):
 
 def _pure_hr(request: FilmSynthesisRequest) -> bool:
     return bool(request.objectives) and all(
-        o.metric == "R" and o.mode == "range" and o.weight > 0
-        and o.lower_bound is not None and o.lower_bound >= .5
-        and (o.upper_bound is None or o.upper_bound >= 1.)
+        o.metric == "R" and o.weight > 0 and active_constraints(o)
+        and all(c.mode == "range" and c.lower_bound is not None and c.lower_bound >= .5
+                and (c.upper_bound is None or c.upper_bound >= 1.)
+                for _, c in active_constraints(o))
         for o in request.objectives)
 
 
 def _responses(request: FilmSynthesisRequest, value: Value,
                ids: tuple[str, ...]) -> tuple[Array, Array]:
-    """Require each original objective/angle row exactly once, in any order."""
-    expected = {(i, float(a)) for i, o in enumerate(request.objectives) for a in o.angles_deg}
-    rows: dict[tuple[int, float], tuple[Array, Array]] = {}
-    for row in value.get("responses", ()):
-        index = row["objective_index"]
-        if type(index) is not int or not 0 <= index < len(request.objectives):
-            raise ValueError("HR response objective index is invalid")
-        angle = row["angle_deg"]
-        if isinstance(angle, bool) or not isinstance(angle, (int, float)) or not math.isfinite(angle):
-            raise ValueError("HR response angle is invalid")
-        identity = (index, float(angle))
-        if identity not in expected or identity in rows:
-            raise ValueError("HR response repeats or changes an original condition")
-        objective = request.objectives[index]
-        waves = np.linspace(objective.wavelength_min_nm, objective.wavelength_max_nm,
-                            objective.wavelength_samples)
-        actual = np.asarray(row["actual_values"], dtype=float)
-        if (not np.array_equal(np.asarray(row["wavelength_nm"], dtype=float), waves)
-                or actual.shape != waves.shape or not np.all(np.isfinite(actual))):
-            raise ValueError("HR response grid/values differ from original training conditions")
-        derivatives = row.get("jacobian_values_by_layer_id", {})
-        if set(derivatives) != set(ids):
-            raise ValueError("HR response requires exactly the optimized layer Jacobians")
-        columns = [np.asarray(derivatives[identifier], dtype=float) for identifier in ids]
-        if any(column.shape != waves.shape or not np.all(np.isfinite(column)) for column in columns):
-            raise ValueError("HR response Jacobian shape/values are invalid")
-        rows[identity] = (actual, np.column_stack(columns))
-    if set(rows) != expected:
-        raise ValueError("HR response is missing original training conditions")
-    ordered = [rows[key] for key in sorted(expected)]
-    return np.concatenate([item[0] for item in ordered]), np.vstack([item[1] for item in ordered])
+    """All active HR physical conditions, including complete-band means/J."""
+    from .film_synthesis_multispectral_minimax import _original_reduction
+    reduced = _original_reduction(request, value, ids)
+    actual = np.asarray([condition.actual for condition in reduced.conditions], float)
+    # Every eligible HR condition has a lower side, first in the shared bounds.
+    first_bounds: dict[int, int] = {}
+    for row, index in enumerate(reduced.signed_bound_condition_indices):
+        first_bounds.setdefault(index, row)
+    jacobian = np.vstack([-reduced.signed_bound_jacobian[first_bounds[index]]
+                          * request.objectives[condition.objective_index].normalization_scale
+                          for index, condition in enumerate(reduced.conditions)])
+    return actual, jacobian
 
 
 def _soft_min_loss(values: Array, jacobian: Array, beta: float) -> tuple[float, Array]:
@@ -155,18 +139,22 @@ def refine_hr_minimax(request: FilmSynthesisRequest, initial: Value, *,
     cache_data: tuple[Array, Array] | None = None
     best: Value = initial
     best_min = -math.inf
+    best_key = (math.inf, math.inf, math.inf, math.inf)
     calls = cache_hits = rejected = 0
     stages: list[dict[str, Any]] = []
 
     def commit(value: Value, point: Array, *, physical_call: bool) -> tuple[Array, Array]:
-        nonlocal cache_x, cache_data, best, best_min, calls
+        nonlocal cache_x, cache_data, best, best_min, best_key, calls
         actual, jacobian = _responses(request, value, ids)
         if physical_call:
             calls += 1
             archive(value, audit_eligible=False)
         minimum = float(np.min(actual))
-        if minimum > best_min:
-            best, best_min = value, minimum
+        from .film_synthesis_multispectral_minimax import _original_reduction
+        reduced = _original_reduction(request, value, ())
+        key = (int(not reduced.nominal_pass), reduced.max_error, reduced.weighted_rms_error, -minimum)
+        if key < best_key:
+            best, best_min, best_key = value, minimum, key
         cache_x, cache_data = point.copy(), (actual, jacobian * scales)
         if physical_call:
             progress("hr_minimax_trial", value,
@@ -205,7 +193,7 @@ def refine_hr_minimax(request: FilmSynthesisRequest, initial: Value, *,
     assert cache_data is not None
     point = initial_x.copy()
     minimize = cast(_Minimize, import_module("scipy.optimize").minimize)
-    conditions = sum(o.wavelength_samples * len(o.angles_deg) for o in request.objectives)
+    conditions = len(cache_data[0])
 
     def penalty(x: Array) -> tuple[float, Array]:
         d = x * scales
@@ -293,6 +281,8 @@ def refine_hr_minimax(request: FilmSynthesisRequest, initial: Value, *,
         max_iterations_per_stage=max_iterations, physical_candidates=calls,
         cache_hits=cache_hits, rejected_infeasible_trials=rejected,
         sampled_min_reflectance=best_min, training_conditions=conditions,
+        condition_reductions=[name for o in request.objectives for name, _ in active_constraints(o)],
+        raw_wavelength_points=sum(o.wavelength_samples * len(o.angles_deg) for o in request.objectives),
         thickness_bounds_source="full explicit layer/total nm bounds; positive float lower bound if unset",
         soft_method=soft_method, coordinate_scale_nm=coordinate_scale_nm,
         scale_nm=scales.tolist(), cache_scope="one most recent thickness point shared across beta and epigraph t",

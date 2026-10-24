@@ -409,15 +409,15 @@ def _validate_snapshot(snapshot):
 
 
 def _validate_film_payload(payload):
-    from coat_sim.core.film_optimization_job import JOB_KIND, deserialize_request
+    from coat_sim.core.film_optimization_job import CONTRACT_VERSION, JOB_KIND, deserialize_request
     if (not isinstance(payload, dict) or set(payload) != {"schema_version", "kind", "request"} or
-            type(payload.get("schema_version")) is not int or payload.get("schema_version") != 1 or
+            type(payload.get("schema_version")) is not int or payload.get("schema_version") != CONTRACT_VERSION or
             payload.get("kind") != JOB_KIND):
         _fail("invalid_film_payload", "film payload kind, version or fields are invalid")
     request = payload["request"]
     required = {"schema_version", "kind", "design_snapshot", "design_revision", "variables", "objectives", "max_iterations", "max_evaluations", "initial_step_fraction", "min_step_fraction", "acceptable_normalized_error", "frozen_material_snapshot"}
     if (not isinstance(request, dict) or not required <= set(request) or
-            type(request.get("schema_version")) is not int or request.get("schema_version") != 1 or
+            type(request.get("schema_version")) is not int or request.get("schema_version") != CONTRACT_VERSION or
             type(request.get("design_revision")) is not int or
             type(request.get("max_iterations")) is not int or type(request.get("max_evaluations")) is not int or
             not isinstance(request.get("variables"), list) or not isinstance(request.get("objectives"), list)):

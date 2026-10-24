@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from coat_sim.core.film_auto_synthesis import FilmSynthesisRequest
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationObjective
 from coat_sim.core import film_synthesis_multispectral_minimax as minimax
 
@@ -17,10 +18,8 @@ pytestmark = pytest.mark.algorithm
 def problem(*, total_cap=None, objectives=None):
     if objectives is None:
         objectives = (
-            FilmOptimizationObjective(500., 600., 2, angles_deg=(0., 30.), metric="R",
-                mode="range", lower_bound=.7, weight=1., normalization_scale=2.),
-            FilmOptimizationObjective(700., 900., 5, angles_deg=(0.,), metric="T",
-                mode="range", upper_bound=.2, weight=7., normalization_scale=.5),
+            FilmOptimizationObjective(500., 600., 2, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=.7, upper_bound=None), angles_deg=(0., 30.), metric="R", weight=1., normalization_scale=2.),
+            FilmOptimizationObjective(700., 900., 5, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=.2), angles_deg=(0.,), metric="T", weight=7., normalization_scale=.5),
         )
     request = FilmSynthesisRequest({}, tuple(objectives), (), minimum_nonzero_thickness_nm=.5,
         max_layer_thickness_nm=10., max_total_thickness_nm=total_cap)
@@ -35,7 +34,8 @@ def problem(*, total_cap=None, objectives=None):
         if total_cap is not None:
             assert sum(d) <= total_cap
         calls.append(d.copy())
-        responses, errors, weights = [], [], []
+        responses, errors = [], []
+        weighted_loss = 0.
         for index, objective in enumerate(objectives):
             offset = .0025 * (d[1]-2.)**2
             y = (.2 + .06*d[0] - offset if objective.metric == "R"
@@ -48,12 +48,14 @@ def problem(*, total_cap=None, objectives=None):
                     wavelength_nm=np.linspace(objective.wavelength_min_nm, objective.wavelength_max_nm, n).tolist(),
                     actual_values=[y]*n,
                     jacobian_values_by_layer_id={f"layer-{j}": [derivative[j]]*n for j in range(2)}))
-                error = (abs(y-objective.target_value) if objective.mode == "value" else
-                         max(0., 0. if objective.lower_bound is None else objective.lower_bound-y,
-                             0. if objective.upper_bound is None else y-objective.upper_bound))
+                error = (abs(y-objective.pointwise.target_value) if objective.pointwise.mode == "value" else
+                         max(0., 0. if objective.pointwise.lower_bound is None else objective.pointwise.lower_bound-y,
+                             0. if objective.pointwise.upper_bound is None else y-objective.pointwise.upper_bound))
                 errors.extend([error/objective.normalization_scale]*n)
-                weights.extend([objective.weight]*n)
-        rms = float(np.sqrt(np.average(np.square(errors), weights=weights)))
+                # Constant fixture spectra have normalized trapezoidal loss
+                # equal to this scalar square, independent of wavelength count.
+                weighted_loss += objective.weight * (error / objective.normalization_scale)**2 / len(objective.angles_deg)
+        rms = float(np.sqrt(weighted_loss / sum(o.weight for o in objectives)))
         return dict(design=deepcopy(candidate), responses=responses,
                     score=dict(max_error=max(errors), weighted_rms_error=rms, marker="parent-original"))
 
@@ -64,19 +66,27 @@ def problem(*, total_cap=None, objectives=None):
 
 def test_signed_rt_value_bounds_scales_and_soft_analytic_derivative():
     objectives = (
-        FilmOptimizationObjective(500., 600., 2, metric="R", mode="range",
-            lower_bound=.3, upper_bound=.5, normalization_scale=2., weight=3.),
-        FilmOptimizationObjective(700., 800., 3, metric="T", mode="value",
-            target_value=.2, normalization_scale=.5, weight=8.),
+        FilmOptimizationObjective(500., 600., 2, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=.3, upper_bound=.5), metric="R", normalization_scale=2., weight=3.),
+        FilmOptimizationObjective(700., 800., 3, pointwise=FilmObjectiveConstraint(mode="value", target_value=.2, lower_bound=None, upper_bound=None), metric="T", normalization_scale=.5, weight=8.),
     )
     request, initial, evaluate, _ = problem(objectives=objectives)
     ids = ("layer-0", "layer-1")
     q, jac, masses = minimax._signed_bounds(request, initial, ids)
     assert len(q) == 10
-    np.testing.assert_allclose(jac[:2, 0], -.06/2.)
-    np.testing.assert_allclose(jac[2:4, 0], .06/2.)
-    np.testing.assert_allclose(jac[4:7, 0], -.04/.5)
-    np.testing.assert_allclose(jac[7:, 0], .04/.5)
+    # At d=(1,1), R=.2575 and T=.0925; physical nm derivatives are
+    # dR=(.06,.005), dT=(.04,-.005). Range bounds are lower/upper per
+    # wavelength; value bounds are actual-target / target-actual per wavelength.
+    expected_q = np.array([(.3 - .2575) / 2., (.2575 - .5) / 2.] * 2
+                          + [(.0925 - .2) / .5, (.2 - .0925) / .5] * 3)
+    expected_jac = np.array([[-.06 / 2., -.005 / 2.], [.06 / 2., .005 / 2.]] * 2
+                            + [[.04 / .5, -.005 / .5], [-.04 / .5, .005 / .5]] * 3)
+    # q_R=(1/2,1/2), q_T=(1/4,1/2,1/4); each condition divides its
+    # normalized band mass equally between its two signed bound rows.
+    expected_mass = np.array([3. / 11. * .5 / 2.] * 4
+        + [8. / 11. * mass / 2. for mass in (.25, .25, .5, .5, .25, .25)])
+    np.testing.assert_allclose(q, expected_q)
+    np.testing.assert_allclose(jac, expected_jac)
+    np.testing.assert_allclose(np.exp(masses), expected_mass)
     np.testing.assert_allclose(np.exp(masses[:4]).sum(), 3./11.)
     np.testing.assert_allclose(np.exp(masses[4:]).sum(), 8./11.)
     assert max(0., float(max(q))) == pytest.approx(initial["score"]["max_error"])
@@ -95,7 +105,7 @@ def test_signed_rt_value_bounds_scales_and_soft_analytic_derivative():
         assert gradient[axis] == pytest.approx((samples[1]-samples[0])/(2*step), rel=1e-7, abs=1e-10)
 
 
-def test_window_mass_unchanged_by_unequal_sampling_and_original_rms_keeps_point_weights():
+def test_window_mass_and_original_rms_are_unchanged_by_sampling_density_and_angle_count():
     request, initial, _, _ = problem()
     ids = ("layer-0", "layer-1")
     guide = minimax._signed_bounds(request, initial, ids)
@@ -107,7 +117,11 @@ def test_window_mass_unchanged_by_unequal_sampling_and_original_rms_keeps_point_
     dense_loss, dense_derivative = minimax._soft_max_loss(*dense_guide, 100.)
     assert loss == pytest.approx(dense_loss, abs=1e-14)
     np.testing.assert_allclose(derivative, dense_derivative, atol=1e-14)
-    assert dense["score"]["weighted_rms_error"] != pytest.approx(initial["score"]["weighted_rms_error"])
+    # R's physical hinge is (.7-.2575)/2 and T's .0925 is below its .2
+    # ceiling. W=(1,7) therefore gives exactly this density-independent RMS.
+    expected_rms = np.sqrt(((.7 - .2575) / 2.)**2 / 8.)
+    assert initial["score"]["weighted_rms_error"] == pytest.approx(expected_rms)
+    assert dense["score"]["weighted_rms_error"] == pytest.approx(expected_rms)
     assert dense["score"]["max_error"] == initial["score"]["max_error"]
 
 
@@ -358,15 +372,25 @@ def test_cache_retains_only_the_latest_physical_point(monkeypatch):
     assert len(calls) == details["physical_candidates"] == 2
 
 
-@pytest.mark.parametrize("change", [dict(metric="A"), dict(mode="unknown"), dict(weight=0.),
-    dict(normalization_scale=0.), dict(angles_deg=(0., 0.)), dict(wavelength_samples=0),
-    dict(lower_bound=None), dict(lower_bound=.8, upper_bound=.7)])
-def test_original_objective_contract_rejects_invalid_targets(change):
+@pytest.mark.parametrize("common_change, pointwise_change, message", [
+    (dict(metric="A"), {}, "multispectral minimax original objective is invalid"),
+    ({}, dict(mode="unknown"), "pointwise.mode must be value or range"),
+    (dict(weight=0.), {}, "weight must be positive"),
+    (dict(normalization_scale=0.), {}, "normalization_scale must be positive"),
+    (dict(angles_deg=(0., 0.)), {}, "multispectral minimax original objective is invalid"),
+    (dict(wavelength_samples=0), {}, "multispectral minimax original objective is invalid"),
+    ({}, dict(lower_bound=None), "range constraints need at least one bound"),
+    ({}, dict(lower_bound=.8, upper_bound=.7), "enabled mean/pointwise constraints have an empty intersection"),
+])
+def test_original_objective_contract_rejects_invalid_targets(common_change, pointwise_change, message):
     request, initial, evaluate, calls = problem()
-    request = replace(request, objectives=(replace(request.objectives[0], **change), request.objectives[1]))
-    with pytest.raises(ValueError, match="multispectral"):
+    objective = request.objectives[0]
+    changed = replace(objective, **common_change, pointwise=replace(objective.pointwise, **pointwise_change))
+    request = replace(request, objectives=(changed, request.objectives[1]))
+    with pytest.raises(ValueError) as failure:
         minimax.refine_multispectral_minimax(request, initial, evaluate=evaluate,
             archive=lambda *a, **k: None)
+    assert str(failure.value) == message
     assert calls == []
 
 
@@ -387,10 +411,8 @@ def test_soft_max_extreme_finite_q_and_convex_gradient_do_not_overflow(q):
 def test_extreme_positive_window_weights_remain_in_log_mass_and_match_decimal():
     from decimal import Decimal, localcontext
     objectives = (
-        FilmOptimizationObjective(500., 500., 1, metric="R", mode="range",
-            lower_bound=.7, weight=1e300),
-        FilmOptimizationObjective(700., 700., 1, metric="T", mode="range",
-            upper_bound=.2, normalization_scale=.01, weight=1e-300),
+        FilmOptimizationObjective(500., 500., 1, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=.7, upper_bound=None), metric="R", weight=1e300),
+        FilmOptimizationObjective(700., 700., 1, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=.2), metric="T", normalization_scale=.01, weight=1e-300),
     )
     request, initial, _, _ = problem(objectives=objectives)
     initial["responses"][0]["actual_values"] = [.7]
@@ -415,7 +437,7 @@ def test_extreme_positive_window_weights_remain_in_log_mass_and_match_decimal():
 
 @pytest.mark.parametrize("worse_score", [None, (1e-8, 0.), (0., 1e-8)])
 def test_original_score_ties_prefer_margin_but_never_a_worse_original_score(monkeypatch, worse_score):
-    objectives = (FilmOptimizationObjective(500., 500., 1, metric="R", mode="range", lower_bound=.2),)
+    objectives = (FilmOptimizationObjective(500., 500., 1, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=.2, upper_bound=None), metric="R"),)
     request, initial, evaluate, _ = problem(objectives=objectives)
     assert initial["score"]["max_error"] == initial["score"]["weighted_rms_error"] == 0.
     def parent_evaluate(*args, **kwargs):

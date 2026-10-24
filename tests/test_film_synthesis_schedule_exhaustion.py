@@ -16,8 +16,7 @@ pytestmark = pytest.mark.algorithm
 @pytest.mark.parametrize("termination", ["cycle_limit", "cancel"])
 def test_full_layer_branches_keep_structural_search_until_explicit_boundary(monkeypatch, termination):
     service, request = setup_problem(low=550., high=550., samples=1)
-    request = replace(request, objectives=(replace(request.objectives[0],
-        lower_bound=.99999, upper_bound=None),), max_layers=1, max_cycles=7,
+    request = replace(request, objectives=(replace(request.objectives[0], pointwise=replace(request.objectives[0].pointwise, lower_bound=.99999, upper_bound=None)),), max_layers=1, max_cycles=7,
         max_evaluations=None, cpu_workers=1, position_samples=1)
     scans = []
 

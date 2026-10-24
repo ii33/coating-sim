@@ -22,8 +22,9 @@ class StructuralProposal:
 def reflector_objectives(request):
     """Select positive-weight reflectance objectives asking positive reflectance."""
     return tuple(o for o in request.objectives if o.metric == 'R' and o.weight > 0
-                 and ((o.mode == 'range' and o.lower_bound is not None and o.lower_bound > 0)
-                      or (o.mode == 'value' and o.target_value is not None and o.target_value > 0)))
+                 and o.pointwise.enabled and not o.mean.enabled
+                 and ((o.pointwise.mode == 'range' and o.pointwise.lower_bound is not None and o.pointwise.lower_bound > 0)
+                      or (o.pointwise.mode == 'value' and o.pointwise.target_value is not None and o.pointwise.target_value > 0)))
 
 
 def iter_reflector_proposals(request, *, epoch=0, cancel_check=lambda: None, report=lambda event: None):
@@ -40,7 +41,7 @@ def iter_reflector_proposals(request, *, epoch=0, cancel_check=lambda: None, rep
     center = math.sqrt(lo * hi)
     waves = (lo, center, hi)
     angles = sorted({a for o in objectives for a in o.angles_deg})
-    target = max(float(o.lower_bound if o.mode == 'range' else o.target_value) for o in objectives)
+    target = max(float(o.pointwise.lower_bound if o.pointwise.mode == 'range' else o.pointwise.target_value) for o in objectives)
     target = min(target, 1 - np.finfo(float).eps)
     incident = request.environment['incident_medium']
     if incident['kind'] == 'constant':
@@ -139,9 +140,10 @@ def iter_reflector_proposals(request, *, epoch=0, cancel_check=lambda: None, rep
 def bandpass_objectives(request):
     """Return T floors bracketed by disjoint positive R floors, without scoring."""
     def positive_floor(objective):
-        value = (objective.lower_bound if objective.mode == 'range'
-                 else objective.target_value if objective.mode == 'value' else None)
-        return objective.weight > 0 and value is not None and value > 0
+        value = (objective.pointwise.lower_bound if objective.pointwise.mode == 'range'
+                 else objective.pointwise.target_value if objective.pointwise.mode == 'value' else None)
+        return (objective.weight > 0 and objective.pointwise.enabled and not objective.mean.enabled
+                and value is not None and value > 0)
 
     stops = reflector_objectives(request)
     result = []
@@ -258,7 +260,7 @@ def iter_bandpass_proposals(request, *, epoch=0, cancel_check=lambda: None,
         if band_key in seen_bands:
             continue
         seen_bands.add(band_key)
-        target = max(float(o.lower_bound if o.mode == 'range' else o.target_value) for o in stops)
+        target = max(float(o.pointwise.lower_bound if o.pointwise.mode == 'range' else o.pointwise.target_value) for o in stops)
         # Small-loss, first-order Fabry-Perot linewidth estimate schedules mirror
         # counts only. It cannot assert a lossy/angular structure meets any bound.
         linewidth_reflectance = 1 - math.pi * width / center

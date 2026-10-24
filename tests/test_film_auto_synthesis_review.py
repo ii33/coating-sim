@@ -4,6 +4,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import replace
 from threading import Event
+import math
 
 import numpy as np
 import pytest
@@ -12,6 +13,7 @@ from coat_sim.core import film_auto_synthesis as synthesis
 from coat_sim.core.film_auto_synthesis import FilmSynthesisRequest
 from coat_sim.core.film_design import new_design
 from coat_sim.core.film_design_service import simulate_frozen
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationObjective
 from coat_sim.core.film_optimization_needle import FilmNeedleMaterialReference
 from coat_sim.core.film_optimization_structure import _insert_at_site, _site_records
@@ -33,10 +35,8 @@ def real_problem(polarization="s"):
     environment = new_design(design_id="independent-synthesis-review")
     environment["substrate"].update(material_id="SiO2", optical_set_id="nk")
     objectives = (
-        FilmOptimizationObjective(500, 650, 5, (0., 33., 57.), polarization, "R", "value",
-                                  target_value=.02, weight=2.5, normalization_scale=.3),
-        FilmOptimizationObjective(500, 650, 5, (0., 33., 57.), polarization, "T", "range",
-                                  lower_bound=.98, upper_bound=1., weight=.4, normalization_scale=.7),
+        FilmOptimizationObjective(500, 650, 5, (0., 33., 57.), polarization, "R", pointwise=FilmObjectiveConstraint(mode="value", target_value=.02, lower_bound=None, upper_bound=None), weight=2.5, normalization_scale=.3),
+        FilmOptimizationObjective(500, 650, 5, (0., 33., 57.), polarization, "T", pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=.98, upper_bound=1.), weight=.4, normalization_scale=.7),
     )
     request = FilmSynthesisRequest(environment, objectives,
         tuple(FilmNeedleMaterialReference(m, "nk") for m in ("MgF2", "Ta2O5")),
@@ -45,17 +45,41 @@ def real_problem(polarization="s"):
 
 
 def independent_loss(value, objectives):
+    """Integrate physical hinges independently of the production reduction.
+
+    Each angle keeps its own spectrum. Trapezoidal integration is divided by
+    band width; band weight is divided by total user weight, angle count and
+    enabled reduction count. A mean is taken before its constraint hinge.
+    """
     total = 0.
-    for row in value["score"]["errors"]:
-        objective = objectives[row.objective_index]
-        if objective.mode == "value":
-            assert objective.target_value is not None
-            violation = abs(row.actual - objective.target_value)
-        else:
-            violation = max(0.,
-                0. if objective.lower_bound is None else objective.lower_bound - row.actual,
-                0. if objective.upper_bound is None else row.actual - objective.upper_bound)
-        total += objective.weight * (violation / objective.normalization_scale) ** 2
+    total_weight = math.fsum(objective.weight for objective in objectives)
+    for response in value["responses"]:
+        objective = objectives[response["objective_index"]]
+        waves = np.asarray(response["wavelength_nm"], float)
+        actual = np.asarray(response["actual_values"], float)
+        assert waves[0] == objective.wavelength_min_nm
+        assert waves[-1] == objective.wavelength_max_nm
+        active = [name for name in ("mean", "pointwise") if getattr(objective, name).enabled]
+        mass = objective.weight / (total_weight * len(objective.angles_deg) * len(active))
+
+        def average(values, waves=waves):
+            return float(values[0]) if len(waves) == 1 else float(
+                np.trapezoid(values, waves) / (waves[-1] - waves[0]))
+
+        for name in active:
+            criterion = getattr(objective, name)
+            values = np.asarray([average(actual)]) if name == "mean" else actual
+            if criterion.mode == "value":
+                assert criterion.target_value is not None
+                violation = np.abs(values - criterion.target_value)
+            else:
+                violation = np.zeros_like(values)
+                if criterion.lower_bound is not None:
+                    violation = np.maximum(violation, criterion.lower_bound - values)
+                if criterion.upper_bound is not None:
+                    violation = np.maximum(violation, values - criterion.upper_bound)
+            squared = (violation / objective.normalization_scale) ** 2
+            total += mass * (float(squared[0]) if name == "mean" else average(squared))
     return total
 
 
@@ -100,7 +124,7 @@ def test_real_nk_multiangle_needle_derivative_and_exact_zero_equivalence(polariz
 def test_small_objective_weight_cannot_hide_a_violated_condition_or_change_tolerance():
     service, request = setup_problem(upper=.01)
     difficult = replace(request.objectives[0], weight=1e-20, normalization_scale=.1)
-    irrelevant = replace(difficult, upper_bound=1., weight=1e20)
+    irrelevant = replace(difficult, pointwise=replace(difficult.pointwise, upper_bound=1.), weight=1e20)
     result = synthesis.synthesize_film_design(service, replace(request,
         objectives=(difficult, irrelevant), max_evaluations=2))
     assert result.training_score is not None and result.validation_score is not None

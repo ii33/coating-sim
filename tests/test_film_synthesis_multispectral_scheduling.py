@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from coat_sim.core import film_auto_synthesis as synthesis
+from coat_sim.core.film_nominal_acceptance import nominal_targets_pass
 from coat_sim.core import film_synthesis_audit as audit
 from coat_sim.core import film_synthesis_global as global_search
 from coat_sim.core import film_synthesis_multispectral_minimax as minimax
@@ -22,10 +23,9 @@ pytestmark = pytest.mark.algorithm
 
 def mixed_request(**changes):
     request = hr_request(low=550., high=550., angles=(0.,), max_layers=8, absorbing=False)
-    first = replace(request.objectives[0], wavelength_samples=1, lower_bound=.99999)
+    first = replace(request.objectives[0], pointwise=replace(request.objectives[0].pointwise, lower_bound=.99999), wavelength_samples=1)
     second = replace(first, wavelength_min_nm=560., wavelength_max_nm=560.)
-    transmitted = replace(first, wavelength_min_nm=570., wavelength_max_nm=570.,
-                          metric="T", lower_bound=None, upper_bound=.05)
+    transmitted = replace(first, pointwise=replace(first.pointwise, lower_bound=None, upper_bound=.05), wavelength_min_nm=570., wavelength_max_nm=570., metric="T")
     return replace(request, objectives=(first, second, transmitted), cpu_workers=1,
                    max_evaluations=None, max_cycles=3, position_samples=1,
                    validation_samples_multiplier=2, **changes)
@@ -102,9 +102,9 @@ def test_training_failed_bare_does_not_audit_before_any_structure(monkeypatch):
 
 def test_training_passed_bare_still_gets_full_independent_audit_and_strict_acceptance(monkeypatch):
     request = hr_request(low=550., high=550., angles=(0.,), absorbing=False)
-    objective = replace(request.objectives[0], wavelength_samples=1, lower_bound=.01)
-    request = replace(request, objectives=(objective,), strict_lower_bound_objective_indices=(0,),
-                      max_evaluations=3)
+    objective = replace(request.objectives[0], pointwise=replace(request.objectives[0].pointwise,
+        lower_bound=.01, strict_lower=True), wavelength_samples=1)
+    request = replace(request, objectives=(objective,), max_evaluations=3)
     original_audit = audit.audit_frozen_synthesis_candidate
     audited = []
     def checked(frozen, design, **kwargs):
@@ -120,7 +120,7 @@ def test_training_passed_bare_still_gets_full_independent_audit_and_strict_accep
     assert result.evaluations == 2 and result.validation_evaluations == 1
     assert len(audited) == 1 and audited[0]['design']['front_layers'] == []
     assert audited[0]['audit']['physical_evaluations'] > 0
-    assert synthesis.strict_lower_bounds_pass(request, result.validation_score)
+    assert nominal_targets_pass(request, result.validation_score)
     assert_audit_identity(result)
 
 
@@ -130,8 +130,9 @@ def test_bare_on_strict_lower_boundary_cannot_gain_acceptance_or_presearch_audit
     request = replace(request, objectives=(objective,))
     raw = evaluate_frozen_structure_candidate(synthesis._proxy(request), request.environment,
                                               with_jacobian=False)
-    objective = replace(objective, lower_bound=raw['score']['errors'][0].actual)
-    request = replace(request, objectives=(objective,), strict_lower_bound_objective_indices=(0,))
+    objective = replace(objective, pointwise=replace(objective.pointwise, lower_bound=raw['score']['errors'][0].actual))
+    objective = replace(objective, pointwise=replace(objective.pointwise, strict_lower=True))
+    request = replace(request, objectives=(objective,))
     cancel = Event()
     def classic(frozen, *, cancel_check, **kwargs):
         cancel.set()

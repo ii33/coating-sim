@@ -4,13 +4,14 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import asdict, fields, replace
 import math
+import json
 from typing import Any, Mapping, cast
 
 from .film_auto_synthesis import (FilmSynthesisRequest, _validated,
                                   freeze_film_synthesis_request)
-from .film_nominal_acceptance import (ACCEPTANCE_SEMANTICS, nominal_condition_pass,
-    nominal_targets_pass, solver_acceptable, solver_condition_acceptable)
-from .film_optimization import FilmOptimizationObjective
+from .film_nominal_acceptance import (ACCEPTANCE_SEMANTICS, nominal_targets_pass, solver_acceptable)
+from .film_synthesis_audit import objective_constraint_status
+from .film_objective_payload import objective_from_payload
 from .film_optimization_needle import FilmNeedleMaterialReference, _candidate_payload_from_materials
 from .film_physical_structures import structure_spec_from_mapping, structure_spec_to_mapping
 from .film_physical_structures import generate_physical_structure
@@ -19,7 +20,7 @@ from .film_synthesis_absorption import annotate_synthesis_design, synthesis_abso
 
 REQUEST_KIND = "coat_sim.film_synthesis_request"
 RESULT_KIND = "coat_sim.film_synthesis_result"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class FilmSynthesisPayloadError(ValueError):
@@ -51,19 +52,14 @@ def film_synthesis_request_from_payload(payload: Mapping[str, Any], *, require_f
     if not isinstance(raw, Mapping):
         raise FilmSynthesisPayloadError("request must be an object")
     allowed = {item.name for item in fields(FilmSynthesisRequest)}
-    if set(raw) - allowed:
-        raise FilmSynthesisPayloadError("request contains unknown fields")
+    if set(raw) != allowed:
+        raise FilmSynthesisPayloadError("current synthesis request requires every field and no unknown fields")
     data = deepcopy(dict(raw))
     try:
-        data["objectives"] = tuple(FilmOptimizationObjective(**item) for item in data["objectives"])
+        data["objectives"] = tuple(objective_from_payload(item) for item in data["objectives"])
         data["candidate_materials"] = tuple(FilmNeedleMaterialReference(**item)
                                              for item in data["candidate_materials"])
         data["seed_designs"] = tuple(deepcopy(item) for item in data.get("seed_designs", ()))
-        for name in ("strict_lower_bound_objective_indices", "strict_upper_bound_objective_indices"):
-            strict_indices = data.get(name, ())
-            if not isinstance(strict_indices, (tuple, list)):
-                raise ValueError(f"{name} must be an array")
-            data[name] = tuple(strict_indices)
         request = _validated(FilmSynthesisRequest(**data))
     except (KeyError, TypeError, ValueError) as exc:
         raise FilmSynthesisPayloadError(f"invalid synthesis request: {exc}") from exc
@@ -140,8 +136,7 @@ def film_synthesis_request_to_payload(request_id: str, request: FilmSynthesisReq
         raise FilmSynthesisPayloadError("only frozen requests can be serialized for execution")
     if request.randomize_template_search and request.structure_search_seed is None:
         raise FilmSynthesisPayloadError("frozen template search requires a resolved structure_search_seed")
-    raw_request = asdict(request)
-    raw_request["strict_upper_bound_objective_indices"] = list(request.strict_upper_bound_objective_indices)
+    raw_request = json.loads(json.dumps(asdict(request), allow_nan=False))
     return {"schema_version": SCHEMA_VERSION, "kind": REQUEST_KIND,
             "request_id": request_id, "request": raw_request,
             "physical_structures": list(_normalize_specs(physical_structures))}
@@ -253,27 +248,8 @@ def film_synthesis_result_to_payload(request_id: str, result: Any, *, audit: Map
     if audit_metadata and audit_metadata.get("continuous_certificate") is False:
         warnings.append("The audit samples the stated domain and is not a continuous-spectrum certificate.")
     objectives = tuple(frozen.objectives)
-    per_objective = deepcopy(audit_metadata.get("objective_status", []))
-    for status in per_objective:
-        index = status["objective_index"]
-        conditions = [row for row in body.get("validation_score", {}).get("errors", ())
-                      if row["objective_index"] == index]
-        strict_lower = index in frozen.strict_lower_bound_objective_indices
-        strict_upper = index in frozen.strict_upper_bound_objective_indices
-        status["targets_met"] = bool(conditions) and all(nominal_condition_pass(
-            objectives[index], row["actual"], strict_lower=strict_lower, strict_upper=strict_upper)
-            for row in conditions)
-        status["solver_acceptable"] = bool(conditions) and all(solver_condition_acceptable(
-            objectives[index], row["actual"], frozen.acceptable_normalized_error,
-            strict_lower=strict_lower, strict_upper=strict_upper) for row in conditions)
-        if strict_lower:
-            status["strict_lower_bound"] = True
-            status["strict_lower_bound_met"] = bool(conditions) and all(
-                row["actual"] > objectives[index].lower_bound for row in conditions)
-        if strict_upper:
-            status["strict_upper_bound"] = True
-            status["strict_upper_bound_met"] = bool(conditions) and all(
-                row["actual"] < objectives[index].upper_bound for row in conditions)
+    per_objective = (objective_constraint_status(objectives, validation.get("errors", ()),
+        frozen.acceptable_normalized_error) if audit_available else [])
     retained_training = (
         (result.state == "cancelled"
          and result.candidate_provenance.get("selection") == "completed_training_at_cancel")
@@ -283,26 +259,13 @@ def film_synthesis_result_to_payload(request_id: str, result: Any, *, audit: Map
     if not audit_available and result.candidate_design is not None and retained_training:
         # Present saved training evidence without claiming an independent audit.
         saved_errors = body.get("training_score", {}).get("errors", [])
-        for index, objective in enumerate(objectives):
-            conditions = [row for row in saved_errors if row["objective_index"] == index]
-            if not conditions:
-                continue
-            worst = max(conditions, key=lambda row: row["normalized_violation"])
-            per_objective.append({"objective_index": index, "metric": objective.metric,
-                "wavelength_min_nm": objective.wavelength_min_nm,
-                "wavelength_max_nm": objective.wavelength_max_nm,
-                "discrete_line": objective.wavelength_min_nm == objective.wavelength_max_nm,
-                "score_scope": "training", "audit_available": False, "targets_met": None,
-                "worst_wavelength_nm": worst["wavelength_nm"], "worst_angle_deg": worst["angle_deg"],
-                "worst_actual": worst["actual"], "max_normalized_error": None,
-                "training_max_normalized_error": worst["normalized_violation"],
-                "training_targets_met": all(nominal_condition_pass(objective, row["actual"],
-                    strict_lower=index in frozen.strict_lower_bound_objective_indices,
-                    strict_upper=index in frozen.strict_upper_bound_objective_indices) for row in conditions),
-                "training_solver_acceptable": all(solver_condition_acceptable(objective, row["actual"],
-                    frozen.acceptable_normalized_error,
-                    strict_lower=index in frozen.strict_lower_bound_objective_indices,
-                    strict_upper=index in frozen.strict_upper_bound_objective_indices) for row in conditions)})
+        per_objective = objective_constraint_status(objectives, saved_errors,
+            frozen.acceptable_normalized_error)
+        for status in per_objective:
+            status.update(score_scope="training", audit_available=False,
+                training_targets_met=status["targets_met"],
+                training_solver_acceptable=status["solver_acceptable"],
+                targets_met=None, solver_acceptable=None)
     review = {"absorption_assumption": deepcopy(absorption), "termination": {"state": result.state, "reason": result.termination_reason},
         "targets_met": body["targets_met"],
         "solver_acceptable": physical_solver_acceptable,

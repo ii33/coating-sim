@@ -18,6 +18,7 @@ import numpy as np
 from .film_design import MAX_LAYERS, physical_thickness_nm, validate_design
 from .film_optimization import (
     FilmConditionError,
+    FilmObjectiveCoverage,
     FilmOptimizationObjective,
     FilmOptimizationProgress,
     FilmOptimizationRequest,
@@ -30,7 +31,8 @@ from .film_optimization import (
     optimize_film_design,
 )
 from .optical_constants import prepare_optical_set
-from .film_optimization_scoring import candidate_key, score_condition, weighted_rms_error
+from .film_optimization_scoring import reduction_score
+from .film_objective_criteria import reduce_objective_responses, validate_objective_criteria
 
 
 @dataclass(frozen=True)
@@ -104,6 +106,22 @@ class FilmNeedleOptimizationResult:
     @property
     def targets_met(self) -> bool:
         return self.base_result.targets_met
+
+    @property
+    def solver_acceptable(self) -> bool:
+        return self.base_result.solver_acceptable
+
+    @property
+    def raw_coverage(self) -> tuple[FilmObjectiveCoverage, ...]:
+        return self.base_result.raw_coverage
+
+    @property
+    def validation_solver_acceptable(self) -> bool | None:
+        return self.base_result.validation_solver_acceptable
+
+    @property
+    def validation_raw_coverage(self) -> tuple[FilmObjectiveCoverage, ...]:
+        return self.base_result.validation_raw_coverage
 
     @property
     def per_condition_errors(self) -> tuple[FilmConditionError, ...]:
@@ -384,34 +402,13 @@ def _normalize_objectives(
             raise ValueError("polarization must be s, p or unpolarized")
         if objective.metric not in ("R", "T"):
             raise ValueError("metric must be R or T")
-        if objective.mode not in ("value", "range"):
-            raise ValueError("objective mode must be value or range")
-        weight = _finite(objective.weight, "weight")
-        scale = _finite(objective.normalization_scale, "normalization_scale")
-        if weight <= 0 or scale <= 0:
-            raise ValueError("objective weight and normalization_scale must be positive")
-        if objective.mode == "value":
-            if objective.target_value is None or objective.lower_bound is not None or objective.upper_bound is not None:
-                raise ValueError("value objectives require target_value and no bounds")
-            target = _finite(objective.target_value, "target_value")
-            if not 0 <= target <= 1:
-                raise ValueError("R/T target_value must be in [0, 1]")
-            normalized.append(FilmOptimizationObjective(
-                low, high, samples, angles, objective.polarization, objective.metric,
-                "value", target, None, None, weight, scale))
-        else:
-            if objective.target_value is not None or (
-                    objective.lower_bound is None and objective.upper_bound is None):
-                raise ValueError("range objectives require one or both bounds and no target_value")
-            lower = None if objective.lower_bound is None else _finite(objective.lower_bound, "lower_bound")
-            upper = None if objective.upper_bound is None else _finite(objective.upper_bound, "upper_bound")
-            if ((lower is not None and not 0 <= lower <= 1) or
-                    (upper is not None and not 0 <= upper <= 1) or
-                    (lower is not None and upper is not None and lower > upper)):
-                raise ValueError("R/T range bounds must lie in [0, 1] and be ordered")
-            normalized.append(FilmOptimizationObjective(
-                low, high, samples, angles, objective.polarization, objective.metric,
-                "range", None, lower, upper, weight, scale))
+        validate_objective_criteria(objective)
+        normalized.append(replace(
+            objective, wavelength_min_nm=low, wavelength_max_nm=high,
+            wavelength_samples=samples, angles_deg=angles,
+            weight=_finite(objective.weight, "weight"),
+            normalization_scale=_finite(objective.normalization_scale, "normalization_scale"),
+        ))
     return tuple(normalized)
 
 
@@ -423,11 +420,7 @@ def _score_design(
     acceptable: float = 1e-3,
     cancel_event: Any = None,
 ) -> dict[str, Any]:
-    errors: list[FilmConditionError] = []
-    normalized_errors: list[float] = []
-    condition_weights: list[float] = []
-    max_error = 0.0
-    weighted_max_error = 0.0
+    responses: list[dict[str, Any]] = []
     for objective_index, objective in enumerate(objectives):
         waves = np.linspace(objective.wavelength_min_nm,
                             objective.wavelength_max_nm,
@@ -448,46 +441,19 @@ def _score_design(
                 actual_waves = np.asarray(response["wavelength_nm"], dtype=float)
                 if (actual_values.shape != chunk_waves.shape or actual_waves.shape != chunk_waves.shape or
                         not np.all(np.isfinite(actual_values)) or
+                        actual_waves[0] != chunk_waves[0] or actual_waves[-1] != chunk_waves[-1] or
+                        np.any(np.diff(actual_waves) <= 0) or
                         not np.allclose(actual_waves, chunk_waves, rtol=0, atol=1e-9)):
                     raise ValueError("film simulation returned invalid objective samples")
-                for wavelength, actual_value in zip(chunk_waves, actual_values):
-                    actual = float(actual_value)
-                    if objective.mode == "value":
-                        violation = abs(actual - float(objective.target_value))
-                    else:
-                        violation = max(
-                            0.0,
-                            (float(objective.lower_bound) - actual
-                             if objective.lower_bound is not None else 0.0),
-                            (actual - float(objective.upper_bound)
-                             if objective.upper_bound is not None else 0.0),
-                        )
-                    normalized_error, weighted_error = score_condition(
-                        violation, objective.normalization_scale, objective.weight)
-                    max_error = max(max_error, normalized_error)
-                    weighted_max_error = max(weighted_max_error, weighted_error)
-                    normalized_errors.append(normalized_error)
-                    condition_weights.append(objective.weight)
-                    errors.append(FilmConditionError(
-                        objective_index=objective_index,
-                        wavelength_nm=float(wavelength), angle_deg=float(angle),
-                        polarization=objective.polarization, metric=objective.metric,
-                        actual=actual, target_value=objective.target_value,
-                        lower_bound=objective.lower_bound, upper_bound=objective.upper_bound,
-                        normalized_violation=normalized_error,
-                        weighted_normalized_violation=weighted_error,
-                    ))
+                responses.append({
+                    "objective_index": objective_index, "angle_deg": float(angle),
+                    "wavelength_nm": chunk_waves, "actual_values": actual_values,
+                })
                 if cancel_event is not None and cancel_event.is_set():
                     raise _NeedleValidationCancelled()
-    weighted_rms = weighted_rms_error(normalized_errors, condition_weights)
-    return {
-        "design": deepcopy(design),
-        "errors": tuple(errors),
-        "max_error": max_error,
-        "weighted_max_error": weighted_max_error,
-        "weighted_rms_error": weighted_rms,
-        "key": candidate_key(max_error, weighted_rms, acceptable),
-    }
+    reduction = reduce_objective_responses(objectives, responses, tolerance=acceptable)
+    return {"design": deepcopy(design), **reduction_score(reduction, acceptable)}
+
 
 
 class _NeedleValidationCancelled(Exception):
@@ -508,7 +474,7 @@ def _result_from_score(
     max_error = float(score["max_error"])
     if not message:
         message = ("all sampled conditions meet the requested normalized error"
-                   if max_error <= acceptable else
+                   if score["solver_acceptable"] else
                    "bounded structure trial retained the exact-scored candidate")
     return FilmOptimizationResult(
         state=state, design_revision=request.design_revision,
@@ -517,14 +483,16 @@ def _result_from_score(
         max_normalized_error=max_error,
         weighted_max_normalized_error=float(score["weighted_max_error"]),
         weighted_rms_error=float(score["weighted_rms_error"]),
-        targets_met=bool(max_error <= acceptable),
+        targets_met=bool(score["nominal_pass"]),
+        solver_acceptable=bool(score["solver_acceptable"]),
+        raw_coverage=score["coverage"],
         per_condition_errors=tuple(score["errors"]),
         iterations=iterations, evaluations=evaluations, message=message,
     )
 
 
 def _score_key(result: FilmOptimizationResult) -> tuple[float, float]:
-    return (0.0 if result.targets_met else 1.0, result.weighted_rms_error)
+    return (0.0 if result.solver_acceptable else 1.0, result.weighted_rms_error)
 
 
 def _deterministic_layer_id(
@@ -910,7 +878,7 @@ def optimize_film_design_with_needle(
             )
             if checkpoint_callback is not None:
                 checkpoint_callback({
-                    "schema_version": 1,
+                    "schema_version": 2,
                     "kind": "coat_sim.film_optimization_checkpoint",
                     "design_revision": base_request.design_revision,
                     "best_design": deepcopy(incumbent.best_design),
@@ -919,7 +887,9 @@ def optimize_film_design_with_needle(
                     "weighted_max_normalized_error": incumbent.weighted_max_normalized_error,
                     "weighted_rms_error": incumbent.weighted_rms_error,
                     "targets_met": incumbent.targets_met,
+                    "solver_acceptable": incumbent.solver_acceptable,
                     "per_condition_errors": [asdict(row) for row in incumbent.per_condition_errors],
+                    "raw_coverage": [asdict(row) for row in incumbent.raw_coverage],
                     "iterations": total_iterations,
                     "evaluations": total_evaluations,
                     "failed_evaluations": failed_evaluations,
@@ -935,17 +905,21 @@ def optimize_film_design_with_needle(
     validation_max_error: float | None = None
     validation_weighted_rms: float | None = None
     validation_targets_met: bool | None = None
+    validation_solver_acceptable: bool | None = None
+    validation_raw_coverage: tuple[FilmObjectiveCoverage, ...] = ()
     validation_errors: tuple[FilmConditionError, ...] = ()
     validation_message = ""
     can_reuse_validation = bool(
         validation_source is not None and validation_source.validation_complete and
         validation_source.best_design == incumbent.best_design
     )
-    if can_reuse_validation:
+    if can_reuse_validation and validation_source is not None:
         validation_complete = True
         validation_max_error = validation_source.validation_max_normalized_error
         validation_weighted_rms = validation_source.validation_weighted_rms_error
         validation_targets_met = validation_source.validation_targets_met
+        validation_solver_acceptable = validation_source.validation_solver_acceptable
+        validation_raw_coverage = validation_source.validation_raw_coverage
         validation_errors = validation_source.validation_per_condition_errors
         validation_message = validation_source.validation_message
     elif state == "cancelled":
@@ -982,9 +956,10 @@ def optimize_film_design_with_needle(
             validation_complete = True
             validation_max_error = float(validation_score["max_error"])
             validation_weighted_rms = float(validation_score["weighted_rms_error"])
-            validation_targets_met = bool(
-                validation_max_error <= base_request.acceptable_normalized_error)
+            validation_targets_met = bool(validation_score["nominal_pass"])
+            validation_solver_acceptable = bool(validation_score["solver_acceptable"])
             validation_errors = tuple(validation_score["errors"])
+            validation_raw_coverage = validation_score["coverage"]
             validation_message = (
                 "all denser holdout conditions meet the requested normalized error"
                 if validation_targets_met else
@@ -1025,6 +1000,8 @@ def optimize_film_design_with_needle(
         validation_max_normalized_error=validation_max_error,
         validation_weighted_rms_error=validation_weighted_rms,
         validation_targets_met=validation_targets_met,
+        validation_solver_acceptable=validation_solver_acceptable,
+        validation_raw_coverage=validation_raw_coverage,
         validation_per_condition_errors=validation_errors,
         validation_message=validation_message,
     )

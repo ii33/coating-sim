@@ -14,6 +14,7 @@ from PySide6.QtQuick import QQuickItem
 from PySide6.QtTest import QTest
 
 from coat_sim.core.film_candidate_display import CandidateDisplayObserver
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint, FilmObjectiveCoverage
 from coat_sim.core.film_optimization import FilmConditionError, FilmOptimizationObjective, FilmOptimizationResult
 from coat_sim.ui.film_candidate_display_controller import FilmCandidateDisplayController
 from tests.film_structure_fixtures import fixture
@@ -29,7 +30,7 @@ def app():
 
 
 def packet(config, *, sequence=2, terminal=False, control_sequence=0, job_id="display-job", digest="a" * 64):
-    objective = FilmOptimizationObjective(550.0, 560.0, 3, mode="range", upper_bound=0.1)
+    objective = FilmOptimizationObjective(550.0, 560.0, 3, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=0.1))
     values: list[dict[str, Any]] = []
     observer = CandidateDisplayObserver(context_id="frozen-display-context", objectives=(objective,),
         control_provider=lambda: {"enabled": True}, publish_callback=values.append,
@@ -39,17 +40,20 @@ def packet(config, *, sequence=2, terminal=False, control_sequence=0, job_id="di
 
     def rows(actual):
         return tuple(FilmConditionError(0, wave, 0.0, "unpolarized", "R", actual, None,
-            None, 0.1, max(0.0, actual - 0.1), max(0.0, actual - 0.1)) for wave in (550., 555., 560.))
+            None, 0.1, max(0.0, actual - 0.1), max(0.0, actual - 0.1),
+            wavelength_min_nm=550., wavelength_max_nm=560.) for wave in (550., 555., 560.))
 
     observer.record(design, weighted_rms_error=0.1, max_normalized_error=0.1,
-        condition_rows=rows(0.2), physical_thickness_nm={"test-layer": 80.0}, is_best=True,
-        source="ideal_sensitivity_v2", guard_pass=True, sensitivity_objective=1.0,
+        condition_rows=rows(0.2), raw_coverage=(FilmObjectiveCoverage(0, 0., (550., 555., 560.), (0.2,) * 3),),
+        physical_thickness_nm={"test-layer": 80.0}, is_best=True,
+        source="ideal_sensitivity", guard_pass=True, sensitivity_objective=1.0,
         usable_candidate=True)
     changed = deepcopy(design)
     changed["front_layers"][0]["thickness"]["value"] = 90.0
     observer.record(changed, weighted_rms_error=0.0, max_normalized_error=0.0,
-        condition_rows=rows(0.05), physical_thickness_nm={"test-layer": 90.0},
-        source="ideal_sensitivity_v2", guard_pass=False, sensitivity_objective=2.0,
+        condition_rows=rows(0.05), raw_coverage=(FilmObjectiveCoverage(0, 0., (550., 555., 560.), (0.05,) * 3),),
+        physical_thickness_nm={"test-layer": 90.0},
+        source="ideal_sensitivity", guard_pass=False, sensitivity_objective=2.0,
         usable_candidate=False)
     core = deepcopy(values[-1])
     core.update(sequence=sequence, terminal=terminal, state="completed" if terminal else "running")
@@ -259,7 +263,8 @@ def test_real_qml_formal_curves_survive_off_waiting_terminal_cancel_and_old_live
             rows = tuple(FilmConditionError(0, wave, 0., "unpolarized", "R", actual,
                 None, None, 0.1, 0.2, 0.2) for wave in (550., 555., 560.))
             controller._result = FilmOptimizationResult("completed", 19, deepcopy(design),
-                {design["front_layers"][0]["id"]: 100.}, 0.2, 0.2, 0.2, False, rows, 3, 7)
+                {design["front_layers"][0]["id"]: 100.}, 0.2, 0.2, 0.2, False, rows, 3, 7,
+                raw_coverage=(FilmObjectiveCoverage(0, 0., (550., 555., 560.), (actual,) * 3),))
             controller._baseline = {(0, 0.): {"actual": [0.7, 0.6, 0.5]}}
             controller.plotDataChanged.emit()
             controller.changed.emit()

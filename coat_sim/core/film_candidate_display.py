@@ -12,6 +12,7 @@ import json
 import math
 from time import monotonic
 from typing import Mapping
+from types import SimpleNamespace
 
 from .film_nominal_acceptance import nominal_condition_pass
 
@@ -167,17 +168,16 @@ def refresh_candidate_display(observer, *, spectrum_provider=None):
 class CandidateDisplayObserver:
     """Optional observer with one-Hz lazy preview and an independent top ten.
 
-    ``condition_rows`` must be the producer's complete immutable tuple of frozen
-    FilmConditionError records. References remain valid after a newer incumbent
-    is found, allowing the next due frame to show the true incumbent without
-    copying full spectra between frames. Only recorded objective metrics exist;
+    ``raw_coverage`` is the producer's complete immutable raw spectrum evidence;
+    ``condition_rows`` contains its enabled reduced FilmConditionError records.
+    References remain valid after a newer incumbent is found, allowing the next
+    due frame to show the true incumbent without copying full spectra. Only recorded objective metrics exist;
     switching to an uncomputed condition reports waiting rather than recomputing.
     """
 
     def __init__(self, *, context_id, objectives, control_provider,
                  publish_callback, score_config=None, clock=monotonic,
-                 scope="training", strict_lower_bound_objective_indices=(),
-                 strict_upper_bound_objective_indices=()):
+                 scope="training"):
         if not isinstance(context_id, str) or not context_id or not isinstance(scope, str) or not scope:
             raise ValueError("display context and scope must be explicit")
         self.context_id, self.scope = context_id, scope
@@ -187,9 +187,10 @@ class CandidateDisplayObserver:
         if not isinstance(self.score_config, CandidateScoreConfig):
             raise ValueError("invalid display score configuration")
         self.control_provider, self.publish_callback, self.clock = control_provider, publish_callback, clock
-        self.strict_lower = frozenset(strict_lower_bound_objective_indices)
-        self.strict_upper = frozenset(strict_upper_bound_objective_indices)
-        self.expected_conditions = sum(o.wavelength_samples * len(o.angles_deg) for o in self.objectives)
+        self.expected_conditions = sum((int(o.mean.enabled) + int(o.pointwise.enabled) * o.wavelength_samples)
+                                       * len(o.angles_deg) for o in self.objectives)
+        self._coverage_request = SimpleNamespace(objectives=self.objectives,
+                                                acceptable_normalized_error=0.0)
         self._top = {}
         self._current = self._best = None
         self._last_publish = -math.inf
@@ -201,39 +202,23 @@ class CandidateDisplayObserver:
         # Observer-local JSON encodes, excluding the separate transport layer.
         self.spectral_serializations = 0
 
-    def _original_rows(self, rows):
-        cursor = 0
-        nominal = True
-        for index, objective in enumerate(self.objectives):
-            count = objective.wavelength_samples
-            step = ((objective.wavelength_max_nm - objective.wavelength_min_nm) / (count - 1)
-                    if count > 1 else 0.0)
-            for angle in objective.angles_deg:
-                for point in range(count):
-                    row = rows[cursor]
-                    cursor += 1
-                    expected = (objective.wavelength_max_nm if point == count - 1 and count > 1
-                                else objective.wavelength_min_nm + point * step)
-                    actual_wave = _field(row, "wavelength_nm")
-                    if (type(row) is not type(rows[0]) or _field(row, "objective_index") != index
-                            or _field(row, "angle_deg") != angle or not _finite(actual_wave)
-                            or abs(actual_wave - expected) > 4 * max(math.ulp(actual_wave), math.ulp(expected))
-                            or any(_field(row, key) != getattr(objective, key) for key in
-                                   ("polarization", "metric", "target_value", "lower_bound", "upper_bound"))
-                            or not _finite(_field(row, "actual"))):
-                        return None
-                    if nominal:
-                        nominal = nominal_condition_pass(objective, _field(row, "actual"),
-                            strict_lower=index in self.strict_lower,
-                            strict_upper=index in self.strict_upper)
-        return nominal
-
+    def _original_rows(self, rows, coverage, maximum, rms):
+        from .film_nominal_acceptance import complete_original_score
+        from .film_objective_criteria import reduce_objective_responses
+        if rows is None:
+            reduced = reduce_objective_responses(self.objectives, coverage)
+            rows = reduced.conditions
+        score = dict(errors=rows, coverage=coverage, max_error=maximum, weighted_rms_error=rms)
+        if not complete_original_score(self._coverage_request, score):
+            return None
+        return all(nominal_condition_pass(getattr(self.objectives[_field(row, "objective_index")],
+            _field(row, "reduction")), _field(row, "actual")) for row in rows)
     def record(self, design, *, weighted_rms_error, max_normalized_error,
                condition_rows, physical_thickness_nm, is_best=False,
                is_current=True, selection=None, iterations=0, evaluations=0,
                scope=None, source=None, guard_pass=None, sensitivity_objective=None,
                normalized_sensitivity_objective=None, usable_candidate=None, nominal_pass=None,
-               condition_count=None, publish=True, spectrum_provider=None):
+               condition_count=None, raw_coverage=None, publish=True, spectrum_provider=None):
         """Observe only a complete, accepted normal candidate; never a probe.
 
         ``is_best`` is the optimizer's actual incumbent decision, not display
@@ -246,13 +231,21 @@ class CandidateDisplayObserver:
             maximum = float(max_normalized_error)
             if not math.isfinite(maximum) or maximum < 0:
                 return
+            from .film_objective_criteria import FilmObjectiveCoverage
+            if (type(raw_coverage) is not tuple or not raw_coverage
+                    or not all(type(row) is FilmObjectiveCoverage
+                               and type(row.wavelength_nm) is tuple and type(row.actual_values) is tuple
+                               for row in raw_coverage)):
+                return
             if condition_rows is None:
-                # Complete batch scorers may retain only exact nominal/scalar
-                # evidence. Missing spectra are explicitly unavailable, not 0.
+                # Batch scorers may omit condition rows, while keeping the
+                # complete immutable raw spectrum as independently checked evidence.
                 if (type(nominal_pass) is not bool or type(condition_count) is not int
                         or condition_count != self.expected_conditions):
                     return
-                nominal = nominal_pass
+                nominal = self._original_rows(None, raw_coverage, maximum, weighted_rms_error)
+                if nominal is None or nominal != nominal_pass:
+                    return
             else:
                 if (type(condition_rows) is not tuple or len(condition_rows) != self.expected_conditions
                         or not condition_rows):
@@ -265,7 +258,10 @@ class CandidateDisplayObserver:
                 # tuple. Its already checked grid/nominal facts cannot change.
                 known = next((retained for retained in (self._current, self._best)
                               if retained is not None and retained[1] is condition_rows), None)
-                nominal = known[0]["nominal_pass"] if known is not None else self._original_rows(condition_rows)
+                nominal = (known[0]["nominal_pass"] if known is not None and known[2] is raw_coverage
+                           and known[0]["max_normalized_error"] == maximum
+                           and known[0]["weighted_rms_error"] == weighted_rms_error else
+                           self._original_rows(condition_rows, raw_coverage, maximum, weighted_rms_error))
                 if nominal is None:
                     return
             count = sum(len(design.get(side, ())) for side in ("front_layers", "back_layers"))
@@ -298,7 +294,7 @@ class CandidateDisplayObserver:
             if isinstance(source, str) and len(source) <= 64:
                 summary["source"] = source
             summary["candidate_eligible"] = nominal and summary.get("guard_pass", True)
-            retained = (summary, condition_rows)
+            retained = (summary, condition_rows, raw_coverage)
             if is_current:
                 self._current = retained
             if is_best:
@@ -318,28 +314,21 @@ class CandidateDisplayObserver:
     def _slot(self, retained, selection, limit, *, spectrum_provider=None):
         if retained is None:
             return None
-        summary, rows = retained
+        summary, rows, coverage = retained
         result = dict(summary)
-        if rows is None:
-            spectrum = spectrum_provider(selection, limit) if spectrum_provider is not None else None
-            if spectrum is not None:
-                self.spectral_snapshot_builds += 1
-                self.spectral_points_copied += len(spectrum.get("actual", ()))
-            result.update(availability="waiting" if spectrum is None else "available", spectrum=spectrum)
-            return result
         objective_index = selection["objective_index"]
         objective = self.objectives[objective_index]
         if selection["angle_deg"] not in objective.angles_deg or selection["metric"] != objective.metric:
             result.update(availability="waiting", spectrum=None)
             return result
         count = objective.wavelength_samples
-        offset = sum(o.wavelength_samples * len(o.angles_deg) for o in self.objectives[:objective_index])
-        offset += objective.angles_deg.index(selection["angle_deg"]) * count
+        raw = next(row for row in coverage if row.objective_index == objective_index
+                   and row.angle_deg == selection["angle_deg"])
         indices = (list(range(count)) if count <= limit else
                    [i * (count - 1) // (limit - 1) for i in range(limit)])
         result.update(availability="available", spectrum={
-            "wavelength_nm": [_field(rows[offset + i], "wavelength_nm") for i in indices],
-            "actual": [_field(rows[offset + i], "actual") for i in indices],
+            "wavelength_nm": [raw.wavelength_nm[i] for i in indices],
+            "actual": [raw.actual_values[i] for i in indices],
             "indices": indices, "original_point_count": count})
         self.spectral_snapshot_builds += 1
         self.spectral_points_copied += len(indices)

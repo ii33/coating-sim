@@ -109,11 +109,11 @@ def _type(scene: _Scene, field_name: str, text: str, *, commit="enter", unchange
 
 def _bounds(controller):
     row = cast(dict[str, Any], controller.property("selectedObjective"))
-    return float(row["lower_bound_percent"]), float(row["upper_bound_percent"])
+    return float(row["pointwise"]["lower_bound_percent"]), float(row["pointwise"]["upper_bound_percent"])
 
 
 def _select_target(scene: _Scene, index: int):
-    item = scene.evaluate(scene.item("filmOptimizationObjectiveList"), f"itemAtIndex({index})")
+    item = scene.visual_item(scene.item("filmOptimizationObjectiveList"), f"itemAtIndex({index})")
     assert isinstance(item, QQuickItem)
     scene.click(item)
 
@@ -154,8 +154,8 @@ def test_reversed_intermediate_pair_is_not_clamped_and_other_endpoint_can_repair
     assert _bounds(controller) == expected
     assert controller.property("canStart"), controller.property("error")
     objective = freeze_film_synthesis_request(_service, controller._build_synthesis_request()).objectives[0]
-    assert objective.lower_bound == expected[0] / 100.
-    assert objective.upper_bound == expected[1] / 100.
+    assert objective.pointwise.lower_bound == expected[0] / 100.
+    assert objective.pointwise.upper_bound == expected[1] / 100.
 
 
 @pytest.mark.parametrize("draft", ["", "1e", "-0.25", "101"])
@@ -216,18 +216,18 @@ def test_target_switch_and_actual_file_reopen_keep_focused_pair_in_configuration
         controller.exportOptimizationConfiguration()
     scene.click(scene.item("filmOptimizationWeightField"))
     configuration = controller.exportOptimizationConfiguration()
-    assert configuration["objectives"][1]["upper_bound_percent"] == 3.875
+    assert configuration["objectives"][1]["pointwise"]["upper_bound_percent"] == 3.875
     path = tmp_path / "actual-bounds.cfilm"
     assert source.saveFilePath(str(path))
     saved = json.loads(path.read_text(encoding="utf-8"))
-    assert saved["workflow_settings"]["optimization"]["objectives"][1]["upper_bound_percent"] == 3.875
+    assert saved["workflow_settings"]["optimization"]["objectives"][1]["pointwise"]["upper_bound_percent"] == 3.875
     _service, _reopened, restored, restored_scene = bounds_gui(path=path)
     assert restored.exportOptimizationConfiguration() == configuration
     _select_target(restored_scene, 1)
     assert _bounds(restored) == (2.125, 3.875)
     request = freeze_film_synthesis_request(service, restored._build_synthesis_request())
-    assert request.objectives[0].lower_bound == .1275
-    assert request.objectives[1].upper_bound == .03875
+    assert request.objectives[0].pointwise.lower_bound == .1275
+    assert request.objectives[1].pointwise.upper_bound == .03875
     assert restored.property("canStart"), restored.property("error")
 
 
@@ -249,9 +249,9 @@ def test_zero_and_equal_bounds_freeze_as_exact_value_in_ordinary_and_n0_modes(bo
         assert len(ordinary.design_snapshot["front_layers"]) == 1
         assert len(ordinary.variables) == 1
         objective = ordinary.objectives[0]
-    assert objective.mode == "value"
-    assert objective.target_value == float(target) / 100.
-    assert objective.lower_bound is None and objective.upper_bound is None
+    assert objective.pointwise.mode == "value"
+    assert objective.pointwise.target_value == float(target) / 100.
+    assert objective.pointwise.lower_bound is None and objective.pointwise.upper_bound is None
 
 
 @pytest.mark.parametrize("mode", ["fixed_topology", "synthesis"])
@@ -271,8 +271,8 @@ def test_real_gui_start_completes_with_edited_bounds_in_typed_queue(bounds_gui, 
     payload = spec["parameters"]["payload"]
     frozen = payload["request"]["request"] if mode == "synthesis" else payload["request"]
     objective = frozen["objectives"][0]
-    assert objective["mode"] == "range"
-    assert objective["lower_bound"] == 0. and objective["upper_bound"] == .125
+    assert objective["pointwise"]["mode"] == "range"
+    assert objective["pointwise"]["lower_bound"] == 0. and objective["pointwise"]["upper_bound"] == .125
     assert objective["wavelength_min_nm"] == objective["wavelength_max_nm"] == 550.
     assert spec["executor"] == ("film_synthesis" if mode == "synthesis" else "film_optimization")
     if mode == "synthesis":

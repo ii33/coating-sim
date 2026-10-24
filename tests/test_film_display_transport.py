@@ -302,8 +302,6 @@ def test_real_job_wrappers_observe_only_complete_optimization_candidates(tmp_pat
         factories.append(request)
         from coat_sim.core.film_candidate_display import CandidateDisplayObserver
         return CandidateDisplayObserver(context_id='frozen-wrapper-test', objectives=request.objectives,
-            strict_lower_bound_objective_indices=getattr(request, 'strict_lower_bound_objective_indices', ()),
-            strict_upper_bound_objective_indices=getattr(request, 'strict_upper_bound_objective_indices', ()),
             control_provider=lambda: {'enabled': False}, publish_callback=packet_list.append)
     if kind in ('ordinary', 'structure'):
         if kind == 'ordinary':

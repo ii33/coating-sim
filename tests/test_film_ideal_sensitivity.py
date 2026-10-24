@@ -13,6 +13,7 @@ import pytest
 from coat_sim.core import film_ideal_sensitivity as ideal
 from coat_sim.core import _film_ideal_sensitivity_core as core
 from coat_sim.core.film_design_service import simulate_frozen
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import (
     FilmOptimizationObjective,
     FilmOptimizationRequest,
@@ -71,6 +72,14 @@ def analysis(service, request):
     return result
 
 
+def with_strict_bounds(request, *, lower=(), upper=()):
+    lower, upper = set(lower), set(upper)
+    objectives = tuple(replace(objective, pointwise=replace(
+        objective.pointwise, strict_lower=index in lower, strict_upper=index in upper))
+        for index, objective in enumerate(request.objectives))
+    return replace(request, objectives=objectives)
+
+
 @pytest.mark.parametrize("mode", ["absolute", "relative"])
 @pytest.mark.parametrize("unit", ["nm", "um", "qw"])
 def test_ideal_definition_physical_units_and_relative_one_percent_scaling(mode, unit):
@@ -78,16 +87,7 @@ def test_ideal_definition_physical_units_and_relative_one_percent_scaling(mode, 
     request = replace(
         request,
         objectives=(
-            FilmOptimizationObjective(
-                500.0,
-                600.0,
-                5,
-                (0.0, 42.0),
-                mode="range",
-                upper_bound=1.0,
-                normalization_scale=0.3,
-                weight=2.0,
-            ),
+            FilmOptimizationObjective(500.0, 600.0, 5, (0.0, 42.0), pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=1.0), normalization_scale=0.3, weight=2.0),
         ),
     )
     if unit != "nm":
@@ -123,9 +123,7 @@ def test_real_forward_and_analytic_constraint_jacobian_match_canonical_and_fd(me
     request = replace(
         request,
         objectives=(
-            FilmOptimizationObjective(
-                500.0, 600.0, 5, (0.0, 42.0), polarization, metric, "range", upper_bound=1.0
-            ),
+            FilmOptimizationObjective(500.0, 600.0, 5, (0.0, 42.0), polarization, metric, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=1.0)),
         ),
     )
     frozen = ideal.freeze_film_ideal_sensitivity_request(service, request)
@@ -182,12 +180,8 @@ def test_sensitivity_columns_are_independent_of_variables_and_frozen_in_selected
 def test_true_weighted_mean_square_not_sqrt_or_mean_of_objectives():
     service, request = problem()
     objectives = (
-        FilmOptimizationObjective(
-            500.0, 600.0, 3, mode="range", upper_bound=1.0, weight=9.0, normalization_scale=0.2
-        ),
-        FilmOptimizationObjective(
-            550.0, 550.0, 1, mode="range", upper_bound=1.0, weight=1.0, normalization_scale=0.7
-        ),
+        FilmOptimizationObjective(500.0, 600.0, 3, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=1.0), weight=9.0, normalization_scale=0.2),
+        FilmOptimizationObjective(550.0, 550.0, 1, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=1.0), weight=1.0, normalization_scale=0.7),
     )
     result = analysis(service, replace(request, objectives=objectives,
         objective_ids=tuple(f"objective-{i}" for i in range(len(objectives)))))
@@ -276,15 +270,7 @@ def test_nominal_constraint_jacobian_is_unscaled_J_then_z_span_only():
     request = replace(
         request,
         objectives=(
-            FilmOptimizationObjective(
-                500.0,
-                600.0,
-                3,
-                mode="range",
-                lower_bound=0.001,
-                upper_bound=0.5,
-                normalization_scale=0.3,
-            ),
+            FilmOptimizationObjective(500.0, 600.0, 3, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=0.001, upper_bound=0.5), normalization_scale=0.3),
         ),
     )
     frozen = ideal.freeze_film_ideal_sensitivity_request(service, request)
@@ -323,26 +309,21 @@ def test_initial_nominal_infeasible_fails_without_pseudo_feasible_best_including
 def test_strict_bounds_use_exact_original_check_and_single_inward_ulp():
     service, request = problem()
     initial = analysis(service, request).best_analysis.nominal_conditions[0].actual
-    request = replace(
+    request = with_strict_bounds(replace(
         request,
-        objectives=(FilmOptimizationObjective(550.0, 550.0, 1, mode="range", lower_bound=initial),),
-        strict_lower_bound_objective_indices=(0,),
-    )
+        objectives=(FilmOptimizationObjective(550.0, 550.0, 1, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=initial, upper_bound=None)),),
+    ), lower=(0,))
     result = ideal.execute_film_ideal_sensitivity_request(service, request)
     assert result.termination_reason == "initial_nominal_infeasible"
-    assert analysis(
-        service, replace(request, strict_lower_bound_objective_indices=())
-    ).best_analysis.nominal_targets_met
+    assert analysis(service, with_strict_bounds(request)).best_analysis.nominal_targets_met
     frozen = ideal.freeze_film_ideal_sensitivity_request(service, request)
     data = core._Evaluator(frozen).evaluate(frozen.design_snapshot)
     rows = core._strict_nominal_constraint_rows(data, frozen, [0], np.asarray([85.0]))
     assert rows[0][0] == initial - np.nextafter(initial, np.inf)
-    upper = replace(
+    upper = with_strict_bounds(replace(
         request,
-        objectives=(replace(request.objectives[0], lower_bound=None, upper_bound=initial),),
-        strict_lower_bound_objective_indices=(),
-        strict_upper_bound_objective_indices=(0,),
-    )
+        objectives=(replace(request.objectives[0], pointwise=replace(request.objectives[0].pointwise, lower_bound=None, upper_bound=initial)),),
+    ), upper=(0,))
     assert (
         ideal.execute_film_ideal_sensitivity_request(service, upper).termination_reason
         == "initial_nominal_infeasible"
@@ -384,7 +365,7 @@ def test_raw_block_budget_cannot_be_bypassed_by_one_multiblock_candidate():
     service, request = problem(max_evaluations=1)
     request = replace(
         request,
-        objectives=(FilmOptimizationObjective(500.0, 600.0, 5000, mode="range", upper_bound=1.0),),
+        objectives=(FilmOptimizationObjective(500.0, 600.0, 5000, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=1.0)),),
     )
     result = ideal.execute_film_ideal_sensitivity_request(service, request)
     assert result.termination_reason == "evaluation_limit" and result.forward_evaluations == 1
@@ -554,7 +535,7 @@ def test_real_ideal_optimization_improves_raw_F_and_preserves_every_nominal_boun
     service, request = problem(mode=mode)
     request = replace(
         request,
-        objectives=(FilmOptimizationObjective(545.0, 555.0, 11, mode="range", upper_bound=0.012),),
+        objectives=(FilmOptimizationObjective(545.0, 555.0, 11, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=0.012)),),
     )
     checkpoints: list[dict[str, Any]] = []
     result = ideal.execute_film_ideal_sensitivity_request(
@@ -590,7 +571,7 @@ def test_hard_nominal_gate_accepts_infeasible_fd_probes_but_never_retains_them()
     exact = analysis(service, request).best_analysis.nominal_conditions[0].actual
     request = replace(
         request,
-        objectives=(FilmOptimizationObjective(550.0, 550.0, 1, mode="range", lower_bound=exact),),
+        objectives=(FilmOptimizationObjective(550.0, 550.0, 1, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=exact, upper_bound=None)),),
     )
     checkpoints: list[dict[str, Any]] = []
     result = ideal.execute_film_ideal_sensitivity_request(
@@ -622,7 +603,7 @@ def test_fixed_variable_is_removed_only_from_solver_dof_not_sensitivity(monkeypa
     request = replace(
         request,
         variables=(request.variables[0], FilmThicknessVariable("front", "high-film", 40.0, 40.0)),
-        objectives=(replace(request.objectives[0], upper_bound=1.0),),
+        objectives=(replace(request.objectives[0], pointwise=replace(request.objectives[0].pointwise, upper_bound=1.0)),),
     )
     scipy_optimize: Any = import_module("scipy.optimize")
 
@@ -743,13 +724,13 @@ def test_original_infrared_grid_is_kept_and_strict_lower_not_inferred_from_hr_ta
         )
     request = replace(
         request,
-        objectives=(FilmOptimizationObjective(900.0, 1100.0, 201, mode="range", lower_bound=0.0),),
+        objectives=(FilmOptimizationObjective(900.0, 1100.0, 201, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=0.0, upper_bound=None)),),
         max_evaluations=3,
     )
     result = ideal.execute_film_ideal_sensitivity_request(service, request)
     assert result.baseline_analysis is not None
     assert result.frozen_request.objectives[0].wavelength_samples == 201
-    assert result.frozen_request.strict_lower_bound_objective_indices == ()
+    assert result.frozen_request.objectives[0].pointwise.strict_lower is False
     assert len(result.baseline_analysis.nominal_conditions) == 201
     assert result.baseline_analysis.nominal_conditions[0].wavelength_nm == 900.0
     assert result.baseline_analysis.nominal_conditions[-1].wavelength_nm == 1100.0
@@ -777,7 +758,7 @@ def test_synthetic_hr_stack_uses_original_ge_099_operator_and_improves_with_fixe
         request,
         design_snapshot=design,
         variables=(FilmThicknessVariable("front", "low-0", 90.0, 135.0),),
-        objectives=(FilmOptimizationObjective(549.0, 551.0, 3, mode="range", lower_bound=0.99),),
+        objectives=(FilmOptimizationObjective(549.0, 551.0, 3, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=0.99, upper_bound=None)),),
     )
     result = ideal.execute_film_ideal_sensitivity_request(service, request)
     assert result.baseline_analysis is not None
@@ -785,7 +766,7 @@ def test_synthetic_hr_stack_uses_original_ge_099_operator_and_improves_with_fixe
     assert result.best_design is not None
     assert result.baseline_analysis.nominal_targets_met, result.baseline_analysis
     assert result.best_analysis.nominal_targets_met
-    assert result.frozen_request.strict_lower_bound_objective_indices == ()
+    assert result.frozen_request.objectives[0].pointwise.strict_lower is False
     assert len(result.best_design["front_layers"]) == 12
     assert result.improved
     ideal.validate_film_ideal_sensitivity_result_payload(
@@ -944,7 +925,7 @@ def test_full_topology_resource_gate_rejects_4096_layers_before_freeze_or_forwar
             variables=(FilmThicknessVariable("front", "layer-0", 60.0, 145.0),),
             sensitivity_layer_ids=("layer-0",),
             objectives=(
-                FilmOptimizationObjective(500.0, 600.0, 4096, mode="range", upper_bound=1.0),
+                FilmOptimizationObjective(500.0, 600.0, 4096, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=1.0)),
             ),
         )
 
@@ -977,9 +958,7 @@ def test_full_topology_resource_gate_rejects_4096_layers_before_freeze_or_forwar
 
 def test_4098_nonbinary_original_grid_matches_all_single_point_physics_and_preserves_block_count():
     service, request = problem()
-    objective = FilmOptimizationObjective(
-        500.123, 600.789, 4098, mode="range", upper_bound=1.0, polarization="s"
-    )
+    objective = FilmOptimizationObjective(500.123, 600.789, 4098, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=1.0), polarization="s")
     request = replace(request, objectives=(objective,))
     frozen = ideal.freeze_film_ideal_sensitivity_request(service, request)
     evaluator = core._Evaluator(frozen)
@@ -1015,7 +994,7 @@ def test_resampled_return_grid_is_rejected_not_labelled_as_original(monkeypatch)
     request = replace(
         request,
         objectives=(
-            FilmOptimizationObjective(500.123, 600.789, 4098, mode="range", upper_bound=1.0),
+            FilmOptimizationObjective(500.123, 600.789, 4098, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=1.0)),
         ),
     )
     original = core.simulate_with_thickness_jacobian
@@ -1045,7 +1024,7 @@ def test_4098_grid_cancellation_at_first_raw_block_prevents_second_block_and_par
     request = replace(
         request,
         objectives=(
-            FilmOptimizationObjective(500.123, 600.789, 4098, mode="range", upper_bound=1.0),
+            FilmOptimizationObjective(500.123, 600.789, 4098, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=1.0)),
         ),
     )
     event = Event()
@@ -1084,10 +1063,8 @@ def test_original_grid_index_163_strict_nominal_decision_matches_exact_singleton
     )
     singleton = analysis(None, replace(frozen, objectives=(single_objective,)))
     boundary = singleton.best_analysis.nominal_conditions[0].actual
-    target = replace(objective, upper_bound=boundary)
-    strict_request = replace(
-        frozen, objectives=(target,), strict_upper_bound_objective_indices=(0,)
-    )
+    target = replace(objective, pointwise=replace(objective.pointwise, upper_bound=boundary))
+    strict_request = with_strict_bounds(replace(frozen, objectives=(target,)), upper=(0,))
     full = analysis(None, strict_request)
     row = full.best_analysis.nominal_conditions[163]
     exact_single = analysis(
@@ -1096,13 +1073,15 @@ def test_original_grid_index_163_strict_nominal_decision_matches_exact_singleton
             strict_request,
             objectives=(
                 replace(
-                    target, wavelength_min_nm=wave, wavelength_max_nm=wave, wavelength_samples=1
+                    strict_request.objectives[0], wavelength_min_nm=wave,
+                    wavelength_max_nm=wave, wavelength_samples=1
                 ),
             ),
         ),
     )
     assert row.wavelength_nm == wave and row.actual == boundary
-    assert not core.nominal_condition_pass(target, row.actual, strict_upper=True)
+    from coat_sim.core.film_nominal_acceptance import nominal_condition_pass
+    assert not nominal_condition_pass(target.pointwise, row.actual, strict_upper=row.strict_upper)
     assert exact_single.best_analysis.nominal_targets_met is False
     assert full.forward_evaluations == 2 and exact_single.forward_evaluations == 1
     # The general optics API endpoint-only call constructs its own grid.
@@ -1121,4 +1100,4 @@ def test_original_grid_index_163_strict_nominal_decision_matches_exact_singleton
         ),
     )
     assert endpoint_only["R"][163] < boundary
-    assert core.nominal_condition_pass(target, endpoint_only["R"][163], strict_upper=True)
+    assert nominal_condition_pass(target.pointwise, endpoint_only["R"][163], strict_upper=True)

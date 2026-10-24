@@ -8,6 +8,7 @@ from PySide6.QtGui import QGuiApplication
 
 from coat_sim.core.film_design import load_design, save_design, validate_design
 from coat_sim.core.film_design_session import FilmDesignEditSession
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import (
     FilmOptimizationObjective, FilmOptimizationRequest, FilmThicknessVariable,
     optimize_film_design,
@@ -49,12 +50,7 @@ def test_redundant_layer_reaches_zero_without_deleting_its_id(tmp_path):
     target = service.simulate(removed, settings)
     layer_id = design["front_layers"][0]["id"]
     objectives = tuple(
-        FilmOptimizationObjective(
-            wavelength_min_nm=500.0 + index * (100.0 / 6.0),
-            wavelength_max_nm=500.0 + index * (100.0 / 6.0),
-            wavelength_samples=1, metric="R", mode="value",
-            target_value=float(target["R"][index]),
-        )
+        FilmOptimizationObjective(pointwise=FilmObjectiveConstraint(mode="value", target_value=float(target["R"][index]), lower_bound=None, upper_bound=None), wavelength_min_nm=500.0 + index * (100.0 / 6.0), wavelength_max_nm=500.0 + index * (100.0 / 6.0), wavelength_samples=1, metric="R")
         for index in range(7)
     )
     result = optimize_film_design(service, FilmOptimizationRequest(
@@ -133,15 +129,17 @@ def test_zero_initial_layer_runs_default_half_unbounded_solver(tmp_path):
         assert controller.canStart
         controller._objectives[0].update(
             wavelength_min_nm=550.0, wavelength_max_nm=550.0,
-            wavelength_samples=1, lower_bound_percent=0.0, upper_bound_percent=0.0)
+            wavelength_samples=1)
+        assert controller.setObjectiveField("pointwise.lower_bound_percent", "0")
+        assert controller.setObjectiveField("pointwise.upper_bound_percent", "0")
         controller._max_iterations = 8
         controller._max_evaluations = 20
         request = controller._build_request()
     finally:
         controller.shutdown(1000)
     assert request.solver == "baseline"
-    assert request.objectives[0].mode == "value"
-    assert request.objectives[0].target_value == 0.0
+    assert request.objectives[0].pointwise.mode == "value"
+    assert request.objectives[0].pointwise.target_value == 0.0
     assert request.variables == (FilmThicknessVariable("front", layer_id, 0.0, None),)
     from coat_sim.core.film_optimization_job import _validate_replay_request
     _validate_replay_request(request)
@@ -201,8 +199,8 @@ def test_feasible_zero_initial_layer_completes_once_without_changing_optics(tmp_
     finally:
         controller.shutdown(1000)
     objective = request.objectives[0]
-    assert objective.mode == "range"
-    assert (objective.lower_bound, objective.upper_bound) == (0.0, 0.05)
+    assert objective.pointwise.mode == "range"
+    assert (objective.pointwise.lower_bound, objective.pointwise.upper_bound) == (0.0, 0.05)
     settings = {"wavelength_min_nm": 550, "wavelength_max_nm": 550, "samples": 1}
     before = service.simulate(design, settings)
     assert 0.0 <= float(before["R"][0]) <= 0.05

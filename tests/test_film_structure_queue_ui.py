@@ -29,11 +29,7 @@ from PySide6.QtQml import QQmlComponent, QQmlEngine
 from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtTest import QTest
 
-ROOT = Path(__file__).resolve().parents[1]
-TESTS = Path(__file__).resolve().parent
-if str(TESTS) not in sys.path:
-    sys.path.insert(0, str(TESTS))
-
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import (
     FilmOptimizationRequest,
     FilmOptimizationObjective,
@@ -63,18 +59,14 @@ from tests.film_structure_fixtures import fixture as _fixture, request as _reque
 from tests.film_performance_fixtures import fixture as in_memory_service_fixture
 
 
+ROOT = Path(__file__).resolve().parents[1]
+TESTS = Path(__file__).resolve().parent
+if str(TESTS) not in sys.path:
+    sys.path.insert(0, str(TESTS))
+
+
 def _structure_request(design):
-    objective = FilmOptimizationObjective(
-        wavelength_min_nm=550.0,
-        wavelength_max_nm=550.1,
-        wavelength_samples=2,
-        angles_deg=(0.0,),
-        polarization="unpolarized",
-        metric="R",
-        mode="range",
-        lower_bound=0.0,
-        upper_bound=0.02,
-    )
+    objective = FilmOptimizationObjective(pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=0.0, upper_bound=0.02), wavelength_min_nm=550.0, wavelength_max_nm=550.1, wavelength_samples=2, angles_deg=(0.0,), polarization="unpolarized", metric="R")
     base = _request(design, [objective], bounds=(100.0, 200.0),
                     max_iterations=2, max_evaluations=80)
     return FilmStructureOptimizationRequest(
@@ -643,10 +635,7 @@ def test_final_completion_applies_to_real_source_and_refreshes_simulation_once(t
             "polarization": "unpolarized",
         })
         optimization = FilmOptimizationQuickController(source)
-        objective = FilmOptimizationObjective(
-            500.0, 501.0, 2, metric="R", mode="range",
-            lower_bound=0.0, upper_bound=1.0,
-        )
+        objective = FilmOptimizationObjective(500.0, 501.0, 2, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=0.0, upper_bound=1.0), metric="R")
         request = FilmOptimizationRequest(
             design_snapshot=base.design,
             design_revision=base.design_revision,

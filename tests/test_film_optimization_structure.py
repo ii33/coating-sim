@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from coat_sim.core.film_design_service import FilmDesignService
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationObjective, FilmOptimizationRequest, FilmThicknessVariable
 from coat_sim.core.film_optimization_needle import FilmNeedleMaterialReference
 from coat_sim.core.film_optimization_structure import (
@@ -83,11 +84,7 @@ def _request(design, *, mode="combined", variables=True, max_evaluations=40, max
     base = FilmOptimizationRequest(
         design_snapshot=deepcopy(design), design_revision=7,
         variables=((FilmThicknessVariable("front", "stable-host", 80.0, 140.0),) if variables else ()),
-        objectives=(FilmOptimizationObjective(
-            wavelength_min_nm=550.0, wavelength_max_nm=550.0, wavelength_samples=1,
-            angles_deg=(0.0,), polarization="unpolarized", metric="R", mode="value",
-            target_value=0.1,
-        ),),
+        objectives=(FilmOptimizationObjective(pointwise=FilmObjectiveConstraint(mode="value", target_value=0.1, lower_bound=None, upper_bound=None), wavelength_min_nm=550.0, wavelength_max_nm=550.0, wavelength_samples=1, angles_deg=(0.0,), polarization="unpolarized", metric="R"),),
         max_evaluations=max_evaluations, max_iterations=max_iterations,
     )
     structure_options = {
@@ -350,7 +347,7 @@ def test_post_incumbent_polish_holdout_failure_or_cancel_preserves_verified_incu
         ))
     difference, target_thickness, target_value = max(endpoint_values)
     assert difference > 1e-10
-    target_objective = replace(original_objective, target_value=target_value)
+    target_objective = replace(original_objective, pointwise=replace(original_objective.pointwise, target_value=target_value))
     request = replace(request, base_request=replace(
         request.base_request, objectives=(target_objective,)))
     cancellation = Event()
@@ -478,7 +475,7 @@ def test_structure_optimizer_runs_bounded_three_stage_trace_and_replay_rejects_t
     assert canonical["partial_result"]["validation_complete"] == result.base_result.validation_complete
     corrupted = deepcopy(payload)
     corrupted["candidate"]["per_condition_errors"][0]["actual"] += 0.01
-    with pytest.raises(ValueError, match="per-condition training errors"):
+    with pytest.raises(ValueError, match="per-condition errors do not match raw spectral reductions"):
         validate_film_structure_payload(service, corrupted)
 
 

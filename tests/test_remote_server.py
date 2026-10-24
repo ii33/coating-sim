@@ -1,5 +1,6 @@
 """Independent loopback service and client roots; only owned processes."""
 from __future__ import annotations
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 
 from contextlib import contextmanager
 import hashlib
@@ -243,7 +244,7 @@ def frozen_film(root):
                               'thickness': {'value': 100., 'unit': 'nm'}, 'note': 'synthetic'}]
     request = FilmOptimizationRequest(design_snapshot=design, design_revision=1,
         variables=(FilmThicknessVariable('front', 'layer', 80., 120.),),
-        objectives=(FilmOptimizationObjective(500., 600., 3, angles_deg=(0.,), target_value=.1),),
+        objectives=(FilmOptimizationObjective(500., 600., 3, pointwise=FilmObjectiveConstraint(mode="value", target_value=.1, lower_bound=None, upper_bound=None), angles_deg=(0.,)),),
         max_iterations=1, max_evaluations=4)
     payload = freeze_job_payload(service, request)
     return {'protocol_version': 1, 'executor': 'film_optimization', 'parameters': {'payload': payload}, 'inputs': {}}

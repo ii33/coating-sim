@@ -14,34 +14,18 @@ from typing import TYPE_CHECKING, Any, Callable, Literal, cast
 import numpy as np
 
 from .film_synthesis_hr_minimax import Array, Value, BETAS, _Constraint, _Minimize
+from .film_objective_criteria import reduce_objective_responses, validate_objective_criteria
 
 if TYPE_CHECKING:
     from .film_auto_synthesis import FilmSynthesisRequest
-
-
-def _bounds(objective: Any) -> tuple[tuple[float, float], ...]:
-    """Pairs (target, sign): lower sign -1, upper sign +1."""
-    if objective.mode == "value":
-        if objective.target_value is None or objective.lower_bound is not None or objective.upper_bound is not None:
-            raise ValueError("multispectral value objective requires target and no bounds")
-        return ((float(objective.target_value), -1.), (float(objective.target_value), 1.))
-    if objective.mode != "range" or (objective.lower_bound is None and objective.upper_bound is None):
-        raise ValueError("multispectral objective requires value or bounded range")
-    return tuple((float(target), sign) for target, sign in
-                 ((objective.lower_bound, -1.), (objective.upper_bound, 1.)) if target is not None)
 
 
 def _validate_objectives(request: FilmSynthesisRequest) -> None:
     if not request.objectives:
         raise ValueError("multispectral minimax requires original objectives")
     for objective in request.objectives:
-        bounds = _bounds(objective)
+        validate_objective_criteria(objective)
         if (objective.metric not in ("R", "T")
-                or not math.isfinite(objective.weight) or objective.weight <= 0
-                or not math.isfinite(objective.normalization_scale) or objective.normalization_scale <= 0
-                or any(not math.isfinite(target) for target, _ in bounds)
-                or (objective.lower_bound is not None and objective.upper_bound is not None
-                    and objective.lower_bound > objective.upper_bound)
                 or type(objective.wavelength_samples) is not int or objective.wavelength_samples < 1
                 or not math.isfinite(objective.wavelength_min_nm) or objective.wavelength_min_nm <= 0
                 or not math.isfinite(objective.wavelength_max_nm)
@@ -52,8 +36,7 @@ def _validate_objectives(request: FilmSynthesisRequest) -> None:
             raise ValueError("multispectral minimax original objective is invalid")
 
 
-def _signed_bounds(request: FilmSynthesisRequest, value: Value,
-                   ids: tuple[str, ...]) -> tuple[Array, Array, Array]:
+def _original_reduction(request: FilmSynthesisRequest, value: Value, ids: tuple[str, ...]):
     """Return signed normalized violations, nm Jacobians and log window masses.
 
     Each original objective/angle row must occur once; wavelength vectors and
@@ -95,27 +78,15 @@ def _signed_bounds(request: FilmSynthesisRequest, value: Value,
         rows[key] = actual, jacobian
     if set(rows) != expected:
         raise ValueError("multispectral response is missing original conditions")
-    violations, jacobians, log_masses = [], [], []
-    # Keep even extremely small positive window weights in log space. Scaling
-    # linear weights first would erase a valid 1e-300 / 1e300 window entirely.
-    log_weights = [math.log(objective.weight) for objective in request.objectives]
-    largest_log_weight = max(log_weights)
-    log_normalizer = math.log(math.fsum(math.exp(weight - largest_log_weight) for weight in log_weights))
-    for index, angle in sorted(expected):
-        objective = request.objectives[index]
-        actual, jacobian = rows[index, angle]
-        bounds = _bounds(objective)
-        log_mass = (log_weights[index] - largest_log_weight - log_normalizer
-                    - math.log(objective.wavelength_samples * len(objective.angles_deg) * len(bounds)))
-        for target, sign in bounds:
-            violations.append(sign * (actual - target) / objective.normalization_scale)
-            jacobians.append(sign * jacobian / objective.normalization_scale)
-            log_masses.append(np.full(actual.shape, log_mass))
-    q, derivative, log_mass_array = np.concatenate(violations), np.vstack(jacobians), np.concatenate(log_masses)
-    if (not np.all(np.isfinite(q)) or not np.all(np.isfinite(derivative))
-            or not np.all(np.isfinite(log_mass_array))):
-        raise ValueError("multispectral normalized bounds/Jacobian/masses are invalid")
-    return q, derivative, log_mass_array
+    return reduce_objective_responses(request.objectives, value['responses'], layer_ids=ids,
+                                      tolerance=request.acceptable_normalized_error)
+
+
+def _signed_bounds(request: FilmSynthesisRequest, value: Value,
+                   ids: tuple[str, ...]) -> tuple[Array, Array, Array]:
+    """Canonical unweighted bounds/J and shared normalized log guide masses."""
+    reduced = _original_reduction(request, value, ids)
+    return reduced.signed_bound_values, reduced.signed_bound_jacobian, reduced.signed_bound_log_masses
 
 
 def _soft_max_loss(q: Array, jacobian: Array, log_masses: Array, beta: float) -> tuple[float, Array]:
@@ -135,8 +106,10 @@ def _soft_max_loss(q: Array, jacobian: Array, log_masses: Array, beta: float) ->
     return qmax + (shift + math.log(denominator)) / beta, weights @ jacobian
 
 
-def _score_key(value: Value) -> tuple[float, float]:
-    key = float(value["score"]["max_error"]), float(value["score"]["weighted_rms_error"])
+def _score_key(value: Value) -> tuple[int, float, float]:
+    score = value["score"]
+    key = (int(not score.get("nominal_pass", score["max_error"] == 0.)),
+           float(score["max_error"]), float(score["weighted_rms_error"]))
     if any(not math.isfinite(number) or number < 0 for number in key):
         raise ValueError("multispectral parent score must be finite and nonnegative")
     return key
@@ -212,7 +185,7 @@ def refine_multispectral_minimax(request: FilmSynthesisRequest, initial: Value, 
             calls += 1
             archive(value, audit_eligible=False)
             progress("multispectral_minimax_trial", value,
-                     dict(physical_candidates=calls, max_error=key[0], weighted_rms_error=key[1]))
+                     dict(physical_candidates=calls, max_error=key[1], weighted_rms_error=key[2]))
         cancel_check()
         return cache_data
 
@@ -346,12 +319,13 @@ def refine_multispectral_minimax(request: FilmSynthesisRequest, initial: Value, 
             diagnostic_source = "retained_initial_responses_unavailable_without_additional_physical_evaluation"
     return best, dict(method="analytic_multispectral_softmax_epigraph", betas=list(BETAS), stages=stages,
         max_iterations_per_stage=max_iterations, physical_candidates=calls, cache_hits=cache_hits,
-        rejected_infeasible_trials=rejected, max_error=best_key[0], weighted_rms_error=best_key[1],
+        rejected_infeasible_trials=rejected, max_error=best_key[1], weighted_rms_error=best_key[2],
         max_signed_violation=diagnostic_signed, max_signed_violation_source=diagnostic_source,
-        training_conditions=sum(o.wavelength_samples * len(o.angles_deg) for o in request.objectives),
+        training_conditions=len(_original_reduction(request, best, ()).conditions) if best.get("responses") else None,
+        raw_wavelength_points=sum(o.wavelength_samples * len(o.angles_deg) for o in request.objectives),
         signed_bound_conditions=signed_conditions,
         thickness_bounds_source="full explicit layer/total nm bounds; positive float lower bound if unset",
         soft_method=soft_method, coordinate_scale_nm=coordinate_scale_nm, scale_nm=scales.tolist(),
-        guide_weighting="window weight/(wavelengths*angles*bounds), normalized; search guide only",
+        guide_weighting="normalized band weight/(angles*active reductions) times wavelength quadrature; signed sides split each condition mass",
         cache_scope="one most recent thickness point shared across beta and epigraph t",
-        acceptance_scope="parent original max_error then weighted_rms_error; exact ties prefer lower max signed q; independent original audit required")
+        acceptance_scope="parent active nominal pass, max_error then weighted_rms_error; exact ties prefer lower max signed q; independent original audit required")

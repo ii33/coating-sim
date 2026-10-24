@@ -204,16 +204,12 @@ class WorkerDisplaySession:
         if self.observer is None:
             context = {"input_digest": self.input_digest, "generation": self.generation,
                        "score_config": self.configuration["score_config"], "scope": "training",
-                       "objectives": [asdict(row) for row in request.objectives],
-                       "strict_lower_bound_objective_indices": list(getattr(request, "strict_lower_bound_objective_indices", ())),
-                       "strict_upper_bound_objective_indices": list(getattr(request, "strict_upper_bound_objective_indices", ()))}
+                       "objectives": [asdict(row) for row in request.objectives]}
             context_id = hashlib.sha256(json.dumps(context, allow_nan=False, sort_keys=True,
                                                    separators=(",", ":")).encode()).hexdigest()
             self.observer = CandidateDisplayObserver(context_id=context_id, objectives=request.objectives,
                 score_config=self.configuration["score_config"], control_provider=self.control,
-                publish_callback=self.publish, clock=self.clock,
-                strict_lower_bound_objective_indices=getattr(request, "strict_lower_bound_objective_indices", ()),
-                strict_upper_bound_objective_indices=getattr(request, "strict_upper_bound_objective_indices", ()))
+                publish_callback=self.publish, clock=self.clock)
         return self.observer
 
     def finish(self, state):

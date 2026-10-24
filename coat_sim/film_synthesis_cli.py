@@ -101,7 +101,7 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, epilog=(
         "targets_met reports original nominal bounds; solver_acceptable reports the separate "
         "acceptable_normalized_error tolerance, not a target relaxation or manufacturing margin. "
-        "Synthesis-only strict_upper_bound_objective_indices selects < instead of inclusive <=."))
+        "Synthesis-only objectives[].pointwise.strict_upper / objectives[].mean.strict_upper selects < instead of inclusive <=."))
     parser.add_argument("--request", type=Path, help="Frozen request JSON; omitted reads stdin")
     parser.add_argument("--output", type=Path, help="New result JSON, never overwrite; omitted writes stdout")
     parser.add_argument("--checkpoint", type=Path, help="Atomically updated best audited-candidate snapshot")

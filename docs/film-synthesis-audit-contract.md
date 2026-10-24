@@ -1,5 +1,7 @@
 # 自动合成的独立光谱审计契约
 
+当前更新（2026-10-24）：波段 mean/pointwise 两组、版本、raw coverage 与严格判定以[双约束契约](film-band-criteria-contract.md)为准。旧 flat 目标与旧协议不迁移。
+
 日期：2026-10-20。实现真值：`coat_sim/core/film_synthesis_audit.py`。算法与离线图解同步见 `algorithms.html` 14t。
 
 `audit_frozen_synthesis_candidate(request, design, *, cancel_event=None, progress_callback=None)` 接收已冻结的 FilmSynthesisRequest 和完整合法层序，返回与统一结构评价器相同的 design/score/responses 以及 audit 工作量与覆盖元数据。它不读取实时材料目录、不改设计或请求、不拥有优化档案。合成调用是工作状态、训练最好解和已审计最好解的唯一所有者。无异步回写；进度回调在调用线程执行。

@@ -12,9 +12,10 @@
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px solid #c8e0db;border-radius:8px;padding:16px;font-size:.88rem;line-height:1.5}</style>
 </head>
 <body>
+<p class="source">算法更新：2026-10-24；<a href="#film-band-criteria-20261024">14at 波段平均值/逐点独立约束</a>，统一积分质量、判定、审计与冻结重放。</p>
 <p class="source">算法补充日期：2026-10-24；新增 <a href="#film-template-randomization-20261024">14as 可选模板随机厚度起点</a>，默认关闭，实际 seed 随请求冻结。</p>
 <p class="source">实时光谱与展示评分补充：2026-10-23，见<a href="#candidate-display-score">14ar</a>；仅复用已算结果，默认关闭谱预览，展示分不改变优化目标。</p>
-<p class="source">当前敏感性入口收口：2026-10-23，见<a href="#film-ideal-local-sensitivity-20261023">14ao</a>、<a href="#film-thickness-error-table-20261023">14ap</a>与<a href="#film-ideal-controlled-degradation-20261023">14aq</a>。仅当前理想schema 2与独立参数表schema 1；旧工艺场景入口、旧理想schema与兼容面板已删除，不迁移或fallback。</p>
+<p class="source">当前敏感性入口收口：2026-10-23，见<a href="#film-ideal-local-sensitivity-20261023">14ao</a>、<a href="#film-thickness-error-table-20261023">14ap</a>与<a href="#film-ideal-controlled-degradation-20261023">14aq</a>。仅当前理想schema 3与独立参数表schema 2；旧工艺场景入口、旧理想schema与兼容面板已删除，不迁移或fallback。</p>
 <p class="source">真实混合多进程补充：2026-10-23，见<a href="#film-hybrid-parallel-20261023">14am</a>；请求数、逻辑批次与实际派发分开，不承诺整流程线性加速。</p>
 <p class="source">批量针插补充：2026-10-22，见<a href="#film-batch-needle-20261022">14ai</a>。数学零厚、有限联合前向与最终名义验收分别报告。</p>
 <p class="source">ITO 电学计算补充：2026-10-18，见<a href="#ito-electrical-20261018">膜厚、方阻、电阻率及矩形测量边界</a>。</p>
@@ -65,6 +66,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <p class="source" style="grid-column:1/-1">结构合成更新：2026-10-12。新增14o至14o-2：实验性经典零厚敏感度针插、有界已有层增长与分组局部精修；独立结构请求与固定层序/有限试插分开，Dmax是硬约束。补充验证切片、真实求值计数与增长前局部边界检查。接口见 <a href="film-structure-optimization-contract.md">结构合成契约</a>，操作见 <a href="film-structure-optimization-guide.md">使用指南</a>，实际验收见 本轮状态 <span class="historical-reference">（历史验证记录，未随公开源码发布）</span>。</p>
 <p class="source">存储格式补充：2026-10-18。工程 BBS、助手精简记忆和可恢复文件清理均为非物理持久化契约，不改变仿真公式、坐标或数值精度。见<a href="#engineering-notes-storage-20261018">工程记录与助手工作区格式</a>。</p>
 <nav aria-label="章节目录">
+<a href="#film-band-criteria-20261024">14at 波段平均值与逐点双约束（2026-10-24）</a>
 <a href="#film-template-randomization-20261024">14as 可选模板随机化（2026-10-24）</a>
 <a href="#film-multispectral-minimax-20261022">14ah 分窗高反先验与联合R/T门限精修（2026-10-22）</a>
 <a href="#film-synthesis-audit-20261020">14t 从零生长、最坏违规与独立极值审计（2026-10-20）</a>
@@ -3757,5 +3759,35 @@ on verified checkpoint recovery:
 <p class="source"><strong>原始来源：</strong><a href="https://doi.org/10.1364/AO.32.002969">广隔谱多堆栈组织</a>；<a href="https://doi.org/10.1364/OE.9.000652">多腔与镜相位</a>；<a href="https://doi.org/10.1364/OL.22.000831">双啁啾原理</a>；<a href="https://doi.org/10.1364/AO.24.000457">H/L数字等效</a>；<a href="https://doi.org/10.1364/AO.28.005091">rugate渐消</a>。阅读层级与处方缺口见<a href="https://github.com/ii33/coating-research-library/blob/01980d6e6a9b57d5de2c5aa989394d0b368a67c6/manual_studies/2026-10-19_multispectral_ir_structures/research.md">固定研究来源</a>。本条说明机制，不声称逐篇全文复现、最终实镜复制或算法优势。</p>
 </section>
 
+
+<section id="film-band-criteria-20261024">
+<h2>14at 波段平均值与绝对值（逐点）双约束（2026-10-24）</h2>
+<p><strong>用途与接口。</strong>每条 <code>FilmOptimizationObjective</code> 保持一个波段身份，共享真空波长（nm）、入射角（deg）、s/p/非偏振、R 或 T、权重及归一尺度；内部 <code>mean</code> 与 <code>pointwise</code> 各有启用开关、value/range 及独立阈值。光学响应和阈值为 0–1 fraction，GUI 以百分比显示。默认只启用逐点；两者都关闭报错。本功能不改变坐标系、复数 n/k、TMM 或显式未知 k 假设，也不扩大到 R/T 以外指标。</p>
+<h3>完整光谱先归约，再计算约束与解析梯度</h3>
+<p>每个波段、每个角度分别收齐完整的 λ、y、J 后归约，不跨角度平均，不平均 chunk 均值、hinge 或残差。正宽波段须有至少两点、有限严格递增波长、精确请求端点；缺点、重复、非有限或缺端点拒绝。不得通过未知材料源域插值或外推补端点。零宽谱线规范为单点、q=1。</p>
+<pre>Δ=b−a
+q₀=(λ₁−λ₀)/(2Δ), qₙ=(λₙ−λₙ₋₁)/(2Δ)
+qᵢ=(λᵢ₊₁−λᵢ₋₁)/(2Δ),  Σqᵢ=1
+μ=Σqᵢyᵢ,  Jμ=ΣqᵢJᵢ
+range: r(x)=(x−clip(x,L,U))/scale
+value: r(x)=(x−target)/scale</pre>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 220" role="img" aria-label="完整光谱按每个角度分开归约为均值与逐点约束" style="max-width:760px;width:100%;background:#f7f9fc;border-radius:8px">
+<g fill="none" stroke="#475569" stroke-width="2"><path d="M35 160V35M35 160H300"/><path d="M55 145L80 55L280 145" stroke="#2563eb" stroke-width="4"/><path d="M320 100H390M390 100V55H445M390 100V150H445"/><path d="M590 55H650V150H590"/></g>
+<g fill="#17324d" font-size="15" font-family="sans-serif"><text x="40" y="190">λ=a, a+0.1Δ, b</text><text x="55" y="28">y = 0.3, 0.9, 0.3</text><text x="455" y="60">mean: μ=0.6</text><text x="455" y="155">point: 全部原样本</text><text x="45" y="213">q = 0.05, 0.5, 0.45</text><text x="655" y="105">AND</text></g></svg>
+<figcaption>非均匀三点示例：梯形均值为 0.6，算术均值为 0.5。mean 下限 0.55 通过、pointwise 同下限失败；关闭逐点组时，这些局部违规只作诊断。两角度均值 0.9 与 0.5 对下限 0.6 必须第二角失败，不能混为 0.7。</figcaption></figure>
+<h3>质量、判定和搜索</h3>
+<pre>W=波段权重，A=该波段角度数，K=启用组数，M=W/(A·K)
+Lmean=M·r(μ)²
+Lpoint=M·Σqᵢr(yᵢ)²
+RMS=√(ΣL/ΣW)
+residual/J 使用 √M 或 √(M qᵢ)；Jmean 先归约。</pre>
+<p>以上质量分配为<strong>本项目约定</strong>，未找到外部依据，仅为本项目实现。两组同时启用各得半个波段权重，加密采样不会按行数额外增加该波段权重，均值不被大量逐点行稀释。最大违规、名义通过和敏感性 guard 不乘质量。默认仅逐点时也使用该规则，因此 RMS、端点权重与搜索轨迹会改变；这不是放宽目标阈值。旧 <code>objective_weighting</code> 已撤回。</p>
+<p>只检查启用组：mean 每角一个条件、pointwise 每角全部点、both 两组 AND。strict 是各组原始 &gt;/&lt;，零 hinge 不等于 strict 通过；<code>targets_met</code> 和 <code>solver_acceptable</code> 分开。两组约束区间交集空、或交集只有 strict 排除端点，提前拒绝；这不是物理可达证明。普通局部/全局、needle、自动合成、minimax 和候选档案共用同一归约与解析 Jacobian。特定经典先验仅在其逐点适用条件成立时使用；mean/both 保留通用搜索，不承诺普遍收敛或加速。</p>
+<h3>审计、协议与敏感性边界</h3>
+<p>独立均值审计只使用预先规定的完整加密积分网格及其 q；offset/extrema 不能无权混入重算均值，只在启用逐点组时作其门禁。所有审计仍是有限数值证据，不是连续谱证书。mean-only 仍计算完整物理光谱。均值条件记录 <code>reduction=mean</code> 和原波段端点，单点波长为 <code>null</code>；原始 coverage 与 active condition 数量分别校验，历史结果须按冻结材料独立物理重放，不能用一个均值行冒充完整谱。</p>
+<p>当前 synthesis/ordinary/structure/classic 协议为 2，理想敏感性为 3，独立误差参数表为 2，GUI 优化配置为 2；旧格式明确拒绝，不迁移或 fallback，不改写历史研究记录。敏感性 F、scale 和逐波长逐角 baseline guard 保持原义；freeze 固定全部启用名义上下界的方向并集，写入 identity/结果，不能从新 UI 重推旧任务。mean-only 不能让局部退化被均值补偿掩盖。参数表仍保留逐点误差响应，逐点目标关闭时该点名义通过为 null，并单独保存两组归约名义条件。</p>
+<p><strong>实现：</strong><code>film_objective_criteria.py</code>、<code>film_objective_payload.py</code>；接入 <code>film_optimization*</code>、<code>film_synthesis_refinement.py</code>、<code>film_synthesis_*minimax.py</code>、<code>film_nominal_acceptance.py</code>、<code>film_synthesis_audit.py</code>、<code>film_ideal_sensitivity.py</code> 与当前 job/GUI 协议。默认 GUI 波长精度仍 1 nm、逐点开/均值关；数值尺度和求解器停止容差沿用已有设置。启用均值不是制造误差模型。</p>
+<p><strong>参考：</strong><a href="https://numpy.org/doc/stable/reference/generated/numpy.trapezoid.html">NumPy 官方复合梯形积分说明</a>支持非均匀 λ 积分形式；双组质量、early reject、派发与审计边界均为本项目约定，不能据此声称物理可达。有关状态所有权、草稿和取消见 <a href="film-band-criteria-contract.md">双约束契约</a>。</p>
+</section>
 </body>
 </html>

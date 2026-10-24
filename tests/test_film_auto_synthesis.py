@@ -14,6 +14,7 @@ from coat_sim.core.film_auto_synthesis import (
 )
 from coat_sim.core.film_design import new_design, validate_design
 from coat_sim.core.film_design_service import FilmDesignService
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationObjective
 from coat_sim.core.film_optimization_needle import FilmNeedleMaterialReference
 
@@ -50,7 +51,7 @@ def setup_problem(*, upper=.005, low=520., high=580., samples=5, materials=('low
     environment = new_design(design_id='bare-substrate-test')
     environment['substrate'].update(material_id='glass', optical_set_id='nk')
     service = Service(records)
-    target = FilmOptimizationObjective(low, high, samples, mode='range', upper_bound=upper)
+    target = FilmOptimizationObjective(low, high, samples, pointwise=FilmObjectiveConstraint(mode='range', target_value=None, lower_bound=None, upper_bound=upper))
     request = FilmSynthesisRequest(environment, (target,),
         tuple(FilmNeedleMaterialReference(m, 'nk') for m in materials),
         # Keep analytical needle/growth counter contracts on the explicit
@@ -117,7 +118,7 @@ def test_multilayer_reflector_is_synthesized_without_starting_design(monkeypatch
     # the GUI-to-job test covers the separate automatic structural-prior route.
     monkeypatch.setattr(global_search, 'iter_reflector_proposals', lambda *args, **kwargs: iter(()))
     service, request = setup_problem(materials=('low', 'high'), low=540, high=560)
-    request = replace(request, objectives=(replace(request.objectives[0], upper_bound=None, lower_bound=.9),),
+    request = replace(request, objectives=(replace(request.objectives[0], pointwise=replace(request.objectives[0].pointwise, upper_bound=None, lower_bound=.9)),),
                       max_cycles=8, max_evaluations=1800, position_samples=1)
     result = synthesize_film_design(service, request)
     assert result.training_score is not None
@@ -286,8 +287,20 @@ def test_analytic_needle_probe_agrees_with_one_sided_physics_and_splits_host():
     baseline = synthesis.evaluate_frozen_structure_candidate(proxy, design)
     next_value = synthesis.evaluate_frozen_structure_candidate(proxy, finite)
     def loss(value):
-        return sum((r.normalized_violation ** 2) * request.objectives[r.objective_index].weight
-                   for r in value['score']['errors'])
+        # This fixture has one pointwise band and one angle: normalized band,
+        # angle and mode masses are one. Integrate the physical squared hinge
+        # independently; endpoints carry half of an interior sample's mass.
+        assert len(request.objectives) == 1
+        objective = request.objectives[0]
+        assert objective.angles_deg == (0.,)
+        assert objective.pointwise.enabled and not objective.mean.enabled
+        assert objective.pointwise.upper_bound is not None
+        response, = value['responses']
+        waves = np.asarray(response['wavelength_nm'], float)
+        actual = np.asarray(response['actual_values'], float)
+        squared = (np.maximum(actual - objective.pointwise.upper_bound, 0.)
+                   / objective.normalization_scale) ** 2
+        return float(np.trapezoid(squared, waves) / (waves[-1] - waves[0]))
     assert probe['gradient_by_layer_id']['needle'] == pytest.approx(
         (loss(next_value) - loss(baseline)) / 1e-5, rel=2e-4, abs=2e-8)
     assert zero['front_layers'][0]['thickness']['value'] + zero['front_layers'][2]['thickness']['value'] == 90
@@ -314,7 +327,7 @@ def test_redundant_halfwave_is_deleted_after_full_physical_rescoring(monkeypatch
 def test_material_snapshot_replay_preserves_dispersive_k_and_mixed_target_semantics():
     service, request = setup_problem(upper=.1)
     service.materials.records['low']['optical_sets'][0].update(n=[1.4, 1.5, 1.6], k=[.01, .02, .03])
-    target = FilmOptimizationObjective(500, 650, 4, (0., 35.), 's', 'T', 'range', lower_bound=.1, upper_bound=1.)
+    target = FilmOptimizationObjective(500, 650, 4, (0., 35.), 's', 'T', pointwise=FilmObjectiveConstraint(mode='range', target_value=None, lower_bound=.1, upper_bound=1.))
     request = replace(request, objectives=(request.objectives[0], target))
     frozen = freeze_film_synthesis_request(service, request)
     service.materials.records.clear()
@@ -342,7 +355,7 @@ def test_pinned_real_mgf2_silica_data_can_synthesize_with_nonzero_source_k():
     environment = new_design()
     environment['substrate'].update(material_id='SiO2', optical_set_id='nk')
     request = FilmSynthesisRequest(environment,
-        (FilmOptimizationObjective(520, 580, 5, mode='range', upper_bound=.026),),
+        (FilmOptimizationObjective(520, 580, 5, pointwise=FilmObjectiveConstraint(mode='range', target_value=None, lower_bound=None, upper_bound=.026)),),
         (FilmNeedleMaterialReference('MgF2', 'nk'),), max_cycles=2, max_evaluations=300,
         acceptable_normalized_error=1e-4)
     result = synthesize_film_design(service, request)

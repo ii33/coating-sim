@@ -48,17 +48,48 @@ _jsonschema = cast(_JsonSchema, import_module("jsonschema"))
 Draft202012Validator = _jsonschema.Draft202012Validator
 validators = _jsonschema.validators
 
+FILM_OBJECTIVE_CONSTRAINT_SCHEMA: dict[str, Any] = {
+    "type": "object", "additionalProperties": False,
+    "required": ["enabled", "mode", "target_value", "lower_bound", "upper_bound", "strict_lower", "strict_upper"],
+    "properties": {
+        "enabled": {"type": "boolean"}, "mode": {"enum": ["value", "range"]},
+        "target_value": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "lower_bound": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "upper_bound": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "strict_lower": {"type": "boolean", "description": "Use strict > for this reduction's original lower bound; solver tolerance does not relax nominal acceptance."},
+        "strict_upper": {"type": "boolean", "description": "Use strict < for this reduction's original upper bound; solver tolerance does not relax nominal acceptance."},
+    },
+}
+FILM_BAND_OBJECTIVE_SCHEMA: dict[str, Any] = {
+    "type": "object", "additionalProperties": False,
+    "required": ["wavelength_min_nm", "wavelength_max_nm", "wavelength_samples", "angles_deg", "polarization", "metric", "mean", "pointwise", "weight", "normalization_scale"],
+    "properties": {
+        "wavelength_min_nm": {"type": "number", "exclusiveMinimum": 0},
+        "wavelength_max_nm": {"type": "number", "exclusiveMinimum": 0},
+        "wavelength_samples": {"type": "integer", "minimum": 1},
+        "angles_deg": {"type": "array", "minItems": 1, "uniqueItems": True,
+            "items": {"type": "number", "minimum": 0, "exclusiveMaximum": 90}},
+        "polarization": {"enum": ["s", "p", "unpolarized"]}, "metric": {"enum": ["R", "T"]},
+        "mean": FILM_OBJECTIVE_CONSTRAINT_SCHEMA, "pointwise": FILM_OBJECTIVE_CONSTRAINT_SCHEMA,
+        "weight": {"type": "number", "exclusiveMinimum": 0},
+        "normalization_scale": {"type": "number", "exclusiveMinimum": 0},
+    },
+    "description": "One physical band, independent enabled mean and pointwise constraints. Each angle is reduced separately; R/T and bounds are fractions. Both disabled is invalid. Mean uses the complete requested grid and normalized trapezoid masses, not point counts.",
+}
+
+
 FILM_SYNTHESIS_PLAN_INPUT_SCHEMA: dict[str, Any] = {
     "type": "object", "additionalProperties": False, "required": ["payload"],
     "properties": {"payload": {
         "type": "object", "additionalProperties": False,
         "required": ["schema_version", "kind", "request_id", "request", "physical_structures"],
         "properties": {
-            "schema_version": {"const": 1},
+            "schema_version": {"const": 2},
             "kind": {"const": "coat_sim.film_synthesis_request"},
             "request_id": {"type": "string", "minLength": 1, "maxLength": 128},
             "request": {"type": "object", "additionalProperties": True,
                 "properties": {
+                    "objectives": {"type": "array", "minItems": 1, "items": FILM_BAND_OBJECTIVE_SCHEMA},
                     "randomize_template_search": {
                         "type": "boolean", "default": False,
                         "description": "Optional extra thickness starts beside admitted deterministic templates; preserves existing search when off. No guarantee of escape or speedup."},
@@ -68,10 +99,6 @@ FILM_SYNTHESIS_PLAN_INPUT_SCHEMA: dict[str, Any] = {
                     "parallel_batch_size": {
                         "type": ["integer", "null"], "minimum": 1,
                         "description": "Hybrid logical candidate batch; null=AUTO resolved at freeze from requested/available CPU. Not a promise of this many concurrent workers: candidate, memory, frame and budget admission can reduce actual parallelism."},
-                    "strict_upper_bound_objective_indices": {
-                        "type": "array", "uniqueItems": True,
-                        "items": {"type": "integer", "minimum": 0},
-                        "description": "Synthesis-only zero-based range-objective indices using strict < at the original upper bound; omitted indices retain inclusive <=."},
                     "acceptable_normalized_error": {
                         "type": "number", "minimum": 0,
                         "description": "Solver acceptability tolerance only; does not relax nominal targets_met or add a manufacturing margin."}}},
@@ -89,16 +116,12 @@ FILM_SYNTHESIS_SUBMIT_INPUT_SCHEMA: dict[str, Any] = {
 def _independent_sensitivity_schema(kind: str, *, table: bool) -> dict[str, Any]:
     """Discovery hints; closed typed deserializers remain authoritative."""
     properties: dict[str, Any] = {
-        "schema_version": {"const": 1}, "kind": {"const": "coat_sim." + kind + "_request"},
+        "schema_version": {"const": 2 if table else 3}, "kind": {"const": "coat_sim." + kind + "_request"},
         "design_snapshot": {"type": "object"}, "design_revision": {"type": "integer", "minimum": 0},
-        "objectives": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+        "objectives": {"type": "array", "minItems": 1, "items": FILM_BAND_OBJECTIVE_SCHEMA},
         "frozen_material_snapshot": {"type": ["object", "null"]},
         "max_evaluations": {"type": ["integer", "null"], "minimum": 1,
             "description": "Raw forward/Jacobian condition-block budget, not thickness-probe count."},
-        "strict_lower_bound_objective_indices": {"type": "array", "uniqueItems": True,
-            "items": {"type": "integer", "minimum": 0}},
-        "strict_upper_bound_objective_indices": {"type": "array", "uniqueItems": True,
-            "items": {"type": "integer", "minimum": 0}},
     }
     required = ["schema_version", "kind", "design_snapshot", "design_revision", "objectives"]
     if table:
@@ -135,7 +158,7 @@ def _independent_sensitivity_schema(kind: str, *, table: bool) -> dict[str, Any]
     payload: dict[str, Any] = {"type": "object", "additionalProperties": False,
                               "required": required, "properties": properties}
     if not table:
-        properties["schema_version"] = {"const": 2}
+        properties["schema_version"] = {"const": 3}
         properties.update({
             "policy": {"enum": ["strict_nominal", "bounded_baseline_degradation"],
                 "description": "Original nominal acceptance is independent of the fixed-baseline spectral guard."},
@@ -148,6 +171,8 @@ def _independent_sensitivity_schema(kind: str, *, table: bool) -> dict[str, Any]
                     "delta": {"type": "number", "minimum": 0},
                     "unit": {"const": "percentage_point"}}},
                 "description": "One explicit finite nonnegative allowance per bounded-policy row; 0.1 pp = 0.001 fraction. Empty is not zero."},
+            "guard_directions": {"type": "array", "items": {"enum": ["lower", "upper", "both"]},
+                "description": "Frozen union of enabled nominal bound sides for the full per-wavelength baseline guard."},
             "kernel_identity": {"type": ["string", "null"],
                 "description": "Frozen physical implementation identity. No pre-submit baseline optical computation."},
         })

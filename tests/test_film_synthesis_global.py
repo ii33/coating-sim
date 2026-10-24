@@ -10,6 +10,7 @@ from coat_sim.core import film_synthesis_global as global_search
 from coat_sim.core import film_synthesis_parallel as parallel
 from coat_sim.core.film_auto_synthesis import FilmSynthesisRequest, freeze_film_synthesis_request
 from coat_sim.core.film_design import new_design
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationObjective
 from coat_sim.core.film_optimization_needle import FilmNeedleMaterialReference
 from coat_sim.core.refractiveindex_local import RefractiveIndexLocalStore, packaged_store_root
@@ -35,9 +36,7 @@ def real_reflector_request(**limits):
     environment["assume_lossless"] = True
     request = FilmSynthesisRequest(
         environment,
-        (FilmOptimizationObjective(600, 900, 4, angles_deg=(40., 50.),
-                                   polarization="unpolarized", metric="R", mode="range",
-                                   lower_bound=.99),),
+        (FilmOptimizationObjective(600, 900, 4, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=.99, upper_bound=None), angles_deg=(40., 50.), polarization="unpolarized", metric="R"),),
         (FilmNeedleMaterialReference("ZnS", "nk"), FilmNeedleMaterialReference("MgF2", "nk")),
         **limits,
     )
@@ -72,7 +71,7 @@ def test_structural_proposals_never_bypass_explicit_manufacturing_limits(limit):
 
 def test_non_high_reflectance_objective_does_not_activate_reflector_prior():
     _, request = setup_problem()
-    request = replace(request, objectives=(replace(request.objectives[0], upper_bound=.2),))
+    request = replace(request, objectives=(replace(request.objectives[0], pointwise=replace(request.objectives[0].pointwise, upper_bound=.2)),))
     assert global_search.reflector_objectives(request) == ()
     assert list(global_search.iter_reflector_proposals(request)) == []
 

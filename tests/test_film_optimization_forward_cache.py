@@ -14,6 +14,7 @@ from uuid import uuid4
 import numpy as np
 import pytest
 
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import (
     FilmOptimizationObjective,
     FilmOptimizationRequest,
@@ -48,9 +49,7 @@ def _request(design, frozen, *, solver="baseline", samples=3, budget=8):
         design_snapshot=deepcopy(design),
         design_revision=29,
         variables=(FilmThicknessVariable("front", "layer-0", 45.0, 120.0),),
-        objectives=(FilmOptimizationObjective(
-            500.0, 650.0, samples, metric="R", mode="value", target_value=0.0,
-            angles_deg=(0.0,), polarization="unpolarized"),),
+        objectives=(FilmOptimizationObjective(500.0, 650.0, samples, pointwise=FilmObjectiveConstraint(mode="value", target_value=0.0, lower_bound=None, upper_bound=None), metric="R", angles_deg=(0.0,), polarization="unpolarized"),),
         max_iterations=2,
         max_evaluations=budget,
         initial_step_fraction=0.25,
@@ -596,9 +595,7 @@ def test_cancel_after_new_checkpoint_retains_last_complete_incumbent(monkeypatch
                                         "angle_deg": 0.0})
     request = _request(design, frozen, solver="nelder_mead", samples=1, budget=8)
     request = FilmOptimizationRequest(
-        **{**request.__dict__, "objectives": (FilmOptimizationObjective(
-            550.0, 550.0, 1, metric="R", mode="value",
-            target_value=float(spectrum["R"][0]), angles_deg=(0.0,)),)})
+        **{**request.__dict__, "objectives": (FilmOptimizationObjective(550.0, 550.0, 1, pointwise=FilmObjectiveConstraint(mode="value", target_value=float(spectrum["R"][0]), lower_bound=None, upper_bound=None), metric="R", angles_deg=(0.0,)),)})
     cancel = Event()
     checkpoints = []
 

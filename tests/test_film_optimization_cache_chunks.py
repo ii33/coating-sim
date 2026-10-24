@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 
 from coat_sim.core.film_design import new_design, validate_design
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import (
     FilmOptimizationObjective, FilmOptimizationRequest, FilmThicknessVariable,
     _wavelength_chunks, optimize_film_design,
@@ -83,10 +84,7 @@ def make_request(*, samples=3, target=0.0, scale=1.0, solver="baseline",
     request = FilmOptimizationRequest(
         design_snapshot=design, design_revision=5,
         variables=(FilmThicknessVariable("front", "memory-layer", low, high),),
-        objectives=(FilmOptimizationObjective(
-            500.0, 600.0 if samples > 1 else 500.0, samples,
-            metric="R", mode="value", target_value=target,
-            normalization_scale=scale),),
+        objectives=(FilmOptimizationObjective(500.0, 600.0 if samples > 1 else 500.0, samples, pointwise=FilmObjectiveConstraint(mode="value", target_value=target, lower_bound=None, upper_bound=None), metric="R", normalization_scale=scale),),
         solver=solver, max_iterations=2, max_evaluations=max_evaluations,
         acceptable_normalized_error=acceptable,
         validation_samples_multiplier=multiplier,
@@ -272,8 +270,7 @@ def test_needle_without_base_variables_uses_shared_controls(changes, message):
 
 
 def test_needle_dense_score_chunks_and_cancellation_rollback():
-    objective = FilmOptimizationObjective(
-        500.0, 600.0, 20001, metric="R", mode="value", target_value=0.0)
+    objective = FilmOptimizationObjective(500.0, 600.0, 20001, pointwise=FilmObjectiveConstraint(mode="value", target_value=0.0, lower_bound=None, upper_bound=None), metric="R")
     design = make_design()
     uncancelled = MemoryService()
     score = _score_design(uncancelled, design, (objective,))
@@ -366,10 +363,8 @@ def test_l_bfgs_b_rejects_nonfinite_cost_or_gradient_and_keeps_best(
 def test_job_replay_keeps_objective_identity_with_global_chunking():
     design = make_design()
     objectives = (
-        FilmOptimizationObjective(500.0, 600.0, 20001, metric="R",
-                                  mode="value", target_value=0.0),
-        FilmOptimizationObjective(500.0, 600.0, 20001, metric="R",
-                                  mode="value", target_value=0.0, weight=2.0),
+        FilmOptimizationObjective(500.0, 600.0, 20001, pointwise=FilmObjectiveConstraint(mode="value", target_value=0.0, lower_bound=None, upper_bound=None), metric="R"),
+        FilmOptimizationObjective(500.0, 600.0, 20001, pointwise=FilmObjectiveConstraint(mode="value", target_value=0.0, lower_bound=None, upper_bound=None), metric="R", weight=2.0),
     )
     service = MemoryService()
     result = _replay_candidate_scores(service, design, objectives)

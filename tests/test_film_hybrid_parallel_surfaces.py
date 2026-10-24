@@ -20,7 +20,6 @@ from PySide6.QtTest import QTest
 from coat_sim.core import film_performance
 from coat_sim.core.capabilities import CapabilityError
 from coat_sim.core.film_auto_synthesis import FilmSynthesisRequest, freeze_film_synthesis_request
-from coat_sim.core.film_optimization import FilmOptimizationRequest
 from coat_sim.core.film_optimization_job import deserialize_request, serialize_request
 from coat_sim.core.film_synthesis_io import (
     film_synthesis_request_from_payload, film_synthesis_request_to_payload,
@@ -52,9 +51,10 @@ def app():
 
 def _frozen(*, workers=19, batch_size=None):
     service, request = setup_problem(low=550., high=550., samples=1)
-    return freeze_film_synthesis_request(service, replace(request,
+    objective = replace(request.objectives[0], pointwise=replace(request.objectives[0].pointwise, strict_upper=True))
+    return freeze_film_synthesis_request(service, replace(request, objectives=(objective,),
         search_strategy="hybrid", cpu_workers=workers, parallel_batch_size=batch_size,
-        max_working_set_bytes=3 * 1024**3, strict_upper_bound_objective_indices=(0,)))
+        max_working_set_bytes=3 * 1024**3))
 
 
 @pytest.mark.parametrize("value,expected", (
@@ -234,7 +234,7 @@ def test_real_cli_plan_override_is_frozen_and_never_rewrites_input(tmp_path, bat
     expected = 7 if batch == "7" else min(2, film_performance.available_cpu_workers())
     assert planned.parallel_batch_size == expected
     assert planned.cpu_workers == 2 and planned.objectives == frozen.objectives
-    assert planned.strict_upper_bound_objective_indices == (0,)
+    assert planned.objectives[0].pointwise.strict_upper is True
     assert path.read_bytes() == before
 
 
@@ -280,11 +280,13 @@ def test_mcp_schema_rejects_non_integer_or_nonpositive_batch(value):
         validate_mcp_arguments(FILM_SYNTHESIS_PLAN_INPUT_SCHEMA, {"payload": envelope})
 
 
-def test_ordinary_v1_request_unknown_field_gates_remain_closed():
-    _service, synthesis = setup_problem()
-    ordinary = FilmOptimizationRequest(synthesis.environment, 19, (), synthesis.objectives)
+def test_ordinary_current_request_unknown_field_gates_remain_closed():
+    from tests.film_performance_fixtures import fixture as performance_fixture
+    from tests.test_film_optimization_forward_cache import _request
+    _service, design, snapshot = performance_fixture(layers=2)
+    ordinary = _request(design, snapshot, budget=19)
     payload = serialize_request(ordinary)
-    assert payload["schema_version"] == 1 and "parallel_batch_size" not in payload
+    assert payload["schema_version"] == 2 and "parallel_batch_size" not in payload
     assert not hasattr(deserialize_request(payload), "parallel_batch_size")
     for field in ("parallel_batch_size", "unrelated_field"):
         with pytest.raises(ValueError, match="fields are invalid"):

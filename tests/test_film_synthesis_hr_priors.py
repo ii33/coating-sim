@@ -11,6 +11,7 @@ import pytest
 from coat_sim.core import film_synthesis_hr_priors as priors
 from coat_sim.core.film_auto_synthesis import freeze_film_synthesis_request
 from coat_sim.core.film_design import MAX_LAYERS, validate_design
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationObjective
 from coat_sim.core.film_optimization_needle import FilmNeedleMaterialReference
 from coat_sim.core.film_synthesis_absorption import sample_synthesis_optical
@@ -37,8 +38,7 @@ def hr_request(*, low=400., high=850., angles=(0., 40.), polarization="unpolariz
                         [2.3, 2.25, 2.15] if name == names[1] else [1.5] * 3)
         optical["k"] = ([.005, .01, .02] if name == names[0] else
                         [.03, .04, .06] if name == names[1] else [0.] * 3) if absorbing else [0.] * 3
-    objectives = (FilmOptimizationObjective(low, high, 3, angles_deg=angles, polarization=polarization,
-        mode="range", lower_bound=.99, upper_bound=1.),)
+    objectives = (FilmOptimizationObjective(low, high, 3, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=.99, upper_bound=1.), angles_deg=angles, polarization=polarization),)
     request = replace(request, objectives=objectives, max_layers=max_layers,
         candidate_materials=tuple(FilmNeedleMaterialReference(name, "nk") for name in names),
         seed_designs=())
@@ -112,9 +112,16 @@ def test_pure_seed_free_single_sided_explicit_boundary_is_required(mutation):
         request = replace(request, seed_designs=(environment,))
     elif mutation in {"T", "AR", "value", "upper"}:
         objective = request.objectives[0]
-        changes: dict[str, dict[str, Any]] = {"T": dict(metric="T"), "AR": dict(lower_bound=0., upper_bound=.1),
-                   "value": dict(mode="value", target_value=.99), "upper": dict(upper_bound=.999)}
-        request = replace(request, objectives=(*request.objectives, replace(objective, **changes[mutation])))
+        if mutation == "T":
+            changed = replace(objective, metric="T")
+        else:
+            pointwise_changes: dict[str, dict[str, Any]] = {
+                "AR": dict(lower_bound=0., upper_bound=.1),
+                "value": dict(mode="value", target_value=.99, lower_bound=None, upper_bound=None),
+                "upper": dict(upper_bound=.999),
+            }
+            changed = replace(objective, pointwise=replace(objective.pointwise, **pointwise_changes[mutation]))
+        request = replace(request, objectives=(*request.objectives, changed))
     elif mutation == "double":
         environment["substrate"]["sides"] = "double"
         request = replace(request, environment=environment)

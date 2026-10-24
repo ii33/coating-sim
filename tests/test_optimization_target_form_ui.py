@@ -17,20 +17,20 @@ def test_bounds_derive_request_and_roundtrip_without_hidden_mode(app,tmp_path):
         row=controller.selectedObjective
         assert row['wavelength_step_nm']==row['angle_step_deg']==1
         assert controller._build_request(require_variables=False).objectives[0].angles_deg==(0.0,)
-        assert controller.setObjectiveField('upper_bound_percent',20)
-        assert controller.setObjectiveField('lower_bound_percent',10)
+        assert controller.setObjectiveField('pointwise.upper_bound_percent',20)
+        assert controller.setObjectiveField('pointwise.lower_bound_percent',10)
         objective=controller._build_request(require_variables=False).objectives[0]
-        assert objective.mode=='range' and objective.target_value is None
-        assert (objective.lower_bound,objective.upper_bound)==(.1,.2)
-        assert controller.setObjectiveField('lower_bound_percent',20)
+        assert objective.pointwise.mode=='range' and objective.pointwise.target_value is None
+        assert (objective.pointwise.lower_bound,objective.pointwise.upper_bound)==(.1,.2)
+        assert controller.setObjectiveField('pointwise.lower_bound_percent',20)
         objective=controller._build_request(require_variables=False).objectives[0]
-        assert objective.mode=='value' and objective.target_value==.2
-        assert objective.lower_bound is objective.upper_bound is None
+        assert objective.pointwise.mode=='value' and objective.pointwise.target_value==.2
+        assert objective.pointwise.lower_bound is objective.pointwise.upper_bound is None
         saved=controller.exportOptimizationConfiguration()
-        assert saved['objectives'][0]['mode']=='range'
+        assert saved['objectives'][0]['pointwise']['mode']=='range'
         assert controller.loadOptimizationConfiguration(saved)
         assert controller._build_request(require_variables=False).objectives[0]==objective
-        assert not controller.setObjectiveField('lower_bound_percent',21)
+        assert not controller.setObjectiveField('pointwise.lower_bound_percent',21)
         assert controller.error
         with pytest.raises(ValueError):
             controller._build_request(require_variables=False)
@@ -40,13 +40,13 @@ def test_value_configuration_is_losslessly_expressed_as_equal_bounds(app,tmp_pat
     service,library,design=fixture(tmp_path)
     with optimizer(service,design) as (controller,source,session):
         saved=controller.exportOptimizationConfiguration()
-        saved['objectives'][0].update(mode='value',target_value_percent=37.5,lower_bound_percent=0,upper_bound_percent=100)
+        saved['objectives'][0]['pointwise'].update(mode='value',target_value_percent=37.5,lower_bound_percent=0,upper_bound_percent=100)
         assert controller.loadOptimizationConfiguration(saved)
-        assert controller.selectedObjective['mode']=='range'
-        assert controller.selectedObjective['lower_bound_percent']==controller.selectedObjective['upper_bound_percent']==37.5
-        assert controller._build_request(require_variables=False).objectives[0].target_value==.375
+        assert controller.selectedObjective['pointwise']['mode']=='value'
+        assert controller.selectedObjective['pointwise']['lower_bound_percent']==controller.selectedObjective['pointwise']['upper_bound_percent']==37.5
+        assert controller._build_request(require_variables=False).objectives[0].pointwise.target_value==.375
         invalid=deepcopy(saved)
-        invalid['objectives'][0]['mode']='maximize'
+        invalid['objectives'][0]['pointwise']['mode']='maximize'
         assert not controller.loadOptimizationConfiguration(invalid)
         assert controller.error
 
@@ -93,17 +93,17 @@ def test_qml_inline_bounds_and_precision_captions(app,tmp_path,width):
             assert lower.y()==pytest.approx(upper.y())
             assert lower.width()>=64 and upper.width()>=64
             assert upper.x()+upper.width()<=upper.parentItem().width()+1
-            assert controller.setObjectiveField('upper_bound_percent',25)
+            assert controller.setObjectiveField('pointwise.upper_bound_percent',25)
             type_value(window,lower,'25')
             assert QMetaObject.invokeMethod(lower,'editingFinished',Qt.ConnectionType.DirectConnection)
             _settle()
-            assert controller._build_request(require_variables=False).objectives[0].target_value==.25
+            assert controller._build_request(require_variables=False).objectives[0].pointwise.target_value==.25
             labels=[x.property('text') for x in window.findChildren(QQuickItem)]
             assert '采样精度 (nm)' in labels and '精度 (°)' in labels
             assert '采样步长 (nm)' not in labels and '步长 (°)' not in labels
 
 
-@pytest.mark.parametrize(('field','value'),[('lower_bound_percent',21),('wavelength_step_nm',0)])
+@pytest.mark.parametrize(('field','value'),[('pointwise.lower_bound_percent',21),('wavelength_step_nm',0)])
 def test_angle_confirmation_cannot_clear_unrelated_input_error(app,tmp_path,field,value):
     service,library,design=fixture(tmp_path)
     with optimizer(service,design) as (controller,source,session):
@@ -111,7 +111,7 @@ def test_angle_confirmation_cannot_clear_unrelated_input_error(app,tmp_path,fiel
         saved['objectives'][0].update(angle_sampling_mode='points',angles_text='0, 13.5, 47')
         assert controller.loadOptimizationConfiguration(saved)
         assert not controller.setObjectiveField(field,value)
-        if field == 'lower_bound_percent':
+        if field == 'pointwise.lower_bound_percent':
             range_state = (
                 controller.objectiveBoundsError,
                 deepcopy(controller._objective_range_errors),
@@ -122,7 +122,7 @@ def test_angle_confirmation_cannot_clear_unrelated_input_error(app,tmp_path,fiel
         else:
             key=controller._pending_edit_error_key
         assert not controller.confirmObjectiveAngleRange('0','10','1')
-        if field == 'lower_bound_percent':
+        if field == 'pointwise.lower_bound_percent':
             assert controller.objectiveBoundsError == range_state[0]
             assert controller._objective_range_errors == range_state[1]
             assert controller._objective_range_drafts == range_state[2]

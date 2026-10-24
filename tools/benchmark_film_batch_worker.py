@@ -5,6 +5,7 @@ Python worker process; the OS page cache is intentionally left warm/uncontrolled
 """
 from __future__ import annotations
 
+
 from copy import deepcopy
 import hashlib
 import json
@@ -66,11 +67,11 @@ CONFIGS = [
 
 
 def _request(service, design, frozen, mode):
-    from coat_sim.core.film_optimization import FilmOptimizationObjective, FilmOptimizationRequest, FilmThicknessVariable
+    from coat_sim.core.film_optimization import FilmObjectiveConstraint, FilmOptimizationObjective, FilmOptimizationRequest, FilmThicknessVariable
     return FilmOptimizationRequest(
         design_snapshot=deepcopy(design), design_revision=1,
         variables=(FilmThicknessVariable("front", "layer-0", 45., 120.),),
-        objectives=(FilmOptimizationObjective(400., 1000., 601, metric="R", target_value=0.),),
+        objectives=(FilmOptimizationObjective(400., 1000., 601, pointwise=FilmObjectiveConstraint(mode="value", target_value=0., lower_bound=None, upper_bound=None), metric="R"),),
         max_iterations=4, max_evaluations=64, initial_step_fraction=.25,
         min_step_fraction=1e-4, acceptable_normalized_error=0.,
         frozen_material_snapshot=deepcopy(frozen), solver="differential_evolution",

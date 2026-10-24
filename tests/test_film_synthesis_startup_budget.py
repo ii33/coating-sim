@@ -14,7 +14,7 @@ pytestmark = pytest.mark.algorithm
 
 def reflector_request(**changes):
     service, request = setup_problem(low=550., high=550., samples=1)
-    objective = replace(request.objectives[0], lower_bound=.999999, upper_bound=1.)
+    objective = replace(request.objectives[0], pointwise=replace(request.objectives[0].pointwise, lower_bound=.999999, upper_bound=1.))
     return service, replace(request, objectives=(objective,), max_cycles=1,
                             max_evaluations=None, **changes)
 

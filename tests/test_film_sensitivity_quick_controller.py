@@ -197,7 +197,7 @@ def test_table_units_preserve_nominal_targets_and_real_replay(harness, unit, inp
     assert request.rows[0].bias_unit == ("absolute_nm" if unit == "absolute_nm" else "relative_fraction")
     assert request.objectives == nominal.objectives
     assert harness.session.design == original and not harness.source.applied
-    assert payload["schema_version"] == 1  # Parameter-table schema1 is current.
+    assert payload["schema_version"] == 2  # Current table result carries nested band criteria.
     assert "不可应用" in panel.tableResultSummary
     assert not panel.idealCanApply and not panel.applySelectedBest()
 
@@ -306,7 +306,7 @@ def test_partial_ideal_candidate_never_auto_applies(harness):
     before = deepcopy(harness.session.design)
     payload = _start_ideal(harness)
     assert payload["state"] == "partial" and payload["termination_reason"] == "evaluation_limit"
-    assert payload["is_final"] and payload["schema_version"] == 2
+    assert payload["is_final"] and payload["schema_version"] == 3
     assert harness.panel.idealCanApply
     assert not harness.source.applied and harness.session.design == before
 
@@ -314,8 +314,8 @@ def test_partial_ideal_candidate_never_auto_applies(harness):
 @pytest.mark.parametrize("terminal", ["failed", "cancelled"])
 def test_real_ideal_terminal_states_keep_reports_but_never_apply(harness, terminal):
     if terminal == "failed":
-        assert harness.owner.setObjectiveField("upper_bound_percent", 100.)
-        assert harness.owner.setObjectiveField("lower_bound_percent", 99.)
+        assert harness.owner.setObjectiveField("pointwise.upper_bound_percent", 100.)
+        assert harness.owner.setObjectiveField("pointwise.lower_bound_percent", 99.)
     else:
         harness.client.cancel_stage = "baseline"
     before = deepcopy(harness.session.design)

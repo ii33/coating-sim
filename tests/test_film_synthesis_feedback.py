@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from coat_sim.core.film_auto_synthesis import FilmSynthesisRequest
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmConditionError, FilmOptimizationObjective
 from coat_sim.core.film_synthesis_feedback import (
     SparseFeedbackRegistry, augment_feedback_guide, feedback_candidate_key,
@@ -20,23 +21,22 @@ pytestmark = pytest.mark.algorithm
 
 def request_fixture():
     objectives = (
-        FilmOptimizationObjective(500., 600., 3, angles_deg=(0., 45.), polarization="s",
-            mode="range", upper_bound=.1, weight=2., normalization_scale=.02),
-        FilmOptimizationObjective(500., 600., 3, polarization="p", metric="T",
-            mode="range", lower_bound=.9, upper_bound=1., normalization_scale=.1),
+        FilmOptimizationObjective(500., 600., 3, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=.1), angles_deg=(0., 45.), polarization="s", weight=2., normalization_scale=.02),
+        FilmOptimizationObjective(500., 600., 3, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=.9, upper_bound=1., strict_lower=True), polarization="p", metric="T", normalization_scale=.1),
     )
-    return FilmSynthesisRequest({}, objectives, (), acceptable_normalized_error=.01,
-        strict_lower_bound_objective_indices=(1,))
+    return FilmSynthesisRequest({}, objectives, (), acceptable_normalized_error=.01)
 
 
 def error_for(request, index, wave, actual, angle=0.):
     objective = request.objectives[index]
-    violation = max(0., 0. if objective.lower_bound is None else objective.lower_bound - actual,
-        0. if objective.upper_bound is None else actual - objective.upper_bound)
+    violation = max(0., 0. if objective.pointwise.lower_bound is None else objective.pointwise.lower_bound - actual,
+        0. if objective.pointwise.upper_bound is None else actual - objective.pointwise.upper_bound)
     normalized = violation / objective.normalization_scale
     return FilmConditionError(index, wave, angle, objective.polarization, objective.metric,
-        actual, objective.target_value, objective.lower_bound, objective.upper_bound,
-        normalized, normalized * math.sqrt(objective.weight))
+        actual, objective.pointwise.target_value, objective.pointwise.lower_bound, objective.pointwise.upper_bound,
+        normalized, normalized * math.sqrt(objective.weight), strict_lower=objective.pointwise.strict_lower,
+        strict_upper=objective.pointwise.strict_upper,
+        wavelength_min_nm=objective.wavelength_min_nm, wavelength_max_nm=objective.wavelength_max_nm)
 
 
 def base_fixture(request):
@@ -193,6 +193,8 @@ def test_empty_snapshot_never_calls_physics_and_preserves_base_strict_failure():
     request = request_fixture()
     base = base_fixture(request)
     base["score"]["errors"] = (*base["score"]["errors"], error_for(request, 1, 500., .9))
+    base["responses"] = tuple({**row, "actual_values": [.9, .9, .9]}
+        if row["objective_index"] == 1 else row for row in base["responses"])
     def unexpected(_objectives):
         raise AssertionError("No sparse points exist")
     guide = augment_feedback_guide(request, base, SparseFeedbackRegistry(request).snapshot(),

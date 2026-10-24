@@ -16,6 +16,7 @@ from coat_sim.core.film_auto_synthesis import (FilmSynthesisRequest, freeze_film
                                                synthesize_film_design)
 from coat_sim.core.film_design import new_design, validate_design
 from coat_sim.core.film_design_service import FilmDesignService
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationObjective
 from coat_sim.core.film_optimization_needle import (FilmNeedleMaterialReference,
                                                    _candidate_payload_from_materials)
@@ -54,7 +55,7 @@ def _problem(*, difficult=False):
         records.append({"id": name, "name": name, "design_ready": True, "optical_sets": [optical]})
     environment = new_design(design_id="cli-fixture")
     environment["substrate"].update(material_id="glass", optical_set_id="nk")
-    target = FilmOptimizationObjective(540., 560., 3, mode="range", upper_bound=0.0 if difficult else 0.1)
+    target = FilmOptimizationObjective(540., 560., 3, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=0.0 if difficult else 0.1))
     request = FilmSynthesisRequest(environment, (target,),
         (FilmNeedleMaterialReference("low", "nk"), FilmNeedleMaterialReference("high", "nk")),
         max_cycles=4 if difficult else 1, max_evaluations=80 if difficult else 10,
@@ -219,8 +220,8 @@ def test_frozen_payload_roundtrip_and_real_cli_cancel_heartbeat_and_exclusive_ou
     # incumbent; a fixed startup delay can cancel before the first heartbeat.
     objective = request.objectives[0]
     request = replace(request, max_cycles=None, max_evaluations=None,
-        objectives=(replace(objective, upper_bound=0., lower_bound=None),
-                    replace(objective, upper_bound=None, lower_bound=1.)))
+        objectives=(replace(objective, pointwise=replace(objective.pointwise, upper_bound=0., lower_bound=None)),
+                    replace(objective, pointwise=replace(objective.pointwise, upper_bound=None, lower_bound=1.))))
     cancel_source, cancelled_output, cancel_file = (tmp_path / "cancel-request.json",
         tmp_path / "cancelled-result.json", tmp_path / "cancel")
     cancel_checkpoint = tmp_path / "cancel-checkpoint.json"

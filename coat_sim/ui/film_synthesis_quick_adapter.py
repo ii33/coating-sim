@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from coat_sim.core.film_auto_synthesis import FilmSynthesisRequest, _validated
 from coat_sim.core.film_optimization import FilmConditionError, FilmOptimizationRequest, FilmOptimizationResult
+from coat_sim.core.film_objective_criteria import FilmObjectiveCoverage
 from coat_sim.core.film_synthesis_io import film_synthesis_request_to_payload
 from coat_sim.core.film_synthesis_jobs import is_synthesis_result
 from coat_sim.core.film_synthesis_forward import validate_forward_device
@@ -21,7 +22,7 @@ SYNTHESIS_DEFAULT_OPTIONS = dict.fromkeys(("max_cycles", "max_evaluations", "max
 
 
 SYNTHESIS_SEARCH_DEFAULTS = {
-    "search_strategy": "hybrid", "objective_weighting": "equal_window",
+    "search_strategy": "hybrid",
     "archive_capacity": 32, "needle_batch_size": 6,
     "needle_pre_local": False, "needle_position_refinement_rounds": 1,
     "max_working_set_bytes": 0,
@@ -70,9 +71,8 @@ def synthesis_options(values: Mapping[str, Any]) -> dict[str, Any]:
         if name == "max_working_set_bytes" and (raw is None or (isinstance(raw, str) and not raw.strip())):
             result[name] = None  # Explicit off, distinct from 0=auto and an omitted default.
             continue
-        if name in {"search_strategy", "objective_weighting"}:
-            choices = ({"hybrid", "legacy"} if name == "search_strategy"
-                       else {"equal_window", "point_count"})
+        if name == "search_strategy":
+            choices = {"hybrid", "legacy"}
             if raw not in choices:
                 raise ValueError(f"{name} must be one of {', '.join(sorted(choices))}")
             result[name] = raw
@@ -123,42 +123,12 @@ def synthesis_cpu_workers(value: Any) -> int:
     return workers
 
 
-def synthesis_strict_upper_bound_indices(objectives) -> tuple[int, ...]:
-    """Parse only editor strict flags, independent of budgets or material rows.
-
-    This consumes UI percentages, not ordinary optimization request fields.
-    Invalid explicit flags are errors, never silently ignored by other tools.
-    """
-    if not isinstance(objectives, (list, tuple)):
-        raise ValueError("Synthesis objectives must be an ordered list")
-    indices = []
-    for index, row in enumerate(objectives):
-        if not isinstance(row, Mapping):
-            raise ValueError("Synthesis objective must be an object")
-        flag = row.get("synthesis_strict_upper_bound", False)
-        if type(flag) is not bool:
-            raise ValueError("Synthesis strict upper bound must be an explicit boolean")
-        if flag:
-            upper = row.get("upper_bound_percent")
-            if isinstance(upper, bool) or upper is None:
-                raise ValueError("Synthesis strict upper bound requires a finite upper bound")
-            try:
-                number = float(upper)
-            except (TypeError, ValueError, OverflowError) as exc:
-                raise ValueError("Synthesis strict upper bound requires a finite upper bound") from exc
-            if row.get("mode") != "range" or not math.isfinite(number) or not 0 <= number <= 100:
-                raise ValueError("Synthesis strict upper bound requires a range upper bound in [0,100]%")
-            indices.append(index)
-    return tuple(indices)
-
-
 def build_synthesis_request(base: FilmOptimizationRequest, references, options,
                             use_current_seed: bool = False,
                             assume_unknown_k_zero: bool = False,
                             cpu_workers: int = 1,
                             forward_backend: str = "cpu",
-                            forward_device: Mapping[str, Any] | None = None,
-                            strict_upper_bound_objective_indices: tuple[int, ...] = ()) -> FilmSynthesisRequest:
+                            forward_device: Mapping[str, Any] | None = None) -> FilmSynthesisRequest:
     if type(assume_unknown_k_zero) is not bool:
         raise ValueError("Unknown-k assumption must be an explicit boolean")
     original = deepcopy(dict(base.design_snapshot))
@@ -176,7 +146,6 @@ def build_synthesis_request(base: FilmOptimizationRequest, references, options,
         acceptable_normalized_error=base.acceptable_normalized_error,
         validation_samples_multiplier=base.validation_samples_multiplier,
         seed_designs=(original,) if use_current_seed else (),
-        strict_upper_bound_objective_indices=strict_upper_bound_objective_indices,
         cpu_workers=synthesis_cpu_workers(cpu_workers),
         forward_backend=forward_backend,
         forward_device=validate_forward_device(forward_device, forward_backend),
@@ -242,6 +211,11 @@ def synthesis_result_view(value: Any) -> SynthesisQuickResult:
         validation_per_condition_errors=(
             tuple(FilmConditionError(**r) for r in validation["errors"])
             if validation is not None else ()),
+        solver_acceptable=training["solver_acceptable"],
+        validation_solver_acceptable=(validation["solver_acceptable"] if validation is not None else None),
+        raw_coverage=tuple(FilmObjectiveCoverage(**r) for r in training["coverage"]),
+        validation_raw_coverage=(tuple(FilmObjectiveCoverage(**r) for r in validation["coverage"])
+                                 if validation is not None else ()),
         validation_message=("Sampled audit only; no continuous-spectrum certificate"
                             if validation is not None else
                             "Cancellation candidate has no completed sampled holdout audit"))

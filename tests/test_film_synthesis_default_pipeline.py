@@ -4,7 +4,10 @@ from copy import deepcopy
 from dataclasses import replace
 from threading import Event
 
+import pytest
+
 from coat_sim.core.film_auto_synthesis import freeze_film_synthesis_request
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationRequest, FilmOptimizationObjective
 from coat_sim.core.film_synthesis_jobs import deserialize_job_payload, execute_job
 from coat_sim.scheduler.jobs import JobSpec
@@ -17,10 +20,7 @@ from tests.test_film_auto_synthesis import setup_problem
 def test_gui_default_request_survives_freeze_job_roundtrip_and_executes_global_structure(
         tmp_path):
     service, fixture_request = setup_problem(materials=("low", "high"))
-    objective = FilmOptimizationObjective(
-        540., 560., 3, angles_deg=(40., 50.), polarization="unpolarized",
-        metric="R", mode="range", lower_bound=.9,
-    )
+    objective = FilmOptimizationObjective(540., 560., 3, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=.9, upper_bound=None), angles_deg=(40., 50.), polarization="unpolarized", metric="R")
     base = FilmOptimizationRequest(
         fixture_request.environment, design_revision=73, variables=(), objectives=(objective,))
 
@@ -57,9 +57,10 @@ def test_gui_default_request_survives_freeze_job_roundtrip_and_executes_global_s
     legacy_request = legacy_job["request"]["request"]
     assert "structure_search_seed" in legacy_request
     legacy_request.pop("structure_search_seed")
-    _, legacy_decoded, _ = deserialize_job_payload(legacy_job)
-    assert legacy_decoded.structure_search_seed == 0
-    assert legacy_decoded.seed_designs == ()
+    with pytest.raises(ValueError, match="requires every field"):
+        deserialize_job_payload(legacy_job)
+    assert decoded.structure_search_seed == 0
+    assert decoded.seed_designs == ()
 
     cancel = Event()
     progress = []
@@ -77,7 +78,7 @@ def test_gui_default_request_survives_freeze_job_roundtrip_and_executes_global_s
     # rather than the former unbudgeted global-prefix pass (cycle zero).
     assert result["result"]["cycles"] == 1
     assert result["result"]["frozen_request"]["search_strategy"] == "hybrid"
-    assert result["acceptance_semantics"] == "nominal_bounds_v1"
+    assert result["acceptance_semantics"] == "band_criteria_v2"
     assert result["result"]["solver_acceptable"] is True
     assert result["result"]["candidate_design"] is not None
     assert len(result["result"]["candidate_design"]["front_layers"]) > 1

@@ -37,7 +37,7 @@ def test_real_typed_job_freeze_binding_checkpoint_cancel_and_replay(kind):
     spec = JobSpec.parse_frozen(freeze_spec(None, kind, {'request': frozen}))
     assert spec.executor == kind and not spec.inputs
     assert spec.parameters['payload']['schema_version'] == 1
-    assert spec.parameters['payload']['request']['schema_version'] == (2 if kind == 'film_ideal_sensitivity' else 1)
+    assert spec.parameters['payload']['request']['schema_version'] == (3 if kind == 'film_ideal_sensitivity' else 2)
     assert jobs.workflow_request_to_payload(jobs.deserialize_job_payload(spec.parameters['payload'])) == jobs.workflow_request_to_payload(frozen)
     progress: list[dict[str, Any]] = []
     checkpoints: list[tuple[str, dict[str, Any]]] = []

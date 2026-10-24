@@ -8,6 +8,7 @@ at 600 CPU seconds. Single-BLAS settings are applied before NumPy imports.
 """
 from __future__ import annotations
 
+
 import argparse
 from copy import deepcopy
 import hashlib
@@ -46,7 +47,7 @@ def fixture(layers, full_grid, source_nk):
     from coat_sim.core import film_ideal_sensitivity as ideal
     from coat_sim.core.film_design import validate_design
     from coat_sim.core.film_design_service import FilmDesignService
-    from coat_sim.core.film_optimization import FilmOptimizationObjective, FilmThicknessVariable
+    from coat_sim.core.film_optimization import FilmObjectiveConstraint, FilmOptimizationObjective, FilmThicknessVariable
 
     source = ROOT / "benchmarks/film_synthesis/20261022/multispectral-v1/four-window-models/author_export-request.json"
     raw = source.read_bytes()
@@ -79,18 +80,13 @@ def fixture(layers, full_grid, source_nk):
     bands: tuple[tuple[float, float, Literal["R", "T"], float], ...] = (
         (580., 920., "R", .97), (1039., 1089., "R", .99),
         (3650., 5000., "T", .98), (7650., 10550., "T", .98))
-    objectives = tuple(FilmOptimizationObjective(
-        lo, hi, int(hi - lo) + 1 if full_grid else 9, angles, "unpolarized", metric,
-        "range", lower_bound=bound, weight=(1., 2.3, .4, 3.7)[i],
-        normalization_scale=(1., .8, .6, .9)[i],
-    ) for i, (lo, hi, metric, bound) in enumerate(bands))
+    objectives = tuple(FilmOptimizationObjective(lo, hi, int(hi - lo) + 1 if full_grid else 9, angles, "unpolarized", metric, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=bound, upper_bound=None, strict_lower=True), weight=(1., 2.3, .4, 3.7)[i], normalization_scale=(1., .8, .6, .9)[i]) for i, (lo, hi, metric, bound) in enumerate(bands))
     ids = tuple(f"new-band-{i}" for i in range(4))
     request = ideal.FilmIdealSensitivityRequest(
         design, 1, objectives,
         tuple(FilmThicknessVariable("front", row["id"], 0., 1000.)
               for row in design["front_layers"]), "relative",
         max_iterations=1, max_evaluations=None,
-        strict_lower_bound_objective_indices=(0, 1, 2, 3),
         policy="bounded_baseline_degradation", objective_ids=ids,
         budgets=tuple(ideal.FilmIdealDegradationBudget(i, .1) for i in ids),
     )

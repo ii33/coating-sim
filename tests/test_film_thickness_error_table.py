@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from coat_sim.core import film_thickness_error_table as table
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationObjective, FilmOptimizationRequest
 from tests.test_film_auto_synthesis import setup_problem
 
@@ -307,17 +308,24 @@ def test_complete_original_1nm_grid_all_angles_materials_and_revision_remain_fro
     assert replay == result
 
 
-@pytest.mark.parametrize('bound,strict_name', [('upper_bound', 'strict_upper_bound_objective_indices'),
-                                             ('lower_bound', 'strict_lower_bound_objective_indices')])
-def test_strict_boundary_is_only_explicit_no_hidden_margin(bound, strict_name):
+@pytest.mark.parametrize('bound,strict_flag', [('upper_bound', 'strict_upper'),
+                                             ('lower_bound', 'strict_lower')])
+def test_strict_boundary_is_only_explicit_no_hidden_margin(bound, strict_flag):
     service, request, baseline = run()
     assert baseline.analysis is not None
     actual = baseline.analysis.conditions[0].nominal_value
-    objective = FilmOptimizationObjective(550., 550., 1, mode='range', **{bound: actual})
-    inclusive = table.execute_film_thickness_error_table_request(service, replace(request, objectives=(objective,)))
+    objective = FilmOptimizationObjective(550., 550., 1, pointwise=FilmObjectiveConstraint(
+        mode='range', target_value=None, lower_bound=actual if bound == 'lower_bound' else None,
+        upper_bound=actual if bound == 'upper_bound' else None,
+        **{strict_flag: True}))
+    inclusive_objective = replace(objective, pointwise=replace(
+        objective.pointwise, strict_lower=False, strict_upper=False))
+    inclusive = table.execute_film_thickness_error_table_request(service,
+        replace(request, objectives=(inclusive_objective,)))
     assert inclusive.analysis is not None
     assert inclusive.analysis.nominal_targets_met
-    strict = table.execute_film_thickness_error_table_request(service, replace(request, objectives=(objective,), **{strict_name: (0,)}))
+    strict = table.execute_film_thickness_error_table_request(service,
+        replace(request, objectives=(objective,)))
     assert strict.analysis is not None
     assert not strict.analysis.nominal_targets_met
     assert inclusive.analysis.conditions[0].nominal_value == strict.analysis.conditions[0].nominal_value
@@ -575,8 +583,8 @@ def test_exact_nonbinary_original_grid_reaches_kernel_and_strict_boundary(monkey
              samples=4096, angle_deg=0., polarization='unpolarized', first_surface='front'))
     assert rebuilt['wavelength_nm'][163] == 503.97852086892846
     assert rebuilt['R'][163] < exact_value
-    request = replace(frozen, objectives=(replace(frozen.objectives[0], upper_bound=exact_value),),
-                      strict_upper_bound_objective_indices=(0,))
+    request = replace(frozen, objectives=(replace(frozen.objectives[0], pointwise=replace(
+        frozen.objectives[0].pointwise, upper_bound=exact_value, strict_upper=True)),))
     kernel = table.simulate_with_thickness_jacobian
     arrays = []
     def spy(design, materials, variables, settings, **kwargs):

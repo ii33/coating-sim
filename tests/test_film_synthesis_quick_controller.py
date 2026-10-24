@@ -29,7 +29,7 @@ def test_n0_configuration_roundtrip_and_cpu_target_keep_source_unchanged(app, tm
         request = controller._build_synthesis_request()
         assert request.environment["front_layers"] == [] and request.seed_designs == ()
         assert request.max_cycles is None and request.max_evaluations is None
-        assert request.objectives[0].upper_bound == pytest.approx(.05)
+        assert request.objectives[0].pointwise.upper_bound == pytest.approx(.05)
         assert controller.setSynthesisOption("max_cycles", "3")
         saved = controller.exportOptimizationConfiguration()
         assert saved["synthesis"]["options"]["max_cycles"] == 3

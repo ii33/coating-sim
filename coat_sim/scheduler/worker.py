@@ -380,10 +380,10 @@ def _film_reply_matches_payload(reply, payload):
             from coat_sim.core.film_sensitivity_workflow_jobs import result_matches_job
             return result_matches_job(reply, payload)
         if kind == 'coat_sim.film_synthesis_result':
-            from coat_sim.core.film_synthesis_io import film_synthesis_request_from_payload
+            from coat_sim.core.film_synthesis_io import SCHEMA_VERSION, film_synthesis_request_from_payload
             expected_id, expected, _ = film_synthesis_request_from_payload(payload['request'])
             actual_id, actual, _ = film_synthesis_request_from_payload({
-                'schema_version': 1, 'kind': 'coat_sim.film_synthesis_request',
+                'schema_version': SCHEMA_VERSION, 'kind': 'coat_sim.film_synthesis_request',
                 'request_id': reply['request_id'], 'request': reply['result']['frozen_request'],
                 'physical_structures': []})
             if expected_id != actual_id:

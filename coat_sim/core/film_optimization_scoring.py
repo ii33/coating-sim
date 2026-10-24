@@ -232,3 +232,18 @@ class PreparedRmsWeights:
         if not math.isfinite(result):
             raise ValueError("weighted RMS error is not finite")
         return result
+
+
+def reduction_score(reduction, acceptable: float, *, include_details: bool = True) -> dict:
+    """Expose the shared complete-band reduction through solver score fields."""
+    return {
+        "errors": reduction.conditions if include_details else (),
+        "coverage": reduction.coverage,
+        "max_error": reduction.max_error,
+        "weighted_max_error": reduction.weighted_max_error,
+        "weighted_rms_error": reduction.weighted_rms_error,
+        "nominal_pass": reduction.nominal_pass,
+        "solver_acceptable": reduction.solver_acceptable,
+        "condition_count": len(reduction.conditions),
+        "key": (0.0 if reduction.solver_acceptable else 1.0, reduction.weighted_rms_error),
+    }

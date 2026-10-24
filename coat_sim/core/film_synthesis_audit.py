@@ -12,6 +12,7 @@ from typing import Any, Callable, Mapping
 import numpy as np
 
 from .film_nominal_acceptance import nominal_condition_pass, solver_condition_acceptable
+from .film_objective_criteria import FilmConditionError, FilmObjectiveConstraint, FilmObjectiveCoverage
 from .film_design import validate_design
 from .film_design_service import active_material_references
 from .film_optimization import FilmOptimizationObjective, FilmOptimizationRequest
@@ -25,6 +26,58 @@ from .film_optimization_structure import (
 
 EXTREMUM_XATOL = 1e-10
 EXTREMUM_MAXITER = 500
+
+
+def objective_constraint_status(objectives, errors, tolerance):
+    """Per-band, per-enabled-reduction and per-angle facts from active rows."""
+    errors = tuple(FilmConditionError(**row) if isinstance(row, Mapping) else row for row in errors)
+    result = []
+    for index, objective in enumerate(objectives):
+        status = dict(objective_index=index, metric=objective.metric,
+            wavelength_min_nm=objective.wavelength_min_nm, wavelength_max_nm=objective.wavelength_max_nm,
+            discrete_line=objective.wavelength_min_nm == objective.wavelength_max_nm)
+        for kind in ("mean", "pointwise"):
+            constraint = getattr(objective, kind)
+            if not constraint.enabled:
+                status[kind] = dict(enabled=False)
+                continue
+            rows = [e for e in errors if e.objective_index == index and e.reduction == kind]
+            def severity(error, criterion=constraint):
+                return error.normalized_violation, not nominal_condition_pass(criterion, error.actual)
+
+            angle_status = []
+            for angle in objective.angles_deg:
+                angle_rows = [e for e in rows if e.angle_deg == angle]
+                if not angle_rows:
+                    angle_status.append(dict(angle_deg=angle, actual=None,
+                        worst_wavelength_nm=None, max_normalized_error=None,
+                        targets_met=False, solver_acceptable=False,
+                        evidence_error="missing active conditions"))
+                    continue
+                worst = max(angle_rows, key=severity)
+                angle_status.append(dict(angle_deg=angle, actual=worst.actual,
+                    worst_wavelength_nm=worst.wavelength_nm,
+                    max_normalized_error=worst.normalized_violation,
+                    targets_met=all(nominal_condition_pass(constraint, e.actual) for e in angle_rows),
+                    solver_acceptable=all(solver_condition_acceptable(constraint, e.actual, tolerance,
+                        normalization_scale=objective.normalization_scale) for e in angle_rows)))
+            worst = max(rows, key=severity) if rows else None
+            status[kind] = dict(enabled=True, mode=constraint.mode, target_value=constraint.target_value,
+                lower_bound=constraint.lower_bound, upper_bound=constraint.upper_bound,
+                strict_lower=constraint.strict_lower, strict_upper=constraint.strict_upper,
+                targets_met=all(a["targets_met"] for a in angle_status),
+                solver_acceptable=all(a["solver_acceptable"] for a in angle_status),
+                worst_angle_deg=None if worst is None else worst.angle_deg,
+                worst_wavelength_nm=None if worst is None else worst.wavelength_nm,
+                worst_actual=None if worst is None else worst.actual,
+                max_normalized_error=None if worst is None else worst.normalized_violation,
+                angles=angle_status)
+        status["targets_met"] = all(status[k]["targets_met"] for k in ("mean", "pointwise")
+                                    if status[k]["enabled"])
+        status["solver_acceptable"] = all(status[k]["solver_acceptable"] for k in ("mean", "pointwise")
+                                          if status[k]["enabled"])
+        result.append(status)
+    return result
 
 
 def audit_frozen_synthesis_candidate(
@@ -151,11 +204,26 @@ def audit_frozen_synthesis_candidate(
     series = {(int(row["objective_index"]), float(row["angle_deg"])):
               list(zip(row["wavelength_nm"], row["actual_values"], strict=True))
               for row in dense["responses"]}
+    raw_points = {key: dict(values) for key, values in series.items()}
 
     def add_errors(value, index: int) -> None:
+        for row in value["responses"]:
+            raw_points[index, float(row["angle_deg"])].update(
+                zip(row["wavelength_nm"], row["actual_values"], strict=True))
+        if not request.objectives[index].pointwise.enabled:
+            return
+        original = request.objectives[index]
         for error in value["score"]["errors"]:
-            error = replace(error, objective_index=index)
+            if error.reduction != "pointwise":
+                continue
+            error = replace(error, objective_index=index,
+                wavelength_min_nm=original.wavelength_min_nm, wavelength_max_nm=original.wavelength_max_nm)
             extra_errors[(index, error.angle_deg, error.wavelength_nm, error.polarization)] = error
+
+    def auxiliary(objective, **changes):
+        # Sampling an auxiliary subinterval must never redefine the band's mean.
+        return replace(objective, mean=replace(objective.mean, enabled=False),
+            pointwise=(objective.pointwise if objective.pointwise.enabled else FilmObjectiveConstraint()), **changes)
 
     # A shifted grid adds no duplicate integral weight. A line remains a line.
     for index, objective in enumerate(dense_objectives):
@@ -164,7 +232,7 @@ def audit_frozen_synthesis_candidate(
         if count <= 1 or objective.wavelength_min_nm == objective.wavelength_max_nm:
             continue
         step = (objective.wavelength_max_nm - objective.wavelength_min_nm) / (count - 1)
-        offset = replace(objective,
+        offset = auxiliary(objective,
             wavelength_min_nm=objective.wavelength_min_nm + 0.5 * step,
             wavelength_max_nm=objective.wavelength_max_nm - 0.5 * step,
             wavelength_samples=count - 1)
@@ -184,22 +252,25 @@ def audit_frozen_synthesis_candidate(
             check()
             wavelength = a + (b - a) * float(t)
             if wavelength not in scalar_cache:
-                local = replace(objective, wavelength_min_nm=wavelength,
+                local = auxiliary(objective, wavelength_min_nm=wavelength,
                     wavelength_max_nm=wavelength, wavelength_samples=1, angles_deg=(angle,))
                 value = evaluate((local,), stage="audit_extremum", index=index)
                 add_errors(value, index)
-                scalar_cache[wavelength] = value["score"]["errors"][0]
-            return sign * float(scalar_cache[wavelength].actual)
+                scalar_cache[wavelength] = value["responses"][0]["actual_values"][0]
+            return sign * float(scalar_cache[wavelength])
         return scalar
 
     # Find power extrema instead of optimizing a flat zero-violation plateau.
     # For value targets both signs matter; a range needs only bounded sides.
     for (index, angle), records in series.items():
         objective = request.objectives[index]
+        if not objective.pointwise.enabled:
+            continue
+        constraint = objective.pointwise
         records.sort(key=lambda pair: pair[0])
-        signs = ((1.0, -1.0) if objective.mode == "value" else
-                 tuple(sign for bound, sign in ((objective.upper_bound, -1.0),
-                                                (objective.lower_bound, 1.0)) if bound is not None))
+        signs = ((1.0, -1.0) if constraint.mode == "value" else
+                 tuple(sign for bound, sign in ((constraint.upper_bound, -1.0),
+                                                (constraint.lower_bound, 1.0)) if bound is not None))
         scalar_cache: dict[float, Any] = {}
         for sign in signs:
             for cursor in range(1, len(records) - 1):
@@ -233,31 +304,28 @@ def audit_frozen_synthesis_candidate(
     maximum = max(e.normalized_violation for e in errors)
     weighted_maximum = max(e.weighted_normalized_violation for e in errors)
     score = deepcopy(dense["score"])
+    audit_coverage = tuple(FilmObjectiveCoverage(index, angle, tuple(sorted(values)),
+                            tuple(float(values[w]) for w in sorted(values)))
+                           for (index, angle), values in raw_points.items())
     score.update(errors=errors, max_error=maximum, weighted_max_error=weighted_maximum,
-        key=(0.0 if maximum <= request.acceptable_normalized_error else 1.0, maximum, score["weighted_rms_error"]))
-    objective_status = []
-    for index, objective in enumerate(request.objectives):
-        worst = max((e for e in errors if e.objective_index == index), key=lambda e: e.normalized_violation)
-        objective_status.append(dict(objective_index=index, metric=objective.metric,
-            wavelength_min_nm=objective.wavelength_min_nm, wavelength_max_nm=objective.wavelength_max_nm,
-            discrete_line=objective.wavelength_min_nm == objective.wavelength_max_nm,
-            worst_wavelength_nm=worst.wavelength_nm, worst_angle_deg=worst.angle_deg,
-            worst_actual=worst.actual, max_normalized_error=worst.normalized_violation,
-            targets_met=all(nominal_condition_pass(objective, e.actual,
-                strict_lower=index in request.strict_lower_bound_objective_indices,
-                strict_upper=index in request.strict_upper_bound_objective_indices)
-                for e in errors if e.objective_index == index),
-            solver_acceptable=all(solver_condition_acceptable(objective, e.actual,
-                request.acceptable_normalized_error,
-                strict_lower=index in request.strict_lower_bound_objective_indices,
-                strict_upper=index in request.strict_upper_bound_objective_indices)
-                for e in errors if e.objective_index == index)))
+        audit_coverage=audit_coverage,
+        nominal_pass=all(nominal_condition_pass(getattr(request.objectives[e.objective_index], e.reduction),
+                                                e.actual) for e in errors),
+        solver_acceptable=all(solver_condition_acceptable(
+            getattr(request.objectives[e.objective_index], e.reduction), e.actual,
+            request.acceptable_normalized_error,
+            normalization_scale=request.objectives[e.objective_index].normalization_scale) for e in errors),
+        condition_count=len(errors))
+    score["key"] = (0.0 if score["solver_acceptable"] else 1.0, maximum, score["weighted_rms_error"])
+    objective_status = objective_constraint_status(request.objectives, errors, request.acceptable_normalized_error)
     metadata = dict(physical_evaluations=physical, wavelength_points=points,
         dense_points=dense_points, offset_points=offset_points,
-        extra_points=points - dense_points, unique_condition_points=len(errors),
+        extra_points=points - dense_points,
+        unique_condition_points=sum(len(row.wavelength_nm) for row in audit_coverage),
         bracket_count=bracket_count, completed_extrema=completed_extrema,
         local_coordinate="lambda=a+(b-a)*t; t in [0,1]", extrema_xatol=EXTREMUM_XATOL,
         continuous_certificate=False, rms_measure="fixed_dense_grid_only",
+        mean_measure="fixed_dense_grid_only",
         objective_status=objective_status,
         absorption_assumption=synthesis_absorption_assumption(request, design))
     score["audit"] = deepcopy(metadata)

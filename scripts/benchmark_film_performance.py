@@ -5,6 +5,7 @@ report directory. Three repeats, at most four CPU workers; CUDA is opt-in.
 """
 from __future__ import annotations
 
+
 import argparse
 from copy import deepcopy
 from dataclasses import replace
@@ -20,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 from coat_sim.core.film_performance import (FrozenFilmEvaluator, PerformanceOptions,
     KERNEL_VERSION, environment_key, optimize_film_design_accelerated)
-from coat_sim.core.film_optimization import (FilmOptimizationRequest, FilmOptimizationObjective,
+from coat_sim.core.film_optimization import (FilmObjectiveConstraint, FilmOptimizationRequest, FilmOptimizationObjective,
     FilmThicknessVariable, optimize_film_design)
 from coat_sim.core.film_optimization_derivatives import simulate_with_thickness_jacobian
 from coat_sim.core.film_optics import coherent_rta
@@ -164,7 +165,7 @@ def main():
     service, design, frozen = fixture(layers=4)
     request = FilmOptimizationRequest(design, 1,
         tuple(FilmThicknessVariable("front", f"layer-{i}", 25., 160.) for i in range(2)),
-        (FilmOptimizationObjective(450., 700., 301, target_value=.05),),
+        (FilmOptimizationObjective(450., 700., 301, pointwise=FilmObjectiveConstraint(mode="value", target_value=.05, lower_bound=None, upper_bound=None)),),
         solver="differential_evolution", max_iterations=3, max_evaluations=49,
         seed=19, population_size=12, frozen_material_snapshot=frozen,
         acceptable_normalized_error=0., validation_samples_multiplier=1)

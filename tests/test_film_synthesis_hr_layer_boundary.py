@@ -25,9 +25,7 @@ def broad_request(**limits):
     environment["substrate"].update(material_id="SiO2", optical_set_id="nk")
     request = freeze_film_synthesis_request(service, replace(request,
         environment=environment, frozen_material_snapshot=None))
-    objective = replace(request.objectives[0], wavelength_min_nm=400.,
-                        wavelength_max_nm=700., angles_deg=(0., 30.),
-                        polarization="s", lower_bound=.98)
+    objective = replace(request.objectives[0], pointwise=replace(request.objectives[0].pointwise, lower_bound=.98), wavelength_min_nm=400., wavelength_max_nm=700., angles_deg=(0., 30.), polarization="s")
     return replace(request, objectives=(objective, replace(objective, polarization="p")))
 
 

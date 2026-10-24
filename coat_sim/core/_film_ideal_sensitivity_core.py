@@ -15,10 +15,10 @@ from .film_design import validate_design
 from .film_candidate_display import (
     CandidateDisplayObserver, finish_candidate_display, record_candidate,
 )
-from .film_nominal_acceptance import nominal_condition_pass
+from .film_objective_criteria import FilmObjectiveCoverage, active_constraints, reduce_objective_responses
+from .film_objective_payload import condition_from_payload
 from .optical_constants import prepare_optical_set
 from .film_optimization import (
-    FilmConditionError,
     FilmOptimizationObjective,
     FilmThicknessVariable,
     _checked_frozen_snapshot,
@@ -30,7 +30,6 @@ from .film_optimization_derivatives import (
     simulate_with_thickness_jacobian,
 )
 from .film_optimization_needle import _normalize_objectives, _physical_layer_thickness
-from .film_optimization_scoring import score_condition, weighted_rms_error
 
 from . import film_ideal_sensitivity as _public
 from .film_ideal_sensitivity import (
@@ -128,20 +127,6 @@ def _validate_physical(request):
         value = getattr(request, label)
         if value is not None and (type(value) is not int or value < 1):
             raise ValueError(f"{label} must be a positive integer or null")
-    flags = {}
-    for side in ("lower", "upper"):
-        label = f"strict_{side}_bound_objective_indices"
-        indices = _sequence(getattr(request, label), label)
-        if (
-            any(type(i) is not int or not 0 <= i < len(objectives) for i in indices)
-            or len(set(indices)) != len(indices)
-            or any(
-                objectives[i].mode != "range" or getattr(objectives[i], side + "_bound") is None
-                for i in indices
-            )
-        ):
-            raise ValueError(f"{label} must uniquely select range {side} bounds")
-        flags[label] = tuple(sorted(indices))
     if request.frozen_material_snapshot is not None:
         _checked_frozen_snapshot(request.frozen_material_snapshot, design)
     return replace(
@@ -150,8 +135,6 @@ def _validate_physical(request):
         objectives=objectives,
         variables=variables,
         sensitivity_layer_ids=tuple(sensitivity_ids),
-        strict_lower_bound_objective_indices=flags["strict_lower_bound_objective_indices"],
-        strict_upper_bound_objective_indices=flags["strict_upper_bound_objective_indices"],
     )
 
 
@@ -169,16 +152,13 @@ def _estimate_physical_resources(
     sensitivity = len(request.sensitivity_layer_ids)
     columns = len(set(request.sensitivity_layer_ids) | {v.layer_id for v in request.variables})
     free = sum(v.lower_nm < _finite(v.upper_nm, "upper_nm") for v in request.variables)
-    eq = sum(
-        o.wavelength_samples * len(o.angles_deg) for o in request.objectives if o.mode == "value"
-    )
-    iq = sum(
-        o.wavelength_samples
-        * len(o.angles_deg)
-        * (int(o.lower_bound is not None) + int(o.upper_bound is not None))
-        for o in request.objectives
-        if o.mode == "range"
-    )
+    eq = sum((1 if name == "mean" else o.wavelength_samples) * len(o.angles_deg)
+             for o in request.objectives for name, c in active_constraints(o)
+             if c.mode == "value")
+    iq = sum((1 if name == "mean" else o.wavelength_samples) * len(o.angles_deg)
+             * (int(c.lower_bound is not None) + int(c.upper_bound is not None))
+             for o in request.objectives for name, c in active_constraints(o)
+             if c.mode == "range")
     m, n = eq + iq, free
     # Include current SciPy's double workspace, normals/multipliers and a
     # conservative bound on historical SLSQP workspaces. This is optimizer
@@ -203,7 +183,9 @@ def _estimate_physical_resources(
         + 32
     )
     solver_bytes = 8 * (max(modern, legacy, 1) + max(1, m) * n + 3 * max(1, m + 2 * n + 2))
-    analysis_bytes = points * 768 + 512
+    # Both enabled reductions can retain P point rows plus A mean rows. Raw
+    # values remain separate evidence even if only the A mean rows are enabled.
+    analysis_bytes = points * 1544 + 512
     jacobian_bytes = 8 * points * (columns + 2)
     cache_entry = analysis_bytes + jacobian_bytes
     block_points = max(min(BLOCK_SAMPLES, o.wavelength_samples) for o in request.objectives)
@@ -362,6 +344,7 @@ class _Evaluation:
     values: np.ndarray
     nominal_jacobian: np.ndarray
     conditions: tuple
+    raw_coverage: tuple[FilmObjectiveCoverage, ...] = ()
 
 
 def _request_identity(request):
@@ -540,57 +523,17 @@ class _Evaluator:
                 )
             if not math.isfinite(objective_value):
                 raise ValueError("ideal sensitivity mean-square objective is not finite")
-            errors = []
-            for actual, (i, wave, angle, objective) in zip(nominal, conditions, strict=True):
-                violation = (
-                    abs(float(actual) - _finite(objective.target_value, "target_value"))
-                    if objective.mode == "value"
-                    else max(
-                        0.0,
-                        0.0
-                        if objective.lower_bound is None
-                        else objective.lower_bound - float(actual),
-                        0.0
-                        if objective.upper_bound is None
-                        else float(actual) - objective.upper_bound,
-                    )
-                )
-                normal, weighted = score_condition(
-                    violation, objective.normalization_scale, objective.weight
-                )
-                errors.append(
-                    FilmConditionError(
-                        i,
-                        wave,
-                        angle,
-                        objective.polarization,
-                        objective.metric,
-                        float(actual),
-                        objective.target_value,
-                        objective.lower_bound,
-                        objective.upper_bound,
-                        normal,
-                        weighted,
-                    )
-                )
+            reduced = _reduce_grid(self.request, nominal, jac[:, self.variable_columns])
             analysis = FilmIdealSensitivityAnalysis(
                 objective_value,
-                all(
-                    nominal_condition_pass(
-                        o,
-                        float(actual),
-                        strict_lower=i in self.request.strict_lower_bound_objective_indices,
-                        strict_upper=i in self.request.strict_upper_bound_objective_indices,
-                    )
-                    for actual, (i, _w, _a, o) in zip(nominal, conditions, strict=True)
-                ),
-                max(row.normalized_violation for row in errors),
-                weighted_rms_error(
-                    [row.normalized_violation for row in errors], [c[3].weight for c in conditions]
-                ),
-                tuple(errors),
+                reduced.nominal_pass,
+                reduced.max_error,
+                reduced.weighted_rms_error,
+                reduced.conditions,
+                tuple(map(float, nominal)),
             )
-            result = _Evaluation(analysis, nominal, jac[:, self.variable_columns], conditions)
+            result = _Evaluation(analysis, nominal, jac[:, self.variable_columns], conditions,
+                                 raw_coverage=reduced.coverage)
             self.check()
         except (ValueError, ArithmeticError, FloatingPointError):
             self.failures += 1
@@ -702,42 +645,64 @@ def _three_point_derivative(f0, f1, f2, x0, x1, x2):
     return derivative
 
 
+def _reduce_grid(request, values, jacobian=None):
+    """Feed complete raw grids to the shared acceptance/reduction contract."""
+    values = np.asarray(values, dtype=float)
+    if values.shape != (_point_count(request),) or not np.all(np.isfinite(values)):
+        raise ValueError("analysis must retain every finite original raw grid response")
+    layers = tuple(v.layer_id for v in request.variables) if jacobian is not None else ()
+    if jacobian is not None:
+        jacobian = np.asarray(jacobian, dtype=float)
+        if jacobian.shape != (len(values), len(layers)):
+            raise ValueError("raw nominal Jacobian shape differs from the original grid")
+    frames, offset = [], 0
+    for index, objective in enumerate(request.objectives):
+        waves = np.linspace(objective.wavelength_min_nm, objective.wavelength_max_nm,
+                            objective.wavelength_samples)
+        for angle in objective.angles_deg:
+            end = offset + len(waves)
+            frame = dict(objective_index=index, angle_deg=angle,
+                         wavelength_nm=waves, actual_values=values[offset:end])
+            if jacobian is not None:
+                frame["jacobian_values_by_layer_id"] = {
+                    layer: jacobian[offset:end, column] for column, layer in enumerate(layers)
+                }
+            frames.append(frame)
+            offset = end
+    return reduce_objective_responses(request.objectives, frames, layer_ids=layers)
+
+
 def _strict_nominal_constraint_rows(evaluation, request, free_indices, spans):
+    reduced = _reduce_grid(request, evaluation.values, evaluation.nominal_jacobian)
     inequalities, iq_jac, equalities, eq_jac = [], [], [], []
-    for actual, derivative, (i, _wave, _angle, objective) in zip(
-        evaluation.values,
-        evaluation.nominal_jacobian[:, free_indices],
-        evaluation.conditions,
-        strict=True,
-    ):
-        derivative = derivative * spans / objective.normalization_scale
-        if objective.mode == "value":
-            equalities.append((actual - objective.target_value) / objective.normalization_scale)
-            eq_jac.append(derivative)
-        else:
-            if objective.lower_bound is not None:
-                lower = (
-                    np.nextafter(objective.lower_bound, np.inf)
-                    if i in request.strict_lower_bound_objective_indices
-                    else objective.lower_bound
-                )
-                inequalities.append((actual - lower) / objective.normalization_scale)
-                iq_jac.append(derivative)
-            if objective.upper_bound is not None:
-                upper = (
-                    np.nextafter(objective.upper_bound, -np.inf)
-                    if i in request.strict_upper_bound_objective_indices
-                    else objective.upper_bound
-                )
-                inequalities.append((upper - actual) / objective.normalization_scale)
-                iq_jac.append(-derivative)
+    seen_values = set()
+    side_counts: dict[int, int] = {}
+    for value, jacobian, index in zip(reduced.signed_bound_values,
+                                     reduced.signed_bound_jacobian,
+                                     reduced.signed_bound_condition_indices, strict=True):
+        condition = reduced.conditions[index]
+        objective = request.objectives[condition.objective_index]
+        constraint = getattr(objective, condition.reduction)
+        derivative = jacobian[free_indices] * spans
+        if constraint.mode == "value":
+            if index not in seen_values:
+                equalities.append(value)
+                eq_jac.append(derivative)
+                seen_values.add(index)
+            continue
+        side_index = side_counts.get(index, 0)
+        side_counts[index] = side_index + 1
+        lower_side = constraint.lower_bound is not None and side_index == 0
+        boundary = constraint.lower_bound if lower_side else constraint.upper_bound
+        strict = constraint.strict_lower if lower_side else constraint.strict_upper
+        if strict:
+            moved = np.nextafter(boundary, np.inf if lower_side else -np.inf)
+            value += abs(moved - boundary) / objective.normalization_scale
+        inequalities.append(-value)
+        iq_jac.append(-derivative)
     n = len(free_indices)
-    return (
-        np.asarray(inequalities),
-        np.asarray(iq_jac).reshape(-1, n),
-        np.asarray(equalities),
-        np.asarray(eq_jac).reshape(-1, n),
-    )
+    return (np.asarray(inequalities), np.asarray(iq_jac).reshape(-1, n),
+            np.asarray(equalities), np.asarray(eq_jac).reshape(-1, n))
 
 
 def _candidate_design(design, variables, values):
@@ -765,14 +730,16 @@ def _analysis_from_payload(data):
         return None
     result = _record(FilmIdealSensitivityAnalysis, data, "analysis")
     conditions = tuple(
-        _record(FilmConditionError, row, "nominal condition") for row in result.nominal_conditions
+        condition_from_payload(row) for row in result.nominal_conditions
     )
     if type(result.nominal_targets_met) is not bool:
         raise ValueError("nominal_targets_met must be a boolean")
     for name in ("objective_value", "nominal_max_normalized_error", "nominal_weighted_rms_error"):
         if _finite(getattr(result, name), name) < 0:
             raise ValueError(f"{name} must be nonnegative")
-    return replace(result, nominal_conditions=conditions)
+    return replace(result, nominal_conditions=conditions,
+                   full_grid_values=tuple(_finite(v, "full_grid_values")
+                                          for v in result.full_grid_values))
 
 
 def _optical_invariants(design):
@@ -814,64 +781,21 @@ def _compare(expected, actual, path="result"):
 def _validate_analysis_shape(analysis, request):
     if analysis is None:
         return
-    expected = []
-    for i, o in enumerate(request.objectives):
-        for angle in o.angles_deg:
-            for wave in np.linspace(o.wavelength_min_nm, o.wavelength_max_nm, o.wavelength_samples):
-                expected.append((i, float(wave), float(angle), o))
-    if len(analysis.nominal_conditions) != len(expected):
-        raise ValueError("analysis must retain every original nominal grid condition")
-    normals, weights = [], []
-    for row, (i, wave, angle, o) in zip(analysis.nominal_conditions, expected, strict=True):
-        if (
-            type(row.objective_index) is not int
-            or row.objective_index != i
-            or row.wavelength_nm != wave
-            or row.angle_deg != angle
-            or any(
-                getattr(row, key) != getattr(o, key)
-                for key in ("polarization", "metric", "target_value", "lower_bound", "upper_bound")
-            )
-        ):
-            raise ValueError("nominal condition identity/grid/target is not bound to the request")
-        actual = _finite(row.actual, "actual")
-        violation = (
-            abs(actual - o.target_value)
-            if o.mode == "value"
-            else max(
-                0.0,
-                0.0 if o.lower_bound is None else o.lower_bound - actual,
-                0.0 if o.upper_bound is None else actual - o.upper_bound,
-            )
-        )
-        normal, weighted = score_condition(violation, o.normalization_scale, o.weight)
-        _compare(row.normalized_violation, normal, "normalized_violation")
-        _compare(row.weighted_normalized_violation, weighted, "weighted_normalized_violation")
-        normals.append(normal)
-        weights.append(o.weight)
-    expected_met = all(
-        nominal_condition_pass(
-            o,
-            row.actual,
-            strict_lower=i in request.strict_lower_bound_objective_indices,
-            strict_upper=i in request.strict_upper_bound_objective_indices,
-        )
-        for row, (i, _w, _a, o) in zip(analysis.nominal_conditions, expected, strict=True)
-    )
-    if analysis.nominal_targets_met is not expected_met:
-        raise ValueError("nominal acceptance flag differs from exact original checker")
-    _compare(analysis.nominal_max_normalized_error, max(normals), "nominal_max_normalized_error")
-    _compare(
-        analysis.nominal_weighted_rms_error,
-        weighted_rms_error(normals, weights),
-        "nominal_weighted_rms_error",
-    )
+    reduced = _reduce_grid(request, analysis.full_grid_values)
+    _compare([asdict(row) for row in analysis.nominal_conditions],
+             [asdict(row) for row in reduced.conditions], "nominal_conditions")
+    if analysis.nominal_targets_met is not reduced.nominal_pass:
+        raise ValueError("nominal acceptance flag differs from the shared enabled checker")
+    _compare(analysis.nominal_max_normalized_error, reduced.max_error,
+             "nominal_max_normalized_error")
+    _compare(analysis.nominal_weighted_rms_error, reduced.weighted_rms_error,
+             "nominal_weighted_rms_error")
 
 
 def _kernel_identity():
     # Fail closed across numerical implementation changes, not just materials.
     from . import film_optimization_derivatives, film_optics, optical_constants
-    from . import film_design, film_design_service
+    from . import film_design, film_design_service, film_objective_criteria
 
     h = hashlib.sha256()
     for module in (
@@ -882,6 +806,7 @@ def _kernel_identity():
         optical_constants,
         film_design,
         film_design_service,
+        film_objective_criteria,
     ):
         h.update(module.__name__.encode())
         try:
@@ -939,10 +864,22 @@ def _point_count(request):
     return sum(o.wavelength_samples * len(o.angles_deg) for o in request.objectives)
 
 
-def _sides(objective, delta):
-    if objective.mode == "value":
-        return True, True
-    return objective.lower_bound is not None, objective.upper_bound is not None
+def _guard_directions(request):
+    directions = []
+    for objective in request.objectives:
+        lower = upper = False
+        for _name, constraint in active_constraints(objective):
+            lower |= constraint.mode == "value" or constraint.lower_bound is not None
+            upper |= constraint.mode == "value" or constraint.upper_bound is not None
+        directions.append("both" if lower and upper else "lower" if lower else "upper")
+    return tuple(directions)
+
+
+def _sides(request, index):
+    if len(request.guard_directions) != len(request.objectives):
+        raise ValueError("degradation guard requires frozen objective directions")
+    direction = request.guard_directions[index]
+    return direction in ("lower", "both"), direction in ("upper", "both")
 
 
 def _guard(evaluation, request, baseline_evidence):
@@ -958,7 +895,7 @@ def _guard(evaluation, request, baseline_evidence):
     passes = True
     for index, identifier in enumerate(request.objective_ids):
         delta = budgets[identifier]
-        lower, upper = _sides(request.objectives[index], delta)
+        lower, upper = _sides(request, index)
         samples = []
         for actual, baseline, (i, wave, angle, o) in zip(
             evaluation.values, baseline_evidence.values, evaluation.conditions, strict=True
@@ -1021,7 +958,7 @@ def _constraint_rows(evaluation, request, free_indices, spans, baseline_evidence
         strict=True,
     ):
         delta = deltas[request.objective_ids[i]]
-        lower, upper = _sides(o, delta)
+        lower, upper = _sides(request, i)
         derivative = derivative * spans / o.normalization_scale
         if lower:
             inequalities.append((actual - (baseline - delta)) / o.normalization_scale)
@@ -1196,7 +1133,7 @@ def _execute(
         record_candidate(candidate_observer, design,
             weighted_rms_error=analysis.nominal_weighted_rms_error,
             max_normalized_error=analysis.nominal_max_normalized_error,
-            condition_rows=analysis.nominal_conditions,
+            condition_rows=analysis.nominal_conditions, raw_coverage=evaluation.raw_coverage,
             physical_thickness_nm=evaluator.physical(design),
             is_best=analysis is best, iterations=iterations, evaluations=evaluator.evaluations,
             source="ideal_sensitivity", guard_pass=guard_pass,

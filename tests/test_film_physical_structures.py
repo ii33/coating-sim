@@ -258,7 +258,7 @@ def test_three_target_families_do_not_replace_each_other():
     bp=dual_passband_objectives(min_transmittance=.95,max_stop_transmittance=.01,
          stopbands_nm=((2000.,2900.),(5100.,7900.),(12100.,14000.)))
     assert len(bp)==5 and all(o.metric=='T' for o in bp)
-    assert bp[0].lower_bound==.95 and bp[-1].upper_bound==.01
+    assert bp[0].pointwise.lower_bound==.95 and bp[-1].pointwise.upper_bound==.01
     lines=six_line_ar_objectives(max_reflectance=.01)
     assert len(lines)==6 and all(o.wavelength_samples==1 and o.wavelength_min_nm==o.wavelength_max_nm for o in lines)
     with pytest.raises(ValueError):

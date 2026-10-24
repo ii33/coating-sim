@@ -47,7 +47,7 @@ def is_film_optimization_result(result) -> bool:
     if (isinstance(result, dict)
             and result.get("kind") == _FILM_STRUCTURE_RESULT_KIND):
         return _is_film_structure_result(result)
-    if not isinstance(result, dict) or result.get("schema_version") != 1 \
+    if not isinstance(result, dict) or result.get("schema_version") != 2 \
             or result.get("kind") != _FILM_RESULT_KIND:
         return False
     if set(result) - {"schema_version", "kind", "request", "candidate",
@@ -62,7 +62,7 @@ def is_film_optimization_result(result) -> bool:
         return False
     request = result.get("request")
     snapshot = request.get("frozen_material_snapshot") if isinstance(request, dict) else None
-    if (not isinstance(request, dict) or request.get("schema_version") != 1
+    if (not isinstance(request, dict) or request.get("schema_version") != 2
             or request.get("kind") != _FILM_REQUEST_KIND
             or type(request.get("design_revision")) is not int
             or not isinstance(snapshot, dict)
@@ -72,10 +72,10 @@ def is_film_optimization_result(result) -> bool:
     candidate = result.get("candidate")
     candidate_fields = {
         "schema_version", "kind", "design_revision", "design", "thickness_nm",
-        "quality", "per_condition_errors", "iterations", "evaluations",
+        "quality", "per_condition_errors", "raw_coverage", "iterations", "evaluations",
     }
     if (not isinstance(candidate, dict) or set(candidate) != candidate_fields
-            or candidate.get("schema_version") != 1
+            or candidate.get("schema_version") != 2
             or candidate.get("kind") != _FILM_CANDIDATE_KIND
             or type(candidate.get("design_revision")) is not int
             or candidate.get("design_revision") != request["design_revision"]
@@ -91,10 +91,12 @@ def is_film_optimization_result(result) -> bool:
     if (not isinstance(quality, dict)
             or set(quality) != {"metric", "value", "direction",
                                 "weighted_max_normalized_error",
-                                "weighted_rms_error", "targets_met"}
+                                "weighted_rms_error", "targets_met", "solver_acceptable"}
             or quality.get("metric") != "max_normalized_error"
             or quality.get("direction") != "minimize"
-            or type(quality.get("targets_met")) is not bool):
+            or type(quality.get("targets_met")) is not bool
+            or type(quality.get("solver_acceptable")) is not bool
+            or not isinstance(candidate.get("raw_coverage"), list)):
         return False
     for field in ("value", "weighted_max_normalized_error", "weighted_rms_error"):
         value = quality.get(field)
@@ -111,12 +113,12 @@ def is_film_optimization_result(result) -> bool:
         and set(partial) == {"schema_version", "kind", "best_so_far",
                              "candidate_verified", "quality", "artifact_kind",
                              "artifact_schema_version"}
-        and partial.get("schema_version") == 1
+        and partial.get("schema_version") == 2
         and partial.get("kind") == "best_candidate"
         and partial.get("best_so_far") is True
         and partial.get("candidate_verified") is True
         and partial.get("artifact_kind") == _FILM_CANDIDATE_KIND
-        and partial.get("artifact_schema_version") == 1
+        and partial.get("artifact_schema_version") == 2
         and partial.get("quality") == {"metric": quality["metric"],
                                         "value": quality["value"]}
         and ("state" not in result or isinstance(result["state"], str))
@@ -135,7 +137,7 @@ def _contains_solver_identifier(value) -> bool:
 
 def _is_film_structure_result(result) -> bool:
     """Cheap typed-envelope check; core validation replays all structure rules."""
-    if (not isinstance(result, dict) or result.get("schema_version") != 1
+    if (not isinstance(result, dict) or result.get("schema_version") != 2
             or result.get("kind") != _FILM_STRUCTURE_RESULT_KIND
             or set(result) - {"schema_version", "kind", "request", "candidate",
                               "structure", "partial_result", "state", "message"}
@@ -144,7 +146,7 @@ def _is_film_structure_result(result) -> bool:
         return False
     request = result.get("request")
     if (not isinstance(request, dict)
-            or request.get("schema_version") != 1
+            or request.get("schema_version") != 2
             or request.get("kind") != _FILM_STRUCTURE_REQUEST_KIND
             or _contains_solver_identifier(request)):
         return False
@@ -164,14 +166,21 @@ def _is_film_structure_result(result) -> bool:
             or not isinstance(candidate.get("per_condition_errors"), list)
             or not isinstance(candidate.get("validation_per_condition_errors"), list)
             or set(candidate) != {"design_revision", "design", "thickness_nm", "quality",
-                                  "per_condition_errors", "validation_per_condition_errors"}):
+                                  "per_condition_errors", "validation_per_condition_errors",
+                                  "raw_coverage", "validation_raw_coverage"}):
         return False
     quality = candidate.get("quality")
     if (not isinstance(quality, dict)
             or set(quality) != {"max_normalized_error", "weighted_max_normalized_error",
                                 "weighted_rms_error", "targets_met", "validation_complete",
                                 "validation_max_normalized_error", "validation_weighted_rms_error",
-                                "validation_targets_met", "termination_reason"}
+                                "validation_targets_met", "termination_reason", "solver_acceptable",
+                                "validation_solver_acceptable"}
+            or not isinstance(candidate.get("raw_coverage"), list)
+            or not isinstance(candidate.get("validation_raw_coverage"), list)
+            or type(quality.get("solver_acceptable")) is not bool
+            or (quality.get("validation_solver_acceptable") is not None
+                and type(quality.get("validation_solver_acceptable")) is not bool)
             or type(quality.get("targets_met")) is not bool
             or type(quality.get("validation_complete")) is not bool
             or (quality.get("validation_targets_met") is not None
@@ -249,7 +258,7 @@ def unsupported_sensitivity_format(value) -> str:
     """Reject removed products before any generic history/bundle fallback.
 
     Job/checkpoint envelopes remain schema 1. Only the ideal request/result
-    itself is schema 2; the independent thickness-error table remains schema 1.
+    itself is schema 3; the independent thickness-error table is schema 2.
     """
     if not isinstance(value, dict):
         return ""
@@ -258,8 +267,8 @@ def unsupported_sensitivity_format(value) -> str:
             and kind.startswith("coat_sim.film_sensitivity_")):
         return "Unsupported sensitivity format: process sensitivity has been removed."
     if kind in ("coat_sim.film_ideal_sensitivity_request", "coat_sim.film_ideal_sensitivity_result"):
-        if type(value.get("schema_version")) is not int or value["schema_version"] != 2:
-            return "Unsupported sensitivity format: ideal sensitivity requires schema 2."
+        if type(value.get("schema_version")) is not int or value["schema_version"] != 3:
+            return "Unsupported sensitivity format: ideal sensitivity requires schema 3."
     for field in ("request", "result", "job", "payload", "frozen_request"):
         nested = value.get(field)
         if isinstance(nested, dict):
@@ -307,6 +316,8 @@ def is_best_candidate_result(result) -> bool:
             and provenance.get("selection") == "completed_training_at_cancel"
             and provenance.get("training_complete") is True)
         return isinstance(body.get("candidate_design"), dict) and (audited or complete_cancel)
+    if _claims_film_result(result):
+        return False  # A failed typed contract can never gain generic asset capability.
     if not isinstance(result, dict):
         return False
     partial = result.get("partial_result")
@@ -380,6 +391,11 @@ def is_geometric_raytrace_result(result) -> bool:
     return _has_registered_result_artifact(result)
 
 
+def _claims_film_result(result):
+    return isinstance(result, dict) and result.get("kind") in {
+        _FILM_RESULT_KIND, _FILM_STRUCTURE_RESULT_KIND, "coat_sim.film_synthesis_result"}
+
+
 def job_has_viewable_result(job) -> bool:
     """Keep result capability independent from a job's terminal state."""
     if not isinstance(job, dict):
@@ -395,12 +411,15 @@ def job_has_viewable_result(job) -> bool:
         return (job.get("kind") == executor
                 and (executor != "film_ideal_sensitivity" or result.get("operation") == "optimize")
                 and job.get("state") in ("succeeded", "failed", "cancelled"))
-    if is_legacy_synthesis_result(result):
-        # Physical replay is intentionally deferred to the history reader.
-        # Old tolerance-based targets_met cannot authorize a current result.
-        return job.get("kind") == "film_synthesis" and job.get("state") in ("succeeded", "failed", "cancelled")
+    if job.get("kind") in {"film_optimization", "film_structure_optimization", "film_synthesis"} or _claims_film_result(result):
+        synthesis = job.get("kind") == "film_synthesis" and result.get("kind") == "coat_sim.film_synthesis_result"
+        optimization = job.get("kind") in {"film_optimization", "film_structure_optimization"} and result.get("kind") in {_FILM_RESULT_KIND, _FILM_STRUCTURE_RESULT_KIND}
+        if not ((synthesis and is_synthesis_result(result))
+                or (optimization and is_film_optimization_result(result))):
+            return False
+        return job.get("state") == "succeeded" or (job.get("state") in {"failed", "cancelled"}
+                                                   and is_best_candidate_result(result))
     if job.get("state") == "succeeded":
-        from coat_sim.core.film_synthesis_jobs import is_synthesis_result
         if is_synthesis_result(result):
             return True
         if result.get("kind") == "appearance_render":

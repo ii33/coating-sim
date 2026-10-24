@@ -6,6 +6,7 @@ import numpy as np
 
 from coat_sim.core.film_performance import (CoherentBatchEvaluator, FrozenFilmEvaluator,
     PerformanceOptions, optimize_film_design_accelerated)
+from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import (FilmOptimizationRequest, FilmOptimizationObjective,
     FilmThicknessVariable, optimize_film_design)
 from tests.film_performance_fixtures import fixture
@@ -117,7 +118,7 @@ class PerformanceTests(unittest.TestCase):
         service, design, frozen = fixture(layers=1)
         request = FilmOptimizationRequest(design, 7,
             (FilmThicknessVariable("front", "layer-0", 30., 140.),),
-            (FilmOptimizationObjective(450., 700., 9, target_value=0.),),
+            (FilmOptimizationObjective(450., 700., 9, pointwise=FilmObjectiveConstraint(mode="value", target_value=0., lower_bound=None, upper_bound=None)),),
             max_iterations=2, max_evaluations=25, acceptable_normalized_error=0.,
             frozen_material_snapshot=frozen, validation_samples_multiplier=1)
         for mode in ("baseline", "powell", "nelder_mead", "multistart",
