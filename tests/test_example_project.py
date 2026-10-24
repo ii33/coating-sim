@@ -133,7 +133,8 @@ def test_example_page_configurations_restore_without_guessing(example):
                 "max_cycles", "max_evaluations", "max_layers", "max_seconds",
                 "minimum_nonzero_thickness_nm", "max_layer_thickness_nm",
                 "max_total_thickness_nm")},
-                "randomize_template_search": False, "structure_search_seed": None},
+                "randomize_template_search": False, "structure_search_seed": None,
+                "enable_thickness_reduction": True},
             "cpu_workers": 0,
             "forward_backend": "cpu",
             "forward_device": None,
@@ -145,6 +146,7 @@ def test_example_page_configurations_restore_without_guessing(example):
                 "optical_set_id": "visible",
             }],
         }
+        assert synthesis["options"]["enable_thickness_reduction"] is True
         row_id = synthesis["material_rows"][0]["id"]
         assert len(row_id) == 32 and all(character in "0123456789abcdef" for character in row_id)
         assert optimization.loadOptimizationConfiguration(restored)
