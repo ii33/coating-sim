@@ -100,24 +100,47 @@ def test_synthesis_freezes_the_exact_editable_ui_grid(tmp_path, monkeypatch, fie
             assert actual_step == visible["actual_wavelength_step_nm"]
 
 
-@pytest.mark.parametrize("basis", ["step", "samples", "legacy_samples"])
+@pytest.mark.parametrize("basis", ["step", "samples", "samples_with_inactive_step"])
 def test_saved_optimization_step_or_count_overrides_new_defaults(tmp_path, monkeypatch, basis):
     with optimizer(tmp_path, monkeypatch) as (_service, controller):
         assert controller.setObjectiveField("wavelength_step_nm", 5.)
         if basis != "step":
             assert controller.setObjectiveField("wavelength_samples", 31)
-        saved = json.loads(json.dumps(controller.exportOptimizationConfiguration()))
-        if basis == "legacy_samples":
-            saved["objectives"][0].pop("sampling_basis")
-            saved["objectives"][0].pop("wavelength_step_nm")
+        saved = controller.exportOptimizationConfiguration()
+        assert saved["version"] == 2
+        saved_row = saved["objectives"][0]
+        assert {"pointwise", "mean"} <= set(saved_row)
+        objective_id = saved_row["id"]
+        if basis == "step":
+            # The explicitly selected step owns this grid, even if a stored
+            # derived point count disagrees with it.
+            saved_row["wavelength_samples"] = 31
+        elif basis == "samples_with_inactive_step":
+            # A saved sample-count basis owns the grid; an inactive step value
+            # cannot replace its explicit 31 points.
+            saved_row["wavelength_step_nm"] = 5.
+        raw_path = tmp_path / "native-optimization.json"
+        raw_path.write_text(json.dumps(saved, ensure_ascii=False, indent=2), encoding="utf-8")
+        saved = json.loads(raw_path.read_text(encoding="utf-8"))
         original = deepcopy(saved)
         assert controller.setObjectiveField("wavelength_step_nm", 1.)
+        assert controller.selectedObjective["wavelength_samples"] == 301
         assert controller.loadOptimizationConfiguration(saved)
         row = controller.selectedObjective
+        assert row["id"] == objective_id
         assert row["wavelength_samples"] == (61 if basis == "step" else 31)
         assert row["sampling_basis"] == ("step" if basis == "step" else "samples")
-        assert row["actual_wavelength_step_nm"] == (5. if basis == "step" else 10.)
+        assert row["wavelength_step_nm"] == row["actual_wavelength_step_nm"] == (5. if basis == "step" else 10.)
+        assert row["pointwise"] == original["objectives"][0]["pointwise"]
+        assert row["mean"] == original["objectives"][0]["mean"]
         assert saved == original
+        (tmp_path / "sampling-restore-evidence.json").write_text(json.dumps({
+            "version": saved["version"], "objective_id": objective_id,
+            "saved": {name: original["objectives"][0][name] for name in (
+                "sampling_basis", "wavelength_samples", "wavelength_step_nm")},
+            "restored": {name: row[name] for name in (
+                "id", "sampling_basis", "wavelength_samples", "wavelength_step_nm", "actual_wavelength_step_nm")},
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def test_new_simulation_controller_preserves_one_nm_when_user_edits_the_band(tmp_path):
@@ -156,10 +179,18 @@ def test_saved_simulation_explicit_grid_and_range_only_legacy_fallback_stay_inta
     assert normalized["samples"] == count and normalized["step_nm"] == step
 
 
-def test_empty_legacy_configuration_uses_new_gui_defaults(tmp_path, monkeypatch):
+def test_legacy_optimization_rejects_atomically_and_current_defaults_restore(tmp_path, monkeypatch):
     with optimizer(tmp_path / "optimization", monkeypatch) as (_service, controller):
+        defaults = json.loads(json.dumps(controller.exportOptimizationConfiguration()))
+        assert defaults["version"] == 2
         assert controller.setObjectiveField("wavelength_step_nm", 5.)
-        assert controller.loadOptimizationConfiguration({"version": 1})
+        edited = deepcopy(controller.exportOptimizationConfiguration())
+        assert not controller.loadOptimizationConfiguration({"version": 1})
+        assert controller.exportOptimizationConfiguration() == edited
+        assert controller.selectedObjective["wavelength_samples"] == 61
+        assert controller.selectedObjective["wavelength_step_nm"] == 5.
+        assert controller.loadOptimizationConfiguration(defaults)
+        assert controller.selectedObjective["id"] == defaults["objectives"][0]["id"]
         assert controller.selectedObjective["wavelength_samples"] == 301
         assert controller.selectedObjective["wavelength_step_nm"] == 1.
     with simulation(tmp_path / "simulation", {}) as controller:

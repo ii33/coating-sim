@@ -58,7 +58,10 @@ def _job(request: FilmSynthesisRequest, request_id: str = "independent-execution
 def _score_json(score: Mapping[str, Any]) -> dict[str, Any]:
     result = deepcopy(dict(score))
     result["errors"] = [asdict(error) for error in score["errors"]]
-    return result
+    for field in ("coverage", "audit_coverage"):
+        if field in score:
+            result[field] = [asdict(row) for row in score[field]]
+    return json.loads(json.dumps(result, allow_nan=False))
 
 
 def _checkpoint(request: FilmSynthesisRequest, *, layer: bool = False,
@@ -73,7 +76,7 @@ def _checkpoint(request: FilmSynthesisRequest, *, layer: bool = False,
     training = evaluate_frozen_structure_candidate(_proxy(request), design)["score"]
     audited = audit_frozen_synthesis_candidate(request, design)
     return {
-        "schema_version": 1, "kind": AUDITED_CHECKPOINT_KIND,
+        "schema_version": 2, "kind": AUDITED_CHECKPOINT_KIND,
         "checkpoint_state": "audited", "job": _job(request), "design": design,
         "training_score": _score_json(training),
         "validation_score": _score_json(audited["score"]),

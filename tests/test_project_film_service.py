@@ -38,7 +38,7 @@ def bound_design() -> dict:
     design = new_design("Bound project film")
     design["substrate"].update(material_id="shared", optical_set_id="visible")
     design["workflow_settings"] = {"simulation": {"samples": 17, "use_k": True},
-                                   "optimization": {"version": 1, "targets": []}}
+                                   "optimization": {"version": 2, "targets": []}}
     return validate_design(design)
 
 
@@ -89,7 +89,7 @@ def test_create_save_reload_keeps_managed_id_internal_id_and_workflow(tmp_path):
     assert not saved.handle.exists()
     reopened = ProjectFilmService(ProjectStore.open(cast(ProjectStore, service.project_store).project_file)).load_document(saved.document_id)
     assert reopened.design == edited
-    assert reopened.design["workflow_settings"]["optimization"] == {"version": 1, "targets": []}
+    assert reopened.design["workflow_settings"]["optimization"] == {"version": 2, "targets": []}
     assert len([row for row in service.project_store.manifest["documents"] if row["kind"] == "film"]) == 1
 
 

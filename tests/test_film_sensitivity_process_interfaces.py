@@ -29,7 +29,7 @@ def test_removed_process_tools_are_not_published_or_dispatchable():
     ('robustness_objective', 'linear_sensitivity_norm'), ('scenarios', []),
     ('operation', 'optimize'), ('policy', 'strict_nominal'), ('budgets', []),
 ])
-def test_ordinary_optimization_schema1_rejects_sensitivity_fields(field, value):
+def test_ordinary_optimization_schema2_rejects_sensitivity_fields(field, value):
     from coat_sim.core.film_optimization import FilmOptimizationRequest
     from coat_sim.core.film_optimization_job import deserialize_request, serialize_request
     from tests.test_film_ideal_sensitivity import problem
@@ -37,7 +37,7 @@ def test_ordinary_optimization_schema1_rejects_sensitivity_fields(field, value):
     ordinary = FilmOptimizationRequest(request.design_snapshot, request.design_revision,
         request.variables, request.objectives)
     payload = serialize_request(ordinary)
-    assert payload['schema_version'] == 1
+    assert payload['schema_version'] == 2
     assert serialize_request(deserialize_request(payload)) == payload
     changed = deepcopy(payload)
     changed[field] = value

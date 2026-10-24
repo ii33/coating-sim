@@ -21,17 +21,22 @@ from coat_sim.core.film_structure_payload_contract import validate_structure_res
 @pytest.fixture(scope="module")
 def valid_result():
     request, result = _fixture()
-    evaluation = evaluate_frozen_structure_candidate(request, result.best_design)
+    evaluation = evaluate_frozen_structure_candidate(request, result.best_design, with_jacobian=False)
     score = evaluation["score"]
-    targets = score["max_error"] <= request.base_request.acceptable_normalized_error
+    validation = evaluate_frozen_structure_candidate(
+        request, result.best_design, with_jacobian=False, derived_validation_grid=True)["score"]
     base = replace(result.base_result,
         max_normalized_error=score["max_error"],
         weighted_max_normalized_error=score["weighted_max_error"],
-        weighted_rms_error=score["weighted_rms_error"], targets_met=targets,
+        weighted_rms_error=score["weighted_rms_error"], targets_met=score["nominal_pass"],
+        solver_acceptable=score["solver_acceptable"], raw_coverage=score["coverage"],
         per_condition_errors=score["errors"], validation_evaluations=1,
-        validation_max_normalized_error=score["max_error"],
-        validation_weighted_rms_error=score["weighted_rms_error"],
-        validation_targets_met=targets, validation_per_condition_errors=score["errors"],
+        validation_max_normalized_error=validation["max_error"],
+        validation_weighted_rms_error=validation["weighted_rms_error"],
+        validation_targets_met=validation["nominal_pass"],
+        validation_solver_acceptable=validation["solver_acceptable"],
+        validation_raw_coverage=validation["coverage"],
+        validation_per_condition_errors=validation["errors"],
     )
     result = replace(result, base_result=base, counters=FilmStructureCounters(
         objective_evaluations=2, score_evaluations=1, validation_evaluations=1,

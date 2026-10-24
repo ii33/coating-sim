@@ -93,21 +93,32 @@ def test_json_and_typed_job_roundtrip_preserve_inner_worker_request(app, tmp_pat
         assert controller.setSynthesisCpuWorkers("2")
         request = freeze_film_synthesis_request(service, controller._build_synthesis_request())
         payload = film_synthesis_request_to_payload("parallel-roundtrip", request)
+        assert payload["schema_version"] == 2
         _, parsed, _ = film_synthesis_request_from_payload(payload)
         assert parsed.cpu_workers == 2
+        assert parsed == request
 
         parameters = canonical_parameters(None, {"payload": payload})
         job = build_job_payload(parameters)
         _, queued_request, _ = deserialize_job_payload(job)
         assert queued_request.cpu_workers == 2
+        assert queued_request == request
 
+        incomplete = deepcopy(payload)
+        incomplete["request"].pop("cpu_workers")
+        with pytest.raises(ValueError, match="every field"):
+            film_synthesis_request_from_payload(incomplete)
+        with pytest.raises(ValueError, match="every field"):
+            canonical_parameters(None, {"payload": incomplete})
         legacy = deepcopy(payload)
-        legacy["request"].pop("cpu_workers")
-        _, old_request, _ = film_synthesis_request_from_payload(legacy)
-        assert old_request.cpu_workers == 1
-        canonical_legacy = canonical_parameters(None, {"payload": legacy})
-        _, canonical_request, _ = film_synthesis_request_from_payload(canonical_legacy["payload"])
-        assert canonical_request.cpu_workers == 1
+        legacy["schema_version"] = 1
+        with pytest.raises(ValueError, match="schema_version"):
+            film_synthesis_request_from_payload(legacy)
+        for invalid in (True, -1, 1.5, "2"):
+            malformed = deepcopy(payload)
+            malformed["request"]["cpu_workers"] = invalid
+            with pytest.raises(ValueError):
+                film_synthesis_request_from_payload(malformed)
 
 
 def test_history_execution_summary_reports_actual_values_or_unrecorded(app, tmp_path):

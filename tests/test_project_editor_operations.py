@@ -337,18 +337,27 @@ def test_mcp_registry_owner_helper_round_trip_never_uses_global_fallback(live, m
 
 def test_objective_records_update_band_angles_targets_atomically_and_manage_ids(live):
     value = optimizer(live)
-    identity = value.exportOptimizationConfiguration()["objectives"][0]["id"]
+    configuration = value.exportOptimizationConfiguration()
+    assert configuration["version"] == 2
+    original = configuration["objectives"][0]
+    identity = original["id"]
+    pointwise = deepcopy(original["pointwise"])
+    pointwise.update(lower_bound_percent=85.0, upper_bound_percent=100.0)
+    mean = deepcopy(original["mean"])
     # A band far outside the old one is submitted as one validated record, so
     # neither endpoint is temporarily incompatible with the old opposite end.
     record = {"name": "Near infrared", "wavelength_min_nm": 900.0, "wavelength_max_nm": 1200.0,
         "wavelength_samples": 31, "sampling_basis": "samples", "angle_sampling_mode": "range",
         "angle_min_deg": 10.0, "angle_max_deg": 50.0, "angle_step_deg": 10.0,
-        "polarization": "s", "metric": "T", "mode": "range", "target_value_percent": 90.0,
-        "lower_bound_percent": 85.0, "upper_bound_percent": 100.0, "weight": 2.0}
+        "polarization": "s", "metric": "T", "pointwise": pointwise,
+        "mean": mean, "weight": 2.0}
     run(live, module="film_optimization", action="set_objective", arguments={"objective_id": identity, "record": record})
     row = value.exportOptimizationConfiguration()["objectives"][0]
     assert row["id"] == identity and row["angle_sample_count"] == 5 and row["metric"] == "T"
     assert row["wavelength_min_nm"] == 900 and row["wavelength_max_nm"] == 1200
+    assert row["pointwise"] == pointwise and row["mean"] == mean
+    assert row["pointwise"]["lower_bound_percent"] == 85.0
+    assert row["pointwise"]["upper_bound_percent"] == 100.0
     assert snapshot(live, "film_optimization")["available"]
     run(live, module="film_optimization", action="duplicate_objective", arguments={"objective_id": identity})
     copied = value.exportOptimizationConfiguration()["objectives"][1]
@@ -363,20 +372,105 @@ def test_objective_records_update_band_angles_targets_atomically_and_manage_ids(
 @pytest.mark.parametrize("record", [
     {"wavelength_min_nm": 950, "wavelength_max_nm": 900},
     {"angle_min_deg": 60, "angle_max_deg": 10},
-    {"metric": "A"}, {"lower_bound_percent": 90, "upper_bound_percent": 10},
-    {"target_value_percent": 101}, {"weight": 0}, {"id": "other"},
+    {"metric": "A"}, {"pointwise": {"lower_bound_percent": 90, "upper_bound_percent": 10}},
+    {"pointwise": {"mode": "value", "target_value_percent": 101}}, {"weight": 0}, {"id": "other"},
     {"actual_angle_step_deg": 12}, {"wavelength_samples": True}, {"name": []},
 ])
 def test_invalid_objective_record_preserves_configuration_revision_and_readability(live, record):
     value = optimizer(live)
     before, editor_before = value.exportOptimizationConfiguration(), live.editor.snapshot()
     identity = before["objectives"][0]["id"]
+    record = deepcopy(record)
+    if "pointwise" in record:
+        record["pointwise"] = {**before["objectives"][0]["pointwise"], **record["pointwise"]}
     with pytest.raises(UiControlError):
         run(live, module="film_optimization", action="set_objective", arguments={"objective_id": identity, "record": record})
     assert value.exportOptimizationConfiguration() == before
     after = live.editor.snapshot()
     assert (after.design, after.revision, after.dirty) == (editor_before.design, editor_before.revision, editor_before.dirty)
     assert snapshot(live, "film_optimization")["available"]
+
+
+def test_nested_objective_groups_replace_once_and_sampling_patch_preserves_them(live, monkeypatch):
+    value = optimizer(live)
+    original = value.exportOptimizationConfiguration()["objectives"][0]
+    identity = original["id"]
+    pointwise, mean = deepcopy(original["pointwise"]), deepcopy(original["mean"])
+    pointwise["upper_bound_percent"] = 100.0
+    mean.update(enabled=True, lower_bound_percent=80.0, upper_bound_percent=95.0)
+    native_load = value.loadOptimizationConfiguration
+    loads = []
+
+    def load(configuration):
+        loads.append(deepcopy(configuration))
+        return native_load(configuration)
+
+    monkeypatch.setattr(value, "loadOptimizationConfiguration", load)
+    result = run(live, module="film_optimization", action="set_objective",
+        arguments={"objective_id": identity, "record": {"mean": mean, "pointwise": pointwise}})
+    assert result["accepted"] and len(loads) == 1
+    row = value.exportOptimizationConfiguration()["objectives"][0]
+    assert row["id"] == identity and row["mean"] == mean and row["pointwise"] == pointwise
+    objective = value._build_request(require_variables=False).objectives[0]
+    assert objective.mean.enabled and objective.pointwise.enabled
+    assert (objective.mean.lower_bound, objective.mean.upper_bound) == (.8, .95)
+    assert objective.pointwise.upper_bound == 1.0
+
+    run(live, module="film_optimization", action="set_objective",
+        arguments={"objective_id": identity, "record": {"wavelength_samples": 11}})
+    row = value.exportOptimizationConfiguration()["objectives"][0]
+    assert len(loads) == 2 and row["wavelength_samples"] == 11
+    assert row["mean"] == mean and row["pointwise"] == pointwise
+
+    # Disabled numerical drafts remain editor state, outside the active target.
+    disabled = {**mean, "enabled": False, "lower_bound_percent": 90.0, "upper_bound_percent": 10.0}
+    run(live, module="film_optimization", action="set_objective",
+        arguments={"objective_id": identity, "record": {"mean": disabled}})
+    row = value.exportOptimizationConfiguration()["objectives"][0]
+    assert len(loads) == 3 and row["mean"] == disabled and row["pointwise"] == pointwise
+    objective = value._build_request(require_variables=False).objectives[0]
+    assert not objective.mean.enabled and objective.pointwise.enabled
+    assert (objective.mean.lower_bound, objective.mean.upper_bound) == (0.0, 1.0)
+    assert live.editor.workflow_configuration("optimization") == value.exportOptimizationConfiguration()
+
+
+@pytest.mark.parametrize("fault", [
+    "partial_mean", "partial_pointwise", "both_disabled", "disjoint", "strict_empty", "invalid_enabled",
+    "mode", "target_value_percent", "lower_bound_percent", "upper_bound_percent",
+])
+def test_invalid_nested_or_flat_objective_record_preserves_current_owner(live, monkeypatch, fault):
+    value = optimizer(live)
+    value.addObjective()
+    before, editor_before = value.exportOptimizationConfiguration(), live.editor.snapshot()
+    original = before["objectives"][1]
+    identity = original["id"]
+    selected = value._selected_objective
+    pointwise, mean = deepcopy(original["pointwise"]), deepcopy(original["mean"])
+    record = {"pointwise": pointwise, "mean": mean}
+    if fault.startswith("partial_"):
+        record[fault.removeprefix("partial_")] = {"enabled": False}
+    elif fault == "both_disabled":
+        pointwise["enabled"] = mean["enabled"] = False
+    elif fault == "disjoint":
+        mean.update(enabled=True, lower_bound_percent=90.0, upper_bound_percent=100.0)
+    elif fault == "strict_empty":
+        mean.update(enabled=True, lower_bound_percent=0.0, upper_bound_percent=0.0, strict_upper=True)
+    elif fault == "invalid_enabled":
+        mean["enabled"] = 1
+    else:
+        record = {fault: "range" if fault == "mode" else 1.0}
+    monkeypatch.setattr(value, "loadOptimizationConfiguration", lambda *_args: pytest.fail("invalid record reached loader"))
+    with pytest.raises(UiControlError):
+        run(live, module="film_optimization", action="set_objective",
+            arguments={"objective_id": identity, "record": record})
+    assert value.exportOptimizationConfiguration() == before
+    after = live.editor.snapshot()
+    assert (after.design, after.revision, after.dirty) == (editor_before.design, editor_before.revision, editor_before.dirty)
+    assert value._selected_objective == selected and not value._configuration_load_error
+    assert snapshot(live, "film_optimization")["available"]
+    fields = project_editor_capabilities("film_optimization")["objective_record_fields"]
+    assert {"mean", "pointwise"} <= set(fields)
+    assert not {"mode", "target_value_percent", "lower_bound_percent", "upper_bound_percent"} & set(fields)
 
 
 def test_variable_record_binds_exact_layer_and_replaces_enabled_bounds_once(live):

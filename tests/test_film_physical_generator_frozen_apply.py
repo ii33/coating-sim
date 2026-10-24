@@ -107,7 +107,7 @@ def test_standalone_undo_retains_later_workflow_material_reference(tmp_path):
     candidate, snapshot = synthesis_candidate(frozen)
     assert editor.apply_optimized_design(candidate, before.design_revision,
                                          frozen_material_snapshot=snapshot)
-    configuration = {'version': 1, 'structure_materials': [
+    configuration = {'version': 2, 'structure_materials': [
         {'material_id': 'new-synthesis-film', 'optical_set_id': 'set'}]}
     assert editor.set_workflow_configuration('optimization', configuration)
     assert editor.undo_optimized_design(editor.snapshot().design_revision), editor.snapshot().error

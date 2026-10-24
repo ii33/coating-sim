@@ -45,7 +45,7 @@ def _quick_item(root, name):
     return None
 
 
-def test_optional_seconds_limit_validation_and_blank_legacy_value():
+def test_optional_seconds_limit_validation_and_blank_current_option():
     assert "max_seconds" in SYNTHESIS_DEFAULT_OPTIONS
     assert SYNTHESIS_DEFAULT_OPTIONS["max_seconds"] is None
     assert synthesis_options({})["max_seconds"] is None
@@ -121,17 +121,16 @@ def test_seconds_limit_survives_configuration_request_and_typed_job_roundtrip(ap
         assert metadata == []
         assert decoded_pure_job.max_seconds == 0.125
 
-        # Older serialized requests omit the optional field and retain the
-        # dataclass's backwards-compatible None default through the same job path.
-        legacy_payload = deepcopy(payload)
-        legacy_payload["request"].pop("max_seconds")
-        _, decoded_legacy, _ = film_synthesis_request_from_payload(legacy_payload)
-        assert decoded_legacy.max_seconds is None
-        legacy_job = build_job_payload(canonical_parameters(None, {
-            "payload": legacy_payload, "physical_structure_metadata": [],
-        }))
-        _, decoded_legacy_job, _ = deserialize_job_payload(legacy_job)
-        assert decoded_legacy_job.max_seconds is None
+        # Frozen current requests carry every execution field, including an
+        # explicit None for an unbounded wall-time limit; omission is rejected.
+        missing_limit = deepcopy(payload)
+        missing_limit["request"].pop("max_seconds")
+        with pytest.raises(ValueError, match="requires every field"):
+            film_synthesis_request_from_payload(missing_limit)
+        with pytest.raises(ValueError, match="requires every field"):
+            canonical_parameters(None, {
+                "payload": missing_limit, "physical_structure_metadata": [],
+            })
 
         job = JobSpec.parse_frozen(synthesis_spec(service, frozen)).to_spec()
         _, decoded_job, job_structures = deserialize_job_payload(job.parameters["payload"])

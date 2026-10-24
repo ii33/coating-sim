@@ -50,8 +50,7 @@ OPTIMIZATION_ACTIONS = {
 }
 OBJECTIVE_FIELDS = frozenset({"name", "wavelength_min_nm", "wavelength_max_nm", "wavelength_samples",
     "sampling_basis", "wavelength_step_nm", "angle_sampling_mode", "angle_min_deg", "angle_max_deg",
-    "angle_step_deg", "angles_text", "polarization", "metric", "mode", "target_value_percent",
-    "lower_bound_percent", "upper_bound_percent", "weight"})
+    "angle_step_deg", "angles_text", "polarization", "metric", "mean", "pointwise", "weight"})
 SIMULATION_ACTIONS: dict[str, frozenset[str]] = {"save": frozenset()}
 FILM_MODULES = frozenset({"film_design", "film_optimization", "film_simulation"})
 RESOURCE_EDIT_MODULES = frozenset({"source", "substrate", "machine", "mask", "process", "materials"})
@@ -315,6 +314,47 @@ def _optimization_action(controller: Any, editor: Any, name: str, args: dict) ->
         _ensure_accepted(controller.setStructureMaterialSelected(material, optical, selected), controller)
 
 
+def _validate_objective_constraint_records(candidate: dict) -> None:
+    """Preflight detached native groups before the controller's atomic load.
+
+    Failed public loads retain a diagnostic that fences editor snapshots. Reject
+    malformed records here so an invalid gateway call preserves readability too.
+    The controller remains the owner of active-criterion validation and storage.
+    """
+    from .film_optimization_quick_controller import (
+        _constraint_editor_default, _validate_editor_criteria)
+
+    checked = deepcopy(candidate)
+    required = set(_constraint_editor_default(True))
+    for group in ("mean", "pointwise"):
+        constraint = checked[group]
+        if (not isinstance(constraint, dict) or not required <= set(constraint)
+                or set(constraint) - required - {"bounds_drafts"}):
+            _invalid("目标约束必须为完整的当前版本组；不支持组内局部合并。")
+        if any(type(constraint[field]) is not bool for field in ("enabled", "strict_lower", "strict_upper")):
+            _invalid("目标约束开关必须为布尔值。")
+        if constraint["mode"] not in {"value", "range"}:
+            _invalid("目标约束模式必须为value或range。")
+        for field in ("lower_bound_percent", "upper_bound_percent", "target_value_percent"):
+            value = constraint[field]
+            if field == "target_value_percent" and value is None:
+                continue
+            if not 0 <= _finite(value) <= 100:
+                _invalid("目标R/T百分比须为0到100。")
+        if constraint["mode"] == "value":
+            if constraint["target_value_percent"] is None:
+                _invalid("精确值模式需要目标值。")
+            # Mirror the native editor's exact-value representation for the
+            # existing criterion validator; keep the caller's record untouched.
+            constraint["lower_bound_percent"] = constraint["upper_bound_percent"] = constraint["target_value_percent"]
+        drafts = constraint.get("bounds_drafts", {})
+        if (not isinstance(drafts, dict) or set(drafts) - {"lower_bound_percent", "upper_bound_percent"}
+                or any(not isinstance(value, str) for value in drafts.values())
+                or constraint["enabled"] and drafts):
+            _invalid("启用的约束不能含未提交草稿；关闭组只接受当前上下限文本草稿。")
+    _validate_editor_criteria(checked)
+
+
 def _optimization_record_action(controller: Any, editor: Any, name: str, args: dict) -> None:
     """Merge only an explicit record, validate once, and use the atomic loader.
 
@@ -362,21 +402,17 @@ def _optimization_record_action(controller: Any, editor: Any, name: str, args: d
             candidate = deepcopy(row) if row is not None else _objective_default(len(rows))
             candidate.update(deepcopy(record))
             try:
-                for field in {"name", "angles_text", "sampling_basis", "angle_sampling_mode", "polarization", "metric", "mode"}:
+                for field in {"name", "angles_text", "sampling_basis", "angle_sampling_mode", "polarization", "metric"}:
                     if not isinstance(candidate[field], str):
                         _invalid("目标文本与选项字段须为文本。")
                 if len(candidate["name"]) > 20000 or len(candidate["angles_text"]) > 20000:
                     _invalid("目标文本超出当前输入保护范围。")
                 for field, allowed in (("polarization", {"s", "p", "unpolarized"}),
-                                       ("metric", {"R", "T"}), ("mode", {"value", "range"})):
+                                       ("metric", {"R", "T"})):
                     if candidate[field] not in allowed:
                         _invalid("未知目标偏振、指标或目标类型。")
-                for field in {"target_value_percent", "lower_bound_percent", "upper_bound_percent"}:
-                    if not 0 <= _finite(candidate[field]) <= 100:
-                        _invalid("目标R/T百分比须为0至100。")
-                if candidate["lower_bound_percent"] > candidate["upper_bound_percent"]:
-                    _invalid("目标下界不能大于上界。")
                 _finite(candidate["weight"], positive=True)
+                _validate_objective_constraint_records(candidate)
                 edited_field = None
                 if "sampling_basis" not in record:
                     sampling_fields = {"wavelength_samples", "wavelength_step_nm"} & set(record)

@@ -85,8 +85,11 @@ def window_runtime(app, controller, *, source=None):
 def saved_configuration(service, design):
     with optimizer(service, design) as (controller, _source, _session):
         configuration = controller.exportOptimizationConfiguration()
-        configuration["objectives"][0]["name"] = "保留的目标"
-        configuration["objectives"][0]["target_value_percent"] = 17.25
+        objective = configuration["objectives"][0]
+        objective["name"] = "保留的目标"
+        objective["pointwise"].update(
+            mode="value", target_value_percent=17.25,
+            lower_bound_percent=17.25, upper_bound_percent=17.25)
         configuration["solver"]["max_evaluations"] = 321
         return configuration
 
@@ -128,7 +131,7 @@ def test_all_replaced_layers_require_explicit_selection_but_keep_targets(app, tm
         assert not controller.canStart
         assert controller.computeTarget.canSubmit  # CPU readiness is unrelated.
         assert "约束页选择" in controller.statusText
-        assert controller._objectives[0]["target_value_percent"] == 17.25
+        assert controller._objectives[0]["pointwise"]["target_value_percent"] == 17.25
         assert session.configuration_writes == []
         controller.setVariableEnabled("front", "new-stable-layer", True)
         assert controller.canStart

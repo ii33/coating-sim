@@ -28,7 +28,7 @@ def test_numerically_valid_snapshot_missing_editable_material_gives_recovery_gui
         }
     else:
         incomplete["design"]["workflow_settings"]["optimization"].update(
-            version=1, structure_materials=[reference])
+            version=2, structure_materials=[reference])
     incomplete["design"] = validate_design(incomplete["design"])
     incomplete["sha256"] = _sha256(incomplete)
     assert validate_frozen_design_snapshot(incomplete) == incomplete

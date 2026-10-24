@@ -1,6 +1,6 @@
 # Bound current-editor operations
 
-Date: 2026-10-15. This is an explicit controller gateway, not arbitrary UI,
+Date: 2026-10-24. This is an explicit controller gateway, not arbitrary UI,
 mouse/keyboard, method invocation, or document replacement.
 
 ## Input, ownership, and output
@@ -44,6 +44,25 @@ per-module capability matrix. Clients must refresh the snapshot after an edit.
   derived sample fields are not writable. Variables require exact side/layer
   ID plus enabled/lower_nm/upper_nm together, avoiding invalid intermediate
   bounds. The public editor workflow setter preserves dirty/save ownership.
+  The current optimization configuration is version 2. Shared band, angle,
+  polarization, metric and weight patches preserve both existing constraint
+  groups. `mean` and `pointwise` are independent nested records; when a patch
+  includes either group, it replaces that entire group. Each supplied group
+  must contain `enabled`, `mode`, `target_value_percent`, `lower_bound_percent`,
+  `upper_bound_percent`, `strict_lower` and `strict_upper`. Percentages remain
+  GUI percentages; the existing controller owns their calculation conversion.
+  Optional `bounds_drafts` retains only disabled-group lower/upper text under
+  the current editor contract. It cannot make an active uncommitted group valid.
+  There is no implicit group merge, inferred legacy mode, or acceptance of old
+  top-level mode/target/bound fields. Adding an objective starts with the current
+  native defaults, including enabled pointwise and disabled mean groups.
+  Detached record preflight uses the native group field set and existing active
+  criterion validator, then the strict atomic loader commits once. Both groups
+  disabled, incompatible active groups and malformed records reject without
+  changing the configuration, draft/dirty/revision, selection or snapshot
+  readability. Disabled groups remain editable state and contribute no
+  calculation target. These synchronous edits start no asynchronous result,
+  cancellation or queue operation; the existing owner and snapshot fences apply.
 - `film_simulation` update: exactly one of wavelength_min_nm,
   wavelength_max_nm, samples, step_nm, angle_deg, polarization, first_surface,
   extrapolation_policy. The token covers the actual current simulation

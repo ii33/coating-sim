@@ -72,7 +72,7 @@ def editable_design_and_materials() -> tuple[dict, dict[str, dict]]:
             "extension_metadata": {"source": "synthetic", "enabled": True},
         },
         "optimization": {
-            "version": 1,
+            "version": 2,
             "targets": [],
             "structure_materials": [{
                 "material_id": "optimization-candidate", "optical_set_id": "candidate-n",
@@ -376,7 +376,7 @@ def test_freeze_rejects_malformed_typed_candidate_configuration_without_mutation
     changed = deepcopy(design)
     optimization = changed["workflow_settings"]["optimization"]
     if malformation == "unsupported_version":
-        optimization["version"] = 2
+        optimization["version"] = 3
     else:
         optimization["structure_materials"].append(
             deepcopy(optimization["structure_materials"][0]))

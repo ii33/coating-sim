@@ -10,7 +10,7 @@ from dataclasses import asdict, replace
 import hashlib
 import json
 import math
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Sequence
 
 from .film_optimization import (
     FilmOptimizationObjective,
@@ -20,8 +20,8 @@ from .film_optimization import (
     freeze_film_optimization_request,
     optimize_film_design,
 )
-from .film_objective_criteria import reduce_objective_responses, validate_objective_criteria
-from .film_objective_payload import (condition_from_payload, coverage_from_payload,
+from .film_objective_criteria import FilmObjectiveCoverage, reduce_objective_responses, validate_objective_criteria
+from .film_objective_payload import (condition_from_payload, coverage_from_payload, coverage_to_payload,
                                      objective_from_payload, objective_to_payload)
 
 
@@ -235,7 +235,7 @@ def _candidate_payload(request: FilmOptimizationRequest, *, design: Mapping[str,
                        weighted_max_error: float, weighted_rms_error: float,
                        targets_met: bool, solver_acceptable: bool,
                        per_condition_errors: list[dict[str, Any]],
-                       raw_coverage: list[dict[str, Any]],
+                       raw_coverage: Sequence[FilmObjectiveCoverage | Mapping[str, Any]],
                        iterations: int, evaluations: int) -> dict[str, Any]:
     return {
         "schema_version": CONTRACT_VERSION,
@@ -253,7 +253,7 @@ def _candidate_payload(request: FilmOptimizationRequest, *, design: Mapping[str,
             "solver_acceptable": bool(solver_acceptable),
         },
         "per_condition_errors": deepcopy(per_condition_errors),
-        "raw_coverage": deepcopy(raw_coverage),
+        "raw_coverage": [coverage_to_payload(row) for row in raw_coverage],
         "iterations": int(iterations),
         "evaluations": int(evaluations),
     }
@@ -310,7 +310,7 @@ def _solver_validation_payload(result: FilmOptimizationResult) -> dict[str, Any]
         "validation_weighted_rms_error": result.validation_weighted_rms_error,
         "validation_targets_met": result.validation_targets_met,
         "validation_solver_acceptable": result.validation_solver_acceptable,
-        "validation_raw_coverage": [asdict(row) for row in result.validation_raw_coverage],
+        "validation_raw_coverage": [coverage_to_payload(row) for row in result.validation_raw_coverage],
         "validation_per_condition_errors": [
             asdict(item) for item in result.validation_per_condition_errors
         ],
@@ -329,7 +329,7 @@ def serialize_result(request: FilmOptimizationRequest,
         weighted_max_error=result.weighted_max_normalized_error,
         weighted_rms_error=result.weighted_rms_error,
         targets_met=result.targets_met, solver_acceptable=result.solver_acceptable,
-        raw_coverage=[asdict(row) for row in result.raw_coverage],
+        raw_coverage=result.raw_coverage,
         per_condition_errors=[asdict(item) for item in result.per_condition_errors],
         iterations=result.iterations, evaluations=result.evaluations,
     )
@@ -430,7 +430,7 @@ def _replay_candidate_scores(
         "targets_met": reduction.nominal_pass,
         "solver_acceptable": reduction.solver_acceptable,
         "per_condition_errors": [asdict(row) for row in reduction.conditions],
-        "raw_coverage": [asdict(row) for row in reduction.coverage],
+        "raw_coverage": [coverage_to_payload(row) for row in reduction.coverage],
     }
 
 

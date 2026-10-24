@@ -113,3 +113,14 @@ def coverage_from_payload(value: Any) -> FilmObjectiveCoverage:
 def _finite_number(value: Any, name: str) -> None:
     if isinstance(value, bool) or not isinstance(value, Real) or not math.isfinite(value):
         raise ValueError(f"{name} must be a finite number")
+
+
+def coverage_to_payload(value: FilmObjectiveCoverage | Mapping[str, Any]) -> dict[str, Any]:
+    """Detach raw spectrum arrays only at a JSON wire boundary.
+
+    Frozen computation/display records retain their tuples. Mapping records
+    use the same current-schema validation as received JSON evidence.
+    """
+    row = value if isinstance(value, FilmObjectiveCoverage) else coverage_from_payload(value)
+    return {"objective_index": row.objective_index, "angle_deg": row.angle_deg,
+            "wavelength_nm": list(row.wavelength_nm), "actual_values": list(row.actual_values)}

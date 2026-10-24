@@ -19,6 +19,7 @@ from .optical_constants import prepare_optical_set
 from .film_optimization_scoring import reduction_score, search_scalar
 from .film_objective_criteria import (FilmConditionError, FilmObjectiveConstraint, FilmObjectiveCoverage,
                                       reduce_objective_responses, validate_objective_criteria)
+from .film_objective_payload import coverage_to_payload
 
 
 Polarization = Literal["s", "p", "unpolarized"]
@@ -598,7 +599,7 @@ def optimize_film_design(
                 "targets_met": bool(best["nominal_pass"]),
                 "solver_acceptable": bool(best["solver_acceptable"]),
                 "per_condition_errors": [asdict(row) for row in best["errors"]],
-                "raw_coverage": [asdict(row) for row in best["coverage"]],
+                "raw_coverage": [coverage_to_payload(row) for row in best["coverage"]],
                 "iterations": int(iteration),
                 "evaluations": int(evaluations),
             })

@@ -23,3 +23,10 @@
 取消、时间和物理评估预算仍覆盖原计算阶段。未独审的取消最佳解只能显示已完成 training 事实，不能宣称独审通过。开关实时预览不新增物理 forward/J，关闭组不恢复已禁用约束。既有可选模板随机化与 seed 冻结保持原义。
 
 理想敏感性始终保留原逐 λ/角固定 baseline guard。freeze 将所有 enabled 名义 bound sides 的并集固定成 guard_directions（lower/upper/both）；结果/重放使用冻结值，不从后来 UI 重算。F 与尺度不变。独立误差参数表仍计算逐点误差；关闭逐点 target 时原始点的 nominal pass 为 null，归约名义条件另列。参数表不能应用为理想候选。
+
+
+## 公开载荷的 JSON 原生数组（2026-10-24）
+
+ordinary / structure 的 request、candidate、checkpoint、result 在公开序列化边界直接返回 JSON 原生数组。`angles_deg` 使用 `objective_to_payload()`；`raw_coverage` 与 `validation_raw_coverage` 的 `wavelength_nm`、`actual_values` 使用 `coverage_to_payload()` 转为独立 list。因此本地返回值与 JSON 编码、HTTP 传输、持久化和重启读取后的值保持完全相等，不依赖整份载荷的二次 JSON 编解码。
+
+计算归约器、内部档案和 observer 继续共享不可变的 tuple coverage；只在公开边界建立列表，不增加 TMM / Jacobian 求值。数值、严格边界标志、原始采样覆盖、冻结材料及请求身份保持原意；接收端 `coverage_from_payload()` 恢复不可变证据，原有形状校验与物理回放门禁保持有效。

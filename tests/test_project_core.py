@@ -585,7 +585,7 @@ def test_symbol_only_and_structure_candidate_only_film_materials_are_portable(tm
         "A": {"material_id": "symbol_only", "optical_set_id": "set",
               "thickness": {"value": 90., "unit": "nm"}, "note": "unexpanded symbol"}}}
     design["workflow_settings"] = {"optimization": {
-        "version": 1, "search_mode": "structure", "structure_mode": "combined",
+        "version": 2, "search_mode": "structure", "structure_mode": "combined",
         "structure_materials": [{"material_id": "candidate_only", "optical_set_id": "set"}]}}
     design = validate_design(design)
     external = tmp_path / "external"
@@ -615,11 +615,11 @@ def test_symbol_only_and_structure_candidate_only_film_materials_are_portable(tm
 
 
 @pytest.mark.parametrize("configuration,code", [
-    ({"version": 2, "structure_materials": []}, "unsupported_version"),
+    ({"version": 3, "structure_materials": []}, "unsupported_version"),
     ({"structure_materials": []}, "unsupported_version"),
-    ({"version": 1, "structure_materials": "global-catalog"}, "invalid_document"),
-    ({"version": 1, "structure_materials": [{"material_id": "candidate", "file": "/global"}]}, "invalid_document"),
-    ({"version": 1, "structure_materials": [{"material_id": "candidate", "optical_set_id": "set"}] * 2}, "dependency_conflict"),
+    ({"version": 2, "structure_materials": "global-catalog"}, "invalid_document"),
+    ({"version": 2, "structure_materials": [{"material_id": "candidate", "file": "/global"}]}, "invalid_document"),
+    ({"version": 2, "structure_materials": [{"material_id": "candidate", "optical_set_id": "set"}] * 2}, "dependency_conflict"),
 ])
 def test_typed_film_candidate_references_reject_unknown_or_malformed_configuration(tmp_path, configuration, code):
     design = new_design("Bad candidate refs")

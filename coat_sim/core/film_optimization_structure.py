@@ -39,6 +39,7 @@ from .film_optimization_needle import (
 )
 from .film_optimization_scoring import reduction_score
 from .film_objective_criteria import reduce_objective_responses
+from .film_objective_payload import coverage_to_payload, objective_to_payload
 from .optical_constants import prepare_optical_set
 
 
@@ -410,7 +411,7 @@ def film_structure_request_to_payload(request: FilmStructureOptimizationRequest)
             "design_snapshot": deepcopy(dict(base.design_snapshot)),
             "design_revision": base.design_revision,
             "variables": [asdict(item) for item in base.variables],
-            "objectives": [asdict(item) for item in base.objectives],
+            "objectives": [objective_to_payload(item) for item in base.objectives],
             "max_iterations": base.max_iterations,
             "max_evaluations": base.max_evaluations,
             "initial_step_fraction": base.initial_step_fraction,
@@ -2226,6 +2227,11 @@ def film_structure_result_to_payload(
         raise ValueError("a frozen structure request is required to serialize a result")
     request_payload = film_structure_request_to_payload(source_request)
     base = result.base_result
+    topology_payload = deepcopy(dict(result.topology_audit))
+    for group in topology_payload.get("split_groups", {}).values():
+        for field in ("layer_ids", "fractions"):
+            if field in group:
+                group[field] = list(group[field])
     quality = {
         "max_normalized_error": float(base.max_normalized_error),
         "weighted_max_normalized_error": float(base.weighted_max_normalized_error),
@@ -2250,8 +2256,8 @@ def film_structure_result_to_payload(
             "design": deepcopy(dict(base.best_design)),
             "thickness_nm": {str(key): float(value) for key, value in base.best_thickness_nm.items()},
             "quality": quality,
-            "raw_coverage": [asdict(row) for row in base.raw_coverage],
-            "validation_raw_coverage": [asdict(row) for row in base.validation_raw_coverage],
+            "raw_coverage": [coverage_to_payload(row) for row in base.raw_coverage],
+            "validation_raw_coverage": [coverage_to_payload(row) for row in base.validation_raw_coverage],
             "per_condition_errors": [_condition_error_payload(item) for item in base.per_condition_errors],
             "validation_per_condition_errors": [
                 _condition_error_payload(item) for item in base.validation_per_condition_errors],
@@ -2259,7 +2265,7 @@ def film_structure_result_to_payload(
         "structure": {
             "mode": result.mode,
             "added_needle_layer_ids": list(result.added_needle_layer_ids),
-            "topology_audit": deepcopy(dict(result.topology_audit)),
+            "topology_audit": topology_payload,
             "trace": [asdict(item) for item in result.trace],
             "counters": asdict(result.counters),
         },
