@@ -118,6 +118,10 @@ def _run_probe(script: str, runtime_name: str, timeout_seconds: float) -> dict[s
         return {"available": False, "name": "", "reason":
                 f"无法启动本地 Python 探测进程（{type(exc).__name__}: {exc}）"[:240]}
 
+    if completed.returncode != 0:
+        return {"available": False, "name": "", "reason":
+                f"{runtime_name} 探测进程异常退出（退出码 {completed.returncode}）"}
+
     payload = None
     for line in reversed((completed.stdout or "").splitlines()):
         if line.startswith(_RESULT_MARKER):

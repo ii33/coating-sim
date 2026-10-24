@@ -1,6 +1,6 @@
 # Compute host and device selection contract
 
-Date: 2026-10-17. This contract covers the settings page and the three desktop
+Date: 2026-10-24. This contract covers the settings page and the three desktop
 calculation entry points: deposition simulation, film optimization, and appearance
 rendering. It does not change physics, units, or frozen input formats.
 
@@ -44,6 +44,18 @@ binding the worker actually honors. The current `cuda:default` and
 physical GPU. A missing, incompatible, busy, or failed
 probe leaves the row unavailable with a reason. Selection persistence is only a
 preference; every submission rechecks current availability and compatibility.
+
+Local deposition probe success requires both child exit code 0 and a valid
+result marker with boolean availability. A success payload printed before a
+nonzero exit, uncaught exception or timeout cannot make a device available;
+incomplete or invalid JSON is also unavailable. Failed GPU rows keep their
+requested backend/device identity and reason rather than becoming CPU rows.
+The default 8-second and maximum 15-second probe limits are unchanged. These
+protocol regressions use real bounded child processes, not GPU qualification.
+
+The pending isolated appearance runtime and project preflight design is recorded
+in [the deployment/preflight plan](appearance-runtime-preflight-plan-20261024.md).
+It does not provision an environment or add an interpreter fallback.
 
 Remote discovery is opt-in through an explicit configured URL and saved token.
 No remote network connection occurs from empty settings or from opening the

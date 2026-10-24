@@ -98,6 +98,8 @@ def test_timed_out_probe_is_bounded_and_other_runtime_is_still_probed(monkeypatc
 
 
 def test_timeout_is_hard_capped_and_invalid_task_or_timeout_fails_fast(monkeypatch):
+    assert probe.DEFAULT_PROBE_TIMEOUT_SECONDS == 8.0
+    assert probe.MAX_PROBE_TIMEOUT_SECONDS == 15.0
     calls = []
     monkeypatch.setattr(
         probe.subprocess, "run",
@@ -131,4 +133,83 @@ def test_malformed_child_output_becomes_unavailable_row(monkeypatch):
     assert rows[1]["available"] is False
     assert "退出码 7" in rows[1]["reason"]
     assert rows[2]["reason"] == "not installed"
+
+
+def _child_script(payload: dict, ending: str = "") -> str:
+    return f"print({(MARKER + json.dumps(payload))!r}, flush=True)\n{ending}"
+
+
+@pytest.mark.parametrize(("ending", "exit_code"), [
+    ("import sys; sys.exit(7)", 7),
+    ("raise RuntimeError('protocol fixture child failed')", 1),
+])
+def test_success_payload_from_failed_real_child_is_unavailable(ending, exit_code):
+    script = _child_script({"available": True, "name": "uncommitted device claim", "reason": ""}, ending)
+    control = subprocess.run([probe.sys.executable, "-c", script], capture_output=True,
+                             text=True, timeout=probe.DEFAULT_PROBE_TIMEOUT_SECONDS, check=False)
+    assert control.returncode == exit_code
+    assert MARKER in control.stdout
+
+    result = probe._run_probe(script, "CUDA", probe.DEFAULT_PROBE_TIMEOUT_SECONDS)
+
+    assert result["available"] is False
+    assert result["name"] == ""
+    assert "CUDA" in result["reason"] and f"退出码 {exit_code}" in result["reason"]
+
+
+def test_launch_exception_is_unavailable(monkeypatch):
+    def cannot_launch(*args, **kwargs):
+        raise OSError("protocol fixture cannot start")
+    monkeypatch.setattr(probe.subprocess, "run", cannot_launch)
+
+    result = probe._run_probe("pass", "DirectML", probe.DEFAULT_PROBE_TIMEOUT_SECONDS)
+
+    assert result["available"] is False and result["name"] == ""
+    assert "OSError" in result["reason"] and "protocol fixture cannot start" in result["reason"]
+
+
+@pytest.mark.parametrize("output", [
+    "native log without a result marker",
+    MARKER + '{"available": true',
+    MARKER + '[]',
+    MARKER + '{"available": "true"}',
+    MARKER + '{"name": "missing availability"}',
+    MARKER + '{"available": true}\n' + MARKER + '{"available":',
+])
+def test_invalid_zero_exit_real_child_output_is_unavailable(output):
+    result = probe._run_probe(f"print({output!r}, flush=True)", "CUDA",
+                              probe.DEFAULT_PROBE_TIMEOUT_SECONDS)
+
+    assert result["available"] is False and result["name"] == ""
+    assert "未返回有效结果" in result["reason"]
+
+
+def test_success_marker_before_real_child_timeout_does_not_make_it_available():
+    script = _child_script({"available": True, "name": "unfinished probe", "reason": ""},
+                           "import time; time.sleep(30)")
+
+    result = probe._run_probe(script, "CUDA", .2)
+
+    assert result["available"] is False and result["name"] == ""
+    assert "超时（0.2 秒）" in result["reason"]
+
+
+@pytest.mark.parametrize("cuda_exit", [0, 7])
+def test_real_child_protocol_preserves_backend_identity(monkeypatch, cuda_exit):
+    """Real protocol subprocesses, not evidence of GPU hardware execution."""
+    monkeypatch.setattr(probe, "_CUDA_PROBE_SCRIPT", _child_script(
+        {"available": True, "name": "Protocol CUDA fixture", "reason": ""},
+        f"import sys; sys.exit({cuda_exit})"))
+    monkeypatch.setattr(probe, "_DIRECTML_PROBE_SCRIPT", _child_script(
+        {"available": True, "name": "Protocol DirectML fixture", "reason": ""}))
+
+    rows = probe.probe_local_compute_targets()
+
+    assert [row["id"] for row in rows] == ["cpu:default", "cuda:default", "directml:default"]
+    assert [row["backend"] for row in rows] == ["CPU", "GPU", "DirectML"]
+    assert rows[0]["available"] is True
+    assert rows[1]["available"] is (cuda_exit == 0)
+    assert rows[1]["name"] == ("Protocol CUDA fixture" if cuda_exit == 0 else "CUDA 默认 GPU")
+    assert rows[2]["available"] is True and rows[2]["name"] == "Protocol DirectML fixture"
+    assert all(row["physical_id"] == "" for row in rows[1:])
 
