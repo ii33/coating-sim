@@ -12,6 +12,7 @@ from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent
 from PySide6.QtQuick import QQuickWindow
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
+from shiboken6 import isValid
 
 from coat_sim.ui import assistant, assistant_desktop
 
@@ -324,7 +325,30 @@ class AssistantWindowListTests(unittest.TestCase):
             "assistantTrayVisibilityItem",
         )
         menu_items = [menu_window.findChild(QObject, name) for name in menu_item_names]
-        self.assertTrue(all(item is not None for item in menu_items), menu_item_names)
+        missing_items = [name for name, item in zip(menu_item_names, menu_items, strict=True)
+                         if item is None]
+        if missing_items:
+            # Inspect only after the existing lookup has failed. Do not reopen,
+            # wait, retry, or retain extra QML wrappers on the passing path.
+            host_valid = isValid(menu_window)
+            menu_valid = isValid(tray_menu)
+            diagnostics = {
+                "missing_object_names": missing_items,
+                "engine_valid": isValid(self.engine),
+                "host_valid": host_valid,
+                "menu_valid": menu_valid,
+                "host_visible": menu_window.isVisible() if host_valid else None,
+                "menu_state": {name: tray_menu.property(name)
+                               for name in ("visible", "opened", "count", "width", "height")}
+                              if menu_valid else None,
+                "remaining_menu_object_names": sorted(
+                    child.objectName() for child in tray_menu.findChildren(QObject)
+                    if child.objectName().startswith("assistant")) if menu_valid else [],
+                "found_objects_valid": {name: isValid(item)
+                                        for name, item in zip(menu_item_names, menu_items, strict=True)
+                                        if item is not None},
+            }
+            self.fail(f"Tray menu child lookup failed after close: {diagnostics}")
         tray_labels = [tray_menu.findChild(QObject, name).property("text")
                        for name in menu_item_names if name != "assistantTrayVolumeSlider"]
         bubble_qml = (ROOT / "coat_sim/ui/qml/AssistantBubble.qml").read_text(encoding="utf-8")
