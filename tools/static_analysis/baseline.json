@@ -1419,16 +1419,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "coat_sim/core/film_optimization.py",
-      "code": "B905",
-      "message": "`zip()` without an explicit `strict=` parameter",
-      "scope": "optimize_film_design.evaluate_with_derivatives",
-      "anchor": "for index, (wavelength, actual) in enumerate(zip(waves, actual_values)):",
-      "fingerprint": "06674ba0046586bf17bf86295e7101b6e4347486692caf4b78c8146e89a5a48e",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tools/build_desktop_host.py",
       "code": "attr-defined",
@@ -4509,16 +4499,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "tests/test_film_structure_queue_ui.py",
-      "code": "E402",
-      "message": "Module level import not at top of file",
-      "scope": "",
-      "anchor": "from coat_sim.ui.film_quick_controller import FilmDesignQuickController",
-      "fingerprint": "13b3288b27b3bebff57465e08d35db1e606aeff24b7c87577e31df7d901fa418",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_utility_windows_compact_chrome_ui.py",
       "code": "union-attr",
@@ -6896,16 +6876,6 @@
       "scope": "main",
       "anchor": "prepare_time, evaluator = timed(lambda: FrozenFilmEvaluator(frozen, settings,",
       "fingerprint": "1cf857a18b26006f8e06619f9d2e1949a12d0bc02bfafe565a780ba9a88c42bf",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "tests/test_film_structure_queue_ui.py",
-      "code": "E402",
-      "message": "Module level import not at top of file",
-      "scope": "",
-      "anchor": "from coat_sim.ui.film_simulation_quick_controller import FilmSimulationQuickController",
-      "fingerprint": "1d0938ad85191c5dfe617a91f0517a49581eaaa52cbe33f2fbdd4f00339e06fe",
       "count": 1
     },
     {
@@ -13720,16 +13690,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_needle.py",
-      "code": "arg-type",
-      "message": "Argument 1 to \"float\" has incompatible type \"float | None\"; expected \"str | Buffer | SupportsFloat | SupportsIndex\"",
-      "scope": "_score_design",
-      "anchor": "violation = abs(actual - float(objective.target_value))",
-      "fingerprint": "382182a8351b3369f003eb7390506916b815c77b1e1d34788f9330c029d8d9f7",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/ui/assistant.py",
       "code": "arg-type",
       "message": "Argument 2 to \"pop\" of \"dict\" has incompatible type \"None\"; expected \"dict[Any, Any]\"",
@@ -14646,16 +14606,6 @@
       "scope": "",
       "anchor": "from pydantic_ai.models.openai import OpenAIChatModel",
       "fingerprint": "3b4519386b3d8fcd0131516685087f4d5885ab190560dab3e80352d07f6c9dc4",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "tests/test_film_structure_queue_ui.py",
-      "code": "E402",
-      "message": "Module level import not at top of file",
-      "scope": "",
-      "anchor": "from coat_sim.core.film_optimization import (",
-      "fingerprint": "3b4e77106a801ad354d6e2f462e1262cd3a83dbab9fa7fdd7876ae262746e337",
       "count": 1
     },
     {
@@ -15906,16 +15856,6 @@
       "scope": "DiscoveryTests.setUp",
       "anchor": "p = patch.object(settings, \"_model_discovery_bus\", None)",
       "fingerprint": "41bea5d2817cc77ffdd91169820ba5575866ff0702908624279659e6bc8b196c",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "coat_sim/core/film_optimization_job.py",
-      "code": "B905",
-      "message": "`zip()` without an explicit `strict=` parameter",
-      "scope": "_validate_replayed_errors",
-      "anchor": "for recorded, actual in zip(recorded_errors, replay_errors):",
-      "fingerprint": "41c07de8faa8780a72ae0ac83bcc83c28ee93b44170e36d473e9aeb3b54bd56a",
       "count": 1
     },
     {
@@ -19219,16 +19159,6 @@
       "count": 2
     },
     {
-      "tool": "ruff",
-      "path": "tests/test_film_structure_queue_ui.py",
-      "code": "E402",
-      "message": "Module level import not at top of file",
-      "scope": "",
-      "anchor": "from tests.film_performance_fixtures import fixture as in_memory_service_fixture",
-      "fingerprint": "4f5e068fe99cd08ac6d4e41adf128bc0161139e13ee98c877d2c368eaca6e22b",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_optical_material_refinements.py",
       "code": "attr-defined",
@@ -19997,16 +19927,6 @@
       "anchor": "self.assertTrue(dialog.property(\"visible\"))",
       "fingerprint": "526c46ad9bf832aea7fd72cd925a61205a5c29accf1e666b3c3d93f292b6c3b1",
       "count": 2
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_needle.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"FilmOptimizationResult | None\" has no attribute \"validation_targets_met\"",
-      "scope": "optimize_film_design_with_needle",
-      "anchor": "validation_targets_met = validation_source.validation_targets_met",
-      "fingerprint": "529dc5621acf000586f1102bc55bf7e2a1a4bfc3244c6bd9f6396960877ed423",
-      "count": 1
     },
     {
       "tool": "mypy",
@@ -22696,16 +22616,6 @@
       "scope": "",
       "anchor": "if (!FilmSimulation.saveCurrent()",
       "fingerprint": "5ea6875286cca3707fe4f6e6cdfe1299e32771912e37a407ad4f057f7d8b424c",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_structure.py",
-      "code": "index",
-      "message": "Value of type \"Any | None\" is not indexable",
-      "scope": "_as_structure_result",
-      "anchor": "bool(validation[\"score\"][\"max_error\"] <= request.base_request.acceptable_normalized_error)",
-      "fingerprint": "5eb185befc579402f5520db7726400762dea69d875b570fb92f545e93b239b41",
       "count": 1
     },
     {
@@ -25879,16 +25789,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "tests/test_film_structure_queue_ui.py",
-      "code": "E402",
-      "message": "Module level import not at top of file",
-      "scope": "",
-      "anchor": "from coat_sim.scheduler.result_capability import is_film_optimization_result",
-      "fingerprint": "6b4665d425a7eee0a8a2139654a124843e484dac3ffe083fc706c97a9721243d",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_film_quick_controller.py",
       "code": "index",
@@ -28559,26 +28459,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "coat_sim/core/film_optimization.py",
-      "code": "B905",
-      "message": "`zip()` without an explicit `strict=` parameter",
-      "scope": "optimize_film_design.evaluate",
-      "anchor": "for wavelength, actual in zip(chunk_waves, actual_values):",
-      "fingerprint": "761e92a03df9d3ea9cf7f176ccf6b80cad7af6af6e4ac454c89292dbed1c3b99",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "coat_sim/core/film_optimization.py",
-      "code": "F841",
-      "message": "Local variable `first` is assigned to but never used",
-      "scope": "optimize_film_design",
-      "anchor": "first = objectives[0]",
-      "fingerprint": "7623296cb3cfb34674a13d3a8574eaa5d8269c7160a4a3e140e966b38dbe0f82",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_optical_material_refinements.py",
       "code": "attr-defined",
@@ -30650,16 +30530,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/core/film_optimization.py",
-      "code": "arg-type",
-      "message": "Argument 1 to \"float\" has incompatible type \"float | None\"; expected \"str | Buffer | SupportsFloat | SupportsIndex\"",
-      "scope": "optimize_film_design.evaluate",
-      "anchor": "violation = abs(float(actual) - float(objective.target_value))",
-      "fingerprint": "7f47f262c259d8cfce1c67476d4a25e296bb63fa7e38bf99267464bdbf8e4702",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_mask_viewport.py",
       "code": "attr-defined",
       "message": "\"type[MaskViewportTests]\" has no attribute \"cjk_raw_font\"",
@@ -30836,16 +30706,6 @@
       "scope": "UniformityBridgeStateTests.test_invalid_fast_threshold_has_typed_failure_without_clearing_result",
       "anchor": "self.assertIn(\"残余时长阈值\", bridge.uniformityStateText)",
       "fingerprint": "800430c5f4b455a1eb23d35b1260cd8598a2ece3c8d61bf5ab6d0c9b78a6ae72",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_needle.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"FilmOptimizationResult | None\" has no attribute \"validation_message\"",
-      "scope": "optimize_film_design_with_needle",
-      "anchor": "validation_message = validation_source.validation_message",
-      "fingerprint": "800a5818bc58ddf636004ebd90c477bd5fbedbdd1558ede324335a59e50e7608",
       "count": 1
     },
     {
@@ -33866,16 +33726,6 @@
       "scope": "FilmSimulationQuickController.setOptimizationPreviewHandoff",
       "anchor": "frozen_service.freeze_design = (",
       "fingerprint": "8cc0ea1affed81a4c7ccf96480bb87037e13c0a370a052ca37f5604194f33ccb",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "tests/test_film_structure_queue_ui.py",
-      "code": "E402",
-      "message": "Module level import not at top of file",
-      "scope": "",
-      "anchor": "from coat_sim.ui.film_optimization_quick_controller import (",
-      "fingerprint": "8cdbb66200631a29dbccae95e02d757e1b635a1ed2787b1240e4a1f4f70f8485",
       "count": 1
     },
     {
@@ -38959,16 +38809,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "tests/test_film_structure_queue_ui.py",
-      "code": "E402",
-      "message": "Module level import not at top of file",
-      "scope": "",
-      "anchor": "from coat_sim.core.film_optimization_structure import (",
-      "fingerprint": "a20efbf9a67276e9caf5260c3c5712152b12fb01cb10959b8ed65f18e7b62e29",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "coat_sim/ui/film_design.py",
       "code": "attr-defined",
@@ -39289,16 +39129,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "coat_sim/core/film_optimization_job.py",
-      "code": "B905",
-      "message": "`zip()` without an explicit `strict=` parameter",
-      "scope": "_replay_candidate_scores",
-      "anchor": "for wavelength, actual in zip(chunk_waves, actual_values):",
-      "fingerprint": "a384a88619f750fc6ef8f9e4bd31da056bcc4061528919c4617269bdb4c24a11",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/SettingsWindow.qml",
       "code": "missing-property",
@@ -39416,26 +39246,6 @@
       "scope": "AssistantWindowListTests.test_lists_only_visible_activatable_windows_and_refreshes",
       "anchor": "bubble = self.make_window(\"看板娘\", Qt.Tool)",
       "fingerprint": "a3fa8bb09a96f469c1fbfa13e2499da5e6e42891336640733643ed554264a51d",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "tests/test_film_structure_queue_ui.py",
-      "code": "E402",
-      "message": "Module level import not at top of file",
-      "scope": "",
-      "anchor": "from coat_sim.scheduler.store import SchedulerStore",
-      "fingerprint": "a416323bd2b5f7e33dcf5270333ea5308adf1538023009ab71f25cbc47739367",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "coat_sim/core/film_optimization_structure.py",
-      "code": "B905",
-      "message": "`zip()` without an explicit `strict=` parameter",
-      "scope": "evaluate_frozen_structure_candidate",
-      "anchor": "for sample_index, (wave, actual) in enumerate(zip(waves, actual_values)):",
-      "fingerprint": "a41667449ec5994c85bda1cab13e042ee00cae42a3a7eac707c2348f2ecb5682",
       "count": 1
     },
     {
@@ -40506,16 +40316,6 @@
       "scope": "",
       "anchor": "source: controller.previewUrl",
       "fingerprint": "a7f7566323f758466576d622140c234c4540886bd179ef5ba49be8914ddbef94",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "tests/test_film_structure_queue_ui.py",
-      "code": "E402",
-      "message": "Module level import not at top of file",
-      "scope": "",
-      "anchor": "from tests.film_structure_fixtures import fixture as _fixture, request as _request",
-      "fingerprint": "a7f9d9bb2d9b9677e2482f982f96c5a1d6a88b78c1a42c3655ac5bfa3439ecbb",
       "count": 1
     },
     {
@@ -45769,16 +45569,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_needle.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"FilmOptimizationResult | None\" has no attribute \"validation_weighted_rms_error\"",
-      "scope": "optimize_film_design_with_needle",
-      "anchor": "validation_weighted_rms = validation_source.validation_weighted_rms_error",
-      "fingerprint": "be67e7cbe475e1a6259073195affe265142c1ce4a7c2018efbb3f7f9d2cdfe01",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/SettingsWindow.qml",
       "code": "unqualified",
@@ -46970,16 +46760,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_structure.py",
-      "code": "arg-type",
-      "message": "Argument 1 to \"float\" has incompatible type \"float | None\"; expected \"str | Buffer | SupportsFloat | SupportsIndex\"",
-      "scope": "evaluate_frozen_structure_candidate",
-      "anchor": "signed = actual_value - float(objective.target_value)",
-      "fingerprint": "c37dfcfe90363ffee26072e1ae5c3d4ffdf64199db614ba8fb53f5399aaa8a44",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tools/build_desktop_host.py",
       "code": "has-type",
       "message": "Cannot determine type of \"version\"",
@@ -47599,16 +47379,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_needle.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"FilmOptimizationResult | None\" has no attribute \"validation_per_condition_errors\"",
-      "scope": "optimize_film_design_with_needle",
-      "anchor": "validation_errors = validation_source.validation_per_condition_errors",
-      "fingerprint": "c613408bb575d6acfb565119f18c97db253f80e7f9021bd69daa18ef51964f86",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "coat_sim/scheduler/submission.py",
       "code": "E701",
@@ -47666,16 +47436,6 @@
       "scope": "_cmf_table",
       "anchor": "cmf = np.asarray([mi.cie1931_xyz(float(w)) for w in wavelengths_nm], dtype=np.float64)",
       "fingerprint": "c6723e6fa769d684352751ca20adedaae574424a1e78d8a2515a6ed3f2087f74",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_needle.py",
-      "code": "union-attr",
-      "message": "Item \"None\" of \"FilmOptimizationResult | None\" has no attribute \"validation_max_normalized_error\"",
-      "scope": "optimize_film_design_with_needle",
-      "anchor": "validation_max_error = validation_source.validation_max_normalized_error",
-      "fingerprint": "c68e1b0b6e2c07f6c1b9a978840b6a317d068fc25c9670724ad5de24bd8d1e28",
       "count": 1
     },
     {
@@ -47946,16 +47706,6 @@
       "scope": "ComputeQueueView.show",
       "anchor": "self.window.showNormal(); self.window.raise_(); self.window.requestActivate()",
       "fingerprint": "c77d4a8eb04270d3755adad4ba3dfd9e56eecb992fed98e55afb53eef36b1bc1",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization.py",
-      "code": "arg-type",
-      "message": "Argument 1 to \"float\" has incompatible type \"float | None\"; expected \"str | Buffer | SupportsFloat | SupportsIndex\"",
-      "scope": "optimize_film_design.evaluate_with_derivatives",
-      "anchor": "signed_error = actual - float(objective.target_value)",
-      "fingerprint": "c77fea1aff683deb4884fd543eb2317b2a1468c3694d24b90f2a7bdeb8c1d8c8",
       "count": 1
     },
     {
@@ -49257,16 +49007,6 @@
       "anchor": "onTapped: dialog.toggleOpticalSet(modelData.id)",
       "fingerprint": "cd24905fe7b970d29a12c3680184106d4dc79d99d0d6337754b8c04c1afd4f78",
       "count": 2
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_job.py",
-      "code": "arg-type",
-      "message": "Argument 1 to \"float\" has incompatible type \"float | None\"; expected \"str | Buffer | SupportsFloat | SupportsIndex\"",
-      "scope": "_replay_candidate_scores",
-      "anchor": "violation = abs(float(actual) - float(objective.target_value))",
-      "fingerprint": "cd393692bee4436b76adce52056c1797aae621ac43eb1dbb3fcadd769e6b6eea",
-      "count": 1
     },
     {
       "tool": "ruff",
@@ -51667,16 +51407,6 @@
       "anchor": "self._status = f\"导入失败：{exc}\"; self.changed.emit(); return False",
       "fingerprint": "d6c170e00cb5aed2c14235177f4c2a4b8a9809103ec1ea6b76dd2ebfd1b78b15",
       "count": 2
-    },
-    {
-      "tool": "ruff",
-      "path": "tests/test_film_structure_queue_ui.py",
-      "code": "E402",
-      "message": "Module level import not at top of file",
-      "scope": "",
-      "anchor": "from coat_sim.scheduler.jobs import canonical, freeze_spec",
-      "fingerprint": "d6c1f92cfc03bc434bfceebbb5132083efb1442b40e95315336235d7c53f2105",
-      "count": 1
     },
     {
       "tool": "mypy",
@@ -55666,16 +55396,6 @@
       "scope": "SettingsBridge.clearAssistantApiKey",
       "anchor": "self.assistantApiUrl, secret=\"\")",
       "fingerprint": "e7376ba6888199b10f7e8feec53aa06b936a89fd9376d1e80b41f209d8d1565b",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "coat_sim/core/film_optimization_needle.py",
-      "code": "B905",
-      "message": "`zip()` without an explicit `strict=` parameter",
-      "scope": "_score_design",
-      "anchor": "for wavelength, actual_value in zip(chunk_waves, actual_values):",
-      "fingerprint": "e746dc7732d1d9e5281b3b2dd0477051cfdba54220871c8ddc3c71df5ace1035",
       "count": 1
     },
     {
@@ -61729,6 +61449,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "Remove exactly four resolved derivative diagnostics after scalar-probe shared preparation: deleted two unused locals, separated list/ndarray names, and typed the already validated mutable layer; no new diagnostics accepted.",
+  "last_prune_reason": "2026-10-24 review at 281ce5f018609d3c493c23176119750fa6acfc50 with exact baseline-matching Python 3.12/toolchain: remove only 28 resolved optimization criterion/validation, strict-zip, and test import-order diagnostics; accept no new findings or syntax debt.",
   "configuration_review_reason": "2026-10-17: add only BSD-3-Clause pypdf 6.21.0 for isolated research PDF extraction; all previous dependency/tool versions, analyzer rules and diagnostic entries remain unchanged. The lock-file digest changes only for this reviewed runtime dependency."
 }
