@@ -244,7 +244,7 @@ def test_daemon_current_cancel_preserves_exact_completed_training_candidate(monk
     scheduler.runtime = tmp_path / "runtime"
     directory = scheduler.runtime / "jobs" / "current"
     directory.mkdir(parents=True)
-    request_payload = {"schema_version": 1, "kind": "coat_sim.film_synthesis_request",
+    request_payload = {"schema_version": 2, "kind": "coat_sim.film_synthesis_request",
         "request_id": payload["request_id"], "request": payload["result"]["frozen_request"], "physical_structures": []}
     parameters = jobs.canonical_parameters(None, {"payload": request_payload})
     spec = freeze_spec(CoatService(tmp_path), "film_synthesis", parameters)
@@ -278,8 +278,8 @@ def test_cancel_reply_must_match_current_persisted_job_not_only_itself(monkeypat
         from dataclasses import asdict
         environment = asdict(request)
     elif mutation == "objective":
-        environment["objectives"][0]["upper_bound"] = .02
-    request_payload = {"schema_version": 1, "kind": "coat_sim.film_synthesis_request",
+        environment["objectives"][0]["pointwise"]["upper_bound"] = .02
+    request_payload = {"schema_version": 2, "kind": "coat_sim.film_synthesis_request",
         "request_id": "another-valid-task" if mutation == "request_id" else actual["request_id"],
         "request": environment, "physical_structures": []}
     parameters = jobs.canonical_parameters(None, {"payload": request_payload})
@@ -359,7 +359,7 @@ def test_current_structure_cancel_preserves_complete_training_without_replay(mon
         candidate_materials=(FilmNeedleMaterialReference("high", "optical"),),
         position_samples=1, candidate_budget=2)
     frozen_request = structure.freeze_film_structure_optimization_request(service, request)
-    job = {"schema_version": 1, "kind": "coat_sim.film_optimization_job",
+    job = {"schema_version": 2, "kind": "coat_sim.film_optimization_job",
         "request": structure.film_structure_request_to_payload(frozen_request)}
     event = Event()
 
@@ -409,7 +409,7 @@ def test_structure_cancel_accepted_after_core_completed_retains_complete_real_ca
         candidate_materials=(FilmNeedleMaterialReference("high", "optical"),),
         position_samples=1, candidate_budget=2)
     request = structure.freeze_film_structure_optimization_request(service, request)
-    job = {"schema_version": 1, "kind": "coat_sim.film_optimization_job",
+    job = {"schema_version": 2, "kind": "coat_sim.film_optimization_job",
         "request": structure.film_structure_request_to_payload(request)}
     original = structure.optimize_film_design_with_structure
     event = Event()

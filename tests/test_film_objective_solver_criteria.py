@@ -101,7 +101,7 @@ def test_multiangle_structure_gradient_matches_full_band_finite_difference(point
 
 @pytest.mark.parametrize("pointwise,mean", [(False, True), (True, True)])
 def test_trf_residual_jacobian_matches_fd_and_reuses_same_point_cache(monkeypatch, pointwise, mean):
-    import scipy.optimize
+    from importlib import import_module
     from coat_sim.core import film_optimization_derivatives as derivatives
     service, _design, base, _request = problem(pointwise=pointwise, mean=mean)
     calls = []
@@ -122,7 +122,7 @@ def test_trf_residual_jacobian_matches_fd_and_reuses_same_point_cache(monkeypatc
         finite = (fun(x0 + step) - fun(x0 - step)) / (2 * step)
         np.testing.assert_allclose(matrix[:, 0], finite, rtol=3e-5, atol=1e-9)
         return SimpleNamespace(success=True, status=1)
-    monkeypatch.setattr(scipy.optimize, "least_squares", least_squares)
+    monkeypatch.setattr(import_module("scipy.optimize"), "least_squares", least_squares)
     result = optimize_film_design(service, replace(base, solver="trf", max_evaluations=8))
     assert result.failed_evaluations == 0
     assert len(calls) == 6  # Three distinct full spectra at two independent angles.

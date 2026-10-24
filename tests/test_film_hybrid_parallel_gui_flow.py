@@ -69,8 +69,8 @@ def test_default_hybrid_gui_typed_job_runs_two_real_workers_then_cancels(
         for field, value in (
             ("wavelength_min_nm", 450), ("wavelength_max_nm", 900),
             ("wavelength_samples", 4001), ("angle_max_deg", 60),
-            ("angle_step_deg", 30), ("upper_bound_percent", 100),
-            ("lower_bound_percent", 99.9999),
+            ("angle_step_deg", 30), ("pointwise.upper_bound_percent", 100),
+            ("pointwise.lower_bound_percent", 99.9999),
         ):
             assert controller.setObjectiveField(field, value)
         assert controller.setSynthesisCpuWorkers(2)

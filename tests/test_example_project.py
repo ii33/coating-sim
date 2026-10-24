@@ -51,7 +51,9 @@ def test_example_has_only_current_inputs_and_complete_default(example):
         assert b"/tmp/" not in content and b"/workspace/" not in content
     graph = plan.graph
     assert graph is not None
-    configuration = plan.film_design_snapshot["design"]["workflow_settings"]["optimization"]
+    film_snapshot = plan.film_design_snapshot
+    assert film_snapshot is not None
+    configuration = film_snapshot["design"]["workflow_settings"]["optimization"]
     assert configuration["version"] == 2
     objective = configuration["objectives"][0]
     assert objective["pointwise"]["enabled"] and not objective["mean"]["enabled"]
@@ -172,7 +174,9 @@ def test_example_builder_uses_current_optimization_configuration(tmp_path):
     for row in store.manifest["documents"]:
         store.resolve_document(row["id"])
     plan = load_project_default(store)
-    configuration = plan.film_design_snapshot["design"]["workflow_settings"]["optimization"]
+    film_snapshot = plan.film_design_snapshot
+    assert film_snapshot is not None
+    configuration = film_snapshot["design"]["workflow_settings"]["optimization"]
     assert configuration["version"] == 2
     objective = configuration["objectives"][0]
     assert objective["pointwise"]["enabled"] and not objective["mean"]["enabled"]

@@ -226,8 +226,8 @@ def test_ui_cpu_two_worker_setting_reaches_real_typed_job_and_history(app, tmp_p
         assert controller.setObjectiveField("wavelength_samples", 4001)
         assert controller.setObjectiveField("angle_max_deg", 60)
         assert controller.setObjectiveField("angle_step_deg", 30)
-        assert controller.setObjectiveField("upper_bound_percent", 100)
-        assert controller.setObjectiveField("lower_bound_percent", 99.9999)
+        assert controller.setObjectiveField("pointwise.upper_bound_percent", 100)
+        assert controller.setObjectiveField("pointwise.lower_bound_percent", 99.9999)
         assert controller.setSynthesisCpuWorkers(2)
         # This original phase='structure'/four-candidate routing contract is
         # legacy-specific. Default-hybrid real GUI workers have their own test.
@@ -338,8 +338,8 @@ def _set_remote_guard_objective(controller):
         ("wavelength_min_nm", 450.0),
         ("wavelength_max_nm", 700.0),
         ("wavelength_samples", 3),
-        ("lower_bound_percent", 0.0),
-        ("upper_bound_percent", 100.0),
+        ("pointwise.lower_bound_percent", 0.0),
+        ("pointwise.upper_bound_percent", 100.0),
     ):
         assert controller.setObjectiveField(field, value)
 

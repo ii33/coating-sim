@@ -104,7 +104,38 @@ def test_public_case_has_no_hidden_seed_and_uses_normal_typed_request_contract(m
     path = Path(__file__).resolve().parents[1] / (
         'benchmarks/film_synthesis/20261021/hr-minimax-tio2-franta-v1/request.json')
     payload = json.loads(path.read_text(encoding='utf8'))
-    _, original, _ = film_synthesis_request_from_payload(payload)
+    assert payload['schema_version'] == 1
+    with pytest.raises(ValueError, match="unsupported synthesis request schema_version"):
+        film_synthesis_request_from_payload(payload)
+    # Reuse the public optical snapshots as source data, not an old request
+    # migration. Author the current case explicitly, without an answer design.
+    from coat_sim.core.film_optimization import FilmOptimizationObjective, FilmObjectiveConstraint
+    from coat_sim.core.film_optimization_needle import FilmNeedleMaterialReference
+    source = payload['request']
+    original = synthesis.FilmSynthesisRequest(
+        environment=deepcopy(source['environment']),
+        objectives=tuple(FilmOptimizationObjective(400., 700., 301,
+            angles_deg=(0., 30.), polarization=polarization, metric="R",
+            pointwise=FilmObjectiveConstraint(lower_bound=.98, upper_bound=None))
+            for polarization in ("s", "p")),
+        candidate_materials=tuple(FilmNeedleMaterialReference(row['material_id'], row['optical_set_id'])
+            for row in source['candidate_materials']),
+        minimum_nonzero_thickness_nm=10., max_layer_thickness_nm=500.,
+        max_total_thickness_nm=5000., max_layers=32, max_evaluations=4000,
+        acceptable_normalized_error=0., validation_samples_multiplier=10,
+        max_seconds=300., frozen_material_snapshot=deepcopy(source['frozen_material_snapshot']))
+    for key in ('minimum_nonzero_thickness_nm', 'max_layer_thickness_nm',
+                'max_total_thickness_nm', 'max_layers', 'max_evaluations',
+                'acceptable_normalized_error', 'validation_samples_multiplier', 'max_seconds'):
+        assert getattr(original, key) == source[key]
+    for current, historical in zip(original.objectives, source['objectives'], strict=True):
+        assert (current.wavelength_min_nm, current.wavelength_max_nm, current.wavelength_samples,
+                current.angles_deg, current.polarization, current.metric) == (
+                    historical['wavelength_min_nm'], historical['wavelength_max_nm'],
+                    historical['wavelength_samples'], tuple(historical['angles_deg']),
+                    historical['polarization'], historical['metric'])
+        assert current.pointwise.lower_bound == historical['lower_bound']
+        assert current.pointwise.upper_bound == historical['upper_bound']
     assert original.max_working_set_bytes == 0 and original.resource_guard_resolution is None
     available_bytes = 8 * 1024**3
     monkeypatch.setattr(compute_resources, "available_memory_bytes", lambda: available_bytes)
@@ -129,7 +160,9 @@ def test_public_case_has_no_hidden_seed_and_uses_normal_typed_request_contract(m
     assert original.parallel_batch_size is None
     assert rebuilt == expected
     assert rebuilt.resource_guard_resolution == expected_resolution
-    job = build_job_payload(canonical_parameters(None, {'payload': payload}))
+    from coat_sim.core.film_synthesis_io import film_synthesis_request_to_payload
+    current_payload = film_synthesis_request_to_payload('current-public-hr-qualification', original)
+    job = build_job_payload(canonical_parameters(None, {'payload': current_payload}))
     _, queued, _ = deserialize_job_payload(job)
     assert queued == expected
     assert queued.resource_guard_resolution == expected_resolution and not queued.seed_designs

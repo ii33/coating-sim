@@ -371,7 +371,12 @@ def test_memory_limited_needle_prefix_releases_full_jacobians_before_next_prefix
                          (ar_sources, 'iter_ar_cluster_proposals'),
                          (hr_sources, 'iter_dual_substack_hr_proposals')):
         monkeypatch.setattr(module, name, lambda *args, **kwargs: iter(()))
-    request = _problem(workers=19, budget=64, samples=1001, memory=129 * 1024**2)
+    # Raw coverage is now retained in each compact archive entry. With the
+    # default 32-entry archive, prior/global candidates consume the 1 MiB
+    # headroom before any needle is admitted. Bound this competing retention
+    # explicitly so the unchanged 129 MiB guard tests full-J prefix release.
+    request = replace(_problem(workers=19, budget=64, samples=1001, memory=129 * 1024**2),
+                      archive_capacity=2)
     references = []
     alive_at_probe = []
     original = synthesis.evaluate_frozen_structure_candidate
@@ -397,9 +402,13 @@ def test_memory_limited_needle_prefix_releases_full_jacobians_before_next_prefix
     rows = [r for r in result.performance['search']['hybrid']['parallel_batches']
             if r['phase'] == 'hybrid_needle']
     assert rows and alive_at_probe
+    assert len(rows) >= 2  # A single prefix cannot prove release before the next.
+    assert len(alive_at_probe) > max(r['reserved_slots'] for r in rows)
     assert max(r['reserved_slots'] for r in rows) < request.parallel_batch_size
     assert max(alive_at_probe) <= max(r['reserved_slots'] for r in rows)
     assert all(r['retained_archive_estimate_bytes'] > 0 for r in rows)
+    assert all(r['retained_archive_estimate_bytes'] < r['parent_working_set_estimate_bytes']
+               <= r['frozen_budget_bytes'] for r in rows)
     assert all(r['estimated_peak_bytes'] <= r['frozen_budget_bytes'] for r in rows)
     assert result.performance['cleanup_complete']
 
