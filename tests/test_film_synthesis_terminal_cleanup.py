@@ -32,7 +32,9 @@ def _problem(tmp_path, *, seed=False, seed_multiple=1., alternate_set=False, bud
     base = FilmOptimizationRequest(design, 19, (), (objective,), acceptable_normalized_error=0.)
     request = build_synthesis_request(base,
         (FilmNeedleMaterialReference("acceptance-film", "film-set"),),
-        {"max_cycles": 1, "max_evaluations": budget, "max_layer_thickness_nm": 200.},
+        {"max_cycles": 1, "max_evaluations": budget, "max_layer_thickness_nm": 200.,
+         # This module isolates exact cleanup counters from optional cost search.
+         "enable_thickness_reduction": False},
         use_current_seed=False, cpu_workers=1)
     if seed:
         starting = deepcopy(design)

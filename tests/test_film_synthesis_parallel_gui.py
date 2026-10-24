@@ -93,7 +93,7 @@ def test_json_and_typed_job_roundtrip_preserve_inner_worker_request(app, tmp_pat
         assert controller.setSynthesisCpuWorkers("2")
         request = freeze_film_synthesis_request(service, controller._build_synthesis_request())
         payload = film_synthesis_request_to_payload("parallel-roundtrip", request)
-        assert payload["schema_version"] == 2
+        assert payload["schema_version"] == 3
         _, parsed, _ = film_synthesis_request_from_payload(payload)
         assert parsed.cpu_workers == 2
         assert parsed == request

@@ -54,7 +54,7 @@ def _atomic_json(path: Path, value: Any) -> None:
     temp.replace(path)
 
 
-REQUEST_CONTRACT_VERSION = 2
+REQUEST_CONTRACT_VERSION = 3
 
 
 def _assert_current_request_shape(request: Any) -> None:
@@ -67,15 +67,16 @@ def _assert_current_request_shape(request: Any) -> None:
         "enabled", "mode", "target_value", "lower_bound", "upper_bound", "strict_lower", "strict_upper",
     }
     if (not isinstance(request, dict) or
+            type(request.get("enable_thickness_reduction")) is not bool or
             any(name in request for name in ("strict_lower_bound_objective_indices",
                                             "strict_upper_bound_objective_indices")) or
             not isinstance(request.get("objectives"), (tuple, list)) or not request["objectives"]):
-        raise ValueError("Unsupported legacy request format; current schema 2 requires complete nested mean/pointwise criteria. Historical frozen suites are not migrated.")
+        raise ValueError("Unsupported legacy request format; current schema 3 requires complete nested mean/pointwise criteria and an explicit enable_thickness_reduction boolean. Historical frozen suites are not migrated.")
     for objective in request["objectives"]:
         if (not isinstance(objective, dict) or set(objective) != objective_fields or
                 any(not isinstance(objective[name], dict) or set(objective[name]) != constraint_fields
                     for name in ("mean", "pointwise"))):
-            raise ValueError("Unsupported legacy request format; current schema 2 requires complete nested mean/pointwise criteria. Historical frozen suites are not migrated.")
+            raise ValueError("Unsupported legacy request format; current schema 3 requires complete nested mean/pointwise criteria and an explicit enable_thickness_reduction boolean. Historical frozen suites are not migrated.")
 
 
 def _current_objectives(request: dict[str, Any]):

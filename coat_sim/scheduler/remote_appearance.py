@@ -64,6 +64,10 @@ def appearance_runtime_interpreter(root, backend: str) -> str:
         raise ValueError("appearance_runtime_backend_invalid")
     root = Path(root).resolve(strict=True)
     module_root = Path(__file__).resolve().parents[2]
+    from coat_sim.compute_runtime_dispatch import installed_role_python
+    managed = installed_role_python(module_root, "appearance")
+    if managed is not None:
+        return managed
     for candidate in dict.fromkeys((root, module_root)):
         environment = candidate / "build" / "mitsuba_appearance_env"
         python = (environment / "Scripts" / "python.exe" if os.name == "nt"

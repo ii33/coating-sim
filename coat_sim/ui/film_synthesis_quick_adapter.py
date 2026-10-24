@@ -23,6 +23,7 @@ SYNTHESIS_DEFAULT_OPTIONS = dict.fromkeys(("max_cycles", "max_evaluations", "max
 
 SYNTHESIS_SEARCH_DEFAULTS = {
     "search_strategy": "hybrid",
+    "enable_thickness_reduction": True,
     "archive_capacity": 32, "needle_batch_size": 6,
     "needle_pre_local": False, "needle_position_refinement_rounds": 1,
     "max_working_set_bytes": 0,
@@ -54,14 +55,15 @@ def synthesis_structure_search_seed(value: Any) -> int | None:
 def synthesis_options(values: Mapping[str, Any]) -> dict[str, Any]:
     if set(values) - (set(SYNTHESIS_DEFAULT_OPTIONS) | set(SYNTHESIS_SEARCH_DEFAULTS)):
         raise ValueError("Unknown synthesis constraint")
-    result = dict(SYNTHESIS_DEFAULT_OPTIONS)
+    result = dict(SYNTHESIS_DEFAULT_OPTIONS,
+                  enable_thickness_reduction=SYNTHESIS_SEARCH_DEFAULTS["enable_thickness_reduction"])
     for name, raw in values.items():
         if name == "structure_search_seed":
             result[name] = synthesis_structure_search_seed(raw)
             continue
-        if name == "randomize_template_search":
+        if name in {"randomize_template_search", "enable_thickness_reduction"}:
             if type(raw) is not bool:
-                raise ValueError("randomize_template_search must be an explicit boolean")
+                raise ValueError(f"{name} must be an explicit boolean")
             result[name] = raw
             continue
         if name == "parallel_batch_size" and (raw is None or (isinstance(raw, str)

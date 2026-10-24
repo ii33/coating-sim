@@ -81,6 +81,26 @@ def test_first_sweep_covers_all_materials_pair_counts_wavelengths_and_directions
     assert request.environment["front_layers"] == []
 
 
+def test_matching_prior_keeps_combined_mean_and_pointwise_candidates():
+    _, pointwise = matching_request()
+    both = replace(pointwise, objectives=tuple(replace(o, mean=replace(o.pointwise))
+        for o in pointwise.objectives))
+
+    pointwise_output = list(matching.iter_matching_proposals(pointwise))
+    both_output = list(matching.iter_matching_proposals(both))
+    assert len(pointwise_output) == len(both_output) == 4320
+    assert both_output[:12] == pointwise_output[:12]
+    assert both_output == pointwise_output
+    selected = matching.matching_objectives(both)
+    assert selected == both.objectives and selected[0] is both.objectives[0]
+    assert selected[0].pointwise.enabled and selected[0].mean.enabled
+
+    mean_only = replace(both, objectives=tuple(replace(o,
+        pointwise=replace(o.pointwise, enabled=False)) for o in both.objectives))
+    assert matching.matching_objectives(mean_only) == ()
+    assert list(matching.iter_matching_proposals(mean_only)) == []
+
+
 @pytest.mark.parametrize("common_changes, pointwise_changes", [
     ({"metric": "T"}, {}), ({"weight": 0.}, {}),
     ({}, {"lower_bound": .98, "upper_bound": .99}),

@@ -38,7 +38,7 @@ def pure_hr_prior_eligible(request: FilmSynthesisRequest) -> bool:
         and not environment["front_layers"] and not environment["back_layers"]
         and environment["substrate"]["sides"] == "single"
         and environment["first_surface"] == "front"
-        and all(o.pointwise.enabled and not o.mean.enabled and o.metric == "R" and o.pointwise.mode == "range" and o.weight > 0
+        and all(o.pointwise.enabled and o.metric == "R" and o.pointwise.mode == "range" and o.weight > 0
                 and o.pointwise.lower_bound is not None and o.pointwise.lower_bound >= .5
                 and (o.pointwise.upper_bound is None or o.pointwise.upper_bound >= 1.)
                 for o in request.objectives))

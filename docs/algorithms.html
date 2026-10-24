@@ -66,8 +66,9 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <p class="source" style="grid-column:1/-1">结构合成更新：2026-10-12。新增14o至14o-2：实验性经典零厚敏感度针插、有界已有层增长与分组局部精修；独立结构请求与固定层序/有限试插分开，Dmax是硬约束。补充验证切片、真实求值计数与增长前局部边界检查。接口见 <a href="film-structure-optimization-contract.md">结构合成契约</a>，操作见 <a href="film-structure-optimization-guide.md">使用指南</a>，实际验收见 本轮状态 <span class="historical-reference">（历史验证记录，未随公开源码发布）</span>。</p>
 <p class="source">存储格式补充：2026-10-18。工程 BBS、助手精简记忆和可恢复文件清理均为非物理持久化契约，不改变仿真公式、坐标或数值精度。见<a href="#engineering-notes-storage-20261018">工程记录与助手工作区格式</a>。</p>
 <nav aria-label="章节目录">
+<a href="#film-total-thickness-reduction-20261024">14av 固定层序、原指标下的总厚度缩减（2026-10-24）</a>
 <a href="#film-current-benchmark-20261024">14au 通用膜系基准的当前格式登记（2026-10-24）</a>
-<a href="#film-band-criteria-20261024">14at 波段平均值与逐点双约束（2026-10-24）</a>
+<a href="#film-band-criteria-20261024">14at 波段平均值与逐点双约束及结构先验准入（2026-10-24）</a>
 <a href="#film-template-randomization-20261024">14as 可选模板随机化（2026-10-24）</a>
 <a href="#film-multispectral-minimax-20261022">14ah 分窗高反先验与联合R/T门限精修（2026-10-22）</a>
 <a href="#film-synthesis-audit-20261020">14t 从零生长、最坏违规与独立极值审计（2026-10-20）</a>
@@ -250,6 +251,38 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#candidate-display-score">14ar 可开关实时光谱与独立候选展示评分</a>
 </nav>
 <main>
+<section id="film-total-thickness-reduction-20261024">
+<h2>14av 固定层序、原指标下的总厚度缩减</h2>
+<p class="source">更新：2026-10-24。本节原语已接入默认 hybrid 的正常成功出口；冻结请求 v3 的 enable_thickness_reduction 默认 true，可显式关闭作同预算对照；legacy 不进入该阶段。不是灵敏度优化，也不替代从零结构搜索。</p>
+<p><strong>用途、输入与输出。</strong>输入为原目标、完整通过原训练网格名义验收的候选，以及父任务的求值、归档、取消/预算和资源准入回调。材料、层数、层序和层 ID 不变；输出为实际求值且仍通过原名义约束的最薄候选及诊断。没有改善时保留原候选，不改写父任务评分。初始可行要求仅适用于这一成本缩减阶段，不适用于光谱寻优或灵敏度优化。</p>
+<p><strong>坐标、单位与公式。</strong>物理变量 dᵢ 以 nm 计；求解坐标 xᵢ=dᵢ/(100 nm)，目标 f=Σdᵢ/(100 nm)。在用户原制造边界内求 min f，约束为全部规范化有符号原光学边界 qⱼ(d)≤0，以及 Σdᵢ≤D₀。D₀ 为已可行初始候选的总厚度，是不排除任何更优解的目标子水平集，不是新增用户制造上限。解析约束 Jacobian 由原厚度导数乘 100 nm 得到。</p>
+<p>均值先对完整波长向量按归一化梯形权重积分，再施加均值边界；逐点约束逐波长保留。两者独立启用，每个原角度和偏振条件不变；权重不缩放约束可行域。严格边界仍用原始 &gt;/&lt; 判断，等值目标仍要求相等，求解器容差不构成验收余量。</p>
+<figure>
+<svg viewBox="0 0 840 175" role="img" aria-label="总厚度缩减保持原约束与独立审计边界" style="width:100%;max-width:840px">
+<rect x="10" y="30" width="175" height="80" rx="8" fill="#e8f3ef" stroke="#31806c"/>
+<text x="25" y="60" fill="#173f35">原可行膜系 D₀</text><text x="25" y="87" fill="#173f35">材料 / 层序 / ID 固定</text>
+<path d="M185 70 H220" stroke="#43566b" stroke-width="3"/><path d="M210 63 L221 70 L210 77" fill="none" stroke="#43566b" stroke-width="3"/>
+<rect x="225" y="20" width="185" height="100" rx="8" fill="#e9effb" stroke="#5168a0"/>
+<text x="240" y="50" fill="#223755">SLSQP：min Σdᵢ</text><text x="240" y="77" fill="#223755">原均值 / 逐点 qⱼ≤0</text><text x="240" y="104" fill="#223755">D≤D₀，父任务预算</text>
+<path d="M410 70 H445" stroke="#43566b" stroke-width="3"/><path d="M435 63 L446 70 L435 77" fill="none" stroke="#43566b" stroke-width="3"/>
+<rect x="450" y="30" width="175" height="80" rx="8" fill="#fff2db" stroke="#9e7333"/>
+<text x="465" y="60" fill="#60431b">真实重算与原门限</text><text x="465" y="87" fill="#60431b">失败则保留可行冠军</text>
+<path d="M625 70 H660" stroke="#43566b" stroke-width="3"/><path d="M650 63 L661 70 L650 77" fill="none" stroke="#43566b" stroke-width="3"/>
+<rect x="665" y="30" width="165" height="80" rx="8" fill="#f2ebf8" stroke="#86649d"/>
+<text x="678" y="60" fill="#513565">父任务独立密网格</text><text x="678" y="87" fill="#513565">通过才替换审计冠军</text>
+<text x="15" y="151" fill="#43566b">训练网格达标不等于密网格达标；不添加隐藏余量，不将可接受误差冒充名义通过。</text>
+</svg>
+<figcaption>图：成本缩减原语只负责训练条件下的真实可行候选；最终密网格、移位点和极值审计仍由父任务独立完成。</figcaption>
+</figure>
+<p><strong>伪代码。</strong>核对原完整响应、原网格与层 ID → 原名义验收和资源准入 → 固定拓扑 SLSQP → 每次真实候选通过父求值/归档边界 → 只保存名义通过且总厚度更小的候选 → 对较薄但原名义不通过的终点，最多 4 次物理 nm 的 nextafter 向已知可行点移动，再最多 8 次二分线段重算 → 返回可行冠军。每个缓存请求也检查取消/预算，所有父回调异常原样向上传播。</p>
+<p><strong>默认参数与实现。</strong><code>coat_sim/core/film_synthesis_thickness.py::reduce_total_thickness</code>；默认 64 次 SLSQP 迭代，ftol=10⁻¹²，仅表示停止精度；完整原训练网格与解析 Jacobian，无人为层数上限。无用户最小厚度时用最小正规正浮点数保持固定非零拓扑。缓存只保留最近一个物理点。资源估算为 128 MiB + 64PN + 128N² + 64MN + 512(N+M) bytes，P 为原光学采样点数、N 为层数、M 为有符号原边界数加成本子水平集一行；父回调另外核对其保留档案。资源估计和 4+8 修复预算均为本项目约定，不是 OS 配额或物理不可能性判定。</p>
+<p><strong>适用条件与近似。</strong>局部、非凸、固定拓扑成本优化，无全局最小厚度保证；严格开边界的数学下确界可能不被取到，离散浮点重算只保留真正通过的点。二分仅保证保留已实测通过点，不假定整条非凸线段可行。各层厚度、总厚度与光谱目标均不添加隐藏余量。原训练网格的均值可能与独立密网格积分不同，不能将训练通过报告为最终合格。算子求解失败或达到迭代上限时仍可返回此前真实通过的改善点，诊断分别报告求解状态和候选状态。</p>
+<p><strong>本次证据。</strong>9 个真实生产 TMM 算例覆盖 HR/AR/混合 R/T × 仅均值/仅逐点/同时启用，材料为明确的无色散合成测试材料，不是实测工艺证据。9/9 保持原训练网格通过并减薄；现有独立密网格/极值审计仅 7/9 通过，两项均值单独启用的边界失配必须保留先前审计冠军。完整数量、零改善对照和求解失败状态见 <a href="film-thickness-reduction-report-20261024.md">阶段报告</a>；此结果不是从零默认搜索的同预算比较。</p>
+<p class="source">来源：<a href="https://docs.scipy.org/doc/scipy-1.17.0/reference/optimize.minimize-slsqp.html">SciPy SLSQP 官方接口与停止条件</a>；<a href="https://github.com/scipy/scipy/blob/v1.17.0/scipy/optimize/_slsqp_py.py">SciPy 1.17.0 稠密工作区实现</a>。D≤D₀ 的冗余改进域、父任务回调、最小正规正数、资源公式及有界边界修复为本项目实现约定，不据上述来源声称其工业效果已经验证。</p>
+<p><strong>默认混合搜索接线。</strong>仅在 <code>run_hybrid</code> 正常成功出口、现有审计冠军非空且预算尚余时尝试一次；同一父预算内最多 32 次候选求值、16 次 SLSQP 迭代，并保留原独立审计槽。不从失败/取消/截止后的通用清理入口启动。密网格不通过时保留旧审计冠军；本版不追加均值网格补救。联合资源准入比较本算子工作集 + 保留档案 + 已驻留工作进程基线，避免每项单独低于上限但总和超限。</p>
+<p><strong>有界接线实测，不等于算法推广结论。</strong>相同可行起点、目标和 300 次总预算的 9 对开/关对照中，4 项通过独立审计并减薄；2 项均值单独启用的方案因密网格拒绝而保留原冠军；3 项 HR 在 32 次预算内未得到可行改善，保留原方案。所有最终方案继续达标。此实验测量的是已有可行膜系后处理，不证明从零复杂多光谱搜索性能提升。</p>
+</section>
+
 <section id="film-wavelength-workers-20261017"><h2>CPU wavelength workers and fair single-candidate timing — 2026-10-17</h2>
 <p>Inputs and outputs retain nm, passive n+ik, degrees and dimensionless [candidate,wavelength,R/T/A]. Each wavelength is independent, but its complete ordered layer recurrence and polarization mean stay on one worker. <code>FrozenCoherentStack.wavelength_slice(start,stop)</code> shares immutable prepared array views without refreezing. The evaluator splits contiguous wavelength intervals and concatenates results in original wavelength order before caller-side objective or spectral reductions.</p>
 <figure class="figure"><svg viewBox="0 0 720 110" role="img" aria-label="Contiguous independent wavelength jobs followed by ordered concatenation"><g fill="#e9f4f1" stroke="#087f78"><rect x="5" y="30" width="160" height="50"/><rect x="235" y="5" width="235" height="40"/><rect x="235" y="65" width="235" height="40"/><rect x="545" y="30" width="170" height="50"/></g><g fill="none" stroke="#087f78"><path d="M165 55L235 25M165 55L235 85M470 25L545 55M470 85L545 55"/></g><g text-anchor="middle" font-size="13"><text x="85" y="59">Frozen wavelength grid</text><text x="352" y="30">Worker 1: complete layers, waves [0,k)</text><text x="352" y="90">Worker 2: complete layers, waves [k,W)</text><text x="630" y="59">Ordered spectrum then score</text></g></svg><figcaption>Wavelength slices have no optical coupling. Angles and s/p averaging are unchanged; never average per-worker RMS values.</figcaption></figure>
@@ -3797,11 +3830,16 @@ Lpoint=M·Σqᵢr(yᵢ)²
 RMS=√(ΣL/ΣW)
 residual/J 使用 √M 或 √(M qᵢ)；Jmean 先归约。</pre>
 <p>以上质量分配为<strong>本项目约定</strong>，未找到外部依据，仅为本项目实现。两组同时启用各得半个波段权重，加密采样不会按行数额外增加该波段权重，均值不被大量逐点行稀释。最大违规、名义通过和敏感性 guard 不乘质量。默认仅逐点时也使用该规则，因此 RMS、端点权重与搜索轨迹会改变；这不是放宽目标阈值。旧 <code>objective_weighting</code> 已撤回。</p>
-<p>只检查启用组：mean 每角一个条件、pointwise 每角全部点、both 两组 AND。strict 是各组原始 &gt;/&lt;，零 hinge 不等于 strict 通过；<code>targets_met</code> 和 <code>solver_acceptable</code> 分开。两组约束区间交集空、或交集只有 strict 排除端点，提前拒绝；这不是物理可达证明。普通局部/全局、needle、自动合成、minimax 和候选档案共用同一归约与解析 Jacobian。特定经典先验仅在其逐点适用条件成立时使用；mean/both 保留通用搜索，不承诺普遍收敛或加速。</p>
+<p>只检查启用组：mean 每角一个条件、pointwise 每角全部点、both 两组 AND。strict 是各组原始 &gt;/&lt;，零 hinge 不等于 strict 通过；<code>targets_met</code> 和 <code>solver_acceptable</code> 分开。两组约束区间交集空、或交集只有 strict 排除端点，提前拒绝；这不是物理可达证明。普通局部/全局、needle、自动合成、minimax 和候选档案共用同一归约与解析 Jacobian。不承诺普遍收敛或加速。</p>
+<p><strong>结构先验准入（2026-10-24）：</strong>多光谱 HR、纯 HR、正反射全局族、AR matching 和带通腔族的先验只构造未评分起点。其族内选择仍要求启用的 pointwise 条件并满足各自已有的指标、阈值、材料、环境与制造界；mean 已启用不再单独排除该起点，但 mean-only 不会被改写或映射成逐点目标。准入决定对应结构候选是否进入；原始完整 <code>FilmSynthesisRequest</code> 不过滤、不重写，后续同一评分、验收与独立审计仍分别应用启用的 mean 与全部 pointwise 条件。默认合成中 <code>separated_hr_only</code> 快速调度路由仍限定 pointwise-only，本次不改变该调度分类。图14at-1中的 AND 仍是通过标准，先验不是可行性、达标或性能证据。此选择规则未找到外部依据，仅为本项目实现。</p>
+<pre>eligible_prior = pointwise.enabled AND family_specific_pointwise_rule
+# mean.enabled 不改变先验结构候选；mean-only 不会变成 pointwise
+score_and_audit(candidate, original_request)  # 启用的 mean 与 pointwise 仍共同判定
+</pre>
 <h3>审计、协议与敏感性边界</h3>
 <p>独立均值审计只使用预先规定的完整加密积分网格及其 q；offset/extrema 不能无权混入重算均值，只在启用逐点组时作其门禁。所有审计仍是有限数值证据，不是连续谱证书。mean-only 仍计算完整物理光谱。均值条件记录 <code>reduction=mean</code> 和原波段端点，单点波长为 <code>null</code>；原始 coverage 与 active condition 数量分别校验，历史结果须按冻结材料独立物理重放，不能用一个均值行冒充完整谱。</p>
-<p>当前 synthesis/ordinary/structure/classic 协议为 2，理想敏感性为 3，独立误差参数表为 2，GUI 优化配置为 2；旧格式明确拒绝，不迁移或 fallback，不改写历史研究记录。敏感性 F、scale 和逐波长逐角 baseline guard 保持原义；freeze 固定全部启用名义上下界的方向并集，写入 identity/结果，不能从新 UI 重推旧任务。mean-only 不能让局部退化被均值补偿掩盖。参数表仍保留逐点误差响应，逐点目标关闭时该点名义通过为 null，并单独保存两组归约名义条件。</p>
-<p><strong>实现：</strong><code>film_objective_criteria.py</code>、<code>film_objective_payload.py</code>；接入 <code>film_optimization*</code>、<code>film_synthesis_refinement.py</code>、<code>film_synthesis_*minimax.py</code>、<code>film_nominal_acceptance.py</code>、<code>film_synthesis_audit.py</code>、<code>film_ideal_sensitivity.py</code> 与当前 job/GUI 协议。默认 GUI 波长精度仍 1 nm、逐点开/均值关；数值尺度和求解器停止容差沿用已有设置。启用均值不是制造误差模型。</p>
+<p>当前 synthesis 协议为 3，ordinary/structure/classic 协议为 2，理想敏感性为 3，独立误差参数表为 2，GUI 优化配置为 2；旧格式明确拒绝，不迁移或 fallback，不改写历史研究记录。敏感性 F、scale 和逐波长逐角 baseline guard 保持原义；freeze 固定全部启用名义上下界的方向并集，写入 identity/结果，不能从新 UI 重推旧任务。mean-only 不能让局部退化被均值补偿掩盖。参数表仍保留逐点误差响应，逐点目标关闭时该点名义通过为 null，并单独保存两组归约名义条件。</p>
+<p><strong>实现：</strong><code>film_objective_criteria.py</code>、<code>film_objective_payload.py</code>；结构先验准入见 <code>film_synthesis_multispectral_priors.py</code>、<code>film_synthesis_hr_priors.py</code>、<code>film_synthesis_global.py</code>、<code>film_synthesis_matching.py</code>。接入 <code>film_optimization*</code>、<code>film_synthesis_refinement.py</code>、<code>film_synthesis_*minimax.py</code>、<code>film_nominal_acceptance.py</code>、<code>film_synthesis_audit.py</code>、<code>film_ideal_sensitivity.py</code> 与当前 job/GUI 协议。默认 GUI 波长精度仍 1 nm、逐点开/均值关；数值尺度和求解器停止容差沿用已有设置。启用均值不是制造误差模型。</p>
 <p><strong>参考：</strong><a href="https://numpy.org/doc/stable/reference/generated/numpy.trapezoid.html">NumPy 官方复合梯形积分说明</a>支持非均匀 λ 积分形式；双组质量、early reject、派发与审计边界均为本项目约定，不能据此声称物理可达。有关状态所有权、草稿和取消见 <a href="film-band-criteria-contract.md">双约束契约</a>。</p>
 </section>
 </body>

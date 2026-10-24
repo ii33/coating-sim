@@ -21,7 +21,7 @@ from .optical_constants import prepare_optical_set
 def matching_objectives(request):
     """Pure R ceilings and low R values; value <= .5 is a project convention."""
     return tuple(o for o in request.objectives if o.metric == 'R' and o.weight > 0
-        and o.pointwise.enabled and not o.mean.enabled
+        and o.pointwise.enabled
         and ((o.pointwise.mode == 'range' and o.pointwise.upper_bound is not None and 0 <= o.pointwise.upper_bound < 1
               and (o.pointwise.lower_bound is None or o.pointwise.lower_bound <= 0))
              or (o.pointwise.mode == 'value' and o.pointwise.target_value is not None and 0 <= o.pointwise.target_value <= .5)))

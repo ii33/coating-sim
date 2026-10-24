@@ -33,6 +33,10 @@ def _appearance_gpu_python(root: Path) -> str:
             'gpu_cuda appearance queue requires the source-installed '
             'build/mitsuba_appearance_env runtime; frozen worker cannot select it')
     module_root = Path(__file__).resolve().parents[2]
+    from coat_sim.compute_runtime_dispatch import installed_role_python
+    managed = installed_role_python(module_root, 'appearance')
+    if managed is not None:
+        return managed
     for candidate_root in dict.fromkeys((root, module_root)):
         runtime = candidate_root / 'build' / 'mitsuba_appearance_env'
         executable = (runtime / 'Scripts' / 'python.exe' if os.name == 'nt'
@@ -83,9 +87,39 @@ def _appearance_gpu_route(frozen_spec, root: Path) -> tuple[str | None, dict[str
         raise ValueError('appearance queue frozen request envelope is invalid')
     backend, _precision = _backend_precision(envelope.get('request'))
     if backend != 'gpu_cuda':
+        if not is_frozen():
+            from coat_sim.compute_runtime_dispatch import installed_role_python
+            managed = installed_role_python(Path(__file__).resolve().parents[2], 'appearance')
+            if managed is not None:
+                return managed, _appearance_gpu_environment(managed)
         return None, None
     interpreter = _appearance_gpu_python(root)
     return interpreter, _appearance_gpu_environment(interpreter)
+
+
+def _worker_runtime_route(frozen_spec, root: Path) -> tuple[str | None, dict[str, str] | None]:
+    """Route only existing appearance/deposition roles, never film GPU forward.
+
+    Explicit deposition GPU requests preserve their requested device. A missing
+    role is an error, not an implicit device change. Auto/CPU deposition uses
+    the app CPU role until a separate readiness-aware auto policy is accepted.
+    """
+    if frozen_spec.executor == 'appearance_render':
+        return _appearance_gpu_route(frozen_spec, root)
+    if is_frozen() or frozen_spec.executor not in {
+            'process', 'process_recipe', 'single_source', 'mask_optimization'}:
+        return None, None
+    parameters = frozen_spec.parameters
+    options = parameters.get('options') if frozen_spec.executor == 'mask_optimization' else parameters
+    backend = (options or {}).get('backend', '自动')
+    role = {'GPU': 'deposition_cuda', 'DirectML': 'deposition_directml',
+            'CPU': 'deposition_cpu', '自动': 'deposition_cpu'}.get(backend)
+    if role is None:
+        return None, None
+    from coat_sim.compute_runtime_dispatch import installed_role_python
+    interpreter = installed_role_python(Path(__file__).resolve().parents[2], role)
+    return ((interpreter, _appearance_gpu_environment(interpreter))
+            if interpreter is not None else (None, None))
 
 def public_payload(value):
     if isinstance(value, dict):
@@ -683,7 +717,7 @@ class Scheduler:
         else: options['start_new_session'] = True
         process = None
         try:
-            interpreter, environment = _appearance_gpu_route(frozen, self.root)
+            interpreter, environment = _worker_runtime_route(frozen, self.root)
             if environment is not None:
                 options['env'] = environment
             command = module_command('coat_sim.scheduler', '--root', str(self.root),

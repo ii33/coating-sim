@@ -128,7 +128,8 @@
         "status": "qualified_conditional_unknown_k_zero",
         "evidence": "qualification/ar-qualification-v2.json#ar_v_visible",
         "scope": "finite dense/offset/extrema model only; no continuous certificate"
-      }
+      },
+      "enable_thickness_reduction": false
     },
     {
       "id": "ar_w_visible",
@@ -300,7 +301,8 @@
         "status": "qualified_source_nk",
         "evidence": "qualification/ar-qualification-v2.json#ar_w_visible",
         "scope": "finite dense/offset/extrema model only; no continuous certificate"
-      }
+      },
+      "enable_thickness_reduction": false
     },
     {
       "id": "ar_broad_visible",
@@ -408,7 +410,8 @@
         "status": "qualified_source_nk",
         "evidence": "qualification/ar-qualification-v2.json#ar_broad_visible",
         "scope": "finite dense/offset/extrema model only; no continuous certificate"
-      }
+      },
+      "enable_thickness_reduction": false
     },
     {
       "id": "ar_ultrabroad_visible",
@@ -511,7 +514,8 @@
         "status": "pending",
         "evidence": null,
         "scope": "finite dense/offset/extrema model only; no continuous certificate"
-      }
+      },
+      "enable_thickness_reduction": false
     },
     {
       "id": "hr_narrow_visible",
@@ -619,7 +623,8 @@
         "status": "qualified_source_nk",
         "evidence": "qualification/reference-qualification-v1.1.json",
         "scope": "finite dense/offset/extrema model only; no continuous certificate"
-      }
+      },
+      "enable_thickness_reduction": false
     },
     {
       "id": "hr_user_600_900",
@@ -698,7 +703,8 @@
         "status": "confirmed_three_seeds_pre_explicit_strict_field",
         "evidence": "results/hr600_900-confirm-v2.json",
         "scope": "finite dense/offset/extrema model only; no continuous certificate"
-      }
+      },
+      "enable_thickness_reduction": false
     },
     {
       "id": "hr_broad_visible",
@@ -799,7 +805,8 @@
         "status": "pending",
         "evidence": null,
         "scope": "finite dense/offset/extrema model only; no continuous certificate"
-      }
+      },
+      "enable_thickness_reduction": false
     },
     {
       "id": "hr_ultrabroad_visible",
@@ -900,7 +907,8 @@
         "status": "pending",
         "evidence": null,
         "scope": "finite dense/offset/extrema model only; no continuous certificate"
-      }
+      },
+      "enable_thickness_reduction": false
     },
     {
       "id": "splitter_narrow_normal",
@@ -1068,7 +1076,8 @@
         "status": "qualified_source_nk",
         "evidence": "qualification/filter-splitter-qualification-v2.json",
         "scope": "finite dense/offset/extrema model only; no continuous certificate"
-      }
+      },
+      "enable_thickness_reduction": false
     },
     {
       "id": "bpf_narrow_visible",
@@ -1296,7 +1305,8 @@
         "status": "pending_reference_optimization_source_variant_v2b",
         "evidence": null,
         "scope": "finite dense/offset/extrema model only; no continuous certificate"
-      }
+      },
+      "enable_thickness_reduction": false
     },
     {
       "id": "mixed_hr_ar_visible",
@@ -1460,7 +1470,8 @@
         "status": "exploratory_production_audited_success_dense_request; fresh_frozen_suite_pending",
         "evidence": "qualification/de-production-case-v2.json",
         "scope": "finite dense/offset/extrema model only; no continuous certificate"
-      }
+      },
+      "enable_thickness_reduction": false
     },
     {
       "id": "ar_nir",
@@ -1559,7 +1570,8 @@
         "status": "pending",
         "evidence": null,
         "scope": "finite dense/offset/extrema model only; no continuous certificate"
-      }
+      },
+      "enable_thickness_reduction": false
     },
     {
       "id": "hr_ir_known_domain",
@@ -1658,7 +1670,8 @@
         "status": "pending",
         "evidence": null,
         "scope": "finite dense/offset/extrema model only; no continuous certificate"
-      }
+      },
+      "enable_thickness_reduction": false
     },
     {
       "id": "bpf_broad_v1",
@@ -1890,7 +1903,8 @@
         "status": "pending",
         "evidence": null,
         "scope": "finite dense/offset/extrema model only; no continuous certificate"
-      }
+      },
+      "enable_thickness_reduction": false
     },
     {
       "id": "splitter_broad_v1",
@@ -1998,7 +2012,8 @@
         "status": "pending",
         "evidence": null,
         "scope": "finite dense/offset/extrema model only; no continuous certificate"
-      }
+      },
+      "enable_thickness_reduction": false
     },
     {
       "id": "mixed_multispectral_v1",
@@ -2232,7 +2247,8 @@
         "status": "pending",
         "evidence": null,
         "scope": "finite dense/offset/extrema model only; no continuous certificate"
-      }
+      },
+      "enable_thickness_reduction": false
     }
   ],
   "blocked_unchanged_v1": [
@@ -2259,6 +2275,8 @@
     "score_note": "Current angle/band/trapezoidal masses differ from historical equal-sample aggregation. Compare algorithm arms only under the same current scoring contract.",
     "qualification": "schema-only; no new optical or optimization evidence",
     "source_lf_sha256": "204ca45630e424b6d73e69c895ebf08583a4d04e18ea711ce87d0656dbda74db",
-    "source_hash_note": "source_sha256 records the registration checkout bytes; source_lf_sha256 permits only Git checkout CRLF/LF differences, never changed JSON content."
+    "source_hash_note": "source_sha256 records the registration checkout bytes; source_lf_sha256 permits only Git checkout CRLF/LF differences, never changed JSON content.",
+    "current_request_contract_schema": 3,
+    "cost_reduction_control": "enable_thickness_reduction=false preserves prior-search baseline; enable explicitly in paired treatment"
   }
 }

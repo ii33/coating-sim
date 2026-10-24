@@ -41,7 +41,7 @@ from coat_sim.scheduler.desktop import (
     resolve_unknown_submission,
 )
 from coat_sim.ui.film_synthesis_quick_adapter import (
-    SYNTHESIS_DEFAULT_OPTIONS, SynthesisQuickResult, build_synthesis_request,
+    SynthesisQuickResult, build_synthesis_request,
     synthesis_base_request, synthesis_cpu_workers, synthesis_options, synthesis_result_view, synthesis_spec,
     synthesis_structure_search_seed,
     synthesis_preview_handoff,
@@ -1101,7 +1101,7 @@ class FilmOptimizationQuickController(QObject):
         self._candidate_saved = False
         self._candidate_applied = False
         self._search_mode = "fixed_topology"
-        self._synthesis_options = dict(SYNTHESIS_DEFAULT_OPTIONS)
+        self._synthesis_options = synthesis_options({})
         self._synthesis_options.update(randomize_template_search=False, structure_search_seed=None)
         self._synthesis_structure_search_seed_text = ""
         self._synthesis_structure_search_seed_error = ""
@@ -5279,8 +5279,8 @@ class FilmOptimizationQuickController(QObject):
             if not self._project_compute.accepts(operation):
                 raise ValueError("The originating project generation is no longer current")
             view = synthesis_result_view(payload)
-            from coat_sim.core.film_synthesis_io import film_synthesis_request_from_payload
-            envelope = {"schema_version": 2, "kind": "coat_sim.film_synthesis_request",
+            from coat_sim.core.film_synthesis_io import SCHEMA_VERSION, film_synthesis_request_from_payload
+            envelope = {"schema_version": SCHEMA_VERSION, "kind": "coat_sim.film_synthesis_request",
                         "request_id": "history-" + str(job_id)[:100], "physical_structures": [],
                         "request": payload["result"]["frozen_request"]}
             _, request, _ = film_synthesis_request_from_payload(envelope)

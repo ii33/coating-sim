@@ -8,7 +8,7 @@ Updated: 2026-10-24
 
 This contract defines the GUI-independent execution boundary for producing candidate multilayer coating designs from a bare environment and from explicitly supplied physical-structure seed designs. It covers the frozen JSON request/result exchange used by the CLI and the existing persistent compute-job system. It does not apply a result to an open project or change a user design.
 
-The wire format is versioned JSON (`schema_version: 1`). Request parsing and validation are centralized in `coat_sim/core/film_synthesis_io.py`; the CLI in `coat_sim/film_synthesis_cli.py` is a transport adapter. The synthesis core remains the sole owner of algorithm state, incumbent score, stopping conditions, and final candidate. The execution adapter owns process signals, heartbeat timestamps, progress transport, and output file creation only.
+The wire format is versioned JSON (`schema_version: 3`). Request parsing and validation are centralized in `coat_sim/core/film_synthesis_io.py`; the CLI in `coat_sim/film_synthesis_cli.py` is a transport adapter. The synthesis core remains the sole owner of algorithm state, incumbent score, stopping conditions, and final candidate. The execution adapter owns process signals, heartbeat timestamps, progress transport, and output file creation only.
 
 ## Request
 
@@ -64,6 +64,30 @@ Enabled hybrid/classic template screening currently scores BASE and its extra
 sequentially so completed BASE work survives cancellation. This new screening
 branch does not accelerate with more workers; other existing parallel stages
 retain their behavior. No speedup claim is made for randomization.
+
+## Frozen thickness reduction option (2026-10-24)
+
+`FilmSynthesisRequest.enable_thickness_reduction` is a strict boolean, default
+`true` in new core and GUI requests. Hybrid search consults this frozen value;
+`false` disables its thickness-reduction trials. The explicit `legacy` strategy
+does not use this option. This is not a runtime keyword or a compatibility flag.
+The core owns trial admission, physical evaluation budgets, constraints, ordered
+candidate acceptance, cancellation, and independent audit. Enabling the option
+does not guarantee a thinner or passing result and never relaxes targets.
+
+The existing synthesis options map is the sole editable GUI owner. The checkbox
+`filmSynthesisThicknessReductionField` calls `setSynthesisOption`, with the same
+busy/pending-edit guards as other synthesis options. Configuration save/load
+preserves the boolean; formal freeze copies it into the immutable request.
+Changes after a run cannot mutate that run. CLI, MCP plan/submit, durable queue,
+result export/replay, and cloud-bundle execution preserve the same value.
+
+Synthesis request/result/job/checkpoint envelopes are now schema 3. Every frozen
+request field, including this boolean, is required. Schema 2 and earlier are
+rejected, not decoded, migrated, or silently upgraded. Existing unrelated
+optimization and editor configuration versions are unchanged. Archived research
+artifacts remain byte-for-byte historical evidence and cannot be replayed as
+current requests. Current tools must export a newly frozen request instead.
 
 ## Result and progress
 

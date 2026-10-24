@@ -129,6 +129,7 @@ class FilmSynthesisRequest:
     resource_guard_resolution: Mapping[str, Any] | None = None
     parallel_batch_size: int | None = None
     randomize_template_search: bool = False
+    enable_thickness_reduction: bool = True
 
 
 @dataclass(frozen=True)
@@ -295,6 +296,8 @@ def _validated(request):
                                 ("needle_position_refinement_rounds", 0)):
         if type(getattr(request, field_name)) is not int or getattr(request, field_name) < minimum:
             raise ValueError(f"{field_name} must be an integer >= {minimum}")
+    if type(request.enable_thickness_reduction) is not bool:
+        raise ValueError("enable_thickness_reduction must be boolean")
     if type(request.needle_pre_local) is not bool:
         raise ValueError("needle_pre_local must be boolean")
     if request.max_working_set_bytes is not None and (type(request.max_working_set_bytes) is not int
@@ -1574,6 +1577,105 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         def local_progress(stage, value, metadata):
             emit(stage, json.dumps(metadata, sort_keys=True), value["design"], value["score"])
 
+        def reduce_audited_thickness():
+            """One optional in-budget cost slice after normal hybrid success.
+
+            Never called from terminal cleanup or failure/cancel paths. A
+            reduced training champion cannot replace the independent audited
+            incumbent unless its own original audit also passes.
+            """
+            if not request.enable_thickness_reduction:
+                return
+            record: dict[str, Any] = dict(enabled=True, status="not_started",
+                policy="single audited incumbent; <=32 shared physical candidates, <=16 SLSQP iterations; original independent audit",
+                initial_cost_sublevel="audited incumbent total; not a user manufacturing cap",
+                independent_audit_performed=False, promoted=False)
+            details["thickness_reduction"] = record
+            if not targets_verified() or audited_best is None:
+                record["status"] = "skipped_no_audited_nominal_incumbent"
+                return
+            source = audited_best[0]
+            if not source["design"]["front_layers"]:
+                record["status"] = "skipped_empty_topology"
+                return
+            source_hash = physical_design_hash(source["design"])
+            source_total = sum(row["thickness"]["value"] for row in source["design"]["front_layers"])
+            record.update(initial_physical_hash=source_hash, initial_total_thickness_nm=source_total)
+            # Skip optional work without turning existing success into a budget
+            # error. Cancellation and wall deadline still remain authoritative.
+            _check_cancel(cancel_event)
+            if request.max_evaluations is not None and evaluations + reserved_training_slots >= request.max_evaluations - 1:
+                record["status"] = "skipped_evaluation_budget"
+                return
+            from .film_synthesis_thickness import (reduce_total_thickness,
+                                                   thickness_reduction_working_set_bytes)
+            reduced = source
+            before = evaluations
+
+            def admit(design, **_kwargs):
+                stage_check()
+                numerical = thickness_reduction_working_set_bytes(request, len(design["front_layers"]))
+                retained = archive_storage_estimate_bytes()
+                resident = (0 if execution.closed else len(execution.children)) * 128 * 1024**2
+                estimate = numerical + retained + resident
+                limit = resource_resolution["effective_bytes"]
+                record.update(estimated_peak_bytes=estimate, numerical_estimate_bytes=numerical,
+                    retained_archive_estimate_bytes=retained, resident_worker_baseline_estimate_bytes=resident,
+                    memory_policy="one parent TMM/Jacobian+dense SLSQP workset + retained archive + idle worker baseline; no duplicate numerical arrays",
+                    effective_limit_bytes=limit)
+                details["largest_estimated_working_set_bytes"] = max(estimate,
+                    details.get("largest_estimated_working_set_bytes", 0))
+                if limit is not None and estimate > limit:
+                    details["resource_limited"] = True
+                    details["resource_skips"].append(dict(stage="nominal_thickness_reduction",
+                        estimated_bytes=estimate, limit_bytes=limit, layer_count=len(design["front_layers"]),
+                        reason="combined_thickness_solver_archive_worker_estimate_exceeds_resource_guard"))
+                    raise SynthesisResourceGuard("combined thickness solver/archive/worker estimate exceeds resource guard")
+
+            def retain(value, *, audit_eligible=False):
+                nonlocal reduced
+                archive(value, audit_eligible=False, parent_hash=source_hash,
+                        operator="nominal_total_thickness_reduction")
+                candidate_total = sum(row["thickness"]["value"] for row in value["design"]["front_layers"])
+                reduced_total = sum(row["thickness"]["value"] for row in reduced["design"]["front_layers"])
+                if nominal_targets_pass(request, value["score"]) and candidate_total < reduced_total:
+                    reduced = value
+
+            try:
+                begin_slice("nominal_thickness_reduction", .15, 32)
+                admit(source["design"])
+                reduced, numerical_details = reduce_total_thickness(request, source,
+                    evaluate=hybrid_evaluate, archive=retain, cancel_check=stage_check,
+                    resource_check=admit, progress=local_progress, max_iterations=16)
+                record.update(status="complete", numerical=numerical_details)
+            except SynthesisStageBudget:
+                record["status"] = "partial_stage_budget"
+            except _Stopped as exc:
+                if str(exc) != "evaluation_limit":
+                    raise
+                record["status"] = "partial_evaluation_budget"
+            except SynthesisResourceGuard:
+                record["status"] = "skipped_resource_guard"
+            finally:
+                end_slice(record["status"])
+                record["training_evaluations_used"] = evaluations - before
+            _check_cancel(cancel_event)
+            reduced_total = sum(row["thickness"]["value"] for row in reduced["design"]["front_layers"])
+            record.update(proposed_total_thickness_nm=reduced_total,
+                proposed_physical_hash=physical_design_hash(reduced["design"]))
+            if reduced_total < source_total:
+                # The training slice preserves the global audit slot. Parent
+                # auditing owns final acceptance and retains the old incumbent
+                # when dense means or off-grid extrema reject this proposal.
+                audit_archive(reduced, allow_feedback_repair=False)
+                record["independent_audit_performed"] = True
+                record["promoted"] = (audited_best is not None
+                    and physical_design_hash(audited_best[0]["design"]) == physical_design_hash(reduced["design"]))
+                record["audit_outcome"] = "promoted" if record["promoted"] else "rejected_incumbent_retained"
+            record["evaluations_used_including_audit"] = evaluations - before
+            emit("thickness_reduction_complete", json.dumps(record, sort_keys=True),
+                 audited_best[0]["design"], audited_best[0]["score"])
+
         def score_sse(value):
             return weighted_sse_loss_gradient(request, value, ())[0]
 
@@ -2137,6 +2239,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             if not streams and not explorer["design"]["front_layers"] and details["resource_skips"]:
                 raise _Stopped("resource_limit")
 
+        # All normal success exits, including the early engineering-prior
+        # break, converge here. No optional optics after failure/deadline/cancel.
+        reduce_audited_thickness()
 
     try:
         try:

@@ -99,7 +99,7 @@ class FilmSynthesisCloudBundleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as output:
             manifest = Path(output) / "current-manifest.json"
             manifest.write_text(json.dumps({"kind": "film_synthesis_git_requests", "schema_version": 1,
-                "smoke_bundle": True, "entries": [{"request": {"objectives": [current_objective()]}}]}), encoding="utf-8")
+                "smoke_bundle": True, "entries": [{"request": {"enable_thickness_reduction": True, "objectives": [current_objective()]}}]}), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "repo-root and --expect-commit"):
                 run_bundle(manifest, output=Path(output) / "unused", preflight=True)
 
@@ -166,7 +166,7 @@ class FilmSynthesisCloudBundleTests(unittest.TestCase):
         self.assertNotIn("mode", objective)
         self.assertNotIn("strict_lower_bound_objective_indices", bundle["entries"][0]["request"])
 
-    def test_current_cloud_preflight_uses_schema_two_decoder_without_search(self):
+    def test_current_cloud_preflight_uses_schema_three_decoder_without_search(self):
         import json
         import tempfile
         from unittest.mock import patch
@@ -188,7 +188,7 @@ class FilmSynthesisCloudBundleTests(unittest.TestCase):
                  patch.object(film_synthesis_io, "film_synthesis_request_from_payload", side_effect=decode):
                 checked = run_bundle(manifest, output=root / "not-created", preflight=True)
             self.assertFalse((root / "not-created").exists())
-        self.assertEqual(decoded_versions, [2])
+        self.assertEqual(decoded_versions, [3])
         self.assertTrue(checked["preflight_only"])
 
     def test_historical_suite_is_not_exported_under_current_acceptance(self):
@@ -199,7 +199,7 @@ class FilmSynthesisCloudBundleTests(unittest.TestCase):
         self.assertEqual(suite.read_bytes(), original)
 
     def test_audit_means_use_raw_dense_coverage_and_preserve_nested_pointwise_bounds(self):
-        request = {"validation_samples_multiplier": 2, "acceptable_normalized_error": 0.,
+        request = {"enable_thickness_reduction": True, "validation_samples_multiplier": 2, "acceptable_normalized_error": 0.,
             "objectives": [current_objective(1., 3., 2, upper=.5)]}
         score = score_evidence(request, [frame(0, [1., 2., 3.], [0., .2, .4])],
                                [frame(0, [1., 1.5, 2., 2.5, 3.], [0., .9, .2, .9, .4])])
@@ -215,7 +215,7 @@ class FilmSynthesisCloudBundleTests(unittest.TestCase):
         self.assertEqual(checked["violating_conditions"], 2)
 
     def test_meanonly_audit_retains_raw_offsets_without_activating_pointwise_acceptance(self):
-        request = {"validation_samples_multiplier": 2, "acceptable_normalized_error": 0.,
+        request = {"enable_thickness_reduction": True, "validation_samples_multiplier": 2, "acceptable_normalized_error": 0.,
             "objectives": [current_objective(1., 3., 2, pointwise=False, mean=True, upper=.3)]}
         score = score_evidence(request, [frame(0, [1., 2., 3.], [0., .2, .4])],
                                [frame(0, [1., 1.5, 2., 2.5, 3.], [0., .9, .2, .9, .4])])
@@ -230,7 +230,7 @@ class FilmSynthesisCloudBundleTests(unittest.TestCase):
         self.assertFalse(_raw_bounds(request, score, scope="audit")["passed"])
 
     def test_line_target_reports_complete_raw_sample_for_each_angle(self):
-        request = {"validation_samples_multiplier": 5,
+        request = {"enable_thickness_reduction": True, "validation_samples_multiplier": 5,
             "objectives": [current_objective(angles=(0., 30.))]}
         score = score_evidence(request, [frame(0, [550.], [.2]), frame(0, [550.], [.4], angle=30.)])
         mean = _mean_metrics(request, score)
@@ -239,7 +239,7 @@ class FilmSynthesisCloudBundleTests(unittest.TestCase):
         self.assertTrue(all(group["measure"] == "discrete_line_actual" for group in mean["groups"]))
 
     def test_mixed_metrics_keep_separate_raw_means(self):
-        request = {"objectives": [current_objective(metric="R"), current_objective(metric="T")]}
+        request = {"enable_thickness_reduction": True, "objectives": [current_objective(metric="R"), current_objective(metric="T")]}
         score = score_evidence(request, [frame(0, [550.], [.2]), frame(1, [550.], [.8])])
         mean = _mean_metrics(request, score)
         self.assertIsNone(mean["mean_lambda"])
@@ -249,7 +249,7 @@ class FilmSynthesisCloudBundleTests(unittest.TestCase):
 
     def test_current_raw_acceptance_rejects_unknown_duplicate_and_outside_conditions(self):
         from copy import deepcopy
-        request = {"acceptable_normalized_error": 0., "objectives": [current_objective(1., 2., 2)]}
+        request = {"enable_thickness_reduction": True, "acceptable_normalized_error": 0., "objectives": [current_objective(1., 2., 2)]}
         score = score_evidence(request, [frame(0, [1., 2.], [.2, .4])])
         self.assertTrue(_raw_bounds(request, score, scope="training")["passed"])
         for corruption in ("unknown", "duplicate", "outside", "polarization"):
@@ -263,7 +263,7 @@ class FilmSynthesisCloudBundleTests(unittest.TestCase):
             self.assertFalse(_raw_bounds(request, broken, scope="training")["available"])
 
     def test_legacy_raw_objective_is_explicitly_unsupported(self):
-        request = {"objectives": [{"mode": "range", "upper_bound": .5}]}
+        request = {"enable_thickness_reduction": True, "objectives": [{"mode": "range", "upper_bound": .5}]}
         with self.assertRaisesRegex(ValueError, "Unsupported legacy request format"):
             _raw_bounds(request, {"errors": []}, scope="training")
         with self.assertRaisesRegex(ValueError, "Unsupported legacy request format"):
@@ -271,7 +271,7 @@ class FilmSynthesisCloudBundleTests(unittest.TestCase):
 
     def test_audit_rejects_incomplete_metadata_and_raw_coverage(self):
         from copy import deepcopy
-        request = {"validation_samples_multiplier": 2, "acceptable_normalized_error": 0.,
+        request = {"enable_thickness_reduction": True, "validation_samples_multiplier": 2, "acceptable_normalized_error": 0.,
             "objectives": [current_objective(1., 2., 2)]}
         score = score_evidence(request, [frame(0, [1., 1.5, 2.], [.2, .3, .4])],
                                [frame(0, [1., 1.25, 1.5, 1.75, 2.], [.2, .25, .3, .35, .4])])

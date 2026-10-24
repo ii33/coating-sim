@@ -56,6 +56,26 @@ def test_real_nk_oblique_reflector_proposals_use_multilayer_structure():
                for p in proposals)
 
 
+def test_reflector_prior_retains_combined_mean_and_pointwise_candidates():
+    _, pointwise = real_reflector_request()
+    both = replace(pointwise, objectives=tuple(replace(o, mean=replace(o.pointwise))
+        for o in pointwise.objectives))
+
+    pointwise_output = list(global_search.iter_reflector_proposals(pointwise))
+    both_output = list(global_search.iter_reflector_proposals(both))
+    assert len(pointwise_output) == len(both_output) == 234
+    assert both_output[:12] == pointwise_output[:12]
+    assert both_output == pointwise_output
+    selected = global_search.reflector_objectives(both)
+    assert selected == both.objectives and selected[0] is both.objectives[0]
+    assert selected[0].pointwise.enabled and selected[0].mean.enabled
+
+    mean_only = replace(both, objectives=tuple(replace(o,
+        pointwise=replace(o.pointwise, enabled=False)) for o in both.objectives))
+    assert global_search.reflector_objectives(mean_only) == ()
+    assert list(global_search.iter_reflector_proposals(mean_only)) == []
+
+
 @pytest.mark.parametrize("limit", [
     {"max_layers": 1},
     {"max_layer_thickness_nm": 1.0},

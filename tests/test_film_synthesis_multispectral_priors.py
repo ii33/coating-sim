@@ -114,6 +114,28 @@ def test_mixed_transmission_uses_only_hr_windows_and_retains_original_targets():
     assert request.objectives[1] == passed
 
 
+def test_combined_mean_and_pointwise_keeps_multispectral_prior_prefix_and_count():
+    pointwise = problem(max_layers=None)
+    both = replace(pointwise, objectives=tuple(replace(o, mean=replace(o.pointwise))
+        for o in pointwise.objectives))
+
+    pointwise_output = proposals(pointwise)
+    both_output = proposals(both)
+    assert len(pointwise_output) == len(both_output) == 48
+    assert both_output[:8] == pointwise_output[:8]
+    assert both_output == pointwise_output
+    selected = priors._hr_objectives(both)
+    assert tuple(index for index, _ in selected) == (0, 1)
+    assert all(o.pointwise.enabled and o.mean.enabled for _, o in selected)
+    assert both.objectives == tuple(replace(o, mean=replace(o.pointwise))
+        for o in pointwise.objectives)
+
+    mean_only = replace(both, objectives=tuple(replace(o,
+        pointwise=replace(o.pointwise, enabled=False)) for o in both.objectives))
+    assert not priors.multispectral_prior_eligible(mean_only)
+    assert proposals(mean_only) == []
+
+
 @pytest.mark.parametrize('mutation', ['single_hr', 'no_hr', 'seed', 'one_material', 'front', 'back', 'double', 'order'])
 def test_route_selection(mutation):
     request = problem()

@@ -38,3 +38,11 @@ This suite's existing wall limits are not a new process-tree CPU-budget contract
 The proposed 96-run paired algorithm experiment must first add and verify its
 own shared CPU/F-only/FJ accounting and independent audit reservation; it has not
 been executed here. No claim of generalized algorithm improvement is made.
+
+## Explicit cost-stage control in current requests
+
+The current registered cases now explicitly set `enable_thickness_reduction=false`
+when compiled into request schema3. This preserves the prior-search control arm;
+a paired treatment must enable it explicitly. Suite-envelope schema2 is separate
+from the strict request-envelope schema3, and no old request decoder is provided.
+The archived20261021 suite remains untouched.

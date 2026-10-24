@@ -22,7 +22,7 @@ class StructuralProposal:
 def reflector_objectives(request):
     """Select positive-weight reflectance objectives asking positive reflectance."""
     return tuple(o for o in request.objectives if o.metric == 'R' and o.weight > 0
-                 and o.pointwise.enabled and not o.mean.enabled
+                 and o.pointwise.enabled
                  and ((o.pointwise.mode == 'range' and o.pointwise.lower_bound is not None and o.pointwise.lower_bound > 0)
                       or (o.pointwise.mode == 'value' and o.pointwise.target_value is not None and o.pointwise.target_value > 0)))
 
@@ -142,7 +142,7 @@ def bandpass_objectives(request):
     def positive_floor(objective):
         value = (objective.pointwise.lower_bound if objective.pointwise.mode == 'range'
                  else objective.pointwise.target_value if objective.pointwise.mode == 'value' else None)
-        return (objective.weight > 0 and objective.pointwise.enabled and not objective.mean.enabled
+        return (objective.weight > 0 and objective.pointwise.enabled
                 and value is not None and value > 0)
 
     stops = reflector_objectives(request)

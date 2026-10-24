@@ -20,7 +20,7 @@ from .film_synthesis_absorption import annotate_synthesis_design, synthesis_abso
 
 REQUEST_KIND = "coat_sim.film_synthesis_request"
 RESULT_KIND = "coat_sim.film_synthesis_result"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class FilmSynthesisPayloadError(ValueError):
@@ -42,7 +42,9 @@ def film_synthesis_request_from_payload(payload: Mapping[str, Any], *, require_f
             "schema_version", "kind", "request_id", "request", "physical_structures"}:
         raise FilmSynthesisPayloadError("request must contain exactly schema_version, kind, request_id, request, and physical_structures")
     if type(payload["schema_version"]) is not int or payload["schema_version"] != SCHEMA_VERSION:
-        raise FilmSynthesisPayloadError("unsupported synthesis request schema_version")
+        raise FilmSynthesisPayloadError(
+            f"unsupported synthesis request schema_version; current schema {SCHEMA_VERSION} is required; "
+            "recreate the request with an explicit enable_thickness_reduction boolean (no migration)")
     if payload["kind"] != REQUEST_KIND:
         raise FilmSynthesisPayloadError("invalid synthesis request kind")
     request_id = payload["request_id"]

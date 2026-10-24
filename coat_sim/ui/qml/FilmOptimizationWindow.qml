@@ -1333,6 +1333,18 @@ AppWindow {
                                         onActivated: window.controller.setSynthesisOption("search_strategy", model[currentIndex].id)
                                     }
                                     CheckBox {
+                                        objectName: "filmSynthesisThicknessReductionField"
+                                        visible: (window.controller.synthesisOptions.search_strategy ?? "hybrid") === "hybrid"
+                                        text: "达标后缩减总厚度"
+                                        checked: window.controller.synthesisOptions.enable_thickness_reduction
+                                        onToggled: {
+                                            if (!window.controller.setSynthesisOption("enable_thickness_reduction", checked))
+                                                checked = Qt.binding(() => window.controller.synthesisOptions.enable_thickness_reduction)
+                                        }
+                                        Accessible.name: text
+                                        Accessible.description: "默认开启，仅用于统一混合搜索；冻结到当前任务，在原预算内尝试，不放宽任何目标或制造约束。"
+                                    }
+                                    CheckBox {
                                         objectName: "filmSynthesisRandomizeTemplateSearchField"
                                         text: "随机化模板搜索"
                                         checked: window.controller.synthesisOptions.randomize_template_search ?? false

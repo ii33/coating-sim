@@ -36,6 +36,7 @@ class CurrentRepresentativeSuiteTests(unittest.TestCase):
                               "strict_upper_bound_objective_indices", "qualification"):
                     expected.pop(field, None)
                 actual.pop("objectives")
+                self.assertIs(actual.pop("enable_thickness_reduction"), False)
                 historical = actual.pop("historical_qualification", None)
                 self.assertEqual(historical, old.get("qualification"))
                 self.assertEqual(expected, actual)
@@ -86,6 +87,7 @@ class CurrentRepresentativeSuiteTests(unittest.TestCase):
             request = run["frozen_request"]
             self.assertEqual(request["forward_backend"], "cpu")
             self.assertEqual(request["cpu_workers"], 1)
+            self.assertIs(request["enable_thickness_reduction"], False)
             self.assertFalse(request["environment"]["front_layers"])
             self.assertFalse(request["seed_designs"])
             pairs.add((request["environment"]["name"], request["structure_search_seed"]))

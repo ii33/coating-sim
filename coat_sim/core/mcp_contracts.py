@@ -84,12 +84,16 @@ FILM_SYNTHESIS_PLAN_INPUT_SCHEMA: dict[str, Any] = {
         "type": "object", "additionalProperties": False,
         "required": ["schema_version", "kind", "request_id", "request", "physical_structures"],
         "properties": {
-            "schema_version": {"const": 2},
+            "schema_version": {"const": 3},
             "kind": {"const": "coat_sim.film_synthesis_request"},
             "request_id": {"type": "string", "minLength": 1, "maxLength": 128},
             "request": {"type": "object", "additionalProperties": True,
+                "required": ["enable_thickness_reduction"],
                 "properties": {
                     "objectives": {"type": "array", "minItems": 1, "items": FILM_BAND_OBJECTIVE_SCHEMA},
+                    "enable_thickness_reduction": {
+                        "type": "boolean", "default": True,
+                        "description": "Frozen hybrid-search thickness reduction option; true enables budgeted fixed-topology total-thickness minimization after audited success, false preserves the prior search path. Legacy search ignores this option."},
                     "randomize_template_search": {
                         "type": "boolean", "default": False,
                         "description": "Optional extra thickness starts beside admitted deterministic templates; preserves existing search when off. No guarantee of escape or speedup."},

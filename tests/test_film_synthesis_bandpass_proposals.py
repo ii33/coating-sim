@@ -77,6 +77,31 @@ def test_initial_topology_coverage_is_single_coupled_and_end_matched_and_unscore
             (r["material_id"], r["thickness"]) for r in reversed(rows)]
 
 
+def test_bandpass_prior_keeps_combined_mean_and_pointwise_candidates():
+    _, pointwise = bandpass_request(max_layers=5)
+    both = replace(pointwise, objectives=tuple(replace(o, mean=replace(o.pointwise))
+        for o in pointwise.objectives))
+
+    pointwise_output = list(global_search.iter_bandpass_proposals(pointwise))
+    both_output = list(global_search.iter_bandpass_proposals(both))
+    assert len(pointwise_output) == len(both_output) == 192
+    assert both_output[:12] == pointwise_output[:12]
+    assert both_output == pointwise_output
+    selected = global_search.bandpass_objectives(both)
+    assert len(selected) == 1
+    passed, lower_stops, upper_stops = selected[0]
+    assert passed is both.objectives[0]
+    assert lower_stops == (both.objectives[1],)
+    assert upper_stops == (both.objectives[2],)
+    assert all(o.pointwise.enabled and o.mean.enabled
+               for o in (passed, *lower_stops, *upper_stops))
+
+    mean_only = replace(both, objectives=tuple(replace(o,
+        pointwise=replace(o.pointwise, enabled=False)) for o in both.objectives))
+    assert global_search.bandpass_objectives(mean_only) == ()
+    assert list(global_search.iter_bandpass_proposals(mean_only)) == []
+
+
 @pytest.mark.parametrize("change", [
     lambda objectives: objectives[:2],
     lambda objectives: objectives[1:],

@@ -75,6 +75,27 @@ def test_first_prior_uses_derived_edges_balanced_counts_and_recommended_order():
     assert request == original
 
 
+def test_pure_hr_prior_keeps_combined_mean_and_pointwise_candidates():
+    pointwise = hr_request()
+    both = replace(pointwise, objectives=tuple(replace(o, mean=replace(o.pointwise))
+        for o in pointwise.objectives))
+
+    pointwise_output = proposals(pointwise)
+    both_output = proposals(both)
+    assert len(pointwise_output) == len(both_output) == 6
+    assert both_output[:4] == pointwise_output[:4]
+    assert both_output == pointwise_output
+    assert priors.pure_hr_prior_eligible(both)
+    assert all(o.pointwise.enabled and o.mean.enabled for o in both.objectives)
+    assert both.objectives == tuple(replace(o, mean=replace(o.pointwise))
+        for o in pointwise.objectives)
+
+    mean_only = replace(both, objectives=tuple(replace(o,
+        pointwise=replace(o.pointwise, enabled=False)) for o in both.objectives))
+    assert not priors.pure_hr_prior_eligible(mean_only)
+    assert proposals(mean_only) == []
+
+
 def test_witnesses_cover_every_requested_angle_and_polarization_with_passive_k():
     request = hr_request()
     first = next(priors.iter_dual_substack_hr_proposals(request))
