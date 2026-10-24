@@ -70,7 +70,8 @@ def build(destination):
     config["solver"].update(max_iterations=12, max_evaluations=40, seed=0)
     config["objectives"][0].update(name="Explore low visible reflectance",
         wavelength_min_nm=500., wavelength_max_nm=600., wavelength_samples=11,
-        upper_bound_percent=1.3)
+        sampling_basis="samples")
+    config["objectives"][0]["pointwise"]["upper_bound_percent"] = 1.3
     assert optimization.loadOptimizationConfiguration(config)
     design["workflow_settings"] = {
         "simulation": simulation.exportSimulationConfiguration(),

@@ -51,6 +51,14 @@ def test_example_has_only_current_inputs_and_complete_default(example):
         assert b"/tmp/" not in content and b"/workspace/" not in content
     graph = plan.graph
     assert graph is not None
+    configuration = plan.film_design_snapshot["design"]["workflow_settings"]["optimization"]
+    assert configuration["version"] == 2
+    objective = configuration["objectives"][0]
+    assert objective["pointwise"]["enabled"] and not objective["mean"]["enabled"]
+    assert (objective["pointwise"]["lower_bound_percent"],
+            objective["pointwise"]["upper_bound_percent"]) == (0., 1.3)
+    assert not {"mode", "target_value_percent", "lower_bound_percent",
+                "upper_bound_percent"} & set(objective)
     assert graph["runtime"]["errors"] == []
     assert len(graph["runtime"]["machine"]["masks"]) == 1
     for row in graph["documents"]:
@@ -106,24 +114,24 @@ def test_example_page_configurations_restore_without_guessing(example):
         config = design["workflow_settings"]["optimization"]
         assert optimization.loadOptimizationConfiguration(config)
         restored = optimization.exportOptimizationConfiguration()
-        # The checked-in example predates the optional synthesis section.
-        # Loading it must retain every saved legacy field while explicitly
-        # upgrading to today's canonical editor shape.
+        # The current example omits the optional synthesis section. Restoring
+        # it must retain all saved criteria and add explicit editor defaults.
         assert {key: restored[key] for key in config} == config
         assert set(restored) == set(config) | {"synthesis"}
         explicit_false = {
             **restored,
-            "objectives": [{**row, "synthesis_strict_upper_bound": False}
+            "objectives": [{**row, "pointwise": {**row["pointwise"], "strict_upper": False}}
                            for row in restored["objectives"]],
         }
         assert optimization.loadOptimizationConfiguration(explicit_false)
         assert optimization.exportOptimizationConfiguration() == restored
         synthesis = restored["synthesis"]
         assert synthesis == {
-            "options": {key: None for key in (
+            "options": {**{key: None for key in (
                 "max_cycles", "max_evaluations", "max_layers", "max_seconds",
                 "minimum_nonzero_thickness_nm", "max_layer_thickness_nm",
                 "max_total_thickness_nm")},
+                "randomize_template_search": False, "structure_search_seed": None},
             "cpu_workers": 0,
             "forward_backend": "cpu",
             "forward_device": None,
@@ -155,6 +163,25 @@ def test_example_page_configurations_restore_without_guessing(example):
         simulation.close()
         source.markSourceClosed()
         app.processEvents()
+
+
+def test_example_builder_uses_current_optimization_configuration(tmp_path):
+    from example.build_example import build
+    descriptor = build(tmp_path / "fresh current example")
+    store = ProjectStore.open(descriptor)
+    for row in store.manifest["documents"]:
+        store.resolve_document(row["id"])
+    plan = load_project_default(store)
+    configuration = plan.film_design_snapshot["design"]["workflow_settings"]["optimization"]
+    assert configuration["version"] == 2
+    objective = configuration["objectives"][0]
+    assert objective["pointwise"]["enabled"] and not objective["mean"]["enabled"]
+    assert objective["pointwise"]["lower_bound_percent"] == 0.
+    assert objective["pointwise"]["upper_bound_percent"] == 1.3
+    assert (objective["wavelength_min_nm"], objective["wavelength_max_nm"],
+            objective["wavelength_samples"]) == (500., 600., 11)
+    assert not {"mode", "target_value_percent", "lower_bound_percent",
+                "upper_bound_percent"} & set(objective)
 
 
 def test_example_empty_extrema_roundtrip_never_scans_full_spectrum_or_changes_integrals(example):

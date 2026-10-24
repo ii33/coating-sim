@@ -5,7 +5,7 @@
       "demo-layer"
     ],
     "sequence_order": "substrate_outward",
-    "snapshot_sha256": "66fcde04776c9321d454650e27cd8fa51bde4a63211f8c326f357b50522f7d26",
+    "snapshot_sha256": "2f55bf100b6f0d810d8b83298cac45f35d53f719229e40baed248c1f23bb1ed0",
     "source_slots_by_material_id": {
       "demo-film": 1
     },
@@ -74,14 +74,28 @@
               "angle_step_deg": 1.0,
               "angles_text": "0",
               "id": "c20ee2c6ba004ea4b9b9f683ec517072",
-              "lower_bound_percent": 0.0,
+              "mean": {
+                "enabled": false,
+                "lower_bound_percent": 0.0,
+                "mode": "range",
+                "strict_lower": false,
+                "strict_upper": false,
+                "target_value_percent": null,
+                "upper_bound_percent": 100.0
+              },
               "metric": "R",
-              "mode": "range",
               "name": "Explore low visible reflectance",
+              "pointwise": {
+                "enabled": true,
+                "lower_bound_percent": 0.0,
+                "mode": "range",
+                "strict_lower": false,
+                "strict_upper": false,
+                "target_value_percent": null,
+                "upper_bound_percent": 1.3
+              },
               "polarization": "unpolarized",
               "sampling_basis": "samples",
-              "target_value_percent": 5.0,
-              "upper_bound_percent": 1.3,
               "wavelength_max_nm": 600.0,
               "wavelength_min_nm": 500.0,
               "wavelength_samples": 11,
@@ -140,7 +154,7 @@
               "upper_nm": 105.0
             }
           ],
-          "version": 1
+          "version": 2
         },
         "simulation": {
           "analysis": {
@@ -275,7 +289,7 @@
       "wavelength_max_nm": 700.0,
       "wavelength_min_nm": 400.0
     },
-    "sha256": "66fcde04776c9321d454650e27cd8fa51bde4a63211f8c326f357b50522f7d26"
+    "sha256": "2f55bf100b6f0d810d8b83298cac45f35d53f719229e40baed248c1f23bb1ed0"
   },
   "machine_file": "faecdff32f2b4531916e47957029fe77.cmac",
   "name": "Synthetic masked single-layer process",

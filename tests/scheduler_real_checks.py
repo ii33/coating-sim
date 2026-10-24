@@ -36,7 +36,10 @@ def main():
     client = SchedulerClient(root)
     evidence = {'root': str(root), 'backend': 'CPU', 'grid_size': 21,
                 'requested_time_steps': 80, 'requested_nominal_dt_s': 1/80, 'checks': []}
-    before = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in root.glob('*.json')}
+    design_files = tuple(p for p in root.iterdir()
+                         if p.suffix in {'.csrc', '.csub', '.cmsk', '.cmac', '.cproc'})
+    before = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in design_files}
+    assert before, 'real fixture design files must be included in the integrity check'
     settings = Settings(grid_size=21, time_steps=80, carrier_rpm=1.)
     parameters = {'settings': asdict(settings), 'process_path': str(path), 'backend':'CPU',
                   'fast_cycle':False, 'algorithm':'fast', 'algorithm_options':{}}
@@ -63,7 +66,7 @@ def main():
         assert actual_optimization_dt and max(actual_optimization_dt) <= .05, actual_optimization_dt
         evidence['actual_optimization_verification_dt_s'] = actual_optimization_dt
         evidence['checks'].append({'name':'real_mask_optimization','job':optimized})
-        assert before == {p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in root.glob('*.json')}
+        assert before == {p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in design_files}
         evidence['checks'].append({'name':'source_files_unchanged','sha256':before})
 
         # Real result-save failure, followed by healthy work, rather than only a probe injection.
@@ -81,13 +84,21 @@ def main():
 os.environ['QT_QPA_PLATFORM']='offscreen'
 from pathlib import Path
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtCore import QTimer
+from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtQuick import QQuickWindow
 from coat_sim.core.api import CoatService
 from coat_sim.scheduler import SchedulerClient
 from coat_sim.ui.main import MainBridge
-from coat_sim.ui.launcher import LauncherBridge
+from coat_sim.ui.launcher import LauncherBridge, MODULES, WindowOpenRequest
 app=QGuiApplication([])
 bridge=MainBridge(CoatService(sys.argv[1]))
+engine=QQmlApplicationEngine()
+launcher=LauncherBridge(engine, software_mode=True, with_launcher=False)
+window=QQuickWindow()
+window.show()
+launcher._register_window(next(row for row in MODULES if row.key=='main'),
+    WindowOpenRequest('real-deposition-client', 'main', '', None, 'new'),
+    window, bridge, None, None, engine)
 bridge._paths['process']=sys.argv[2]
 bridge._values['grid_size']='21'
 bridge._values['time_step_s']='0.025'
@@ -104,16 +115,9 @@ while not set(ids).issubset(admitted) and time.monotonic()<deadline:
     admitted={row['job_id'] for row in client.snapshot()['jobs']}
     time.sleep(.01)
 assert set(ids).issubset(admitted),('admission timed out',ids,bridge.status)
-class Harness:
-    _closing=False
-    _main_bridge=bridge
-    control_registry=control_server=_queue_view=assistant_controller=None
-    _child_timer=QTimer()
-    _shutdown_timer=QTimer()
-    _windows=[]
-    _children=[]
-    def _finish_shutdown(self):pass
-LauncherBridge.shutdown(Harness())
+launcher.shutdown()
+assert launcher._closing and not launcher.windowInstances
+assert not bridge.busy and bridge._observers_closed
 print(json.dumps({'jobs':ids,'detached':not bridge.busy}),flush=True)
 '''
         gui = subprocess.run([sys.executable,'-c',gui_code,str(root),str(path)],cwd=WORKSPACE,

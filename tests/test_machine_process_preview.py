@@ -367,7 +367,8 @@ class MachineProcessPreviewTests(unittest.TestCase):
                 lambda requested_url, index: overwrite_requests.append(
                     (requested_url.toLocalFile(), index)))
             legacy_bridge.saveOptimizedMask(url, 1, False)
-            self.assertEqual(overwrite_requests, [(str(target), 1)])
+            self.assertEqual([(Path(path).resolve(), index) for path, index in overwrite_requests],
+                             [(target.resolve(), 1)])
             self.assertEqual(target.read_text(), old_content)
             legacy_bridge.saveOptimizedMask(url, 1, True)
             self.assertEqual(json.loads(target.read_text())["z_mm"], 550.)
