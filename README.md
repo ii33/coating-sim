@@ -26,6 +26,8 @@
 
 Git同提交云端交接入口与CPU命令见[Git交接指南](docs/film-synthesis-git-handoff-20261021.md)。
 
+以当前膜系为起点的独立“减层 / 减厚优化”保留原材料和完整光学目标，提供减层、减厚和联合模式。只改选中层，下界为 0 的层才允许删除；结果完整复核后由用户显式应用并可撤销。见[独立减量契约](docs/film-reduction-contract.md)、[离线算法 14az](docs/algorithms.html#film-reduction-20261025)及[实施与验证](docs/film-reduction-report-20261025.md)。
+
 ## 快速开始
 
 ### 使用独立安装器

@@ -414,6 +414,15 @@ def _validate_film_payload(payload):
             payload.get("kind") != JOB_KIND):
         _fail("invalid_film_payload", "film payload kind, version or fields are invalid")
     request = payload["request"]
+    if isinstance(request, dict) and request.get("kind") == "coat_sim.film_reduction_request":
+        try:
+            from coat_sim.core.film_reduction import film_reduction_request_from_payload
+            reduction_request = film_reduction_request_from_payload(request)
+            if reduction_request.base_request.frozen_material_snapshot is None:
+                raise ValueError("reduction requires frozen materials")
+            return reduction_request
+        except Exception:
+            _fail("invalid_film_payload", "film reduction request or frozen material snapshot is invalid")
     required = {"schema_version", "kind", "design_snapshot", "design_revision", "variables", "objectives", "max_iterations", "max_evaluations", "initial_step_fraction", "min_step_fraction", "acceptable_normalized_error", "frozen_material_snapshot"}
     if (not isinstance(request, dict) or not required <= set(request) or
             type(request.get("schema_version")) is not int or request.get("schema_version") != CONTRACT_VERSION or

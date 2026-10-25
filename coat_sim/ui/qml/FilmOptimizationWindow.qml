@@ -20,7 +20,7 @@ AppWindow {
     property var projectResources: null
     readonly property var themeTokens: window.themeColors
     required property var controller
-    titleBase: window.controller.searchMode === "synthesis" ? "膜系自动合成" : "膜系厚度优化"
+    titleBase: window.controller.searchMode === "synthesis" ? "膜系自动合成" : (window.controller.searchMode === "reduction" ? "减层 / 减厚优化" : "膜系厚度优化")
     captionBase: titleBase
     projectNameForTitle: projectNavigation ? projectNavigation.projectName : ""
     statusText: controller.statusText
@@ -736,7 +736,7 @@ AppWindow {
                 }
                 ThemeControls.ThemeButton {
                     objectName: "filmOptimizationApplyButton"
-                    text: "应用"
+                    text: window.controller.searchMode === "reduction" ? "显式应用减量候选" : "应用"
                     enabled: window.controller.canApply
                     onClicked: window.controller.applyCandidate()
                 }
@@ -1202,6 +1202,15 @@ AppWindow {
                                 color: window.themeTokens.colorInfo
                                 wrapMode: Text.WordWrap
                             }
+                            Label {
+                                objectName: "filmReductionComparisonLabel"
+                                visible: window.controller.searchMode === "reduction" || window.controller.hasReductionResult
+                                Layout.fillWidth: true
+                                text: window.controller.reductionComparison
+                                color: window.themeTokens.colorInfo
+                                wrapMode: Text.WordWrap
+                                font.pointSize: window.themeTokens.fontSizeSmall
+                            }
                             ScrollView {
                                 id: variableScroll
                                 objectName: "filmOptimizationVariableScroll"
@@ -1350,6 +1359,29 @@ AppWindow {
                                         if (option) window.controller.setSearchMode(option.id)
                                     }
                                 }
+                                ColumnLayout {
+                                    visible: window.controller.searchMode === "reduction"
+                                    Layout.fillWidth: true
+                                    Label { text: "减量目标"; color: window.themeTokens.colorText }
+                                    ThemeControls.ThemeComboBox {
+                                        objectName: "filmReductionModeBox"
+                                        Layout.fillWidth: true
+                                        model: window.controller.reductionModeOptions
+                                        textRole: "label"
+                                        currentIndex: Math.max(0, window.controller.reductionModeOptions.findIndex(function(item) { return item.id === window.controller.reductionMode }))
+                                        onActivated: {
+                                            const option = window.controller.reductionModeOptions[currentIndex]
+                                            if (option) window.controller.setReductionMode(option.id)
+                                        }
+                                    }
+                                    Label {
+                                        objectName: "filmReductionPolicyLabel"
+                                        Layout.fillWidth: true
+                                        text: window.controller.reductionPolicySummary
+                                        color: window.themeTokens.colorInfo
+                                        wrapMode: Text.WordWrap
+                                    }
+                                }
                                 Label {
                                     visible: window.controller.searchMode === "fixed_topology"
                                     Layout.fillWidth: true
@@ -1455,7 +1487,7 @@ AppWindow {
                                     color: window.themeTokens.colorTextMuted
                                 }
                                 GridLayout {
-                                    visible: window.controller.searchMode === "fixed_topology"
+                                    visible: window.controller.searchMode === "fixed_topology" || window.controller.searchMode === "reduction"
                                     Layout.fillWidth: true
                                     columns: 2
                                     columnSpacing: window.themeTokens.spaceSm
@@ -1486,9 +1518,10 @@ AppWindow {
                                         }
                                         onEditingFinished: commitDraft()
                                     }
-                                    Label { text: "随机种子"; color: window.themeTokens.colorText }
+                                    Label { visible: window.controller.searchMode === "fixed_topology"; text: "随机种子"; color: window.themeTokens.colorText }
                                     ThemeControls.ThemeField {
                                         objectName: "filmOptimizationSeedField"
+                                        visible: window.controller.searchMode === "fixed_topology"
                                         Layout.fillWidth: true
                                         numericDisplayValue: window.controller.seed
                                         validator: DoubleValidator { bottom: 0; top: 4294967295; decimals: 0 }
@@ -1513,13 +1546,13 @@ AppWindow {
                                         onEditingFinished: commitDraft()
                                     }
                                     Label {
-                                        visible: window.controller.showMultistartCount
+                                        visible: window.controller.searchMode === "fixed_topology" && window.controller.showMultistartCount
                                         text: "Powell 起点数"
                                         color: window.themeTokens.colorText
                                     }
                                     ThemeControls.ThemeField {
                                         objectName: "filmOptimizationMultistartCountField"
-                                        visible: window.controller.showMultistartCount
+                                        visible: window.controller.searchMode === "fixed_topology" && window.controller.showMultistartCount
                                         Layout.fillWidth: true
                                         numericDisplayValue: window.controller.multistartCount
                                         validator: RegularExpressionValidator { regularExpression: /^[1-9][0-9]*$/ }
@@ -1531,13 +1564,13 @@ AppWindow {
                                         onEditingFinished: commitDraft()
                                     }
                                     Label {
-                                        visible: window.controller.showPopulationSize
+                                        visible: window.controller.searchMode === "fixed_topology" && window.controller.showPopulationSize
                                         text: "差分进化群体数"
                                         color: window.themeTokens.colorText
                                     }
                                     ThemeControls.ThemeField {
                                         objectName: "filmOptimizationPopulationSizeField"
-                                        visible: window.controller.showPopulationSize
+                                        visible: window.controller.searchMode === "fixed_topology" && window.controller.showPopulationSize
                                         Layout.fillWidth: true
                                         numericDisplayValue: window.controller.populationSize
                                         validator: RegularExpressionValidator { regularExpression: /^[1-9][0-9]*$/ }

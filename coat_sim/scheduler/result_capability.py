@@ -16,6 +16,7 @@ _RAYTRACE_RESULT_KIND = "geometric_raytrace"
 _RAYTRACE_RESULT_SCHEMA = "coat_sim.geometric_raytrace_result"
 _FILM_RESULT_KIND = "coat_sim.film_optimization_result"
 _FILM_STRUCTURE_RESULT_KIND = "coat_sim.film_structure_optimization_result"
+_FILM_REDUCTION_RESULT_KIND = "coat_sim.film_reduction_result"
 _FILM_CANDIDATE_KIND = "coat_sim.film_optimization_candidate"
 _FILM_REQUEST_KIND = "coat_sim.film_optimization_request"
 _FILM_STRUCTURE_CANDIDATE_KIND = "coat_sim.film_structure_candidate"
@@ -44,6 +45,13 @@ def is_film_optimization_result(result) -> bool:
     Full replay validation belongs to ``validate_film_optimization_result``;
     this inexpensive shape check is used while listing queue records.
     """
+    if isinstance(result, dict) and result.get("kind") == _FILM_REDUCTION_RESULT_KIND:
+        from coat_sim.core.film_reduction import film_reduction_result_from_payload
+        try:
+            parsed = film_reduction_result_from_payload(result)
+            return parsed.candidate_verified
+        except (KeyError, TypeError, ValueError, ArithmeticError):
+            return False
     if (isinstance(result, dict)
             and result.get("kind") == _FILM_STRUCTURE_RESULT_KIND):
         return _is_film_structure_result(result)
@@ -236,6 +244,9 @@ def _is_film_structure_result(result) -> bool:
 
 def validate_film_optimization_result(service, result) -> dict:
     """Replay a film result using only its frozen design/material snapshot."""
+    if isinstance(result, dict) and result.get("kind") == _FILM_REDUCTION_RESULT_KIND:
+        from coat_sim.core.film_reduction import validate_film_reduction_payload
+        return validate_film_reduction_payload(film_optimization_service(service), result)
     if (isinstance(result, dict)
             and result.get("kind") == _FILM_STRUCTURE_RESULT_KIND):
         from coat_sim.core.film_optimization_structure import validate_film_structure_payload
@@ -403,7 +414,7 @@ def is_geometric_raytrace_result(result) -> bool:
 
 def _claims_film_result(result):
     return isinstance(result, dict) and result.get("kind") in {
-        _FILM_RESULT_KIND, _FILM_STRUCTURE_RESULT_KIND, "coat_sim.film_synthesis_result"}
+        _FILM_RESULT_KIND, _FILM_STRUCTURE_RESULT_KIND, _FILM_REDUCTION_RESULT_KIND, "coat_sim.film_synthesis_result"}
 
 
 def job_has_viewable_result(job) -> bool:
@@ -427,7 +438,7 @@ def job_has_viewable_result(job) -> bool:
                 and job.get("state") in ("succeeded", "failed", "cancelled"))
     if job.get("kind") in {"film_optimization", "film_structure_optimization", "film_synthesis"} or _claims_film_result(result):
         synthesis = job.get("kind") == "film_synthesis" and result.get("kind") == "coat_sim.film_synthesis_result"
-        optimization = job.get("kind") in {"film_optimization", "film_structure_optimization"} and result.get("kind") in {_FILM_RESULT_KIND, _FILM_STRUCTURE_RESULT_KIND}
+        optimization = job.get("kind") in {"film_optimization", "film_structure_optimization"} and result.get("kind") in {_FILM_RESULT_KIND, _FILM_STRUCTURE_RESULT_KIND, _FILM_REDUCTION_RESULT_KIND}
         if not ((synthesis and is_synthesis_result(result))
                 or (optimization and is_film_optimization_result(result))):
             return False

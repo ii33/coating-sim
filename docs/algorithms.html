@@ -68,6 +68,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <p class="source" style="grid-column:1/-1">结构合成更新：2026-10-12。新增14o至14o-2：实验性经典零厚敏感度针插、有界已有层增长与分组局部精修；独立结构请求与固定层序/有限试插分开，Dmax是硬约束。补充验证切片、真实求值计数与增长前局部边界检查。接口见 <a href="film-structure-optimization-contract.md">结构合成契约</a>，操作见 <a href="film-structure-optimization-guide.md">使用指南</a>，实际验收见 本轮状态 <span class="historical-reference">（历史验证记录，未随公开源码发布）</span>。</p>
 <p class="source">存储格式补充：2026-10-18。工程 BBS、助手精简记忆和可恢复文件清理均为非物理持久化契约，不改变仿真公式、坐标或数值精度。见<a href="#engineering-notes-storage-20261018">工程记录与助手工作区格式</a>。</p>
 <nav aria-label="章节目录">
+<a href="#film-reduction-20261025">14az 独立减层 / 减厚后优化（2026-10-25）</a>
 <a href="#film-cancel-warm-restart-20261025">14ay 取消后从保留候选重新启动求解器（2026-10-25）</a>
 <a href="#film-objective-progress-handoff-20261025">14aw 可选原目标进展诊断与极小极大交接（2026-10-25）</a>
 <a href="#film-manufacturing-pair-20261025">14ax 显式缺陷选层的成对制造修复（2026-10-25）</a>
@@ -290,6 +291,38 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <p class="source">参考：<a href="https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html">SciPy 官方 SLSQP 接口</a>仅说明已有求解器；成对修复、逐行锚定 guard、调度配额与存储代理均为<strong>本项目约定，未找到外部依据，仅为本项目实现</strong>。同引用合并不使用近似材料相等判断。</p>
 </section>
 
+<section id="film-reduction-20261025">
+<h2>14az 独立减层 / 减厚后优化（2026-10-25）</h2>
+<p class="source">本节更新日期：2026-10-25。优先级、保守可删除规则与有限搜索策略均为本项目约定；未找到外部依据，仅为本项目实现，不构成最小层数、最小厚度或连续谱的证明。</p>
+<p><strong>用途及输入输出：</strong>以当前完整膜系为起点，冻结目标、正反面层序、基片/介质、材料光学闭包、角度/偏振、厚度变量边界、版本和预算。输出原设计与候选的层数、总物理厚度、最薄层、最差归一化光学误差、原网格及独立验证状态，以及真实终态和来源绑定。与普通光谱优化、从零合成和针插增长分别调度。</p>
+<figure class="figure"><div class="flow" aria-label="独立减量可行性门禁"><span>冻结当前膜系<br>完整目标 + 约束</span><i>→</i><span>源设计原网格<br>及独立加密网格</span><i>→</i><span>选中层删层 / 邻层合并<br>原边界内存活层光谱修复</span><i>→</i><span>全部原始目标通过<br>且独立网格通过</span><i>→</i><span>满足所选模式减量资格<br>比较后显式应用</span></div><figcaption>图14az-1：光学可行性是门禁，层数或厚度是通过门禁后的排名；不能用减量奖励抵消未达标光谱。半次计算、未独立复核和没有严格改善的候选不能升级为有效减量结果。纯减厚模式沿固定拓扑做有限厚度试探。</figcaption></figure>
+<h3>单位、可行域和排名</h3>
+<p>坐标沿现有 front_layers / back_layers 存储顺序，不交换界面；厚度统一为物理 nm。层数 N 和总厚度 D = Σ dᵢ 统计两面薄膜，不计块体基片及介质；最薄层为实际保留薄膜的最小厚度，空膜系显示无膜层。只改所选变量；未选层保持固定。厚度模式保持原拓扑，层数模式可删层，联合模式先删层再减厚。只有所选变量下界为 0 的层允许删除；正下界层保持存在。所有保留层仍满足自身区间 [lᵢ,uᵢ]。每个删除/合并拓扑候选都复用已有有界光谱优化修复选中存活层，允许在原边界内增厚；修复不增加材料或改变目标。</p>
+<p>删层后相邻且 material_id / optical_set_id 相同的可删除层可提出合并；保留层的厚度必须仍满足其原边界。不能跨固定层合并、跨正反面合并或把块体基片并入薄膜。材料、入出射介质、基片、正反面、角度/偏振和所有其他设计字段均保持冻结。内部物理 nm 规范化不授予改变光学模型或目标的权限。</p>
+<pre>full_pass(x) = nominal_pass(original_grid, frozen_goals, x)
+               AND nominal_pass(independent_grid, frozen_goals, x)
+# 不用 acceptable_error 或谱误差加权和代替 full_pass
+eligible_layer(x) = N(x) &lt; N(source)    # 总厚可增加
+eligible_thickness(x) = same_topology AND D(x) &lt; D(source)
+eligible_combined(x) = N(x) &lt;= N(source) AND D(x) &lt;= D(source)
+                      AND (N(x) &lt; N(source) OR D(x) &lt; D(source))
+rank_layer(x) = rank_combined(x) = (N(x), D(x))
+rank_thickness(x) = D(x)
+valid_reduction = full_pass(candidate) AND eligible_selected_mode(candidate)
+for bounded_proposal in selected_layer_deletions_merges_or_thickness_trials:
+    reject_if_fixed_row_or_bounds_or_materials_changed()
+    if topology_changed: bounded_spectral_repair(selected_survivors, original_bounds)
+    evaluate_all_original_conditions()
+    verify_same_independent_grid_before_acceptance()
+    retain_only_complete_best_candidate()
+</pre>
+<h3>完整验证、停止与限制</h3>
+<p>复用当前目标归约器的全部启用 mean / pointwise 条件及 R / T、角度、偏振。均值按原积分定义计算，逐点条件检查完整网格，权重与数值求解容差均不放宽名义目标。源设计和每个被接纳的减量候选使用同一原网格和独立加密网格。默认验证倍率沿用普通请求的 2；波长端点及角度保持原请求。仅完成离散网格验证，不能推断网格之间或制造扰动下的性能。</p>
+<p>默认预算沿用当前优化请求的 200 次迭代 / 1000 次完整网格评估，可由页面配置；原网格、修复及独立验证都占用真实评估预算。确定性有限删层、同引用合并、既有有界光谱修复及坐标减厚仍属于局部搜索；修复预算不足或未收敛可能错过可行低层数膜系。纯减层允许以更厚的存活层换取层数下降；联合模式同时限制两项均不增加，不把总厚增加标成联合减量。没有可删层时纯减层提前说明原因，联合模式可继续尝试减厚。原设计未达标必须显式报告；未找到达标候选不得悄悄放宽目标。无改善、预算耗尽或不可行目标不证明全局不可减。</p>
+<p>冻结请求通过现有后台队列执行，结果绑定真实请求和实际候选。取消在候选/光谱分块边界检查，已完整评估且复核的候选可以保留；取消/失败后不额外启动终态光学工作。完成、取消、失败均不自动应用。显式应用检查来源项目/session、revision、未提交编辑 epoch、材料闭包及减量拓扑，经一次原子事务写入且支持一次撤销。来源不匹配保留用户设计和候选。</p>
+<p>资源计量包含内层修复的训练和独立验证。一个完整网格可包含多个目标、角度及 10,001 点波长分块；因此网格次数不等同单次正向调用数。两目标、两角度、含 10,002 点分块的协议回归实际执行 40 次正向，计为 6 次完整网格（其中 2 次独立验证），取消/失败分块不补做后续光学工作。此边界复用现有优化器的分块顺序和 holdout 前进度通知，是本项目接口约定。</p>
+<p><strong>实现位置：</strong><code>coat_sim/core/film_reduction.py</code>，复用 <code>film_optimization.py</code>、<code>film_optimization_job.py</code> 与 <code>film_objective_criteria.py</code>；界面复用 <code>film_optimization_quick_controller.py</code> 和 <code>FilmOptimizationWindow.qml</code>。完整交互与异步所有权见 <a href="film-reduction-contract.md">独立减量契约</a>。新增回归涵盖多类小膜系及失败、取消、来源漂移；实际执行范围见实施报告，不据有限样例声称通用优化性能。</p>
+</section>
 <section id="film-cancel-warm-restart-20261025">
 <h2>14ay 取消后从保留候选重新启动求解器（2026-10-25）</h2>
 <p><strong>用途与输入输出：</strong>对当前协议常规固定层序厚度优化和自动合成的完整取消候选，构造独立新作业。输入为原冻结请求、保留候选几何、来源身份和用户明确的新预算；输出为新冻结请求与小型来源记录。独立结构优化和工艺薄层修复暂不支持。<strong>这不是精确续算：</strong>现有检查点不包含完整求解器内部状态、随机数发生器状态或搜索游标，因此 mode=warm_restart，solver_state_preserved=false。</p>

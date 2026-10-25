@@ -244,7 +244,13 @@ def _film_optimization(service, parameters, cancel, report, checkpoint_path, *, 
         # Validate before replacing the last good checkpoint. A bad/new candidate
         # or disk error must never erase an already viewable incumbent.
         try:
-            verified = validate_film_optimization_result(film_service, candidate)
+            if candidate.get('kind') == 'coat_sim.film_reduction_result':
+                from coat_sim.core.film_reduction import film_reduction_result_from_payload
+                # A live core checkpoint was already scored on both full grids.
+                film_reduction_result_from_payload(candidate)
+                verified = candidate
+            else:
+                verified = validate_film_optimization_result(film_service, candidate)
             write_json(checkpoint_path, {'result': verified})
         except Exception as exc:
             print(f'film_candidate_checkpoint_warning: {exc}', flush=True)
@@ -318,6 +324,10 @@ def _film_optimization(service, parameters, cancel, report, checkpoint_path, *, 
         if saved is None:
             raise InterruptedError('Cancelled without a complete candidate bound to this frozen input')
         return saved
+    if result.get('kind') == 'coat_sim.film_reduction_result':
+        from coat_sim.core.film_reduction import film_reduction_result_from_payload
+        film_reduction_result_from_payload(result)
+        return result
     return validate_film_optimization_result(film_service, result)
 
 def _geometric_raytrace(root, spec, directory, cancel, report):
@@ -398,6 +408,10 @@ def _film_reply_matches_payload(reply, payload):
             from coat_sim.core.film_optimization_structure import film_structure_request_from_payload
             expected = film_structure_request_from_payload(payload['request'])
             actual = film_structure_request_from_payload(reply['request'])
+        elif kind == 'coat_sim.film_reduction_result':
+            from coat_sim.core.film_reduction import film_reduction_request_from_payload
+            expected = film_reduction_request_from_payload(payload['request'])
+            actual = film_reduction_request_from_payload(reply['request'])
         else:
             return False
         return json.loads(json.dumps(asdict(expected), allow_nan=False)) == json.loads(
@@ -432,6 +446,8 @@ def _completed_film_cancel_reply(reply, expected_payload=None):
     if is_film_optimization_result(reply):
         saved = deepcopy(reply)
         saved['state'] = 'cancelled'
+        if saved.get('kind') == 'coat_sim.film_reduction_result':
+            saved['solver_validation']['termination_reason'] = 'cancelled'
         # The structure envelope intentionally has no execution extension field.
         if saved.get('kind') == 'coat_sim.film_optimization_result':
             execution = saved.setdefault('execution', {})

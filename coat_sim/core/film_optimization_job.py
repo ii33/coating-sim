@@ -10,7 +10,10 @@ from dataclasses import asdict, replace
 import hashlib
 import json
 import math
-from typing import Any, Callable, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Sequence
+
+if TYPE_CHECKING:
+    from .film_reduction import FilmReductionRequest
 
 from .film_optimization import (
     FilmOptimizationObjective,
@@ -78,7 +81,10 @@ def _validate_solver_request_fields(*, solver: Any, seed: Any,
         raise ValueError("population_size must be at least 5 for differential_evolution")
 
 
-def serialize_request(request: FilmOptimizationRequest) -> dict[str, Any]:
+def serialize_request(request: FilmOptimizationRequest | FilmReductionRequest) -> dict[str, Any]:
+    from .film_reduction import FilmReductionRequest, film_reduction_request_to_payload
+    if isinstance(request, FilmReductionRequest):
+        return film_reduction_request_to_payload(request)
     if not isinstance(request, FilmOptimizationRequest):
         raise ValueError("request must be a FilmOptimizationRequest")
     _validate_solver_request_fields(
@@ -119,12 +125,15 @@ def serialize_request(request: FilmOptimizationRequest) -> dict[str, Any]:
     return value
 
 
-def deserialize_request(value: Mapping[str, Any]) -> FilmOptimizationRequest:
+def deserialize_request(value: Mapping[str, Any]) -> Any:
+    if isinstance(value, Mapping) and value.get("kind") == "coat_sim.film_reduction_request":
+        from .film_reduction import film_reduction_request_from_payload
+        return film_reduction_request_from_payload(value)
     if (isinstance(value, Mapping)
             and value.get("kind") == STRUCTURE_REQUEST_KIND):
         from .film_optimization_structure import film_structure_request_from_payload
 
-        return film_structure_request_from_payload(value)  # type: ignore[return-value]
+        return film_structure_request_from_payload(value)
     if (not isinstance(value, Mapping)
             or type(value.get("schema_version")) is not int
             or value.get("schema_version") != CONTRACT_VERSION
@@ -169,20 +178,24 @@ def deserialize_request(value: Mapping[str, Any]) -> FilmOptimizationRequest:
     return request
 
 
-def build_job_payload(request: FilmOptimizationRequest) -> dict[str, Any]:
+def build_job_payload(request: FilmOptimizationRequest | FilmReductionRequest) -> dict[str, Any]:
     frozen = serialize_request(request)
-    if frozen["frozen_material_snapshot"] is None:
+    frozen_base = frozen.get("base_request", frozen)
+    if frozen_base["frozen_material_snapshot"] is None:
         raise ValueError("freeze the film optimization request before queue submission")
     return {"schema_version": CONTRACT_VERSION, "kind": JOB_KIND,
             "request": frozen}
 
 
-def freeze_job_payload(service: Any, request: FilmOptimizationRequest) -> dict[str, Any]:
+def freeze_job_payload(service: Any, request: FilmOptimizationRequest | FilmReductionRequest) -> dict[str, Any]:
     """Freeze and serialize either typed film request supported by this executor.
 
     Structure search shares only the outer ``film_optimization`` executor. Its
     embedded request remains independently typed and has no solver ID.
     """
+    from .film_reduction import FilmReductionRequest, freeze_film_reduction_request
+    if isinstance(request, FilmReductionRequest):
+        return build_job_payload(freeze_film_reduction_request(service, request))
     from .film_optimization_structure import (
         FilmStructureOptimizationRequest,
         film_structure_request_to_payload,
@@ -869,6 +882,22 @@ def execute_film_optimization_job(
             or payload.get("kind") != JOB_KIND):
         raise ValueError("film optimization job kind/version is invalid")
     request_payload = payload.get("request", {})
+    if (isinstance(request_payload, Mapping)
+            and request_payload.get("kind") == "coat_sim.film_reduction_request"):
+        from .film_reduction import (film_reduction_request_from_payload,
+            film_reduction_result_to_payload, reduce_film_design)
+        reduction_request = film_reduction_request_from_payload(request_payload)
+        if reduction_request.base_request.frozen_material_snapshot is None:
+            raise ValueError("queued reduction requires a frozen material snapshot")
+        def save_reduction(checkpoint):
+            if checkpoint_callback is not None:
+                checkpoint_callback(film_reduction_result_to_payload(reduction_request, checkpoint))
+        reduction_result = reduce_film_design(service, reduction_request, cancel_event=cancel_event,
+            progress_callback=progress_callback,
+            checkpoint_callback=save_reduction if checkpoint_callback is not None else None)
+        # The core archives only complete original+independent grid evaluations.
+        # A terminal replay would add optical work after cancel or failure.
+        return film_reduction_result_to_payload(reduction_request, reduction_result)
     if (isinstance(request_payload, Mapping)
             and request_payload.get("kind") == STRUCTURE_REQUEST_KIND):
         from .film_optimization_structure import (

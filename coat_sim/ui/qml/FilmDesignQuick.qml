@@ -769,6 +769,12 @@ AppWindow {
                     onClicked: if (window.commitExpressionDraft(true)) window.controller.openOptimization()
                 }
                 ThemeControls.ThemeButton {
+                    objectName: "filmDesignReductionButton"
+                    text: "减层 / 减厚优化"
+                    Accessible.name: "打开独立减层减厚优化"
+                    onClicked: if (window.commitExpressionDraft(true)) window.controller.openReductionOptimization()
+                }
+                ThemeControls.ThemeButton {
                     objectName: "filmUndoOptimizationButton"
                     text: "撤销优化应用"
                     visible: window.controller.canUndoOptimizedDesign

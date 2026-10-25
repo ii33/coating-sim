@@ -57,6 +57,7 @@ from coat_sim.ui.film_optimization_run_coordinator import (
 )
 
 if TYPE_CHECKING:
+    from coat_sim.core.film_reduction import FilmReductionResult
     from coat_sim.ui.film_manufacturing_quick_controller import FilmManufacturingQuickController
 
 
@@ -474,7 +475,7 @@ class _AngleGridPreparationTask(QRunnable):
                     row, self.cancel_event, self._progress, index, len(self.rows)))
             if self.cancel_event.is_set():
                 raise InterruptedError("入射角准备已取消；未提交队列任务。")
-            structure = self.search_mode == "structure"
+            structure = self.search_mode in {"structure", "reduction"}
             base_template = (self.request_template.base_request if structure
                              else self.request_template)
             if len(base_template.objectives) != len(angles):
@@ -492,7 +493,10 @@ class _AngleGridPreparationTask(QRunnable):
                 best_max_normalized_error=None,
                 message="正在后台冻结材料输入并序列化队列请求"))
             editable_snapshot = None
-            if structure:
+            if self.search_mode == "reduction":
+                from coat_sim.core.film_reduction import freeze_film_reduction_request
+                request = freeze_film_reduction_request(self.service, request)
+            elif structure:
                 from coat_sim.core.film_optimization_structure import (
                     freeze_film_structure_optimization_request,
                 )
@@ -539,8 +543,11 @@ class _FrozenMaterials:
         return deepcopy(self._rows[material_id])
 
 
-def _film_result_from_queue(value: Any) -> FilmOptimizationResult:
-    """Convert the queue's validated JSON result envelope for the existing UI."""
+def _film_result_from_queue(value: Any) -> Any:
+    """Decode fixed-topology, structure, or reduction queue result carriers."""
+    if isinstance(value, dict) and value.get("kind") == "coat_sim.film_reduction_result":
+        from coat_sim.core.film_reduction import film_reduction_result_from_payload
+        return film_reduction_result_from_payload(value)
     if (isinstance(value, dict)
             and value.get("kind") == "coat_sim.film_structure_optimization_result"):
         from coat_sim.core.film_optimization_structure import film_structure_result_from_payload
@@ -1114,6 +1121,11 @@ class FilmOptimizationQuickController(QObject):
         self._candidate_saved = False
         self._candidate_applied = False
         self._search_mode = "fixed_topology"
+        self._reduction_mode = "combined"
+        self._reduction_result: FilmReductionResult | None = None
+        self._requested_search_mode = getattr(source_controller, "_requested_optimizer_search_mode", "")
+        if self._requested_search_mode:
+            source_controller._requested_optimizer_search_mode = ""
         self._synthesis_options = synthesis_options({})
         self._synthesis_options.update(randomize_template_search=False, structure_search_seed=None)
         self._synthesis_structure_search_seed_text = ""
@@ -1196,6 +1208,8 @@ class FilmOptimizationQuickController(QObject):
             self._restore_session_configuration(reset_missing=False)
 
         self._attach_source_observers()
+        if not self._initial_loading and self._requested_search_mode:
+            self.requestSearchMode(self._requested_search_mode)
         self._compute_target.changed.connect(self.changed.emit)
         self._sync_film_execution_target()
         if self._initial_loading:
@@ -1257,6 +1271,8 @@ class FilmOptimizationQuickController(QObject):
             trace("film_optimization_initial_load_finished",
                   elapsed_s=time.perf_counter() - self._open_started_at,
                   state="failed" if self._initial_load_failed or material_error else "ready")
+        if self._requested_search_mode:
+            self.requestSearchMode(self._requested_search_mode)
         pending_shortcut = self._pending_shortcut_start
         self._pending_shortcut_start = False
         if pending_shortcut and not material_error and not self._error and not self._source_closed:
@@ -1507,6 +1523,10 @@ class FilmOptimizationQuickController(QObject):
 
     def _attach_source_observers(self) -> None:
         source_controller = self._source_controller
+        mode_requested = getattr(source_controller, "optimizationModeRequested", None)
+        if mode_requested is not None:
+            mode_requested.connect(self.requestSearchMode)
+            self._source_connections.append((mode_requested, self.requestSearchMode))
         if self.session is not None:
             self._sessionChange.connect(self._on_session_change)
             controller_ref = weakref.ref(self)
@@ -1584,6 +1604,7 @@ class FilmOptimizationQuickController(QObject):
                           "material_rows": deepcopy(self._synthesis_material_rows)},
             "search_mode": self._search_mode,
             "structure_mode": self._structure_mode,
+            "reduction_mode": self._reduction_mode,
             "structure_options": {key: list(value) if isinstance(value, tuple) else value
                                   for key, value in self._structure_options.items()},
             "structure_materials": [{"material_id": row["material_id"],
@@ -1606,7 +1627,7 @@ class FilmOptimizationQuickController(QObject):
                 raise ValueError("优化配置必须为对象")
             json.dumps(configuration, allow_nan=False)
             allowed = {"version", "objectives", "variables", "solver", "search_mode",
-                       "structure_mode", "structure_options", "structure_materials", "synthesis"}
+                       "structure_mode", "reduction_mode", "structure_options", "structure_materials", "synthesis"}
             if (set(configuration) - allowed or type(configuration.get("version")) is not int
                     or configuration.get("version") != 2):
                 raise ValueError("优化配置版本或字段不受支持")
@@ -1726,7 +1747,10 @@ class FilmOptimizationQuickController(QObject):
                 raise ValueError("差分进化群体数至少为 5")
             search_mode = configuration.get("search_mode", "fixed_topology")
             structure_mode = configuration.get("structure_mode", "combined")
-            if search_mode not in {"fixed_topology", "structure", "synthesis"} or structure_mode not in {"combined", "needle_only", "growth_only"}:
+            reduction_mode = configuration.get("reduction_mode", "combined")
+            if reduction_mode not in {"layer_count", "thickness", "combined"}:
+                raise ValueError("减层 / 减厚模式无效")
+            if search_mode not in {"fixed_topology", "structure", "synthesis", "reduction"} or structure_mode not in {"combined", "needle_only", "growth_only"}:
                 raise ValueError("优化或结构模式无效")
             structure = {**defaults["structure_options"], **configuration.get("structure_options", {})}
             if set(structure) != set(defaults["structure_options"]):
@@ -1835,6 +1859,7 @@ class FilmOptimizationQuickController(QObject):
                          "multistart_count", "population_size"):
                 setattr(self, "_" + name, solver[name])
             self._search_mode, self._structure_mode = search_mode, structure_mode
+            self._reduction_mode = reduction_mode
             self._compute_target.setTask("film_synthesis" if search_mode == "synthesis" else "film_optimization")
             self._synthesis_options, self._synthesis_use_current_seed = synthesis_values, synthesis_seed
             search_seed = synthesis_values["structure_search_seed"]
@@ -2318,6 +2343,7 @@ class FilmOptimizationQuickController(QObject):
         self._synthesis_payload = None
         self._synthesis_editable_snapshot = None
         self._structure_result = None
+        self._reduction_result = None
         self._inspection_objectives = None
         self._result_terminal_state = ""
         self._result_application_eligible = False
@@ -2465,9 +2491,98 @@ class FilmOptimizationQuickController(QObject):
     def searchModeOptions(self) -> list[dict]:
         return [
             {"id": "fixed_topology", "label": "固定层序优化"},
+            {"id": "reduction", "label": "减层 / 减厚优化"},
             {"id": "synthesis", "label": "从零自动合成"},
             {"id": "structure", "label": "结构合成"},
         ]
+
+    @Property(str, notify=changed)
+    def reductionMode(self) -> str:
+        return self._reduction_mode
+
+    @Property(list, notify=changed)
+    def reductionModeOptions(self) -> list[dict]:
+        return [{"id": "layer_count", "label": "仅减层"},
+                {"id": "thickness", "label": "仅减厚"},
+                {"id": "combined", "label": "联合减层 / 减厚"}]
+
+    @Property(str, notify=changed)
+    def reductionPolicySummary(self) -> str:
+        selected = [row for row in self._variables if row["enabled"] and row["available"]]
+        deletable = sum(row["lower_nm"] == 0 for row in selected)
+        protected = sum(row["lower_nm"] > 0 for row in selected)
+        modes = {
+            "layer_count": "仅减层：删除 / 合并后在原边界内调整已选保留层厚度以恢复全部光学目标；以层数减少为准，总厚度可以增加。",
+            "thickness": "仅减厚：保持层序，以总厚度减少为准。",
+            "combined": "联合减量：层数和总厚度均不得高于原设计，至少一项严格减少。",
+        }
+        rule = ("沿用全部原始光学约束与已选厚度变量。仅下界明确为 0 nm 的已选层可删除 / 合并；"
+                "下界大于 0 nm 的层不可删除。参与合并的每层都须允许删除，且材料和光学数据集完全相同；"
+                "保留层仍受原边界约束，不新增材料。完成或取消均不会自动应用。")
+        note = f"已选允许删除 {deletable} 层；下界大于 0 的已选保留层 {protected} 层。"
+        if self._reduction_mode == "combined" and not deletable:
+            note += "当前没有可删除层，联合模式仍可尝试减厚。"
+        return modes[self._reduction_mode] + rule + note
+
+    @Property(bool, notify=changed)
+    def hasReductionResult(self) -> bool:
+        return self._reduction_result is not None
+
+    @Property(str, notify=changed)
+    def reductionComparison(self) -> str:
+        reduction = self._reduction_result
+        if reduction is None:
+            return f"{self.reductionPolicySummary}原始全部目标及独立加密网格均通过且确有减量的候选才可显式应用。"
+        lines = []
+        for key, label in (("baseline", "原设计"), ("candidate", "候选")):
+            row = reduction.metrics[key]
+            def fmt(value):
+                return "—" if value is None else f"{value:g}"
+            lines.append(f"{label}：{row['layer_count']} 层 · 总厚 {fmt(row['total_thickness_nm'])} nm · 最薄 {fmt(row['min_thickness_nm']) + ' nm' if row['layer_count'] else '无膜层'} · 最差误差 {fmt(row['max_normalized_error'])} · 加密最差误差 {fmt(row['validation_max_normalized_error'])} · 原目标 {'通过' if row['targets_met'] else '未通过'} · 独立加密 {'通过' if row['validation_targets_met'] else '未通过'}")
+            for side, name in (("front", "正面"), ("back", "背面")):
+                value = row[side]
+                lines.append(f"  {name}：{value['layer_count']} 层 · {fmt(value['total_thickness_nm'])} nm · 最薄 {fmt(value['min_thickness_nm']) + ' nm' if value['layer_count'] else '无膜层'}")
+        if self._candidate_applied:
+            lines.append("候选已显式应用；可在来源设计中撤销本次应用。")
+        elif self.canApply:
+            lines.append("候选已通过独立审计且有减量，可显式应用。")
+        elif self._reduction_eligible():
+            lines.append("候选已通过独立审计且有减量；当前来源或历史查看状态不允许应用，可查看或另存。")
+        else:
+            lines.append("候选仅供查看：尚未同时满足完整原目标、独立加密审计与减量条件。")
+        return "\n".join(lines)
+
+    def _reduction_eligible(self) -> bool:
+        value = self._reduction_result
+        return bool(value is not None and value.candidate_verified
+                    and value.summary.get("candidate_feasible") is True
+                    and value.summary.get("reduction_achieved") is True)
+
+    @Slot(str, result=bool)
+    def setReductionMode(self, mode: str) -> bool:
+        if self._busy or self._shutting_down or self._pending_edit_error or mode not in {"layer_count", "thickness", "combined"}:
+            return False
+        if mode != self._reduction_mode:
+            self._reduction_mode = mode
+            self._invalidate_result()
+        return True
+
+    @Slot(str, result=bool)
+    def requestSearchMode(self, mode: str) -> bool:
+        if self._source_controller is not None:
+            self._source_controller._requested_optimizer_search_mode = ""
+        self._requested_search_mode = mode if self._initial_loading else ""
+        if self._initial_loading:
+            return True
+        # Keep an existing unsaved candidate available for review.
+        if self._result is not None and not self._candidate_saved and not self._candidate_applied:
+            if self._search_mode != mode:
+                self._requested_search_mode = mode
+                self._error = "请先保存、应用或清除当前候选，再切换优化模式；当前候选已保留。"
+                self.changed.emit()
+                return False
+            return True
+        return self.setSearchMode(mode)
 
     @Property(str, notify=changed)
     def structureMode(self) -> str:
@@ -2739,7 +2854,7 @@ class FilmOptimizationQuickController(QObject):
             return configuration_error
         if not self._objectives:
             return "至少添加一个目标后才能优化。"
-        if (self._search_mode == "fixed_topology"
+        if (self._search_mode in {"fixed_topology", "reduction"}
                 and not any(row["enabled"] for row in self._variables)):
             return ("请在约束页选择当前膜层厚度变量；旧约束未转移到新膜层。"
                     if self._configuration_restore_notice
@@ -2764,7 +2879,7 @@ class FilmOptimizationQuickController(QObject):
     def canStart(self) -> bool:
         has_search_inputs = (
             any(row["enabled"] and row["available"] for row in self._variables)
-            if self._search_mode == "fixed_topology"
+            if self._search_mode in {"fixed_topology", "reduction"}
             else (self._search_mode != "synthesis" and self._structure_mode == "growth_only"
                   or any(row.get("selected") for row in self._structure_material_options)))
         return (not self._initial_loading and not self._initial_load_failed
@@ -2862,6 +2977,16 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(str, notify=changed)
     def solverAvailabilityMessage(self) -> str:
+        if self._search_mode == "reduction":
+            if (self._reduction_mode == "layer_count" and not any(
+                    row["enabled"] and row["available"] and row["lower_nm"] == 0
+                    for row in self._variables)):
+                return "仅减层需要至少一个已选且下界明确为 0 nm 的可删除层；下界大于 0 的层不可删除。"
+            if self._validation_samples_multiplier < 2:
+                return "减量优化要求独立加密验证倍率至少为 2；请在算法页调整。"
+            if self._max_evaluations < 2:
+                return "减量优化至少需要两次完整评估以审计原设计。"
+            return self._error if self._pending_edit_error else ""
         reason = self._solver_unavailable_reason(self._solver_id)
         if reason:
             return "当前方法不可用：" + reason
@@ -3033,13 +3158,13 @@ class FilmOptimizationQuickController(QObject):
                 _validate_editor_criteria(row)
             except (TypeError, ValueError, KeyError) as exc:
                 return str(exc)
-        if self._search_mode == "fixed_topology" and require_thickness_bounds:
+        if self._search_mode in {"fixed_topology", "reduction"} and require_thickness_bounds:
             for row in self._variables:
                 if not row["enabled"]:
                     continue
                 if not row["available"]:
                     return f"膜层 {row['layer_id']} 的厚度或光学数据不可用；可取消选择该层。"
-                if row["upper_nm"] is None and self._solver_id != "baseline":
+                if row["upper_nm"] is None and self._solver_id != "baseline" and self._search_mode != "reduction":
                     return ("当前有限域厚度优化算法需要为已选膜层设置明确的厚度上界；"
                             "默认未设置人为上界，也不会自动补上限。")
                 if (row["lower_nm"] < 0 or
@@ -3062,6 +3187,16 @@ class FilmOptimizationQuickController(QObject):
             return self._structure_configuration_error()
         if self._search_mode == "synthesis":
             return self._synthesis_configuration_error()
+        if self._search_mode == "reduction":
+            if (self._reduction_mode == "layer_count" and not any(
+                    row["enabled"] and row["available"] and row["lower_nm"] == 0
+                    for row in self._variables)):
+                return "仅减层需要至少一个已选且下界明确为 0 nm 的可删除层；下界大于 0 的层不可删除。"
+            if self._validation_samples_multiplier < 2:
+                return "减量优化要求独立加密验证倍率至少为 2；请在算法页调整。"
+            if self._max_evaluations < 2:
+                return "减量优化至少需要两次完整评估以审计原设计。"
+            return self._error if self._pending_edit_error else ""
         reason = self._solver_unavailable_reason(self._solver_id)
         if reason:
             return reason
@@ -3127,8 +3262,8 @@ class FilmOptimizationQuickController(QObject):
     def setSearchMode(self, mode: str) -> bool:
         mode = str(mode)
         if (self._busy or self._shutting_down or self._pending_edit_error
-                or mode not in {"fixed_topology", "structure", "synthesis"}):
-            if mode not in {"fixed_topology", "structure", "synthesis"}:
+                or mode not in {"fixed_topology", "structure", "synthesis", "reduction"}):
+            if mode not in {"fixed_topology", "structure", "synthesis", "reduction"}:
                 self._error = "未知的优化模式。"
                 self.changed.emit()
             return False
@@ -3913,6 +4048,10 @@ class FilmOptimizationQuickController(QObject):
             execution_device=(self._selected_execution_binding()
                               if fixed_topology and self._batch_execution_enabled() else None),
         )
+
+    def _build_reduction_request(self, *, prepared_angles=None):
+        from coat_sim.core.film_reduction import FilmReductionRequest
+        return FilmReductionRequest(self._build_request(prepared_angles=prepared_angles, fixed_topology=False), self._reduction_mode)
 
     def _build_structure_request(self, *,
                                  prepared_angles: tuple[tuple[float, ...], ...] | None = None):
@@ -4787,7 +4926,7 @@ class FilmOptimizationQuickController(QObject):
                 "这是前次候选，不是新作业评分；在新作业首次完整评分前单独保留，不会再次自动应用。")
 
     def _retain_cancelled_restart(self) -> None:
-        if self._attempt_search_mode == "structure":
+        if self._attempt_search_mode in {"structure", "reduction"}:
             self._continuation_record = None
             self._continuation_unavailable_reason = "独立结构优化暂不支持从取消候选继续。"
             return
@@ -5011,7 +5150,9 @@ class FilmOptimizationQuickController(QObject):
                         self._build_synthesis_request(prepared_angles=placeholders)
                         if search_mode == "synthesis" else
                         self._build_structure_request(prepared_angles=placeholders)
-                        if search_mode == "structure"
+                        if search_mode == "structure" else
+                        self._build_reduction_request(prepared_angles=placeholders)
+                        if search_mode == "reduction"
                         else self._build_request(prepared_angles=placeholders))
                     return self._start_angle_preparation(request_template)
             except Exception as exc:
@@ -5027,6 +5168,8 @@ class FilmOptimizationQuickController(QObject):
                 request = self._build_synthesis_request()
             elif search_mode == "structure":
                 request = self._build_structure_request()
+            elif search_mode == "reduction":
+                request = self._build_reduction_request()
             else:
                 request = self._build_request()
         except (TypeError, ValueError, OverflowError) as exc:
@@ -5067,6 +5210,9 @@ class FilmOptimizationQuickController(QObject):
                     from coat_sim.core.film_physical_generator import freeze_synthesis_editable_snapshot
                     editable_snapshot = freeze_synthesis_editable_snapshot(
                         self.service, request.environment, request.frozen_material_snapshot)
+                elif search_mode == "reduction":
+                    from coat_sim.core.film_reduction import freeze_film_reduction_request
+                    request = freeze_film_reduction_request(self.service, request)
                 elif search_mode == "structure":
                     from coat_sim.core.film_optimization_structure import (
                         freeze_film_structure_optimization_request,
@@ -5087,7 +5233,7 @@ class FilmOptimizationQuickController(QObject):
             from coat_sim.scheduler.jobs import JobSpec
             from coat_sim.ui.film_optimization_continue_source import SOURCE_INPUT_KEY, build_source_binding
             source_binding = None
-            if search_mode != "structure":
+            if search_mode not in {"structure", "reduction"}:
                 source_snapshot = self.session.snapshot() if self.session is not None else self._snapshot_source
                 source_binding = build_source_binding(self.service, source_snapshot, request,
                     editable_snapshot=editable_snapshot)
@@ -5114,6 +5260,7 @@ class FilmOptimizationQuickController(QObject):
             metadata = {
                 "summary": ("Film automatic synthesis | "
                             if search_mode == "synthesis" else
+                            "Film reduction | " if search_mode == "reduction" else
                             "Film structure synthesis | " if search_mode == "structure"
                             else "Film optimization | ") + str(
                     base_request.design_snapshot.get("name", "film design")),
@@ -5125,6 +5272,7 @@ class FilmOptimizationQuickController(QObject):
                     "variable_count": len(base_request.variables),
                     "search_mode": search_mode,
                     "structure_mode": (request.mode if search_mode == "structure" else None),
+                    "reduction_mode": (request.mode if search_mode == "reduction" else None),
                     "candidate_material_count": (len(request.candidate_materials)
                                                   if search_mode in {"structure", "synthesis"} else 0),
                 },
@@ -5351,6 +5499,7 @@ class FilmOptimizationQuickController(QObject):
         self._result = None
         self._synthesis_payload = None
         self._structure_result = None
+        self._reduction_result = None
         self._inspection_objectives = None
         self._result_terminal_state = ""
         self._result_application_eligible = False
@@ -5371,6 +5520,8 @@ class FilmOptimizationQuickController(QObject):
         if self._initial_loading:
             self._pending_shortcut_start = True
             return True
+        if self._requested_search_mode and not self.requestSearchMode(self._requested_search_mode):
+            return False
         if self._pending_reuse_source is not None:
             self._pending_reuse_start = True
             return True
@@ -5477,6 +5628,8 @@ class FilmOptimizationQuickController(QObject):
         self.changed.emit()
 
     def _accept_cancel_intent(self) -> bool:
+        if self._attempt_search_mode == "reduction":
+            return False
         if (self._cancel_intent_consumed or not self._cancel_intent_accepted
                 or not self._cancel_intent_requested
                 or self._cancel_intent_operation_id != self._attempt_operation_id
@@ -5486,6 +5639,8 @@ class FilmOptimizationQuickController(QObject):
         return self._apply_cancel_candidate_once()
 
     def _cancel_candidate_verified(self) -> bool:
+        if self._attempt_search_mode == "reduction":
+            return False
         result = self._result
         if (result is None or result.state != "cancelled" or result.evaluations < 1
                 or not result.best_design or not result.per_condition_errors):
@@ -5613,6 +5768,8 @@ class FilmOptimizationQuickController(QObject):
         return True
 
     def _apply_cancel_candidate_once(self) -> bool:
+        if self._attempt_search_mode == "reduction":
+            return False
         if self._cancel_intent_consumed:
             return False
         self._cancel_intent_consumed = True
@@ -5771,7 +5928,9 @@ class FilmOptimizationQuickController(QObject):
         self._queue_job_id = str(job_id)
         self._frozen_request = request
         self._result = result
-        self._structure_result = structure
+        from coat_sim.core.film_reduction import FilmReductionResult
+        self._reduction_result = structure if isinstance(structure, FilmReductionResult) else None
+        self._structure_result = structure if self._reduction_result is None else None
         self._inspection_objectives = objectives
         self._result_application_eligible = False
         self._operation_edit_epoch = None
@@ -5784,8 +5943,12 @@ class FilmOptimizationQuickController(QObject):
         self._result_terminal_state = "队列历史结果"
         self._progress_text = "历史候选仅供查看或另存；未修改当前设计和优化配置。"
         self._synthesis_payload = None
-        self._bind_history_continuation(job_id, request, result, payload, source_context,
-            "structure" if structure is not None else "fixed_topology")
+        if self._reduction_result is None:
+            self._bind_history_continuation(job_id, request, result, payload, source_context,
+                "structure" if structure is not None else "fixed_topology")
+        else:
+            self._continuation_record = None
+            self._continuation_unavailable_reason = "减层 / 减厚历史候选仅供查看或另存。"
         self._error = ""
         self.changed.emit()
         self.plotDataChanged.emit()
@@ -5837,6 +6000,7 @@ class FilmOptimizationQuickController(QObject):
         self._frozen_request = synthesis_base_request(request)
         self._synthesis_actual_structure_search_seed = request.structure_search_seed
         self._structure_result = None
+        self._reduction_result = None
         self._inspection_objectives = objectives
         self._result_application_eligible = False
         self._operation_edit_epoch = None
@@ -6018,11 +6182,15 @@ class FilmOptimizationQuickController(QObject):
                 if self._run_coordinator.take_pending_close():
                     self.requestClose()
                 return
-        structure_result = (result if hasattr(result, "base_result")
+        from coat_sim.core.film_reduction import FilmReductionResult
+        self._reduction_result = result if isinstance(result, FilmReductionResult) else None
+        structure_result = (result if self._reduction_result is None and hasattr(result, "base_result")
                             and hasattr(result, "topology_audit") else None)
         if structure_result is not None:
             result = structure_result.base_result
         self._structure_result = structure_result
+        if self._reduction_result is not None:
+            result = self._reduction_result.base_result
         if (structure_result is not None
                 and isinstance(structure_result.topology_audit, Mapping)):
             marker = structure_result.topology_audit.get("cancel_snapshot")
@@ -6034,6 +6202,8 @@ class FilmOptimizationQuickController(QObject):
             and (structure_result is None or (
                 getattr(structure_result, "is_final", False)
                 and result.validation_complete)))
+        if self._reduction_result is not None:
+            self._result_application_eligible = self._reduction_eligible()
         if has_candidate:
             self._result = result
             self._progress_iteration = int(result.iterations)
@@ -6122,7 +6292,8 @@ class FilmOptimizationQuickController(QObject):
         if (self._terminal_operation_id == self._attempt_operation_id
                 and self._cancel_intent_accepted):
             self._accept_cancel_intent()
-        if (self._synthesis_payload is None and not error and isinstance(result, FilmOptimizationResult)
+        if (self._reduction_result is None and self._attempt_search_mode != "reduction"
+                and self._synthesis_payload is None and not error and isinstance(result, FilmOptimizationResult)
                 and result.state == "completed"):
             self._apply_completed_result(operation_id, result)
         if self._run_coordinator.take_pending_close():
@@ -6130,6 +6301,8 @@ class FilmOptimizationQuickController(QObject):
 
     def _apply_completed_result(self, operation_id: int,
                                 result: FilmOptimizationResult) -> bool:
+        if self._attempt_search_mode == "reduction" or self._reduction_result is not None:
+            return False
         if self._shutting_down or not self._project_current():
             return False
         if not self._result_application_eligible:
@@ -6302,6 +6475,7 @@ class FilmOptimizationQuickController(QObject):
         # The design controller checks both the committed revision and any
         # text still being edited before delegating the atomic session update.
         apply = getattr(self._source_controller,
+                        "applyReducedDesign" if self._reduction_result is not None else
                         "applySynthesizedDesign" if self._synthesis_payload is not None else "applyOptimizedDesign", None)
         if not callable(apply):
             self._error = "来源设计窗口不支持安全候选应用；原设计未改变。"
@@ -6314,7 +6488,23 @@ class FilmOptimizationQuickController(QObject):
             return False
         try:
             args = (deepcopy(dict(result.best_design)), int(result.design_revision), int(edit_epoch))
-            if self._synthesis_payload is not None:
+            if self._reduction_result is not None:
+                if not self._reduction_eligible():
+                    raise ValueError("Reduction candidate has not passed complete independent audit")
+                if (self._attempt_full_request != self._reduction_result.frozen_request
+                        or self._attempt_session is not self.session
+                        or self._attempt_source_controller is not self._source_controller):
+                    raise ValueError("Reduction candidate source/request identity differs")
+                if not self._cancel_material_references_unchanged(
+                        self._reduction_result.frozen_request.base_request.design_snapshot):
+                    raise ValueError("Reduction material references changed; candidate retained read-only")
+                # The queue reader already verified complete raw coverage and
+                # optics off-thread. Recheck topology here without replaying it.
+                from coat_sim.core.film_reduction import validate_film_reduction_candidate_topology
+                validate_film_reduction_candidate_topology(
+                    self._reduction_result.frozen_request, result.best_design)
+                accepted = bool(apply(*args, self._reduction_result.frozen_request))
+            elif self._synthesis_payload is not None:
                 if self._frozen_request is None or self._frozen_request.frozen_material_snapshot is None:
                     raise ValueError("Synthesis candidate has no frozen optical closure")
                 closure = self._synthesis_editable_snapshot

@@ -362,6 +362,7 @@ class FilmDesignQuickController(QObject):
     closeConfirmed = Signal()
     initializationChanged = Signal()
     pendingEditEpochChanged = Signal()
+    optimizationModeRequested = Signal(str)
     optimizationApplied = Signal()
     optimizationUndoChanged = Signal()
     generatorPreviewInvalidated = Signal()
@@ -1491,6 +1492,27 @@ class FilmDesignQuickController(QObject):
             self.optimizationApplied.emit()
         return accepted
 
+    @Slot(object, int, int, object, result=bool)
+    def applyReducedDesign(self, candidate_design: object,
+                           expected_revision: int, expected_edit_epoch: int,
+                           reduction_request: object) -> bool:
+        """Apply a topology-checked reduction through the existing undo transaction."""
+        if (not isinstance(candidate_design, Mapping)
+                or self.session is None or self._source_closed
+                or not self._generator_project_current()
+                or expected_edit_epoch != self._pending_edit_epoch):
+            return False
+        try:
+            from coat_sim.core.film_reduction import (
+                FilmReductionRequest, validate_film_reduction_candidate_topology)
+            if (not isinstance(reduction_request, FilmReductionRequest)
+                    or reduction_request.base_request.design_revision != expected_revision):
+                return False
+            validate_film_reduction_candidate_topology(reduction_request, candidate_design)
+        except (ValueError, TypeError, KeyError, AttributeError):
+            return False
+        return self.applyOptimizedDesign(candidate_design, expected_revision, expected_edit_epoch)
+
     @Slot("QVariantMap", int, int, "QVariantMap", result=bool)
     def applySynthesizedDesign(self, candidate_design: dict,
                                expected_revision: int, expected_edit_epoch: int,
@@ -1900,24 +1922,38 @@ class FilmDesignQuickController(QObject):
                         or self._snapshot.pending_confirmation)
         return False
 
-    @Slot(result=str)
-    def openOptimization(self) -> str:
+    def _open_optimization_window(self, *, start: bool = False) -> str:
         launcher = self.parent()
         opener = getattr(launcher, "open_or_reuse_film_companion", None)
         if callable(opener) and self.session is not None:
+            if start:
+                return str(opener("film_optimization", self, start=True) or "")
             return str(opener("film_optimization", self) or "")
         opener = getattr(launcher, "open_window", None)
         if not callable(opener):
             return ""
         return str(opener("film_optimization", mode="new", payload=self) or "")
 
+    def _request_optimization_mode(self, mode: str) -> None:
+        # Existing observers consume this before routing; a new controller
+        # consumes it during construction, including deferred window opens.
+        self._requested_optimizer_search_mode = mode
+        self.optimizationModeRequested.emit(mode)
+
+    @Slot(result=str)
+    def openOptimization(self) -> str:
+        self._request_optimization_mode("fixed_topology")
+        return self._open_optimization_window()
+
+    @Slot(result=str)
+    def openReductionOptimization(self) -> str:
+        self._request_optimization_mode("reduction")
+        return self._open_optimization_window()
+
     @Slot(result=str)
     def openOptimizationAndStart(self) -> str:
-        launcher = self.parent()
-        opener = getattr(launcher, "open_or_reuse_film_companion", None)
-        if callable(opener) and self.session is not None:
-            return str(opener("film_optimization", self, start=True) or "")
-        return self.openOptimization()
+        self._request_optimization_mode("fixed_topology")
+        return self._open_optimization_window(start=True)
 
     @Slot(result=str)
     def openSimulationAndCalculate(self) -> str:
