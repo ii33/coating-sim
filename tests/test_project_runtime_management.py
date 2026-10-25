@@ -40,11 +40,11 @@ def _eval(engine: QQmlEngine, scope: QObject, source: str):
     return value.toVariant() if isinstance(value, QJSValue) else value
 
 
-def _find_item(root: QQuickItem, object_name: str) -> QQuickItem:
+def _find_item(root: QQuickItem | QQuickWindow, object_name: str) -> QQuickItem:
     found = root.findChild(QQuickItem, object_name)
     if found is not None:
         return found
-    pending = [root]
+    pending = [root.contentItem() if isinstance(root, QQuickWindow) else root]
     while pending:
         parent = pending.pop()
         for child in parent.childItems():
@@ -52,6 +52,32 @@ def _find_item(root: QQuickItem, object_name: str) -> QQuickItem:
                 return child
             pending.append(child)
     raise AssertionError(f"QML item not found: {object_name}")
+
+
+@pytest.mark.parametrize("window_root", [False, True], ids=["item", "window"])
+def test_find_item_supports_qobject_and_visual_children_and_missing_targets(window_root: bool) -> None:
+    app = QGuiApplication.instance() or QGuiApplication([])
+    assert isinstance(app, QGuiApplication)
+    root = QQuickWindow() if window_root else QQuickItem()
+    visual_root = root.contentItem() if isinstance(root, QQuickWindow) else root
+    branch, visual_child, qobject_child = QQuickItem(), QQuickItem(), QQuickItem()
+    branch.setParentItem(visual_root)
+    visual_child.setParentItem(branch)
+    visual_child.setObjectName("visualOnlyTarget")
+    qobject_child.setParent(root)
+    qobject_child.setParentItem(visual_root)
+    qobject_child.setObjectName("qobjectTarget")
+    try:
+        assert root.findChild(QQuickItem, "visualOnlyTarget") is None
+        assert _find_item(root, "visualOnlyTarget") is visual_child
+        assert _find_item(root, "qobjectTarget") is qobject_child
+        with pytest.raises(AssertionError, match="QML item not found: missingTarget"):
+            _find_item(root, "missingTarget")
+    finally:
+        for item in (visual_child, branch, qobject_child, root):
+            item.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        app.processEvents()
 
 
 def _show_management_item(root: QQuickItem, item: QQuickItem) -> None:
