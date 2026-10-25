@@ -27,6 +27,8 @@ Item {
     property var focusReturnItem: null
     property var actionEntry: null
     property string fileAction: ""
+    property bool deleteProjectRequested: false
+    property bool removalSubmitted: false
     property bool recentDetailsDismissed: false
 
     readonly property real contentSpacing: Math.min(
@@ -52,7 +54,7 @@ Item {
         }
     }
 
-    // Scoped to the three recent-card actions; shared ThemeButton is unchanged.
+    // Scoped to recent-card actions; shared ThemeButton is unchanged.
     component RecentActionButton: ThemeControls.ThemeButton {
         id: actionControl
         flat: true
@@ -129,23 +131,28 @@ Item {
         return path.substring(0, Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")))
     }
 
-    function requestRemove(entry, button) {
-        if (!projectBridge || !entry || projectBridge.projectBusy)
+    function requestRemove(entry, button, deleteProject) {
+        if (!projectBridge || !entry || projectBridge.projectBusy || removeDialog.visible)
             return
         recentDetailsDismissed = true
-        actionEntry = entry
+        actionEntry = Object.assign({}, entry)
         focusReturnItem = button
-        deleteFilesChoice.checked = false
+        deleteProjectRequested = deleteProject === true
+        removalSubmitted = false
         removeDialog.open()
     }
 
     function confirmRemove() {
-        if (!projectBridge || !actionEntry || projectBridge.projectBusy)
+        if (!projectBridge || !actionEntry || projectBridge.projectBusy
+                || !removeDialog.visible || removalSubmitted)
             return
         const descriptor = String(actionEntry.descriptorFile || "")
-        if (deleteFilesChoice.checked) {
-            if (!projectBridge.trashRecentProject(descriptor, String(actionEntry.projectId || "")))
+        removalSubmitted = true
+        if (deleteProjectRequested) {
+            if (!projectBridge.trashRecentProject(descriptor, String(actionEntry.projectId || ""))) {
+                removalSubmitted = false
                 return
+            }
         } else {
             projectBridge.removeRecentProject(descriptor)
             if (selectedDescriptorFile === descriptor)
@@ -360,13 +367,13 @@ Item {
     ThemeControls.ThemeDialogBase {
         id: removeDialog
         objectName: "launcherRemoveProjectDialog"
-        title: "移除工程"
+        title: root.deleteProjectRequested ? "删除工程" : "移出最近列表"
         parent: Overlay.overlay
         modal: true
         width: Math.min(540, parent.width - 24)
         x: Math.round((parent.width - width) / 2)
         y: Math.max(0, Math.round((parent.height - height) / 2))
-        onOpened: removeConfirmButton.forceActiveFocus()
+        onOpened: removeCancelButton.forceActiveFocus()
         onClosed: root.restoreDialogFocus()
         height: Math.min(implicitHeight, parent.height - 24)
         contentItem: ScrollView {
@@ -380,25 +387,16 @@ Item {
                 spacing: root.themeTokens.spaceSm
                 ThemeControls.ThemeLabel {
                     textFormat: Text.PlainText
-                    text: "是否从最近列表移除“" + String(root.actionEntry && root.actionEntry.name || "未命名工程") + "”？"
+                    objectName: "launcherRemoveProjectName"
+                    text: (root.deleteProjectRequested ? "是否删除工程“" : "是否从最近列表移除“")
+                        + String(root.actionEntry && root.actionEntry.name || "未命名工程") + "”？"
                     wrapMode: Text.Wrap
-                    Layout.fillWidth: true
-                }
-                CheckBox {
-                    id: deleteFilesChoice
-                    objectName: "launcherDeleteProjectFilesChoice"
-                    text: "同时将整个工程目录移入回收站"
-                    checked: false
-                    enabled: !!root.actionEntry && root.actionEntry.available === true
-                        && root.actionEntry.informationAvailable === true
-                    font.family: root.themeTokens.fontFamily
-                    font.pointSize: root.themeTokens.fontSizeBody
                     Layout.fillWidth: true
                 }
                 ThemeControls.ThemeLabel {
                     textFormat: Text.PlainText
                     objectName: "launcherRemoveProjectScope"
-                    text: deleteFilesChoice.checked
+                    text: root.deleteProjectRequested
                         ? "将移入回收站的完整目录：\n" + root.descriptorDirectory(root.actionEntry)
                           + "\n包括此工程文件、工程资源、导入导出文件和运行结果。仅明确归属的标准工程目录可回收；含其他工程、链接或不明内容时会保留原文件和记录。回收失败不会永久删除。"
                         : "仅移出最近列表，保留所有工程文件。"
@@ -419,13 +417,14 @@ Item {
             ThemeControls.ThemeButton {
                 id: removeConfirmButton
                 objectName: "launcherConfirmRemoveProject"
-                text: deleteFilesChoice.checked ? "移入回收站并移除" : "仅移出最近列表"
-                primary: !deleteFilesChoice.checked
+                text: root.deleteProjectRequested ? "删除并移入回收站" : "仅移出最近列表"
+                primary: !root.deleteProjectRequested
                 enabled: !!root.projectBridge && !root.projectBridge.projectBusy
                 DialogButtonBox.buttonRole: DialogButtonBox.ActionRole
                 onClicked: root.confirmRemove()
             }
             ThemeControls.ThemeButton {
+                id: removeCancelButton
                 objectName: "launcherCancelRemoveProject"
                 text: "取消"
                 DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
@@ -848,6 +847,25 @@ Item {
                                             contentItem.implicitHeight + topPadding + bottomPadding)
                                         enabled: !!root.projectBridge && !root.projectBridge.projectBusy
                                         onClicked: root.requestRemove(projectRow.modelData, this)
+                                    }
+                                    RecentActionButton {
+                                        objectName: "launcherDeleteRecentProject_" + projectRow.index
+                                        text: "删除"
+                                        Accessible.name: "删除工程并移入回收站"
+                                        ToolTip.visible: hovered
+                                        ToolTip.text: "删除工程文件（移入回收站）"
+                                        font.pointSize: root.themeTokens.fontSizeSmall
+                                        leftPadding: Math.max(1, root.themeTokens.spaceXs / 2)
+                                        rightPadding: leftPadding
+                                        topPadding: root.themeTokens.spaceXs
+                                        bottomPadding: topPadding
+                                        implicitHeight: Math.max(root.themeTokens.controlHeightSm,
+                                            contentItem.implicitHeight + topPadding + bottomPadding)
+                                        enabled: !!root.projectBridge && !root.projectBridge.projectBusy
+                                            && projectRow.modelData.available === true
+                                            && projectRow.modelData.informationAvailable === true
+                                            && !!projectRow.modelData.projectId
+                                        onClicked: root.requestRemove(projectRow.modelData, this, true)
                                     }
                                 }
                                 RowLayout {

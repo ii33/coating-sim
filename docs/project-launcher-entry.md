@@ -147,7 +147,7 @@ manager. It does not add a direct menu of global design editors.
 ## Compact recent rows and explicit removal (2026-10-16)
 
 Each recent row occupies exactly two content lines: a left-aligned, single-line
-open-by-name action and right-aligned Copy / Export / Remove actions, followed
+open-by-name action and right-aligned Copy / Export / Remove / Delete actions, followed
 by one elided summary line (an empty summary has a placeholder). No path/status
 line or information foldout remains. Hover details retain the complete actual
 name, summary, notes, exact descriptor and available opening timestamp. New
@@ -167,8 +167,12 @@ save picker offers an overwrite prompt. Failures leave the original project
 unchanged and report an error. Accepted publication is not cancelled by closing
 its input dialog; late results cannot update a stopped launcher.
 
-Remove opens a modal confirmation, defaulting to history-only. Cancel/Escape
-changes neither history nor files. The optional whole-directory recycle action
+Remove opens a history-only modal confirmation. Delete is a separate visible
+row action (2026-10-25), available for readable project identities, and opens
+the same modal in an explicit delete mode. It names the project, exact descriptor
+and complete target directory; its confirmation says "Delete and move to Recycle
+Bin" and initially focuses Cancel. There is no optional deletion checkbox under
+Remove. Cancel/Escape changes neither history nor files. The whole-directory recycle action
 shows both exact descriptor and full directory plus the affected resources,
 imports/exports and results. The service first validates the row's captured
 project ID and holds the existing root/ID lease throughout validation and

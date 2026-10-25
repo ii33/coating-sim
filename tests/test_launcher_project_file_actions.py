@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from threading import Event
 import time
 from typing import Any, cast
 
@@ -184,3 +185,82 @@ def test_stale_dialog_project_identity_is_not_rebound_to_a_refreshed_row(project
         assert not adapter.projectBusy and adapter.projectEntries and project.project_file.is_file()
     finally:
         adapter.stop()
+
+
+def test_active_selected_project_is_retained_when_delete_is_refused(project, tmp_path, app):
+    history = RecentProjects(QSettings(str(tmp_path / "ui.ini"), QSettings.Format.IniFormat))
+    history.record(project.project_file, "Study")
+    adapter = cast(Any, ProjectLauncherAdapter(recent_projects=history))
+    try:
+        _settle(app, adapter)
+        adapter._selected_file = str(project.project_file)
+        with ProjectOwnerLease.acquire(project.project_file, project.manifest["id"]):
+            assert adapter.trashRecentProject(str(project.project_file), project.manifest["id"])
+            _settle(app, adapter)
+        assert adapter.projectEntries[0]["active"]
+        assert "关闭此工程" in adapter.projectError
+        assert project.project_file.is_file()
+    finally:
+        adapter.stop()
+
+
+def test_duplicate_delete_is_rejected_until_the_first_result_settles(project, tmp_path, app, monkeypatch):
+    history = RecentProjects(QSettings(str(tmp_path / "ui.ini"), QSettings.Format.IniFormat))
+    history.record(project.project_file, "Study")
+    adapter = cast(Any, ProjectLauncherAdapter(recent_projects=history))
+    release, started = Event(), Event()
+    calls = []
+    def pending(*args):
+        calls.append(args)
+        started.set()
+        assert release.wait(5)
+        raise ProjectError("trash_failed", "Could not recycle")
+    monkeypatch.setattr("coat_sim.ui.launcher_projects.trash_project", pending)
+    try:
+        _settle(app, adapter)
+        descriptor, identity = str(project.project_file), project.manifest["id"]
+        assert adapter.trashRecentProject(descriptor, identity)
+        assert started.wait(2)
+        assert not adapter.trashRecentProject(descriptor, identity)
+        assert len(calls) == 1
+        release.set()
+        _settle(app, adapter)
+        assert adapter.projectEntries and project.project_file.is_file()
+        assert adapter.projectError == "Could not recycle"
+    finally:
+        release.set()
+        adapter.stop()
+
+
+@pytest.mark.parametrize("protected", ["temp", "app", "cwd", "standard", "ancestor", "system"])
+def test_protected_locations_never_reach_the_trash_mover(project, monkeypatch, protected):
+    import coat_sim.ui.launcher_project_files as module
+    if protected == "temp":
+        monkeypatch.setattr(module.tempfile, "gettempdir", lambda: str(project.root))
+    elif protected == "app":
+        monkeypatch.setattr(module, "__file__", str(project.root / "coat_sim/ui/launcher_project_files.py"))
+    elif protected == "cwd":
+        monkeypatch.chdir(project.root)
+    elif protected == "standard":
+        monkeypatch.setattr(module.QStandardPaths, "writableLocation", lambda _kind: str(project.root))
+    elif protected == "ancestor":
+        monkeypatch.setattr(Path, "home", lambda: project.root / "other-user-data")
+    else:
+        if module.os.name != "nt":
+            pytest.skip("Windows system-directory boundary")
+        monkeypatch.setenv("SystemRoot", str(project.root))
+    with pytest.raises(ProjectError) as caught:
+        trash_project(str(project.project_file), project.manifest["id"],
+                      move_to_trash=lambda _path: pytest.fail("protected location reached trash"))
+    assert caught.value.code == "unsafe_project_directory"
+    assert project.project_file.is_file()
+
+
+def test_drive_root_is_rejected_before_any_tree_or_trash_operation(project):
+    from types import SimpleNamespace
+    from coat_sim.ui.launcher_project_files import _safe_tree
+    root = Path(project.root.anchor)
+    with pytest.raises(ProjectError) as caught:
+        _safe_tree(cast(Any, SimpleNamespace(root=root, project_file=root / "project.coatproj")))
+    assert caught.value.code == "unsafe_project_directory"
+    assert project.project_file.is_file()
