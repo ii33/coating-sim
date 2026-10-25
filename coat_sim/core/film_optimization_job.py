@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, Callable, Mapping, Sequence
 
 if TYPE_CHECKING:
     from .film_reduction import FilmReductionRequest
+    from .film_optimization_structure import FilmStructureOptimizationRequest
 
 from .film_optimization import (
     FilmOptimizationObjective,
@@ -187,8 +188,9 @@ def build_job_payload(request: FilmOptimizationRequest | FilmReductionRequest) -
             "request": frozen}
 
 
-def freeze_job_payload(service: Any, request: FilmOptimizationRequest | FilmReductionRequest) -> dict[str, Any]:
-    """Freeze and serialize either typed film request supported by this executor.
+def freeze_job_payload(service: Any, request: FilmOptimizationRequest | FilmReductionRequest
+                       | FilmStructureOptimizationRequest) -> dict[str, Any]:
+    """Freeze and serialize typed film requests supported by this executor.
 
     Structure search shares only the outer ``film_optimization`` executor. Its
     embedded request remains independently typed and has no solver ID.
