@@ -1,4 +1,4 @@
-"""Current v4 opt-in policy is exact across core, GUI, wire, MCP and queue."""
+"""Current v5 opt-in policy is exact across core, GUI, wire, MCP and queue."""
 
 from dataclasses import asdict, replace
 from copy import deepcopy
@@ -34,7 +34,7 @@ def test_current_freeze_json_mcp_and_queue_roundtrip(policy):
         None, replace(_request(), objective_progress_policy=policy)
     )
     payload = json.loads(json.dumps(film_synthesis_request_to_payload("progress", request)))
-    assert SCHEMA_VERSION == payload["schema_version"] == 4
+    assert SCHEMA_VERSION == payload["schema_version"] == 5
     assert payload["request"]["objective_progress_policy"] == (
         None if policy is None else asdict(policy)
     )
@@ -43,7 +43,7 @@ def test_current_freeze_json_mcp_and_queue_roundtrip(policy):
     planned, _ = prepare_film_synthesis_payload(None, payload)
     assert planned == payload
     job = build_job_payload(canonical_parameters(None, {"payload": payload}))
-    assert job["schema_version"] == 4 and deserialize_job_payload(job)[1] == request
+    assert job["schema_version"] == 5 and deserialize_job_payload(job)[1] == request
 
 
 def test_gui_default_is_explicit_null_and_current_policy_survives():
@@ -57,12 +57,12 @@ def test_gui_default_is_explicit_null_and_current_policy_survives():
     ] == asdict(policy)
 
 
-@pytest.mark.parametrize("version", [1, 2, 3])
+@pytest.mark.parametrize("version", [1, 2, 3, 4])
 def test_historical_synthesis_versions_are_not_decoded(version):
     payload = film_synthesis_request_to_payload("old", _request())
     payload["schema_version"] = version
     original = deepcopy(payload)
-    with pytest.raises(FilmSynthesisPayloadError, match="current schema 4.*no migration"):
+    with pytest.raises(FilmSynthesisPayloadError, match="current schema 5.*no migration"):
         film_synthesis_request_from_payload(payload)
     assert payload == original
 

@@ -8,7 +8,7 @@ Updated: 2026-10-25
 
 This contract defines the GUI-independent execution boundary for producing candidate multilayer coating designs from a bare environment and from explicitly supplied physical-structure seed designs. It covers the frozen JSON request/result exchange used by the CLI and the existing persistent compute-job system. It does not apply a result to an open project or change a user design.
 
-The wire format is versioned JSON (`schema_version: 4`). Request parsing and validation are centralized in `coat_sim/core/film_synthesis_io.py`; the CLI in `coat_sim/film_synthesis_cli.py` is a transport adapter. The synthesis core remains the sole owner of algorithm state, incumbent score, stopping conditions, and final candidate. The execution adapter owns process signals, heartbeat timestamps, progress transport, and output file creation only.
+The wire format is versioned JSON (`schema_version: 5`). Request parsing and validation are centralized in `coat_sim/core/film_synthesis_io.py`; the CLI in `coat_sim/film_synthesis_cli.py` is a transport adapter. The synthesis core remains the sole owner of algorithm state, incumbent score, stopping conditions, and final candidate. The execution adapter owns process signals, heartbeat timestamps, progress transport, and output file creation only.
 
 ## Request
 
@@ -82,7 +82,7 @@ preserves the boolean; formal freeze copies it into the immutable request.
 Changes after a run cannot mutate that run. CLI, MCP plan/submit, durable queue,
 result export/replay, and cloud-bundle execution preserve the same value.
 
-Synthesis request/result/job/checkpoint envelopes are now schema 4. Every frozen
+Synthesis request/result/job/checkpoint envelopes are now schema 5. Every frozen
 request field, including this boolean, is required. Schema 3 and earlier are
 rejected, not decoded, migrated, or silently upgraded. Existing unrelated
 optimization and editor configuration versions are unchanged. Archived research
@@ -246,14 +246,14 @@ A live lazy structural iterator may pause between search slices. On every normal
 An initial completed candidate can beat every thickness-coordinate roundtrip by one ULP. Its original score, identity and exact-tie ranking remain unchanged. The internal minimax sentinel must not be exported as an observed `max_signed_violation`: use the retained candidate's existing complete responses, or `null` with `max_signed_violation_source` identifying unavailable responses without additional physical evaluation. Response-only statistics keep original objective/angle/grid/duplicate/finite-value checks; gradient optimization still requires all optimized layer Jacobians. Malformed nonempty responses fail validation rather than becoming unavailable. Strict JSON and the audited-checkpoint callback are unchanged. The real CLI heartbeat/cancel/checkpoint test retains all assertions and exercises the repaired serialization path.
 
 
-## Opt-in objective-progress handoff (2026-10-25, current schema 4)
+## Opt-in objective-progress handoff (2026-10-25, current schema 5)
 
 Every current frozen request explicitly carries `objective_progress_policy`: `null`
 (default, unchanged scheduling) or an exact object with `accepted_window_steps`,
 `relative_sse_progress_floor`, `relative_worst_progress_floor`, and
 `stagnation_windows`. Step/window counts are positive integers; progress floors are
 finite nonnegative numbers. There are no implicit threshold defaults. This option
-is valid only for hybrid search. Version 3 and earlier envelopes are rejected with
+is valid only for hybrid search. Version 4 and earlier envelopes are rejected with
 a version error, not migrated. GUI option persistence remains JSON data; the core
 owns the validated frozen `HybridProgressPolicy`. CLI, MCP, queue and checkpoint
 paths use this same current request contract. Historical benchmark inputs remain
@@ -309,3 +309,15 @@ same source checkout, original material/optical grids and separate F/FJ ledgers.
 Its declared finite work/wall caps and any derived BOTH-goal fixtures are experimental
 protocol choices, not product defaults or a universal F/FJ equivalence. An untriggered
 or negative comparison must be reported as such before considering a default change.
+
+
+## Cancelled-candidate warm restart (2026-10-25, current schema 5)
+
+Every current frozen request explicitly includes `warm_start_seed_index`: `null`
+for unchanged bare-environment startup, or a non-boolean integer referencing an
+existing validated seed. The indicated geometry is the first freshly evaluated
+candidate, counted inside the new independent budget. No saved score, audit,
+solver population, Hessian or RNG state is restored. Version 4 and earlier
+envelopes are rejected, not migrated. Original frozen targets, materials and
+constraints remain exact. See [the continuation contract](film-optimization-continue-contract.md)
+and [algorithm 14ay](algorithms.html#film-cancel-warm-restart-20261025).

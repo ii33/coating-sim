@@ -54,6 +54,7 @@ def derive_case(source, mode):
     # This is a newly authored research input, not a runtime legacy decoder.
     # Archived source bytes remain unchanged and are never passed to load_suite.
     result["objective_progress_policy"] = None
+    result["warm_start_seed_index"] = None
     if mode == "both":
         result["id"] += "_derived_both_v1"
         for objective in result["objectives"]:

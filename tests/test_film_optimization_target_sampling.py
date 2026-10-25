@@ -739,13 +739,16 @@ def test_prepared_grid_button_flow_freezes_and_submits_off_gui_thread(
         observed_threads["angles"] = threading.get_ident()
         return (float(row["angle_min_deg"]), float(row["angle_max_deg"]))
 
-    def mocked_freeze(_service, request):
-        observed_threads["freeze"] = threading.get_ident()
-        return request
+    original_freeze = module.freeze_film_optimization_request
+    original_spec = module.freeze_spec
 
-    def mocked_spec(_service, _kind, parameters):
+    def mocked_freeze(service, request):
+        observed_threads["freeze"] = threading.get_ident()
+        return original_freeze(service, request)
+
+    def mocked_spec(service, kind, parameters):
         observed_threads["spec"] = threading.get_ident()
-        return {"request": parameters["request"], "serialized": "mocked"}
+        return original_spec(service, kind, parameters)
 
     monkeypatch.setattr(module, "_angles_for_row_cancellable", mocked_materializer)
     monkeypatch.setattr(module, "freeze_film_optimization_request", mocked_freeze)
@@ -801,7 +804,7 @@ def test_prepared_grid_button_flow_freezes_and_submits_off_gui_thread(
         assert observed_threads["submit"] != main_thread
         assert submitted
         assert submitted[0][1] == controller.queueJobId
-        assert submitted[0][0]["request"].objectives[0].angles_deg == (0.0, 80.0)
+        assert submitted[0][0]["parameters"]["payload"]["request"]["objectives"][0]["angles_deg"] == [0.0, 80.0]
         assert controller.queueJobId
     finally:
         if isinstance(window, QQuickWindow) and shiboken6.isValid(window):
@@ -880,8 +883,6 @@ def test_local_cancel_during_async_submit_retries_after_exact_job_admission(
 
     monkeypatch.setattr(module, "_angles_for_row_cancellable",
                         lambda *_args, **_kwargs: (0.0, 30.0))
-    monkeypatch.setattr(module, "freeze_film_optimization_request", lambda _service, request: request)
-    monkeypatch.setattr(module, "freeze_spec", lambda _service, _kind, params: params)
     monkeypatch.setattr(module, "_FilmOptimizationTask", WaitingFilmTask)
     monkeypatch.setattr(controller._compute_target, "client_for_submit",
                         lambda **_kwargs: (store, {}))

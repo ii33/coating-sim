@@ -70,6 +70,7 @@ class _SearchDiagnostics(TypedDict):
     hybrid: NotRequired[dict[str, Any]]
     design_archive: NotRequired[dict[str, Any]]
     template_randomization: NotRequired[dict[str, Any]]
+    warm_start: NotRequired[dict[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -132,6 +133,9 @@ class FilmSynthesisRequest:
     randomize_template_search: bool = False
     enable_thickness_reduction: bool = True
     objective_progress_policy: HybridProgressPolicy | None = None
+    # Explicit current-protocol candidate warm restart. The referenced seed is
+    # freshly evaluated first; no saved score, audit or solver state is reused.
+    warm_start_seed_index: int | None = None
 
 
 @dataclass(frozen=True)
@@ -380,6 +384,10 @@ def _validated(request):
         _number(fraction, "growth quarter-wave fraction")
     if not isinstance(request.seed_designs, (tuple, list)):
         raise ValueError("seed_designs must be a sequence of real design documents")
+    if request.warm_start_seed_index is not None and (
+            type(request.warm_start_seed_index) is not int
+            or not 0 <= request.warm_start_seed_index < len(request.seed_designs)):
+        raise ValueError("warm_start_seed_index must reference an existing seed or be null")
     seeds = []
     physical_keys = ("substrate", "incident_medium", "exit_medium", "first_surface",
                      "layer_order", "reference_wavelength_nm", "use_k", "assume_lossless")
@@ -2319,9 +2327,19 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             if request.forward_backend != "cpu":
                 from .film_synthesis_forward import SynthesisForward
                 forward = SynthesisForward(request, _proxy(request), cancel_event)
-            working = evaluate(request.environment, gpu_forward=forward is not None)
+            initial_design = request.environment
+            if request.warm_start_seed_index is not None:
+                initial_design = request.seed_designs[request.warm_start_seed_index]
+                from .film_synthesis_archive import physical_design_hash
+                search_diagnostics["warm_start"] = dict(
+                    mode="warm_restart", seed_index=request.warm_start_seed_index,
+                    physical_hash=physical_design_hash(initial_design),
+                    solver_state_preserved=False, saved_score_reused=False,
+                    policy="first candidate freshly scored inside the new job budget; search restarts")
+                emit("warm_restart", "从保留候选重新启动求解器；首个完整评分计入本次新预算")
+            working = evaluate(initial_design, gpu_forward=forward is not None)
             archive(working)
-            assert best is not None  # The scored bare substrate is always feasible.
+            assert best is not None  # The frozen bare or explicit warm seed is feasible.
             if request.search_strategy == "hybrid":
                 run_hybrid(working)
                 raise _Stopped("training_targets_met" if targets_verified() else "search_exhausted")

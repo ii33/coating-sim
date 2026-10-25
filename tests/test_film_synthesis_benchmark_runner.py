@@ -28,7 +28,7 @@ def small_suite(tmp_path, **changes):
     case.pop("strict_upper_bound_objective_indices", None)
     case.pop("qualification", None)
     case.update(id="tiny_production_contract", category="current nested contract test",
-                enable_thickness_reduction=True, objective_progress_policy=None,
+                enable_thickness_reduction=True, objective_progress_policy=None, warm_start_seed_index=None,
                 max_evaluations=2, wall_seconds=3, objectives=[current_objective()])
     case.update(changes)
     suite["suite_id"] = "current-nested-contract-test"
@@ -105,7 +105,7 @@ def single_condition(lower, upper, actual):
     from coat_sim.core.film_objective_payload import objective_from_payload
     objective = current_objective(600., 600., 1, lower=lower, upper=upper,
                                   strict_lower=lower is not None)
-    request = {"enable_thickness_reduction": True, "objective_progress_policy": None, "objectives": [objective], "acceptable_normalized_error": 0.,
+    request = {"enable_thickness_reduction": True, "objective_progress_policy": None, "warm_start_seed_index": None, "objectives": [objective], "acceptable_normalized_error": 0.,
                "validation_samples_multiplier": 1}
     reduced = reduce_objective_responses((objective_from_payload(objective),), [{
         "objective_index": 0, "angle_deg": 0., "wavelength_nm": [600.], "actual_values": [actual]}])

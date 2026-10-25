@@ -109,6 +109,8 @@ def load_suite(path: Path, repo_root: Path = ROOT):
     from tools.run_film_synthesis_cloud import _assert_current_request_shape
     for case in cases:
         _assert_current_request_shape(case)
+        if case["warm_start_seed_index"] is not None:
+            raise ValueError("benchmark cases require explicit null warm_start_seed_index; use a frozen seed request for continuation")
     catalog_path = _inside_repo(repo_root, suite["material_catalog"])
     catalog_bytes = catalog_path.read_bytes()
     catalog_hash = hashlib.sha256(catalog_bytes).hexdigest()
@@ -141,6 +143,8 @@ def build_case_request(case, defaults, rows, seed, workers):
     environment["substrate"]["mode"] = "semi_infinite"
     from tools.run_film_synthesis_cloud import _assert_current_request_shape
     _assert_current_request_shape(case)
+    if case["warm_start_seed_index"] is not None:
+        raise ValueError("benchmark cases require explicit null warm_start_seed_index; use a frozen seed request for continuation")
     objectives = tuple(objective_from_payload(item) for item in case["objectives"])
     base = FilmOptimizationRequest(environment, 0, (), objectives,
         acceptable_normalized_error=defaults.get("acceptable_normalized_error", 0),

@@ -156,10 +156,261 @@ AppWindow {
         Qt.callLater(function() { window.controller.startOptimization() })
     }
 
+    function continueFromButton() {
+        // Flush a focused draft first. The controller rechecks the captured source;
+        // this must never rebuild the old request from the current editors.
+        commitActiveEditor()
+        Qt.callLater(function() {
+            if (window.controller.canContinueOptimization)
+                continuationBudgetDialog.open()
+        })
+    }
+
     function selectObjectiveFromPointer(index) {
         const selectedIndex = Number(index)
         commitActiveEditor()
         window.controller.selectObjective(selectedIndex)
+    }
+
+    ThemeControls.ThemeDialogBase {
+        id: continuationBudgetDialog
+        objectName: "filmOptimizationContinueBudgetDialog"
+        property string sourceMode: ""
+        property string submissionError: ""
+        readonly property bool synthesisMode: sourceMode === "synthesis"
+        readonly property string budgetError: validateBudget()
+        readonly property bool canSubmit: window.controller.canContinueOptimization
+                                          && budgetError.length === 0
+        title: "从保留结果开始新尝试"
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(620, window.width - window.themeTokens.spaceLg * 2)
+        height: Math.min(650, window.height - window.themeTokens.spaceLg * 2)
+        closePolicy: Popup.CloseOnEscape
+
+        function defaultText(value) {
+            return value === null || value === undefined ? "" : String(value)
+        }
+        function validPositiveInteger(text) {
+            const value = Number(text)
+            return /^[1-9][0-9]*$/.test(text) && Number.isSafeInteger(value) && value > 0
+        }
+        function validateBudget() {
+            if (!synthesisMode) {
+                if (!validPositiveInteger(continuationIterations.text)
+                        || !validPositiveInteger(continuationEvaluations.text))
+                    return "新尝试的最大迭代数与最大评估数均须为正整数。"
+                return ""
+            }
+            if ((continuationCycles.text.length > 0
+                    && !validPositiveInteger(continuationCycles.text))
+                    || (continuationEvaluations.text.length > 0
+                        && !validPositiveInteger(continuationEvaluations.text)))
+                return "最大轮次与最大评估数须为正整数，或留空不设此限额。"
+            if (continuationSeconds.text.length > 0
+                    && (!isFinite(Number(continuationSeconds.text))
+                        || Number(continuationSeconds.text) <= 0
+                        || !/^([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$/.test(continuationSeconds.text)))
+                return "最长计算时间须为大于 0 的秒数，或留空不设此限额。"
+            if (continuationCycles.text.length === 0
+                    && continuationEvaluations.text.length === 0
+                    && continuationSeconds.text.length === 0)
+                return "请为新尝试至少明确设置一项预算限制。"
+            return ""
+        }
+        function newBudget() {
+            if (synthesisMode) {
+                return {
+                    max_cycles: continuationCycles.text.length > 0
+                                ? Number(continuationCycles.text) : null,
+                    max_evaluations: continuationEvaluations.text.length > 0
+                                     ? Number(continuationEvaluations.text) : null,
+                    max_seconds: continuationSeconds.text.length > 0
+                                 ? Number(continuationSeconds.text) : null
+                }
+            }
+            return {
+                max_iterations: Number(continuationIterations.text),
+                max_evaluations: Number(continuationEvaluations.text)
+            }
+        }
+        function submitNewAttempt() {
+            if (!canSubmit) return
+            submissionError = ""
+            if (window.controller.continueOptimization(newBudget()))
+                accept()
+            else
+                submissionError = window.controller.error.length > 0
+                    ? window.controller.error : "未能开始新尝试，请检查继续条件与新预算。"
+        }
+        onAboutToShow: {
+            // These values belong to the retained frozen request, not to the
+            // editable algorithm controls. Refresh them on every opening.
+            const defaults = window.controller.continuationBudgetDefaults
+            sourceMode = String(defaults.mode ?? "")
+            continuationIterations.text = defaultText(defaults.max_iterations)
+            continuationCycles.text = defaultText(defaults.max_cycles)
+            continuationEvaluations.text = defaultText(defaults.max_evaluations)
+            continuationSeconds.text = defaultText(defaults.max_seconds)
+            submissionError = ""
+        }
+        onOpened: {
+            if (synthesisMode) continuationCycles.forceActiveFocus()
+            else continuationIterations.forceActiveFocus()
+        }
+        onClosed: {
+            if (optimizationContinueButton.enabled && optimizationContinueButton.visible)
+                optimizationContinueButton.forceActiveFocus()
+        }
+        contentItem: ScrollView {
+            id: continuationBudgetScroll
+            clip: true
+            contentWidth: availableWidth
+            Accessible.role: Accessible.Dialog
+            Accessible.name: continuationBudgetDialog.title
+            ColumnLayout {
+                width: continuationBudgetScroll.availableWidth
+                spacing: window.themeTokens.spaceMd
+                Label {
+                    objectName: "filmOptimizationContinueExplanation"
+                    Layout.fillWidth: true
+                    text: "以保留候选为热启动，创建独立的新尝试并重新启动求解器。保留原冻结目标、材料和选项，不使用当前编辑设置；不保留求解器内部状态或完整随机数状态，不是精确续算。"
+                    color: window.themeTokens.colorText
+                    wrapMode: Text.WordWrap
+                }
+                Label {
+                    objectName: "filmOptimizationContinuePreviousSpent"
+                    Layout.fillWidth: true
+                    text: window.controller.previousSpentText
+                    visible: text.length > 0
+                    color: window.themeTokens.colorTextMuted
+                    wrapMode: Text.WordWrap
+                }
+                Label {
+                    Layout.fillWidth: true
+                    text: "以下限额仅用于这一次新尝试，独立计量，不是累计预算，也不扣除原尝试已耗额度。已预填原限制，请明确确认或修改。"
+                    color: window.themeTokens.colorText
+                    wrapMode: Text.WordWrap
+                }
+                Label {
+                    Layout.fillWidth: true
+                    visible: continuationBudgetDialog.synthesisMode
+                    text: "自动合成至少填写一项限制；留空表示新尝试不设该项限额。"
+                    color: window.themeTokens.colorTextMuted
+                    wrapMode: Text.WordWrap
+                }
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: 2
+                    columnSpacing: window.themeTokens.spaceMd
+                    rowSpacing: window.themeTokens.spaceSm
+                    Label {
+                        visible: !continuationBudgetDialog.synthesisMode
+                        text: "新最大迭代数"
+                        color: window.themeTokens.colorText
+                    }
+                    ThemeControls.ThemeField {
+                        id: continuationIterations
+                        objectName: "filmOptimizationContinueMaxIterationsField"
+                        visible: !continuationBudgetDialog.synthesisMode
+                        Layout.fillWidth: true
+                        accessibleLabel: "新尝试最大迭代数"
+                        inputMethodHints: Qt.ImhDigitsOnly
+                        validator: RegularExpressionValidator { regularExpression: /^[1-9][0-9]*$/ }
+                    }
+                    Label {
+                        visible: continuationBudgetDialog.synthesisMode
+                        text: "新最大轮次"
+                        color: window.themeTokens.colorText
+                    }
+                    ThemeControls.ThemeField {
+                        id: continuationCycles
+                        objectName: "filmOptimizationContinueMaxCyclesField"
+                        visible: continuationBudgetDialog.synthesisMode
+                        Layout.fillWidth: true
+                        accessibleLabel: "新尝试最大轮次，留空不设此限额"
+                        placeholderText: "不设此限额"
+                        inputMethodHints: Qt.ImhDigitsOnly
+                        validator: RegularExpressionValidator { regularExpression: /^([1-9][0-9]*)?$/ }
+                    }
+                    Label { text: "新最大评估数"; color: window.themeTokens.colorText }
+                    ThemeControls.ThemeField {
+                        id: continuationEvaluations
+                        objectName: "filmOptimizationContinueMaxEvaluationsField"
+                        Layout.fillWidth: true
+                        accessibleLabel: continuationBudgetDialog.synthesisMode
+                                         ? "新尝试最大评估数，留空不设此限额" : "新尝试最大评估数"
+                        placeholderText: continuationBudgetDialog.synthesisMode ? "不设此限额" : "正整数"
+                        inputMethodHints: Qt.ImhDigitsOnly
+                        validator: RegularExpressionValidator { regularExpression: /^([1-9][0-9]*)?$/ }
+                    }
+                    Label {
+                        visible: continuationBudgetDialog.synthesisMode
+                        text: "新最长时间（秒）"
+                        color: window.themeTokens.colorText
+                    }
+                    ThemeControls.ThemeField {
+                        id: continuationSeconds
+                        objectName: "filmOptimizationContinueMaxSecondsField"
+                        visible: continuationBudgetDialog.synthesisMode
+                        Layout.fillWidth: true
+                        accessibleLabel: "新尝试最长计算时间，单位秒，留空不设此限额"
+                        placeholderText: "不设此限额"
+                        inputMethodHints: Qt.ImhFormattedNumbersOnly
+                        validator: RegularExpressionValidator {
+                            regularExpression: /^(([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?)?$/
+                        }
+                    }
+                }
+                Label {
+                    objectName: "filmOptimizationContinueBudgetError"
+                    Layout.fillWidth: true
+                    text: continuationBudgetDialog.budgetError
+                    visible: text.length > 0
+                    color: window.themeTokens.colorError
+                    wrapMode: Text.WordWrap
+                }
+                Label {
+                    objectName: "filmOptimizationContinueDialogDisabledReason"
+                    Layout.fillWidth: true
+                    text: window.controller.continueDisabledReason
+                    visible: !window.controller.canContinueOptimization && text.length > 0
+                    color: window.themeTokens.colorError
+                    wrapMode: Text.WordWrap
+                }
+                Label {
+                    objectName: "filmOptimizationContinueDialogFallback"
+                    Layout.fillWidth: true
+                    text: window.controller.priorRunFallbackText
+                    visible: text.length > 0
+                    color: window.themeTokens.colorTextMuted
+                    wrapMode: Text.WordWrap
+                }
+                Label {
+                    objectName: "filmOptimizationContinueSubmissionError"
+                    Layout.fillWidth: true
+                    text: continuationBudgetDialog.submissionError
+                    visible: text.length > 0
+                    color: window.themeTokens.colorError
+                    wrapMode: Text.WordWrap
+                }
+            }
+        }
+        footer: DialogButtonBox {
+            ThemeControls.ThemeButton {
+                objectName: "filmOptimizationContinueBudgetCancelButton"
+                text: "取消"
+                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+            }
+            ThemeControls.ThemeButton {
+                objectName: "filmOptimizationContinueBudgetSubmitButton"
+                text: "开始新尝试"
+                primary: true
+                enabled: continuationBudgetDialog.canSubmit
+                DialogButtonBox.buttonRole: DialogButtonBox.ActionRole
+                onClicked: continuationBudgetDialog.submitNewAttempt()
+            }
+        }
     }
 
     ThemeControls.ThemeDialogBase {
@@ -443,6 +694,13 @@ AppWindow {
                     onClicked: window.startFromButton()
                 }
                 ThemeControls.ThemeButton {
+                    id: optimizationContinueButton
+                    objectName: "filmOptimizationContinueButton"
+                    text: "从保留结果继续（重新启动求解器）"
+                    enabled: window.controller.canContinueOptimization
+                    onClicked: window.continueFromButton()
+                }
+                ThemeControls.ThemeButton {
                     objectName: "filmSensitivityOpenButton"
                     text: "敏感性…"
                     enabled: !window.controller.busy
@@ -495,6 +753,25 @@ AppWindow {
                     }
                 }
             }
+        }
+
+        Label {
+            objectName: "filmOptimizationContinueDisabledReason"
+            Layout.fillWidth: true
+            text: window.controller.continueDisabledReason
+            visible: !window.controller.canContinueOptimization && text.length > 0
+            color: window.themeTokens.colorTextMuted
+            wrapMode: Text.WordWrap
+            font.pointSize: window.themeTokens.fontSizeSmall
+        }
+        Label {
+            objectName: "filmOptimizationContinuePriorRunFallback"
+            Layout.fillWidth: true
+            text: window.controller.priorRunFallbackText
+            visible: text.length > 0
+            color: window.themeTokens.colorTextMuted
+            wrapMode: Text.WordWrap
+            font.pointSize: window.themeTokens.fontSizeSmall
         }
 
         RowLayout {

@@ -74,20 +74,21 @@ class CurrentRepresentativeSuiteTests(unittest.TestCase):
 
     def test_archived_schema_three_registration_is_rejected_without_modifying_inputs(self):
         before = CURRENT.read_bytes()
-        with self.assertRaisesRegex(ValueError, "current schema 4"):
+        with self.assertRaisesRegex(ValueError, "current schema 5"):
             runner.load_suite(CURRENT)
         self.assertEqual(CURRENT.read_bytes(), before)
 
     def test_new_explicit_policy_null_registration_freezes_all_case_seed_pairs(self):
-        # A newly authored v4 test registration, not a runtime compatibility reader.
+        # A newly authored v5 test registration, not a runtime compatibility reader.
         registered = deepcopy(self.current)
-        registered["suite_id"] = "progress-policy-null-v4-contract-test"
+        registered["suite_id"] = "progress-policy-null-v5-contract-test"
         registered["provenance"] = {"source_sha256": hashlib.sha256(CURRENT.read_bytes()).hexdigest(),
                                     "change": "Explicit null objective-progress policy; other inputs unchanged"}
         for case in registered["cases"]:
             case["objective_progress_policy"] = None
+            case["warm_start_seed_index"] = None
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "explicit-v4-registration.json"
+            path = Path(directory) / "explicit-v5-registration.json"
             path.write_text(json.dumps(registered), encoding="utf-8")
             compiled = runner.compile_preflight(path, workers=1)
         self.assertEqual(len(compiled["runs"]), 48)

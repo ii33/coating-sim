@@ -74,7 +74,7 @@ def _legacy_row(root=None):
 def _bind_row(root, row):
     from coat_sim.core.film_synthesis_jobs import build_job_payload
     from coat_sim.scheduler.jobs import JobSpec, canonical
-    request_payload = {"schema_version": 4, "kind": "coat_sim.film_synthesis_request",
+    request_payload = {"schema_version": 5, "kind": "coat_sim.film_synthesis_request",
         "request_id": row["result"]["request_id"],
         "request": row["result"]["result"]["frozen_request"], "physical_structures": []}
     spec = JobSpec("film_synthesis", {"payload": build_job_payload({
@@ -406,7 +406,7 @@ def test_actual_queue_qml_execution_success_is_not_nominal_success(app, tmp_path
 
     if case == "legacy":
         row = _legacy_row()
-        request_payload = {"schema_version": 4, "kind": "coat_sim.film_synthesis_request",
+        request_payload = {"schema_version": 5, "kind": "coat_sim.film_synthesis_request",
             "request_id": row["result"]["request_id"],
             "request": row["result"]["result"]["frozen_request"], "physical_structures": []}
     else:

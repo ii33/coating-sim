@@ -244,7 +244,7 @@ def test_daemon_current_cancel_preserves_exact_completed_training_candidate(monk
     scheduler.runtime = tmp_path / "runtime"
     directory = scheduler.runtime / "jobs" / "current"
     directory.mkdir(parents=True)
-    request_payload = {"schema_version": 4, "kind": "coat_sim.film_synthesis_request",
+    request_payload = {"schema_version": 5, "kind": "coat_sim.film_synthesis_request",
         "request_id": payload["request_id"], "request": payload["result"]["frozen_request"], "physical_structures": []}
     parameters = jobs.canonical_parameters(None, {"payload": request_payload})
     spec = freeze_spec(CoatService(tmp_path), "film_synthesis", parameters)
@@ -279,7 +279,7 @@ def test_cancel_reply_must_match_current_persisted_job_not_only_itself(monkeypat
         environment = asdict(request)
     elif mutation == "objective":
         environment["objectives"][0]["pointwise"]["upper_bound"] = .02
-    request_payload = {"schema_version": 4, "kind": "coat_sim.film_synthesis_request",
+    request_payload = {"schema_version": 5, "kind": "coat_sim.film_synthesis_request",
         "request_id": "another-valid-task" if mutation == "request_id" else actual["request_id"],
         "request": environment, "physical_structures": []}
     parameters = jobs.canonical_parameters(None, {"payload": request_payload})

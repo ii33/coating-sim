@@ -88,7 +88,7 @@ def test_json_nested_strict_roundtrip_and_old_payload_rejection():
     service,request,_=boundary_problem()
     frozen=freeze_film_synthesis_request(service,_with_strict(request,lower=(0,)))
     payload=json.loads(json.dumps(film_synthesis_request_to_payload('strict-bound-roundtrip',frozen)))
-    assert payload['schema_version']==4
+    assert payload['schema_version']==5
     assert payload['request']['objectives'][0]['pointwise']['strict_lower'] is True
     assert 'strict_lower_bound_objective_indices' not in payload['request']
     _,decoded,_=film_synthesis_request_from_payload(payload)

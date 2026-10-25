@@ -489,6 +489,18 @@ class ProjectFilmService:
                 return identity
         raise ProjectError("unmanaged_path", "Use a managed film handle; import/create external designs explicitly")
 
+    def managed_film_identity(self, path: Path | str) -> dict[str, str]:
+        """Resolve a saved film's stable membership and persisted revision.
+
+        Handles are opaque outside this service. This read does not load into
+        an editor or change the legacy loaded-revision cache.
+        """
+        with self._operation():
+            document = self._film_document(self._handle_id(path))
+            return {"project_id": document.project_id,
+                    "document_id": document.document_id,
+                    "revision": document.revision}
+
     def load(self, path: Path | str) -> dict[str, Any]:
         with self._operation():
             document = self.load_document(self._handle_id(path))

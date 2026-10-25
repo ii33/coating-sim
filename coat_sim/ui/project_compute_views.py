@@ -6,6 +6,7 @@ This factory never selects an active project or constructs a global service.
 from __future__ import annotations
 
 from pathlib import Path
+from inspect import signature
 from typing import Any
 
 from PySide6.QtCore import QUrl
@@ -39,13 +40,28 @@ def _wire_project_queue_results(queue, workspace: ProjectFilmWorkspace, navigati
             return None
         return controller
 
+    def history_source(row):
+        # Missing/legacy provenance never prevents read-only historical viewing.
+        from .film_optimization_continue_source import verified_history_source
+        try:
+            return verified_history_source(getattr(queue.store, "root", None), row, row.get("result"))
+        except (ValueError, KeyError, TypeError, OSError, AttributeError):
+            return None
+
+    def inspect_with_source(method, job_id, payload, row):
+        kwargs = {"origin": row["origin"]}
+        # Older/read-only view adapters keep their existing method contract.
+        if "source_context" in signature(method).parameters:
+            kwargs["source_context"] = history_source(row)
+        return method(job_id, payload, **kwargs)
+
     def film_result(job_id, payload):
         try:
             row = queue._require_owned_job(job_id)
             if not isinstance(row, dict) or payload != row.get("result"):
                 raise ValueError("Film result differs from its project queue record")
             controller = target("film_optimization")
-            if not controller.inspectQueueResult(job_id, payload, origin=row["origin"]):
+            if not inspect_with_source(controller.inspectQueueResult, job_id, payload, row):
                 raise ValueError(controller.errorText)
             queue._result_status("已打开本项目历史候选；没有自动应用到当前设计。")
         except Exception as exc:
@@ -71,7 +87,7 @@ def _wire_project_queue_results(queue, workspace: ProjectFilmWorkspace, navigati
                 raise ValueError("Synthesis result differs from its verified typed project queue record")
             controller = target("film_optimization")
             inspect = getattr(controller, "inspectSynthesisQueueResult", None)
-            if not callable(inspect) or not inspect(job_id, payload, origin=row["origin"]):
+            if not callable(inspect) or not inspect_with_source(inspect, job_id, payload, row):
                 raise ValueError(getattr(controller, "errorText", "Synthesis result could not be opened"))
             queue._result_status("Opened this project's historical synthesis candidate in read-only mode.")
         except Exception as exc:

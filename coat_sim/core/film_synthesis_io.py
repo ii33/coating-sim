@@ -21,7 +21,7 @@ from .film_synthesis_progress import progress_policy_from_payload
 
 REQUEST_KIND = "coat_sim.film_synthesis_request"
 RESULT_KIND = "coat_sim.film_synthesis_result"
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 class FilmSynthesisPayloadError(ValueError):
@@ -45,7 +45,7 @@ def film_synthesis_request_from_payload(payload: Mapping[str, Any], *, require_f
     if type(payload["schema_version"]) is not int or payload["schema_version"] != SCHEMA_VERSION:
         raise FilmSynthesisPayloadError(
             f"unsupported synthesis request schema_version; current schema {SCHEMA_VERSION} is required; "
-            "recreate the request with an explicit objective_progress_policy object or null (no migration)")
+            "recreate the request with an explicit warm_start_seed_index integer or null (no migration)")
     if payload["kind"] != REQUEST_KIND:
         raise FilmSynthesisPayloadError("invalid synthesis request kind")
     request_id = payload["request_id"]

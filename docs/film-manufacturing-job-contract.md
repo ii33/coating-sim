@@ -1,13 +1,13 @@
 # 当前膜系制造修复的本地队列契约
 
-更新：2026-10-25。实现接口为 `coat_sim/core/film_manufacturing_jobs.py`，几何与数值算子仍为 `film_synthesis_manufacturing.py`。本文只描述显式 GUI/本地 CPU 作业，不修改合成 v4 协议，不接入自动 hybrid，不默认运行或应用结果。
+更新：2026-10-25。实现接口为 `coat_sim/core/film_manufacturing_jobs.py`，几何与数值算子仍为 `film_synthesis_manufacturing.py`。本文只描述显式 GUI/本地 CPU 作业，不修改合成 v5 协议，不接入自动 hybrid，不默认运行或应用结果。
 
 ## 输入、冻结与唯一状态所有者
 
 - 本地 executor 为 `film_manufacturing_repair`。现有 remote allowlist 不含该 executor，远程/GPU/并行 CPU 请求明确拒绝，不静默降级。
 - `make_request_payload(service, synthesis, source_design, *, defect_layer_ids, reference_nm, refinement_evaluations_per_route, max_iterations_per_route, seconds_per_route, request_id="manufacturing-repair")` 在后台线程捕获源为真实 seed，通过既有 synthesis freeze 捕获材料、检查原波段 n/k 来源，并按既有参考波长实部 n 将 QW 转为物理 nm。源行 ID、材料引用和顺序保留；数值过程不会执行自动合成。
 - 最终源指纹绑定转换后的物理 nm 源及冻结材料，不绑定编辑器原 QW 表示。GUI 还必须保留编辑器原始源/修订/材料闭包，应用前核对，没有该双重栅栏时应明确拒绝 QW 输入。
-- request 为 schema 1、kind `coat_sim.film_manufacturing_request`，字段精确为 schema_version、kind、synthesis（完整既有 v4 synthesis request envelope）、source_design、source_fingerprint、defect_layer_ids、reference_nm、refinement_evaluations_per_route、max_iterations_per_route、seconds_per_route。引用厚度、选中 ID 及三类路线配额均显式输入；无 25 nm/57 层等隐藏缺省。
+- request 为 schema 1、kind `coat_sim.film_manufacturing_request`，字段精确为 schema_version、kind、synthesis（完整既有 v5 synthesis request envelope）、source_design、source_fingerprint、defect_layer_ids、reference_nm、refinement_evaluations_per_route、max_iterations_per_route、seconds_per_route。引用厚度、选中 ID 及三类路线配额均显式输入；无 25 nm/57 层等隐藏缺省。
 - `canonical_parameters(service,{"payload":request})` 仅接收完整冻结 payload；`build_job_payload(service,request)` 返回 schema 1、kind `coat_sim.film_manufacturing_job`、request。队列创建和 worker 复验不重读实时材料或解析另一搜索熵。
 - `request_from_payload(request)` 与 `deserialize_job_payload(job)` 返回 `(ManufacturingRepairRequest, normalized_source_design)`。request/source 为后台验证后的只读上下文，不能从 UI 最新草稿重建作业输入。
 - scheduler 独占 pending/running/terminal/cancel-request 状态；算子独占路线 trial/current/champion。GUI 只观察、取消及显式选择待应用方案，无 autoapply。

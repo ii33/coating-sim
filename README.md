@@ -133,6 +133,8 @@ python tools/run_tests.py all
 
 [从零合成CPU候选并行契约](docs/film-synthesis-parallel-contract.md)；离线算法图解见14w。
 
+取消后的完整候选可显式“从保留结果继续（重新启动求解器）”，沿用原冻结目标/材料并设置新的独立预算；不是求解器状态恢复。来源已修改或旧历史缺少可信绑定时禁用。见[继续优化契约](docs/film-optimization-continue-contract.md)和[算法 14ay](docs/algorithms.html#film-cancel-warm-restart-20261025)。
+
 [取消时应用当前最好候选验收报告](docs/film-optimization-cancel-apply-report-20261020.md)；[取消时应用当前最好候选契约](docs/film-optimization-cancel-apply-contract.md)；离线算法图解见 [14x](docs/algorithms.html#film-cancel-best-20261020)。
 
 [膜系优化输入草稿契约](docs/film-optimization-input-draft-contract.md)。

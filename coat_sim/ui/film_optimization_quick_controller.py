@@ -1082,11 +1082,19 @@ class FilmOptimizationQuickController(QObject):
         self._result_application_eligible = False
         self._frozen_request: FilmOptimizationRequest | None = None
         self._queue_job_id = ""
+        self._continuation_record: dict[str, Any] | None = None
+        self._continuation_unavailable_reason = "尚无已取消的完整评分候选。"
+        self._prior_run_fallback: dict[str, Any] | None = None
+        self._attempt_full_request = None
+        self._attempt_source_binding: dict[str, Any] | None = None
+        self._attempt_spec_fingerprint = ""
+        self._attempt_editable_snapshot: dict[str, Any] | None = None
         self._attempt_operation_id: int | None = None
         self._attempt_job_id = ""
         self._attempt_session = None
         self._attempt_source_controller = None
         self._attempt_source_revision: int | None = None
+        self._attempt_source_path: str | None = None
         self._attempt_edit_epoch: int | None = None
         self._attempt_project_operation: OperationBinding | None = None
         self._attempt_origin: dict[str, Any] = {}
@@ -4659,6 +4667,258 @@ class FilmOptimizationQuickController(QObject):
             self.changed.emit()
             return False
 
+    def _continuation_materials_current(self, record: dict) -> bool:
+        frozen = record["editable_snapshot"] or record["request"].frozen_material_snapshot
+        materials = getattr(self.service, "materials", None)
+        if materials is None:
+            return False
+        if not record["history"] and materials is not record["materials_owner"]:
+            return False
+        try:
+            for material in (frozen or {}).get("materials", []):
+                current = materials.get(material["id"])
+                actual = {row["id"]: row for row in current["optical_sets"]}
+                if any(current.get(key) != value for key, value in material.items()
+                       if key != "optical_sets"):
+                    return False
+                for expected in material["optical_sets"]:
+                    if expected != actual.get(expected["id"]):
+                        return False
+        except (ValueError, KeyError, TypeError, AttributeError):
+            return False
+        return True
+
+    def _continuation_source_reason(self, record: dict | None, *, admission=False) -> str:
+        if record is None:
+            return self._continuation_unavailable_reason
+        if self._result_terminal_state == "提交状态未知":
+            return "请先核对上次作业的未知提交状态，不能重复提交。"
+        if (not admission and self.busy) or self._shutting_down:
+            return "请先等待当前任务结束。"
+        if self._source_closed or self._observers_detached or self._pending_close:
+            return "来源设计窗口已关闭或正在关闭。"
+        if self._pending_reuse_source is not None:
+            return "正在切换来源设计，请先完成切换。"
+        session = self.session
+        if (session is None or record["session"] is not session
+                or record["source_controller"] is not self._source_controller
+                or getattr(self._source_controller, "session", None) is not self.session):
+            return "来源设计会话已替换，不能继续旧候选。"
+        if not self._project_current():
+            return "来源项目已关闭或重新打开。"
+        operation = record["project_operation"]
+        if operation is not None and (self._project_compute is None
+                or not self._project_compute.accepts(operation)):
+            return "来源项目代次已改变。"
+        try:
+            from coat_sim.ui.film_optimization_continue_source import canonical_design_hash
+            snapshot = session.snapshot()
+            if (record.get("source_path") is not None
+                    and str(snapshot.path or "") != record["source_path"]):
+                return "来源设计资源已切换或另存，不能继续旧候选。"
+            if snapshot.pending_confirmation or snapshot.expression_busy:
+                return "来源设计有待确认操作或尚未完成的编辑。"
+            epoch = self._source_edit_epoch()
+            if epoch is None:
+                return "无法核对来源未提交编辑状态。"
+            if record["history"] and snapshot.dirty:
+                return "历史继续要求已保存且无待提交编辑的来源设计。"
+            if (snapshot.design_revision != record["allowed_revision"]
+                    or epoch != record["allowed_epoch"]):
+                return "来源设计、撤销状态或未提交编辑已改变。"
+            if canonical_design_hash(snapshot.design) not in record["allowed_design_hashes"]:
+                return "当前设计不再等于原来源或该次取消候选。"
+            binding = record["source_binding"]
+            identity = binding.get("managed_film") if isinstance(binding, dict) else None
+            if identity is not None:
+                resolver = getattr(self.service, "managed_film_identity", None)
+                if not callable(resolver) or resolver(snapshot.path) != identity:
+                    return "来源膜系资源或已保存版本已改变。"
+            elif record["history"]:
+                return "历史作业没有持久膜系身份，只可查看。"
+        except (ValueError, KeyError, TypeError, OSError, AttributeError):
+            return "无法核对来源膜系资源或已保存版本。"
+        if not self._continuation_materials_current(record):
+            return "原冻结材料闭包已改变，不能继续旧候选。"
+        if record["mode"] == "synthesis" and record["editable_snapshot"] is None:
+            return "历史合成缺少提交时的完整可编辑材料闭包，只可查看。"
+        return ""
+
+    @Property(bool, notify=changed)
+    def canContinueOptimization(self) -> bool:
+        return not self._continuation_source_reason(self._continuation_record)
+
+    @Property(str, notify=changed)
+    def continueDisabledReason(self) -> str:
+        return self._continuation_source_reason(self._continuation_record)
+
+    @Property(cast(type, "QVariantMap"), notify=changed)
+    def continuationBudgetDefaults(self) -> dict:
+        record = self._continuation_record
+        if record is None:
+            return {}
+        request = record["request"]
+        return {"mode": record["mode"],
+                "max_iterations": getattr(request, "max_iterations", None),
+                "max_cycles": getattr(request, "max_cycles", None),
+                "max_evaluations": request.max_evaluations,
+                "max_seconds": getattr(request, "max_seconds", None)}
+
+    @Property(str, notify=changed)
+    def previousSpentText(self) -> str:
+        record = self._continuation_record
+        if record is None:
+            return ""
+        result = record["result"]
+        if record["mode"] == "synthesis":
+            raw = record["synthesis_payload"]["result"]
+            return (f"上次作业 {record['job_id']} 已耗：周期 {raw.get('cycles', '未知')}，"
+                    f"评价 {raw.get('evaluations', '未知')}，时长 {raw.get('elapsed_seconds', '未知')} 秒。")
+        return (f"上次作业 {record['job_id']} 已耗：迭代 {result.iterations}，评价 {result.evaluations}；"
+                "时长未记录。")
+
+    @Property(str, notify=changed)
+    def priorRunFallbackText(self) -> str:
+        record = self._prior_run_fallback
+        if record is None:
+            return ""
+        return (f"前次保留结果（独立旧作业 {record['job_id']}）："
+                f"最大归一化误差 {record['result'].max_normalized_error:.6g}。"
+                "这是前次候选，不是新作业评分；在新作业首次完整评分前单独保留，不会再次自动应用。")
+
+    def _retain_cancelled_restart(self) -> None:
+        if self._attempt_search_mode == "structure":
+            self._continuation_record = None
+            self._continuation_unavailable_reason = "独立结构优化暂不支持从取消候选继续。"
+            return
+        if not self._cancel_candidate_verified():
+            self._continuation_unavailable_reason = "取消时没有可用的完整评分候选。"
+            return
+        request = self._attempt_full_request or self._frozen_request
+        if request is None or self.session is None:
+            self._continuation_unavailable_reason = "只读仿真来源没有可核对的编辑会话。"
+            return
+        try:
+            from coat_sim.ui.film_optimization_continue_source import build_source_binding
+            binding = self._attempt_source_binding
+            if binding is None:
+                binding = build_source_binding(self.service, self.session.snapshot(), request,
+                    editable_snapshot=self._synthesis_editable_snapshot)
+            self._continuation_record = {
+                "mode": self._attempt_search_mode, "request": request, "result": self._result,
+                "synthesis_payload": deepcopy(self._synthesis_payload),
+                "editable_snapshot": deepcopy(self._attempt_editable_snapshot or self._synthesis_editable_snapshot),
+                "source_binding": deepcopy(binding), "job_id": self._attempt_job_id,
+                "spec_fingerprint": self._attempt_spec_fingerprint,
+                "session": self.session, "source_controller": self._source_controller,
+                "materials_owner": self._attempt_materials_owner,
+                "project_operation": self._attempt_project_operation,
+                "allowed_revision": self._attempt_source_revision,
+                "source_path": self._attempt_source_path,
+                "allowed_epoch": self._attempt_edit_epoch,
+                "allowed_design_hashes": {binding["source_design_sha256"]}, "history": False,
+            }
+        except (ValueError, KeyError, TypeError, AttributeError) as exc:
+            self._continuation_record = None
+            self._continuation_unavailable_reason = "不能建立可信继续来源：" + str(exc)
+
+    def _capture_continuation_postapply(self) -> None:
+        record = self._continuation_record
+        if (record is None or record["history"] or self.session is None
+                or record["job_id"] != self._attempt_job_id):
+            return
+        from coat_sim.ui.film_optimization_continue_source import canonical_design_hash
+        actual = self.session.snapshot()
+        # Do not infer +1: applying an identical design intentionally has no edit.
+        record["allowed_revision"] = actual.design_revision
+        record["allowed_epoch"] = self._source_edit_epoch()
+        record["allowed_design_hashes"] = {canonical_design_hash(actual.design)}
+        record["materials_owner"] = getattr(self.service, "materials", None)
+
+    def _bind_history_continuation(self, job_id, request, result, payload, source_context, mode) -> None:
+        self._continuation_record = None
+        self._prior_run_fallback = None
+        self._continuation_unavailable_reason = "历史作业缺少可信来源绑定，只可查看。"
+        session = self.session
+        if session is None:
+            return
+        if mode == "structure":
+            self._continuation_unavailable_reason = "独立结构优化暂不支持从取消候选继续。"
+            return
+        if not isinstance(result, FilmOptimizationResult) or result.state != "cancelled" or result.evaluations < 1:
+            self._continuation_unavailable_reason = "只有保留完整评分候选的已取消作业可以继续。"
+            return
+        try:
+            from coat_sim.ui.film_optimization_continue_source import canonical_design_hash, validate_source_binding
+            if (not isinstance(source_context, dict) or source_context.get("source_job_id") != str(job_id)
+                    or not isinstance(source_context.get("source_spec_fingerprint"), str)):
+                return
+            binding = validate_source_binding(source_context.get("binding"), request)
+            if binding["managed_film"] is None:
+                self._continuation_unavailable_reason = "匿名或未绑定来源的历史作业只可查看。"
+                return
+            editable = None
+            if mode == "synthesis":
+                from coat_sim.core.film_continuation_editable_snapshot import restore_editable_snapshot_delta
+                editable = restore_editable_snapshot_delta(request.frozen_material_snapshot,
+                    binding["synthesis_editable_delta"])
+            snapshot = session.snapshot()
+            self._continuation_record = {
+                "mode": mode, "request": request, "result": result,
+                "synthesis_payload": deepcopy(payload) if mode == "synthesis" else None,
+                "editable_snapshot": editable, "source_binding": binding,
+                "job_id": str(job_id), "spec_fingerprint": source_context["source_spec_fingerprint"],
+                "session": self.session, "source_controller": self._source_controller,
+                "materials_owner": getattr(self.service, "materials", None),
+                "project_operation": self._project_operation,
+                "allowed_revision": snapshot.design_revision, "allowed_epoch": self._source_edit_epoch(),
+                "source_path": str(snapshot.path or ""),
+                "allowed_design_hashes": {binding["source_design_sha256"], canonical_design_hash(result.best_design)},
+                "history": True,
+            }
+        except (ValueError, KeyError, TypeError, AttributeError) as exc:
+            self._continuation_unavailable_reason = "历史继续来源不可用：" + str(exc)
+
+    @Slot("QVariantMap", result=bool)
+    def continueOptimization(self, budget: dict) -> bool:
+        record = self._continuation_record
+        reason = self._continuation_source_reason(record)
+        session = self.session
+        if reason or record is None or session is None:
+            self._error = reason
+            self.changed.emit()
+            return False
+        try:
+            from coat_sim.core.film_optimization_continuation import (
+                build_optimization_warm_restart, build_synthesis_warm_restart)
+            values = dict(budget)
+            revision = session.snapshot().design_revision
+            if record["mode"] == "synthesis":
+                if set(values) != {"max_cycles", "max_evaluations", "max_seconds"}:
+                    raise ValueError("请明确设置新尝试的周期、评价和时长预算（允许留空）。")
+                for key in ("max_cycles", "max_evaluations"):
+                    if values[key] is not None:
+                        values[key] = _integer(values[key], key)
+                if values["max_seconds"] is not None:
+                    values["max_seconds"] = _number(values["max_seconds"], "新时长预算")
+                if all(value is None for value in values.values()):
+                    raise ValueError("新尝试至少需要一项预算限制。")
+                plan = build_synthesis_warm_restart(record["synthesis_payload"],
+                    design_revision=revision, **values)
+            else:
+                if set(values) != {"max_iterations", "max_evaluations"}:
+                    raise ValueError("请明确设置新尝试的迭代和评价预算。")
+                values = {key: _integer(value, key) for key, value in values.items()}
+                plan = build_optimization_warm_restart(record["request"], record["result"],
+                    design_revision=revision, **values)
+            plan.metadata.update(source_job_id=record["job_id"],
+                source_spec_fingerprint=record["spec_fingerprint"])
+            return self._start_optimization(warm_restart=(plan, record))
+        except (ValueError, TypeError, KeyError, OverflowError) as exc:
+            self._error = "未开始继续优化：" + str(exc)
+            self.changed.emit()
+            return False
+
     @Slot(result=bool)
     def startOptimization(self) -> bool:
         return self._start_optimization()
@@ -4715,8 +4975,16 @@ class FilmOptimizationQuickController(QObject):
         self.changed.emit()
         return True
 
-    def _start_optimization(self, *, prepared_start: _PreparedAngleGrid | None = None
+    def _start_optimization(self, *, prepared_start: _PreparedAngleGrid | None = None,
+                            warm_restart: tuple[Any, dict] | None = None
                             ) -> bool:
+        search_mode = warm_restart[1]["mode"] if warm_restart is not None else self._search_mode
+        if warm_restart is not None:
+            reason = self._continuation_source_reason(warm_restart[1])
+            if reason:
+                self._error = reason
+                self.changed.emit()
+                return False
         if self._initial_loading or self._initial_load_failed or self._structure_material_error:
             return False
         if self._result_terminal_state == "提交状态未知" and self._queue_job_id:
@@ -4732,7 +5000,7 @@ class FilmOptimizationQuickController(QObject):
             self._error = "原设计窗口已关闭；不能开始或回写优化。"
             self.changed.emit()
             return False
-        if prepared_start is None:
+        if prepared_start is None and warm_restart is None:
             try:
                 configuration_error = self._active_configuration_error()
                 if configuration_error:
@@ -4741,9 +5009,9 @@ class FilmOptimizationQuickController(QObject):
                     placeholders = tuple((0.0,) for _ in self._objectives)
                     request_template = (
                         self._build_synthesis_request(prepared_angles=placeholders)
-                        if self._search_mode == "synthesis" else
+                        if search_mode == "synthesis" else
                         self._build_structure_request(prepared_angles=placeholders)
-                        if self._search_mode == "structure"
+                        if search_mode == "structure"
                         else self._build_request(prepared_angles=placeholders))
                     return self._start_angle_preparation(request_template)
             except Exception as exc:
@@ -4751,11 +5019,13 @@ class FilmOptimizationQuickController(QObject):
                 self.changed.emit()
                 return False
         try:
-            if prepared_start is not None:
+            if warm_restart is not None:
+                request = warm_restart[0].request
+            elif prepared_start is not None:
                 request = prepared_start.request
-            elif self._search_mode == "synthesis":
+            elif search_mode == "synthesis":
                 request = self._build_synthesis_request()
-            elif self._search_mode == "structure":
+            elif search_mode == "structure":
                 request = self._build_structure_request()
             else:
                 request = self._build_request()
@@ -4767,7 +5037,7 @@ class FilmOptimizationQuickController(QObject):
             store, _device = self._compute_target.client_for_submit(
                 client_factory=SchedulerClient)
             remote = bool(getattr(getattr(store, "transport", None), "remote_http", False))
-            if (remote and self._search_mode == "synthesis"
+            if (remote and search_mode == "synthesis"
                     and getattr(request, "forward_backend", "cpu") != "cpu"):
                 raise _QueueCompatibilityError(
                     "GPU 前向仅支持本机合成；请切回 CPU 前向后再选择远程任务，尚未提交作业。")
@@ -4788,15 +5058,16 @@ class FilmOptimizationQuickController(QObject):
         try:
             # Freeze inputs on the owner thread before background admission.
             # The worker still verifies the running queue before submission.
-            editable_snapshot = prepared_start.editable_snapshot if prepared_start is not None else None
-            if prepared_start is None:
-                if self._search_mode == "synthesis":
+            editable_snapshot = (deepcopy(warm_restart[1]["editable_snapshot"]) if warm_restart is not None else
+                prepared_start.editable_snapshot if prepared_start is not None else None)
+            if prepared_start is None and warm_restart is None:
+                if search_mode == "synthesis":
                     from coat_sim.core.film_auto_synthesis import freeze_film_synthesis_request
                     request = freeze_film_synthesis_request(self.service, request)
                     from coat_sim.core.film_physical_generator import freeze_synthesis_editable_snapshot
                     editable_snapshot = freeze_synthesis_editable_snapshot(
                         self.service, request.environment, request.frozen_material_snapshot)
-                elif self._search_mode == "structure":
+                elif search_mode == "structure":
                     from coat_sim.core.film_optimization_structure import (
                         freeze_film_structure_optimization_request,
                     )
@@ -4811,8 +5082,20 @@ class FilmOptimizationQuickController(QObject):
         attempt_project_operation: OperationBinding | None = None
         try:
             spec = (prepared_start.spec if prepared_start is not None else
-                    synthesis_spec(self.service, request) if self._search_mode == "synthesis" else
+                    synthesis_spec(self.service, request) if search_mode == "synthesis" else
                     freeze_spec(self.service, "film_optimization", {"request": request}))
+            from coat_sim.scheduler.jobs import JobSpec
+            from coat_sim.ui.film_optimization_continue_source import SOURCE_INPUT_KEY, build_source_binding
+            source_binding = None
+            if search_mode != "structure":
+                source_snapshot = self.session.snapshot() if self.session is not None else self._snapshot_source
+                source_binding = build_source_binding(self.service, source_snapshot, request,
+                    editable_snapshot=editable_snapshot)
+                spec = deepcopy(spec)
+                spec["inputs"][SOURCE_INPUT_KEY] = source_binding
+            if warm_restart is not None:
+                spec["inputs"]["film_warm_restart"] = deepcopy(warm_restart[0].metadata)
+            spec_fingerprint = JobSpec.parse(spec).fingerprint
             prepared_angle_job_id = self._prepared_angle_job_id
             job_id = prepared_angle_job_id or uuid4().hex
             self._prepared_angle_job_id = None
@@ -4826,12 +5109,12 @@ class FilmOptimizationQuickController(QObject):
                     attempt_project_operation = self._project_operation
                     if not self._project_current():
                         raise ValueError("项目已关闭或正在退出；未提交优化任务。")
-            base_request = (synthesis_base_request(request) if self._search_mode == "synthesis" else
+            base_request = (synthesis_base_request(request) if search_mode == "synthesis" else
                             cast(FilmOptimizationRequest, getattr(request, "base_request", request)))
             metadata = {
                 "summary": ("Film automatic synthesis | "
-                            if self._search_mode == "synthesis" else
-                            "Film structure synthesis | " if self._search_mode == "structure"
+                            if search_mode == "synthesis" else
+                            "Film structure synthesis | " if search_mode == "structure"
                             else "Film optimization | ") + str(
                     base_request.design_snapshot.get("name", "film design")),
                 "origin": {"surface": "desktop"},
@@ -4840,10 +5123,10 @@ class FilmOptimizationQuickController(QObject):
                     "design_revision": base_request.design_revision,
                     "objective_count": len(base_request.objectives),
                     "variable_count": len(base_request.variables),
-                    "search_mode": self._search_mode,
-                    "structure_mode": (request.mode if self._search_mode == "structure" else None),
+                    "search_mode": search_mode,
+                    "structure_mode": (request.mode if search_mode == "structure" else None),
                     "candidate_material_count": (len(request.candidate_materials)
-                                                  if self._search_mode in {"structure", "synthesis"} else 0),
+                                                  if search_mode in {"structure", "synthesis"} else 0),
                 },
             }
             if self._project_compute is not None:
@@ -4859,11 +5142,16 @@ class FilmOptimizationQuickController(QObject):
             admission_stopped = self._admission_stopped
 
             original_verify_admission = verify_admission
-            synthesis_mode = self._search_mode == "synthesis"
-            admission_revision = self._source_revision
+            synthesis_mode = search_mode == "synthesis"
+            admission_revision = (base_request.design_revision if warm_restart is not None
+                                  else self._source_revision)
             admission_epoch = self._source_edit_epoch()
             admission_session = self.session
             def verify_admission():
+                if warm_restart is not None:
+                    reason = self._continuation_source_reason(warm_restart[1], admission=True)
+                    if reason:
+                        raise InterruptedError("继续作业提交前来源已改变：" + reason)
                 if synthesis_mode:
                     from coat_sim.ui.compute_target import validate_capabilities
                     validate_capabilities(store.capabilities(), "film_synthesis", remote=remote)
@@ -4892,8 +5180,7 @@ class FilmOptimizationQuickController(QObject):
                         "远程请求设备与冻结的设备选择不一致；未提交任务。")
 
                 def remote_admission():
-                    if synthesis_mode:
-                        verify_admission()
+                    verify_admission()
                     target_is_current()
                     if not admission_project_is_current():
                         raise InterruptedError("项目已关闭或正在退出；未接纳新的远程作业。")
@@ -4969,7 +5256,7 @@ class FilmOptimizationQuickController(QObject):
 
             self._sync_live_selection()
             display_attempt = ("optimization", self._operation_serial + 1)
-            display_revision, display_epoch = self._source_revision, self._source_edit_epoch()
+            display_revision, display_epoch = admission_revision, self._source_edit_epoch()
             display_session, display_source = self.session, self._source_controller
             metadata["film_display_config"] = self._live_display.begin(display_attempt,
                 objectives=base_request.objectives,
@@ -4987,7 +5274,7 @@ class FilmOptimizationQuickController(QObject):
                 queue_admission = remote_admission
                 if queue_admission is None:
                     queue_admission = async_local_admission
-                task_class = _FilmSynthesisTask if self._search_mode == "synthesis" else _FilmOptimizationTask
+                task_class = _FilmSynthesisTask if search_mode == "synthesis" else _FilmOptimizationTask
                 task = (task_class(*args, remote_admission=queue_admission,
                                    project_compute=self._project_compute)
                         if queue_admission is not None else
@@ -5007,8 +5294,13 @@ class FilmOptimizationQuickController(QObject):
                     job_id, module_key="film_optimization", service_owned=False,
                     state="submitting", metadata=metadata)
             next_operation_id = self._operation_serial + 1
+            self._attempt_full_request = request
+            self._attempt_source_binding = deepcopy(source_binding)
+            self._attempt_spec_fingerprint = spec_fingerprint
+            self._attempt_editable_snapshot = deepcopy(editable_snapshot)
             self._capture_cancel_attempt(
-                next_operation_id, job_id, metadata.get("origin", {}), cancel_event)
+                next_operation_id, job_id, metadata.get("origin", {}), cancel_event,
+                search_mode=search_mode, source_revision=admission_revision)
             self._run_coordinator.start(
                 submit=None,
                 worker_factory=create_worker,
@@ -5040,9 +5332,20 @@ class FilmOptimizationQuickController(QObject):
                 self._error = f"Unable to submit film optimization to the queue: {detail}"
             self.changed.emit()
             return False
+        if warm_restart is not None and self.session is not None:
+            current_source = self.session.snapshot()
+            self._source_revision = int(current_source.design_revision)
+            self._design = deepcopy(dict(current_source.design))
+            self._path = str(current_source.path or "")
+            self._source_stale = False
+        self._prior_run_fallback = warm_restart[1] if warm_restart is not None else None
+        if warm_restart is None:
+            self._continuation_record = None
+            self._continuation_unavailable_reason = ("独立结构优化暂不支持从取消候选继续。"
+                if search_mode == "structure" else "尚无已取消的完整评分候选。")
         self._frozen_request = base_request
         self._synthesis_actual_structure_search_seed = (
-            request.structure_search_seed if self._search_mode == "synthesis" else None)
+            request.structure_search_seed if search_mode == "synthesis" else None)
         self._synthesis_editable_snapshot = deepcopy(editable_snapshot)
         self._completion_handoff_done = False
         self._result = None
@@ -5087,17 +5390,20 @@ class FilmOptimizationQuickController(QObject):
         return self.startOptimization()
 
     def _capture_cancel_attempt(self, operation_id: int, job_id: str,
-                                origin: Any, cancel_event: Any) -> None:
+                                origin: Any, cancel_event: Any, *, search_mode=None, source_revision=None) -> None:
         self._attempt_operation_id = int(operation_id)
         self._attempt_job_id = str(job_id)
         self._attempt_session = self.session
         self._attempt_source_controller = self._source_controller
-        self._attempt_source_revision = self._source_revision
+        self._attempt_source_path = (str(self.session.snapshot().path or "")
+            if self.session is not None else self._path)
+        self._attempt_source_revision = (self._source_revision if source_revision is None
+                                         else source_revision)
         self._attempt_edit_epoch = self._source_edit_epoch()
         self._attempt_project_operation = self._project_operation
         self._attempt_origin = deepcopy(dict(origin)) if isinstance(origin, dict) else {}
         self._attempt_cancel_event = cancel_event
-        self._attempt_search_mode = self._search_mode
+        self._attempt_search_mode = search_mode or self._search_mode
         self._attempt_materials_owner = getattr(self.service, "materials", None)
         frozen_request = self._frozen_request
         self._attempt_frozen_material_snapshot = (
@@ -5118,6 +5424,7 @@ class FilmOptimizationQuickController(QObject):
         self._attempt_session = None
         self._attempt_source_controller = None
         self._attempt_source_revision = None
+        self._attempt_source_path = None
         self._attempt_edit_epoch = None
         self._attempt_project_operation = None
         self._attempt_origin = {}
@@ -5251,8 +5558,20 @@ class FilmOptimizationQuickController(QObject):
         for key in set(frozen) | set(candidate):
             if key in {"front_layers", "back_layers"}:
                 continue
-            if frozen.get(key) != candidate.get(key):
-                return False
+            expected = frozen.get(key)
+            actual = candidate.get(key)
+            if expected != actual:
+                # The thickness solver deliberately detaches a nonempty,
+                # synchronized expression after writing physical thicknesses.
+                # Permit only that deterministic flag transition; text,
+                # symbols and every other expression field stay frozen.
+                if (key != "expression" or not isinstance(expected, Mapping)
+                        or not expected.get("text") or expected.get("in_sync") is not True):
+                    return False
+                detached = deepcopy(dict(expected))
+                detached["in_sync"] = False
+                if detached != actual:
+                    return False
         for side in ("front_layers", "back_layers"):
             base_rows = list(frozen.get(side, ()))
             candidate_rows = list(candidate.get(side, ()))
@@ -5347,6 +5666,7 @@ class FilmOptimizationQuickController(QObject):
                 self._error = self._error or "候选未通过源版本校验；原设计保持不变。"
                 self.changed.emit()
                 return False
+        self._capture_continuation_postapply()
         self._progress_text = "取消后已将当前最佳候选应用到原设计并请求刷新光谱；未保存文件。"
         opener = getattr(self._source_controller, "openSimulationAndCalculate", None)
         try:
@@ -5398,7 +5718,7 @@ class FilmOptimizationQuickController(QObject):
             self._progress_text = "正在取消；等待当前完整评估结束"
             self.changed.emit()
 
-    def inspectQueueResult(self, job_id: str, payload: dict, *, origin=None) -> bool:
+    def inspectQueueResult(self, job_id: str, payload: dict, *, origin=None, source_context=None) -> bool:
         """Display a verified historical candidate without editing its source.
 
         The queue factory verifies the row/payload binding before this handoff.
@@ -5463,12 +5783,15 @@ class FilmOptimizationQuickController(QObject):
         self._progress = 1.0
         self._result_terminal_state = "队列历史结果"
         self._progress_text = "历史候选仅供查看或另存；未修改当前设计和优化配置。"
+        self._synthesis_payload = None
+        self._bind_history_continuation(job_id, request, result, payload, source_context,
+            "structure" if structure is not None else "fixed_topology")
         self._error = ""
         self.changed.emit()
         self.plotDataChanged.emit()
         return True
 
-    def inspectSynthesisQueueResult(self, job_id: str, payload: dict, *, origin=None) -> bool:
+    def inspectSynthesisQueueResult(self, job_id: str, payload: dict, *, origin=None, source_context=None) -> bool:
         """Inspect a factory-verified same-project typed synthesis result, read only."""
         try:
             if self.project_context is None or self._project_compute is None:
@@ -5524,6 +5847,8 @@ class FilmOptimizationQuickController(QObject):
         self._plot_angle = float(request.objectives[0].angles_deg[0])
         self._result_terminal_state = "历史合成结果 / " + str(payload["result"]["state"])
         self._progress_text = "只读历史合成候选；可预览/另存，不能应用到当前设计"
+        self._bind_history_continuation(job_id, request, self._result, payload,
+            source_context, "synthesis")
         self._error = ""
         self.changed.emit()
         self.plotDataChanged.emit()
@@ -5785,6 +6110,13 @@ class FilmOptimizationQuickController(QObject):
         if not project_current:
             self._error = "Source project generation changed; the candidate is retained read-only."
             self._progress_text = "The source project changed during this run; its candidate was retained without applying."
+        if has_candidate and result.state == "cancelled":
+            self._retain_cancelled_restart()
+        elif has_candidate and result.evaluations > 0 and result.per_condition_errors:
+            self._continuation_record = None
+            self._continuation_unavailable_reason = "只有已取消并保留完整评分候选的作业可以继续。"
+        if has_candidate and result.evaluations > 0 and result.per_condition_errors:
+            self._prior_run_fallback = None
         self.changed.emit()
         self.plotDataChanged.emit()
         if (self._terminal_operation_id == self._attempt_operation_id

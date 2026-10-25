@@ -1,4 +1,4 @@
-"""Pure UI adaptation for the frozen v4 synthesis protocol."""
+"""Pure UI adaptation for the current frozen synthesis protocol."""
 from __future__ import annotations
 
 from copy import deepcopy

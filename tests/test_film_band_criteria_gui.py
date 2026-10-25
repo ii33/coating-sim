@@ -174,7 +174,7 @@ def test_real_qml_small_physical_submission_and_band_results(bounds_gui, mean_on
     _wait(spec_path.exists, seconds=10)
     payload = json.loads(spec_path.read_text(encoding="utf-8"))["parameters"]["payload"]
     envelope = payload["request"]
-    assert envelope["schema_version"] == (4 if mode == "synthesis" else 2)
+    assert envelope["schema_version"] == (5 if mode == "synthesis" else 2)
     frozen = envelope["request"] if mode == "synthesis" else envelope
     assert len(frozen["objectives"]) == 1
     assert frozen["objectives"][0]["mean"]["enabled"] is True
