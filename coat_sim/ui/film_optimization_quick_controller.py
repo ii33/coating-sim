@@ -57,6 +57,7 @@ from coat_sim.ui.film_optimization_run_coordinator import (
 )
 
 if TYPE_CHECKING:
+    from coat_sim.core.film_optimization_structure import FilmStructureOptimizationResult
     from coat_sim.core.film_reduction import FilmReductionResult
     from coat_sim.ui.film_manufacturing_quick_controller import FilmManufacturingQuickController
 
@@ -543,7 +544,9 @@ class _FrozenMaterials:
         return deepcopy(self._rows[material_id])
 
 
-def _film_result_from_queue(value: Any) -> Any:
+def _film_result_from_queue(
+    value: Any,
+) -> FilmOptimizationResult | FilmStructureOptimizationResult | FilmReductionResult:
     """Decode fixed-topology, structure, or reduction queue result carriers."""
     if isinstance(value, dict) and value.get("kind") == "coat_sim.film_reduction_result":
         from coat_sim.core.film_reduction import film_reduction_result_from_payload
@@ -557,6 +560,8 @@ def _film_result_from_queue(value: Any) -> Any:
             or value.get("kind") != RESULT_KIND):
         raise ValueError("queue result is not a typed film optimization result")
     request = deserialize_request(value.get("request", {}))
+    if not isinstance(request, FilmOptimizationRequest):
+        raise ValueError("fixed-topology queue result requires a matching optimization request")
     candidate = value.get("candidate")
     if (not isinstance(candidate, dict) or candidate.get("kind") != CANDIDATE_KIND
             or candidate.get("schema_version") != CONTRACT_VERSION):
@@ -5894,11 +5899,22 @@ class FilmOptimizationQuickController(QObject):
             if self._result is not None and not self._candidate_saved and not self._candidate_applied:
                 raise ValueError("请先保存或清除当前候选，再查看另一队列结果。")
             operation = self._project_compute.capture("inspect-" + str(job_id))
+            from coat_sim.core.film_optimization_structure import FilmStructureOptimizationResult
+            from coat_sim.core.film_reduction import FilmReductionResult
+
             candidate = _film_result_from_queue(payload)
-            structure: Any = candidate if hasattr(candidate, "base_result") else None
-            request = (structure.frozen_request.base_request if structure is not None
-                       else deserialize_request(payload["request"]))
-            result = structure.base_result if structure is not None else candidate
+            if isinstance(candidate, (FilmStructureOptimizationResult, FilmReductionResult)):
+                frozen_request = candidate.frozen_request
+                if frozen_request is None:
+                    raise ValueError("queue result has no frozen structure request")
+                request = frozen_request.base_request
+                result = candidate.base_result
+            else:
+                fixed_request = deserialize_request(payload["request"])
+                if not isinstance(fixed_request, FilmOptimizationRequest):
+                    raise ValueError("fixed-topology queue result requires a matching optimization request")
+                request = fixed_request
+                result = candidate
             objectives = []
             for index, objective in enumerate(request.objectives):
                 row = _objective_default(index)
@@ -5928,9 +5944,8 @@ class FilmOptimizationQuickController(QObject):
         self._queue_job_id = str(job_id)
         self._frozen_request = request
         self._result = result
-        from coat_sim.core.film_reduction import FilmReductionResult
-        self._reduction_result = structure if isinstance(structure, FilmReductionResult) else None
-        self._structure_result = structure if self._reduction_result is None else None
+        self._reduction_result = candidate if isinstance(candidate, FilmReductionResult) else None
+        self._structure_result = candidate if isinstance(candidate, FilmStructureOptimizationResult) else None
         self._inspection_objectives = objectives
         self._result_application_eligible = False
         self._operation_edit_epoch = None
@@ -5945,7 +5960,7 @@ class FilmOptimizationQuickController(QObject):
         self._synthesis_payload = None
         if self._reduction_result is None:
             self._bind_history_continuation(job_id, request, result, payload, source_context,
-                "structure" if structure is not None else "fixed_topology")
+                "structure" if self._structure_result is not None else "fixed_topology")
         else:
             self._continuation_record = None
             self._continuation_unavailable_reason = "减层 / 减厚历史候选仅供查看或另存。"

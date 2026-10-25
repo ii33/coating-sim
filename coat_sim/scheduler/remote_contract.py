@@ -12,6 +12,7 @@ import json
 import math
 import re
 from collections.abc import Mapping
+from typing import NoReturn
 
 from .jobs import JobSpec, canonical, MAX_RAYTRACE_SPEC_BYTES
 
@@ -37,7 +38,7 @@ class RemoteContractError(ValueError):
         super().__init__(message)
 
 
-def _fail(code: str, message: str):
+def _fail(code: str, message: str) -> NoReturn:
     raise RemoteContractError(code, message)
 
 
@@ -432,12 +433,16 @@ def _validate_film_payload(payload):
         _fail("invalid_film_payload", "film optimization request fields or scalar types are invalid")
     try:
         parsed = deserialize_request(request)
-        if parsed.frozen_material_snapshot is None:
+        from coat_sim.core.film_optimization import FilmOptimizationRequest
+        if not isinstance(parsed, FilmOptimizationRequest):
+            _fail("invalid_film_payload", "film optimization requires a thickness request")
+        material_snapshot = parsed.frozen_material_snapshot
+        if material_snapshot is None:
             _fail("invalid_film_payload", "film optimization requires frozen material inputs")
         from coat_sim.core.film_design import validate_design
         from coat_sim.core.film_optimization import _checked_frozen_snapshot
         design = validate_design(parsed.design_snapshot)
-        _checked_frozen_snapshot(parsed.frozen_material_snapshot, design)
+        _checked_frozen_snapshot(material_snapshot, design)
         return parsed
     except RemoteContractError:
         raise

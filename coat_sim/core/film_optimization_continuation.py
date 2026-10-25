@@ -147,7 +147,10 @@ def build_optimization_warm_restart(
     try:
         original = serialize_request(request)
         # These gates validate controls, frozen digest and canonical input only.
-        checked = freeze_film_optimization_request(None, deserialize_request(original))
+        restored = deserialize_request(original)
+        if not isinstance(restored, FilmOptimizationRequest):
+            raise ValueError("warm restart requires a thickness request")
+        checked = freeze_film_optimization_request(None, restored)
         _validate_optimization_controls(checked)
         _validate_replay_request(checked)
     except (TypeError, KeyError, AttributeError) as exc:

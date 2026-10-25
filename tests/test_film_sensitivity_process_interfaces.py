@@ -38,7 +38,9 @@ def test_ordinary_optimization_schema2_rejects_sensitivity_fields(field, value):
         request.variables, request.objectives)
     payload = serialize_request(ordinary)
     assert payload['schema_version'] == 2
-    assert serialize_request(deserialize_request(payload)) == payload
+    restored = deserialize_request(payload)
+    assert isinstance(restored, FilmOptimizationRequest)
+    assert serialize_request(restored) == payload
     changed = deepcopy(payload)
     changed[field] = value
     with pytest.raises(ValueError, match='fields'):

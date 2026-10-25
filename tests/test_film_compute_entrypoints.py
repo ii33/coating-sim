@@ -218,8 +218,10 @@ class FilmComputeEntrypointTests(unittest.TestCase):
             FilmStructureOptimizationRequest,
             film_structure_request_to_payload,
         )
+        base_request = deserialize_request(self.request)
+        assert isinstance(base_request, FilmOptimizationRequest)
         return film_structure_request_to_payload(FilmStructureOptimizationRequest(
-            base_request=deserialize_request(self.request),
+            base_request=base_request,
         ))
 
     def test_real_mcp_registry_exposes_strict_typed_tools_and_rejects_extra_fields(self):
@@ -475,8 +477,10 @@ class FilmComputeEntrypointTests(unittest.TestCase):
         bad_approval["approval"] = True
         bad_budget = deepcopy(self.request)
         bad_budget["max_evaluations"] = 0
+        base_request = deserialize_request(self.request)
+        assert isinstance(base_request, FilmOptimizationRequest)
         structure = film_structure_request_to_payload(FilmStructureOptimizationRequest(
-            base_request=deserialize_request(self.request), mode="growth_only"))
+            base_request=base_request, mode="growth_only"))
 
         before = self._row_count()
         for name, request in (

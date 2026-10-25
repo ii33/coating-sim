@@ -367,7 +367,7 @@ def test_project_optimizer_close_detaches_without_cancel_rpc(owners):
 
 def test_project_queue_routes_own_candidate_read_only(owners, monkeypatch):
     import coat_sim.ui.film_optimization_quick_controller as optimization
-    from coat_sim.core.film_optimization import FilmOptimizationObjective
+    from coat_sim.core.film_optimization import FilmOptimizationObjective, FilmOptimizationRequest
     from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
     workspace, source, _saved = owners[1][0]
     controller = optimizer(workspace, source)
@@ -377,8 +377,11 @@ def test_project_queue_routes_own_candidate_read_only(owners, monkeypatch):
     candidate_design["name"] = "Historical candidate"
     result = _completed_result(SimpleNamespace(design_revision=original.design_revision,
                                               design_snapshot=candidate_design))
-    request = SimpleNamespace(objectives=(FilmOptimizationObjective(400, 700, 3, pointwise=FilmObjectiveConstraint(mode="value", target_value=None, lower_bound=None, upper_bound=None)),),
-                              frozen_material_snapshot={"materials": [material(n=2)]})
+    request = FilmOptimizationRequest(
+        design_snapshot=deepcopy(original.design), design_revision=original.design_revision,
+        variables=(),
+        objectives=(FilmOptimizationObjective(400, 700, 3, pointwise=FilmObjectiveConstraint(mode="value", target_value=None, lower_bound=None, upper_bound=None)),),
+        frozen_material_snapshot={"materials": [material(n=2)]})
     monkeypatch.setattr(optimization, "_film_result_from_queue", lambda _value: result)
     monkeypatch.setattr(optimization, "deserialize_request", lambda _value: request)
     payload = {"request": {"frozen": True}}

@@ -117,7 +117,10 @@ def film_reduction_request_from_payload(payload: Mapping[str, Any]) -> FilmReduc
     base_payload = payload["base_request"]
     if not isinstance(base_payload, Mapping) or base_payload.get("kind") != "coat_sim.film_optimization_request":
         raise ValueError("reduction base_request must use the independent fixed-thickness request kind")
-    request = FilmReductionRequest(deserialize_request(base_payload), payload["mode"])
+    base_request = deserialize_request(base_payload)
+    if not isinstance(base_request, FilmOptimizationRequest):
+        raise ValueError("reduction base_request must be a FilmOptimizationRequest")
+    request = FilmReductionRequest(base_request, payload["mode"])
     _validate_request(request)
     return request
 

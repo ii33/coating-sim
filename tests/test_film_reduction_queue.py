@@ -10,7 +10,7 @@ import pytest
 
 from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationObjective, FilmOptimizationRequest, FilmThicknessVariable
-from coat_sim.core.film_reduction import FilmReductionRequest, film_reduction_result_from_payload
+from coat_sim.core.film_reduction import FilmReductionRequest, FilmReductionResult, film_reduction_result_from_payload
 from coat_sim.scheduler.jobs import canonical, freeze_spec
 from coat_sim.scheduler.result_capability import is_film_optimization_result
 from coat_sim.scheduler.store import SchedulerStore
@@ -53,7 +53,9 @@ def test_real_child_worker_persists_reduction_checkpoint_and_typed_final_result(
     assert result.summary["reduction_achieved"]
     assert result.base_result.validation_complete
     assert result.metrics["candidate"]["layer_count"] == 0
-    assert _film_result_from_queue(payload).frozen_request == result.frozen_request
+    decoded = _film_result_from_queue(payload)
+    assert isinstance(decoded, FilmReductionResult)
+    assert decoded.frozen_request == result.frozen_request
     checkpoint = json.loads((directory / "best-candidate.json").read_text(encoding="utf-8"))
     partial = film_reduction_result_from_payload(checkpoint["result"])
     assert not partial.is_final and partial.candidate_verified

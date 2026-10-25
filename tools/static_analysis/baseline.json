@@ -9900,16 +9900,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/ui/film_optimization_quick_controller.py",
-      "code": "return-value",
-      "message": "Incompatible return value type (got \"FilmStructureOptimizationResult\", expected \"FilmOptimizationResult\")",
-      "scope": "_film_result_from_queue",
-      "anchor": "return film_structure_result_from_payload(value)",
-      "fingerprint": "2876da7f3cfcf914326737bd4538331777752550e5161fabc6b6ac60bd1531d2",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_film_quick_controller.py",
       "code": "index",
       "message": "Value of type \"dict[Any, Any] | None\" is not indexable",
@@ -11516,16 +11506,6 @@
       "scope": "",
       "anchor": "import pygal",
       "fingerprint": "2f17b1fdeefdd1dff26c53c501616666403f61927fe52aed59d88e0b5b0d2847",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_job.py",
-      "code": "arg-type",
-      "message": "Argument 2 to \"serialize_result\" has incompatible type \"FilmStructureOptimizationResult\"; expected \"FilmOptimizationResult\"",
-      "scope": "execute_film_optimization_job",
-      "anchor": "return serialize_result(request, result)",
-      "fingerprint": "2f2506810989a74f1f58e2d5897414c2085e55e2a1d282be515678334b2e72c4",
       "count": 1
     },
     {
@@ -13447,16 +13427,6 @@
       "anchor": "statusText: bridge.valid ? (bridge.status || \"当前模型有效，可保存。\") : bridge.error",
       "fingerprint": "371adb340588c9ba2198dbf7d68393fa1251296b2829edacdb57cecf4b2557fe",
       "count": 3
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_job.py",
-      "code": "assignment",
-      "message": "Incompatible types in assignment (expression has type \"FilmOptimizationRequest\", variable has type \"FilmStructureOptimizationRequest\")",
-      "scope": "execute_film_optimization_job",
-      "anchor": "request = freeze_film_optimization_request(service, request)",
-      "fingerprint": "3721117c805ee174e75e0dc9ff49d3d0614caae8a1eac738ac8ac3406391c6cb",
-      "count": 1
     },
     {
       "tool": "mypy",
@@ -17909,16 +17879,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "tests/test_film_optimization_unbounded_layers.py",
-      "code": "arg-type",
-      "message": "Argument 2 to \"freeze_job_payload\" has incompatible type \"FilmStructureOptimizationRequest\"; expected \"FilmOptimizationRequest\"",
-      "scope": "test_structure_queue_payload_and_cancelled_result_keep_complete_variables",
-      "anchor": "service, freeze_job_payload(service, frozen), cancel_event=cancel,",
-      "fingerprint": "49cd5be02d6acf22b5b8e8204549d3f75617b864e0d979b65dca7f59a707f3a3",
-      "count": 1
-    },
-    {
       "tool": "ruff",
       "path": "tests/test_gpu_appearance_preview.py",
       "code": "E702",
@@ -18616,16 +18576,6 @@
       "scope": "FilmDesignWindow._substrate_material_changed",
       "anchor": "if self._updating: return",
       "fingerprint": "4d0a758ac0fb743efdfb24a03968facd506d59e15028a67e9d0af30750c1c0f0",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_job.py",
-      "code": "assignment",
-      "message": "Incompatible types in assignment (expression has type \"FilmOptimizationRequest\", variable has type \"FilmStructureOptimizationRequest\")",
-      "scope": "execute_film_optimization_job",
-      "anchor": "request = deserialize_request(request_payload)",
-      "fingerprint": "4d1b44f94b2a393dd54bde7b25d619681c2793d5929c125981e994d5c73624f5",
       "count": 1
     },
     {
@@ -19816,16 +19766,6 @@
       "scope": "models_endpoint_for_url",
       "anchor": "explicit = str(discovery.get(\"url\", \"\")).strip()",
       "fingerprint": "522f38a025f8e246caf9029cc0681241ea91730c33ecc5b687be8f1929154a30",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_job.py",
-      "code": "arg-type",
-      "message": "Argument 1 to \"dict\" has incompatible type \"Mapping[str, Any] | None\"; expected \"SupportsKeysAndGetItem[str, Any]\"",
-      "scope": "execute_film_optimization_job",
-      "anchor": "frozen_snapshot = deepcopy(dict(request.base_request.frozen_material_snapshot))",
-      "fingerprint": "52319ed25d5d41a686d686956c704285f291507fe6160d7ca2a0429c50a75c01",
       "count": 1
     },
     {
@@ -22230,16 +22170,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_job.py",
-      "code": "arg-type",
-      "message": "Argument 1 to \"serialize_result\" has incompatible type \"FilmStructureOptimizationRequest\"; expected \"FilmOptimizationRequest\"",
-      "scope": "execute_film_optimization_job",
-      "anchor": "return serialize_result(request, result)",
-      "fingerprint": "5d25ba7d3134d58db1bbfeae29c84d014379e674dd2570ba8941d34792a7ae73",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_film_design_generator_qt.py",
       "code": "union-attr",
       "message": "Item \"None\" of \"QObject | None\" has no attribute \"accept\"",
@@ -24316,16 +24246,6 @@
       "scope": "OpticalLibraryUiTests.test_actual_qml_optical_and_reference_dialog_controls",
       "anchor": "self.assertTrue(QMetaObject.invokeMethod(refs,'close'))",
       "fingerprint": "65ba7f656df40f838001344d100c1194ff586089848e1bba00f6e1325ab89024",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_job.py",
-      "code": "arg-type",
-      "message": "Argument 2 to \"freeze_film_optimization_request\" has incompatible type \"FilmStructureOptimizationRequest\"; expected \"FilmOptimizationRequest\"",
-      "scope": "execute_film_optimization_job",
-      "anchor": "request = freeze_film_optimization_request(service, request)",
-      "fingerprint": "65bc953646a3826cb28cc76e6ac22aca178f1c9c3b58cc2aef7e0371f4a1cbbf",
       "count": 1
     },
     {
@@ -30756,16 +30676,6 @@
       "scope": "validate_geometric_raytrace_result",
       "anchor": "zip(row[\"ray_energy_histogram_weight\"], histograms[wave]))):",
       "fingerprint": "8027ec56a12a5e67fcc64b211c4544b087935888af1e8d1f319c791d0c32b793",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_job.py",
-      "code": "assignment",
-      "message": "Incompatible types in assignment (expression has type \"FilmOptimizationResult\", variable has type \"FilmStructureOptimizationResult\")",
-      "scope": "execute_film_optimization_job",
-      "anchor": "result = optimize_film_design(",
-      "fingerprint": "803210fcb286ae81660c72e13992baf9d98f5886902feaaf96abbe51735d680b",
       "count": 1
     },
     {
@@ -37966,16 +37876,6 @@
       "scope": "MaskViewportTests.test_cold_horizontal_pixel_angle_and_mixed_axis_delta_pan_once",
       "anchor": "pixel_event = self.wheel(pixel=(23,0), touchpad=True, phase=Qt.NoScrollPhase)",
       "fingerprint": "9e98d56520c1bebc570731a11e87d3b469e257eccbcefa234cd39709d012ee3c",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_job.py",
-      "code": "arg-type",
-      "message": "Argument 2 to \"optimize_film_design\" has incompatible type \"FilmStructureOptimizationRequest\"; expected \"FilmOptimizationRequest\"",
-      "scope": "execute_film_optimization_job",
-      "anchor": "frozen_service, request, cancel_event=cancel_event,",
-      "fingerprint": "9e98fd84e7e83bc202394e00805e83dc6c0872a2a682d13f5bf2067c90225d7e",
       "count": 1
     },
     {
@@ -46770,16 +46670,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_job.py",
-      "code": "attr-defined",
-      "message": "\"FilmStructureOptimizationRequest\" has no attribute \"frozen_material_snapshot\"",
-      "scope": "execute_film_optimization_job",
-      "anchor": "frozen_snapshot = deepcopy(dict(request.frozen_material_snapshot))",
-      "fingerprint": "c398aa8c3b80a88de0939ae71668b4f82bb636d63a8ec07ee525ce7f31d8d9e2",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_scheduler_resource_fixture.py",
       "code": "union-attr",
       "message": "Item \"None\" of \"IO[bytes] | None\" has no attribute \"closed\"",
@@ -51870,16 +51760,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_job.py",
-      "code": "arg-type",
-      "message": "Argument 1 to \"serialize_checkpoint\" has incompatible type \"FilmStructureOptimizationRequest\"; expected \"FilmOptimizationRequest\"",
-      "scope": "execute_film_optimization_job.save_incumbent",
-      "anchor": "checkpoint_callback(serialize_checkpoint(request, checkpoint))",
-      "fingerprint": "d8ec69ea2f212a3d05e7e7cd8910ce9e2db73a073b960f41cffb1036f9963bd1",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/core/material_physics.py",
       "code": "union-attr",
       "message": "Item \"str\" of \"list[Any] | str | None\" has no attribute \"append\"",
@@ -53166,16 +53046,6 @@
       "scope": "FilmDesignWindow.__init__",
       "anchor": "self.name_edit.textEdited.connect(self._changed); bar.addWidget(self.name_edit)",
       "fingerprint": "de9b75ebf5a07a614207b363ab0ecb096346e828d6329a5bbf88b003088ed7cf",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_job.py",
-      "code": "attr-defined",
-      "message": "\"FilmStructureOptimizationRequest\" has no attribute \"frozen_material_snapshot\"",
-      "scope": "execute_film_optimization_job",
-      "anchor": "if request.frozen_material_snapshot is None:",
-      "fingerprint": "dea238e60df383998683944d480c12d33d652a148dc4b2a84ec0d812d1b93781",
       "count": 1
     },
     {
@@ -55670,16 +55540,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/scheduler/remote_contract.py",
-      "code": "arg-type",
-      "message": "Argument 1 to \"_checked_frozen_snapshot\" has incompatible type \"Mapping[str, Any] | None\"; expected \"Mapping[str, Any]\"",
-      "scope": "_validate_film_payload",
-      "anchor": "_checked_frozen_snapshot(parsed.frozen_material_snapshot, design)",
-      "fingerprint": "e8b9ae87acfcf95c8762a8d5d99ea294144cca17f973dedf5e989ac8a02733ac",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_mask_viewport.py",
       "code": "union-attr",
       "message": "Item \"None\" of \"QQuickItem | None\" has no attribute \"mapToScene\"",
@@ -57337,16 +57197,6 @@
       "anchor": "font.weight: Theme.snapshot.fontWeightEmphasis",
       "fingerprint": "eee063158f0b0a27277f87deadcc291680d5e25f753f699724c0e8fddd5feff4",
       "count": 3
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/core/film_optimization_job.py",
-      "code": "attr-defined",
-      "message": "\"FilmStructureOptimizationRequest\" has no attribute \"execution_mode\"",
-      "scope": "execute_film_optimization_job",
-      "anchor": "if enable_forward_cache and request.execution_mode == \"serial\":",
-      "fingerprint": "eee0779d1a0d07d6d14e39ef0a675adc5a519366edc8e791a9b98b54b77b7263",
-      "count": 1
     },
     {
       "tool": "mypy",
@@ -61439,6 +61289,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "Remove only the reviewed resolved E701 allowance for the replaced empty film inputs branch; new diagnostics remain forbidden",
+  "last_prune_reason": "Reviewed selective prune of 15 genuinely fixed film request/result diagnostics: exact three-kind unions, ordinary/structure branch-local request and result variables, and real non-None snapshot checks; includes the 11 f0689f5 CI resolved entries plus four adjacent branch/snapshot fixes. No Any return widening, casts, suppressions, additions, count increases, environment/configuration changes, or full baseline refresh. Full-Python same-environment comparison and per-fingerprint reasons are supplied; the pinned Python3.12 full gate remains for CI verification.",
   "configuration_review_reason": "2026-10-17: add only BSD-3-Clause pypdf 6.21.0 for isolated research PDF extraction; all previous dependency/tool versions, analyzer rules and diagnostic entries remain unchanged. The lock-file digest changes only for this reviewed runtime dependency."
 }

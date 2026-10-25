@@ -60,10 +60,12 @@ def _post_bound_job(cli, job_id: str, *, spec: dict,
 
 
 def test_film_serializer_accepts_solver_schema_and_rejects_unknown_fields(tmp_path):
+    from coat_sim.core.film_optimization import FilmOptimizationRequest
     from coat_sim.core.film_optimization_job import deserialize_request, serialize_request
 
     payload = frozen_film(tmp_path / "serializer-input")["parameters"]["payload"]["request"]
     parsed = deserialize_request(payload)
+    assert isinstance(parsed, FilmOptimizationRequest)
     assert serialize_request(parsed) == payload
 
     unsupported = deepcopy(payload)

@@ -283,6 +283,7 @@ def test_job_executor_freeze_roundtrip_checkpoint_capability_and_cancel_source_b
     source = request(max_iterations=1)
     payload = freeze_job_payload(service, source)
     frozen = deserialize_request(payload["request"])
+    assert isinstance(frozen, FilmReductionRequest)
     assert serialize_request(frozen) == payload["request"]
     assert _validate_film_payload(payload) == frozen
     assert freeze_spec(service, "film_optimization", {"request": source})["parameters"]["payload"] == payload

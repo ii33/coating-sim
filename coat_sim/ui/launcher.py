@@ -1702,6 +1702,7 @@ class LauncherBridge(QObject):
         """Open an explicitly selected, queue-verified film candidate in isolation."""
         try:
             from coat_sim.core.film_optimization_job import deserialize_request
+            from coat_sim.core.film_reduction import FilmReductionRequest, FilmReductionResult
             from coat_sim.core.film_optimization_preview import (
                 create_optimization_candidate_handoff,
             )
@@ -1713,6 +1714,8 @@ class LauncherBridge(QObject):
                 raise ValueError("queue result has no frozen film request")
             request = deserialize_request(result["request"])
             candidate = _film_result_from_queue(result)
+            if isinstance(request, FilmReductionRequest) or isinstance(candidate, FilmReductionResult):
+                raise ValueError("structure previews require matching structure request/result types")
             payload = create_optimization_candidate_handoff(request, candidate)
             instance_id = self.open_window(
                 "film_simulation", mode="new", payload=payload)

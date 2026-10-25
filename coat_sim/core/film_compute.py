@@ -36,16 +36,21 @@ def canonical_film_parameters(service, supplied):
     from .film_optimization_job import (
         REQUEST_KIND, deserialize_request, freeze_job_payload, _validate_replay_request,
     )
-    from .film_optimization import _validate_optimization_controls
+    from .film_optimization import FilmOptimizationRequest, _validate_optimization_controls
     from coat_sim.scheduler.result_capability import film_optimization_service
     if (not isinstance(raw, dict) or raw.get("kind") != REQUEST_KIND
             or type(raw.get("schema_version")) is not int or raw["schema_version"] != 2):
         raise ValueError("only current v2 serialized film thickness requests are supported")
     json.dumps(raw, allow_nan=False)
     request = deserialize_request(raw)
+    if not isinstance(request, FilmOptimizationRequest):
+        raise ValueError("film compute requires a thickness request")
     _validate_optimization_controls(request)
     frozen = freeze_job_payload(film_optimization_service(service), request)["request"]
-    _validate_replay_request(deserialize_request(frozen))
+    frozen_request = deserialize_request(frozen)
+    if not isinstance(frozen_request, FilmOptimizationRequest):
+        raise ValueError("frozen film compute request must remain a thickness request")
+    _validate_replay_request(frozen_request)
     return {"request": frozen}
 
 

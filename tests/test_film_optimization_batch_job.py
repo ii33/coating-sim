@@ -13,6 +13,7 @@ from uuid import uuid4
 
 import pytest
 
+from coat_sim.core.film_optimization import FilmOptimizationRequest
 from coat_sim.core.film_optimization_job import (
     deserialize_request,
     execute_film_optimization_job,
@@ -58,6 +59,7 @@ def test_serial_request_wire_shape_still_omits_new_defaults():
     assert "execution_mode" not in wire
     assert "batch_size" not in wire
     restored = deserialize_request(wire)
+    assert isinstance(restored, FilmOptimizationRequest)
     assert restored == request
     assert restored.execution_mode == "serial"
     assert restored.batch_size == 16
@@ -91,6 +93,7 @@ def test_old_optimization_sample_and_budget_thresholds_round_trip_without_comput
     # condition count exceeds every removed safety ceiling, but is not run.
     wire = serialize_request(request)
     restored = deserialize_request(wire)
+    assert isinstance(restored, FilmOptimizationRequest)
     assert restored == request
     assert restored.objectives[0].wavelength_samples * len(
         restored.objectives[0].angles_deg) > 10001

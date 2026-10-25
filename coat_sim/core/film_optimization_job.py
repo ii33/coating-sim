@@ -126,7 +126,9 @@ def serialize_request(request: FilmOptimizationRequest | FilmReductionRequest) -
     return value
 
 
-def deserialize_request(value: Mapping[str, Any]) -> Any:
+def deserialize_request(value: Mapping[str, Any]) -> (
+    FilmOptimizationRequest | FilmStructureOptimizationRequest | FilmReductionRequest
+):
     if isinstance(value, Mapping) and value.get("kind") == "coat_sim.film_reduction_request":
         from .film_reduction import film_reduction_request_from_payload
         return film_reduction_request_from_payload(value)
@@ -680,6 +682,8 @@ def validate_checkpoint(service: Any, checkpoint: Mapping[str, Any]) -> dict[str
         raise ValueError("film optimization result kind/version is invalid")
     json.dumps(dict(checkpoint), sort_keys=True, ensure_ascii=False, allow_nan=False)
     request = deserialize_request(checkpoint["request"])
+    if not isinstance(request, FilmOptimizationRequest):
+        raise ValueError("film optimization checkpoint requires a thickness request")
     from .film_xpu_execution import execution_summary
     expected_execution = (execution_summary(request.execution_device)
                           if request.execution_device is not None else None)
@@ -911,39 +915,41 @@ def execute_film_optimization_job(
             validate_film_structure_payload,
         )
 
-        request = film_structure_request_from_payload(request_payload)
-        if request.base_request.frozen_material_snapshot is None:
+        structure_request = film_structure_request_from_payload(request_payload)
+        if structure_request.base_request.frozen_material_snapshot is None:
             raise ValueError("queued structure optimization requires a frozen material snapshot")
-        request = freeze_film_structure_optimization_request(service, request)
-        observer = (candidate_observer_factory(request.base_request) if candidate_observer_factory is not None
+        structure_request = freeze_film_structure_optimization_request(service, structure_request)
+        structure_observer = (candidate_observer_factory(structure_request.base_request) if candidate_observer_factory is not None
                     else candidate_observer)
-        frozen_snapshot = deepcopy(dict(request.base_request.frozen_material_snapshot))
-        frozen_service = _service_with_frozen_materials(service, frozen_snapshot)
+        structure_snapshot = structure_request.base_request.frozen_material_snapshot
+        if structure_snapshot is None:
+            raise ValueError("frozen structure request is missing its material snapshot")
+        structure_service = _service_with_frozen_materials(service, deepcopy(dict(structure_snapshot)))
 
         def save_structure_incumbent(checkpoint: Any) -> None:
             if checkpoint_callback is None:
                 return
-            checkpoint_callback(film_structure_checkpoint_to_payload(request, checkpoint))
+            checkpoint_callback(film_structure_checkpoint_to_payload(structure_request, checkpoint))
 
-        result = optimize_film_design_with_structure(
-            frozen_service, request, cancel_event=cancel_event,
+        structure_result = optimize_film_design_with_structure(
+            structure_service, structure_request, cancel_event=cancel_event,
             progress_callback=progress_callback,
             checkpoint_callback=(save_structure_incumbent
                                 if checkpoint_callback is not None else None),
-            candidate_observer=observer,
+            candidate_observer=structure_observer,
         )
-        result_payload = film_structure_result_to_payload(request, result)
+        result_payload = film_structure_result_to_payload(structure_request, structure_result)
         if cancel_event is not None and cancel_event.is_set():
-            if not result.base_result.per_condition_errors:
+            if not structure_result.base_result.per_condition_errors:
                 raise InterruptedError("Cancelled before a complete structure candidate was scored")
             from .film_optimization_structure import validate_film_structure_candidate_topology
             # Keep the core's actual final/audit/verified flags. Only complete
             # saved scores and recomputed hard-bound topology gain this marker.
-            topology = validate_film_structure_candidate_topology(request, result.best_design,
-                split_groups=result.topology_audit.get("split_groups", {}))
+            topology = validate_film_structure_candidate_topology(structure_request, structure_result.best_design,
+                split_groups=structure_result.topology_audit.get("split_groups", {}))
             topology = {**topology, "cancel_snapshot": {"source": "worker_completed_reply",
                 "replay_performed": False, "candidate_available": True, "training_complete": True}}
-            if result.state == "completed":
+            if structure_result.state == "completed":
                 # The search genuinely completed first. Cancellation wins only
                 # the task envelope; all candidate/audit/final facts stay intact.
                 result_payload["state"] = "cancelled"
@@ -953,15 +959,20 @@ def execute_film_optimization_job(
             result_payload["structure"]["topology_audit"] = topology
             validate_completed_structure_cancel_result(result_payload)
             return result_payload
-        return validate_film_structure_payload(frozen_service, result_payload)
+        return validate_film_structure_payload(structure_service, result_payload)
 
     request = deserialize_request(request_payload)
+    if not isinstance(request, FilmOptimizationRequest):
+        raise ValueError("queued film optimization requires a thickness request")
     if request.frozen_material_snapshot is None:
         raise ValueError("queued film optimization requires a frozen material snapshot")
     request = freeze_film_optimization_request(service, request)
     observer = (candidate_observer_factory(request) if candidate_observer_factory is not None
                 else candidate_observer)
-    frozen_snapshot = deepcopy(dict(request.frozen_material_snapshot))
+    material_snapshot = request.frozen_material_snapshot
+    if material_snapshot is None:
+        raise ValueError("frozen film optimization request is missing its material snapshot")
+    frozen_snapshot = deepcopy(dict(material_snapshot))
     frozen_service = _service_with_frozen_materials(service, frozen_snapshot)
     if enable_forward_cache and request.execution_mode == "serial":
         from .film_optimization_forward_cache import create_worker_forward_service
