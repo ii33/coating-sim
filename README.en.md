@@ -84,6 +84,9 @@ Do not post exploit details, keys, or private data in public security issues. If
 
 ## Documentation
 
+- [GitHub → CNB mirror synchronization](docs/cnb-mirror-sync.md): fixed routes, read-only checks by default, and explicit non-force pushes.
+- [Workstation source updates and version acceptance](docs/workstation-source-update.md): minimal recovery records, fresh-index inspection of every tracked path, and validation of the actual running copy.
+
 - [Independent installer and dependency contract](docs/installation.md) · [Existing runtime ZIP guide](docs/portable-bundle.md) · [Project and result assets](docs/portable-assets.md)
 
 - [Algorithm atlas and references](docs/algorithms.html) · [Software manual](docs/software_manual.html)

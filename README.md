@@ -91,6 +91,9 @@ python tools/run_tests.py all
 
 ## 文档导航
 
+- [GitHub → CNB 镜像同步](docs/cnb-mirror-sync.md)：固定网络路由、默认只读检查与显式非强制推送。
+- [发布工作站源码更新与版本验收](docs/workstation-source-update.md)：最小恢复保存、新索引全路径预检与实际运行副本验收。
+
 - [独立安装器与依赖合同](docs/installation.md) · [已有运行时 ZIP 指南](docs/portable-bundle.md) · [工程与结果资产包](docs/portable-assets.md)
 
 - [算法图解与参考来源](docs/algorithms.html) · [软件说明书](docs/software_manual.html)
