@@ -48,6 +48,7 @@ class ProgressAcceptancePlanTests(unittest.TestCase):
             both = harness.derive_case(source, "both")
             both["id"] = source["id"]
             self.assertIsNone(both.pop("objective_progress_policy"))
+            self.assertIsNone(both.pop("warm_start_seed_index"))
             for actual, expected in zip(both["objectives"], source["objectives"], strict=True):
                 self.assertEqual(actual["mean"], expected["pointwise"])
                 actual["mean"] = deepcopy(expected["mean"])

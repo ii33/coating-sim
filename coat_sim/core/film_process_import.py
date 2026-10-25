@@ -13,7 +13,7 @@ import json
 import math
 
 from .film_design import physical_thickness_nm, validate_design
-from .film_design_service import simulation_settings
+from .film_design_service import active_material_references, simulation_settings
 from .optical_constants import evaluate_optical_set, validate_optical_set
 from .process_profiles import (MAX_STEP_DURATION_S, MAX_TARGET_NM,
                                source_selection_options)
@@ -125,6 +125,20 @@ def validate_frozen_design_snapshot(snapshot: Mapping) -> dict:
     older producers. They are required for editable draft restoration, not for
     consuming the already expanded design as numerical/process provenance.
     """
+    return _validate_frozen_design_snapshot(snapshot, active_references_only=False)
+
+
+def validate_active_frozen_design_snapshot(snapshot: Mapping) -> dict:
+    """Validate a numerical snapshot without requiring inactive editor drafts.
+
+    Envelope, digest, normalized design/settings and every captured optical
+    record retain the complete validator's checks. Only material-reference
+    coverage follows the existing numerical active-material contract.
+    """
+    return _validate_frozen_design_snapshot(snapshot, active_references_only=True)
+
+
+def _validate_frozen_design_snapshot(snapshot: Mapping, *, active_references_only: bool) -> dict:
     required = {"schema_version", "kind", "design", "settings", "materials", "sha256"}
     if not isinstance(snapshot, Mapping) or set(snapshot) != required:
         raise ValueError("冻结膜系快照字段无效")
@@ -171,7 +185,9 @@ def validate_frozen_design_snapshot(snapshot: Mapping) -> dict:
             set_map[set_id] = optical_set
         materials[row["id"]] = set_map
 
-    for reference in _all_design_references(design):
+    references = (active_material_references(design) if active_references_only
+                  else _all_design_references(design))
+    for reference in references:
         material_id = reference["material_id"]
         set_id = reference["optical_set_id"]
         if material_id not in materials or set_id not in materials[material_id]:

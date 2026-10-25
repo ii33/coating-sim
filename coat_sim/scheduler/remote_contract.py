@@ -289,14 +289,13 @@ def _validate_spec(spec: JobSpec, *, allow_probe: bool, bound: bool = False):
         return
     if executor == "film_optimization":
         _fields(p, {"payload"})
-        if inputs: _fail("invalid_executor_inputs", "film optimization inputs must be empty")
-        _validate_film_payload(p["payload"])
+        request = _validate_film_payload(p["payload"])
+        _validate_film_inputs(inputs, request)
         return
     if executor == "film_synthesis":
         _fields(p, {"payload"})
-        if inputs:
-            _fail("invalid_executor_inputs", "film synthesis inputs must be empty")
-        _validate_film_synthesis_payload(p["payload"])
+        request = _validate_film_synthesis_payload(p["payload"])
+        _validate_film_inputs(inputs, request)
         return
     if executor == "geometric_raytrace":
         _fields(p, {"request"})
@@ -430,6 +429,7 @@ def _validate_film_payload(payload):
         from coat_sim.core.film_optimization import _checked_frozen_snapshot
         design = validate_design(parsed.design_snapshot)
         _checked_frozen_snapshot(parsed.frozen_material_snapshot, design)
+        return parsed
     except RemoteContractError:
         raise
     except Exception:
@@ -440,14 +440,114 @@ def _validate_film_synthesis_payload(payload):
     from coat_sim.core.film_synthesis_jobs import deserialize_job_payload
     from coat_sim.core.film_synthesis_io import prepare_film_synthesis_payload
     try:
-        _request_id, _request, _metadata = deserialize_job_payload(payload)
+        _request_id, request, _metadata = deserialize_job_payload(payload)
         canonical, _ = prepare_film_synthesis_payload(None, payload["request"])
         if canonical["request"] != payload["request"]["request"]:
             _fail("invalid_film_synthesis_payload", "film synthesis payload is not canonical")
+        return request
     except RemoteContractError:
         raise
     except Exception:
         _fail("invalid_film_synthesis_payload", "film synthesis request or frozen materials are invalid")
+
+
+def _validate_film_inputs(inputs, request):
+    # Provenance is immutable request input, not a free-form metadata channel.
+    # The existing validator is Qt-free and binds both request and materials.
+    from coat_sim.ui.film_optimization_continue_source import SOURCE_INPUT_KEY, validate_source_binding
+    if set(inputs) - {SOURCE_INPUT_KEY, "film_warm_restart"}:
+        _fail("invalid_executor_inputs", "unsupported film optimization input")
+    if SOURCE_INPUT_KEY not in inputs:
+        if "film_warm_restart" in inputs:
+            _fail("invalid_executor_inputs", "film warm restart requires a source binding")
+        return
+    try:
+        binding = validate_source_binding(inputs[SOURCE_INPUT_KEY], request)
+        identity = binding["managed_film"]
+        if identity is not None and any(not re.fullmatch(r"[0-9a-f]{32}", identity[key])
+                                        for key in ("project_id", "document_id")):
+            raise ValueError("film source requires stable project document IDs")
+        from coat_sim.core.film_auto_synthesis import FilmSynthesisRequest
+        delta = binding["synthesis_editable_delta"]
+        if type(request) is FilmSynthesisRequest:
+            if delta is not None:
+                from coat_sim.core.film_continuation_editable_snapshot import restore_editable_snapshot_delta
+                frozen = request.frozen_material_snapshot
+                if frozen is None:
+                    raise ValueError("synthesis source requires frozen materials")
+                restored = restore_editable_snapshot_delta(frozen, delta)
+                from coat_sim.core.project_dependencies import normalize_optical_material
+                for material in restored["materials"]:
+                    if normalize_optical_material(material) != material:
+                        raise ValueError("synthesis editable material is not canonical")
+        elif delta is not None:
+            raise ValueError("thickness source cannot contain synthesis editable inputs")
+        if "film_warm_restart" in inputs:
+            _validate_film_warm_restart(inputs["film_warm_restart"], request)
+    except Exception:
+        _fail("invalid_executor_inputs", "film source binding does not match the frozen request")
+
+
+def _validate_film_warm_restart(value, request):
+    """Check bounded provenance, not old-job authority or saved optical scores."""
+    from coat_sim.core.film_auto_synthesis import FilmSynthesisRequest
+    from coat_sim.core.film_synthesis_archive import physical_design_hash
+    synthesis = type(request) is FilmSynthesisRequest
+    required = {"schema_version", "kind", "mode", "solver_state_preserved", "source_kind",
+        "original_design_revision", "original_request_sha256", "candidate_physical_hash",
+        "spent", "fresh_budget", "saved_training_complete", "physical_replay_performed",
+        "independent_audit_performed", "saved_scores_reused", "source_job_id",
+        "source_spec_fingerprint"}
+    if synthesis:
+        required.add("seeds")
+    if not isinstance(value, dict) or set(value) != required:
+        raise ValueError("film warm restart fields are invalid")
+    if (type(value["schema_version"]) is not int or value["schema_version"] != 1
+            or value["kind"] != "coat_sim.film_warm_restart"
+            or value["mode"] != "warm_restart"
+            or value["source_kind"] != ("film_synthesis" if synthesis else "film_optimization")
+            or value["saved_training_complete"] is not True
+            or any(value[key] is not False for key in ("solver_state_preserved",
+                "physical_replay_performed", "independent_audit_performed", "saved_scores_reused"))
+            or type(value["original_design_revision"]) is not int
+            or value["original_design_revision"] < 0
+            or not isinstance(value["source_job_id"], str)
+            or not _JOB_ID.fullmatch(value["source_job_id"])
+            or any(not isinstance(value[key], str) or not _SHA256.fullmatch(value[key])
+                for key in ("original_request_sha256", "source_spec_fingerprint", "candidate_physical_hash"))):
+        raise ValueError("film warm restart provenance is invalid")
+    spent_keys = ({"cycles", "evaluations", "validation_evaluations", "failed_evaluations",
+        "audit_physical_evaluations", "audit_wavelength_points"} if synthesis else
+        {"iterations", "evaluations", "failed_evaluations", "validation_evaluations"})
+    spent = value["spent"]
+    if (not isinstance(spent, dict) or set(spent) != spent_keys
+            or any(not (synthesis and counter is None)
+                and (type(counter) is not int or counter < 0) for counter in spent.values())):
+        raise ValueError("film warm restart work counters are invalid")
+    budget_keys = ({"max_cycles", "max_evaluations", "max_seconds"} if synthesis else
+                   {"max_iterations", "max_evaluations"})
+    budget = value["fresh_budget"]
+    if (not isinstance(budget, dict) or set(budget) != budget_keys
+            or any(type(budget[key]) is not type(getattr(request, key))
+                or budget[key] != getattr(request, key) for key in budget_keys)):
+        raise ValueError("film warm restart budget does not match its request")
+    candidate = request.design_snapshot if not synthesis else (
+        request.seed_designs[0] if request.seed_designs else None)
+    if candidate is None or value["candidate_physical_hash"] != physical_design_hash(candidate):
+        raise ValueError("film warm restart candidate does not match its request")
+    if synthesis:
+        seeds = value["seeds"]
+        counts = {"archive_added", "original_count", "retained_count", "archive_geometry_capacity"}
+        if (not isinstance(seeds, dict) or set(seeds) != counts | {"candidate_first", "saved_scores_reused"}
+                or seeds["candidate_first"] is not True or seeds["saved_scores_reused"] is not False
+                or any(type(seeds[key]) is not int or seeds[key] < 0 for key in counts)
+                or seeds["archive_geometry_capacity"] != request.archive_capacity
+                or seeds["archive_added"] >= request.archive_capacity
+                or seeds["retained_count"] != len(request.seed_designs)
+                or not 1 + seeds["archive_added"] <= seeds["retained_count"] <= (
+                    1 + seeds["archive_added"] + seeds["original_count"])
+                or type(request.warm_start_seed_index) is not int or request.warm_start_seed_index != 0):
+            raise ValueError("film warm restart seeds do not match its request")
 
 
 def prepare_portable_spec(spec: JobSpec) -> JobSpec:

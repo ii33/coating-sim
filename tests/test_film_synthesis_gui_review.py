@@ -156,6 +156,26 @@ class _Scene:
         })()""")
         QTest.qWait(20)
         assert item.isVisible() and item.isEnabled(), item.objectName()
+        overflow_anchor = self.evaluate(item, """(function () {
+            const sourceName = objectName;
+            let ancestor = parent;
+            while (ancestor !== null) {
+                if (ancestor.overflowItems !== undefined
+                        && ancestor.overflowItems.some(source => source.objectName === sourceName))
+                    return String(ancestor.overflowAnchor.objectName);
+                ancestor = ancestor.parent;
+            }
+            return "";
+        })()""")
+        if overflow_anchor:
+            # Overflowed controls intentionally retain visible/enabled state
+            # while their original geometry is clipped outside the toolbar.
+            # Exercise the actual native More menu, including its project
+            # resource carrier, rather than calling the source/controller.
+            assert overflow_anchor in ("operationBarOverflowButton", "projectResourceMoreActionsButton")
+            self.click(self.item(overflow_anchor))
+            self.click(self.item("operationBarOverflow_" + item.objectName()))
+            return
         coordinates = json.loads(self.evaluate(item, """(function () {
             const point = mapToItem(null, width / 2, height / 2);
             return JSON.stringify([point.x, point.y]);

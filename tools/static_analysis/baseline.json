@@ -42429,16 +42429,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "coat_sim/scheduler/remote_contract.py",
-      "code": "E701",
-      "message": "Multiple statements on one line (colon)",
-      "scope": "_validate_spec",
-      "anchor": "if inputs: _fail(\"invalid_executor_inputs\", \"film optimization inputs must be empty\")",
-      "fingerprint": "b168e4591c22eac7a7311cd89739d3af0a3392dc04d323824ea278ff849497e6",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_zns_reference_editor.py",
       "code": "union-attr",
@@ -61449,6 +61439,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "2026-10-24 review at 281ce5f018609d3c493c23176119750fa6acfc50 with exact baseline-matching Python 3.12/toolchain: remove only 28 resolved optimization criterion/validation, strict-zip, and test import-order diagnostics; accept no new findings or syntax debt.",
+  "last_prune_reason": "Remove only the reviewed resolved E701 allowance for the replaced empty film inputs branch; new diagnostics remain forbidden",
   "configuration_review_reason": "2026-10-17: add only BSD-3-Clause pypdf 6.21.0 for isolated research PDF extraction; all previous dependency/tool versions, analyzer rules and diagnostic entries remain unchanged. The lock-file digest changes only for this reviewed runtime dependency."
 }

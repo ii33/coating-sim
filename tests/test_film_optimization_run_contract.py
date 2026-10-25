@@ -19,7 +19,8 @@ from PySide6.QtCore import QObject, QRunnable, Signal, QTimer, QCoreApplication
 from coat_sim.core.film_optimization import FilmOptimizationResult
 from coat_sim.ui import film_optimization_quick_controller as module
 from coat_sim.ui.film_optimization_quick_controller import FilmOptimizationQuickController
-from tests.film_structure_fixtures import fixture
+from tests.film_structure_fixtures import fixture, request as film_request
+from tests.test_film_optimization_needle import _objective
 
 
 class _Signals(QObject):
@@ -126,13 +127,8 @@ class _Source(QObject):
 @pytest.fixture
 def attempt_harness(tmp_path, monkeypatch):
     service, _library, design = fixture(tmp_path)
-    request = SimpleNamespace(
-        design_snapshot=design,
-        design_revision=19,
-        frozen_material_snapshot=None,
-        objectives=(object(),),
-        variables=(object(),),
-    )
+    request = film_request(design, [_objective()], bounds=(90.0, 110.0),
+                           max_iterations=2, max_evaluations=4)
     stores = []
 
     def make_store(root):
@@ -141,8 +137,6 @@ def attempt_harness(tmp_path, monkeypatch):
         return store
 
     monkeypatch.setattr(module, "SchedulerClient", make_store)
-    monkeypatch.setattr(module, "freeze_spec", lambda *_args, **_kwargs: {"frozen": True})
-    monkeypatch.setattr(module, "freeze_film_optimization_request", lambda _service, value: value)
     monkeypatch.setattr(module, "_FilmOptimizationTask", _HeldWorker)
     _HeldWorker.instances.clear()
 
@@ -381,7 +375,7 @@ def test_worker_preparation_failure_never_submits_or_installs_attempt(
     controller, _source = make_controller()
 
     if failure == "factory":
-        def fail_factory(*_args):
+        def fail_factory(*_args, **_kwargs):
             raise RuntimeError("controlled worker factory failure")
 
         monkeypatch.setattr(module, "_FilmOptimizationTask", fail_factory)
@@ -391,7 +385,7 @@ def test_worker_preparation_failure_never_submits_or_installs_attempt(
                 raise RuntimeError("controlled signal connection failure")
 
         class BadWorker:
-            def __init__(self, *_args):
+            def __init__(self, *_args, **_kwargs):
                 self.cancel_event = Event()
                 self.signals = SimpleNamespace(
                     progress=BadSignals(), finished=BadSignals())
@@ -404,6 +398,9 @@ def test_worker_preparation_failure_never_submits_or_installs_attempt(
         assert controller._worker is None
         assert controller._active_operation_id is None
         assert "prepare film optimization worker" in controller._error
+        expected_cause = ("controlled worker factory failure" if failure == "factory"
+                          else "controlled signal connection failure")
+        assert expected_cause in controller._error
     finally:
         _dispose(controller)
 
@@ -457,5 +454,6 @@ def test_worker_start_failure_never_submits_or_cancels(
         assert controller._worker is None
         assert controller._active_operation_id is None
         assert "worker start failed" in controller._error
+        assert "controlled worker start failure" in controller._error
     finally:
         _dispose(controller)

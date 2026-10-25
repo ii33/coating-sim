@@ -9,20 +9,48 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Mapping
 
-from .film_process_import import _sha256, validate_frozen_design_snapshot
+from .film_process_import import (
+    _sha256, validate_active_frozen_design_snapshot, validate_frozen_design_snapshot,
+)
 
 KIND = "coat_sim.film_continuation_editable_delta"
 SCHEMA_VERSION = 1
 
 
+def _validate_editable_closure(active: Mapping[str, Any], full: Mapping[str, Any]) -> None:
+    """Editable extras never replace or remove the frozen active physics."""
+    from .film_physical_generator import physical_materials_equal
+    from .project_dependencies import document_material_references, normalize_optical_material
+
+    full_materials = {}
+    for material in full["materials"]:
+        if normalize_optical_material(material) != material:
+            raise ValueError("editable continuation material record is not canonical")
+        full_materials[material["id"]] = material
+    full_sets = {(material["id"], optical["id"]): optical
+                 for material in full["materials"] for optical in material["optical_sets"]}
+    for material in active["materials"]:
+        retained = full_materials.get(material["id"])
+        if retained is None or retained.get("design_ready") != material.get("design_ready"):
+            raise ValueError("editable continuation closure changed active material readiness")
+        for optical in material["optical_sets"]:
+            retained_set = full_sets.get((material["id"], optical["id"]))
+            if retained_set is None or not physical_materials_equal(optical, retained_set):
+                raise ValueError("editable continuation closure changed active optical data")
+    for pair in document_material_references("film", dict(full["design"])):
+        if pair not in full_sets:
+            raise ValueError("editable continuation closure is missing a document material reference")
+
+
 def encode_editable_snapshot_delta(active_snapshot: Mapping[str, Any],
                                    full_editable_snapshot: Mapping[str, Any]) -> dict[str, Any]:
     """Encode an exact editable snapshot without repeating active optical sets."""
-    active = validate_frozen_design_snapshot(active_snapshot)
+    active = validate_active_frozen_design_snapshot(active_snapshot)
     full = validate_frozen_design_snapshot(full_editable_snapshot)
     if ({k: v for k, v in active.items() if k not in {"materials", "sha256"}}
             != {k: v for k, v in full.items() if k not in {"materials", "sha256"}}):
         raise ValueError("editable continuation snapshot differs from its active design/settings")
+    _validate_editable_closure(active, full)
     active_sets = {(m["id"], o["id"]): o for m in active["materials"] for o in m["optical_sets"]}
     materials = []
     for material in full["materials"]:
@@ -41,7 +69,7 @@ def encode_editable_snapshot_delta(active_snapshot: Mapping[str, Any],
 def restore_editable_snapshot_delta(active_snapshot: Mapping[str, Any],
                                     delta: Mapping[str, Any]) -> dict[str, Any]:
     """Restore and strictly validate the exact saved editable closure."""
-    active = validate_frozen_design_snapshot(active_snapshot)
+    active = validate_active_frozen_design_snapshot(active_snapshot)
     if (not isinstance(delta, Mapping) or set(delta) != {
             "schema_version", "kind", "active_sha256", "full_sha256", "materials"}
             or type(delta.get("schema_version")) is not int
@@ -78,4 +106,6 @@ def restore_editable_snapshot_delta(active_snapshot: Mapping[str, Any],
     restored["sha256"] = _sha256(restored)
     if restored["sha256"] != delta["full_sha256"]:
         raise ValueError("editable continuation full snapshot digest does not match")
-    return validate_frozen_design_snapshot(restored)
+    restored = validate_frozen_design_snapshot(restored)
+    _validate_editable_closure(active, restored)
+    return restored

@@ -194,6 +194,27 @@ def click(app, window, item):
     app.processEvents()
 
 
+def click_operation_bar_action(app, window, object_name):
+    """Click the visible toolbar action, including its real overflow menu route."""
+    action = window.findChild(QQuickItem, object_name)
+    assert action is not None and action.isVisible() and action.isEnabled()
+    if action.x() < 0:
+        # ResponsiveOperationBar deliberately clips the original button while
+        # keeping its visible/enabled bindings. A coordinate click on that
+        # source is not a user interaction once another action fills the row.
+        overflow = window.findChild(QQuickItem, "operationBarOverflowButton")
+        assert overflow is not None and overflow.isVisible() and overflow.isEnabled()
+        click(app, window, overflow)
+        menu = window.findChild(QObject, "operationBarOverflowMenu")
+        assert menu is not None and menu.property("visible")
+        action = window.findChild(QQuickItem, "operationBarOverflow_" + object_name)
+        assert action is not None and action.isVisible() and action.isEnabled()
+    center = action.mapToScene(QPointF(action.width() / 2, action.height() / 2))
+    assert 0 <= center.x() < window.width()
+    assert 0 <= center.y() < window.height()
+    click(app, window, action)
+
+
 def test_sidebar_reuses_content_and_toolbar_has_statistics_without_details_button(app, tmp_path):
     service, _library, design = fixture(tmp_path)
     with optimizer(service, design) as (controller, _source, _session):

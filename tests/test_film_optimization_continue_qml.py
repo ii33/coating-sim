@@ -19,7 +19,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QObject, QMetaObject, QPointF, Qt, QUrl, Signal, Slot
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QFont, QGuiApplication
 from PySide6.QtQml import QQmlComponent, QQmlEngine
 from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtTest import QTest
@@ -182,6 +182,11 @@ def runtime(tmp_path):
     source = _Source(service, session)
     controller = _BudgetCaptureController(source)
     theme = ThemeService.instance()
+    prior_snapshot = theme.current_snapshot
+    prior_mode = theme.current_preference_mode
+    prior_theme_id = theme.current_theme_id
+    prior_font_family = theme._font_family_override
+    prior_font = QFont(app.font())
     theme.configure(mode="light", font_scale=1.0, density_scale=1.0)
     engine = QQmlEngine()
     theme.attach_engine(engine)
@@ -230,7 +235,16 @@ def runtime(tmp_path):
             wait=True, cancel_futures=True)
         shiboken6.delete(controller)
         shiboken6.delete(source)
-        theme.configure(mode="light", font_scale=1.0, density_scale=1.0)
+        # Restoring a hard-coded 1.0 leaks a 12pt application font into later
+        # GUI tests; the process may have started at the supported 9pt scale.
+        theme.configure(
+            mode=prior_mode,
+            font_scale=float(prior_snapshot["fontScale"]),
+            density_scale=float(prior_snapshot["densityScale"]),
+            theme_package_id=prior_theme_id,
+            font_family=prior_font_family,
+        )
+        app.setFont(prior_font)
         app.processEvents()
 
 

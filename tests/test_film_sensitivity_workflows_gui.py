@@ -18,7 +18,9 @@ from PySide6.QtTest import QTest
 from coat_sim.core import film_sensitivity_workflow_jobs as workflow_jobs
 from coat_sim.scheduler.jobs import JobSpec
 from tests.film_structure_fixtures import fixture
-from tests.test_film_optimization_restore_layout import click, optimizer, window_runtime
+from tests.test_film_optimization_restore_layout import (
+    click, click_operation_bar_action, optimizer, window_runtime,
+)
 from tests.test_film_sensitivity_quick_controller import _HeldPool
 
 pytestmark = pytest.mark.qt
@@ -145,7 +147,7 @@ def test_initial_entries_have_no_invented_table_or_ideal_defaults(harness, app):
     assert all(row["selected"] for row in panel.idealSensitivityLayers)
     assert panel.activeWorkflow == "ideal"
     with window_runtime(app, harness.owner) as (window, warnings):
-        click(app, window, window.findChild(QQuickItem, "filmSensitivityOpenButton"))
+        click_operation_bar_action(app, window, "filmSensitivityOpenButton")
         assert window.findChild(QObject, "filmSensitivityDialog").property("visible")
         assert window.findChild(QObject, "filmSensitivityWorkflowTabs").property("currentIndex") == 1
         root = window.contentItem()
@@ -167,7 +169,7 @@ def test_default_ideal_tab_is_visible_and_blank_scale_click_cannot_submit(harnes
     panel = harness.panel
     assert panel.idealSensitivityMode == ""
     with window_runtime(app, harness.owner) as (window, warnings):
-        click(app, window, window.findChild(QQuickItem, "filmSensitivityOpenButton"))
+        click_operation_bar_action(app, window, "filmSensitivityOpenButton")
         root = window.contentItem()
         tabs = window.findChild(QObject, "filmSensitivityWorkflowTabs")
         assert tabs.property("currentIndex") == 1
@@ -348,7 +350,7 @@ def test_table_and_ideal_drafts_are_isolated_and_focus_survives_typing(harness, 
     assert panel.idealSensitivityMode == "relative"
     assert panel.thicknessErrorRows[0]["bias_text"] == "1"
     with window_runtime(app, harness.owner) as (window, warnings):
-        click(app, window, window.findChild(QQuickItem, "filmSensitivityOpenButton"))
+        click_operation_bar_action(app, window, "filmSensitivityOpenButton")
         click(app, window, _find_visual_item(window.contentItem(), "filmSensitivityTableTab"))
         assert panel.activeWorkflow == "table"
         field = _find_visual_item(window.contentItem(), "filmThicknessBias_" + layer_id)
@@ -386,7 +388,8 @@ def test_tab_switch_and_dialog_reopen_preserve_all_workflow_drafts_and_results(h
 
     with window_runtime(app, harness.owner) as (window, warnings):
         open_button = window.findChild(QQuickItem, "filmSensitivityOpenButton")
-        click(app, window, open_button)
+        assert open_button is not None
+        click_operation_bar_action(app, window, "filmSensitivityOpenButton")
         root = window.contentItem()
         tabs = window.findChild(QObject, "filmSensitivityWorkflowTabs")
         assert tabs.property("currentIndex") == 1
@@ -408,7 +411,7 @@ def test_tab_switch_and_dialog_reopen_preserve_all_workflow_drafts_and_results(h
         QTest.keyClick(window, Qt.Key.Key_Escape)
         app.processEvents()
         assert not dialog.property("visible")
-        click(app, window, open_button)
+        click_operation_bar_action(app, window, "filmSensitivityOpenButton")
         assert dialog.property("visible")
         assert tabs.property("currentIndex") == 0
         assert panel.activeWorkflow == "table"

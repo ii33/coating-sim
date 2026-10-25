@@ -18,7 +18,9 @@ from PySide6.QtTest import QTest
 from coat_sim.core import film_sensitivity_workflow_jobs as workflow_jobs
 from coat_sim.scheduler.jobs import JobSpec
 from tests.film_structure_fixtures import fixture
-from tests.test_film_optimization_restore_layout import click, optimizer, window_runtime
+from tests.test_film_optimization_restore_layout import (
+    click, click_operation_bar_action, optimizer, window_runtime,
+)
 from tests.test_film_sensitivity_quick_controller import _HeldPool
 
 pytestmark = pytest.mark.qt
@@ -140,8 +142,7 @@ def test_bounded_default_requires_each_budget_and_keeps_id_associations(harness)
     assert first["objective_id"] == harness.owner._objectives[0]["id"]
     assert "550 nm" in first["display"] and "R" in first["display"]
     with window_runtime(QGuiApplication.instance(), harness.owner) as (window, warnings):
-        click(QGuiApplication.instance(), window,
-              window.findChild(QQuickItem, "filmSensitivityOpenButton"))
+        click_operation_bar_action(QGuiApplication.instance(), window, "filmSensitivityOpenButton")
         policy_box = window.findChild(QObject, "filmIdealSensitivityPolicyBox")
         budget_field = _find_visual_item(
             window.contentItem(), "filmIdealDegradationBudget_" + first["objective_id"])
@@ -201,7 +202,7 @@ def test_bounded_default_requires_each_budget_and_keeps_id_associations(harness)
 def test_real_qml_scale_selection_then_blank_budget_cannot_submit(harness, app):
     panel = harness.panel
     with window_runtime(app, harness.owner) as (window, warnings):
-        click(app, window, window.findChild(QQuickItem, "filmSensitivityOpenButton"))
+        click_operation_bar_action(app, window, "filmSensitivityOpenButton")
         mode = window.findChild(QQuickItem, "filmIdealSensitivityModeBox")
         assert mode is not None and mode.isVisible()
         click(app, window, mode)
@@ -299,7 +300,7 @@ def test_nominal_false_guard_pass_candidate_requires_explicit_confirm_and_is_one
     harness.source.applyOptimizedDesign = apply_to_session
     harness.source.undoOptimizedDesign = undo_session_once
     with window_runtime(app, harness.owner) as (window, warnings):
-        click(app, window, window.findChild(QQuickItem, "filmSensitivityOpenButton"))
+        click_operation_bar_action(app, window, "filmSensitivityOpenButton")
         apply = window.findChild(QQuickItem, "filmIdealSensitivityApplyButton")
         assert apply is not None and apply.isEnabled()
         click(app, window, apply)

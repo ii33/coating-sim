@@ -81,6 +81,27 @@ Deposition `.coatasset` inputs can be uploaded and registered; ray requests refe
 to their registered artifact ID and digest. Registration validates the portable
 archive before making it available to workers.
 
+### Source-bound film continuation inputs
+
+Film optimization and synthesis accept legacy empty inputs or the optional
+current-schema `inputs.film_optimization_source`, alongside the existing device
+binding. The source record is part of the canonical, content-addressed JobSpec,
+not mutable queue metadata. Admission checks its exact fields and version,
+request/material digests, stable managed-resource IDs, and any synthesis
+editable-material delta by restoring and validating its full material closure.
+Thickness jobs cannot carry a synthesis editable delta. Unknown input keys,
+old schemas and mismatched hashes are rejected before queue admission.
+
+An optional `inputs.film_warm_restart` additionally requires that source record.
+Its exact current schema, safety flags, candidate physical hash, new budgets,
+work-counter types and synthesis seed inventory must match the new frozen
+request. Original job IDs, original-request digests and original spec digests
+are syntactically checked provenance, not remote proof of old-job authority or
+saved optical scores. This remains a fresh search, not a checkpoint restore;
+no saved score or solver state is reused. The remote service does not access
+client paths or the user's current editor state. Editor staleness and write-back
+remain owned by the controller's existing source-bound lifecycle gates.
+
 ### Asset and field-domain versions
 
 The current `.coatasset` writer produces package schema 2; its existing reader

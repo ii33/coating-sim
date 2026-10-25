@@ -14,7 +14,9 @@ from PySide6.QtQuick import QQuickItem
 from PySide6.QtTest import QTest
 
 from tests.film_structure_fixtures import fixture as film_fixture
-from tests.test_film_optimization_restore_layout import click, optimizer, window_runtime
+from tests.test_film_optimization_restore_layout import (
+    click, click_operation_bar_action, optimizer, window_runtime,
+)
 
 pytestmark = pytest.mark.qt
 
@@ -38,7 +40,7 @@ def sensitivity_window(app, tmp_path):
         with window_runtime(app, owner) as (window, warnings):
             open_button = window.findChild(QQuickItem, "filmSensitivityOpenButton")
             assert open_button is not None
-            click(app, window, open_button)
+            click_operation_bar_action(app, window, "filmSensitivityOpenButton")
             yield owner, controller, window, warnings
 
 
@@ -114,11 +116,31 @@ def test_blank_scale_click_is_rejected_and_current_drafts_survive_switch_reopen(
     dialog.setProperty("visible", False)
     app.processEvents()
     assert not dialog.property("visible")
-    click(app, window, open_button)
+    click_operation_bar_action(app, window, "filmSensitivityOpenButton")
     assert dialog.property("visible")
     assert tabs.property("currentIndex") == 1
     assert controller.activeWorkflow == "ideal"
     assert controller.thicknessErrorRows[0]["bias_text"] == "-1.25"
     assert controller.idealDegradationObjectives[0]["budget_text"] == "2"
     assert controller.idealSensitivityMode == ""
+    assert not warnings, warnings
+
+
+@pytest.mark.parametrize("width,overflowed", ((720, True), (1600, False)))
+def test_sensitivity_entry_uses_real_visible_action_at_narrow_and_wide_widths(
+        sensitivity_window, app, width, overflowed):
+    _owner, controller, window, warnings = sensitivity_window
+    dialog = window.findChild(QObject, "filmSensitivityDialog")
+    assert dialog is not None and dialog.property("visible")
+    QTest.keyClick(window, Qt.Key.Key_Escape)
+    app.processEvents()
+    assert not dialog.property("visible")
+    window.resize(width, 500)
+    QTest.qWait(30)
+    app.processEvents()
+    source = window.findChild(QQuickItem, "filmSensitivityOpenButton")
+    assert source is not None and (source.x() < 0) is overflowed
+    click_operation_bar_action(app, window, "filmSensitivityOpenButton")
+    assert dialog.property("visible")
+    assert controller.activeWorkflow == "ideal"
     assert not warnings, warnings

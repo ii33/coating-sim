@@ -15,7 +15,8 @@ from coat_sim.scheduler.remote_client import RemoteSubmissionUnknown
 from coat_sim.ui import compute_target as compute_target_module
 from coat_sim.ui import film_optimization_quick_controller as controller_module
 from coat_sim.ui.film_optimization_quick_controller import FilmOptimizationQuickController
-from tests.film_structure_fixtures import fixture as film_fixture
+from tests.film_structure_fixtures import fixture as film_fixture, request as film_request
+from tests.test_film_optimization_needle import _objective
 
 
 DEVICE_ID = "cpu:default"
@@ -132,13 +133,8 @@ class _RemoteStore:
 @pytest.fixture
 def harness(tmp_path, monkeypatch, app):
     service, _library, design = film_fixture(tmp_path)
-    request = SimpleNamespace(
-        design_snapshot=design,
-        design_revision=19,
-        objectives=(),
-        variables=(),
-        frozen_material_snapshot={"materials": []},
-    )
+    request = film_request(design, [_objective()], bounds=(90.0, 110.0),
+                           max_iterations=2, max_evaluations=4)
     store_box: dict[str, _RemoteStore] = {}
 
     class _Target(compute_target_module.ComputeTarget):
@@ -146,9 +142,6 @@ def harness(tmp_path, monkeypatch, app):
             return store_box["store"], {"id": DEVICE_ID, "backend": "CPU", "available": True}
 
     monkeypatch.setattr(compute_target_module, "ComputeTarget", _Target)
-    monkeypatch.setattr(controller_module, "freeze_spec", lambda *_args, **_kwargs: {"frozen": True})
-    monkeypatch.setattr(controller_module, "freeze_film_optimization_request",
-                        lambda _service, value: value)
 
     def create(store):
         store_box["store"] = store
