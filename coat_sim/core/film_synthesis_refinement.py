@@ -15,6 +15,12 @@ from numpy.typing import NDArray
 
 from .film_objective_criteria import (active_constraints, normalized_band_weights,
     reduce_objective_responses, signed_bound_count, validate_objective_criteria)
+from .film_synthesis_progress import (AcceptedProgressMonitor, HybridProgressPolicy,
+    ProgressSample, validate_progress_policy)
+
+
+class _ObjectiveProgressHandoff(Exception):
+    """An accepted-iterate diagnostic requests existing minimax, not convergence."""
 
 
 class _InequalityConstraint(TypedDict):
@@ -254,7 +260,8 @@ def _coordinate_thicknesses_nm(point, scales, lower, upper, initial_point, initi
 
 
 def refine_synthesis_explorer(request, initial, *, evaluate, archive,
-        cancel_check=lambda: None, progress=lambda *args: None, max_iterations=64):
+        cancel_check=lambda: None, progress=lambda *args: None, max_iterations=64,
+        progress_policy: HybridProgressPolicy | None = None):
     """Continue the actual accepted SSE endpoint, never the strict champion.
 
     All old layers, split hosts and new needles have independent variables.
@@ -263,6 +270,7 @@ def refine_synthesis_explorer(request, initial, *, evaluate, archive,
     returns the last accepted solver iterate, not the best line-search sample.
     """
     minimize = import_module('scipy.optimize').minimize
+    validate_progress_policy(progress_policy)
     design = initial['design']
     rows = design['front_layers']
     if not rows:
@@ -283,6 +291,16 @@ def refine_synthesis_explorer(request, initial, *, evaluate, archive,
     calls = 0
     iterations = 0
     outcome = None
+
+    progress_monitor = None
+
+    def progress_sample(value, loss, iteration):
+        from .film_synthesis_archive import physical_design_hash
+        score = value['score']
+        return ProgressSample(iteration, float(loss), float(score['max_error']),
+            float(score['weighted_rms_error']), score.get('nominal_pass'),
+            physical_design_hash(value['design']),
+            tuple(float(row['thickness']['value']) for row in value['design']['front_layers']))
 
     def data(x):
         nonlocal cache_x, cache_value, cache_loss, calls
@@ -332,6 +350,17 @@ def refine_synthesis_explorer(request, initial, *, evaluate, archive,
             iterations += 1
         cancel_check()  # Do not suppress caller cancellation or whole limits.
         progress('hybrid_sse_accepted_iterate', accepted, dict(iterations=iterations))
+        if progress_monitor is not None:
+            if cache_x is None or not np.array_equal(point_x, cache_x):
+                progress_monitor.reset_window('incomplete_accepted_evidence')
+                return
+            assert cache_loss is not None
+            decision = progress_monitor.observe(progress_sample(accepted, cache_loss[0], iterations))
+            if decision is not None:
+                # The full trial and accepted endpoint were committed first.
+                # Global cancellation/budget still takes priority over routing.
+                cancel_check()
+                raise _ObjectiveProgressHandoff(decision.reason)
 
     constraints = () if total is None else ({'type': 'ineq',
         'fun': lambda x: total - float(np.asarray(x) @ scales), 'jac': lambda x: -scales},)
@@ -349,6 +378,11 @@ def refine_synthesis_explorer(request, initial, *, evaluate, archive,
         else:
             data(point)
             accepted = cache_value
+        if progress_policy is not None:
+            assert cache_loss is not None
+            progress_monitor = AcceptedProgressMonitor(progress_policy,
+                progress_sample(accepted, cache_loss[0], 0),
+                receiver_minimum_thickness_nm=request.minimum_nonzero_thickness_nm or np.finfo(float).tiny)
         outcome = minimize(objective, point, jac=True, bounds=bounds, method=method,
             constraints=constraints, callback=callback, options=options)
         endpoint = np.asarray(outcome.x, float)
@@ -366,13 +400,19 @@ def refine_synthesis_explorer(request, initial, *, evaluate, archive,
                        'fixed_bounds' if bool(outcome.success) and upper is not None and lower == upper else
                        'converged' if bool(outcome.success) else
                        'iteration_limit' if int(getattr(outcome, 'status', -1)) in (1, 9) else 'solver_failure')
+    except _ObjectiveProgressHandoff:
+        termination = 'objective_progress_handoff'
     except SynthesisStageBudget:
-        termination = 'stage_budget'
+        # A local slice expiry cannot undo an already committed routing
+        # decision. Global stop/cancel exceptions are deliberately not caught.
+        termination = ('objective_progress_handoff'
+            if progress_monitor is not None and progress_monitor.decision is not None
+            else 'stage_budget')
     except SynthesisResourceGuard:
         termination = 'resource_guard'
     terminal_loss = (weighted_sse_loss_gradient(request, accepted, ())[0]
                      if accepted.get('responses') else None)
-    return accepted, dict(method=method, termination=termination,
+    diagnostics = dict(method=method, termination=termination,
         success=bool(outcome.success) if outcome is not None and termination in ('converged', 'fixed_bounds') else False,
         message=str(outcome.message) if outcome is not None else termination,
         iterations=iterations, physical_candidates=calls, weighted_sse=terminal_loss,
@@ -382,30 +422,77 @@ def refine_synthesis_explorer(request, initial, *, evaluate, archive,
         free_thickness_variables=0 if upper is not None and lower == upper else len(ids),
         all_original_conditions=True, independent_layer_variables=list(ids),
         objective_masses=synthesis_window_masses(request).tolist())
+    if progress_monitor is not None:
+        diagnostics['objective_progress'] = progress_monitor.summary()
+    return accepted, diagnostics
 
 
 def refine_synthesis_full_minimax(request, initial, *, evaluate, archive,
-        cancel_check=lambda: None, progress=lambda *args: None, max_iterations=120):
+        cancel_check=lambda: None, progress=lambda *args: None, max_iterations=120,
+        lower_bounds_nm: Mapping[str, float] | None = None):
     """Mature full-original-constraint SLSQP epigraph, with physical verification.
 
     No sparse active set and no optimizer t-only acceptance. Original responses
     and Jacobians define every inequality. The strict best is independently
     retained while diagnostics describe the actual epigraph terminal only.
+    Optional per-layer minima must cover the exact current topology and may
+    tighten, never relax, native limits. The initial physical design must be
+    feasible already; this refiner does not project or repair its input.
     """
     from .film_synthesis_multispectral_minimax import _signed_bounds
     from .film_synthesis_archive import physical_design_hash
     minimize = import_module('scipy.optimize').minimize
     design = initial['design']
     rows = design['front_layers']
+    if lower_bounds_nm is not None:
+        supplied_ids = tuple(row['id'] for row in rows)
+        if (not isinstance(lower_bounds_nm, Mapping)
+                or any(not isinstance(identifier, str) for identifier in supplied_ids)
+                or len(set(supplied_ids)) != len(supplied_ids)
+                or set(lower_bounds_nm) != set(supplied_ids)):
+            raise ValueError('per-layer lower bounds must match exact unique current layer IDs')
+        if any(row['thickness'].get('unit') != 'nm' for row in rows):
+            raise ValueError('per-layer lower bounds require initial physical thicknesses in nm')
+        if any(isinstance(row['thickness']['value'], (bool, np.bool_)) for row in rows):
+            raise ValueError('per-layer lower bounds require nonboolean initial thicknesses')
     if not rows:
         return initial, dict(method='none', termination='empty_topology', success=True,
                              physical_candidates=0, all_original_conditions=True)
     ids = tuple(row['id'] for row in rows)
     ds = np.asarray([row['thickness']['value'] for row in rows], float)
     scales = np.full(ds.shape, 100.)
-    lower = request.minimum_nonzero_thickness_nm or np.finfo(float).tiny
+    lower: float | NDArray[np.float64] = request.minimum_nonzero_thickness_nm or np.finfo(float).tiny
     upper, total = request.max_layer_thickness_nm, request.max_total_thickness_nm
-    bounds = [(lower / 100., None if upper is None else upper / 100.) for _ in rows]
+    if lower_bounds_nm is None:
+        bounds = [(lower / 100., None if upper is None else upper / 100.) for _ in rows]
+        fixed_ids = list(ids) if upper is not None and lower == upper else []
+    else:
+        from numbers import Real
+        minima: list[float] = []
+        for identifier in ids:
+            raw = lower_bounds_nm[identifier]
+            if isinstance(raw, (bool, np.bool_)) or not isinstance(raw, Real):
+                raise ValueError('per-layer lower bounds must be finite positive numbers')
+            try:
+                minimum = float(raw)
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError('per-layer lower bounds must be finite positive numbers') from exc
+            if not math.isfinite(minimum) or minimum <= 0.:
+                raise ValueError('per-layer lower bounds must be finite positive numbers')
+            if minimum < lower or (upper is not None and minimum > upper):
+                raise ValueError('per-layer lower bounds must respect native layer limits')
+            minima.append(minimum)
+        layer_lower = np.asarray(minima, dtype=np.float64)
+        if total is not None and math.fsum(layer_lower) > total:
+            raise ValueError('per-layer lower bounds exceed native total thickness limit')
+        if (not np.all(np.isfinite(ds)) or np.any(ds < layer_lower)
+                or (upper is not None and np.any(ds > upper))
+                or (total is not None and math.fsum(ds) > total)):
+            raise ValueError('per-layer lower bounds require feasible initial physical thicknesses')
+        lower = layer_lower
+        bounds = [(float(lo) / 100., None if upper is None else upper / 100.) for lo in layer_lower]
+        fixed_ids = [identifier for identifier, lo in zip(ids, layer_lower, strict=True)
+                     if upper is not None and lo == upper]
     best = initial
     terminal = initial
     accepted = initial
@@ -431,7 +518,8 @@ def refine_synthesis_full_minimax(request, initial, *, evaluate, archive,
         thicknesses = _coordinate_thicknesses_nm(x, scales, lower, upper, ds / scales, ds)
         below = np.minimum(thicknesses - lower, 0.)
         above = np.zeros_like(thicknesses) if upper is None else np.maximum(thicknesses - upper, 0.)
-        excess = 0. if total is None else max(0., float(sum(thicknesses)) - total)
+        excess = 0. if total is None else max(0., (float(sum(thicknesses))
+            if lower_bounds_nm is None else math.fsum(thicknesses)) - total)
         if np.any(below) or np.any(above) or excess:
             # SLSQP may request a trial outside its total inequality. Reject it
             # before optics and supply a differentiable feasibility penalty;
@@ -475,7 +563,9 @@ def refine_synthesis_full_minimax(request, initial, *, evaluate, archive,
             return np.column_stack((-jac, np.ones(len(jac))))
         constraints = [{'type': 'ineq', 'fun': constraint, 'jac': derivative}]
         if total is not None:
-            constraints.append({'type': 'ineq', 'fun': lambda x: total - float(x[:-1] @ scales),
+            constraints.append({'type': 'ineq', 'fun': lambda x: total - (
+                float(x[:-1] @ scales) if lower_bounds_nm is None else math.fsum(
+                    _coordinate_thicknesses_nm(x[:-1], scales, lower, upper, x0, ds))),
                                 'jac': lambda x: np.concatenate((-scales, [0.]))})
         def accepted_callback(x):
             nonlocal accepted, accepted_t, accepted_iterations
@@ -496,7 +586,8 @@ def refine_synthesis_full_minimax(request, initial, *, evaluate, archive,
         endpoint_ds = _coordinate_thicknesses_nm(endpoint[:-1], scales, lower, upper, ds / scales, ds)
         endpoint_physical = (np.all(endpoint_ds >= lower)
             and (upper is None or np.all(endpoint_ds <= upper))
-            and (total is None or float(sum(endpoint_ds)) <= total))
+            and (total is None or (float(sum(endpoint_ds)) if lower_bounds_nm is None
+                                  else math.fsum(endpoint_ds)) <= total))
         t_terminal = float(endpoint[-1])
         if endpoint_physical:
             q_terminal = float(np.max(data(endpoint[:-1])[0]))
@@ -521,8 +612,8 @@ def refine_synthesis_full_minimax(request, initial, *, evaluate, archive,
         iterations=int(getattr(outcome, 'nit', 0)) if outcome is not None else accepted_iterations, physical_candidates=calls,
         rejected_infeasible_trials=rejected_infeasible_trials,
         all_original_conditions=True, sparse_active_set=False,
-        fixed_layer_ids=list(ids) if upper is not None and lower == upper else [],
-        free_thickness_variables=0 if upper is not None and lower == upper else len(ids),
+        fixed_layer_ids=fixed_ids,
+        free_thickness_variables=len(ids) - len(fixed_ids),
         original_signed_constraints=(0 if cache_data is None else len(cache_data[0])),
         terminal_role=('actual_solver_endpoint' if outcome is not None and termination not in ('stage_budget', 'resource_guard')
                        else 'last_accepted_iterate_or_initial_when_interrupted'),

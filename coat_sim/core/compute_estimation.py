@@ -3,13 +3,16 @@ from dataclasses import asdict
 import hashlib
 import math
 
-KINDS = frozenset({"single_source", "process", "mask_optimization", "film_optimization", "film_synthesis", "film_ideal_sensitivity", "film_thickness_error_table", "appearance_render", "mask_weights", "mask_field", "point_weights", "python_script"})
+KINDS = frozenset({"single_source", "process", "mask_optimization", "film_optimization", "film_synthesis", "film_manufacturing_repair", "film_ideal_sensitivity", "film_thickness_error_table", "appearance_render", "mask_weights", "mask_field", "point_weights", "python_script"})
 
 
 def canonical_parameters(service, kind, supplied):
     if kind not in KINDS or not isinstance(supplied, dict):
         raise ValueError("invalid_compute_kind: 未知计算种类或参数类型")
     value = dict(supplied)
+    if kind == "film_manufacturing_repair":
+        from .film_manufacturing_jobs import canonical_parameters
+        return canonical_parameters(service, value)
     if kind in ("film_ideal_sensitivity", "film_thickness_error_table"):
         from .film_sensitivity_workflow_jobs import canonical_parameters, workflow_for_request
         if workflow_for_request(value.get("payload")) != kind:
@@ -150,6 +153,12 @@ def input_file_fingerprints(service, kind, parameters):
 def estimate(service, kind, parameters):
     if kind not in KINDS:
         raise ValueError("invalid_compute_kind: unsupported compute kind")
+    if kind == "film_manufacturing_repair":
+        from .film_manufacturing_jobs import estimate_resources
+        return {"summary": "当前膜系制造修复 A/B", "execution_project_root": str(service.root),
+            "estimated_s": None, "work_index": None, "sample_count": 0,
+            "operations": estimate_resources(parameters["payload"]),
+            "basis": "Frozen original grids and explicit per-route limits; no runtime or nominal-pass prediction"}
     if kind in ("film_ideal_sensitivity", "film_thickness_error_table"):
         from .film_sensitivity_workflow_jobs import workflow_request_from_payload, estimate_workflow_resources
         request = workflow_request_from_payload(parameters["payload"])

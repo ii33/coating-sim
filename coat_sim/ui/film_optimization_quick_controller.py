@@ -13,7 +13,7 @@ import re
 import threading
 import time
 from uuid import uuid4
-from typing import Any, Literal, Mapping, Protocol, cast
+from typing import TYPE_CHECKING, Any, Literal, Mapping, Protocol, cast
 import weakref
 from coat_sim.project_session import OperationBinding
 
@@ -49,11 +49,15 @@ from coat_sim.ui.film_synthesis_quick_adapter import (
 )
 from coat_sim.ui.film_synthesis_forward_probe import FilmSynthesisForwardProbe
 from coat_sim.ui.film_sensitivity_quick_controller import FilmSensitivityQuickController
+from coat_sim.ui.film_objective_progress_editor import ObjectiveProgressDraft, PROGRESS_FIELD_LABELS
 from coat_sim.ui.film_optimization_run_coordinator import (
     FilmOptimizationRunCoordinator,
     FilmOptimizationRunPreparationError,
     FilmOptimizationRunStartError,
 )
+
+if TYPE_CHECKING:
+    from coat_sim.ui.film_manufacturing_quick_controller import FilmManufacturingQuickController
 
 
 class _SynthesisMaterialService(Protocol):
@@ -1073,6 +1077,7 @@ class FilmOptimizationQuickController(QObject):
         self._result: FilmOptimizationResult | None = None
         self._live_display = FilmCandidateDisplayController(self)
         self._sensitivity_controller: FilmSensitivityQuickController | None = None
+        self._manufacturing_controller: FilmManufacturingQuickController | None = None
         self._result_terminal_state = ""
         self._result_application_eligible = False
         self._frozen_request: FilmOptimizationRequest | None = None
@@ -1105,6 +1110,9 @@ class FilmOptimizationQuickController(QObject):
         self._synthesis_options.update(randomize_template_search=False, structure_search_seed=None)
         self._synthesis_structure_search_seed_text = ""
         self._synthesis_structure_search_seed_error = ""
+        self._synthesis_progress_draft = ObjectiveProgressDraft()
+        self._synthesis_progress_error = ""
+        self._synthesis_progress_edit_dirty = False
         self._synthesis_actual_structure_search_seed: int | None = None
         self._synthesis_cpu_workers = 0
         self._synthesis_forward_backend = "cpu"
@@ -1368,6 +1376,88 @@ class FilmOptimizationQuickController(QObject):
             self._sensitivity_controller.changed.connect(self.changed.emit)
         return self._sensitivity_controller
 
+    @Property(QObject, constant=True)
+    def manufacturingController(self):
+        if self._manufacturing_controller is None:
+            from coat_sim.ui.film_manufacturing_quick_controller import FilmManufacturingQuickController
+            self._manufacturing_controller = FilmManufacturingQuickController(self)
+            self._manufacturing_controller.changed.connect(self.changed.emit)
+        return self._manufacturing_controller
+
+    def _manufacturing_can_apply(self, payload: Mapping[str, Any],
+                                 context: Mapping[str, Any] | None, snapshot: Any, *,
+                                 full_validation: bool = False) -> bool:
+        """Fence a worker-validated, explicitly selected route before source mutation."""
+        panel = self._manufacturing_controller
+        session = self.session
+        if session is None or context is None:
+            return False
+        if (panel is None or id(panel._payload) != id(payload) or id(panel._context) != id(context)
+                or panel.busy or self._busy or self._shutting_down
+                or (self._sensitivity_controller is not None and self._sensitivity_controller.busy)
+                or self._source_closed or self._observers_detached
+                or self._source_controller is None
+                or id(context.get("session")) != id(session)
+                or context.get("source") is not self._source_controller
+                or payload.get("state") != "completed" or payload.get("is_final") is not True
+                or not isinstance(snapshot, Mapping) or not isinstance(snapshot.get("audit_score"), Mapping)
+                or type(snapshot.get("training_score", {}).get("nominal_pass")) is not bool
+                or type(snapshot["audit_score"].get("nominal_pass")) is not bool):
+            return False
+        if not any(route.get("champion") is snapshot for route in payload.get("result", {}).get("routes", ())):
+            return False
+        compute, operation = context.get("project_compute"), context.get("project_operation")
+        if compute is not self._project_compute:
+            return False
+        if compute is not None and (operation is None or compute.editing_frozen or not compute.accepts(operation)):
+            return False
+        if (session.snapshot().design_revision != context.get("revision")
+                or self._source_edit_epoch() != context.get("epoch")
+                or str(Path(getattr(self.service, "root", Path.cwd())).resolve()) != context.get("project_root")):
+            return False
+        synthesis = context.get("synthesis_request")
+        frozen = context.get("frozen_request")
+        if (synthesis is None or not isinstance(frozen, Mapping)
+                or not isinstance(context.get("editable_snapshot"), Mapping)):
+            return False
+        # QML readiness is a cheap identity/version gate. Full request expansion,
+        # content hashing and live catalog reads belong to the explicit action,
+        # not repeated property reads while the dialog renders or animates.
+        if not full_validation:
+            return True
+        current = self._build_request(require_variables=False, fixed_topology=False)
+        if panel._signature(current) != context.get("signature") or payload.get("request") != frozen:
+            return False
+        from coat_sim.core.film_synthesis_manufacturing import manufacturing_source_fingerprint
+        source_design = frozen.get("source_design")
+        if (not isinstance(source_design, Mapping) or frozen.get("source_fingerprint")
+                != manufacturing_source_fingerprint(synthesis, source_design)):
+            return False
+        # Frozen content must still match every live source/candidate reference;
+        # do not silently apply a same-ID material that changed during the job.
+        base = synthesis_base_request(synthesis)
+        verify_synthesis_file_references(self.service, base, source_design)
+        verify_synthesis_file_references(self.service, base, snapshot["design"])
+        return True
+
+    def _apply_manufacturing_candidate(self, payload, context, snapshot) -> bool:
+        session = self.session
+        if not self._manufacturing_can_apply(payload, context, snapshot, full_validation=True) or session is None:
+            return False
+        apply = getattr(self._source_controller, "applySynthesizedDesign", None)
+        if not callable(apply):
+            return False
+        accepted = bool(apply(deepcopy(dict(snapshot["design"])), context["revision"], context["epoch"],
+                              deepcopy(context["editable_snapshot"])))
+        if accepted:
+            current = session.snapshot()
+            self._source_revision = int(current.design_revision)
+            self._design, self._path = deepcopy(current.design), str(current.path or "")
+            self._source_stale = False
+            self._error = ""
+            self.changed.emit()
+        return accepted
+
     def _apply_sensitivity_candidate(self, result, context) -> bool:
         """Apply a current ideal candidate, fenced by both source edit versions."""
         from coat_sim.core.film_ideal_sensitivity import FilmIdealSensitivityResult
@@ -1455,6 +1545,7 @@ class FilmOptimizationQuickController(QObject):
         """Return JSON-only editor state; commit an angle draft or reject export."""
         if self._search_mode == "synthesis":
             synthesis_structure_search_seed(self._synthesis_structure_search_seed_text)
+        progress_policy = self._synthesis_progress_draft.policy_payload()
         if not self._commit_pending_angle_draft():
             raise ValueError(self._error or "请先完成角度输入")
         if self._pending_edit_error or self._objective_bounds_pending():
@@ -1475,7 +1566,9 @@ class FilmOptimizationQuickController(QObject):
                 "multistart_count": self._multistart_count,
                 "population_size": self._population_size,
             },
-            "synthesis": {"options": dict(self._synthesis_options), "cpu_workers": self._synthesis_cpu_workers,
+            "synthesis": {"options": {**self._synthesis_options, "objective_progress_policy": progress_policy},
+                          "objective_progress_editor": self._synthesis_progress_draft.to_configuration(),
+                          "cpu_workers": self._synthesis_cpu_workers,
                           "forward_backend": self._synthesis_forward_backend,
                           "forward_device": deepcopy(self._synthesis_forward_device),
                           "use_current_seed": self._synthesis_use_current_seed,
@@ -1654,9 +1747,11 @@ class FilmOptimizationQuickController(QObject):
             synthesis_config = configuration.get("synthesis", {})
             if not isinstance(synthesis_config, dict) or set(synthesis_config) - {
                     "options", "cpu_workers", "forward_backend", "forward_device",
-                    "use_current_seed", "material_rows", "assume_unknown_k_zero"}:
+                    "use_current_seed", "material_rows", "assume_unknown_k_zero", "objective_progress_editor"}:
                 raise ValueError("Invalid synthesis configuration")
             synthesis_values = synthesis_options(synthesis_config.get("options", {}))
+            progress_draft = ObjectiveProgressDraft.from_configuration(
+                synthesis_config.get("objective_progress_editor"), synthesis_values["objective_progress_policy"])
             synthesis_values.setdefault("randomize_template_search", False)
             synthesis_values.setdefault("structure_search_seed", None)
             synthesis_workers = synthesis_cpu_workers(synthesis_config.get("cpu_workers", 0))
@@ -1737,6 +1832,9 @@ class FilmOptimizationQuickController(QObject):
             search_seed = synthesis_values["structure_search_seed"]
             self._synthesis_structure_search_seed_text = "" if search_seed is None else str(search_seed)
             self._synthesis_structure_search_seed_error = ""
+            self._synthesis_progress_draft = progress_draft
+            self._synthesis_progress_error = ""
+            self._synthesis_progress_edit_dirty = False
             self._synthesis_actual_structure_search_seed = None
             self._synthesis_cpu_workers = synthesis_workers
             self._synthesis_forward_backend = synthesis_forward_backend
@@ -1968,6 +2066,8 @@ class FilmOptimizationQuickController(QObject):
         self._live_display.shutdown()
         if self._sensitivity_controller is not None:
             self._sensitivity_controller.detach()
+        if self._manufacturing_controller is not None:
+            self._manufacturing_controller.detach()
         self._synthesis_forward_probe.cancel()
         if self._busy and self._pending_angle_preparation is not None:
             # Pre-submission preparation is local work even for project-owned
@@ -2003,6 +2103,8 @@ class FilmOptimizationQuickController(QObject):
 
     @Slot()
     def _on_source_pending_edit(self) -> None:
+        if self._manufacturing_controller is not None:
+            self._manufacturing_controller.sourceChanged()
         self.changed.emit()
 
     @Slot()
@@ -2170,6 +2272,9 @@ class FilmOptimizationQuickController(QObject):
         if self._configuration_loading:
             return
         snapshot = self.session.snapshot()
+        if (self._manufacturing_controller is not None
+                and snapshot.design_revision != self._source_revision):
+            self._manufacturing_controller.sourceChanged()
         categories = getattr(change, "categories", ())
         document_replaced = (snapshot.design.get("id") != self._design.get("id")
                              or ("workflow_settings" in categories
@@ -2194,6 +2299,8 @@ class FilmOptimizationQuickController(QObject):
             self.changed.emit()
 
     def _invalidate_result(self) -> None:
+        if self._manufacturing_controller is not None:
+            self._manufacturing_controller.sourceChanged()
         self._synthesis_actual_structure_search_seed = None
         self._live_display.clear_analysis()
         self._sync_film_execution_target()
@@ -2558,7 +2665,8 @@ class FilmOptimizationQuickController(QObject):
     @Property(bool, notify=changed)
     def busy(self) -> bool:
         return bool(self._busy or (self._sensitivity_controller is not None
-                                   and self._sensitivity_controller.busy))
+                                   and self._sensitivity_controller.busy)
+                    or (self._manufacturing_controller is not None and self._manufacturing_controller.busy))
 
     @Property(float, notify=changed)
     def progress(self) -> float:
@@ -2714,7 +2822,7 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(bool, notify=changed)
     def canCancel(self) -> bool:
-        return self._busy
+        return bool(self._busy or (self._manufacturing_controller is not None and self._manufacturing_controller.busy))
 
     @Property(float, notify=changed)
     def acceptableErrorPercent(self) -> float:
@@ -2906,6 +3014,10 @@ class FilmOptimizationQuickController(QObject):
     def _active_configuration_error(self, *, require_thickness_bounds: bool = True) -> str:
         if self._configuration_load_error:
             return self._configuration_load_error
+        try:
+            self._synthesis_progress_draft.policy_payload()
+        except ValueError as exc:
+            return str(exc)
         if any(row.get("angle_sampling_mode") != "range" for row in self._objectives):
             return "目标含显式角度配置；请逐个重新确认角度范围与精度，原角度未自动更改。"
         for row in self._objectives:
@@ -3961,6 +4073,7 @@ class FilmOptimizationQuickController(QObject):
 
     def _build_synthesis_request(self, *, prepared_angles=None):
         synthesis_structure_search_seed(self._synthesis_structure_search_seed_text)
+        progress_policy = self._synthesis_progress_draft.policy_payload()
         from coat_sim.core.film_optimization_needle import FilmNeedleMaterialReference
         base = self._build_request(require_variables=False, fixed_topology=False,
                                    prepared_angles=prepared_angles)
@@ -3969,13 +4082,22 @@ class FilmOptimizationQuickController(QObject):
             raise ValueError(error)
         refs = tuple(FilmNeedleMaterialReference(r["material_id"], r["optical_set_id"])
                      for r in self._synthesis_material_rows)
-        return build_synthesis_request(base, refs, self._synthesis_options, self._synthesis_use_current_seed,
+        return build_synthesis_request(base, refs,
+                                       {**self._synthesis_options, "objective_progress_policy": progress_policy},
+                                       self._synthesis_use_current_seed,
                                        self._synthesis_assume_unknown_k_zero,
                                        cpu_workers=self._synthesis_cpu_workers,
                                        forward_backend=self._synthesis_forward_backend,
                                        forward_device=self._synthesis_forward_device)
 
     def _synthesis_configuration_error(self):
+        try:
+            self._synthesis_progress_draft.policy_payload()
+        except ValueError as exc:
+            return str(exc)
+        if (self._synthesis_progress_draft.enabled
+                and self._synthesis_options.get("search_strategy", "hybrid") != "hybrid"):
+            return "目标进展交接仅支持统一混合搜索；请关闭该实验开关或切回统一混合。"
         if self._synthesis_structure_search_seed_error:
             return self._synthesis_structure_search_seed_error
         if self._pending_edit_error:
@@ -4012,6 +4134,83 @@ class FilmOptimizationQuickController(QObject):
     @Property(dict, notify=changed)
     def synthesisOptions(self):
         return dict(self._synthesis_options)
+
+    @Property(bool, notify=changed)
+    def synthesisProgressPolicyEnabled(self) -> bool:
+        return self._synthesis_progress_draft.enabled
+
+    @Property(dict, notify=changed)
+    def synthesisProgressPolicyDrafts(self) -> dict:
+        return dict(self._synthesis_progress_draft.texts)
+
+    @Property(str, notify=changed)
+    def synthesisProgressPolicyError(self) -> str:
+        return self._synthesis_progress_error
+
+    def _invalidate_progress_draft(self, *, persist: bool) -> None:
+        # Keystrokes invalidate a previous attempt but do not run validation or
+        # try to persist an unfinished enabled policy as its last valid values.
+        loading = self._configuration_loading
+        if not loading:
+            self._configuration_load_error = ""
+        self._configuration_loading = loading or not persist
+        try:
+            self._invalidate_result()
+        finally:
+            self._configuration_loading = loading
+
+    @Slot(bool, result=bool)
+    def setSynthesisProgressPolicyEnabled(self, enabled: bool) -> bool:
+        if self.busy or self._shutting_down or type(enabled) is not bool:
+            return False
+        self._synthesis_progress_draft.enabled = enabled
+        self._synthesis_progress_edit_dirty = True
+        if self._error == self._synthesis_progress_error:
+            self._error = ""
+        self._synthesis_progress_error = ""
+        # Enabling never inserts a threshold. Blank fields keep start disabled.
+        try:
+            self._synthesis_options["objective_progress_policy"] = self._synthesis_progress_draft.policy_payload()
+            valid = True
+        except ValueError:
+            self._synthesis_options["objective_progress_policy"] = None
+            valid = False
+        self._invalidate_progress_draft(persist=valid)
+        if valid:
+            self._synthesis_progress_edit_dirty = False
+        return True
+
+    @Slot(str, str, result=bool)
+    def setSynthesisProgressPolicyText(self, name: str, text: str) -> bool:
+        if (self.busy or self._shutting_down or not self._synthesis_progress_draft.enabled
+                or name not in PROGRESS_FIELD_LABELS):
+            return False
+        self._synthesis_progress_draft.texts[name] = text
+        self._synthesis_progress_edit_dirty = True
+        self._synthesis_options["objective_progress_policy"] = None
+        self._invalidate_progress_draft(persist=False)
+        return True
+
+    @Slot(result=bool)
+    def finishSynthesisProgressPolicyEdit(self) -> bool:
+        if self.busy or self._shutting_down:
+            return False
+        if not self._synthesis_progress_edit_dirty and not self._synthesis_progress_error:
+            return True
+        try:
+            policy = self._synthesis_progress_draft.policy_payload()
+        except ValueError as exc:
+            self._synthesis_progress_error = str(exc)
+            self._error = str(exc)
+            self.changed.emit()
+            return False
+        self._synthesis_options["objective_progress_policy"] = policy
+        self._synthesis_progress_error = self._error = ""
+        self._synthesis_progress_edit_dirty = False
+        self._configuration_load_error = ""
+        self._persist_configuration()
+        self.changed.emit()
+        return True
 
     @Property(str, notify=changed)
     def synthesisStructureSearchSeedText(self) -> str:
@@ -4216,6 +4415,10 @@ class FilmOptimizationQuickController(QObject):
             return False
         self._clear_pending_edit_error("synthesis:" + name)
         self._synthesis_options = values
+        if name == "objective_progress_policy":
+            self._synthesis_progress_draft = ObjectiveProgressDraft.from_configuration(None, values[name])
+            self._synthesis_progress_error = ""
+            self._synthesis_progress_edit_dirty = False
         if name == "structure_search_seed":
             seed = values[name]
             self._synthesis_structure_search_seed_text = "" if seed is None else str(seed)
@@ -5173,6 +5376,9 @@ class FilmOptimizationQuickController(QObject):
 
     @Slot()
     def cancelOptimization(self) -> None:
+        if self._manufacturing_controller is not None and self._manufacturing_controller.busy:
+            self._manufacturing_controller.cancel()
+            return
         self._request_optimization_cancel(user_initiated=True)
 
     def _request_optimization_cancel(self, *, user_initiated: bool) -> None:
@@ -5890,6 +6096,10 @@ class FilmOptimizationQuickController(QObject):
 
     @Slot()
     def requestClose(self) -> None:
+        if self._manufacturing_controller is not None and self._manufacturing_controller.busy:
+            self._manufacturing_controller.requestClose()
+        if not self.busy and not self.finishSynthesisProgressPolicyEdit():
+            return
         if (not self._busy and self._search_mode == "synthesis"
                 and self._synthesis_structure_search_seed_error):
             self.finishSynthesisStructureSearchSeedEdit()
@@ -5943,9 +6153,11 @@ class FilmOptimizationQuickController(QObject):
         self._live_display.shutdown()
         sensitivity_done = (self._sensitivity_controller is None
             or self._sensitivity_controller.shutdown(timeout_ms))
+        manufacturing_done = (self._manufacturing_controller is None
+            or self._manufacturing_controller.shutdown(timeout_ms))
         self._synthesis_forward_probe.shutdown()
         self._pending_project_completion = None
         if self._project_compute is not None:
             self._project_compute.unregister_thaw_callback(self._on_project_unfrozen)
-        return self._run_coordinator.shutdown(timeout_ms) and sensitivity_done
+        return self._run_coordinator.shutdown(timeout_ms) and sensitivity_done and manufacturing_done
 

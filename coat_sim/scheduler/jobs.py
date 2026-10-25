@@ -10,7 +10,7 @@ PROTOCOL_VERSION = 1
 MAX_RAYTRACE_SPEC_BYTES = 20 * 1024 * 1024
 EXECUTORS = frozenset({'process', 'process_recipe', 'single_source', 'mask_optimization',
                        'film_optimization', 'mask_weights', 'mask_field', 'point_weights',
-                       'film_synthesis', 'film_ideal_sensitivity',
+                       'film_synthesis', 'film_manufacturing_repair', 'film_ideal_sensitivity',
                        'film_thickness_error_table', 'geometric_raytrace', 'appearance_render', 'python_script', 'probe'})
 
 def canonical(value):
@@ -108,6 +108,11 @@ def freeze_spec(service, kind, parameters):
         from coat_sim.core.film_synthesis_jobs import build_job_payload
         payload = build_job_payload(values)
         return JobSpec(kind, {'payload': payload}, {}).to_dict()
+    if kind == 'film_manufacturing_repair':
+        if set(values) != {'payload'}:
+            raise ValueError('manufacturing repair requires one frozen request')
+        from coat_sim.core.film_manufacturing_jobs import build_job_payload as build_manufacturing_job_payload
+        return JobSpec(kind, {'payload': build_manufacturing_job_payload(service, values['payload'])}, {}).to_dict()
     if kind in ('film_ideal_sensitivity', 'film_thickness_error_table'):
         if set(values) not in ({'request'}, {'payload'}):
             raise ValueError('sensitivity workflow requires one independent request')

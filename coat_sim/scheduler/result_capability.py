@@ -298,6 +298,8 @@ def is_best_candidate_result(result) -> bool:
     """Return whether a terminal result explicitly advertises a verified candidate."""
     if unsupported_sensitivity_format(result):
         return False
+    if isinstance(result, dict) and result.get("kind") == "coat_sim.film_manufacturing_result":
+        return is_manufacturing_result(result) and isinstance(result.get("result"), dict)
     if is_film_optimization_result(result):
         return True
     if claims_sensitivity_result({"result": result}):
@@ -370,6 +372,14 @@ def _has_registered_result_artifact(result) -> bool:
     return False
 
 
+def is_manufacturing_result(result) -> bool:
+    """Typed local repair capability; reject generic payloads without importing optics."""
+    if not isinstance(result, dict) or result.get("kind") != "coat_sim.film_manufacturing_result":
+        return False
+    from coat_sim.core.film_manufacturing_jobs import is_manufacturing_result as check
+    return check(result)
+
+
 def is_synthesis_result(result) -> bool:
     """Typed film synthesis result predicate shared by the scheduler boundary."""
     from coat_sim.core.film_synthesis_jobs import is_synthesis_result as check
@@ -403,6 +413,10 @@ def job_has_viewable_result(job) -> bool:
     result = job.get("result")
     if unsupported_sensitivity_format(job) or not isinstance(result, dict):
         return False
+    if job.get("kind") == "film_manufacturing_repair" or result.get("kind") == "coat_sim.film_manufacturing_result":
+        return (job.get("kind") == "film_manufacturing_repair" and is_manufacturing_result(result)
+            and isinstance(result.get("result"), dict)
+            and job.get("state") in ("succeeded", "failed", "cancelled"))
     if claims_sensitivity_result(job):
         if not is_sensitivity_result(result):
             return False
@@ -484,6 +498,19 @@ def load_best_candidate_checkpoint(root, job_id, *, terminal_state="cancelled"):
         reason = unsupported_sensitivity_format(envelope)
         if reason:
             raise ValueError(reason)
+        if isinstance(envelope, dict) and envelope.get("kind") == "coat_sim.film_manufacturing_checkpoint":
+            from .jobs import JobSpec
+            from .store import SchedulerStore
+            from coat_sim.core.film_manufacturing_jobs import validate_checkpoint
+            spec_path = job_directory / "spec.json"
+            if spec_path.is_symlink() or not spec_path.resolve().is_relative_to(job_directory):
+                raise ValueError("manufacturing job spec escaped its scheduler directory")
+            spec = JobSpec.parse_frozen_json(spec_path.read_text(encoding="utf-8"))
+            row = SchedulerStore(root).status(job_id)
+            if spec.executor != "film_manufacturing_repair" or row.get("input_digest") != spec.fingerprint:
+                raise ValueError("manufacturing checkpoint job identity mismatch")
+            return validate_checkpoint(envelope, expected_job=spec.parameters["payload"],
+                                       terminal_state=terminal_state), ""
         if isinstance(envelope, dict) and envelope.get("kind") in (
                 "coat_sim.film_ideal_sensitivity_checkpoint", "coat_sim.film_thickness_error_table_checkpoint"):
             from .jobs import JobSpec

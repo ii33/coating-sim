@@ -28,7 +28,7 @@ def small_suite(tmp_path, **changes):
     case.pop("strict_upper_bound_objective_indices", None)
     case.pop("qualification", None)
     case.update(id="tiny_production_contract", category="current nested contract test",
-                enable_thickness_reduction=True,
+                enable_thickness_reduction=True, objective_progress_policy=None,
                 max_evaluations=2, wall_seconds=3, objectives=[current_objective()])
     case.update(changes)
     suite["suite_id"] = "current-nested-contract-test"
@@ -105,7 +105,7 @@ def single_condition(lower, upper, actual):
     from coat_sim.core.film_objective_payload import objective_from_payload
     objective = current_objective(600., 600., 1, lower=lower, upper=upper,
                                   strict_lower=lower is not None)
-    request = {"enable_thickness_reduction": True, "objectives": [objective], "acceptable_normalized_error": 0.,
+    request = {"enable_thickness_reduction": True, "objective_progress_policy": None, "objectives": [objective], "acceptable_normalized_error": 0.,
                "validation_samples_multiplier": 1}
     reduced = reduce_objective_responses((objective_from_payload(objective),), [{
         "objective_index": 0, "angle_deg": 0., "wavelength_nm": [600.], "actual_values": [actual]}])
@@ -356,3 +356,10 @@ def test_mismatched_checkpoint_cannot_supply_first_success_time(tmp_path, monkey
     checkpoints = [row for row in events if row["kind"] == "checkpoint"]
     assert checkpoints
     assert all(row["candidate_audit_matches"] is False for row in checkpoints)
+
+
+def test_current_case_forwards_explicit_progress_policy_to_frozen_request(tmp_path):
+    policy = dict(accepted_window_steps=16, relative_sse_progress_floor=.001,
+                  relative_worst_progress_floor=.001, stagnation_windows=2)
+    compiled = runner.compile_preflight(small_suite(tmp_path, objective_progress_policy=policy), seed=[0], workers=1)
+    assert compiled['runs'][0]['frozen_request']['objective_progress_policy'] == policy

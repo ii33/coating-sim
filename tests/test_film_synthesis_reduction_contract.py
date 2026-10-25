@@ -1,4 +1,4 @@
-"""Schema 3 freezes the hybrid thickness-reduction decision across producers."""
+"""Schema 4 freezes the hybrid thickness-reduction decision across producers."""
 from copy import deepcopy
 from dataclasses import replace
 import asyncio
@@ -45,14 +45,14 @@ def test_new_core_and_gui_requests_default_to_explicit_true():
 def test_freeze_json_plan_and_durable_job_preserve_boolean(enabled):
     request = freeze_film_synthesis_request(None, replace(_request(), enable_thickness_reduction=enabled))
     payload = json.loads(json.dumps(film_synthesis_request_to_payload("reduction", request)))
-    assert SCHEMA_VERSION == payload["schema_version"] == 3
+    assert SCHEMA_VERSION == payload["schema_version"] == 4
     assert payload["request"]["enable_thickness_reduction"] is enabled
     request_id, restored, _ = film_synthesis_request_from_payload(payload)
     assert request_id == "reduction" and restored == request
     planned, metadata = prepare_film_synthesis_payload(None, payload)
     assert planned == payload and metadata == ()
     job = build_job_payload(canonical_parameters(None, {"payload": planned}))
-    assert job["schema_version"] == job["request"]["schema_version"] == 3
+    assert job["schema_version"] == job["request"]["schema_version"] == 4
     assert deserialize_job_payload(job)[1] == request
     spec = JobSpec.parse_frozen(synthesis_spec(None, request)).to_spec()
     assert deserialize_job_payload(spec.parameters["payload"])[1].enable_thickness_reduction is enabled
@@ -88,7 +88,7 @@ def test_mcp_discovery_and_validation_expose_strict_boolean(schema, enabled):
         film_synthesis_request_from_payload(payload)
 
 
-@pytest.mark.parametrize("version", [1, 2])
+@pytest.mark.parametrize("version", [1, 2, 3])
 def test_old_request_rejected_before_planning_estimation_and_queueing(tmp_path, version):
     payload = film_synthesis_request_to_payload("old-reduction", _request())
     payload["schema_version"] = version
@@ -100,7 +100,7 @@ def test_old_request_rejected_before_planning_estimation_and_queueing(tmp_path, 
         lambda: build_job_payload({"payload": payload, "physical_structure_metadata": []}),
         lambda: CoatService(tmp_path).estimate_compute_task("film_synthesis", {"payload": payload}),
     ):
-        with pytest.raises(FilmSynthesisPayloadError, match="current schema 3.*no migration"):
+        with pytest.raises(FilmSynthesisPayloadError, match="current schema 4.*no migration"):
             action()
     assert payload == original
 
@@ -129,7 +129,7 @@ def test_cli_result_and_replay_keep_frozen_boolean_and_reject_v2(tmp_path, enabl
     completed = _run_cli(source, output)
     assert completed.returncode == 0, completed.stdout + completed.stderr
     result = json.loads(output.read_text(encoding="utf-8"))
-    assert result["schema_version"] == 3
+    assert result["schema_version"] == 4
     assert result["result"]["frozen_request"]["enable_thickness_reduction"] is enabled
     assert is_synthesis_result(result)
     old_result = deepcopy(result)
@@ -140,7 +140,7 @@ def test_cli_result_and_replay_keep_frozen_boolean_and_reject_v2(tmp_path, enabl
     rejected_output = tmp_path / "old-result.json"
     rejected = _run_cli(source, rejected_output)
     assert rejected.returncode != 0
-    assert "current schema 3" in rejected.stdout + rejected.stderr
+    assert "current schema 4" in rejected.stdout + rejected.stderr
     assert not rejected_output.exists()
 
 

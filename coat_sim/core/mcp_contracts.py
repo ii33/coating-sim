@@ -84,12 +84,23 @@ FILM_SYNTHESIS_PLAN_INPUT_SCHEMA: dict[str, Any] = {
         "type": "object", "additionalProperties": False,
         "required": ["schema_version", "kind", "request_id", "request", "physical_structures"],
         "properties": {
-            "schema_version": {"const": 3},
+            "schema_version": {"const": 4},
             "kind": {"const": "coat_sim.film_synthesis_request"},
             "request_id": {"type": "string", "minLength": 1, "maxLength": 128},
             "request": {"type": "object", "additionalProperties": True,
-                "required": ["enable_thickness_reduction"],
+                "required": ["enable_thickness_reduction", "objective_progress_policy"],
                 "properties": {
+                    "objective_progress_policy": {
+                        "oneOf": [{"type": "null"}, {"type": "object", "additionalProperties": False,
+                            "required": ["accepted_window_steps", "relative_sse_progress_floor",
+                                         "relative_worst_progress_floor", "stagnation_windows"],
+                            "properties": {
+                                "accepted_window_steps": {"type": "integer", "minimum": 1},
+                                "relative_sse_progress_floor": {"type": "number", "minimum": 0},
+                                "relative_worst_progress_floor": {"type": "number", "minimum": 0},
+                                "stagnation_windows": {"type": "integer", "minimum": 1}}}],
+                        "default": None,
+                        "description": "Experimental hybrid joint-needle SSE accepted-iterate handoff to existing full minimax. Null preserves the current search; enabled policy supplies every threshold. No change to nominal goals, ftol/gtol, budgets or acceptance."},
                     "objectives": {"type": "array", "minItems": 1, "items": FILM_BAND_OBJECTIVE_SCHEMA},
                     "enable_thickness_reduction": {
                         "type": "boolean", "default": True,

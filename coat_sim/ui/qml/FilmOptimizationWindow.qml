@@ -308,6 +308,15 @@ AppWindow {
         onAccepted: window.controller.confirmApplyCandidate()
     }
 
+    FilmManufacturingRepairDialog {
+        id: manufacturingDialog
+        controller: window.controller.manufacturingController
+        onClosed: {
+            if (manufacturingOpenButton.visible && manufacturingOpenButton.enabled)
+                manufacturingOpenButton.forceActiveFocus()
+        }
+    }
+
     ThemeControls.ThemeDialogBase {
         id: overwriteDialog
         title: "覆盖已有文件？"
@@ -441,6 +450,17 @@ AppWindow {
                         window.commitActiveEditor()
                         window.controller.sensitivityController.prepare()
                         sensitivityDialog.open()
+                    }
+                }
+                ThemeControls.ThemeButton {
+                    id: manufacturingOpenButton
+                    objectName: "filmManufacturingOpenButton"
+                    text: "工艺薄层修复…"
+                    enabled: !window.controller.busy && !window.controller.loading && !window.controller.sourceStale
+                    onClicked: {
+                        window.commitActiveEditor()
+                        window.controller.manufacturingController.prepare()
+                        manufacturingDialog.open()
                     }
                 }
                 ThemeControls.ThemeButton {
@@ -1343,6 +1363,68 @@ AppWindow {
                                         }
                                         Accessible.name: text
                                         Accessible.description: "默认开启，仅用于统一混合搜索；冻结到当前任务，在原预算内尝试，不放宽任何目标或制造约束。"
+                                    }
+                                    CheckBox {
+                                        objectName: "filmSynthesisProgressPolicyToggle"
+                                        text: "目标进展交接（实验，默认关闭）"
+                                        visible: (window.controller.synthesisOptions.search_strategy ?? "hybrid") === "hybrid"
+                                                 || window.controller.synthesisProgressPolicyEnabled
+                                        checked: window.controller.synthesisProgressPolicyEnabled
+                                        onToggled: {
+                                            if (!window.controller.setSynthesisProgressPolicyEnabled(checked))
+                                                checked = Qt.binding(() => window.controller.synthesisProgressPolicyEnabled)
+                                        }
+                                        Accessible.name: text
+                                    }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        visible: (window.controller.synthesisOptions.search_strategy ?? "hybrid") === "hybrid"
+                                                 || window.controller.synthesisProgressPolicyEnabled
+                                        enabled: window.controller.synthesisProgressPolicyEnabled
+                                        Label {
+                                            Layout.fillWidth: true
+                                            text: "仅以已接受步的相对进展决定交接至既有全约束精修，不放宽原目标，也不保证更优或收敛。四项均须明确填写。相对比例不是光谱百分点：0.001 = 0.1%，1 = 100%。"
+                                            color: window.themeTokens.colorTextMuted
+                                            wrapMode: Text.WordWrap
+                                            font.pointSize: window.themeTokens.fontSizeSmall
+                                        }
+                                        Repeater {
+                                            model: [
+                                                {key: "accepted_window_steps", label: "每窗口已接受步数"},
+                                                {key: "relative_sse_progress_floor", label: "SSE 相对进展下限（比例）"},
+                                                {key: "relative_worst_progress_floor", label: "最坏违规相对下限（比例）"},
+                                                {key: "stagnation_windows", label: "连续停滞窗口数"}
+                                            ]
+                                            delegate: ColumnLayout {
+                                                id: progressPolicyRow
+                                                required property var modelData
+                                                Layout.fillWidth: true
+                                                Label {
+                                                    text: progressPolicyRow.modelData.label
+                                                    color: window.themeTokens.colorText
+                                                    Layout.fillWidth: true
+                                                    wrapMode: Text.WordWrap
+                                                }
+                                                ThemeControls.ThemeField {
+                                                    objectName: "filmSynthesisProgress_" + progressPolicyRow.modelData.key
+                                                    Layout.fillWidth: true
+                                                    text: window.controller.synthesisProgressPolicyDrafts[progressPolicyRow.modelData.key]
+                                                    placeholderText: "须明确填写，无默认阈值"
+                                                    accessibleLabel: progressPolicyRow.modelData.label
+                                                    onTextEdited: window.controller.setSynthesisProgressPolicyText(progressPolicyRow.modelData.key, text)
+                                                    onAccepted: window.controller.finishSynthesisProgressPolicyEdit()
+                                                    onEditingFinished: window.controller.finishSynthesisProgressPolicyEdit()
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Label {
+                                        objectName: "filmSynthesisProgressPolicyError"
+                                        Layout.fillWidth: true
+                                        visible: window.controller.synthesisProgressPolicyError.length > 0
+                                        text: window.controller.synthesisProgressPolicyError
+                                        color: window.themeTokens.colorText
+                                        wrapMode: Text.WordWrap
                                     }
                                     CheckBox {
                                         objectName: "filmSynthesisRandomizeTemplateSearchField"

@@ -30,6 +30,7 @@ from coat_sim.ui.icons import window_icon
 
 if TYPE_CHECKING:
     from coat_sim.ui.film_sensitivity_quick_controller import FilmSensitivityQuickController
+    from coat_sim.ui.film_manufacturing_quick_controller import FilmManufacturingQuickController
 
 _MAX_RAYTRACE_RESULT_BYTES = 512 * 1024 * 1024
 
@@ -44,6 +45,13 @@ class _SynthesisQueueResult:
     """Background-replayed history plus its unchanged persisted source row."""
 
     source_job: dict
+    payload: dict
+
+
+@dataclass(frozen=True)
+class _ManufacturingQueueResult:
+    """Bound and canonical-validated frozen evidence; no extra optical replay."""
+
     payload: dict
 
 
@@ -67,6 +75,29 @@ def _read_queue_result(service, store, job_id, asset_path=None):
     """Dispatch a queue result by its typed product kind."""
     job = store.read_job(job_id)
     result = _require_result_payload(job)
+    if job.get('kind') == 'film_manufacturing_repair' or result.get('kind') == 'coat_sim.film_manufacturing_result':
+        from coat_sim.core.film_manufacturing_jobs import validate_result_payload, terminal_reply
+        from coat_sim.scheduler.jobs import JobSpec
+        if (job.get('job_id') != job_id or job.get('kind') != 'film_manufacturing_repair'
+                or job.get('state') not in ('succeeded', 'failed', 'cancelled')
+                or not isinstance(job_id, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', job_id)):
+            raise ValueError('Manufacturing history requires its exact terminal queue identity.')
+        root = Path(store.root).resolve()
+        directory = (root / 'artifacts/runtime/scheduler/jobs' / job_id).resolve()
+        path = directory / 'spec.json'
+        if (not directory.is_relative_to(root) or path.is_symlink()
+                or not path.resolve().is_relative_to(directory)):
+            raise ValueError('Manufacturing frozen input escaped its job directory.')
+        try:
+            spec = JobSpec.parse_frozen_json(path.read_text(encoding='utf-8'))
+        except (OSError, TypeError, ValueError) as exc:
+            raise ValueError('Manufacturing frozen queue input is unavailable or invalid.') from exc
+        if spec.executor != 'film_manufacturing_repair' or spec.fingerprint != job.get('input_digest'):
+            raise ValueError('Manufacturing queue input identity differs from its stored digest.')
+        normalized = validate_result_payload(result, expected_job=spec.parameters.get('payload'), replay=False)
+        if job['state'] in ('failed', 'cancelled'):
+            normalized = terminal_reply(normalized, job['state'])
+        return _ManufacturingQueueResult(normalized), ''
     from coat_sim.scheduler.result_capability import unsupported_sensitivity_format
     reason = unsupported_sensitivity_format(job)
     if reason:
@@ -841,6 +872,9 @@ class QueueResultViewer(QObject):
         self._sensitivity_window: QQuickWindow | None = None
         self._sensitivity_controller: "FilmSensitivityQuickController | None" = None
         self._sensitivity_component: QQmlComponent | None = None
+        self._manufacturing_window: QQuickWindow | None = None
+        self._manufacturing_controller: FilmManufacturingQuickController | None = None
+        self._manufacturing_component: QQmlComponent | None = None
         self._future = None
         self.loaded.connect(self._receive)
         self.bridge.showQueueRequested.connect(owner.showQueue if hasattr(owner, 'showQueue') else owner.show)
@@ -856,6 +890,9 @@ class QueueResultViewer(QObject):
         if self._future is not None:
             self._future.cancel()
         if self._shown_job == job_id:
+            if self._shown_kind == 'film_manufacturing_repair' and self._shown_film_result is not None:
+                self._show_manufacturing_result(job_id, self._shown_film_result)
+                return
             if self._shown_kind in ('film_ideal_sensitivity', 'film_thickness_error_table') and self._shown_film_result is not None:
                 self._show_sensitivity_result(job_id, self._shown_film_result)
                 return
@@ -910,6 +947,13 @@ class QueueResultViewer(QObject):
             self.availabilityChanged.emit(
                 job_id, False,
                 '结果资产包不可用；队列历史仍保留，不能仅凭摘要恢复计算结果。')
+            return
+        if isinstance(loaded, _ManufacturingQueueResult):
+            self._shown_job, self._shown_kind = job_id, 'film_manufacturing_repair'
+            self._shown_film_result = deepcopy(loaded.payload)
+            self._show_manufacturing_result(job_id, loaded.payload)
+            self.availabilityChanged.emit(job_id, True, '')
+            self.statusChanged.emit('Opened bound canonical manufacturing evidence read-only; no new optics or source changes.')
             return
         from coat_sim.scheduler.result_capability import unsupported_sensitivity_format
         reason = unsupported_sensitivity_format(loaded)
@@ -993,6 +1037,30 @@ class QueueResultViewer(QObject):
         self._sensitivity_window.raise_()
         self._sensitivity_window.requestActivate()
 
+    def _show_manufacturing_result(self, job_id, payload):
+        from coat_sim.ui.film_manufacturing_quick_controller import FilmManufacturingQuickController
+        if self._manufacturing_window is None:
+            self._manufacturing_controller = FilmManufacturingQuickController(self)
+            self._manufacturing_component = QQmlComponent(self.engine, QUrl.fromLocalFile(
+                str(Path(__file__).parent / 'qml/FilmManufacturingResultWindow.qml')))
+            created = self._manufacturing_component.createWithInitialProperties(
+                {'controller': self._manufacturing_controller})
+            if not isinstance(created, QQuickWindow):
+                if created is not None:
+                    created.deleteLater()
+                message = '\n'.join(error.toString() for error in self._manufacturing_component.errors())
+                raise ValueError(message or 'The manufacturing report did not create a Qt Quick window.')
+            self._manufacturing_window = created
+            self._manufacturing_window.setIcon(window_icon('film_optimization'))
+            from coat_sim.ui.window_geometry import prepare_window_geometry
+            created.hide()
+            prepare_window_geometry(created, 'film_manufacturing_report')
+        assert self._manufacturing_controller is not None
+        self._manufacturing_controller.load_verified_history(payload, job_id)
+        self._manufacturing_window.showNormal()
+        self._manufacturing_window.raise_()
+        self._manufacturing_window.requestActivate()
+
     def shutdown(self):
         if self._closed:
             return
@@ -1005,6 +1073,11 @@ class QueueResultViewer(QObject):
         import shiboken6
         if self._sensitivity_controller is not None:
             self._sensitivity_controller.shutdown()
+        if self._manufacturing_controller is not None:
+            self._manufacturing_controller.shutdown()
+        if self._manufacturing_window is not None:
+            self._manufacturing_window.close()
+            shiboken6.delete(self._manufacturing_window)
         if self._sensitivity_window is not None:
             self._sensitivity_window.close()
             shiboken6.delete(self._sensitivity_window)

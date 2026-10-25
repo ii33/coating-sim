@@ -204,7 +204,7 @@ def test_strict_upper_request_roundtrip_and_legacy_rejection():
     service, request = setup_problem(upper=.03)
     frozen = freeze_film_synthesis_request(service, _with_strict(request, upper=(0,)))
     payload = film_synthesis_request_to_payload("strict-upper", frozen)
-    assert payload['schema_version'] == 3
+    assert payload['schema_version'] == 4
     assert film_synthesis_request_from_payload(payload)[1].objectives[0].pointwise.strict_upper is True
     payload['schema_version'] = 1
     payload['request']['strict_upper_bound_objective_indices'] = [0]

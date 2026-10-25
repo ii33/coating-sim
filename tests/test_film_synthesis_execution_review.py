@@ -76,7 +76,7 @@ def _checkpoint(request: FilmSynthesisRequest, *, layer: bool = False,
     training = evaluate_frozen_structure_candidate(_proxy(request), design)["score"]
     audited = audit_frozen_synthesis_candidate(request, design)
     return {
-        "schema_version": 3, "kind": AUDITED_CHECKPOINT_KIND,
+        "schema_version": 4, "kind": AUDITED_CHECKPOINT_KIND,
         "checkpoint_state": "audited", "job": _job(request), "design": design,
         "training_score": _score_json(training),
         "validation_score": _score_json(audited["score"]),

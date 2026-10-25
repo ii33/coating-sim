@@ -17,6 +17,7 @@ from time import monotonic
 from typing import TYPE_CHECKING, Any, Callable, Generator, Mapping, NotRequired, TypedDict
 
 import numpy as np
+from .film_synthesis_progress import HybridProgressPolicy, validate_progress_policy
 
 from .film_design import MAX_LAYERS, physical_thickness_nm, validate_design
 from .film_optimization import FilmConditionError, FilmOptimizationObjective, FilmOptimizationRequest, freeze_film_optimization_request
@@ -130,6 +131,7 @@ class FilmSynthesisRequest:
     parallel_batch_size: int | None = None
     randomize_template_search: bool = False
     enable_thickness_reduction: bool = True
+    objective_progress_policy: HybridProgressPolicy | None = None
 
 
 @dataclass(frozen=True)
@@ -298,6 +300,9 @@ def _validated(request):
             raise ValueError(f"{field_name} must be an integer >= {minimum}")
     if type(request.enable_thickness_reduction) is not bool:
         raise ValueError("enable_thickness_reduction must be boolean")
+    validate_progress_policy(request.objective_progress_policy)
+    if request.objective_progress_policy is not None and request.search_strategy != "hybrid":
+        raise ValueError("objective_progress_policy is supported only by hybrid search")
     if type(request.needle_pre_local) is not bool:
         raise ValueError("needle_pre_local must be boolean")
     if request.max_working_set_bytes is not None and (type(request.max_working_set_bytes) is not int
@@ -1352,6 +1357,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         search_diagnostics["hybrid"] = details
         active_slice = None
         explorer = initial
+        objective_handoff_cycle = None
         source_request = replace(request, seed_designs=())
         seen_priors = set()
         no_negative_rounds = 0
@@ -1577,6 +1583,26 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         def local_progress(stage, value, metadata):
             emit(stage, json.dumps(metadata, sort_keys=True), value["design"], value["score"])
 
+        def record_objective_handoff(local, value):
+            nonlocal objective_handoff_cycle
+            if request.objective_progress_policy is None:
+                return False
+            if "objective_progress" in local:
+                search_diagnostics["local_refinement"].append(local)
+            if local["termination"] != "objective_progress_handoff":
+                return False
+            # No cleanup or deletion may replace this exact accepted design.
+            decision = local["objective_progress"]["decision"]
+            if decision is None or decision["trigger"]["physical_hash"] != physical_design_hash(value["design"]):
+                raise ValueError("objective handoff does not match the committed accepted design")
+            check_training_admission()  # Global cancellation/limits win.
+            objective_handoff_cycle = cycle
+            metadata = dict(cycle=cycle, **deepcopy(decision))
+            details.setdefault("objective_progress_handoffs", []).append(metadata)
+            emit("objective_progress_handoff", json.dumps(metadata, sort_keys=True), value["design"], value["score"])
+            end_slice("objective_progress_handoff")
+            return True
+
         def reduce_audited_thickness():
             """One optional in-budget cost slice after normal hybrid success.
 
@@ -1767,6 +1793,10 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     end_slice(record["status"])
 
         def finish_champion_cleanup():
+            if objective_handoff_cycle == cycle:
+                # The trigger commits an exact topology for this entire cycle,
+                # including the shared normal-exit finalization path.
+                return
             cleanup_champion(terminal=True)
 
         terminal_hybrid_cleanup = finish_champion_cleanup
@@ -2102,6 +2132,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
 
             begin_slice("joint_needle_sse_growth", .45, 96)
             inserted = False
+            objective_handoff_requested = False
             try:
                 if scan is not None and scan.selected:
                     proposals = list(scan.selected)
@@ -2119,7 +2150,10 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         archive(value, audit_eligible=False)
                         explorer, local = refine_synthesis_explorer(request, value,
                             evaluate=hybrid_evaluate, archive=archive, cancel_check=stage_check,
-                            progress=local_progress, max_iterations=64)
+                            progress=local_progress, max_iterations=64,
+                            **({} if request.objective_progress_policy is None else
+                               {"progress_policy": request.objective_progress_policy}))
+                        objective_handoff_requested = record_objective_handoff(local, explorer)
                         inserted = True
                         total_real_growth += 1
                         details["last_batch"] = dict(cycle=cycle, needle_ids=list(build.needle_ids),
@@ -2157,10 +2191,14 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     if grown is not None:
                         explorer, local = refine_synthesis_explorer(request, grown,
                             evaluate=hybrid_evaluate, archive=archive, cancel_check=stage_check,
-                            progress=local_progress, max_iterations=48)
+                            progress=local_progress, max_iterations=48,
+                            **({} if request.objective_progress_policy is None else
+                               {"progress_policy": request.objective_progress_policy}))
+                        objective_handoff_requested = record_objective_handoff(local, explorer)
                         total_real_growth += 1
                         emit("growth_restart", "从真实SSE终态续接，不重置为严格冠军", explorer["design"], explorer["score"])
-                explorer = physical_cleanup(explorer)
+                if not objective_handoff_requested:
+                    explorer = physical_cleanup(explorer)
             except (SynthesisStageBudget, SynthesisResourceGuard) as exc:
                 end_slice("resource_guard" if isinstance(exc, SynthesisResourceGuard) else "stage_budget")
             finally:
@@ -2174,41 +2212,43 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             details["exploration_endpoints"].append(endpoint)
             emit("hybrid_exploration_terminal", json.dumps({k: v for k, v in endpoint.items() if k != "design"}, sort_keys=True), explorer["design"], explorer["score"])
 
-            begin_slice("deletion_and_same_reference_merge", .15, 16)
-            try:
-                champion_before = best
-                cleaned_champion = cleanup_champion()
-                if explorer["design"] == champion_before["design"]:
-                    explorer = cleaned_champion
-                explorer = physical_cleanup(explorer)
-                parents = design_archive.select_parents(2)
-                for entry in parents:
-                    rows = entry.design["front_layers"]
-                    if not rows:
-                        continue
-                    order = sorted(rows, key=lambda row: row["thickness"]["value"])
-                    offset = (cycle - 1) * 4 % len(order)
-                    order = order[offset:] + order[:offset]
-                    for row in order[:4]:
-                        stage_check()
-                        trial = deepcopy(entry.design)
-                        trial["front_layers"] = [r for r in trial["front_layers"] if r["id"] != row["id"]]
-                        value = hybrid_evaluate(trial)
-                        archive(value, audit_eligible=False, provenance=dict(entry.provenance,
-                            deleted_layer_id=row["id"]), parent_hash=entry.physical_hash, operator="physical_layer_deletion")
-                        emit("deletion", "删层后原全部条件真实重算，保存实际设计而不只记分数", trial, value["score"])
-                        if score_sse(value) < score_sse(explorer):
-                            explorer = value
-            except (SynthesisStageBudget, SynthesisResourceGuard) as exc:
-                end_slice("resource_guard" if isinstance(exc, SynthesisResourceGuard) else "stage_budget")
-            finally:
-                end_slice()
+            if not objective_handoff_requested:
+                begin_slice("deletion_and_same_reference_merge", .15, 16)
+                try:
+                    champion_before = best
+                    cleaned_champion = cleanup_champion()
+                    if explorer["design"] == champion_before["design"]:
+                        explorer = cleaned_champion
+                    explorer = physical_cleanup(explorer)
+                    parents = design_archive.select_parents(2)
+                    for entry in parents:
+                        rows = entry.design["front_layers"]
+                        if not rows:
+                            continue
+                        order = sorted(rows, key=lambda row: row["thickness"]["value"])
+                        offset = (cycle - 1) * 4 % len(order)
+                        order = order[offset:] + order[:offset]
+                        for row in order[:4]:
+                            stage_check()
+                            trial = deepcopy(entry.design)
+                            trial["front_layers"] = [r for r in trial["front_layers"] if r["id"] != row["id"]]
+                            value = hybrid_evaluate(trial)
+                            archive(value, audit_eligible=False, provenance=dict(entry.provenance,
+                                deleted_layer_id=row["id"]), parent_hash=entry.physical_hash, operator="physical_layer_deletion")
+                            emit("deletion", "删层后原全部条件真实重算，保存实际设计而不只记分数", trial, value["score"])
+                            if score_sse(value) < score_sse(explorer):
+                                explorer = value
+                except (SynthesisStageBudget, SynthesisResourceGuard) as exc:
+                    end_slice("resource_guard" if isinstance(exc, SynthesisResourceGuard) else "stage_budget")
+                finally:
+                    end_slice()
 
             # Always start the terminal epigraph from the real exploration
             # endpoint, even when its physical strict max has become worse.
             begin_slice("full_original_slsqp_minimax", .85, 256)
             try:
-                explorer = physical_cleanup(explorer)
+                if not objective_handoff_requested:
+                    explorer = physical_cleanup(explorer)
                 resource_check(explorer["design"], jacobian=True, epigraph=True)
                 minimax_start = physical_design_hash(explorer["design"])
                 endpoint.update(physical_hash=minimax_start, design=deepcopy(explorer["design"]),

@@ -54,7 +54,7 @@ def _atomic_json(path: Path, value: Any) -> None:
     temp.replace(path)
 
 
-REQUEST_CONTRACT_VERSION = 3
+REQUEST_CONTRACT_VERSION = 4
 
 
 def _assert_current_request_shape(request: Any) -> None:
@@ -68,15 +68,25 @@ def _assert_current_request_shape(request: Any) -> None:
     }
     if (not isinstance(request, dict) or
             type(request.get("enable_thickness_reduction")) is not bool or
+            "objective_progress_policy" not in request or
             any(name in request for name in ("strict_lower_bound_objective_indices",
                                             "strict_upper_bound_objective_indices")) or
             not isinstance(request.get("objectives"), (tuple, list)) or not request["objectives"]):
-        raise ValueError("Unsupported legacy request format; current schema 3 requires complete nested mean/pointwise criteria and an explicit enable_thickness_reduction boolean. Historical frozen suites are not migrated.")
+        raise ValueError("Unsupported legacy request format; current schema 4 requires complete nested mean/pointwise criteria and an explicit enable_thickness_reduction boolean and objective_progress_policy object/null. Historical frozen suites are not migrated.")
+    policy = request["objective_progress_policy"]
+    if policy is not None:
+        steps = ("accepted_window_steps", "stagnation_windows")
+        floors = ("relative_sse_progress_floor", "relative_worst_progress_floor")
+        if (not isinstance(policy, dict) or set(policy) != set(steps + floors)
+                or any(type(policy[name]) is not int or policy[name] < 1 for name in steps)
+                or any(isinstance(policy[name], bool) or not isinstance(policy[name], (int, float))
+                       or not math.isfinite(policy[name]) or policy[name] < 0 for name in floors)):
+            raise ValueError("Current schema 4 requires an exact finite objective_progress_policy object or null")
     for objective in request["objectives"]:
         if (not isinstance(objective, dict) or set(objective) != objective_fields or
                 any(not isinstance(objective[name], dict) or set(objective[name]) != constraint_fields
                     for name in ("mean", "pointwise"))):
-            raise ValueError("Unsupported legacy request format; current schema 3 requires complete nested mean/pointwise criteria and an explicit enable_thickness_reduction boolean. Historical frozen suites are not migrated.")
+            raise ValueError("Unsupported legacy request format; current schema 4 requires complete nested mean/pointwise criteria and an explicit enable_thickness_reduction boolean and objective_progress_policy object/null. Historical frozen suites are not migrated.")
 
 
 def _current_objectives(request: dict[str, Any]):

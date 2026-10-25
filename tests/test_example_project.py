@@ -134,7 +134,7 @@ def test_example_page_configurations_restore_without_guessing(example):
                 "minimum_nonzero_thickness_nm", "max_layer_thickness_nm",
                 "max_total_thickness_nm")},
                 "randomize_template_search": False, "structure_search_seed": None,
-                "enable_thickness_reduction": True},
+                "enable_thickness_reduction": True, "objective_progress_policy": None},
             "cpu_workers": 0,
             "forward_backend": "cpu",
             "forward_device": None,
