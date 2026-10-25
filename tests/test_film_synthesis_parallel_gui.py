@@ -185,9 +185,20 @@ def test_objective_progress_policy_persists_as_json_then_freezes_typed(app, tmp_
         policy = HybridProgressPolicy(16, .001, .001, 2)
         configured = deepcopy(original)
         configured['synthesis']['options']['objective_progress_policy'] = asdict(policy)
-        assert controller.loadOptimizationConfiguration(configured)
+        # The explicit editor is authoritative too: changing the frozen policy
+        # alone must not silently override a saved disabled switch or its drafts.
+        assert not controller.loadOptimizationConfiguration(configured)
+        assert controller.exportOptimizationConfiguration() == original
+        configured['synthesis']['objective_progress_editor'] = {
+            'enabled': True,
+            'fields': {name: str(value) for name, value in asdict(policy).items()},
+        }
+        assert controller.loadOptimizationConfiguration(configured), controller.error
         saved = json.loads(json.dumps(controller.exportOptimizationConfiguration()))
         assert saved['synthesis']['options']['objective_progress_policy'] == asdict(policy)
+        assert saved['synthesis']['objective_progress_editor'] == configured['synthesis']['objective_progress_editor']
+        assert controller.loadOptimizationConfiguration(saved), controller.error
         assert controller._build_synthesis_request().objective_progress_policy == policy
         assert controller.loadOptimizationConfiguration(original)
+        assert controller.exportOptimizationConfiguration() == original
         assert controller._build_synthesis_request().objective_progress_policy is None

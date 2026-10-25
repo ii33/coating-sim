@@ -135,6 +135,15 @@ def test_example_page_configurations_restore_without_guessing(example):
                 "max_total_thickness_nm")},
                 "randomize_template_search": False, "structure_search_seed": None,
                 "enable_thickness_reduction": True, "objective_progress_policy": None},
+            "objective_progress_editor": {
+                "enabled": False,
+                "fields": {
+                    "accepted_window_steps": "",
+                    "relative_sse_progress_floor": "",
+                    "relative_worst_progress_floor": "",
+                    "stagnation_windows": "",
+                },
+            },
             "cpu_workers": 0,
             "forward_backend": "cpu",
             "forward_device": None,
