@@ -7,7 +7,7 @@ The parent owns optical work, budgets, cancellation and independent acceptance.
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 import math
 from typing import TYPE_CHECKING, Any, Callable, Mapping
 
@@ -126,6 +126,42 @@ class SparseFeedbackRegistry:
         self._acceptable = request.acceptable_normalized_error
         self._points: set[FeedbackPoint] = set()
         self._revision = 0
+
+    def export_state(self):
+        return dict(revision=self._revision,
+                    points=[asdict(p) for p in sorted(self._points, key=_point_key)])
+
+    def restore_state(self, state):
+        """Restore only guides for the already fingerprint-checked frozen task."""
+        if (not isinstance(state, Mapping) or set(state) != {'revision', 'points'}
+                or not isinstance(state['points'], (list, tuple))
+                or type(state.get('revision')) is not int or state['revision'] < 0):
+            raise ValueError('invalid checkpoint audit feedback revision')
+        points = set()
+        for row in state.get('points', ()):
+            data = dict(row)
+            data['wavelength_grid_nm'] = tuple(data.get('wavelength_grid_nm', ()))
+            point = FeedbackPoint(**data)
+            if type(point.objective_index) is not int or not 0 <= point.objective_index < len(self._objectives):
+                raise ValueError('invalid checkpoint feedback objective')
+            objective = self._objectives[point.objective_index]
+            if (point.reduction not in ('pointwise', 'mean')
+                    or not getattr(objective, point.reduction).enabled
+                    or point.angle_deg not in objective.angles_deg or point.polarization != objective.polarization):
+                raise ValueError('checkpoint feedback changed original condition')
+            low, high = objective.wavelength_min_nm, objective.wavelength_max_nm
+            if point.reduction == 'pointwise':
+                wave = _number(point.wavelength_nm)
+                if not low <= wave <= high or point.wavelength_grid_nm:
+                    raise ValueError('checkpoint point feedback differs from original band')
+            else:
+                grid = point.wavelength_grid_nm
+                if (point.wavelength_nm is not None or not grid or grid[0] != low or grid[-1] != high
+                        or any(not low <= _number(w) <= high for w in grid)
+                        or any(a >= b for a, b in zip(grid, grid[1:]))):
+                    raise ValueError('checkpoint mean feedback needs a complete ordered band')
+            points.add(point)
+        self._points, self._revision = points, state['revision']
 
     def record_audit(self, score: Mapping[str, Any]) -> int:
         coverage = {(_field(row, 'objective_index'), _field(row, 'angle_deg')): row

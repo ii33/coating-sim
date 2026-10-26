@@ -93,7 +93,10 @@ def _execute(request_id, envelope, cancel: Event, events: queue.Queue, checkpoin
             _atomic_json(checkpoint, record)
 
     result = synthesize_film_design(None, request, cancel_event=cancel,
-                                    progress_callback=progress, snapshot_callback=snapshot)
+                                    progress_callback=progress, snapshot_callback=snapshot,
+                                    search_checkpoint_callback=(None if checkpoint is None else
+                                        lambda state: _atomic_json(checkpoint.with_name(
+                                            checkpoint.stem + '.search-state.json'), state)))
     return result, structure_metadata
 
 
@@ -105,6 +108,8 @@ def main(argv=None) -> int:
     parser.add_argument("--request", type=Path, help="Frozen request JSON; omitted reads stdin")
     parser.add_argument("--output", type=Path, help="New result JSON, never overwrite; omitted writes stdout")
     parser.add_argument("--checkpoint", type=Path, help="Atomically updated best audited-candidate snapshot")
+    parser.add_argument('--continue-search', type=Path,
+        help='Resume a matching *.search-state.json frontier; require a newly audited candidate before success')
     parser.add_argument("--cancel-file", type=Path, help="Existing file requests cooperative cancellation")
     parser.add_argument("--plan", action="store_true", help="Freeze and expand seeds, print a CLI-ready request, and do not search")
     parser.add_argument("--parallel-batch-size", type=_parallel_batch_argument, default=argparse.SUPPRESS,
@@ -124,13 +129,18 @@ def main(argv=None) -> int:
     try:
         raw = args.request.read_text(encoding="utf-8-sig") if args.request else sys.stdin.read()
         envelope = json.loads(raw)
+        if args.continue_search is not None:
+            film_synthesis_request_from_payload(envelope, require_frozen=False)
+            from .core.film_synthesis_continuation import load_search_state
+            state = load_search_state(args.continue_search)
+            envelope['request'] = dict(envelope['request'], search_checkpoint=state)
         if hasattr(args, "parallel_batch_size"):
             # Validate the original kind/fields first; an override cannot turn
             # an unrelated or malformed request into an accepted synthesis.
             film_synthesis_request_from_payload(envelope, require_frozen=False)
             envelope["request"] = dict(envelope["request"], parallel_batch_size=args.parallel_batch_size)
         if args.plan:
-            if args.output is not None or args.checkpoint is not None or args.cancel_file is not None:
+            if args.output is not None or args.checkpoint is not None or args.cancel_file is not None or args.continue_search is not None:
                 raise ValueError("--plan cannot be combined with output, checkpoint, or cancel-file options")
             canonical, structure_metadata = prepare_film_synthesis_payload(None, envelope)
             response = {"ok": True, "request": canonical,
@@ -139,7 +149,9 @@ def main(argv=None) -> int:
             sys.stdout.flush()
             return 0
         request_id, _, _ = film_synthesis_request_from_payload(envelope)
-        paths = [path for path in (args.request, args.output, args.checkpoint, args.cancel_file) if path is not None]
+        paths = [path for path in (args.request, args.output, args.checkpoint, args.cancel_file, args.continue_search) if path is not None]
+        if args.checkpoint is not None:
+            paths.append(args.checkpoint.with_name(args.checkpoint.stem + '.search-state.json'))
         resolved = [path.resolve() for path in paths]
         if len(set(resolved)) != len(resolved):
             raise ValueError("request, output, checkpoint, and cancel-file paths must be different")

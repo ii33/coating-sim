@@ -698,7 +698,18 @@ AppWindow {
                     objectName: "filmOptimizationContinueButton"
                     text: "从保留结果继续（重新启动求解器）"
                     enabled: window.controller.canContinueOptimization
+                    visible: !window.controller.hasSynthesisSearchProgress
                     onClicked: window.continueFromButton()
+                }
+                ThemeControls.ThemeButton {
+                    objectName: "filmSynthesisContinueSearchButton"
+                    text: "继续搜索"
+                    visible: window.controller.hasSynthesisSearchProgress
+                    enabled: window.controller.canContinueSynthesisSearch
+                    onClicked: {
+                        window.commitActiveEditor()
+                        Qt.callLater(function() { window.controller.continueSynthesisSearch() })
+                    }
                 }
                 ThemeControls.ThemeButton {
                     objectName: "filmSensitivityOpenButton"
@@ -759,10 +770,27 @@ AppWindow {
             objectName: "filmOptimizationContinueDisabledReason"
             Layout.fillWidth: true
             text: window.controller.continueDisabledReason
-            visible: !window.controller.canContinueOptimization && text.length > 0
+            visible: !window.controller.hasSynthesisSearchProgress && !window.controller.canContinueOptimization && text.length > 0
             color: window.themeTokens.colorTextMuted
             wrapMode: Text.WordWrap
             font.pointSize: window.themeTokens.fontSizeSmall
+        }
+
+        Label {
+            objectName: "filmSynthesisSearchPhase"
+            Layout.fillWidth: true
+            text: window.controller.synthesisPhase
+            visible: text.length > 0
+            font.bold: true
+            color: window.themeTokens.colorText
+        }
+        Label {
+            objectName: "filmSynthesisSearchDisabledReason"
+            Layout.fillWidth: true
+            text: window.controller.synthesisSearchDisabledReason
+            visible: window.controller.hasSynthesisSearchProgress && !window.controller.canContinueSynthesisSearch && text.length > 0
+            color: window.themeTokens.colorTextMuted
+            wrapMode: Text.WordWrap
         }
         Label {
             objectName: "filmOptimizationContinuePriorRunFallback"

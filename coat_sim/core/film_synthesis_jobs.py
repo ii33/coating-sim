@@ -178,7 +178,8 @@ def _partial_result(request, request_id, checkpoint, *, terminal_state="cancelle
         frozen_request=request,
         audit_physical_evaluations=counters["audit_physical_evaluations"],
         audit_wavelength_points=counters["audit_wavelength_points"],
-        performance=performance)
+        performance=performance, search_checkpoint=deepcopy(checkpoint.get('search_checkpoint')),
+        local_optimum=deepcopy(checkpoint.get('local_optimum')))
     payload = film_synthesis_result_to_payload(request_id, result,
         audit={"physical_evaluations": result.audit_physical_evaluations,
                "wavelength_points": result.audit_wavelength_points, **work_metadata},
@@ -321,6 +322,41 @@ def validate_checkpoint(value: Mapping[str, Any], *, terminal_state="cancelled")
                    "audit_physical_evaluations": audited.get("audit", {}).get("physical_evaluations", 0),
                    "audit_wavelength_points": audited.get("audit", {}).get("wavelength_points", 0)},
                "physical_structure_metadata": metadata}
+    search_state = audit_record.get('search_checkpoint')
+    if search_state is not None:
+        from .film_synthesis_continuation import validate_search_state
+        checked['search_checkpoint'] = validate_search_state(freeze_film_synthesis_request(None, request), search_state)
+    local = deepcopy(audit_record.get('local_optimum'))
+    if local is not None:
+        # Historical local quality gets the same explicit physical replay as
+        # the final candidate. Old scores are never promoted by mere JSON load.
+        from .film_synthesis_archive import physical_design_hash
+        local_design = validate_design(local['design'])
+        _validate_result_physical_binding(request, dict(design_revision=request.design_revision,
+            candidate_design=local_design, training_score=local['training_score'], validation_score=local['validation_score']))
+        if local.get('physical_hash') != physical_design_hash(local_design) or local.get('validation_complete') is not True:
+            raise ValueError('local checkpoint audit belongs to another candidate')
+        if local.get('termination') == 'converged' or local.get('local_converged') is True:
+            terminal, returned, selected = (local.get(k) for k in ('solver_terminal','returned_best','audited_selected'))
+            if (local.get('local_converged') is not True or local.get('termination') != 'converged'
+                    or any(not isinstance(r,dict) or r.get('physical_hash') != local['physical_hash']
+                           for r in (terminal,returned,selected))
+                    or terminal.get('local_stationary') is not True or terminal.get('nominal_pass') is not True
+                    or terminal.get('epigraph_feasible') is not True or returned.get('is_solver_terminal') is not True
+                    or returned.get('role') != 'solver_terminal' or selected.get('nominal_pass') is not True
+                    or selected.get('topology_matches_fixed') is not True):
+                raise ValueError('local checkpoint convergence identity does not match the audited candidate')
+        local_training = evaluate_frozen_structure_candidate(_proxy(request), local_design,
+            derived_validation_grid=False)['score']
+        local_audit = audit_frozen_synthesis_candidate(request, local_design)
+        _verify_saved_score(request, local['training_score'], local_training)
+        _verify_saved_score(request, local['validation_score'], local_audit['score'], independent=True)
+        local.update(training_score=local_training, validation_score=local_audit['score'])
+        checked['local_optimum'] = local
+        work = checked['recovery_replay_work']
+        work.update(local_training_evaluations=1, local_validation_evaluations=1,
+            local_audit_physical_evaluations=local_audit['audit']['physical_evaluations'],
+            local_audit_wavelength_points=local_audit['audit']['wavelength_points'])
     return _partial_result(request, request_id, checked, terminal_state=terminal_state)
 
 
@@ -802,6 +838,12 @@ def execute_job(value: Mapping[str, Any], cancel_event, report, checkpoint_path,
             "physical_structure_metadata": deepcopy(metadata)}
         write_json(checkpoint_path, _json_snapshot(record))
 
+    def search_checkpoint(state):
+        # Separate exploration durability from quality evidence. Even a run
+        # cancelled before any passing audit can resume its structural frontier.
+        path = checkpoint_path.with_name(checkpoint_path.stem + '.search-state.json')
+        write_json(path, _json_snapshot(state))
+
     monitor = threading.Thread(target=heartbeat, name="film-synthesis-heartbeat", daemon=True)
     monitor.start()
     try:
@@ -811,7 +853,8 @@ def execute_job(value: Mapping[str, Any], cancel_event, report, checkpoint_path,
                     else candidate_observer)
         result = synthesize_film_design(None, request, cancel_event=cancel_event,
                                         progress_callback=progress, snapshot_callback=checkpoint,
-                                        candidate_observer=observer)
+                                        candidate_observer=observer,
+                                        search_checkpoint_callback=search_checkpoint)
         # Older queued specs legitimately omit newly added execution controls.
         # Resolve them only for execution, never rewrite the original identity
         # or relax the worker/queue's exact frozen-request comparison.

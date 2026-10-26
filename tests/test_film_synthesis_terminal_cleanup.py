@@ -55,6 +55,8 @@ def _problem(tmp_path, *, seed=False, seed_multiple=1., alternate_set=False, bud
             "thickness": {"value": seed_multiple * QUARTER_WAVE_NM / 2., "unit": "nm"},
         } for index in range(2)]
         request = replace(request, seed_designs=(starting,))
+    # Exact historical cleanup counters are independent of the new safety stage.
+    request = replace(request, enable_local_margin_refinement=False)
     return service, library, freeze_film_synthesis_request(service, request)
 
 
@@ -72,7 +74,8 @@ def _execute(tmp_path, service, request, *, cancel=None, observer=None):
 
     response = execute_job({"payload": spec.parameters["payload"]},
         Event() if cancel is None else cancel, report, tmp_path / "best-candidate.json",
-        lambda _path, item: checkpoints.append(deepcopy(item)), str(tmp_path.resolve()))
+        lambda path, item: checkpoints.append(deepcopy(item))
+            if path.name == 'best-candidate.json' else None, str(tmp_path.resolve()))
     assert spec.parameters == before
     assert is_synthesis_result(response)
     return response, progress, checkpoints

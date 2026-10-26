@@ -48,6 +48,10 @@ def test_real_default_hybrid_enabled_disabled_cross_family(family, mode):
     assert enabled.evaluations >= disabled.evaluations
     assert enabled.cycles == disabled.cycles == 1  # Early prior success, not another search rotation.
     assert any(row.stage == 'thickness_reduction_complete' for row in enabled.trace)
+    stages = [row.stage for row in enabled.trace]
+    assert stages.index('local_margin_complete') < stages.index('thickness_reduction_complete')
+    assert on['local_margin']['status'] in {'converged', 'no_interval_margin', 'empty_topology'}
+    assert [r['id'] for r in enabled.local_optimum['design']['front_layers']] == on['local_margin']['fixed_layer_ids']
     assert not any(row.stage.startswith('thickness_reduction') for row in disabled.trace)
     if detail['promoted']:
         assert detail['independent_audit_performed'] and total(enabled) < total(disabled)
@@ -68,6 +72,7 @@ def test_legacy_route_is_unchanged_by_new_default(monkeypatch):
 
 def test_low_remaining_budget_does_not_start_optional_solver(monkeypatch):
     service, request, _ = request_case(budget=4)
+    request = replace(request, enable_local_margin_refinement=False)
     monkeypatch.setattr(thickness, 'reduce_total_thickness', lambda *a, **k: pytest.fail('no training slot'))
     result = run_case(service, request)
     assert result.targets_met and result.evaluations <= 4
@@ -78,6 +83,9 @@ def test_low_remaining_budget_does_not_start_optional_solver(monkeypatch):
 
 def test_dense_mean_rejection_preserves_exact_audited_incumbent():
     service, request, _ = request_case(mode='mean')
+    # Keep this known off-grid rejection fixture focused on the cost stage;
+    # margin optimization deliberately changes its starting feasible design.
+    request = replace(request, enable_local_margin_refinement=False)
     off = run_case(service, replace(request, enable_thickness_reduction=False))
     result = run_case(service, request)
     record = result.performance['search']['hybrid']['thickness_reduction']
@@ -152,7 +160,8 @@ def test_combined_resource_estimate_blocks_even_when_components_each_fit(monkeyp
     # Parent prior/TMM work plus its small archive fits 160 MiB; the staged
     # numerical estimate alone also fits. Their sum deliberately does not.
     limit = 160 * 1024**2
-    request = replace(request, max_working_set_bytes=limit, resource_guard_resolution=None)
+    request = replace(request, max_working_set_bytes=limit, resource_guard_resolution=None,
+                      enable_local_margin_refinement=False)
     monkeypatch.setattr(thickness, 'thickness_reduction_working_set_bytes', lambda request, layers: limit)
     monkeypatch.setattr(thickness, 'reduce_total_thickness', lambda *a, **k: pytest.fail('combined work not admitted'))
     result = run_case(service, request)

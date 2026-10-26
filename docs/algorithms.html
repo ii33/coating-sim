@@ -32,7 +32,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
   <div class="eyebrow">Optical Coating / Algorithm Atlas</div>
   <h1>光学镀膜<br>算法图解与参考来源</h1>
   <p>从独立基片、蒸发源、修正板、机器与工艺文件，到行星运动、射线通量、膜厚归一化和预计用时。本文依据当前代码写成，可离线阅读；公式描述的是本项目的计算模型。</p>
-<div class="meta"><span class="pill">版本：机器 v5 · 工艺 v7 · 源 v2；材料交换包 v1、安全导入冲突预览与原子回滚)</span><span class="pill">更新：2026-10-25（固定初始光谱受控退化理想优化v2、旧strict版本兼容；真实混合多核、原门限与容差分离、冠军物理压缩与拒绝统计；周期0显式时间/评价/取消统一预算；高反自动结构/全局搜索、材料谱向量复用与同预算验收、显式严格下界与跨类别冻结基准；活动光路材料校验与从零合成审计；优化目标上下限统一与角度范围显式确认；厚度编辑精度、零厚层与优化边界；冻结服务边界与单点归一化；研究证据与单层光谱反演；修正板不设数量上限、完整依赖快照与逐板遮挡；工程文件格式契约说明；优化多角网格与计算量人工顶值移除；TFCalc明文层表导入；外观逐光线精确 TMM 与独立波长 CPU 进程并行；Qt Quick 显式峰谷统计波段、波长通带与场景图曲线预览；多孔厚盖、独立源采样、无固定最大网格与计算隔离；工艺环境、工作气体及零碰撞直达束；材料库、已设计源工艺选择、盖孔射线与快扫描空间分布；桌面仿真共享队列、逐批进度、无固定步数上限、100%快算默认与Å/s界面；五项上下文预算、硬限与安全压缩、后台流合并与固定设计绘图；平滑轮廓、全膜系目标选优与评分进度；凭据反馈与有界模型候选兼容探测；待决选项、模式放行、诊断未读摘要、结果队列身份修复、紧凑产物；计算量估算、后台串行队列、源板分组优化与跨段选区；完整设备回退、成功设备记忆、临时仿真资产包、可选 PDF、历史闭合与滚动高度缓存；批量膜系、物理层表导入、固定图表、工具原文归档与任务成本、视口文本增量渲染；批量工具契约、演示工作流、逐回合展示与复制、撤回确认、本地助手调试、实际生效参数快照、LPAC启动修复；容量自适应上下文、轮次关闭、插话与排队、剪贴板图片、系统语言与语气、开发访问；逐层修正板、轮廓优化、工艺快算、估时、上下文用量、请求续约、原生档位缓存、滚动跟随、二维 CAD 与加工图、模型 Token 上限、缓存命中统计、富文本与开发门禁；修正板视口设备路由、反向滚动与可选输入诊断）</span><span class="pill">单位：mm · s · rpm · nm · px；助手 Token / 字符 / 附件字节</span><span class="pill">离线单文件 HTML</span></div>
+<div class="meta"><span class="pill">版本：机器 v5 · 工艺 v7 · 源 v2；材料交换包 v1、安全导入冲突预览与原子回滚)</span><span class="pill">更新：2026-10-26（自动合成局部余量、原目标减薄和结构续接；固定初始光谱受控退化理想优化v2、旧strict版本兼容；真实混合多核、原门限与容差分离、冠军物理压缩与拒绝统计；周期0显式时间/评价/取消统一预算；高反自动结构/全局搜索、材料谱向量复用与同预算验收、显式严格下界与跨类别冻结基准；活动光路材料校验与从零合成审计；优化目标上下限统一与角度范围显式确认；厚度编辑精度、零厚层与优化边界；冻结服务边界与单点归一化；研究证据与单层光谱反演；修正板不设数量上限、完整依赖快照与逐板遮挡；工程文件格式契约说明；优化多角网格与计算量人工顶值移除；TFCalc明文层表导入；外观逐光线精确 TMM 与独立波长 CPU 进程并行；Qt Quick 显式峰谷统计波段、波长通带与场景图曲线预览；多孔厚盖、独立源采样、无固定最大网格与计算隔离；工艺环境、工作气体及零碰撞直达束；材料库、已设计源工艺选择、盖孔射线与快扫描空间分布；桌面仿真共享队列、逐批进度、无固定步数上限、100%快算默认与Å/s界面；五项上下文预算、硬限与安全压缩、后台流合并与固定设计绘图；平滑轮廓、全膜系目标选优与评分进度；凭据反馈与有界模型候选兼容探测；待决选项、模式放行、诊断未读摘要、结果队列身份修复、紧凑产物；计算量估算、后台串行队列、源板分组优化与跨段选区；完整设备回退、成功设备记忆、临时仿真资产包、可选 PDF、历史闭合与滚动高度缓存；批量膜系、物理层表导入、固定图表、工具原文归档与任务成本、视口文本增量渲染；批量工具契约、演示工作流、逐回合展示与复制、撤回确认、本地助手调试、实际生效参数快照、LPAC启动修复；容量自适应上下文、轮次关闭、插话与排队、剪贴板图片、系统语言与语气、开发访问；逐层修正板、轮廓优化、工艺快算、估时、上下文用量、请求续约、原生档位缓存、滚动跟随、二维 CAD 与加工图、模型 Token 上限、缓存命中统计、富文本与开发门禁；修正板视口设备路由、反向滚动与可选输入诊断）</span><span class="pill">单位：mm · s · rpm · nm · px；助手 Token / 字符 / 附件字节</span><span class="pill">离线单文件 HTML</span></div>
 <p class="source">补充更新：2026-10-05——通过服务接口执行的非 CPU 沉积仿真使用一次任务一个短生命周期计算进程；Windows 子进程关闭管道时把 WinError 109 视作 EOF，避免计算完成后误记失败。</p>
 <p class="source">cub 接口补齐更新：2026-10-05。三路径提交、材料业务工具、机器工程检查和 AI 资产导出契约；未覆盖在线模型及实机校准。</p>
 <p class="source">GUI接线更新：2026-10-20。14t从零合成与14u物理结构已进入现有优化页/参数侧栏；入口与状态边界见<a href="film-synthesis-gui-guide.md">使用指南</a>、<a href="film-synthesis-gui-stage-report-20261020.md">同源GUI验收</a>。原GUI接线无数值公式变更；后续显式未知k近似策略见<a href="#film-synthesis-unknown-k-20261020">14v</a>，默认严格且不会静默回退。</p>
@@ -69,6 +69,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <p class="source" style="grid-column:1/-1">结构合成更新：2026-10-12。新增14o至14o-2：实验性经典零厚敏感度针插、有界已有层增长与分组局部精修；独立结构请求与固定层序/有限试插分开，Dmax是硬约束。补充验证切片、真实求值计数与增长前局部边界检查。接口见 <a href="film-structure-optimization-contract.md">结构合成契约</a>，操作见 <a href="film-structure-optimization-guide.md">使用指南</a>，实际验收见 本轮状态 <span class="historical-reference">（历史验证记录，未随公开源码发布）</span>。</p>
 <p class="source">存储格式补充：2026-10-18。工程 BBS、助手精简记忆和可恢复文件清理均为非物理持久化契约，不改变仿真公式、坐标或数值精度。见<a href="#engineering-notes-storage-20261018">工程记录与助手工作区格式</a>。</p>
 <nav aria-label="章节目录">
+<a href="#film-margin-continuation-20261026">14bb 自动合成局部余量、原目标减薄与结构续接（2026-10-26）</a>
 <a href="#film-numeric-zero-20261026">14ba 数值零清理与实时详情（2026-10-26）</a>
 <a href="#film-reduction-20261025">14az 独立减层 / 减厚后优化（2026-10-25）</a>
 <a href="#film-cancel-warm-restart-20261025">14ay 取消后从保留候选重新启动求解器（2026-10-25）</a>
@@ -261,6 +262,29 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#candidate-display-score">14ar 可开关实时光谱与独立候选展示评分</a>
 </nav>
 <main>
+
+<section id="film-margin-continuation-20261026">
+<h2>14bb 自动合成局部余量、原目标减薄与结构续接</h2>
+<p class="source">更新：2026-10-26。实现：<code>film_synthesis_margin.py</code>、<code>film_synthesis_continuation.py</code>、<code>film_auto_synthesis.py</code>；接口与异步边界见 <a href="film-synthesis-continuation.md">阶段与续接核心契约</a>。本节新增 hybrid 默认阶段；原 legacy、候选 warm restart 与人工制造修复仍分别存在。</p>
+<p><strong>用途和输入输出：</strong>输入为冻结的目标、真实材料 n/k、光学环境、用户制造约束和既有结构候选。结构通过原训练与独立审计后，先在固定拓扑上改善最差安全余量，再按<strong>原正式目标</strong>减薄。输出的 <code>local_optimum</code> 是减薄前结果及其原始评分/独立审计；<code>candidate_design</code> 是最终可审查/写回候选，二者可不同。余量被减薄消费是允许的；最终候选仍必须独立通过原始阈值，容差不放宽阈值。</p>
+<figure><svg viewBox="0 0 1050 230" role="img" aria-label="结构搜索到固定拓扑余量再到减薄，结构进度独立保存" style="max-width:100%;height:auto">
+<defs><marker id="margin-arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#38bdf8"/></marker></defs>
+<g fill="#132638" stroke="#38bdf8" stroke-width="2"><rect x="15" y="20" width="270" height="88" rx="10"/><rect x="370" y="20" width="310" height="88" rx="10"/><rect x="765" y="20" width="270" height="88" rx="10"/><rect x="195" y="155" width="660" height="60" rx="10"/></g>
+<g fill="#e2e8f0" text-anchor="middle" font-size="19"><text x="150" y="55">新结构 / 可行性</text><text x="150" y="84">原目标训练 + 独立审计</text><text x="525" y="55">固定层序 / 材料 / 层 ID</text><text x="525" y="84">有符号最差余量 → 局部停止</text><text x="900" y="55">原目标减薄</text><text x="900" y="84">重新审计后交付</text><text x="525" y="181">结构族游标 · 待评候选 · 真实候选池 · 随机推进 · 审计反馈</text><text x="525" y="204">独立保存；查看 / 保存不清空；兼容编辑重新评分后继续</text></g>
+<g stroke="#38bdf8" stroke-width="2" marker-end="url(#margin-arrow)"><path d="M285,64 H358"/><path d="M680,64 H753"/><path d="M150,108 V185 H185"/><path d="M855,185 H900 V118"/></g></svg>
+<figcaption>图14bb-1：结构探索进度与一次局部会话分开保存。初步余量求解结束后可作 canonical 数值零层清理，随后在最终固定层 ID/材料上单独确认收敛；每次局部求解本身不插层、删层或换材料。</figcaption></figure>
+<p><strong>量与归一化：</strong>膜厚 d 为 nm，坐标 x=d/100；R、T 为 0–1 fraction。每个已启用目标、角度和 reduction 产生原始有符号条件 q：下界为 (L−y)/s，上界为 (y−U)/s，s 为该目标已有的 <code>normalization_scale</code>。跨波段、多角和多个指标取同一归一化距离的最大值；权重不替换最差条件，也不添加 mean。mean 仅启用时沿用完整波段的梯形积分；pointwise 仅启用时沿用各原样本。</p>
+<pre>局部余量：min t；q_margin(d) ≤ t；全部 q_original(d) ≤ 0；原膜厚/总厚约束。
+t 没有 t≥0 下限；负 t 表示仍在改善可行域内的余量。
+AR 的 L=0 / HR 的 U=1 保留为物理约束，但不作为余量方向。
+value 与有效零宽区间仅作原约束；没有区间方向时返回 no_interval_margin。
+减薄：min Σd；全部原约束 q_original(d) ≤ 0；再做独立原目标审计。</pre>
+<p><strong>停止和预算：</strong>余量阶段使用解析 Jacobian 的 SLSQP，默认 <code>ftol=1e-11</code>、最多256次迭代作为数值保护。只有受约束最优性/步长/函数变化等求解条件通过且完整 epigraph 可行时报告 <code>converged</code>；迭代上限、资源保护、评价/时间预算、数值失败和取消均分别报告。非收敛余量阶段不进入减薄。受约束驻点不要求每个原始光学梯度为零，不保证全局最优。减薄沿用已有≤32候选/≤16 SLSQP步的有限调度片；结束时保留通过原审计的候选。</p>
+<p><strong>结构续接：</strong>JSON search-state v1 保存既有8族的消费游标、仍活动的源顺序、源轮转位置、未评分候选、真实设计池及插入/父候选身份、已试物理哈希、全局轮次推进、固定根 seed/模板 PCG64 算法版本及 NumPy版本、稀疏审计反馈。确定性生成器跳到保存游标而不重复物理计算；随机模板由 root/stage/物理模板哈希分离生成，已展开的待评 extra 不二次随机化。短生命周期 DE 群体及局部求解器内部状态不保存；在下一旋转边界重新建立，其 seed 随持久轮次前进，已完成候选仍留在池中。</p>
+<p>版本、SHA256和冻结目标/材料/制造与搜索参数指纹校验后，池中设计在新预算中全部重新评分；旧评分/旧审计不冒充本次证据。查看和保存不清空状态。膜厚/拓扑编辑先作为 seed，冻结材料闭包和原制造边界必须仍成立；目标/材料/约束不兼容时明确要求重建，原 JSON 不被改写。JSON读取/输出沿用有界字节读取和调度器原子替换机制，限制64 MiB，不使用 pickle。</p>
+<p><strong>一次继续会话有界：</strong>旧达标冠军不能立即返回。继续既有源前沿的一片候选筛选，选择新分支，即使暂时变差也独立进行一次最多96步的固定拓扑可行性局部会话。新分支达标时再走余量/减薄；未达标或不优于历史冠军时保留历史最好并结束本次会话，保存已推进的游标，不能把该分支局部停止表述为全局无解。资源或无有效物理工作也明确结束。取消/截止时不再补审计，返回已完成证据且保持候选/审计身份绑定。</p>
+<p><strong>参考与限制：</strong><a href="https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html">SciPy SLSQP 官方文档</a>说明 ftol 涉及拉格朗日梯度、约束违反、步长和目标变化等条件。余量方向、物理端点排除、256/96迭代保护、候选调度和续接数据结构均为本项目约定；未找到外部依据，仅为本项目实现。独立密网格、偏移点及极值审计是数值证据，不能称连续光谱证书；n/k 来源与域外策略不因本节改变。</p>
+</section>
 
 <section id="film-manufacturing-pair-20261025">
 <h2>14ax 显式缺陷选层的成对制造修复</h2>
