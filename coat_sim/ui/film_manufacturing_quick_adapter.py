@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 import math
+from .film_display_format import format_film_thickness
 from typing import Any
 
 from coat_sim.core.film_objective_criteria import wavelength_measure
@@ -87,8 +88,8 @@ def snapshot_text(snapshot: Mapping[str, Any] | None, objectives: list[dict]) ->
     rows = snapshot.get("design", {}).get("front_layers", ())
     thickness = [row["thickness"]["value"] for row in rows
                  if row.get("thickness", {}).get("unit") == "nm"]
-    geometry = (f"层数 {len(rows)}；最薄 {_num(min(thickness)) if thickness else '无膜层'} nm；"
-                f"D 总厚度 {_num(math.fsum(thickness))} nm")
+    geometry = (f"层数 {len(rows)}；最薄 {format_film_thickness(min(thickness)) if thickness else '无膜层'} nm；"
+                f"D 总厚度 {format_film_thickness(math.fsum(thickness))} nm")
     training, audit = snapshot.get("training_score"), snapshot.get("audit_score")
     accepted = (isinstance(training, Mapping) and isinstance(audit, Mapping)
                 and training.get("nominal_pass") is True and audit.get("nominal_pass") is True)

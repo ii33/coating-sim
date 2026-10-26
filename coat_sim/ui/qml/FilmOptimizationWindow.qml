@@ -871,6 +871,7 @@ AppWindow {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 clip: true
+                                contentWidth: availableWidth
                                 ScrollBar.vertical.policy: ScrollBar.AsNeeded
                                 ColumnLayout {
                                     width: objectiveEditorScroll.availableWidth
@@ -1255,7 +1256,7 @@ AppWindow {
                                                     Label {
                                                         Layout.fillWidth: true
                                                         text: modelData.available
-                                                              ? modelData.set_name + " · 当前 " + NumericFormat.format(modelData.physical_nm, Qt.locale(), 3) + " nm"
+                                                              ? modelData.set_name + " · 当前 " + NumericFormat.format(modelData.physical_nm, Qt.locale(), Theme.filmThicknessDecimals) + " nm"
                                                               : variableDelegate.modelData.set_name + " · 厚度或 n 数据不可用"
                                                         color: variableDelegate.modelData.available
                                                                ? window.themeTokens.colorTextMuted
@@ -1272,6 +1273,7 @@ AppWindow {
                                                             Layout.fillWidth: true
                                                             enabled: modelData.available
                                                             numericDisplayValue: modelData.lower_nm
+                                                            numericDisplayDecimals: Theme.filmThicknessDecimals
                                                             numericEditDecimals: 3
                                                             validator: DoubleValidator { bottom: 0; decimals: 3 }
                                                             function commitDraft() {
@@ -1287,6 +1289,7 @@ AppWindow {
                                                             Layout.fillWidth: true
                                                             enabled: modelData.available
                                                             numericDisplayValue: modelData.upper_nm
+                                                            numericDisplayDecimals: Theme.filmThicknessDecimals
                                                             numericEditDecimals: 3
                                                             placeholderText: "未设上限"
                                                             validator: DoubleValidator { bottom: 0; decimals: 3 }

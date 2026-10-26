@@ -702,6 +702,7 @@ def normalized_ui_settings(values: Mapping[str, object] | None = None) -> dict[s
         "theme_mode": _choice(source.get("theme_mode"), THEME_MODES, "system"),
         "theme_package_id": _theme_package_id(source.get("theme_package_id")),
         "font_family": _short_text(source.get("font_family"), 128),
+        "film_thickness_decimals": _bounded_integer(source.get("film_thickness_decimals"), 0, 6, 3),
         "font_point_size": _bounded_integer(
             source.get("font_point_size"),
             MIN_FONT_POINT_SIZE,
@@ -977,6 +978,10 @@ class SettingsBridge(QObject):
     @Property(int, notify=changed)
     def fontPointSize(self) -> int:
         return self._settings["font_point_size"]
+
+    @Property(int, notify=changed)
+    def filmThicknessDecimals(self) -> int:
+        return _bounded_integer(self._settings.get("film_thickness_decimals"), 0, 6, 3)
 
     @Property(str, notify=changed)
     def fontFamily(self) -> str:
@@ -1660,6 +1665,14 @@ class SettingsBridge(QObject):
         updated = _bounded_integer(value, MIN_FONT_POINT_SIZE, MAX_FONT_POINT_SIZE, self.fontPointSize)
         if self._settings["font_point_size"] != updated:
             self._settings["font_point_size"] = updated
+            self.changed.emit()
+
+    @Slot(int)
+    def setFilmThicknessDecimals(self, value: int) -> None:
+        current = _bounded_integer(self._settings.get("film_thickness_decimals"), 0, 6, 3)
+        updated = _bounded_integer(value, 0, 6, current)
+        if self._settings["film_thickness_decimals"] != updated:
+            self._settings["film_thickness_decimals"] = updated
             self.changed.emit()
 
     @Slot(str)

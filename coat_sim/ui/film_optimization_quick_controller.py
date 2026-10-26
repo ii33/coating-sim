@@ -21,6 +21,7 @@ from PySide6.QtCore import Property, QObject, QRunnable, QThreadPool, Qt, QTimer
 
 from coat_sim.assistant_diagnostics import trace
 from coat_sim.ui.film_candidate_display_controller import FilmCandidateDisplayController
+from coat_sim.ui.film_display_format import format_film_thickness
 
 from coat_sim.core.film_optimization import (
     FilmConditionError,
@@ -1088,6 +1089,8 @@ class FilmOptimizationQuickController(QObject):
         self._error = ""
         self._result: FilmOptimizationResult | None = None
         self._live_display = FilmCandidateDisplayController(self)
+        from .theme_service import ThemeService
+        ThemeService.instance().filmThicknessDecimalsChanged.connect(self._on_film_display_precision)
         self._sensitivity_controller: FilmSensitivityQuickController | None = None
         self._manufacturing_controller: FilmManufacturingQuickController | None = None
         self._result_terminal_state = ""
@@ -1697,11 +1700,8 @@ class FilmOptimizationQuickController(QObject):
             raw_variables = configuration.get("variables", [])
             if not isinstance(raw_variables, list):
                 raise ValueError("优化变量必须是数组")
-            # A document's saved scope is authoritative. New layers are never
-            # opted into optimization just because their old neighbour vanished.
-            if reconcile_layers and "variables" in configuration:
-                for row in variables:
-                    row["enabled"] = False
+            # Saved choices apply only to their exact side/layer ID. Unseen
+            # layers retain the current default, including after synthesis.
             seen = set()
             orphaned = []
             for raw in raw_variables:
@@ -1736,7 +1736,7 @@ class FilmOptimizationQuickController(QObject):
                     references = "、".join(f"{side}/{layer_id}" for side, layer_id in orphaned)
                     parts.append(f"{len(orphaned)} 个旧膜层约束已失效，未转移到其它膜层：{references}。")
                 if new_layers:
-                    parts.append(f"恢复时未自动勾选 {len(new_layers)} 个新膜层；请在约束页核对选择与厚度范围。")
+                    parts.append(f"{len(new_layers)} 个新膜层已使用默认约束；可优化层默认勾选。")
                 restore_notice = "".join(parts)
             solver = {**defaults["solver"], **configuration.get("solver", {})}
             if set(solver) != set(defaults["solver"]) or solver["method"] not in _SOLVER_UI_INDEX:
@@ -2201,7 +2201,7 @@ class FilmOptimizationQuickController(QObject):
                     high = old["upper_nm"]
                     enabled = bool(old["enabled"])
                 else:
-                    low, high, enabled = 0.0, None, not preserve_variables
+                    low, high, enabled = 0.0, None, physical_nm is not None
                 variables.append({
                     "side": side,
                     "side_label": "正面" if side == "front" else "背面",
@@ -2225,7 +2225,7 @@ class FilmOptimizationQuickController(QObject):
                     references = "、".join(f"{side}/{layer_id}" for side, layer_id in sorted(orphaned))
                     parts.append(f"{len(orphaned)} 个旧膜层约束已失效，未转移到其它膜层：{references}。")
                 if added:
-                    parts.append(f"恢复时未自动勾选 {len(added)} 个新膜层；请在约束页核对选择与厚度范围。")
+                    parts.append(f"{len(added)} 个新膜层已使用默认约束；可优化层默认勾选。")
                 self._configuration_restore_notice = "".join(parts)
         self._variables = variables
         self._source_document_replaced = False
@@ -2333,8 +2333,20 @@ class FilmOptimizationQuickController(QObject):
         elif "workflow_settings" in categories and not self._busy:
             self._restore_session_configuration(reset_missing=False)
         elif snapshot.design_revision != self._source_revision:
-            self._source_stale = True
-            self.changed.emit()
+            if self._candidate_applied and not self._busy and not self._pending_edit_error:
+                # An applied result no longer protects an unapplied proposal.
+                # Undo/subsequent committed edits must rebuild the variable
+                # model too; in-flight or unapplied conflicts stay fenced.
+                self._configuration_loading = True
+                try:
+                    self._invalidate_result()
+                    self._load_source(preserve_variables=True)
+                finally:
+                    self._configuration_loading = False
+                self._restore_session_configuration(reset_missing=False)
+            else:
+                self._source_stale = True
+                self.changed.emit()
 
     def _invalidate_result(self) -> None:
         if self._manufacturing_controller is not None:
@@ -2533,6 +2545,10 @@ class FilmOptimizationQuickController(QObject):
     def hasReductionResult(self) -> bool:
         return self._reduction_result is not None
 
+    @Slot(int)
+    def _on_film_display_precision(self, _decimals: int) -> None:
+        self.changed.emit()
+
     @Property(str, notify=changed)
     def reductionComparison(self) -> str:
         reduction = self._reduction_result
@@ -2543,10 +2559,10 @@ class FilmOptimizationQuickController(QObject):
             row = reduction.metrics[key]
             def fmt(value):
                 return "—" if value is None else f"{value:g}"
-            lines.append(f"{label}：{row['layer_count']} 层 · 总厚 {fmt(row['total_thickness_nm'])} nm · 最薄 {fmt(row['min_thickness_nm']) + ' nm' if row['layer_count'] else '无膜层'} · 最差误差 {fmt(row['max_normalized_error'])} · 加密最差误差 {fmt(row['validation_max_normalized_error'])} · 原目标 {'通过' if row['targets_met'] else '未通过'} · 独立加密 {'通过' if row['validation_targets_met'] else '未通过'}")
+            lines.append(f"{label}：{row['layer_count']} 层 · 总厚 {format_film_thickness(row['total_thickness_nm'])} nm · 最薄 {format_film_thickness(row['min_thickness_nm']) + ' nm' if row['layer_count'] else '无膜层'} · 最差误差 {fmt(row['max_normalized_error'])} · 加密最差误差 {fmt(row['validation_max_normalized_error'])} · 原目标 {'通过' if row['targets_met'] else '未通过'} · 独立加密 {'通过' if row['validation_targets_met'] else '未通过'}")
             for side, name in (("front", "正面"), ("back", "背面")):
                 value = row[side]
-                lines.append(f"  {name}：{value['layer_count']} 层 · {fmt(value['total_thickness_nm'])} nm · 最薄 {fmt(value['min_thickness_nm']) + ' nm' if value['layer_count'] else '无膜层'}")
+                lines.append(f"  {name}：{value['layer_count']} 层 · {format_film_thickness(value['total_thickness_nm'])} nm · 最薄 {format_film_thickness(value['min_thickness_nm']) + ' nm' if value['layer_count'] else '无膜层'}")
         if self._candidate_applied:
             lines.append("候选已显式应用；可在来源设计中撤销本次应用。")
         elif self.canApply:
@@ -3544,7 +3560,7 @@ class FilmOptimizationQuickController(QObject):
             if layer_id in self._result.best_thickness_nm:
                 output.append({
                     "label": f"{row['side_label']} · {row['label']}",
-                    "thickness": f"{self._result.best_thickness_nm[layer_id]:.6g} nm",
+                    "thickness": f"{format_film_thickness(self._result.best_thickness_nm[layer_id])} nm",
                 })
         return output
 
@@ -4704,7 +4720,7 @@ class FilmOptimizationQuickController(QObject):
             source = row.get("material_source", {})
             row["display"] = (f"{row.get('index', 0) + 1} | {row.get('id')} | "
                 f"{row.get('material_name')} ({row.get('material_id')}) / "
-                f"{row.get('optical_set_name')} ({row.get('optical_set_id')}) | {row.get('thickness_nm')} nm\n"
+                f"{row.get('optical_set_name')} ({row.get('optical_set_id')}) | {format_film_thickness(row.get('thickness_nm'))} nm\n"
                 f"n 波段 {row.get('n_wavelength_domain_nm')} nm，k 波段 {row.get('k_wavelength_domain_nm')} nm\n"
                 + json.dumps(source, ensure_ascii=False, sort_keys=True))
         return rows
@@ -5829,7 +5845,7 @@ class FilmOptimizationQuickController(QObject):
             same_design = False
         if same_design:
             self._candidate_applied = True
-            self._source_stale = False
+            self._load_source(preserve_variables=True)
         else:
             self._operation_edit_epoch = self._attempt_edit_epoch
             if not self._apply_candidate():
@@ -6419,14 +6435,10 @@ class FilmOptimizationQuickController(QObject):
             self._error = "原设计或未提交编辑已改变；候选未自动覆盖。"
             self.changed.emit()
             return False
-        committed = session.snapshot()
-        self._source_revision = int(committed.design_revision)
-        self._design = deepcopy(dict(committed.design))
-        self._path = str(committed.path or "")
-        self._source_stale = False
         self._candidate_applied = True
         self._candidate_saved = True
         self._error = ""
+        self._load_source(preserve_variables=True)
         if result.targets_met:
             self._progress_text = str(result.message or "优化完成") + " · 已自动回写原设计。"
         else:
@@ -6577,14 +6589,10 @@ class FilmOptimizationQuickController(QObject):
             self._source_stale = True
             self.changed.emit()
             return False
-        snapshot = session.snapshot()
-        self._source_revision = int(snapshot.design_revision)
-        self._design = deepcopy(snapshot.design)
-        self._path = str(snapshot.path or "")
-        self._source_stale = False
         self._candidate_applied = True
         self._candidate_saved = True
         self._error = ""
+        self._load_source(preserve_variables=True)
         self.changed.emit()
         return True
 

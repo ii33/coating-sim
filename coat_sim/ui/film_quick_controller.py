@@ -8,6 +8,7 @@ remain owned by :mod:`coat_sim.core.film_design_service`.
 from __future__ import annotations
 
 from copy import deepcopy
+from .film_display_format import format_film_thickness
 from collections.abc import Mapping
 from typing import Any, cast
 from coat_sim.core.film_design_service import FilmDesignService
@@ -417,6 +418,8 @@ class FilmDesignQuickController(QObject):
         self._tfcalc_confirmation_epoch = None
         self._tfcalc_state = {"loaded": False, "error": "", "ready": False}
         self._geometry_settings = FilmQuickGeometrySettings(geometry_settings, self)
+        from .theme_service import ThemeService
+        ThemeService.instance().filmThicknessDecimalsChanged.connect(self._on_film_display_precision)
 
         self._snapshot = SessionSnapshot(
             revision=0, design_revision=0, design=service.new_design(), path=None,
@@ -1872,6 +1875,10 @@ class FilmDesignQuickController(QObject):
         return bool(self.session is not None and
                     self.session.set_workflow_configuration(scope, configuration))
 
+    @Slot(int)
+    def _on_film_display_precision(self, _decimals: int) -> None:
+        self.thicknessSummaryChanged.emit()
+
     @Property(str, notify=thicknessSummaryChanged)
     def thicknessSummaryText(self) -> str:
         values = []
@@ -1891,11 +1898,11 @@ class FilmDesignQuickController(QObject):
                 material_id = layer.get("material_id", "")
                 materials.setdefault(material_id, []).append(value)
         prefix = "已知膜厚合计" if unavailable else "膜厚合计"
-        lines = [f"{prefix} {math.fsum(values):.3f} nm"]
+        lines = [f"{prefix} {format_film_thickness(math.fsum(values), trim=False)} nm"]
         back_label = "背面设计" if self._snapshot.design.get("substrate", {}).get("sides") == "single" else "背面"
-        lines.extend(f"{names.get(key, key or '未选择材料')} {math.fsum(group):.3f} nm"
+        lines.extend(f"{names.get(key, key or '未选择材料')} {format_film_thickness(math.fsum(group), trim=False)} nm"
                      for key, group in materials.items())
-        lines.append(f"正面 {math.fsum(face_values['front']):.3f} / {back_label} {math.fsum(face_values['back']):.3f} nm")
+        lines.append(f"正面 {format_film_thickness(math.fsum(face_values['front']), trim=False)} / {back_label} {format_film_thickness(math.fsum(face_values['back']), trim=False)} nm")
         if unavailable:
             lines.append(f"{unavailable} 层厚度无法换算")
         return " · ".join(lines)
@@ -1903,7 +1910,7 @@ class FilmDesignQuickController(QObject):
     @Property(str, constant=True)
     def thicknessSummaryDescription(self) -> str:
         return ("膜厚合计包含当前正/背面设计，不含基片；单面模式下背面设计会保留但不参与计算。"
-                "三位小数仅用于显示，计算与文件保留完整厚度精度。")
+                "小数位仅用于显示，可在设置的外观页选择；计算与文件保留完整厚度精度。")
 
     def reuseWindowOpen(self, document_path: str = "", payload: object = None) -> bool:
         if self.session is None:

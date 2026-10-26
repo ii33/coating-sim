@@ -6,6 +6,7 @@ physical replay stay in the existing job worker, never on the Qt UI thread.
 from __future__ import annotations
 
 from copy import deepcopy
+from .film_display_format import format_film_thickness
 from decimal import Decimal, InvalidOperation
 import json
 import math
@@ -128,6 +129,13 @@ class FilmManufacturingQuickController(QObject):
         self._unknown_submission = False
         self._draft_epoch = 0
         self._source_invalidated = threading.Event()
+        from .theme_service import ThemeService
+        ThemeService.instance().filmThicknessDecimalsChanged.connect(self._on_film_display_precision)
+
+    @Slot(int)
+    def _on_film_display_precision(self, _decimals: int) -> None:
+        self.layerRowsChanged.emit()
+        self.changed.emit()
 
     @Property(bool, notify=changed)
     def busy(self):
@@ -147,7 +155,8 @@ class FilmManufacturingQuickController(QObject):
 
     @Property(list, notify=layerRowsChanged)
     def layerRows(self):
-        return deepcopy(self._rows)
+        return [dict(row, thickness=f"{format_film_thickness(row['thickness_value'])} {row['thickness_unit']}")
+                for row in self._rows]
 
     @Property(dict, notify=changed)
     def options(self):
@@ -163,7 +172,7 @@ class FilmManufacturingQuickController(QObject):
 
     @Property(list, notify=changed)
     def comparisonRows(self):
-        return deepcopy(self._comparison_rows)
+        return comparison_rows(self._payload) if self._payload is not None else deepcopy(self._comparison_rows)
 
     @Property(str, notify=changed)
     def resultSummary(self):
@@ -274,7 +283,8 @@ class FilmManufacturingQuickController(QObject):
             base = self.owner._build_request(require_variables=False, fixed_topology=False)
             old = {row["layer_id"]: row["selected"] for row in self._rows}
             self._rows = [{"layer_id": row["id"], "label": f"{index + 1}. {row['material_id']} / {row['optical_set_id']}",
-                           "thickness": f"{row['thickness']['value']:.12g} {row['thickness']['unit']}",
+                           "thickness_value": row['thickness']['value'],
+                           "thickness_unit": row['thickness']['unit'],
                            "selected": old.get(row["id"], False)}
                           for index, row in enumerate(base.design_snapshot["front_layers"])]
             self._prepared_signature = self._signature(base)

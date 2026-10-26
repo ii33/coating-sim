@@ -84,6 +84,11 @@ def test_completed_candidate_updates_project_draft_and_fresh_spectrum(app, tmp_p
         assert case.calls[-1]['design'] == after.design
         assert case.source.canUndoOptimizedDesign
         assert case.controller._candidate_applied
+        expected = {row['id']: row['physicalNmValue'] for row in case.source.schematicLayers('front')}
+        assert {row['layer_id'] for row in case.controller.variables} == set(expected)
+        assert all(row['enabled'] and row['available'] for row in case.controller.variables)
+        assert all(row['physical_nm'] == pytest.approx(expected[row['layer_id']])
+                   for row in case.controller.variables)
         if mode == 'synthesis':
             assert after.design['front_layers'][0]['id'] != case.base.design['front_layers'][0]['id']
 
@@ -100,6 +105,33 @@ def test_user_cancelled_synthesis_applies_verified_best_and_refreshes(app, tmp_p
         assert case.simulation._design == after.design
         assert len(case.calls) == 1
         assert case.controller._candidate_applied
+        assert {row['layer_id'] for row in case.controller.variables} == {
+            row['id'] for row in after.design['front_layers']}
+        assert all(row['enabled'] for row in case.controller.variables)
+
+
+@pytest.mark.parametrize('cancel', [False, True])
+def test_topology_undo_restores_exact_old_constraints_and_explicit_deselection(app, tmp_path, monkeypatch, cancel):
+    with isolated_case(tmp_path, monkeypatch) as case:
+        controller = case.controller
+        old_id = case.base.design['front_layers'][0]['id']
+        assert controller.setVariableBound('front', old_id, 'lower_nm', 70.)
+        assert controller.setVariableBound('front', old_id, 'upper_nm', 140.)
+        controller.setVariableEnabled('front', old_id, False)
+        result = synthesis_terminal(case, tmp_path, cancel=cancel)
+        arm(case)
+        if cancel:
+            controller.cancelOptimization()
+        deliver(case, result)
+        wait_done(case.simulation)
+        assert all(row['layer_id'] != old_id and row['enabled'] for row in controller.variables)
+        assert all((row['lower_nm'], row['upper_nm']) == (0., None) for row in controller.variables)
+        assert case.source.undoOptimizedDesign()
+        from tests.test_film_synthesis_gui_review import _wait
+        _wait(lambda: [row['layer_id'] for row in controller.variables] == [old_id])
+        row = controller.variables[0]
+        assert (row['lower_nm'], row['upper_nm'], row['enabled']) == (70., 140., False)
+        assert not controller._source_stale
 
 
 def test_completed_unmet_candidate_status_reports_actual_autoapply(app, tmp_path, monkeypatch):
@@ -201,6 +233,29 @@ def test_real_qml_start_to_project_apply_and_spectrum(app, tmp_path, monkeypatch
             assert case.simulation._design == after.design
             assert case.simulation._source_design_revision == after.design_revision
             assert len(case.calls) == 1
+            expected_ids = [row['id'] for row in after.design['front_layers']]
+            assert [row['layer_id'] for row in controller.variables] == expected_ids
+            assert all(row['enabled'] for row in controller.variables)
+            scenes[-1].click(scenes[-1].item('filmOptimizationConstraintsTab'))
+            assert scenes[-1].item('filmOptimizationLower_' + expected_ids[0]).isVisible()
+            image = scenes[-1].window.grabWindow()
+            if not image.isNull():
+                assert image.save(str(tmp_path / 'applied-topology-constraints.png'))
+            assert controller.setSearchMode('fixed_topology')
+            request = controller._build_request()
+            assert [row.layer_id for row in request.variables] == expected_ids
+            assert request.design_snapshot['front_layers'] == after.design['front_layers']
+            first_job = controller.queueJobId
+            scenes[-1].click(scenes[-1].item('filmOptimizationStartButton'))
+            _wait(lambda: bool(controller.queueJobId) and controller.queueJobId != first_job)
+            _wait(lambda: not controller.busy, seconds=30.)
+            assert controller._candidate_applied, controller.statusText
+            wait_done(case.simulation)
+            current = case.source.session.snapshot()
+            assert case.simulation._source_design_revision == current.design_revision
+            assert case.simulation._design == current.design
+            assert [row['layer_id'] for row in controller.variables] == [
+                row['id'] for row in current.design['front_layers']]
         finally:
             for scene in reversed(scenes):
                 scene.close()

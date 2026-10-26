@@ -9,7 +9,8 @@ from typing import Callable
 from PySide6.QtCore import QFileSystemWatcher, QObject, QTimer
 
 _LOG = logging.getLogger(__name__)
-_THEME_KEYS = ("theme_mode", "theme_package_id", "font_point_size", "font_family", "density_scale_percent")
+_THEME_KEYS = ("theme_mode", "theme_package_id", "font_point_size", "font_family", "density_scale_percent",
+               "film_thickness_decimals")
 _MAX_SETTINGS_BYTES = 4 * 1024 * 1024
 
 

@@ -9,6 +9,7 @@ from dataclasses import asdict
 
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
+from .film_display_format import format_film_thickness
 import math
 import re
 from threading import Lock
@@ -59,6 +60,12 @@ class FilmCandidateDisplayController(QObject):
         self._axis_shrink_count = 0
         self._axis_initialized = False
         self._axis_error = ""
+        from .theme_service import ThemeService
+        ThemeService.instance().filmThicknessDecimalsChanged.connect(self._on_film_display_precision)
+
+    @Slot(int)
+    def _on_film_display_precision(self, _decimals: int) -> None:
+        self.changed.emit()
 
     @Property(bool, notify=axisChanged)
     def yAxisAuto(self):
@@ -205,7 +212,7 @@ class FilmCandidateDisplayController(QObject):
         stats = row.get('statistics')
         optical = ('选中波段均值/Rmax：等待匹配的完整原谱' if not stats else
             f"选中波段均值 {100 * stats['mean']:.5g}% · {stats['metric']}max {100 * stats['maximum']:.5g}% @ {stats['maximum_wavelength_nm']:.6g} nm")
-        return (f"当前最佳 · {row['layer_count']} 层 · 总厚 {row['total_thickness_nm']:.6g} nm · {optical}\n"
+        return (f"当前最佳 · {row['layer_count']} 层 · 总厚 {format_film_thickness(row['total_thickness_nm'])} nm · {optical}\n"
                 f"全目标最大归一违规 {row['max_normalized_error']:.5g} · 优化误差 RMS {row['weighted_rms_error']:.5g}\n"
                 '均值仅为统计；逐点是否达标取决于原逐点约束。')
 
@@ -254,7 +261,7 @@ class FilmCandidateDisplayController(QObject):
             return "等待完整候选"
         text = (f"S {row['score']:.5g} · E {row['weighted_rms_error']:.5g} · "
                 f"名义{'通过' if row['nominal_pass'] else '未通过'} · 最大违规 {row['max_normalized_error']:.4g} · "
-                f"N {row['layer_count']} · D {row['total_thickness_nm']:.6g} nm\n"
+                f"N {row['layer_count']} · D {format_film_thickness(row['total_thickness_nm'])} nm\n"
                 f"ID {row['physical_hash'][:12]} · {row.get('source', 'optimization')} · {scope}")
         if "guard_pass" in row:
             text += f" · guard {'通过' if row['guard_pass'] else '未通过'}"

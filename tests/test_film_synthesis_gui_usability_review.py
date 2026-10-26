@@ -19,6 +19,7 @@ from coat_sim.core.materials import default_material_profile
 from coat_sim.scheduler.client import SchedulerClient
 from coat_sim.ui.film_optimization_quick_controller import FilmOptimizationQuickController
 from coat_sim.ui.film_quick_controller import FilmDesignQuickController
+from coat_sim.ui.theme_service import ThemeService
 from tests.film_structure_fixtures import fixture as optical_fixture
 from tests.test_film_optimization_needle import _optical
 from tests.test_film_synthesis_gui_review import _Scene, _variant, _wait
@@ -138,8 +139,13 @@ def test_equal_angle_typed_naturally_survives_each_key_and_submission(usable_gui
     spec = json.loads((service.root / "artifacts/runtime/scheduler/jobs" / job_id / "spec.json").read_text(encoding="utf-8"))["parameters"]["payload"]["request"]["request"]
     assert spec["objectives"][0]["angles_deg"] == [float(angle)]
     assert spec["candidate_materials"] == [{"material_id": "acceptance-film", "optical_set_id": "film-set"}]
-    assert source.session.snapshot().design == original.design
-    assert source.session.snapshot().design_revision == original.design_revision
+    applied = source.session.snapshot()
+    expected = deepcopy(controller._synthesis_payload["result"]["candidate_design"])
+    expected["workflow_settings"] = deepcopy(applied.design["workflow_settings"])
+    assert applied.design == expected and controller._candidate_applied
+    assert applied.design_revision == original.design_revision + 1
+    assert source.undoOptimizedDesign()
+    assert source.currentDesign() == original.design
 
 
 def _assert_horizontal_click_target(scene: _Scene, item: QQuickItem) -> None:
@@ -336,6 +342,7 @@ def test_dynamic_material_rows_delete_middle_reorder_persist_and_submit_exact_op
         _wait(lambda: cast(QObject, restored.property("computeTarget")).property("canSubmit"))
         assert restored.property("canStart"), restored.property("error")
         before_design = deepcopy(reopened.currentDesign())
+        before_revision = reopened.session.snapshot().design_revision
         restored_scene.click(restored_scene.item("filmOptimizationStartButton"))
         _wait(lambda: bool(restored.property("queueJobId")))
         job_id = str(restored.property("queueJobId"))
@@ -354,13 +361,35 @@ def test_dynamic_material_rows_delete_middle_reorder_persist_and_submit_exact_op
         high = next(row for row in materials["review-high"]["optical_sets"] if row["id"] == "high-alt")
         low = next(row for row in materials["acceptance-film"]["optical_sets"] if row["id"] == "film-set")
         assert high["n"] == [2.30, 2.30] and low["n"] == [1.23, 1.23]
+        applied = reopened.session.snapshot()
+        candidate = deepcopy(payload["result"]["candidate_design"])
+        candidate["workflow_settings"] = deepcopy(applied.design["workflow_settings"])
+        assert applied.design == candidate and restored._candidate_applied
+        assert applied.design_revision == before_revision + 1
+        variables = cast(list[dict[str, object]], restored.property("variables"))
+        assert {row["layer_id"] for row in variables} == {
+            row["id"] for row in applied.design["front_layers"]}
+        assert all(row["enabled"] for row in variables)
+        assert reopened.undoOptimizedDesign()
         assert reopened.currentDesign() == before_design
     finally:
         reopened.markSourceClosed()
         reopened.deleteLater()
 
 
-def test_invalid_angle_drafts_block_mouse_and_shortcut_until_active_equal_correction_is_committed(usable_gui, tmp_path):
+@pytest.fixture(params=(0.75, 1.0), ids=("9pt", "12pt"))
+def angle_font_scale(request):
+    theme = ThemeService.instance()
+    before = float(theme.current_snapshot["fontScale"])
+    theme.configure(font_scale=request.param)
+    try:
+        yield
+    finally:
+        theme.configure(font_scale=before)
+
+
+def test_invalid_angle_drafts_block_mouse_and_shortcut_until_active_equal_correction_is_committed(
+        usable_gui, tmp_path, angle_font_scale):
     service, source, controller, scene = _open_optimizer(usable_gui)
     job_root = service.root / "artifacts/runtime/scheduler/jobs"
     original_specs = set(job_root.glob("*/spec.json"))
@@ -386,6 +415,8 @@ def test_invalid_angle_drafts_block_mouse_and_shortcut_until_active_equal_correc
         field = _type_number(scene, "filmOptimizationAngleMinField", draft, commit)
         assert str(field.property("text")) == draft
         assert_rejected()
+        scroll = scene.item("filmOptimizationObjectiveEditorScroll")
+        assert scroll.property("contentWidth") == scroll.property("availableWidth")
         assert str(scene.item("filmOptimizationAngleMinField").property("text")) == draft
     _type_number(scene, "filmOptimizationAngleMinField", "20", "focus")
     _type_number(scene, "filmOptimizationAngleMaxField", "10", "enter")

@@ -95,6 +95,7 @@ TextField {
         displayTimer.restart()
     }
     Component.onCompleted: displayTimer.restart()
+    onNumericDisplayDecimalsChanged: displayTimer.restart()
     onActiveFocusChanged: {
         if (activeFocus && numericDisplayValue !== undefined)
             text = numericDisplayValue === null ? ""

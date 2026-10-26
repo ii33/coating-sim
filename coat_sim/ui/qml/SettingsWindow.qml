@@ -490,12 +490,14 @@ AppWindow {
                         property alias fontSpinControl: fontSpin
                         property alias dpiSpinControl: dpiSpin
                         property alias densitySpinControl: densitySpin
+                        property alias thicknessDecimalsControl: thicknessDecimalsSpin
                         property alias themeModeComboControl: themeModeCombo
                         fontFamilyFieldControl: fontFamilyField
                         function restoreFields() {
                             fontSpin.value = bridge.fontPointSize
                             dpiSpin.value = bridge.dpiScalePercent
                             densitySpin.value = bridge.densityScalePercent
+                            thicknessDecimalsSpin.value = bridge.filmThicknessDecimals
                             if (appearanceCategory.settingsBridge)
                                 fontFamilyField.text = appearanceCategory.settingsBridge.fontFamily
                             let modeIndex = 0
@@ -613,6 +615,15 @@ AppWindow {
                                     value: bridge.densityScalePercent
                                     onValueModified: bridge.setDensityScalePercent(value)
                                     Accessible.name: "控件间距与密度百分比"
+                                }
+                                ThemeControls.ThemeLabel { text: "膜厚显示小数位" }
+                                ThemeControls.ThemeSpinBox {
+                                    id: thicknessDecimalsSpin
+                                    objectName: "filmThicknessDisplayDecimals"
+                                    from: 0; to: 6
+                                    value: bridge.filmThicknessDecimals
+                                    onValueModified: bridge.setFilmThicknessDecimals(value)
+                                    Accessible.name: "膜厚显示小数位，0到6；不改变计算或保存精度"
                                 }
                             }
                             RowLayout {

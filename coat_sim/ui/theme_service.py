@@ -42,6 +42,7 @@ class ThemeEngineBridge(QObject):
     isDarkChanged = Signal()
     themeChanged = Signal()
     assetsChanged = Signal()
+    filmThicknessDecimalsChanged = Signal()
 
     def __init__(
         self,
@@ -64,6 +65,7 @@ class ThemeEngineBridge(QObject):
         self._theme_id = theme_id
         self._theme_name = theme_name
         self._assets = dict(assets)
+        self._film_thickness_decimals = 3
         engine = parent
         self._freeze_token_values = engine.evaluate(
             "(function (value) { return Object.freeze(value); })"
@@ -81,6 +83,16 @@ class ThemeEngineBridge(QObject):
         if frozen.isError() or not frozen.isObject():
             raise RuntimeError("Could not freeze the QML theme token snapshot")
         return frozen
+
+    @Property(int, notify=filmThicknessDecimalsChanged)
+    def filmThicknessDecimals(self) -> int:
+        return self._film_thickness_decimals
+
+    @Slot(int)
+    def _set_film_thickness_decimals(self, value: int) -> None:
+        if value != self._film_thickness_decimals:
+            self._film_thickness_decimals = value
+            self.filmThicknessDecimalsChanged.emit()
 
     @Property("QVariantMap", notify=snapshotChanged)
     def snapshot(self) -> dict[str, str | float | int]:
@@ -175,6 +187,7 @@ class ThemeService(QObject):
 
     snapshotReplaced = Signal(object, int, str, str, str, str, object)
     packagesChanged = Signal()
+    filmThicknessDecimalsChanged = Signal(int)
     PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "config" / "themes"
 
     _instance: ThemeService | None = None
@@ -189,6 +202,7 @@ class ThemeService(QObject):
 
         self._font_scale = DEFAULT_FONT_POINT_SIZE / 12.0
         self._font_family_override = ""
+        self._film_thickness_decimals = 3
         self._density_scale = 1.0
         self._theme_id = ""
         self._theme_name = "Built-in"
@@ -260,6 +274,17 @@ class ThemeService(QObject):
     def current_snapshot(self) -> dict[str, str | float | int]:
         return dict(self._snapshot)
 
+    @property
+    def film_thickness_decimals(self) -> int:
+        return self._film_thickness_decimals
+
+    def set_film_thickness_decimals(self, value: int) -> None:
+        if type(value) is not int or not 0 <= value <= 6:
+            raise ValueError("film thickness display decimals must be an integer from 0 to 6")
+        if value != self._film_thickness_decimals:
+            self._film_thickness_decimals = value
+            self.filmThicknessDecimalsChanged.emit(value)
+
     def attach_engine(
         self,
         engine: QObject,
@@ -301,6 +326,8 @@ class ThemeService(QObject):
         )
         root_context().setContextProperty(context_property, bridge)
         self.snapshotReplaced.connect(bridge._replace_snapshot)
+        bridge._set_film_thickness_decimals(self._film_thickness_decimals)
+        self.filmThicknessDecimalsChanged.connect(bridge._set_film_thickness_decimals)
 
         service_ref = weakref.ref(self)
 
@@ -582,6 +609,8 @@ def configure_theme_from_settings(settings: dict[str, object] | None = None) -> 
     except (TypeError, ValueError):
         point_size = float(DEFAULT_FONT_POINT_SIZE)
     service = ThemeService.instance()
+    decimals = settings.get("film_thickness_decimals", 3)
+    service.set_film_thickness_decimals(decimals if type(decimals) is int and 0 <= decimals <= 6 else 3)
     service.configure(
         mode=str(settings.get("theme_mode", "system")),
         font_scale=point_size / 12.0,

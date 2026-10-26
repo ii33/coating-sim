@@ -285,10 +285,15 @@ def test_native_unknown_k_checkbox_starts_real_ZnS_and_off_restores_strict(unkno
     annotation = str(saved.get("note", "")) + str(saved.get("summary", ""))
     assert ZN in annotation and ZS in annotation and "未知 k 按 0" in annotation
     assert _digest(library.read(ZN)["record"]) == original_record
-    assert source.currentDesign()["assume_lossless"] is False
-    assert source.currentDesign()["front_layers"] == []
+    assert controller._candidate_applied
+    assert source.currentDesign()["assume_lossless"] is True
+    assert source.currentDesign()["front_layers"] == payload["result"]["candidate_design"]["front_layers"]
     scene.click(scene.item("filmSynthesisUnknownKZeroField"))
     assert controller.property("synthesisAssumeUnknownKZero") is False
+    assert controller._build_synthesis_request().environment["assume_lossless"] is False
+    # The strict next request must not rewrite the already-applied candidate's
+    # explicit absorption assumption or its original frozen evidence.
+    assert source.currentDesign()["assume_lossless"] is True
     before_jobs = set(jobs.glob("*/spec.json"))
     scene.click(scene.item("filmOptimizationStartButton"))
     _wait(lambda: ZN in str(controller.property("error")))

@@ -111,7 +111,7 @@ def test_document_restore_retains_only_exact_side_and_layer_matches(app, tmp_pat
         assert controller._max_evaluations == 321
         replacement, surviving = controller.variables
         assert (surviving["lower_nm"], surviving["upper_nm"], surviving["enabled"]) == (65, 135, True)
-        assert replacement["enabled"] is False
+        assert replacement["enabled"] is True
         assert (replacement["lower_nm"], replacement["upper_nm"]) == (0, None)
         assert removed["layer_id"] in controller.configurationRestoreNotice
         assert "未转移" in controller.configurationRestoreNotice
@@ -120,7 +120,7 @@ def test_document_restore_retains_only_exact_side_and_layer_matches(app, tmp_pat
         assert session.workflow_configuration("optimization") == configuration
 
 
-def test_all_replaced_layers_require_explicit_selection_but_keep_targets(app, tmp_path):
+def test_replaced_layers_default_enabled_but_explicit_deselection_is_restored(app, tmp_path):
     service, _library, design = fixture(tmp_path)
     configuration = saved_configuration(service, design)
     changed = deepcopy(design)
@@ -128,17 +128,20 @@ def test_all_replaced_layers_require_explicit_selection_but_keep_targets(app, tm
     with optimizer(service, changed, configuration) as (controller, _source, session):
         assert controller.error == ""
         assert controller._active_configuration_error() == ""
-        assert not controller.canStart
+        assert controller.canStart
         assert controller.computeTarget.canSubmit  # CPU readiness is unrelated.
-        assert "约束页选择" in controller.statusText
+        assert all(row["enabled"] for row in controller.variables)
         assert controller._objectives[0]["pointwise"]["target_value_percent"] == 17.25
         assert session.configuration_writes == []
-        controller.setVariableEnabled("front", "new-stable-layer", True)
-        assert controller.canStart
+        controller.setVariableEnabled("front", "new-stable-layer", False)
+        assert not controller.canStart
         stored = session.workflow_configuration("optimization")
         assert stored["variables"][0]["layer_id"] == "new-stable-layer"
-        assert stored["variables"][0]["enabled"] is True
+        assert stored["variables"][0]["enabled"] is False
         assert stored["objectives"][0]["name"] == "保留的目标"
+    with optimizer(service, changed, stored) as (controller, _source, _session):
+        assert not controller.variables[0]["enabled"]
+        assert not controller.canStart
 
 
 @pytest.mark.parametrize("corruption", ("duplicate", "invalid_bound"))
@@ -157,17 +160,19 @@ def test_orphan_tolerance_does_not_hide_malformed_saved_configuration(app, tmp_p
         assert session.configuration_writes == []
 
 
-def test_same_source_refresh_never_opts_new_layers_into_old_variable_scope(app, tmp_path):
+def test_source_refresh_preserves_exact_choices_and_defaults_new_layers_enabled(app, tmp_path):
     service, _library, design = fixture(tmp_path)
     with optimizer(service, design) as (controller, _source, session):
         assert controller.setVariableBound("front", "existing-stable-layer", "lower_nm", 70)
+        controller.setVariableEnabled("front", "existing-stable-layer", False)
         session.design["front_layers"].append({**deepcopy(design["front_layers"][0]), "id": "added-layer"})
         session.design_revision += 1
         controller.refreshDesign()
         existing, added = controller.variables
-        assert existing["lower_nm"] == 70 and existing["enabled"]
-        assert not added["enabled"]
-        assert "恢复时未自动勾选" in controller.configurationRestoreNotice
+        assert existing["lower_nm"] == 70 and not existing["enabled"]
+        assert added["enabled"]
+        assert (added["lower_nm"], added["upper_nm"]) == (0, None)
+        assert "可优化层默认勾选" in controller.configurationRestoreNotice
         assert controller.canStart
 
 
@@ -318,7 +323,8 @@ def test_side_is_part_of_layer_identity_and_corrected_config_clears_old_error(ap
     with optimizer(service, changed, configuration) as (controller, _source, session):
         assert len(controller.variables) == 1
         assert controller.variables[0]["side"] == "back"
-        assert not controller.variables[0]["enabled"]
+        assert controller.variables[0]["enabled"]
+        assert (controller.variables[0]["lower_nm"], controller.variables[0]["upper_nm"]) == (0, None)
         assert "front/existing-stable-layer" in controller.configurationRestoreNotice
         valid = controller.exportOptimizationConfiguration()
         invalid = deepcopy(valid)
