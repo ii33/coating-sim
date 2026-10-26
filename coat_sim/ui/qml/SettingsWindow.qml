@@ -497,7 +497,8 @@ AppWindow {
                             fontSpin.value = bridge.fontPointSize
                             dpiSpin.value = bridge.dpiScalePercent
                             densitySpin.value = bridge.densityScalePercent
-                            thicknessDecimalsSpin.value = bridge.filmThicknessDecimals
+                            if (appearanceCategory.settingsBridge)
+                                thicknessDecimalsSpin.value = appearanceCategory.settingsBridge.filmThicknessDecimals
                             if (appearanceCategory.settingsBridge)
                                 fontFamilyField.text = appearanceCategory.settingsBridge.fontFamily
                             let modeIndex = 0
@@ -621,8 +622,11 @@ AppWindow {
                                     id: thicknessDecimalsSpin
                                     objectName: "filmThicknessDisplayDecimals"
                                     from: 0; to: 6
-                                    value: bridge.filmThicknessDecimals
-                                    onValueModified: bridge.setFilmThicknessDecimals(value)
+                                    value: appearanceCategory.settingsBridge ? appearanceCategory.settingsBridge.filmThicknessDecimals : 3
+                                    onValueModified: {
+                                        if (appearanceCategory.settingsBridge)
+                                            appearanceCategory.settingsBridge.setFilmThicknessDecimals(thicknessDecimalsSpin.value)
+                                    }
                                     Accessible.name: "膜厚显示小数位，0到6；不改变计算或保存精度"
                                 }
                             }

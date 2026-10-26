@@ -1879,6 +1879,11 @@ class FilmDesignQuickController(QObject):
     def _on_film_display_precision(self, _decimals: int) -> None:
         self.thicknessSummaryChanged.emit()
 
+    @Property(int, notify=thicknessSummaryChanged)
+    def filmThicknessDecimals(self) -> int:
+        from .theme_service import ThemeService
+        return ThemeService.instance().film_thickness_decimals
+
     @Property(str, notify=thicknessSummaryChanged)
     def thicknessSummaryText(self) -> str:
         values = []

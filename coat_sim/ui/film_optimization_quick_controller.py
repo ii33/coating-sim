@@ -2549,6 +2549,11 @@ class FilmOptimizationQuickController(QObject):
     def _on_film_display_precision(self, _decimals: int) -> None:
         self.changed.emit()
 
+    @Property(int, notify=changed)
+    def filmThicknessDecimals(self) -> int:
+        from .theme_service import ThemeService
+        return ThemeService.instance().film_thickness_decimals
+
     @Property(str, notify=changed)
     def reductionComparison(self) -> str:
         reduction = self._reduction_result

@@ -38249,16 +38249,6 @@
       "count": 1
     },
     {
-      "tool": "qmllint",
-      "path": "coat_sim/ui/qml/FilmOptimizationWindow.qml",
-      "code": "unqualified",
-      "message": "Unqualified access",
-      "scope": "",
-      "anchor": "? modelData.set_name + \" · 当前 \" + NumericFormat.format(modelData.physical_nm, Qt.locale(), 3) + \" nm\"",
-      "fingerprint": "a092e45af45605b772d024e29ef891a4a180b06e192be563cb54096f174dc92c",
-      "count": 2
-    },
-    {
       "tool": "mypy",
       "path": "coat_sim/ui/source_substrate.py",
       "code": "attr-defined",
@@ -61289,6 +61279,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "Reviewed selective prune of 15 genuinely fixed film request/result diagnostics: exact three-kind unions, ordinary/structure branch-local request and result variables, and real non-None snapshot checks; includes the 11 f0689f5 CI resolved entries plus four adjacent branch/snapshot fixes. No Any return widening, casts, suppressions, additions, count increases, environment/configuration changes, or full baseline refresh. Full-Python same-environment comparison and per-fingerprint reasons are supplied; the pinned Python3.12 full gate remains for CI verification.",
+  "last_prune_reason": "Reviewed QML display qualification fix: remove only obsolete a092e45af45605b772d024e29ef891a4a180b06e192be563cb54096f174dc92c count 2",
   "configuration_review_reason": "2026-10-17: add only BSD-3-Clause pypdf 6.21.0 for isolated research PDF extraction; all previous dependency/tool versions, analyzer rules and diagnostic entries remain unchanged. The lock-file digest changes only for this reviewed runtime dependency."
 }

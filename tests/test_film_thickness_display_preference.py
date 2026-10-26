@@ -97,10 +97,12 @@ def test_main_editor_focus_display_changes_and_export_keep_full_value(tmp_path, 
         try:
             field = scene.item('filmLayerNm_existing-stable-layer')
             _wait(lambda: str(field.property('text')) == '106.952')
+            assert source.property('filmThicknessDecimals') == owner.property('filmThicknessDecimals') == 3
             field.forceActiveFocus(Qt.FocusReason.OtherFocusReason)
             QTest.qWait(20)
             assert float(field.property('text')) == exact
             theme.set_film_thickness_decimals(6)
+            assert source.property('filmThicknessDecimals') == owner.property('filmThicknessDecimals') == 6
             assert float(field.property('text')) == exact
             scene.item('filmLayerQw_existing-stable-layer').forceActiveFocus(Qt.FocusReason.OtherFocusReason)
             _wait(lambda: str(field.property('text')) == '106.952467')
@@ -167,5 +169,12 @@ def test_existing_appearance_settings_exposes_thickness_decimals_at_small_size(c
         image = scene.window.grabWindow()
         if not image.isNull():
             assert image.save(str(tmp_path / ('thickness-settings-' + mode + '.png')))
+        scene.click(spin)
+        QTest.keyClick(scene.window, Qt.Key.Key_Up)
+        _settle()
+        assert spin.property('value') == scene.bridge.property('filmThicknessDecimals') == 4
+        scene.click(_find(scene.window, 'saveSettingsButton'))
+        from coat_sim.ui import settings
+        assert settings.load_ui_settings()['film_thickness_decimals'] == 4
     finally:
         scene.close()

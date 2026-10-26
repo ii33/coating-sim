@@ -281,7 +281,7 @@ Rectangle {
             accessibleLabel: "光学厚度，单位 QW"
             accessibleDescription: row.derivedReason
             numericDisplayValue: row.qwText
-            numericDisplayDecimals: Theme.filmThicknessDecimals
+            numericDisplayDecimals: row.controller.filmThicknessDecimals
             selectByMouse: true
             inputMethodHints: Qt.ImhFormattedNumbersOnly
             property bool edited: false
@@ -313,7 +313,7 @@ Rectangle {
             accessibleDescription: row.derivedReason
             numericDisplayValue: row.physicalNmValue === null
                                  ? row.physicalNmText : row.physicalNmValue
-            numericDisplayDecimals: Theme.filmThicknessDecimals
+            numericDisplayDecimals: row.controller.filmThicknessDecimals
             selectByMouse: true
             inputMethodHints: Qt.ImhFormattedNumbersOnly
             property bool edited: false
