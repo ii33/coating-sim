@@ -71,6 +71,8 @@ class _SearchDiagnostics(TypedDict):
     design_archive: NotRequired[dict[str, Any]]
     template_randomization: NotRequired[dict[str, Any]]
     warm_start: NotRequired[dict[str, Any]]
+    numeric_zero_cleanup: NotRequired[list[dict[str, object]]]
+    numeric_zero_fallback: NotRequired[dict[str, object]]
 
 
 @dataclass(frozen=True)
@@ -720,6 +722,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
     completed_training_validation = None
     fully_scored_evaluations = 0
     terminal_hybrid_cleanup: Callable[[], None] | None = None
+    def default_numeric_cleanup_admission() -> None:
+        check_training_admission()
+    numeric_cleanup_admission: Callable[[], None] = default_numeric_cleanup_admission
     candidate_provenance = {}
     search_diagnostics: _SearchDiagnostics = {"structural_proposals": [], "global_search": [],
         "layer_distribution": {}, "local_refinement": []}
@@ -915,7 +920,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
     prepared_training: list[_PreparedStructureEvaluator | None] = [None]
 
     def evaluate(design, *, jacobian=False, zero_ids=(), holdout=False, outcome=None, gpu_forward=False, _reserved=False,
-                 feasibility_evaluator=None):
+                 feasibility_evaluator=None, _commit=True):
         nonlocal evaluations, validation_evaluations, failures, reserved_training_slots
         nonlocal audit_physical_evaluations, audit_wavelength_points
         nonlocal completed_training_best, completed_training_validation, fully_scored_evaluations
@@ -933,6 +938,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         evaluations += 1
         if holdout:
             validation_evaluations += 1
+        failures_before = failures
         try:
             ids = tuple(r["id"] for r in design["front_layers"]) if jacobian else ()
             value: Mapping[str, Any]
@@ -992,25 +998,85 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             # underlying physical evaluator keeps its legacy score semantics.
             value["score"]["key"] = rank(value)
             _check_cancel(cancel_event)
+            committed_value = value
+            publishable = True
+            if _commit and not holdout and not zero_ids:
+                from .film_synthesis_numeric_zero import numeric_zero_cleanup
+                cleanup = numeric_zero_cleanup(value["design"], request.frozen_material_snapshot,
+                    phase_limits, max_layer_thickness_nm=request.max_layer_thickness_nm)
+                if cleanup is not None:
+                    cleaned, threshold = cleanup
+                    from .film_synthesis_archive import physical_design_hash
+                    record = dict(status="pending", threshold_nm=threshold,
+                        phase_epsilon=32 * np.finfo(float).eps,
+                        removed_numeric_zero_ids=list(cleaned.removed_near_zero_ids),
+                        removed_exact_zero_ids=list(cleaned.removed_exact_zero_ids),
+                        merged_ids=dict(cleaned.merged_ids), independent_audit_performed=False,
+                        source_layer_count=len(value["design"]["front_layers"]),
+                        cleaned_layer_count=len(cleaned.design["front_layers"]),
+                        source_physical_hash=physical_design_hash(value["design"]),
+                        source_rank=list(rank(value)), source_max_error=value["score"]["max_error"],
+                        source_weighted_rms_error=value["score"]["weighted_rms_error"])
+                    search_diagnostics.setdefault("numeric_zero_cleanup", []).append(record)
+                    try:
+                        numeric_cleanup_admission()
+                        if not feasible(cleaned.design):
+                            raise ValueError("numeric-zero cleanup violates explicit synthesis constraints")
+                        canonical = evaluate(cleaned.design, _commit=False)
+                        original_rows = {(r["objective_index"], r["angle_deg"]): r for r in value.get("responses", ())}
+                        canonical_rows = {(r["objective_index"], r["angle_deg"]): r for r in canonical.get("responses", ())}
+                        aligned = bool(original_rows) and original_rows.keys() == canonical_rows.keys() and all(
+                            np.array_equal(row["wavelength_nm"], canonical_rows[key]["wavelength_nm"])
+                            for key, row in original_rows.items())
+                        if not aligned:
+                            raise ValueError("numeric-zero cleanup original-grid response identity mismatch")
+                        equivalent = all(np.allclose(row["actual_values"], canonical_rows[key]["actual_values"],
+                            atol=2e-11, rtol=2e-10) for key, row in original_rows.items())
+                        if not equivalent:
+                            # The phase bound is a sampled numerical convention,
+                            # not a power-error guarantee for sensitive stacks.
+                            # Reject only this cleanup; raw tiny rows remain
+                            # solver inputs and cannot enter the archive.
+                            record.update(status="unpublished_spectral_mismatch", training_rescored=True,
+                                          full_original_spectral_equivalence=False)
+                            publishable = False
+                        else:
+                            value = {**value, "_numeric_zero_canonical": canonical}
+                            committed_value = canonical
+                            record.update(status="training_rescored_equivalent", training_rescored=True,
+                                          full_original_spectral_equivalence=True)
+                    except _Stopped as exc:
+                        record["status"] = "unpublished_" + str(exc)
+                        publishable = False
+                    except Exception as exc:
+                        from .film_synthesis_refinement import SynthesisStageBudget, SynthesisResourceGuard
+                        if not isinstance(exc, (SynthesisStageBudget, SynthesisResourceGuard)):
+                            record["status"] = "interrupted_or_failed"
+                            raise
+                        record["status"] = "unpublished_" + type(exc).__name__
+                        publishable = False
+                    if not publishable:
+                        value = {**value, "_numeric_zero_unpublished": record["status"]}
             # This parent-owned commit boundary excludes zero probes, partial
             # scores and unconsumed speculative worker results. It performs no
             # extra physical work and does not change the search archive.
-            if not holdout and not zero_ids and feasible(value["design"]):
+            if _commit and publishable and not holdout and not zero_ids and feasible(committed_value["design"]):
                 fully_scored_evaluations += 1
                 distribution = search_diagnostics["layer_distribution"]
-                layer_key = str(len(value["design"]["front_layers"]))
+                layer_key = str(len(committed_value["design"]["front_layers"]))
                 distribution[layer_key] = distribution.get(layer_key, 0) + 1
                 if (completed_training_best is None or
-                        rank(value) < rank(completed_training_best)):
-                    completed_training_best = {"design": deepcopy(value["design"]),
-                                               "score": _copy_internal_candidate(value["score"])}
+                        rank(committed_value) < rank(completed_training_best)):
+                    completed_training_best = {"design": deepcopy(committed_value["design"]),
+                                               "score": _copy_internal_candidate(committed_value["score"])}
                     completed_training_validation = None
-                display_value(value)
+                display_value(committed_value)
             return value
         except _StructureCancelled:
             raise
         except (ValueError, ArithmeticError, RuntimeError):
-            failures += 1
+            if failures == failures_before:
+                failures += 1
             raise
 
     def rank(candidate):
@@ -1043,6 +1109,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
 
     def audit_archive(value, *, allow_feedback_repair=True, refresh=False):
         nonlocal audited_best, completed_training_validation
+        if value.get("_numeric_zero_unpublished"):
+            return None
+        value = value.get("_numeric_zero_canonical", value)
         signature = hashlib.sha256(json.dumps(value["design"], sort_keys=True, allow_nan=False).encode("utf-8")).digest()
         _check_cancel(cancel_event)
         if signature in audited_signatures and not refresh:
@@ -1103,6 +1172,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
 
     def archive(value, *, audit_eligible=True, provenance=None, parent_hash=None, operator=None):
         nonlocal best
+        if value.get("_numeric_zero_unpublished"):
+            return
+        value = value.get("_numeric_zero_canonical", value)
         if feasible(value["design"]):
             design_archive.add(value, provenance=provenance or archive_context.get("provenance"),
                 parent_hash=parent_hash or archive_context.get("parent_hash"),
@@ -1329,7 +1401,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
 
     def run_hybrid(initial):
         """One shared staged search; strict archive and real explorer are distinct."""
-        nonlocal cycle, terminal_hybrid_cleanup
+        nonlocal cycle, terminal_hybrid_cleanup, numeric_cleanup_admission
         assert request.structure_search_seed is not None  # Formal freeze resolved auto.
         hybrid_structure_seed = request.structure_search_seed
         frozen_snapshot = request.frozen_material_snapshot
@@ -1415,6 +1487,12 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 if record["termination"] == "running":
                     record["termination"] = termination
             active_slice = None
+
+        def admit_numeric_cleanup():
+            stage_check()
+            if active_slice is not None and evaluations + reserved_training_slots >= active_slice[1]:
+                raise SynthesisStageBudget("numeric_zero_cleanup_reserved_work")
+        numeric_cleanup_admission = admit_numeric_cleanup
 
         archive_storage_cache: list[Any] = [None, 0]
 
@@ -1565,7 +1643,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                             if deadline is not None and monotonic() >= deadline:
                                 active_slice[0]["termination"] = "stage_budget"
                                 break
-                        before = evaluations
+                        before_reserved = reserved_training_slots
                         try:
                             if evaluate_one is None:
                                 value = evaluate(task.design, jacobian=task.jacobian, zero_ids=task.zero_ids,
@@ -1575,7 +1653,10 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                                     row["id"] for row in task.design["front_layers"]) if task.jacobian else (),
                                     zero_ids=task.zero_ids, outcome=outcome, _reserved=True)
                         finally:
-                            remaining_reserved -= evaluations - before
+                            # Cleanup may perform an additional unreserved
+                            # evaluation inside this result. Only consumed
+                            # reservations reduce the batch's remaining slots.
+                            remaining_reserved -= before_reserved - reserved_training_slots
                         values.append(value)
             finally:
                 unused = sum(not outcome.consumed for token, outcome in execution.outcomes.items()
@@ -1583,7 +1664,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 charge = min(remaining_reserved, unused)
                 evaluations += charge
                 reserved_training_slots -= remaining_reserved
-                record.update(consumed_slots=evaluations - consumed_before - charge,
+                consumed_slots = len(tasks) - remaining_reserved
+                record.update(consumed_slots=consumed_slots,
+                    extra_unreserved_evaluations=evaluations - consumed_before - charge - consumed_slots,
                     dispatched_unused_slots=charge,
                     released_unsubmitted_slots=remaining_reserved - charge,
                     completed_results=len(values),
@@ -1735,6 +1818,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 for key in a))
 
         def physical_cleanup(value, *, cleaned=None):
+            if value.get("_numeric_zero_canonical") is not None:
+                return value["_numeric_zero_canonical"]
             if cleaned is None:
                 cleaned = cleanup_batch_needle_design(value["design"], frozen_snapshot)
             if cleaned.design == value["design"] or not feasible(cleaned.design):
@@ -2498,7 +2583,15 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 emit("warm_restart", "从保留候选重新启动求解器；首个完整评分计入本次新预算")
             working = evaluate(initial_design, gpu_forward=forward is not None)
             archive(working)
-            assert best is not None  # The frozen bare or explicit warm seed is feasible.
+            if (best is None and working.get("_numeric_zero_unpublished")
+                    == "unpublished_spectral_mismatch"):
+                # A rejected explicit warm seed is not evidence against other
+                # topologies. Score the legal bare environment under the same
+                # remaining budget before continuing the ordinary search.
+                working = evaluate(request.environment, gpu_forward=forward is not None)
+                archive(working)
+            if best is None:
+                raise _Stopped("numeric_zero_cleanup_incomplete_no_candidate")
             if request.search_strategy == "hybrid":
                 run_hybrid(working)
                 raise _Stopped("training_targets_met" if targets_verified() else "search_exhausted")
@@ -3418,6 +3511,24 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             candidate_provenance["frozen_at_cancel" if state == "cancelled" else "frozen_at_time_limit"] = True
         elif audited_best is not None:
             best, validation = audited_best
+        better_unpublished: list[dict[str, object]] = []
+        for record in search_diagnostics.get("numeric_zero_cleanup", ()):
+            source_rank = record.get("source_rank")
+            if (record.get("status") != "training_rescored_equivalent"
+                    and isinstance(source_rank, list)
+                    and (best is None or tuple(source_rank) < rank(best))):
+                better_unpublished.append(record)
+        if better_unpublished:
+            from .film_synthesis_archive import physical_design_hash
+            search_diagnostics["numeric_zero_fallback"] = dict(
+                unpublished_better_trials=len(better_unpublished),
+                spectral_equivalence_rejections=sum(record.get("status") == "unpublished_spectral_mismatch"
+                                                   for record in better_unpublished),
+                unpublished_trial_hashes=[record["source_physical_hash"] for record in better_unpublished],
+                returned_physical_hash=None if best is None else physical_design_hash(best["design"]),
+                returned_training_complete=best is not None,
+                validation_matches_returned_candidate=validation is not None,
+                cleanup_rescore_completed=False, new_independent_audit_claimed=False)
         close_proposal_streams()
         execution.close()
         if forward is not None:
@@ -3431,6 +3542,12 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         message = ("找到通过训练网格与独立密网格验证的候选；尚未应用到用户设计。" if met else
                    "已取消；保留此前完整评分的候选，未确认达标。" if state == "cancelled" else
                    "尚未找到通过全部验证的膜系；候选仅供审查。")
+        if better_unpublished:
+            cleanup_reason = ("未通过光谱等价检查" if any(record.get("status") == "unpublished_spectral_mismatch"
+                              for record in better_unpublished) else "未完成清理复算")
+            message += (f" 含数值零层的潜在更优试探{cleanup_reason}，已返回此前完整候选；独立审计状态按返回候选标注。"
+                        if best is not None else
+                        f" 含数值零层的试探{cleanup_reason}，没有可安全发布的完整候选；原设计未改变。")
         emit(state, message, None if best is None else best["design"], None if best is None else best["score"])
         display_value(best, is_best=True, is_current=False)
         finish_candidate_display(candidate_observer, state=state)

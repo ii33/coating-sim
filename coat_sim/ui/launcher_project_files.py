@@ -1,24 +1,19 @@
-"""Bounded saved-input actions; never owns or controls a project process."""
+"""Saved-input copy/export and explicitly confirmed whole-folder recycling."""
 from __future__ import annotations
 
 import os
+import hashlib
+import json
 from pathlib import Path
-import stat
 import tempfile
 from typing import Callable
 
 from PySide6.QtCore import QFile, QStandardPaths
 
 from coat_sim.core.project_dependencies import ProjectError, reject_links
-from coat_sim.core.project_paths import PROJECT_LAYOUT_DIRECTORIES
 from coat_sim.core.project_store import ProjectStore
 from coat_sim.project_package import export_project, import_project
 from coat_sim.project_recovery import ProjectOwnerLease
-
-_ROOT_DIRECTORIES = {"objects", "data", "imports", "exports", "assets", "results"}
-_RECOVERY_FILES = {"recovery.json", ".project-session.json", ".project-session-recovery.json",
-                   ".project-session-reviewed-recovery.json"}
-_MAX_TREE_ENTRIES = 100_000
 
 
 def _source(descriptor: str, project_id: str) -> ProjectStore:
@@ -28,95 +23,86 @@ def _source(descriptor: str, project_id: str) -> ProjectStore:
     return store
 
 
-def _safe_tree(store: ProjectStore) -> tuple:
-    """Fail closed unless the whole directory has the standard project scope.
-
-    No marker is added to old projects. Unknown top-level content and nested
-    projects make ownership ambiguous, so they can only be removed from history.
-    This scan never follows a link and never changes project contents.
-    """
-    root = store.root
+def _directory_reason(root: Path) -> str:
+    """Protect general roots; do not infer the contents' ownership."""
     reject_links(root)
-    home = Path.home().resolve()
-    protected = {Path(root.anchor), home, Path(tempfile.gettempdir()).resolve(),
-                 Path(__file__).resolve().parents[2], Path.cwd().resolve()}
-    for location in (QStandardPaths.StandardLocation.DesktopLocation,
-                     QStandardPaths.StandardLocation.DocumentsLocation,
-                     QStandardPaths.StandardLocation.DownloadLocation,
-                     QStandardPaths.StandardLocation.HomeLocation):
+    protected = {
+        Path(root.anchor): "磁盘根目录",
+        Path.home().resolve(): "用户主目录",
+        Path(tempfile.gettempdir()).resolve(): "临时文件根目录",
+        Path(__file__).resolve().parents[2]: "应用源码根目录",
+        Path.cwd().resolve(): "应用工作目录",
+    }
+    for location, label in (
+            (QStandardPaths.StandardLocation.DesktopLocation, "桌面根目录"),
+            (QStandardPaths.StandardLocation.DocumentsLocation, "文档根目录"),
+            (QStandardPaths.StandardLocation.DownloadLocation, "下载根目录")):
         value = QStandardPaths.writableLocation(location)
         if value:
-            protected.add(Path(value).resolve())
-    if any(root == path or root in path.parents for path in protected):
-        raise ProjectError("unsafe_project_directory", "此目录属于主目录、共享位置或程序目录，不能作为整工程删除。请仅移出最近列表。")
+            protected[Path(value).resolve()] = label
+    for path, label in protected.items():
+        if root == path or root in path.parents:
+            return f"无法回收工程文件夹 {root}：该路径是{label}或其上级目录，请仅移出最近列表。"
     system_roots = {Path(value).resolve() for value in
                     ("/bin", "/boot", "/dev", "/etc", "/lib", "/lib64", "/proc", "/run", "/sbin", "/sys", "/usr", "/var")}
     if os.name == "nt":
         system_roots = {Path(system_value).resolve() for key in ("SystemRoot", "ProgramFiles", "ProgramFiles(x86)")
                         if (system_value := os.environ.get(key))}
-    if any(root == path or path in root.parents for path in system_roots):
-        raise ProjectError("unsafe_project_directory", "系统目录中的内容不能整工程删除。请仅移出最近列表。")
-    if os.path.ismount(root):
-        raise ProjectError("unsafe_project_directory", "工程目录是挂载点，不能移入回收站。")
-    for relative in PROJECT_LAYOUT_DIRECTORIES:
-        path = root / relative
-        reject_links(path)
-        if not path.is_dir():
-            raise ProjectError("unknown_project_directory", "无法确认整个目录均属于此工程。请仅移出最近列表，工程文件保留。")
-    allowed = _ROOT_DIRECTORIES | _RECOVERY_FILES | {store.project_file.name}
-    if any(path.name not in allowed or (path.name in _ROOT_DIRECTORIES and not path.is_dir())
-           or (path.name not in _ROOT_DIRECTORIES and not path.is_file()) for path in root.iterdir()):
-        raise ProjectError("unknown_project_directory", "工程目录含归属不明的其他内容，不能整目录删除。请仅移出最近列表。")
-    records = []
-    root_device = root.stat().st_dev
-    pending = [root]
-    while pending:
-        path = pending.pop()
-        info = path.lstat()
-        if (stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400
-                or info.st_dev != root_device or (path != root and os.path.ismount(path))):
-            raise ProjectError("unsafe_project_directory", "工程目录含链接、重解析点或挂载内容，不能整目录删除。")
-        if not (stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode)):
-            raise ProjectError("unsafe_project_directory", "工程目录含特殊文件，不能整目录删除。")
-        if path != store.project_file and path.suffix.casefold() == ".coatproj":
-            raise ProjectError("nested_project", "此目录还包含其他工程，不能删除其父目录。请仅移出最近列表。")
-        records.append((str(path.relative_to(root)), info.st_dev, info.st_ino, info.st_mode,
-                        info.st_size, info.st_mtime_ns, info.st_ctime_ns))
-        if len(records) > _MAX_TREE_ENTRIES or len(path.relative_to(root).parts) > 64:
-            raise ProjectError("project_directory_too_large", "目录范围过大，无法安全确认整工程删除。请仅移出最近列表。")
-        if stat.S_ISDIR(info.st_mode):
-            pending.extend(path.iterdir())
-    return tuple(sorted(records))
+    if any(root == path or path in root.parents or root in path.parents for path in system_roots):
+        return f"无法回收工程文件夹 {root}：该路径位于系统目录内或包含系统目录，请仅移出最近列表。"
+    return ""
+
+
+def project_deletion_plan(descriptor: str, project_id: str) -> dict:
+    """Preview the canonical folder, without scanning or classifying its files."""
+    store = _source(descriptor, project_id)
+    reason = _directory_reason(store.root)
+    if reason:
+        raise ProjectError("shared_project_directory", reason)
+    root_info, descriptor_info = store.root.stat(), store.project_file.stat()
+    token_data = [project_id, str(store.root), str(store.project_file),
+                  root_info.st_dev, root_info.st_ino, descriptor_info.st_dev, descriptor_info.st_ino]
+    token = hashlib.sha256(json.dumps(token_data, ensure_ascii=False).encode()).hexdigest()
+    return {"descriptorFile": str(store.project_file), "projectId": project_id,
+            "directoryPath": str(store.root), "token": token}
 
 
 def _move_to_trash(path: str) -> tuple[bool, str]:
-    # PySide6 6.12's static overload can return only bool despite its stub's
-    # tuple annotation. The instance API reliably updates fileName on success.
+    # The instance API reliably exposes both Qt's error and resulting trash path.
     entry = QFile(path)
-    success = entry.moveToTrash()
-    return success, entry.fileName() if success else ""
+    if not entry.moveToTrash():
+        raise OSError(entry.errorString())
+    return True, entry.fileName()
 
 
-def trash_project(descriptor: str, project_id: str, *, move_to_trash: Callable | None = None) -> dict:
-    """Hold the existing root/ID locks throughout the actual OS trash action.
+def _error_detail(error: OSError) -> str:
+    detail = error.strerror or str(error)
+    if getattr(error, "winerror", None) is not None:
+        detail = f"[WinError {error.winerror}] " + detail
+    if error.filename:
+        detail += "\n文件：" + str(error.filename)
+    return detail
 
-    No permanent-delete fallback, recursive unlink, permission change or early
-    lease release is permitted, including on Windows sharing failures.
-    """
+
+def trash_project(descriptor: str, project_id: str, *, move_to_trash: Callable | None = None,
+                  expected_plan: str = "") -> dict:
+    """Recycle exactly the confirmed folder under the existing root/ID lease."""
     store = _source(descriptor, project_id)
     with ProjectOwnerLease.acquire(store.project_file, project_id):
-        current = _source(descriptor, project_id)
-        before = _safe_tree(current)
-        current._current()
-        if _safe_tree(current) != before:
-            raise ProjectError("stale_project_directory", "目录内容已变化，未移入回收站。请检查后重试。")
-        reject_links(current.root)
+        plan = project_deletion_plan(descriptor, project_id)
+        if expected_plan and plan["token"] != expected_plan:
+            raise ProjectError("stale_project_directory", "工程文件夹路径或身份已变化，请重新确认；尚未回收文件。")
         mover = move_to_trash if move_to_trash is not None else _move_to_trash
-        success, trash_path = mover(str(current.root))
-        if not success or current.root.exists():
-            raise ProjectError("trash_failed", "无法将工程目录移入回收站，最近记录已保留；不会永久删除文件。请检查目录后重试。")
+        try:
+            success, trash_path = mover(plan["directoryPath"])
+        except OSError as exc:
+            raise ProjectError("trash_failed", "无法将工程文件夹 " + plan["directoryPath"]
+                               + " 移入回收站：" + _error_detail(exc) + "；最近记录保留，请检查该路径。") from exc
+        if not success or store.root.exists():
+            raise ProjectError("trash_failed", "系统未确认工程文件夹 " + plan["directoryPath"]
+                               + " 已移入回收站；最近记录保留，请检查该路径。")
     return {"descriptorFile": str(store.project_file), "trashPath": str(trash_path),
-            "message": "工程目录已移入回收站。"}
+            "message": "整个工程文件夹已移入回收站：" + plan["directoryPath"]}
 
 
 def export_saved_project(descriptor: str, project_id: str, destination: str) -> dict:

@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QApplication
 from coat_sim.core.project_dependencies import ProjectError
 from coat_sim.core.project_store import ProjectStore
 from coat_sim.project_recovery import ProjectOwnerLease
-from coat_sim.ui.launcher_project_files import copy_saved_project, export_saved_project, trash_project
+from coat_sim.ui.launcher_project_files import copy_saved_project, export_saved_project, trash_project, project_deletion_plan
 from coat_sim.ui.launcher_projects import ProjectLauncherAdapter
 from coat_sim.ui.recent_projects import RecentProjects
 
@@ -82,31 +82,6 @@ def test_trash_failure_keeps_source_and_never_falls_back_to_permanent_delete(pro
     assert project.project_file.is_file()
 
 
-@pytest.mark.parametrize("unsafe", ["extra_file", "extra_directory", "nested_project", "symlink", "missing_layout", "home"])
-def test_ambiguous_or_dangerous_directories_never_reach_the_trash_mover(project, tmp_path, monkeypatch, unsafe):
-    if unsafe == "extra_file":
-        (project.root / "unrelated.txt").write_text("keep")
-    elif unsafe == "extra_directory":
-        (project.root / "other-work").mkdir()
-    elif unsafe == "nested_project":
-        ProjectStore.create(project.root / "results" / "Other", "Other")
-    elif unsafe == "symlink":
-        outside = tmp_path / "outside.txt"
-        outside.write_text("keep")
-        try:
-            (project.root / "results" / "link").symlink_to(outside)
-        except OSError:
-            pytest.skip("No symlink support")
-    elif unsafe == "missing_layout":
-        (project.root / "objects").rmdir()
-    else:
-        monkeypatch.setattr(Path, "home", lambda: project.root)
-    with pytest.raises(ProjectError):
-        trash_project(str(project.project_file), project.manifest["id"],
-                      move_to_trash=lambda _path: pytest.fail("unsafe scope reached trash"))
-    assert project.project_file.is_file()
-
-
 def test_wrong_identity_never_moves_a_replaced_project(project):
     with pytest.raises(ProjectError) as caught:
         trash_project(str(project.project_file), "0" * 32,
@@ -156,23 +131,17 @@ def test_adapter_removes_history_only_after_confirmed_trash_success(project, tmp
         adapter.stop()
 
 
-def test_a_changed_directory_is_refused_before_the_os_move(project, monkeypatch):
-    import coat_sim.ui.launcher_project_files as module
-    original = module._safe_tree
-    checks = 0
-    def changing_tree(store):
-        nonlocal checks
-        result = original(store)
-        checks += 1
-        if checks == 1:
-            (store.root / "results" / "late.txt").write_text("keep")
-        return result
-    monkeypatch.setattr(module, "_safe_tree", changing_tree)
+def test_replaced_directory_is_refused_before_the_os_move(project, tmp_path):
+    plan = project_deletion_plan(str(project.project_file), project.manifest["id"])
+    original = tmp_path / "original"
+    project.root.rename(original)
+    ProjectStore.create(project.root, "replacement")
+    project.project_file.write_bytes((original / project.project_file.name).read_bytes())
     with pytest.raises(ProjectError) as caught:
         trash_project(str(project.project_file), project.manifest["id"],
-                      move_to_trash=lambda _path: pytest.fail("changed tree reached trash"))
+                      move_to_trash=lambda _path: pytest.fail("replaced folder reached trash"), expected_plan=plan["token"])
     assert caught.value.code == "stale_project_directory"
-    assert project.project_file.is_file() and (project.root / "results" / "late.txt").is_file()
+    assert project.project_file.is_file() and original.is_dir()
 
 
 def test_stale_dialog_project_identity_is_not_rebound_to_a_refreshed_row(project, tmp_path, app):
@@ -232,10 +201,12 @@ def test_duplicate_delete_is_rejected_until_the_first_result_settles(project, tm
         adapter.stop()
 
 
-@pytest.mark.parametrize("protected", ["temp", "app", "cwd", "standard", "ancestor", "system"])
+@pytest.mark.parametrize("protected", ["home", "temp", "app", "cwd", "standard", "ancestor", "system", "system_ancestor"])
 def test_protected_locations_never_reach_the_trash_mover(project, monkeypatch, protected):
     import coat_sim.ui.launcher_project_files as module
-    if protected == "temp":
+    if protected == "home":
+        monkeypatch.setattr(Path, "home", lambda: project.root)
+    elif protected == "temp":
         monkeypatch.setattr(module.tempfile, "gettempdir", lambda: str(project.root))
     elif protected == "app":
         monkeypatch.setattr(module, "__file__", str(project.root / "coat_sim/ui/launcher_project_files.py"))
@@ -248,19 +219,94 @@ def test_protected_locations_never_reach_the_trash_mover(project, monkeypatch, p
     else:
         if module.os.name != "nt":
             pytest.skip("Windows system-directory boundary")
-        monkeypatch.setenv("SystemRoot", str(project.root))
+        monkeypatch.setenv("SystemRoot", str(project.root / "System" if protected == "system_ancestor" else project.root))
     with pytest.raises(ProjectError) as caught:
         trash_project(str(project.project_file), project.manifest["id"],
                       move_to_trash=lambda _path: pytest.fail("protected location reached trash"))
-    assert caught.value.code == "unsafe_project_directory"
+    assert caught.value.code == "shared_project_directory"
+    assert str(project.root) in str(caught.value)
     assert project.project_file.is_file()
 
 
 def test_drive_root_is_rejected_before_any_tree_or_trash_operation(project):
-    from types import SimpleNamespace
-    from coat_sim.ui.launcher_project_files import _safe_tree
+    from coat_sim.ui.launcher_project_files import _directory_reason
     root = Path(project.root.anchor)
-    with pytest.raises(ProjectError) as caught:
-        _safe_tree(cast(Any, SimpleNamespace(root=root, project_file=root / "project.coatproj")))
-    assert caught.value.code == "unsafe_project_directory"
+    assert "磁盘根目录" in _directory_reason(root)
     assert project.project_file.is_file()
+
+
+def test_whole_folder_includes_missing_layout_attachments_old_revisions_and_other_projects(project, tmp_path):
+    (project.root / "notes.txt").write_text("ordinary attachment")
+    (project.root / "measurements").mkdir()
+    (project.root / "measurements" / "sample.csv").write_text("1,2")
+    (project.root / ".git").mkdir()  # A marker does not establish file ownership.
+    (project.root / "peer.COATPROJ").write_bytes(project.project_file.read_bytes())
+    ProjectStore.create(project.root / "Nested", "Nested")
+    identity = project.create_document("source", {"schema_version": 2, "kind": "point", "name": "source"})
+    old_path = project.root / project._index()[identity]["path"]
+    project.save_document(identity, {"schema_version": 2, "kind": "point", "name": "updated"})
+    assert old_path.is_file()
+    (project.root / "objects").rmdir()
+    expected = {str(p.relative_to(project.root)): p.read_bytes() for p in project.root.rglob("*") if p.is_file()}
+    plan = project_deletion_plan(str(project.project_file), project.manifest["id"])
+    assert plan["directoryPath"] == str(project.root.resolve())
+    target = tmp_path / "trash-folder"
+    calls = []
+    def mover(path):
+        calls.append(path)
+        Path(path).rename(target)
+        return True, str(target)
+    trash_project(str(project.project_file), project.manifest["id"], expected_plan=plan["token"], move_to_trash=mover)
+    actual = {str(p.relative_to(target)): p.read_bytes() for p in target.rglob("*") if p.is_file()}
+    assert calls == [plan["directoryPath"]] and not project.root.exists()
+    assert actual == expected and (target / ".git").is_dir()
+
+
+def test_os_error_reports_the_actual_folder_and_preserves_all_content(project):
+    (project.root / "attachment.txt").write_text("keep on refusal")
+    before = {str(p.relative_to(project.root)): p.read_bytes() for p in project.root.rglob("*") if p.is_file()}
+    def failure(path):
+        raise PermissionError(13, "temporary test sharing conflict", path)
+    with pytest.raises(ProjectError) as caught:
+        trash_project(str(project.project_file), project.manifest["id"], move_to_trash=failure)
+    after = {str(p.relative_to(project.root)): p.read_bytes() for p in project.root.rglob("*") if p.is_file()}
+    assert caught.value.code == "trash_failed" and str(project.root) in str(caught.value)
+    assert "temporary test sharing conflict" in str(caught.value) and before == after
+
+
+def test_symlink_descriptor_parent_is_rejected_without_recycling(project, tmp_path):
+    alias = tmp_path / "alias"
+    try:
+        alias.symlink_to(project.root, target_is_directory=True)
+    except OSError:
+        pytest.skip("No symlink support")
+    with pytest.raises(ProjectError):
+        trash_project(str(alias / project.project_file.name), project.manifest["id"],
+                      move_to_trash=lambda _path: pytest.fail("aliased folder reached trash"))
+    assert project.project_file.is_file()
+
+
+def test_adapter_uses_exact_preview_and_removes_history_only_after_execution(project, tmp_path, app, monkeypatch):
+    history = RecentProjects(QSettings(str(tmp_path / "preview.ini"), QSettings.Format.IniFormat))
+    history.record(project.project_file, "Study")
+    adapter = cast(Any, ProjectLauncherAdapter(recent_projects=history))
+    try:
+        _settle(app, adapter)
+        descriptor, identity = str(project.project_file), project.manifest["id"]
+        assert adapter.prepareRecentProjectDeletion(descriptor, identity)
+        _settle(app, adapter)
+        plan = adapter.projectDeletionPlan
+        assert plan["directoryPath"] == str(project.root.resolve())
+        assert project.project_file.is_file() and adapter.projectEntries
+        assert not adapter.trashRecentProjectWithPlan(descriptor, identity, "wrong")
+        calls = []
+        def failure(*args, **options):
+            calls.append(options)
+            raise ProjectError("trash_failed", "native failure")
+        monkeypatch.setattr("coat_sim.ui.launcher_projects.trash_project", failure)
+        assert adapter.trashRecentProjectWithPlan(descriptor, identity, plan["token"])
+        _settle(app, adapter)
+        assert calls == [{"expected_plan": plan["token"]}]
+        assert adapter.projectEntries and project.project_file.is_file() and adapter.projectError == "native failure"
+    finally:
+        adapter.stop()

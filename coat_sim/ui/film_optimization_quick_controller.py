@@ -2824,6 +2824,11 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(str, notify=changed)
     def statusText(self) -> str:
+        text = self._status_text()
+        notice = self._numeric_cleanup_notice()
+        return text + "\n" + notice if notice else text
+
+    def _status_text(self) -> str:
         if self._initial_loading:
             return "正在加载膜系优化组件与材料，请稍候…"
         if self._structure_material_error:
@@ -2877,7 +2882,11 @@ class FilmOptimizationQuickController(QObject):
                 return "优化已取消；最佳候选已应用到当前膜系，未保存，并已请求刷新光谱。"
             return "优化已取消；最佳候选仍可预览或另存。"
         if self._result.targets_met:
+            if self._candidate_applied:
+                return "已满足所有采样目标；候选已应用，未保存，并已请求刷新光谱。"
             return "已满足所有采样目标；可预览、另存或显式应用。"
+        if self._candidate_applied:
+            return "未全部达标；候选已应用，未保存，并已请求刷新光谱。"
         return "当前候选未满足所有目标；仍可预览或另存。"
 
     @Property(bool, notify=changed)
@@ -5840,6 +5849,20 @@ class FilmOptimizationQuickController(QObject):
         self.plotDataChanged.emit()
         return True
 
+    def _numeric_cleanup_notice(self) -> str:
+        payload = self._synthesis_payload
+        if payload is None:
+            return ""
+        search = payload["result"].get("performance", {}).get("search", {})
+        fallback = search.get("numeric_zero_fallback")
+        if not isinstance(fallback, Mapping) or not fallback.get("unpublished_better_trials"):
+            return ""
+        disposition = ("已应用此前完整候选。" if self._candidate_applied else
+                       "已保留此前完整候选；原设计保持不变。" if fallback.get("returned_training_complete") else
+                       "没有完整候选；原设计保持不变。")
+        reason = ("未通过光谱等价检查" if fallback.get("spectral_equivalence_rejections") else "未完成清理复算")
+        return "含数值零层的潜在更优试探" + reason + "；" + disposition
+
     @Slot(str, object, object, result=bool)
     def onProjectQueueCancelAccepted(self, job_id: str, cancellation_result: Any,
                                     origin: Any) -> bool:
@@ -6308,7 +6331,7 @@ class FilmOptimizationQuickController(QObject):
                 and self._cancel_intent_accepted):
             self._accept_cancel_intent()
         if (self._reduction_result is None and self._attempt_search_mode != "reduction"
-                and self._synthesis_payload is None and not error and isinstance(result, FilmOptimizationResult)
+                and not error and isinstance(result, FilmOptimizationResult)
                 and result.state == "completed"):
             self._apply_completed_result(operation_id, result)
         if self._run_coordinator.take_pending_close():
@@ -6348,7 +6371,7 @@ class FilmOptimizationQuickController(QObject):
         try:
             normalized_candidate = cast(Any, self.service).validate(deepcopy(dict(result.best_design)))
             candidate_design = normalized_candidate
-            if self._structure_result is None:
+            if self._structure_result is None and self._synthesis_payload is None:
                 candidate_design = deepcopy(dict(snapshot.design))
                 for side in ("front_layers", "back_layers"):
                     current_ids = [layer.get("id") for layer in snapshot.design.get(side, ())]
@@ -6370,15 +6393,23 @@ class FilmOptimizationQuickController(QObject):
             self._error = "原设计在优化期间发生编辑（包括尚未提交的字段）；候选未自动覆盖。"
             self.changed.emit()
             return False
-        apply = getattr(source, "applyOptimizedDesign", None)
+        apply = getattr(source, "applySynthesizedDesign" if self._synthesis_payload is not None
+                        else "applyOptimizedDesign", None)
         if not callable(apply):
             self._error = "来源设计窗口不支持安全回写；优化候选已保留。"
             self.changed.emit()
             return False
         try:
-            accepted = bool(apply(candidate_design,
-                                  int(result.design_revision),
-                                  int(self._operation_edit_epoch or 0)))
+            args = (candidate_design, int(result.design_revision),
+                    int(self._operation_edit_epoch or 0))
+            if self._synthesis_payload is not None:
+                if (self._frozen_request is None
+                        or self._frozen_request.frozen_material_snapshot is None
+                        or self._synthesis_editable_snapshot is None):
+                    raise ValueError("Synthesis candidate has no submission-time editable material closure")
+                accepted = bool(apply(*args, deepcopy(self._synthesis_editable_snapshot)))
+            else:
+                accepted = bool(apply(*args))
         except Exception as exc:
             self._error = f"自动回写失败：{type(exc).__name__}: {exc}"
             self.changed.emit()

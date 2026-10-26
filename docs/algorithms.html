@@ -12,6 +12,7 @@
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px solid #c8e0db;border-radius:8px;padding:16px;font-size:.88rem;line-height:1.5}</style>
 </head>
 <body>
+<p class="source">算法更新：2026-10-26；新增<a href="#film-numeric-zero-20261026">14ba 候选发布前的数值零清理与同冠军详情</a>，保留原始求解精度、目标、预算和独立审计。</p>
 <p class="source">算法更新：2026-10-25；新增<a href="#film-audited-feasibility-repair">14ay 审计边界可行性修复</a>，固定拓扑、保留原始验收与积分分母；<a href="#film-manufacturing-pair-20261025">14ax 独立可选制造修复算子</a>；<a href="#film-objective-progress-handoff-20261025">14aw 可选原目标进展诊断与极小极大交接</a>仍默认关闭。</p>
 <p class="source">算法更新：2026-10-24；<a href="#film-band-criteria-20261024">14at 波段平均值/逐点独立约束</a>，统一积分质量、判定、审计与冻结重放。</p>
 <p class="source">算法补充日期：2026-10-24；新增 <a href="#film-template-randomization-20261024">14as 可选模板随机厚度起点</a>，默认关闭，实际 seed 随请求冻结。</p>
@@ -68,6 +69,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <p class="source" style="grid-column:1/-1">结构合成更新：2026-10-12。新增14o至14o-2：实验性经典零厚敏感度针插、有界已有层增长与分组局部精修；独立结构请求与固定层序/有限试插分开，Dmax是硬约束。补充验证切片、真实求值计数与增长前局部边界检查。接口见 <a href="film-structure-optimization-contract.md">结构合成契约</a>，操作见 <a href="film-structure-optimization-guide.md">使用指南</a>，实际验收见 本轮状态 <span class="historical-reference">（历史验证记录，未随公开源码发布）</span>。</p>
 <p class="source">存储格式补充：2026-10-18。工程 BBS、助手精简记忆和可恢复文件清理均为非物理持久化契约，不改变仿真公式、坐标或数值精度。见<a href="#engineering-notes-storage-20261018">工程记录与助手工作区格式</a>。</p>
 <nav aria-label="章节目录">
+<a href="#film-numeric-zero-20261026">14ba 数值零清理与实时详情（2026-10-26）</a>
 <a href="#film-reduction-20261025">14az 独立减层 / 减厚后优化（2026-10-25）</a>
 <a href="#film-cancel-warm-restart-20261025">14ay 取消后从保留候选重新启动求解器（2026-10-25）</a>
 <a href="#film-objective-progress-handoff-20261025">14aw 可选原目标进展诊断与极小极大交接（2026-10-25）</a>
@@ -3987,6 +3989,31 @@ nominal_success = original_training_pass AND independent_original_audit_pass</pr
 <p>触发判定要求每条启用条件的原始归一化违规均不超过该条件的向内位移或 8 ULP 尺度；不使用可能很宽的用户求解器容差作为“接近边界”阈值，也不让宽波段掩盖窄目标组。该判定只负责路由，不把 solver_acceptable 冒充达标。严格等边界也可先审计，不受旧的 solver_acceptable 审计门阻挡。同一冻结输入、物理冠军与余量在昂贵审计前去重，完整 attempt_key 另绑定失败条件；不保存无限全光谱缓存。局部失败、局部预算或无可用梯度以明确诊断返回原搜索；共享全局预算与原停止条件仍生效，不因一次 ±5 nm 修复失败否定后续合法拓扑。原冠军及已完成审计保留；取消传播，禁止后续新评价。取消后若返回另一个未审计训练候选，validation_matches_candidate=false 且 validation_complete=false；最后完整审计设计和绑定哈希仍在有界档案内。仅双重原始名义通过后进入原减量流程；减量仍可能因预算或独立审计拒绝而无改善。</p>
 <p>实现：<code>film_synthesis_feasibility.py</code> 的区间引导、精确联合波长评价与局部求解；<code>film_auto_synthesis.py</code> 的即时触发、共享预算、工作计数、审计、保存与减量交接。新增点不进入 canonical 原网格响应，评价器先按联合网格记账，再恢复原响应供排名与观察；私有引导数组不导出。保持原始名义判据、目标权重与原始光谱语义，不使用原始曲线标准差惩罚。</p>
 <p class="source">来源与限制：未找到外部依据，仅为本项目实现。epigraph、局部盒、余量比例、触发和预算均为工程约定；验证只支持有限采样/极值审计，不是连续全波长证书、全局最优或普遍收敛证明。公开回归使用合成材料及边界数据，不包含用户工程、路径或配方。</p>
+</section>
+<section id="film-numeric-zero-20261026">
+<h2>14ba 候选发布前的数值零清理与实时详情（2026-10-26）</h2>
+<p><strong>用途、输入输出：</strong>合成末段的严格正厚替代值可能为浮点 tiny，显示四舍五入不能修复层表。输入为真实候选、冻结 n/k、原目标和独立审计采样域的相位限步；输出为删除数值零后、按原始完整训练网格重新计算并核对光谱等价的候选，或不发布该试探并保留此前完整候选。波长和物理厚度为 nm、角度为度、R/T 为 fraction；不降低求解精度、不设置制造最小厚度、不惩罚原始光谱标准差。</p>
+<pre>ε = eps(float64)
+β = 2πq/λ, q = 该材料/角度的复数法向传播因子
+L_pair = (π/4) / max_original_target,audit,source_knots,angles |β|
+τ_nm = min_active_pairs(L_pair) · (32ε)/(π/4)
+删除条件：0 ≤ d ≤ τ_nm；单个被删层在上述采样域的 |βd| ≤ 32ε
+光谱等价：每个原目标/角度的波长数组完全相同，且逐点
+|y_raw − y_clean| ≤ 2×10⁻¹¹ + 2×10⁻¹⁰ |y_clean|</pre>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 180" role="img" aria-label="原始求解候选经数值零清理和复算后才发布，独立审计另行进行" style="width:100%;max-width:900px">
+<g fill="#e9f4f1" stroke="#087f78"><rect x="10" y="25" width="160" height="65" rx="8"/><rect x="190" y="25" width="160" height="65" rx="8"/><rect x="370" y="25" width="160" height="65" rx="8"/><rect x="550" y="25" width="160" height="65" rx="8"/><rect x="730" y="25" width="160" height="65" rx="8"/></g>
+<g font-family="sans-serif" font-size="16" fill="#18303a" text-anchor="middle"><text x="90" y="52">原求解值/Jacobian</text><text x="90" y="77">保持内部维数</text><text x="270" y="52">相位尺度清理</text><text x="270" y="77">精确材料/数据集</text><text x="450" y="52">额外真实训练复算</text><text x="450" y="77">核对完整原光谱</text><text x="630" y="52">完整候选/显示</text><text x="630" y="77">共享预算记账</text><text x="810" y="52">独立原目标审计</text><text x="810" y="77">正式通过另判</text><text x="450" y="142">取消/额度不足：不发布未完成试探；保留完整候选并提示其身份/审计状态</text></g>
+<path d="M170 57h20m160 0h20m160 0h20m160 0h20" stroke="#087f78" stroke-width="3"/>
+</svg><figcaption>清理复算不是独立审计；实际调用全部计入既有父级资源与阶段预算。</figcaption></figure>
+<p>既有清理函数删除精确零；本入口仅在存在正数值零时触发该函数并一并处理精确零。只合并相邻且 <code>(material_id,optical_set_id)</code> 完全相同的层，保留首层 ID 和合并映射；相同 n/k 数值但不同数据集 ID 也不合并。若合并超过显式单层厚度上限，则只删零、保留其余层 ID。清理结果必须再次通过原制造约束；正下限不放宽。真实 0.7 nm 层保留，全精度计算；32ε 相位尺度与等价阈值均为本项目数值约定，不代表任意材料或连续谱的误差证明。</p>
+<p>原始固定维数候选仍可供局部求解器继续迭代，但只有已复算等价的规范候选可进入训练最好候选、档案与展示。清理额外工作在共享总预算、阶段额度与预留槽检查后执行；取消不追加清理。未完成清理的潜在更优试探不冒充可应用候选，日志保留输入和回退物理哈希，结果及 GUI 明示回退。返回候选仅保留与自身完全绑定的既有审计；无审计明确为未验证，不能触发正式达标或减量。</p>
+<p>数值零清理的原网格光谱不等价属于候选级拒绝，记录 <code>unpublished_spectral_mismatch</code>，既不发布清理后的非等价结构，也不发布原 tiny 层结构；保留完整冠军并继续其它合法拓扑。若显式暖起点首先被拒且尚无完整候选，则在原共享预算允许时真实评分裸基片后继续原搜索；不足时如实返回无完整候选。此分支只处理已完整复算得到的等价性失败，配置/前向异常仍明确报错。environment 只接受无前/后层的裸环境，验证入口明确拒绝带层 environment；合法层序经 seed 传入，其额外材料/数据集也纳入冻结及相位尺度。</p>
+<p>批次预留槽按实际消耗的 reservation 递减，不能用总评价增量代替：同一候选内的清理复算属于额外未预留工作，仍计入共享总评价与阶段额度，并单列 <code>extra_unreserved_evaluations</code>。这样既不产生负剩余槽，也不在收尾时把实际复算从总数减回。预留候选数、额外复算数与弃置/未派发数分别保留真实语义。</p>
+<p>嵌套清理中的一次物理评分异常只增加一次失败评价；外层传播已计入的异常，不重复计数，也不吞异常。</p>
+<h3>同冠军详情与自动显示范围</h3>
+<p>所选原目标/角度的统计取完整原网格 coverage，均值 μ=Σqᵢyᵢ，q 沿用14at的波长梯形质量；峰值为原样本最大值及其波长。统计绑定真实 <code>best</code> 的物理哈希，不取最后试探、Top10 展示排名或抽样缩略曲线。关闭 mean 时仍只是统计，不生成均值残差。详情同时显示层数、物理总厚、全目标最大归一化违规和原 RMS。</p>
+<p>图形自动上限取实际显示曲线、完整峰值及目标线的最大值，留8%空白后选1/2/2.5/5/10十进制刻度；首次及上升立即适配，连续两帧低于旧上限45%再缩小。自动下限为0，无数据保留范围；手动百分比范围不被曲线覆盖。显示用峰值下限10⁻⁶ fraction仅防零范围；64 ULP 内的1归到100%用于避免刻度抖动，不修改物理数据、目标或通过判据。</p>
+<p class="source"><strong>实现及限制：</strong><code>film_synthesis_numeric_zero.py</code>、<code>film_auto_synthesis.py</code>、<code>film_candidate_display.py</code>、<code>film_candidate_display_controller.py</code>、<code>FilmOptimizationWindow.qml</code>。未找到外部依据，仅为本项目实现；有限采样光谱等价不保证连续域或所有病态高 Q 结构误差。UI 状态归属、自动应用和冲突规则见<a href="film-optimization-terminal-display-20261026.md">终态与展示契约</a>。</p>
 </section>
 </body>
 </html>

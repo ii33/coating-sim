@@ -147,7 +147,7 @@ manager. It does not add a direct menu of global design editors.
 ## Compact recent rows and explicit removal (2026-10-16)
 
 Each recent row occupies exactly two content lines: a left-aligned, single-line
-open-by-name action and right-aligned Copy / Export / Remove / Delete actions, followed
+open-by-name action and right-aligned Copy / Export / Remove actions, followed
 by one elided summary line (an empty summary has a placeholder). No path/status
 line or information foldout remains. Hover details retain the complete actual
 name, summary, notes, exact descriptor and available opening timestamp. New
@@ -167,34 +167,38 @@ save picker offers an overwrite prompt. Failures leave the original project
 unchanged and report an error. Accepted publication is not cancelled by closing
 its input dialog; late results cannot update a stopped launcher.
 
-Remove opens a history-only modal confirmation. Delete is a separate visible
-row action (2026-10-25), available for readable project identities, and opens
-the same modal in an explicit delete mode. It names the project, exact descriptor
-and complete target directory; its confirmation says "Delete and move to Recycle
-Bin" and initially focuses Cancel. There is no optional deletion checkbox under
-Remove. Cancel/Escape changes neither history nor files. The whole-directory recycle action
-shows both exact descriptor and full directory plus the affected resources,
-imports/exports and results. The service first validates the row's captured
-project ID and holds the existing root/ID lease throughout validation and
-`QFile.moveToTrash`. It never drops the lease to bypass Windows sharing errors.
-The recent record is removed only after the OS reports successful recycling and
-the original directory is absent. A recycle failure retains the recent record;
-there is no permanent-delete fallback or permission/security setting change.
-If the launcher exits before its result is applied, a stale recent record may
-remain and can be removed on the next launch; this never triggers another recycle.
+Remove is the sole row entry (2026-10-26). Its single confirmation defaults to
+history-only and offers "同时将整个工程文件夹移入回收站". Cancel/Escape changes neither
+history nor files. When checked, a read-only background request resolves the
+canonical project folder. The modal names the project, shows that complete folder
+path and states "包含文件夹内全部内容". There is no file-subset mode or scope selector.
+Confirmation recycles that entire folder, including ordinary attachments, old
+revisions, results and any other contents, even other project descriptors.
+No contents scan, required empty-layout check or attachment whitelist is performed.
 
-The file format does not declare ownership of an arbitrary descriptor's entire
-parent directory. Therefore whole-directory recycling is deliberately limited
-to complete standard project layouts: root-level content must consist only of
-the selected descriptor, standard project directories and named recovery logs.
-Unknown root-level content, incomplete layouts, another `.coatproj` anywhere in
-the tree, links/reparse points, mounted content, special files, protected/shared
-root locations or a changing tree all refuse the action and recommend
-history-only removal. Tree validation is bounded and rerun immediately before
-recycling. This does not promise protection against a hostile noncooperating
+`prepareRecentProjectDeletion(descriptor, id)` publishes `projectDeletionPlan` with
+the canonical folder and an identity token; `trashRecentProjectWithPlan` requires
+that token and the captured descriptor/ID. The adapter owns admission, busy state
+and errors; stopped launchers ignore late results. The service validates folder
+and descriptor identities again under the existing root/ID lease. Replacing the
+confirmed folder or descriptor requires a new confirmation. The confirmation
+covers all contents of the displayed folder at execution time.
+
+Disk roots, the user home, standard Desktop/Documents/Downloads and temporary
+roots, system directories, application source/working roots and their containing
+ancestors cannot be recycled as project folders. Errors identify the concrete
+folder and reason; no partial-file deletion is substituted. Descriptor path
+components must not be links. An open owner is reported with instructions to save
+and close the project; the launcher never closes it or discards unsaved work.
+
+The service calls the operating system's Recycle Bin once for the selected folder.
+History changes only after OS success and confirmation that the source folder is
+absent. Failures keep the row and show the affected path and error. There is no
+staging, permanent-delete fallback or permission/security setting change. Recovery
+is through the operating system's trash UI. If the launcher exits before applying
+the result, a stale recent record may remain; this never starts another recycle.
+The identity check does not guarantee protection from a hostile noncooperating
 process rewriting the filesystem between the final check and the OS move.
-Recovery is through the operating system's trash UI; the application does not
-claim a permanent deletion or implement its own irreversible cleanup.
 
 Dialog dismissal restores the launching control's focus when it still exists;
 row removal cannot restore focus to a destroyed delegate. The history worker

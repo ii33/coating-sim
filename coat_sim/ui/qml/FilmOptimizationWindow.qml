@@ -2434,10 +2434,22 @@ AppWindow {
                             }
                             ThemeControls.ThemeComboBox {
                                 objectName: "filmCandidateLiveMetricBox"
-                                Layout.preferredWidth: 72
+                                Layout.preferredWidth: plotPanel.width >= 500 ? 72 : 48
                                 model: ["R", "T"]
                                 currentIndex: window.controller.liveDisplay.metric === "T" ? 1 : 0
                                 onActivated: window.controller.liveDisplay.setMetric(model[currentIndex])
+                            }
+                            CheckBox {
+                                objectName: "filmOptimizationYAxisAuto"
+                                Layout.preferredWidth: 84
+                                text: "自动轴"
+                                checked: window.controller.liveDisplay.yAxisAuto
+                                onToggled: {
+                                    window.controller.liveDisplay.setYAxisAuto(checked)
+                                    window.controller.liveDisplay.updatePlotYAxis(comparisonCanvas.dataSnapshot)
+                                }
+                                ToolTip.visible: hovered
+                                ToolTip.text: "随当前光谱调整纵轴上限；关闭后输入百分比范围。"
                             }
                             Label {
                                 objectName: "filmCandidateLivePreviewStatus"
@@ -2482,12 +2494,20 @@ AppWindow {
                             objectName: "filmOptimizationComparisonCanvas"
                             Layout.fillWidth: true
                             Layout.fillHeight: true
+                            Layout.minimumHeight: 90
                             property var dataSnapshot: plotPanel.showingLiveData
                                                        ? plotPanel.activeLiveData
                                                        : window.controller.plotData
                             property string seriesLegend: plotPanel.showingLiveData
                                                           ? "当前试探 / 优化器最佳" : "原设计 / 候选"
-                            onDataSnapshotChanged: requestPaint()
+                            onDataSnapshotChanged: {
+                                window.controller.liveDisplay.updatePlotYAxis(dataSnapshot)
+                                requestPaint()
+                            }
+                            Connections {
+                                target: window.controller.liveDisplay
+                                function onAxisChanged() { comparisonCanvas.requestPaint() }
+                            }
                             onPaint: {
                                 const ctx = getContext("2d")
                                 ctx.clearRect(0, 0, width, height)
@@ -2499,10 +2519,13 @@ AppWindow {
                                 ctx.lineWidth = 1
                                 ctx.strokeStyle = window.themeTokens.colorBorder
                                 ctx.fillStyle = window.themeTokens.colorTextMuted
+                                const yMinimum = window.controller.liveDisplay.yAxisMinimum
+                                const yMaximum = window.controller.liveDisplay.yAxisMaximum
                                 for (let tick = 0; tick <= 4; ++tick) {
                                     const y = top + plotHeight * tick / 4
                                     ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(left + plotWidth, y); ctx.stroke()
-                                    ctx.fillText(String(100 - tick * 25) + "%", 2, y + 4)
+                                    const value = yMaximum - (yMaximum - yMinimum) * tick / 4
+                                    ctx.fillText(Number((100 * value).toPrecision(4)).toString() + "%", 2, y + 4)
                                 }
                                 const live = rows && rows.live === true
                                 const primary = live ? (rows.current || rows.best) : null
@@ -2517,14 +2540,16 @@ AppWindow {
                                 const minWave = discreteLine ? waves[0] - 0.5 : waves[0]
                                 const maxWave = discreteLine ? waves[0] + 0.5 : waves[waves.length - 1]
                                 const xAt = value => left + (value - minWave) / Math.max(1e-12, maxWave - minWave) * plotWidth
-                                const yAt = value => top + plotHeight * (1 - Math.max(0, Math.min(1, value)))
+                                const yAt = value => top + plotHeight * (1 - (value - yMinimum) / (yMaximum - yMinimum))
                                 const drawTarget = value => {
                                     if (value === null || value === undefined) return
+                                    if (value < yMinimum || value > yMaximum) return
                                     ctx.save(); ctx.setLineDash([5, 4]); ctx.lineWidth = 1.5
                                     ctx.strokeStyle = window.themeTokens.colorSuccess
                                     ctx.beginPath(); ctx.moveTo(left, yAt(value)); ctx.lineTo(left + plotWidth, yAt(value)); ctx.stroke()
                                     ctx.restore()
                                 }
+                                ctx.save(); ctx.beginPath(); ctx.rect(left, top, plotWidth, plotHeight); ctx.clip()
                                 drawTarget(rows.target_value)
                                 drawTarget(rows.lower_bound)
                                 drawTarget(rows.upper_bound)
@@ -2549,6 +2574,7 @@ AppWindow {
                                     drawSeries(rows.baseline, window.themeTokens.colorTextMuted, 1.5)
                                     drawSeries(rows.candidate, window.themeTokens.colorAccent, 2.5)
                                 }
+                                ctx.restore()
                                 ctx.fillStyle = window.themeTokens.colorTextMuted
                                 ctx.fillText(discreteLine ? waves[0] + " nm（离散目标）" : minWave.toFixed(0) + " nm", left, height - 8)
                                 if (!discreteLine) ctx.fillText(maxWave.toFixed(0) + " nm", left + plotWidth - 52, height - 8)
@@ -2559,6 +2585,37 @@ AppWindow {
                                 ctx.fillRect(left + 90, 4, 14, 3)
                                 ctx.fillText(live ? "优化器最佳" : "候选", left + 108, 10)
                             }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            visible: !window.controller.liveDisplay.yAxisAuto
+                            Label { text: "纵轴 (%)"; color: window.themeTokens.colorTextMuted }
+                            ThemeControls.ThemeField {
+                                id: yAxisMinimumField
+                                objectName: "filmOptimizationYAxisMinimumField"
+                                Layout.preferredWidth: 72
+                                enabled: !window.controller.liveDisplay.yAxisAuto
+                                accessibleLabel: "纵轴下限，百分比"
+                                text: window.controller.liveDisplay.yAxisManualMinimumPercent
+                                onEditingFinished: window.controller.liveDisplay.setYAxisBoundsPercent(text, yAxisMaximumField.text)
+                            }
+                            Label { text: "–"; color: window.themeTokens.colorTextMuted }
+                            ThemeControls.ThemeField {
+                                id: yAxisMaximumField
+                                objectName: "filmOptimizationYAxisMaximumField"
+                                Layout.preferredWidth: 72
+                                enabled: !window.controller.liveDisplay.yAxisAuto
+                                accessibleLabel: "纵轴上限，百分比"
+                                text: window.controller.liveDisplay.yAxisManualMaximumPercent
+                                onEditingFinished: window.controller.liveDisplay.setYAxisBoundsPercent(yAxisMinimumField.text, text)
+                            }
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            visible: window.controller.liveDisplay.axisError.length > 0
+                            text: window.controller.liveDisplay.axisError
+                            color: window.themeTokens.colorWarning
+                            wrapMode: Text.WordWrap
                         }
                     }
                 }
@@ -2583,7 +2640,7 @@ AppWindow {
                         }
                         Label {
                             Layout.fillWidth: true
-                            visible: window.controller.conditionErrors.length === 0
+                            visible: window.controller.conditionErrors.length === 0 && !window.controller.liveDisplay.hasAttempt
                             objectName: "filmOptimizationConditionEmptySummary"
                             text: window.controller.conditionErrorsEmptySummary
                             color: window.themeTokens.colorTextMuted
@@ -2595,6 +2652,15 @@ AppWindow {
                             ScrollBar.vertical.policy: ScrollBar.AsNeeded
                             Column {
                                 width: parent.width
+                                Label {
+                                    objectName: "filmOptimizationBestDetails"
+                                    width: parent.width
+                                    visible: window.controller.liveDisplay.hasAttempt
+                                    text: window.controller.liveDisplay.bestDetailSummary
+                                    color: window.themeTokens.colorText
+                                    font.pointSize: window.themeTokens.fontSizeSmall
+                                    wrapMode: Text.WordWrap
+                                }
                                 Repeater {
                                     model: window.controller.conditionErrors
                                     delegate: Label {

@@ -451,8 +451,10 @@ def test_qml_n0_grows_real_single_layer_and_freezes_current_targets_and_material
     assert isinstance(rendered, QQuickItem)
     displayed = str(rendered.property("text"))
     assert ("acceptance-film" in displayed or rows[0]["material_name"] in displayed) and "nm" in displayed, displayed
-    assert source.session.snapshot().design == before.design
-    assert source.session.snapshot().design_revision == before.design_revision
+    applied = source.session.snapshot()
+    assert applied.design['front_layers'] == payload['result']['candidate_design']['front_layers']
+    assert applied.design_revision == before.design_revision + 1
+    assert controller._candidate_applied and source.canUndoOptimizedDesign
     spec_path = service.root / "artifacts/runtime/scheduler/jobs" / job_id / "spec.json"
     frozen = json.loads(spec_path.read_text(encoding="utf-8"))["parameters"]["payload"]["request"]["request"]
     assert frozen["environment"]["front_layers"] == [] and frozen["seed_designs"] == []
@@ -475,13 +477,9 @@ def test_qml_n0_grows_real_single_layer_and_freezes_current_targets_and_material
     assert controller._synthesis_payload == retained
     assert "review-event" not in controller.error
     confirmation = QSignalSpy(controller.applyConfirmationRequested)
-    scene.click(scene.item("filmOptimizationApplyButton"))
-    assert confirmation.count() == 1
-    assert source.session.snapshot().design == before.design
-    dialog = scene.window.findChild(QObject, "filmOptimizationApplyConfirmation")
-    assert dialog is not None and "未达标" not in str(dialog.property("title"))
-    scene.accept_dialog(dialog, 16384)
-    _wait(lambda: len(source.currentDesign()["front_layers"]) == 1)
+    assert not scene.item("filmOptimizationApplyButton").isEnabled()
+    assert confirmation.count() == 0 and not controller.canApply
+    assert source.session.snapshot().design_revision == applied.design_revision
     assert source.currentDesign()["front_layers"] == payload["result"]["candidate_design"]["front_layers"]
     source_scene = _Scene(source, "FilmDesignQuick.qml")
     gui[3].append(source_scene)
@@ -578,6 +576,8 @@ def test_real_synthesis_candidate_cannot_overwrite_a_changed_source(gui, change)
     _wait(lambda: bool(controller.queueJobId))
     _wait(lambda: not controller.busy, seconds=30.)
     assert controller._synthesis_payload["best_candidate_audit"]["targets_met"] is True
+    completed_layers = deepcopy(source.currentDesign()['front_layers'])
+    assert len(completed_layers) == 1 and controller._candidate_applied
     if change == "revision":
         assert source.setDesignValue("note", "A real edit after the frozen synthesis")
     elif change == "edit_epoch":
@@ -588,7 +588,7 @@ def test_real_synthesis_candidate_cannot_overwrite_a_changed_source(gui, change)
     assert not controller.confirmApplyCandidate()
     assert source.session.snapshot().design == current.design
     assert source.session.snapshot().design_revision == current.design_revision
-    assert source.currentDesign()["front_layers"] == []
+    assert source.currentDesign()["front_layers"] == completed_layers
 
 
 def _generator(gui):
@@ -727,9 +727,12 @@ def project_gui(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("drift", [False, True])
-def test_project_qml_synthesis_new_material_closure_survives_save_or_drift_undo(project_gui, drift):
+def test_project_qml_synthesis_new_material_closure_survives_save_or_drift_undo(project_gui, drift, monkeypatch):
     harness, _host, workspace, store, library, saved = project_gui
     service, source, controller, scene = _optimizer(harness)
+    # This test isolates the explicit apply/material-closure transaction. The
+    # default automatic completion route has independent end-to-end coverage.
+    monkeypatch.setattr(controller, '_apply_completed_result', lambda *_args: False)
     original = source.session.snapshot()
     assert original.design["front_layers"] == []
     initial_materials = {row["id"] for row in store.resolve_document(saved.document_id)["materials"]}
@@ -866,7 +869,7 @@ def test_physical_generator_coupled_cavity_fields_build_actual_independent_secti
     assert source.session.snapshot().design == original.design
 
 
-def test_project_synthesis_apply_retains_inactive_source_absent_from_active_task_snapshot(project_gui):
+def test_project_synthesis_apply_retains_inactive_source_absent_from_active_task_snapshot(project_gui, monkeypatch):
     harness, _host, _workspace, store, _library, saved = project_gui
     _service, source, _controllers, _scenes = harness
     assert source.setMediumValue("exit_medium", "kind", "material")
@@ -874,6 +877,9 @@ def test_project_synthesis_apply_retains_inactive_source_absent_from_active_task
     assert source.setMediumValue("exit_medium", "optical_set_id", "inactive-set")
     assert source.saveCurrent(), source.session.snapshot().error
     service, source, controller, scene = _optimizer(harness)
+    # Exercise explicit apply of the inactive editable closure, not scheduling
+    # of automatic completion, which is covered by the default UI workflow.
+    monkeypatch.setattr(controller, '_apply_completed_result', lambda *_args: False)
     original = source.session.snapshot()
     scene.click(scene.item("filmOptimizationStartButton"))
     _wait(lambda: bool(controller.queueJobId))

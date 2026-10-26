@@ -32,6 +32,23 @@ class _ProjectBridge(QObject):
         self._busy = False
         self._error = ""
         self.calls: list[tuple[Any, ...]] = []
+        self._plan: dict = {}
+
+    @Property(dict, notify=projectsChanged)
+    def projectDeletionPlan(self):
+        return dict(self._plan)
+
+    @Slot(str, str, result=bool)
+    def prepareRecentProjectDeletion(self, descriptor, identity):
+        self._plan = {"descriptorFile": descriptor, "projectId": identity,
+                      "token": "plan", "directoryPath": str(Path(descriptor).parent)}
+        self.projectsChanged.emit()
+        return True
+
+    @Slot(str, str, str, result=bool)
+    def trashRecentProjectWithPlan(self, descriptor, identity, token):
+        assert token == "plan"
+        return self.trashRecentProject(descriptor, identity)
 
     @Property(list, notify=projectsChanged)
     def projectEntries(self):
@@ -198,7 +215,7 @@ class TestLauncherRecentProjectsQml:
         self._click("launcherRemoveRecentProject_1")
         assert self.project_bridge.calls[-1] == ("open", live)
         assert self._item("launcherConfirmRemoveProject").property("text") == "仅移出最近列表"
-        assert not self._item("launcherDeleteRecentProject_1").property("enabled")
+        assert not self._item("launcherDeleteProjectFilesChoice").property("enabled")
         self._click("launcherCancelRemoveProject")
         assert len(self.project_bridge._entries) == 2
         self._click("launcherRemoveRecentProject_1")
@@ -249,13 +266,12 @@ class TestLauncherRecentProjectsQml:
             copy = self._item("launcherCopyRecentProject_0")
             export = self._item("launcherExportRecentProject_0")
             remove = self._item("launcherRemoveRecentProject_0")
-            delete = self._item("launcherDeleteRecentProject_0")
             assert title.property("maximumLineCount") == 1
             assert subtitle.property("maximumLineCount") == 1
             assert title.mapToScene(QPointF()).x() < copy.mapToScene(QPointF()).x()
-            assert copy.mapToScene(QPointF()).y() == export.mapToScene(QPointF()).y() == remove.mapToScene(QPointF()).y() == delete.mapToScene(QPointF()).y()
+            assert copy.mapToScene(QPointF()).y() == export.mapToScene(QPointF()).y() == remove.mapToScene(QPointF()).y()
             assert subtitle.mapToScene(QPointF()).y() >= copy.mapToScene(QPointF(0, copy.height())).y()
-            assert delete.mapToItem(row, QPointF(delete.width(), 0)).x() <= row.width()
+            assert remove.mapToItem(row, QPointF(remove.width(), 0)).x() <= row.width()
             assert row.height() < 100 * scale
             assert title.width() >= 35 * scale
             if width == 640 and scale == 1.5:
@@ -277,7 +293,7 @@ class TestLauncherRecentProjectsQml:
         scale_label = "2x" if self.window.devicePixelRatio() >= 1.5 else "1x"
         self.window.grabWindow().save("/tmp/deposition-sim-recent-cards-layout-" + scale_label + ".png")
 
-    def test_copy_export_and_explicit_trash_are_real_separate_actions(self):
+    def test_copy_export_and_single_remove_with_optional_whole_folder_trash(self):
         descriptor = str(Path(tempfile.gettempdir()) / "Study" / "project.coatproj")
         self.project_bridge.set_entries([{
             "descriptorFile": descriptor, "name": "Study", "summary": "Goal",
@@ -295,19 +311,27 @@ class TestLauncherRecentProjectsQml:
         self._click("launcherConfirmProjectFileAction")
         assert self.project_bridge.calls[-1] == ("export", descriptor, str(Path(tempfile.gettempdir()) / "export.cproject"))
         before = list(self.project_bridge.calls)
-        self._click("launcherDeleteRecentProject_0")
+        self._click("launcherRemoveRecentProject_0")
+        assert not self._item("launcherDeleteProjectFilesChoice").property("checked")
+        assert self.window.findChild(QQuickItem, "launcherDeleteRecentProject_0") is None
+        assert self._item("launcherDeleteProjectFilesChoice").property("text") == "同时将整个工程文件夹移入回收站"
+        assert self.window.findChild(QQuickItem, "launcherDeleteProjectScopeChoice") is None
+        assert self._item("launcherCancelRemoveProject").hasActiveFocus()
+        self._click("launcherDeleteProjectFilesChoice")
+        assert "包含文件夹内全部内容" in self._item("launcherRemoveProjectScope").property("text")
         assert "Study" in self._item("launcherRemoveProjectName").property("text")
         assert descriptor in self._item("launcherRemoveProjectDescriptor").property("text")
         assert str(Path(descriptor).parent) in self._item("launcherRemoveProjectScope").property("text")
-        assert self._item("launcherConfirmRemoveProject").property("text") == "删除并移入回收站"
-        assert self._item("launcherCancelRemoveProject").hasActiveFocus()
+        assert self._item("launcherConfirmRemoveProject").property("text") == "移入回收站并移除"
         self._click("launcherCancelRemoveProject")
         assert self.project_bridge.calls == before and self.project_bridge._entries
-        self._click("launcherDeleteRecentProject_0")
+        self._click("launcherRemoveRecentProject_0")
+        self._click("launcherDeleteProjectFilesChoice")
         QTest.keyClick(self.window, Qt.Key.Key_Escape)
         self.app.processEvents()
         assert self.project_bridge.calls == before and self.project_bridge._entries
-        self._click("launcherDeleteRecentProject_0")
+        self._click("launcherRemoveRecentProject_0")
+        self._click("launcherDeleteProjectFilesChoice")
         self._click("launcherConfirmRemoveProject")
         assert self.project_bridge.calls[-1] == ("trash", descriptor, "a" * 32)
         assert self.project_bridge._entries
@@ -609,7 +633,7 @@ class TestLauncherRecentProjectsQml:
             assert self.project_bridge.calls[-1] == ("open", "/tmp/Study 1/project.coatproj")
             assert not tip.property("visible")
 
-    def test_narrow_recent_list_has_no_details_entry_and_keeps_four_actions(self):
+    def test_narrow_recent_list_has_no_details_entry_and_keeps_three_actions(self):
         descriptor = "/tmp/Narrow study/project.coatproj"
         self.project_bridge.set_entries([{
             "descriptorFile": descriptor, "name": "Narrow study",
@@ -628,7 +652,7 @@ class TestLauncherRecentProjectsQml:
         assert self.window.findChild(QObject, "launcherProjectInformationSection") is None
         assert self._item("launcherRecentProjectName_0").property("text") == "Narrow study"
         assert self._item("launcherRecentProjectSummary_0").property("text") == "Summary remains visible"
-        for action in ("Copy", "Export", "Remove", "Delete"):
+        for action in ("Copy", "Export", "Remove"):
             self._hover_row()
             button = self._item(f"launcher{action}RecentProject_0")
             assert button.isVisible() and button.isEnabled()

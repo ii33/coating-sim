@@ -9,7 +9,7 @@ from typing import Callable
 from PySide6.QtCore import QObject, Property, QTimer, QUrl, Signal, Slot
 
 from .local_files import local_file_path
-from .launcher_project_files import copy_saved_project, export_saved_project, trash_project
+from .launcher_project_files import copy_saved_project, export_saved_project, trash_project, project_deletion_plan
 from .project_runtime_client import create_project_runtime, open_project_runtime
 from .recent_projects import RecentProjects
 from .recent_project_tasks import RecentProjectTasks
@@ -40,6 +40,7 @@ class ProjectLauncherAdapter(QObject):
         self._pending: Future | None = None
         self._pending_operation = "open"
         self._file_message = ""
+        self._deletion_plan: dict = {}
         self._poll = QTimer(self)
         self._poll.setInterval(20)
         self._poll.timeout.connect(self._complete_pending)
@@ -68,6 +69,10 @@ class ProjectLauncherAdapter(QObject):
     @Property(str, notify=projectsChanged)
     def projectFileMessage(self) -> str:
         return self._file_message
+
+    @Property(dict, notify=projectsChanged)
+    def projectDeletionPlan(self) -> dict:
+        return dict(self._deletion_plan)
 
     def _set_error(self, message: str) -> None:
         self._error = str(message)
@@ -134,6 +139,8 @@ class ProjectLauncherAdapter(QObject):
             if self._pending_operation == "open":
                 self._request_history("refresh", force=True)
                 self._selected_file = str(result.project_file)
+            elif self._pending_operation == "plan":
+                self._deletion_plan = result
             elif self._pending_operation == "trash":
                 self._request_history("remove", result["descriptorFile"])
                 if self._selected_file == result["descriptorFile"]:
@@ -181,7 +188,8 @@ class ProjectLauncherAdapter(QObject):
         if changed:
             self.projectsChanged.emit()
 
-    def _start_file_action(self, operation: str, descriptor: str, project_id: str, destination: str = "") -> bool:
+    def _start_file_action(self, operation: str, descriptor: str, project_id: str, destination: str = "",
+                           plan_token: str = "") -> bool:
         if self._stopped or self._busy:
             self._set_error("正在处理工程请求，请稍候。" if self._busy else "启动器已关闭。")
             return False
@@ -189,21 +197,27 @@ class ProjectLauncherAdapter(QObject):
         if row is None or not project_id or row.get("projectId") != project_id:
             self._set_error("工程信息当前不可用，请检查工程文件并刷新后重试。")
             return False
-        if operation != "trash":
+        if operation not in {"trash", "plan"}:
             if destination.startswith("file:"):
                 destination = local_file_path(QUrl(destination))
             if not destination.strip():
                 self._set_error("请选择新的目标文件或目录。")
                 return False
+        if operation == "plan":
+            self._deletion_plan = {**self._deletion_plan, "token": ""}
         self._busy, self._error, self._file_message = True, "", ""
         future: Future = Future()
         self._pending, self._pending_operation = future, operation
-        actions: dict[str, Callable] = {"copy": copy_saved_project, "export": export_saved_project, "trash": trash_project}
+        actions: dict[str, Callable] = {"copy": copy_saved_project, "export": export_saved_project,
+                                      "trash": trash_project, "plan": project_deletion_plan}
         function = actions[operation]
-        arguments = (descriptor, row["projectId"]) + ((destination,) if operation != "trash" else ())
+        arguments = (descriptor, row["projectId"]) + ((destination,) if operation not in {"trash", "plan"} else ())
+        options: dict[str, object] = {}
+        if plan_token:
+            options["expected_plan"] = plan_token
         def action() -> None:
             try:
-                future.set_result(function(*arguments))
+                future.set_result(function(*arguments, **options))
             except Exception as exc:
                 future.set_exception(exc)
         Thread(target=action, name="launcher-project-file-action", daemon=True).start()
@@ -222,6 +236,19 @@ class ProjectLauncherAdapter(QObject):
     @Slot(str, str, result=bool)
     def trashRecentProject(self, descriptorFile: str, projectId: str) -> bool:
         return self._start_file_action("trash", descriptorFile, projectId)
+
+    @Slot(str, str, result=bool)
+    def prepareRecentProjectDeletion(self, descriptorFile: str, projectId: str) -> bool:
+        return self._start_file_action("plan", descriptorFile, projectId)
+
+    @Slot(str, str, str, result=bool)
+    def trashRecentProjectWithPlan(self, descriptorFile: str, projectId: str, token: str) -> bool:
+        plan = self._deletion_plan
+        if (not token or plan.get("token") != token or plan.get("descriptorFile") != descriptorFile
+                or plan.get("projectId") != projectId):
+            self._set_error("请先查看本工程的实际删除范围。")
+            return False
+        return self._start_file_action("trash", descriptorFile, projectId, plan_token=token)
 
     @Slot(str)
     def removeRecentProject(self, descriptorFile: str) -> None:

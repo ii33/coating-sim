@@ -27,8 +27,12 @@ Item {
     property var focusReturnItem: null
     property var actionEntry: null
     property string fileAction: ""
-    property bool deleteProjectRequested: false
     property bool removalSubmitted: false
+    readonly property var deletionPlan: projectBridge && typeof projectBridge.projectDeletionPlan !== "undefined"
+        ? projectBridge.projectDeletionPlan : ({})
+    readonly property bool deletionPlanReady: !!actionEntry && !!deletionPlan.token
+        && deletionPlan.descriptorFile === String(actionEntry.descriptorFile || "")
+        && deletionPlan.projectId === String(actionEntry.projectId || "")
     property bool recentDetailsDismissed: false
 
     readonly property real contentSpacing: Math.min(
@@ -126,20 +130,22 @@ Item {
                 + (entry.available === true ? "" : "\n工程文件当前不可用")
     }
 
-    function descriptorDirectory(entry) {
-        const path = String(entry && entry.descriptorFile || "")
-        return path.substring(0, Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")))
-    }
-
-    function requestRemove(entry, button, deleteProject) {
+    function requestRemove(entry, button) {
         if (!projectBridge || !entry || projectBridge.projectBusy || removeDialog.visible)
             return
         recentDetailsDismissed = true
         actionEntry = Object.assign({}, entry)
         focusReturnItem = button
-        deleteProjectRequested = deleteProject === true
+        deleteFilesChoice.checked = false
         removalSubmitted = false
         removeDialog.open()
+    }
+
+    function prepareDeletion() {
+        if (!projectBridge || !actionEntry || projectBridge.projectBusy)
+            return
+        projectBridge.prepareRecentProjectDeletion(String(actionEntry.descriptorFile || ""),
+            String(actionEntry.projectId || ""))
     }
 
     function confirmRemove() {
@@ -148,8 +154,9 @@ Item {
             return
         const descriptor = String(actionEntry.descriptorFile || "")
         removalSubmitted = true
-        if (deleteProjectRequested) {
-            if (!projectBridge.trashRecentProject(descriptor, String(actionEntry.projectId || ""))) {
+        if (deleteFilesChoice.checked) {
+            if (!deletionPlanReady || !projectBridge.trashRecentProjectWithPlan(descriptor,
+                    String(actionEntry.projectId || ""), String(deletionPlan.token))) {
                 removalSubmitted = false
                 return
             }
@@ -367,7 +374,7 @@ Item {
     ThemeControls.ThemeDialogBase {
         id: removeDialog
         objectName: "launcherRemoveProjectDialog"
-        title: root.deleteProjectRequested ? "删除工程" : "移出最近列表"
+        title: "移除工程"
         parent: Overlay.overlay
         modal: true
         width: Math.min(540, parent.width - 24)
@@ -388,19 +395,40 @@ Item {
                 ThemeControls.ThemeLabel {
                     textFormat: Text.PlainText
                     objectName: "launcherRemoveProjectName"
-                    text: (root.deleteProjectRequested ? "是否删除工程“" : "是否从最近列表移除“")
-                        + String(root.actionEntry && root.actionEntry.name || "未命名工程") + "”？"
+                    text: "移除工程“" + String(root.actionEntry && root.actionEntry.name || "未命名工程") + "”？"
                     wrapMode: Text.Wrap
+                    Layout.fillWidth: true
+                }
+                CheckBox {
+                    id: deleteFilesChoice
+                    objectName: "launcherDeleteProjectFilesChoice"
+                    text: "同时将整个工程文件夹移入回收站"
+                    enabled: !!root.actionEntry && root.actionEntry.available === true
+                        && root.actionEntry.informationAvailable === true && !!root.actionEntry.projectId
+                        && !root.projectBridge.projectBusy
+                    font.family: root.themeTokens.fontFamily
+                    font.pointSize: root.themeTokens.fontSizeBody
+                    onToggled: if (checked) root.prepareDeletion()
                     Layout.fillWidth: true
                 }
                 ThemeControls.ThemeLabel {
                     textFormat: Text.PlainText
                     objectName: "launcherRemoveProjectScope"
-                    text: root.deleteProjectRequested
-                        ? "将移入回收站的完整目录：\n" + root.descriptorDirectory(root.actionEntry)
-                          + "\n包括此工程文件、工程资源、导入导出文件和运行结果。仅明确归属的标准工程目录可回收；含其他工程、链接或不明内容时会保留原文件和记录。回收失败不会永久删除。"
+                    text: deleteFilesChoice.checked
+                        ? root.deletionPlanReady ? "工程文件夹：" + root.deletionPlan.directoryPath
+                            + "\n包含文件夹内全部内容。"
+                          : root.projectBridge.projectBusy ? "正在确认工程文件夹路径…" : "请查看下方错误说明。"
                         : "仅移出最近列表，保留所有工程文件。"
-                    wrapMode: Text.Wrap
+                    wrapMode: Text.WrapAnywhere
+                    Layout.fillWidth: true
+                }
+                ThemeControls.ThemeLabel {
+                    objectName: "launcherRemoveProjectError"
+                    visible: deleteFilesChoice.checked && !!root.projectBridge && root.projectBridge.projectError.length > 0
+                    text: visible ? root.projectBridge.projectError : ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.WrapAnywhere
+                    color: root.themeTokens.colorError
                     Layout.fillWidth: true
                 }
                 ThemeControls.ThemeLabel {
@@ -417,9 +445,10 @@ Item {
             ThemeControls.ThemeButton {
                 id: removeConfirmButton
                 objectName: "launcherConfirmRemoveProject"
-                text: root.deleteProjectRequested ? "删除并移入回收站" : "仅移出最近列表"
-                primary: !root.deleteProjectRequested
+                text: deleteFilesChoice.checked ? "移入回收站并移除" : "仅移出最近列表"
+                primary: !deleteFilesChoice.checked
                 enabled: !!root.projectBridge && !root.projectBridge.projectBusy
+                    && (!deleteFilesChoice.checked || root.deletionPlanReady)
                 DialogButtonBox.buttonRole: DialogButtonBox.ActionRole
                 onClicked: root.confirmRemove()
             }
@@ -847,25 +876,6 @@ Item {
                                             contentItem.implicitHeight + topPadding + bottomPadding)
                                         enabled: !!root.projectBridge && !root.projectBridge.projectBusy
                                         onClicked: root.requestRemove(projectRow.modelData, this)
-                                    }
-                                    RecentActionButton {
-                                        objectName: "launcherDeleteRecentProject_" + projectRow.index
-                                        text: "删除"
-                                        Accessible.name: "删除工程并移入回收站"
-                                        ToolTip.visible: hovered
-                                        ToolTip.text: "删除工程文件（移入回收站）"
-                                        font.pointSize: root.themeTokens.fontSizeSmall
-                                        leftPadding: Math.max(1, root.themeTokens.spaceXs / 2)
-                                        rightPadding: leftPadding
-                                        topPadding: root.themeTokens.spaceXs
-                                        bottomPadding: topPadding
-                                        implicitHeight: Math.max(root.themeTokens.controlHeightSm,
-                                            contentItem.implicitHeight + topPadding + bottomPadding)
-                                        enabled: !!root.projectBridge && !root.projectBridge.projectBusy
-                                            && projectRow.modelData.available === true
-                                            && projectRow.modelData.informationAvailable === true
-                                            && !!projectRow.modelData.projectId
-                                        onClicked: root.requestRemove(projectRow.modelData, this, true)
                                     }
                                 }
                                 RowLayout {

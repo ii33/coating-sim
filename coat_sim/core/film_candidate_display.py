@@ -311,6 +311,32 @@ class CandidateDisplayObserver:
     def _rank(summary):
         return (not summary["nominal_pass"], -summary["quality"], summary["physical_hash"])
 
+    def _statistics(self, retained, selection):
+        summary, _rows, coverage = retained
+        objective_index = selection['objective_index']
+        objective = self.objectives[objective_index]
+        if selection['angle_deg'] not in objective.angles_deg or selection['metric'] != objective.metric:
+            return None
+        raw = next(row for row in coverage if row.objective_index == objective_index
+                   and row.angle_deg == selection['angle_deg'])
+        from .film_objective_criteria import wavelength_measure
+        masses = wavelength_measure(raw.wavelength_nm, objective.wavelength_min_nm, objective.wavelength_max_nm)
+        peak_index = max(range(len(raw.actual_values)), key=lambda i: raw.actual_values[i])
+        return dict(physical_hash=summary['physical_hash'],
+            mean=math.fsum(float(w) * float(v) for w, v in zip(masses, raw.actual_values, strict=True)),
+            maximum=float(raw.actual_values[peak_index]),
+            maximum_wavelength_nm=float(raw.wavelength_nm[peak_index]),
+            original_point_count=len(raw.actual_values), metric=objective.metric)
+
+    def _metadata_slot(self, retained, selection):
+        if retained is None:
+            return None
+        result = dict(retained[0], availability='waiting', spectrum=None)
+        statistics = self._statistics(retained, selection)
+        if statistics is not None:
+            result['statistics'] = statistics
+        return result
+
     def _slot(self, retained, selection, limit, *, spectrum_provider=None):
         if retained is None:
             return None
@@ -324,6 +350,7 @@ class CandidateDisplayObserver:
         count = objective.wavelength_samples
         raw = next(row for row in coverage if row.objective_index == objective_index
                    and row.angle_deg == selection["angle_deg"])
+        result['statistics'] = self._statistics(retained, selection)
         indices = (list(range(count)) if count <= limit else
                    [i * (count - 1) // (limit - 1) for i in range(limit)])
         result.update(availability="available", spectrum={
@@ -360,13 +387,11 @@ class CandidateDisplayObserver:
             # The one terminal bypass samples only the already retained real
             # incumbent. Last-trial metadata remains available without work.
             if terminal or not enabled:
-                packet["current"] = (None if self._current is None else
-                    dict(self._current[0], availability="waiting", spectrum=None))
+                packet["current"] = self._metadata_slot(self._current, selection)
             else:
                 packet["current"] = self._slot(
                     self._current, selection, limit, spectrum_provider=spectrum_provider)
-            packet["best"] = (None if self._best is None else
-                dict(self._best[0], availability="waiting", spectrum=None)) if not enabled else self._slot(self._best, selection, limit)
+            packet["best"] = self._slot(self._best, selection, limit) if enabled else self._metadata_slot(self._best, selection)
             has_spectra = any(packet[role] is not None and packet[role]["spectrum"] is not None
                               for role in ("current", "best"))
             self.spectral_serializations += int(has_spectra)
@@ -438,8 +463,9 @@ def validate_candidate_display_packet(value):
 
         def summary(row, *, slot=False):
             extra = {"availability", "spectrum"} if slot else set()
+            optional = {"statistics"} if slot else set()
             if (not isinstance(row, dict) or not _SUMMARY_REQUIRED <= set(row)
-                    or set(row) - _SUMMARY_REQUIRED - _SUMMARY_OPTIONAL - extra
+                    or set(row) - _SUMMARY_REQUIRED - _SUMMARY_OPTIONAL - extra - optional
                     or (slot and not extra <= set(row))):
                 return False
             identity = row["physical_hash"]
@@ -476,6 +502,15 @@ def validate_candidate_display_packet(value):
                 return False
             if not slot:
                 return True
+            stats = row.get("statistics")
+            if stats is not None:
+                if (not isinstance(stats, dict) or set(stats) != {"physical_hash", "mean", "maximum",
+                        "maximum_wavelength_nm", "original_point_count", "metric"}
+                        or stats["physical_hash"] != identity or stats["metric"] != chosen["metric"]
+                        or not all(_finite(stats[k]) for k in ("mean", "maximum", "maximum_wavelength_nm"))
+                        or stats["mean"] < 0 or stats["maximum"] < stats["mean"] - 1e-12
+                        or type(stats["original_point_count"]) is not int or stats["original_point_count"] < 1):
+                    return False
             spectrum = row["spectrum"]
             if row["availability"] == "waiting":
                 return spectrum is None

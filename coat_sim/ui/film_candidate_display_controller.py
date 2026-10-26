@@ -23,6 +23,7 @@ from coat_sim.scheduler.film_display import prepare_display_configuration, valid
 
 class FilmCandidateDisplayController(QObject):
     changed = Signal()
+    axisChanged = Signal()
     _wake = Signal()
     _controlStatus = Signal(str, str)
 
@@ -52,6 +53,100 @@ class FilmCandidateDisplayController(QObject):
         self._closed = False
         self._source_current = lambda: True
         self._error = ""
+        self._axis_auto = True
+        self._axis_minimum, self._axis_maximum = 0., 1.
+        self._axis_manual_minimum, self._axis_manual_maximum = 0., 1.
+        self._axis_shrink_count = 0
+        self._axis_initialized = False
+        self._axis_error = ""
+
+    @Property(bool, notify=axisChanged)
+    def yAxisAuto(self):
+        return self._axis_auto
+
+    @Property(float, notify=axisChanged)
+    def yAxisMinimum(self):
+        return self._axis_minimum
+
+    @Property(float, notify=axisChanged)
+    def yAxisMaximum(self):
+        return self._axis_maximum
+
+    @Property(str, notify=axisChanged)
+    def yAxisManualMinimumPercent(self):
+        return f"{100 * self._axis_manual_minimum:.6g}"
+
+    @Property(str, notify=axisChanged)
+    def yAxisManualMaximumPercent(self):
+        return f"{100 * self._axis_manual_maximum:.6g}"
+
+    @Property(str, notify=axisChanged)
+    def axisError(self):
+        return self._axis_error
+
+    @Slot(bool)
+    def setYAxisAuto(self, automatic):
+        self._axis_auto = bool(automatic)
+        self._axis_shrink_count = 0
+        self._axis_initialized = False
+        if not self._axis_auto:
+            self._axis_minimum, self._axis_maximum = self._axis_manual_minimum, self._axis_manual_maximum
+        self.axisChanged.emit()
+
+    @Slot(str, str, result=bool)
+    def setYAxisBoundsPercent(self, minimum, maximum):
+        try:
+            lo, hi = float(minimum) / 100., float(maximum) / 100.
+            if not math.isfinite(lo + hi) or lo < 0 or hi <= lo:
+                raise ValueError('纵轴范围须为有限百分比，且 0 ≤ 下限 < 上限。')
+        except (TypeError, ValueError, OverflowError) as exc:
+            self._axis_error = str(exc)
+            self.axisChanged.emit()
+            return False
+        self._axis_manual_minimum, self._axis_manual_maximum = lo, hi
+        self._axis_error = ""
+        if not self._axis_auto:
+            self._axis_minimum, self._axis_maximum = lo, hi
+        self.axisChanged.emit()
+        return True
+
+    @Slot('QVariantMap')
+    def updatePlotYAxis(self, data):
+        if not self._axis_auto or not isinstance(data, dict):
+            return
+        values = []
+        if data.get('live'):
+            for role in ('current', 'best'):
+                if isinstance(data.get(role), dict):
+                    values.extend(data[role].get('actual', ()))
+                    if isinstance(data[role].get('maximum'), (int, float)):
+                        values.append(data[role]['maximum'])
+        else:
+            for role in ('baseline', 'candidate'):
+                values.extend(data.get(role) or ())
+        values = [float(v) for v in values if isinstance(v, (int, float)) and math.isfinite(v)]
+        if not values:
+            return  # Preserve the preceding range while a new selection loads.
+        values.extend(float(data[k]) for k in ('target_value', 'lower_bound', 'upper_bound')
+                      if isinstance(data.get(k), (int, float)) and math.isfinite(data[k]))
+        peak = max(max(values), 1e-6)
+        exponent = 10. ** math.floor(math.log10(peak))
+        ceiling = next((step * exponent for step in (1., 2., 2.5, 5., 10.)
+                        if step * exponent >= 1.08 * peak), 10. * exponent)
+        if peak <= 1. + 64 * math.ulp(1.) and ceiling > 1.:
+            ceiling = 1.
+        if self._axis_initialized and ceiling < self._axis_maximum and peak < .45 * self._axis_maximum:
+            self._axis_shrink_count += 1
+            if self._axis_shrink_count < 2:
+                return
+        elif self._axis_initialized and ceiling < self._axis_maximum:
+            self._axis_shrink_count = 0
+            return
+        self._axis_initialized = True
+        self._axis_shrink_count = 0
+        if (self._axis_minimum, self._axis_maximum) != (0., ceiling):
+            self._axis_minimum, self._axis_maximum = 0., ceiling
+            self.axisChanged.emit()
 
     @Property(bool, notify=changed)
     def enabled(self):
@@ -102,6 +197,18 @@ class FilmCandidateDisplayController(QObject):
     def bestSummary(self):
         return self._summary(self._packet.get("best"), self._packet.get("scope", "training"))
 
+    @Property(str, notify=changed)
+    def bestDetailSummary(self):
+        row = self._packet.get('best')
+        if not row:
+            return '当前最佳：等待完整冠军。'
+        stats = row.get('statistics')
+        optical = ('选中波段均值/Rmax：等待匹配的完整原谱' if not stats else
+            f"选中波段均值 {100 * stats['mean']:.5g}% · {stats['metric']}max {100 * stats['maximum']:.5g}% @ {stats['maximum_wavelength_nm']:.6g} nm")
+        return (f"当前最佳 · {row['layer_count']} 层 · 总厚 {row['total_thickness_nm']:.6g} nm · {optical}\n"
+                f"全目标最大归一违规 {row['max_normalized_error']:.5g} · 优化误差 RMS {row['weighted_rms_error']:.5g}\n"
+                '均值仅为统计；逐点是否达标取决于原逐点约束。')
+
     @Property(bool, notify=changed)
     def rankingDiffers(self):
         rows, best = self._packet.get("top10", ()), self._packet.get("best")
@@ -127,6 +234,8 @@ class FilmCandidateDisplayController(QObject):
         for role, row in (("current", current), ("best", best)):
             if row and row.get("availability") == "available" and row.get("spectrum"):
                 series[role] = deepcopy(row["spectrum"])
+                if row.get('statistics'):
+                    series[role]['maximum'] = row['statistics']['maximum']
         if not series:
             return {}
         result = dict(series, live=True, metric=self.metric)
