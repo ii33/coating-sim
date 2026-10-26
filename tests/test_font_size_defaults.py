@@ -51,8 +51,12 @@ def test_missing_settings_use_nine_points_and_keep_saved_custom_value(tmp_path, 
 
 def test_theme_uses_nine_point_fallback_and_preserves_custom_size(monkeypatch):
     calls: list[dict[str, object]] = []
+    thickness_calls: list[int] = []
 
     class Recorder:
+        def set_film_thickness_decimals(self, value: int) -> None:
+            thickness_calls.append(value)
+
         def configure(self, **kwargs):
             calls.append(kwargs)
 
@@ -66,9 +70,15 @@ def test_theme_uses_nine_point_fallback_and_preserves_custom_size(monkeypatch):
     theme_service.configure_theme_from_settings({})
     assert calls[-1]["font_scale"] == pytest.approx(9 / 12)
     assert calls[-1]["density_scale"] == 1
+    assert thickness_calls == [3]
 
     theme_service.configure_theme_from_settings({"font_point_size": 17})
     assert calls[-1]["font_scale"] == pytest.approx(17 / 12)
+    assert thickness_calls == [3, 3]
+
+    theme_service.configure_theme_from_settings({"font_point_size": 17, "film_thickness_decimals": 6})
+    assert calls[-1]["font_scale"] == pytest.approx(17 / 12)
+    assert thickness_calls == [3, 3, 6]
 
 
 def test_unconfigured_theme_service_starts_at_nine_points(

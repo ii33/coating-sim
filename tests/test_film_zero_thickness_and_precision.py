@@ -214,17 +214,58 @@ def test_feasible_zero_initial_layer_completes_once_without_changing_optics(tmp_
         np.testing.assert_allclose(after[metric], before[metric], rtol=0, atol=1e-12)
 
 
-def test_default_selected_unavailable_layer_can_be_deselected(tmp_path):
+@pytest.fixture
+def controller_with_unavailable_layer(tmp_path):
     QGuiApplication.instance() or QGuiApplication([])
     service, _library, design = fixture(tmp_path)
+    available = deepcopy(design["front_layers"][0])
+    available["id"] = "available-zero-layer"
+    available["thickness"]["value"] = 0.0
+    design["front_layers"].append(available)
     source = _snapshot(service, design)
     source.layers_by_side["front"][0]["physicalNmValue"] = None
     controller = FilmOptimizationQuickController(source)
     try:
-        row = _variable_rows(controller)[0]
-        assert row["enabled"] and not row["available"]
-        assert "不可用" in cast(str, controller.statusText)
-        controller.setVariableEnabled("front", row["layer_id"], False)
-        assert not _variable_rows(controller)[0]["enabled"]
+        yield controller, design["front_layers"][0]["id"], available["id"]
     finally:
         controller.shutdown(1000)
+
+
+def test_defaults_select_available_layers_and_keep_unavailable_layer_visible_unselected(
+        controller_with_unavailable_layer):
+    controller, unavailable_id, available_id = controller_with_unavailable_layer
+    unavailable, available = _variable_rows(controller)
+    assert [unavailable["layer_id"], available["layer_id"]] == [unavailable_id, available_id]
+    assert not unavailable["enabled"] and not unavailable["available"]
+    assert unavailable["physical_nm"] is None
+    assert available["enabled"] and available["available"]
+    assert available["physical_nm"] == 0.0
+    request = controller._build_request()
+    assert [variable.layer_id for variable in request.variables] == [available_id]
+    assert [layer["id"] for layer in request.design_snapshot["front_layers"]] == [
+        unavailable_id, available_id]
+
+
+def test_unavailable_layer_cannot_be_manually_enabled_as_a_variable(controller_with_unavailable_layer):
+    controller, unavailable_id, available_id = controller_with_unavailable_layer
+    controller.setVariableEnabled("front", unavailable_id, True)
+    unavailable = _variable_rows(controller)[0]
+    assert unavailable["layer_id"] == unavailable_id
+    assert not unavailable["enabled"] and not unavailable["available"]
+    assert [variable.layer_id for variable in controller._build_request().variables] == [available_id]
+
+
+def test_restored_selected_unavailable_layer_blocks_request_until_deselected(controller_with_unavailable_layer):
+    controller, unavailable_id, available_id = controller_with_unavailable_layer
+    saved = controller.exportOptimizationConfiguration()
+    next(row for row in saved["variables"] if row["layer_id"] == unavailable_id)["enabled"] = True
+    assert controller.loadOptimizationConfiguration(saved)
+    unavailable = _variable_rows(controller)[0]
+    assert unavailable["enabled"] and not unavailable["available"]
+    assert "不可用" in str(controller.property("statusText"))
+    assert "可取消选择该层" in str(controller.property("statusText"))
+    with pytest.raises(ValueError, match="不可用"):
+        controller._build_request()
+    controller.setVariableEnabled("front", unavailable_id, False)
+    assert not _variable_rows(controller)[0]["enabled"]
+    assert [variable.layer_id for variable in controller._build_request().variables] == [available_id]
