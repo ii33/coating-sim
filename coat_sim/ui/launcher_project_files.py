@@ -77,8 +77,9 @@ def _move_to_trash(path: str) -> tuple[bool, str]:
 
 def _error_detail(error: OSError) -> str:
     detail = error.strerror or str(error)
-    if getattr(error, "winerror", None) is not None:
-        detail = f"[WinError {error.winerror}] " + detail
+    winerror: object = getattr(error, "winerror", None)
+    if isinstance(winerror, int):
+        detail = f"[WinError {winerror}] " + detail
     if error.filename:
         detail += "\n文件：" + str(error.filename)
     return detail

@@ -425,13 +425,14 @@ def test_only_exact_clean_embedded_material_details_can_be_registered_as_library
 def test_project_recycle_history_does_not_expand_root_scope_or_saved_input_exports(owned, tmp_path):
     import zipfile
     from coat_sim.project_package import export_project
-    from coat_sim.ui.launcher_project_files import _safe_tree
+    from coat_sim.ui.launcher_project_files import project_deletion_plan
     store, _host, _binding, service = owned
     removed = store.create_document("source", source("Removed"))
     active = store.create_document("source", source("Active"))
     receipt = service.apply_resource_deletion(plan(service, removed)["plan_id"])
     assert Path(receipt["recovery_path"]).is_relative_to(store.root / "imports" / ".asset-recycle")
-    assert _safe_tree(store)  # Existing whole-project recycle ownership still accepts it.
+    preview = project_deletion_plan(str(store.project_file), store.manifest["id"])
+    assert Path(preview["directoryPath"]) == store.root
     package = tmp_path / "saved.cproject"
     result = export_project(store, package)
     assert result["document_count"] == 1
