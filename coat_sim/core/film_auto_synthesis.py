@@ -167,6 +167,7 @@ class FilmSynthesisTrace:
     weighted_rms_error: float | None = None
     layer_penalty: float | None = None
     candidate_rank: tuple = ()
+    physical_hash: str | None = None
 
 
 @dataclass(frozen=True)
@@ -174,7 +175,8 @@ class FilmSynthesisResult:
     """Nominal task success and independent solver tolerance are separate.
 
     solver_acceptable is None without a complete matching independent audit;
-    candidate quality never overrides cancelled, failed or budget-limited state.
+    Cancellation, deadlines and fatal failures keep their own states. Nominal
+    task success does not claim that the separate local stage converged.
     """
 
     state: str
@@ -767,10 +769,10 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
     last_stage_time = __import__("time").perf_counter()
     last_stage = "initialization"
     reason, state = "search_exhausted", "not_found"
-    search_state = None
-    pending_search = {}
-    restoring_pool = {}
-    tried_search = set()
+    search_state: dict[str, Any] | None = None
+    pending_search: dict[str, dict[str, Any]] = {}
+    restoring_pool: dict[str, dict[str, Any]] = {}
+    tried_search: set[str] = set()
     resume_blocked = set()
     resumed = request.search_checkpoint is not None
     new_audited_pass = False
@@ -887,6 +889,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         last_stage_time, last_stage = now, stage
         layers = len(design["front_layers"]) if design is not None else 0
         error = score["max_error"] if score is not None else None
+        if stage == 'structure_proposal' and design is not None:
+            from .film_synthesis_archive import physical_design_hash
+            kwargs['physical_hash'] = physical_design_hash(design)
         trace.append(FilmSynthesisTrace(stage, cycle, evaluations, layers, error, weighted_rms_error=None if score is None else score["weighted_rms_error"],
             layer_penalty=None, candidate_rank=() if design is None or score is None else rank({"design": design, "score": score}),
             message=message, **kwargs))
@@ -1501,6 +1506,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         nonlocal cycle, terminal_hybrid_cleanup, numeric_cleanup_admission, local_optimum, postprocess_complete
         nonlocal audited_best, resume_session_complete, resume_branch_audited
         assert request.structure_search_seed is not None  # Formal freeze resolved auto.
+        hybrid_state = search_state
+        assert hybrid_state is not None  # Initialized by the frozen hybrid request.
         hybrid_structure_seed = request.structure_search_seed + (0 if search_state is None else search_state['rotations'])
         frozen_snapshot = request.frozen_material_snapshot
         assert frozen_snapshot is not None
@@ -1817,6 +1824,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             source, source_audit = audited_best
             record = dict(enabled=request.enable_local_margin_refinement,
                           status='running' if request.enable_local_margin_refinement else 'disabled',
+                          local_converged=False,
                           initial_audit_signed_margin=worst_signed_margin(request, source_audit))
             details['local_margin'] = record
             before, started_local = evaluations, monotonic()
@@ -1877,7 +1885,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                             numerical = dict(numerical, termination='canonical_topology_changed_again', success=False)
                     record.update(status=numerical['termination'], numerical=numerical)
                     if physical_design_hash(refined['design']) != physical_design_hash(audited_best[0]['design']):
-                        audited = audit_archive(refined, allow_feedback_repair=False, prefer_phase=True, refresh=True)
+                        audit_archive(refined, allow_feedback_repair=False, prefer_phase=True, refresh=True)
                         if audited_best[0]['design'] != refined['design']:
                             record['audit_outcome'] = 'terminal_audit_rejected_source_retained'
                             record['status'] = 'audit_rejected'
@@ -2214,13 +2222,13 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         def cursor_stream(source, name):
             # Reconstruct deterministic generators at their saved source cursor;
             # skipped proposals perform no optics and carry no reused scores.
-            skip = search_state['cursors'][name]
+            skip = hybrid_state['cursors'][name]
             try:
                 for _ in range(skip):
                     check_training_admission()
                     next(source)
                 for proposal in source:
-                    search_state['cursors'][name] += 1
+                    hybrid_state['cursors'][name] += 1
                     identity = physical_design_hash(proposal.design)
                     if identity not in tried_search:
                         pending_search[identity] = dict(design=deepcopy(proposal.design),
@@ -2229,16 +2237,18 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             except StopIteration:
                 return
             finally:
-                source.close()
-        stream_names = list(search_state.get('active_sources', SOURCE_NAMES))
+                close = getattr(source, 'close', None)
+                if callable(close):
+                    close()
+        stream_names = list(hybrid_state.get('active_sources', SOURCE_NAMES))
         streams = [cursor_stream(source, name) for source, name in zip(streams, SOURCE_NAMES, strict=True)
                    if name in stream_names]
-        search_state['active_sources'] = stream_names.copy()
+        hybrid_state['active_sources'] = stream_names.copy()
         resume_pending = [StructuralProposal(deepcopy(p['design']), deepcopy(p['provenance']))
                           for p in list(pending_search.values())]
         restored_pending_hashes = {physical_design_hash(p.design) for p in resume_pending}
         hybrid_streams.extend(streams)
-        source_cursor = search_state['source_cursor']
+        source_cursor = hybrid_state['source_cursor']
         seen_priors.update(tried_search)
         repair_attempted = set()
 
@@ -2379,7 +2389,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 raise _Stopped("cycle_limit")
             cycle += 1
             rotation_start_evaluations = evaluations
-            search_state['rotations'] = rotation_base + cycle
+            hybrid_state['rotations'] = rotation_base + cycle
             capture_search_checkpoint(publish=True)
             emit("hybrid_rotation", "结构族广筛、共享多样档案、局部/全局、真实解析批针、压缩及原全约束复核", explorer["design"], explorer["score"])
             begin_slice("engineering_prior_screen", .25, 32)
@@ -2404,10 +2414,10 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                             except StopIteration:
                                 streams.pop(source_cursor)
                                 stream_names.pop(source_cursor)
-                                search_state['active_sources'] = stream_names.copy()
+                                hybrid_state['active_sources'] = stream_names.copy()
                                 continue
                             source_cursor += 1
-                            search_state['source_cursor'] = source_cursor
+                            hybrid_state['source_cursor'] = source_cursor
                         screen_draws += 1
                         signature = physical_design_hash(proposal.design)
                         if signature in seen_priors:
@@ -2458,8 +2468,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                                 break
                             raw = values[0]
                             archive(raw, audit_eligible=False, provenance=prior.provenance, operator="engineering_prior")
-                            emit("structure_proposal", json.dumps(dict(prior.provenance,
-                                physical_hash=physical_design_hash(raw['design'])), sort_keys=True), raw["design"], raw["score"])
+                            emit("structure_proposal", json.dumps(prior.provenance, sort_keys=True), raw["design"], raw["score"])
                             if (not explorer["design"]["front_layers"] or score_sse(raw) < score_sse(explorer)):
                                 explorer = raw
                             screened.append(raw)
@@ -2494,8 +2503,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                                 audit_archive(raw, allow_feedback_repair=False)
                             else:
                                 details["deferred_prior_audits"] = details.get("deferred_prior_audits", 0) + 1
-                        emit("structure_proposal", json.dumps(dict(proposal.provenance,
-                            physical_hash=physical_design_hash(raw['design'])), sort_keys=True), raw["design"], raw["score"])
+                        emit("structure_proposal", json.dumps(proposal.provenance, sort_keys=True), raw["design"], raw["score"])
                         if (not explorer["design"]["front_layers"] or score_sse(raw) < score_sse(explorer)):
                             explorer = raw
                         if targets_verified():
@@ -2862,6 +2870,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             audit_archive(best, allow_feedback_repair=False)
         improve_audited_margin()
         reduce_audited_thickness()
+        assert audited_best is not None  # Both stages require the audited incumbent.
         if historical_audited is not None and rank(historical_audited[1]) < rank(audited_best[1]):
             audited_best = historical_audited
             details['continuation_session']['returned_selection'] = 'historical_champion'
@@ -2946,17 +2955,18 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             if resumed:
                 # Restore actual archive designs through the same new budget;
                 # saved scores/audits cannot confer success in this invocation.
+                assert search_state is not None
                 saved_pool = deepcopy(search_state['pool'])
-                for entry in saved_pool:
-                    if physical_design_hash(entry['design']) == physical_design_hash(initial_design):
+                for saved_entry in saved_pool:
+                    if physical_design_hash(saved_entry['design']) == physical_design_hash(initial_design):
                         continue
-                    restored = evaluate(entry['design'], gpu_forward=forward is not None)
-                    restoring_pool.pop(physical_design_hash(entry['design']), None)
-                    archive(restored, audit_eligible=False, provenance=entry['provenance'],
-                        parent_hash=entry['parent_hash'], operator=entry['operator'])
+                    restored = evaluate(saved_entry['design'], gpu_forward=forward is not None)
+                    restoring_pool.pop(physical_design_hash(saved_entry['design']), None)
+                    archive(restored, audit_eligible=False, provenance=saved_entry['provenance'],
+                        parent_hash=saved_entry['parent_hash'], operator=saved_entry['operator'])
                     retained = design_archive.entries.get(physical_design_hash(restored['design']))
                     if retained is not None:
-                        retained.insertion_index = entry['insertion_index']
+                        retained.insertion_index = saved_entry['insertion_index']
                 design_archive._rotation = search_state.get('archive_rotation', 0)
                 design_archive.total_admitted = max(design_archive.total_admitted,
                     search_state.get('archive_total_admitted', 0))
@@ -3874,7 +3884,17 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                                 and not postprocess_complete and reason in {
                                     'evaluation_limit', 'cycle_limit', 'resource_limit'}):
                             incomplete_local = True
-                        if targets_verified() and not incomplete_local:
+                        if targets_verified() and incomplete_local:
+                            # Keep the already audited nominal champion at its
+                            # original budget. The unfinished local stage and
+                            # actual budget stop remain explicit; no thinning.
+                            state = 'completed'
+                            if reason in {'evaluation_limit','cycle_limit','resource_limit'}:
+                                hybrid = search_diagnostics['hybrid']
+                                if 'local_margin' not in hybrid:
+                                    hybrid['local_margin'] = dict(status='not_started_' + reason, local_converged=False)
+                                hybrid['local_margin']['budget_limited'] = True
+                        elif targets_verified() and not incomplete_local:
                             state, reason = 'completed', ('continuation_local_session_complete' if resumed
                                 else 'validated_targets_met')
                         elif (nominal_targets_pass(request, validated_training["score"])

@@ -115,6 +115,7 @@ def test_terminal_audit_rejection_does_not_label_fallback_converged_or_thin(monk
     assert rejected
     assert result.termination_reason == 'local_margin_audit_rejected'
     local = result.local_optimum
+    assert local is not None and result.candidate_design is not None
     assert not local['local_converged'] and local['termination'] == 'audit_rejected'
     assert local['solver_terminal']['physical_hash'] in rejected
     assert local['audited_selected']['physical_hash'] == physical_design_hash(result.candidate_design)
@@ -150,10 +151,12 @@ def test_resume_new_structure_with_fresh_scores_and_persistent_cursors():
     service, request = hybrid_request()
     first = synthesize_film_design(service, request)
     assert first.targets_met
+    assert first.search_checkpoint is not None and first.candidate_design is not None
     state = json.loads(json.dumps(first.search_checkpoint))
     before = deepcopy(state)
     second = synthesize_film_design(None, continue_synthesis_request(first.frozen_request, state,
         current_design=first.candidate_design))
+    assert second.search_checkpoint is not None
     assert state == before  # view/save/continue cannot mutate the source state
     assert any(row.stage == 'search_resumed' for row in second.trace)
     assert any(row.stage == 'structure_proposal' for row in second.trace)
@@ -166,9 +169,11 @@ def test_resume_new_structure_with_fresh_scores_and_persistent_cursors():
 def test_resume_cannot_return_immediately_from_old_passing_champion_and_keeps_unscored_pool():
     service, request = hybrid_request()
     first = synthesize_film_design(service, request)
+    assert first.search_checkpoint is not None and first.candidate_design is not None
     continued = continue_synthesis_request(first.frozen_request, first.search_checkpoint,
         current_design=first.candidate_design, max_evaluations=2)
     result = synthesize_film_design(None, continued)
+    assert result.search_checkpoint is not None
     assert not result.targets_met and result.state != 'completed'
     assert result.termination_reason == 'evaluation_limit'
     old = {physical_design_hash(r['design']) for r in first.search_checkpoint['pool']}
@@ -180,13 +185,15 @@ def test_duplicate_source_quantum_keeps_frontier_and_next_resume_finds_new_desig
     from coat_sim.core.film_synthesis_continuation import seal_search_state, SOURCE_NAMES
     service, request = hybrid_request()
     first = synthesize_film_design(service, request)
-    old, new = deepcopy(first.candidate_design), deepcopy(first.candidate_design)
+    assert first.candidate_design is not None and first.search_checkpoint is not None
+    old, new = deepcopy(dict(first.candidate_design)), deepcopy(dict(first.candidate_design))
     new['front_layers'][0]['thickness']['value'] *= 1.002
     request = replace(first.frozen_request, seed_designs=(old,new), warm_start_seed_index=None)
-    state = deepcopy(first.search_checkpoint)
+    state = deepcopy(dict(first.search_checkpoint))
     state.update(active_sources=['user_seed'],cursors=dict.fromkeys(SOURCE_NAMES,0),source_cursor=0,pending=[])
     state = seal_search_state(state)
     partial = synthesize_film_design(None,continue_synthesis_request(request,state))
+    assert partial.search_checkpoint is not None
     assert partial.termination_reason == 'continuation_quantum_no_new_candidate'
     assert partial.search_checkpoint['active_sources'] == ['user_seed']
     assert partial.search_checkpoint['cursors']['user_seed'] == 1
@@ -197,6 +204,7 @@ def test_duplicate_source_quantum_keeps_frontier_and_next_resume_finds_new_desig
             cancel.set()
     continued = synthesize_film_design(None,continue_synthesis_request(partial.frozen_request,
         partial.search_checkpoint), cancel_event=cancel,progress_callback=stop)
+    assert continued.search_checkpoint is not None
     assert any(t.stage == 'structure_proposal' for t in continued.trace)
     assert physical_design_hash(new) in continued.search_checkpoint['tried']
     assert continued.search_checkpoint['cursors']['user_seed'] == 2
@@ -205,7 +213,8 @@ def test_duplicate_source_quantum_keeps_frontier_and_next_resume_finds_new_desig
 def test_edited_passing_seed_does_not_replace_freshly_rechecked_better_history():
     service, request = hybrid_request()
     first = synthesize_film_design(service, request)
-    edited = deepcopy(first.candidate_design)
+    assert first.candidate_design is not None and first.search_checkpoint is not None
+    edited = deepcopy(dict(first.candidate_design))
     edited['front_layers'][0]['thickness']['value'] *= 1.001
     cancel = Event()
     def stop_before_new_structure(row):
@@ -216,6 +225,7 @@ def test_edited_passing_seed_does_not_replace_freshly_rechecked_better_history()
         progress_callback=stop_before_new_structure)
     assert result.state == 'cancelled'
     assert result.validation_complete
+    assert result.validation_score is not None and result.candidate_design is not None
     assert result.validation_score['nominal_pass']
     assert physical_design_hash(result.candidate_design) == physical_design_hash(first.candidate_design)
     assert physical_design_hash(result.validation_score['design']) == physical_design_hash(result.candidate_design)
@@ -229,12 +239,14 @@ def test_changed_frozen_physics_requires_explicit_rebuild(change):
     if change == 'target':
         frozen = replace(frozen, objectives=(replace(frozen.objectives[0], normalization_scale=.2),))
     elif change == 'material':
-        snapshot = deepcopy(frozen.frozen_material_snapshot)
+        assert frozen.frozen_material_snapshot is not None
+        snapshot = deepcopy(dict(frozen.frozen_material_snapshot))
         snapshot['materials'][0]['optical_sets'][0]['n'][0] += .01
         frozen = replace(frozen, frozen_material_snapshot=snapshot)
     elif change == 'constraint':
         frozen = replace(frozen, max_total_thickness_nm=500.)
     else:
+        assert frozen.structure_search_seed is not None
         frozen = replace(frozen, structure_search_seed=frozen.structure_search_seed + 1)
     with pytest.raises(ValueError, match='fingerprint changed'):
         continue_synthesis_request(frozen, first.search_checkpoint)
@@ -243,7 +255,8 @@ def test_changed_frozen_physics_requires_explicit_rebuild(change):
 def test_edit_seed_and_cancel_keep_structural_progress_and_exact_candidate_evidence():
     service, request = hybrid_request()
     first = synthesize_film_design(service, request)
-    edited = deepcopy(first.candidate_design)
+    assert first.candidate_design is not None and first.search_checkpoint is not None
+    edited = deepcopy(dict(first.candidate_design))
     edited['front_layers'][0]['thickness']['value'] *= 1.01
     original = deepcopy(edited)
     cancel = Event()
@@ -254,11 +267,14 @@ def test_edit_seed_and_cancel_keep_structural_progress_and_exact_candidate_evide
     continued = continue_synthesis_request(first.frozen_request, first.search_checkpoint, current_design=edited)
     result = synthesize_film_design(None, continued, cancel_event=cancel, progress_callback=progress,
         search_checkpoint_callback=lambda state: snapshots.append(deepcopy(state)))
+    assert result.search_checkpoint is not None and result.training_score is not None
+    assert result.candidate_design is not None
     assert result.state == 'cancelled' and edited == original
     assert result.performance['search']['warm_start']['physical_hash'] == physical_design_hash(edited)
     assert result.search_checkpoint['cursors'] == first.search_checkpoint['cursors']
     assert snapshots[-1] == result.search_checkpoint
     if result.validation_complete:
+        assert result.validation_score is not None
         assert physical_design_hash(result.validation_score['design']) == physical_design_hash(result.candidate_design)
     assert result.training_score['design'] == result.candidate_design
 
@@ -267,7 +283,8 @@ def test_topology_edit_is_fresh_seed_with_original_frontier_and_native_boundarie
     service, request = hybrid_request()
     request = replace(request, max_layer_thickness_nm=500.)
     first = synthesize_film_design(service, request)
-    edited = deepcopy(first.candidate_design)
+    assert first.candidate_design is not None and first.search_checkpoint is not None
+    edited = deepcopy(dict(first.candidate_design))
     layer = deepcopy(edited['front_layers'][0])
     layer['id'] = 'user-added-layer'
     layer['thickness']['value'] = 2.
@@ -280,9 +297,11 @@ def test_topology_edit_is_fresh_seed_with_original_frontier_and_native_boundarie
         if row.stage == 'search_resumed':
             cancel.set()
     result = synthesize_film_design(None, continued, cancel_event=cancel, progress_callback=stop)
+    assert result.search_checkpoint is not None
     assert result.performance['search']['warm_start']['physical_hash'] == physical_design_hash(edited)
     assert result.search_checkpoint['cursors'] == first.search_checkpoint['cursors']
     illegal = deepcopy(edited)
+    assert first.frozen_request.max_layer_thickness_nm is not None
     illegal['front_layers'][-1]['thickness']['value'] = first.frozen_request.max_layer_thickness_nm + 1.
     with pytest.raises(ValueError):
         continue_synthesis_request(first.frozen_request, first.search_checkpoint, current_design=illegal)
@@ -301,6 +320,8 @@ def test_local_result_and_final_thinner_candidate_have_separate_audits():
     service, request, _ = request_case('AR', 'pointwise')
     original = deepcopy(request.seed_designs)
     result = synthesize_film_design(service, request)
+    assert result.local_optimum is not None and result.validation_score is not None
+    assert result.candidate_design is not None
     assert result.targets_met and result.local_optimum['validation_complete']
     assert result.local_optimum['role'] == 'fixed_topology_local_result_before_thickness_reduction'
     assert sum(r['thickness']['value'] for r in result.local_optimum['design']['front_layers']) >= total(result)
@@ -345,12 +366,16 @@ def test_incomplete_local_stage_stops_before_thinning(monkeypatch, status):
         (initial, dict(termination=status, success=False)))
     monkeypatch.setattr(thickness, 'reduce_total_thickness', lambda *a, **k: pytest.fail('incomplete local stage'))
     result = synthesize_film_design(service, request)
-    assert not result.targets_met and result.state == 'not_found'
+    assert result.targets_met and result.state == 'completed'
+    assert result.local_optimum is not None
     assert result.termination_reason == 'local_margin_' + status
     assert result.local_optimum['termination'] == status
+    assert not result.local_optimum['local_converged']
+    assert result.training_score is not None and result.validation_score is not None
+    assert result.training_score['nominal_pass'] and result.validation_score['nominal_pass']
 
 
-def test_local_budget_exhaustion_is_not_hidden_by_old_passing_candidate(monkeypatch):
+def test_local_budget_exhaustion_preserves_audited_champion_without_claiming_local_completion(monkeypatch):
     from coat_sim.core import film_synthesis_margin as margin
     from tests.test_film_synthesis_thickness_integration import request_case
     service, request, _ = request_case(budget=20)
@@ -360,8 +385,12 @@ def test_local_budget_exhaustion_is_not_hidden_by_old_passing_candidate(monkeypa
             evaluate(initial['design'], jacobian=True)
     monkeypatch.setattr(margin, 'refine_worst_margin', consume)
     result = synthesize_film_design(service, request)
-    assert result.state == 'not_found' and not result.targets_met
+    assert result.state == 'completed' and result.targets_met
     assert result.termination_reason == 'evaluation_limit' and result.evaluations <= 20
+    assert result.training_score is not None and result.validation_score is not None
+    assert result.training_score['nominal_pass'] and result.validation_score['nominal_pass']
+    assert not result.performance['search']['hybrid']['local_margin']['local_converged']
+    assert result.local_optimum is None
     assert 'thickness_reduction' not in result.performance['search']['hybrid']
 
 
@@ -369,7 +398,8 @@ def test_corrupt_version_truncation_and_material_closure_preserve_source(tmp_pat
     from coat_sim.core.film_synthesis_continuation import load_search_state, seal_search_state
     service, request = hybrid_request()
     result = synthesize_film_design(service, request)
-    state = deepcopy(result.search_checkpoint)
+    assert result.search_checkpoint is not None and result.candidate_design is not None
+    state = deepcopy(dict(result.search_checkpoint))
     path = tmp_path/'state.json'
     path.write_text('{"kind":', encoding='utf-8')
     with pytest.raises(ValueError, match='incomplete or invalid'):
@@ -378,12 +408,12 @@ def test_corrupt_version_truncation_and_material_closure_preserve_source(tmp_pat
     state['version'] = 100
     with pytest.raises(ValueError, match='kind/version'):
         continue_synthesis_request(result.frozen_request, state)
-    state = deepcopy(result.search_checkpoint)
+    state = deepcopy(dict(result.search_checkpoint))
     state['pool'][0]['design']['front_layers'] = [dict(id='foreign', material_id='unknown', optical_set_id='nk',
         thickness=dict(value=30.,unit='nm'))]
     with pytest.raises(ValueError, match='material/nm closure'):
         validate_search_state(result.frozen_request, seal_search_state(state))
-    edited = deepcopy(result.candidate_design)
+    edited = deepcopy(dict(result.candidate_design))
     edited['front_layers'][0]['material_id'] = 'unknown'
     with pytest.raises(ValueError):
         continue_synthesis_request(result.frozen_request, result.search_checkpoint, current_design=edited)
@@ -405,14 +435,16 @@ def test_cross_process_pending_pair_cursor_random_and_feedback_restore(tmp_path)
         if row.stage == 'template_randomization' and json.loads(row.message).get('status') == 'constructed':
             cancel.set()
     partial = synthesize_film_design(service, request, cancel_event=cancel, progress_callback=stop)
+    assert partial.search_checkpoint is not None
     assert partial.state == 'cancelled' and len(partial.search_checkpoint['pending']) == 2
-    state = deepcopy(partial.search_checkpoint)
+    state = deepcopy(dict(partial.search_checkpoint))
     registry = SparseFeedbackRegistry(partial.frozen_request)
     assert registry.record_audit({'errors': [error_for(request, 0, 527.5, .02)]}) == 1
     state['feedback'] = registry.export_state()
     state = seal_search_state(state)
     continued = continue_synthesis_request(partial.frozen_request, state)
     direct = synthesize_film_design(None, continued)
+    assert direct.search_checkpoint is not None
     envelope = tmp_path/'request.json'
     envelope.write_text(json.dumps(film_synthesis_request_to_payload('cross-process', continued)), encoding='utf-8')
     output = tmp_path/'out.json'
@@ -423,14 +455,14 @@ from coat_sim.core.film_synthesis_io import film_synthesis_request_from_payload
 from coat_sim.core.film_auto_synthesis import synthesize_film_design
 _,request,_=film_synthesis_request_from_payload(json.loads(Path(sys.argv[1]).read_text()))
 result=synthesize_film_design(None,request)
-sequence=[json.loads(t.message)['physical_hash'] for t in result.trace if t.stage=='structure_proposal']
+sequence=[t.physical_hash for t in result.trace if t.stage=='structure_proposal']
 Path(sys.argv[2]).write_text(json.dumps(dict(state=result.search_checkpoint,sequence=sequence,evaluations=result.evaluations)))
 '''
     env = dict(os.environ, OPENBLAS_NUM_THREADS='1', OMP_NUM_THREADS='1')
     subprocess.run([sys.executable, '-c', script, str(envelope), str(output)], cwd=Path(__file__).resolve().parents[1],
                    env=env, check=True, capture_output=True, timeout=30)
     child = json.loads(output.read_text())
-    sequence = [json.loads(t.message)['physical_hash'] for t in direct.trace if t.stage=='structure_proposal']
+    sequence = [t.physical_hash for t in direct.trace if t.stage=='structure_proposal']
     assert child['sequence'] == sequence
     assert sequence[:2] == [physical_design_hash(r['design']) for r in state['pending']]
     assert child['evaluations'] == direct.evaluations <= request.max_evaluations
@@ -439,7 +471,7 @@ Path(sys.argv[2]).write_text(json.dumps(dict(state=result.search_checkpoint,sequ
     assert child['state']['feedback']['revision'] >= state['feedback']['revision']
     assert json.loads(json.dumps(state['feedback']['points'][0])) in child['state']['feedback']['points']
     uninterrupted = synthesize_film_design(service, request)
-    whole = [json.loads(t.message)['physical_hash'] for t in uninterrupted.trace if t.stage=='structure_proposal']
+    whole = [t.physical_hash for t in uninterrupted.trace if t.stage=='structure_proposal']
     assert whole[:2] == sequence[:2]  # Actual deterministic source/extra pair, not an old pool warm start.
     assert child['state']['random_state']['next_rotation_seed'] > state['random_state']['next_rotation_seed']
 
@@ -483,6 +515,27 @@ def test_atomic_search_write_failure_keeps_previous_file(tmp_path):
     with pytest.raises(ValueError, match='json_output_exceeds_byte_limit'):
         synthesize_film_design(service, request, search_checkpoint_callback=save)
     assert path.read_bytes() == original and not list(tmp_path.glob('*.tmp'))
+
+
+def test_search_sidecar_keeps_existing_candidate_writer_contract(tmp_path):
+    from pathlib import Path
+    from coat_sim.core.film_auto_synthesis import freeze_film_synthesis_request
+    from coat_sim.core.film_synthesis_io import film_synthesis_request_to_payload
+    from coat_sim.core.film_synthesis_jobs import build_job_payload, execute_job, AUDITED_CHECKPOINT_KIND
+    from coat_sim.core.film_synthesis_continuation import load_search_state
+    service, request = hybrid_request()
+    frozen = freeze_film_synthesis_request(service, request)
+    job = build_job_payload(dict(payload=film_synthesis_request_to_payload('writer-contract', frozen),
+                                 physical_structure_metadata=[]))
+    writes: list[Path] = []
+    def candidate_only(path, record):
+        assert record['kind'] == AUDITED_CHECKPOINT_KIND and 'design' in record
+        writes.append(path)
+    path = tmp_path/'best.json'
+    response = execute_job({'payload':job},Event(),lambda *a,**k:None,path,candidate_only,str(tmp_path))
+    assert writes and set(writes) == {path}
+    state = load_search_state(tmp_path/'best.search-state.json')
+    assert state == json.loads(json.dumps(response['result']['search_checkpoint']))
 
 
 def test_state_size_admission_includes_atomic_writer_separator_spaces(monkeypatch):

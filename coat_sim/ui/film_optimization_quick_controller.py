@@ -1913,7 +1913,7 @@ class FilmOptimizationQuickController(QObject):
         finally:
             self._configuration_loading = False
         if self._synthesis_search_reference is not None:
-            self._persist_configuration()
+            self._persist_synthesis_search_reference()
         return True
 
     def _persist_configuration(self) -> None:
@@ -4837,6 +4837,8 @@ class FilmOptimizationQuickController(QObject):
                      else '减薄前局部结果')
             stage_summary = (f"\n{label}：{len(local_rows)} 层 / {local_total} nm，{margin_text}。"
                 f"\n局部阶段：{local.get('termination', '未知')}。最终返回候选：{len(final_rows)} 层 / {final_total} nm；以下审计绑定最终候选。")
+        elif raw.get('performance', {}).get('search', {}).get('hybrid', {}).get('local_margin', {}).get('budget_limited'):
+            stage_summary = f"\n局部阶段未完成（{raw['termination_reason']}）；已保留达标审计候选，本轮未减薄。"
         return (f"任务状态：{raw['state']} / {raw['termination_reason']}\n"
                 + stage_summary + '\n'
                 f"候选独立审计：原门限名义验收{quality}，层数 {len(layers)}\n"
@@ -4880,27 +4882,46 @@ class FilmOptimizationQuickController(QObject):
             return False
 
     def _persist_synthesis_search_reference(self) -> None:
-        if self._synthesis_search_reference is not None and self.session is not None:
-            self._persist_configuration()
+        session, reference = self.session, self._synthesis_search_reference
+        if session is None or reference is None or self._configuration_loading:
+            return
+        # Progress updates must not save transient topology/variable rows over
+        # the editor's configuration. Only this new durable reference changes.
+        try:
+            current = session.workflow_configuration('optimization')
+            configuration = deepcopy(current or self.exportOptimizationConfiguration())
+            if not isinstance(configuration, dict):
+                raise ValueError('优化配置格式无效')
+            synthesis = configuration.get('synthesis', {})
+            if not isinstance(synthesis, dict):
+                raise ValueError('合成配置格式无效')
+            configuration['synthesis'] = {**synthesis, 'search_reference':deepcopy(reference)}
+            if configuration != current and not session.set_workflow_configuration('optimization', configuration):
+                raise ValueError('文档会话拒绝搜索进度')
+        except (TypeError, ValueError, RuntimeError) as exc:
+            self._configuration_load_error = self._error = f'结构搜索进度未写入文档：{exc}'
+            self.changed.emit()
 
     def _synthesis_search_reason(self, *, admission=False) -> str:
         reference = self._synthesis_search_reference
+        session = self.session
         if reference is None:
             return '尚无结构搜索进度。'
         if (self.busy and not admission) or self._shutting_down:
             return '请先等待当前任务结束。'
         if self._result_terminal_state == '提交状态未知':
             return '请先核对上次作业的未知提交状态，不能重复提交。'
-        if self.session is None or self._source_closed or self._observers_detached or self._pending_close:
+        if session is None or self._source_closed or self._observers_detached or self._pending_close:
             return '来源设计或项目已关闭，不能继续。'
         if self.project_context is not None:
             try:
                 self.project_context.host.store_for(self.project_context.binding)
+                assert self._project_compute is not None
                 if self._project_compute.editing_frozen:
                     return '来源项目正在关闭确认。'
             except (ValueError, RuntimeError):
                 return '来源项目已关闭或重新打开。'
-        if self._pending_reuse_source is not None or getattr(self._source_controller, 'session', None) is not self.session:
+        if self._pending_reuse_source is not None or getattr(self._source_controller, 'session', None) is not session:
             return '来源设计正在切换。'
         if self._pending_edit_error:
             return '请先提交当前编辑。'
@@ -4908,7 +4929,9 @@ class FilmOptimizationQuickController(QObject):
             return self._synthesis_search_error
         try:
             from coat_sim.ui.film_synthesis_search_state import check_reference, settings_bundle, settings_reason
-            snapshot = self.session.snapshot()
+            assert session is not None
+            snapshot = session.snapshot()
+            assert snapshot is not None
             check_reference(self.service, reference, snapshot)
             if snapshot.pending_confirmation or snapshot.expression_busy:
                 return '请先完成来源设计的待确认操作或表达式编辑。'
@@ -4931,7 +4954,7 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(bool, notify=changed)
     def canContinueSynthesisSearch(self) -> bool:
-        return self.hasSynthesisSearchProgress and not self._synthesis_search_reason()
+        return bool(self.hasSynthesisSearchProgress) and not self._synthesis_search_reason()
 
     @Property(str, notify=changed)
     def synthesisSearchDisabledReason(self) -> str:
@@ -4954,7 +4977,8 @@ class FilmOptimizationQuickController(QObject):
             _, request, _ = film_synthesis_request_from_payload(dict(schema_version=SCHEMA_VERSION,
                 kind='coat_sim.film_synthesis_request', request_id='gui-search-state',
                 physical_structures=[], request=raw['frozen_request']))
-            if request.environment['id'] != self.session.snapshot().design['id']:
+            snapshot = self.session.snapshot()
+            if snapshot is None or request.environment['id'] != snapshot.design['id']:
                 return
             binding = (source_context.get('binding') if source_context is not None else self._attempt_source_binding)
             binding = validate_source_binding(binding, request)
@@ -4989,12 +5013,16 @@ class FilmOptimizationQuickController(QObject):
             from coat_sim.ui.film_synthesis_search_state import load_record, build_request
             from coat_sim.core.film_optimization_continuation import WarmRestartPlan
             from coat_sim.core.film_physical_generator import freeze_synthesis_editable_snapshot
+            session, reference = self.session, self._synthesis_search_reference
+            assert session is not None and reference is not None
+            snapshot = session.snapshot()
+            assert snapshot is not None
             record = self._synthesis_search_record
-            if record is None or record['job_id'] != self._synthesis_search_reference['job_id']:
-                record = load_record(self.service, self._synthesis_search_reference, self.session.snapshot())
+            if record is None or record['job_id'] != reference['job_id']:
+                record = load_record(self.service, reference, snapshot)
             request = build_request(self, record)
             record = dict(record, editable_snapshot=freeze_synthesis_editable_snapshot(
-                self.service, self.session.snapshot().design, request.frozen_material_snapshot))
+                self.service, snapshot.design, request.frozen_material_snapshot))
             self._synthesis_search_record = record
             return self._start_optimization(warm_restart=(WarmRestartPlan(request, {}), record))
         except (ValueError, TypeError, KeyError, OSError, AttributeError) as exc:

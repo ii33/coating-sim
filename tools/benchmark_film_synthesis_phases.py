@@ -70,7 +70,7 @@ def main():
             nominal_pass=score.get('nominal_pass'), max_normalized_error=score['max_error'])
     start = time.perf_counter()
     first = None
-    stages = {}
+    stages: dict[str, float] = {}
     def progress(row):
         stages.setdefault(row.stage, time.perf_counter() - start)
     def snapshot(design, training, validation, audit):
@@ -95,14 +95,14 @@ def main():
                  'initial_layer_count', 'fixed_layer_ids', 'initial_physical_hash', 'status', 'canonical_preparation',
                  'total_evaluations_used', 'total_elapsed_seconds')}
         for name in ('first_feasible', 'local_margin', 'thickness_reduction', 'continuation_session')}
-    report['structural_sequence'] = [json.loads(t.message)['physical_hash'] for t in result.trace
-        if t.stage == 'structure_proposal' and 'physical_hash' in json.loads(t.message)]
+    report['structural_sequence'] = [t.physical_hash for t in result.trace
+        if t.stage == 'structure_proposal']
     local = getattr(result, 'local_optimum', None)
     if local is not None:
         report['local'] = dict(**summary(local['design'], local['validation_score']),
                                termination=local['termination'], signed_margin=local['signed_margin'])
-    if getattr(result, 'search_checkpoint', None) is not None:
-        state = result.search_checkpoint
+    state = result.search_checkpoint
+    if state is not None:
         report['search_state'] = dict(cursors=state['cursors'], rotations=state['rotations'],
             tried=len(state['tried']), pool=len(state['pool']), pending=len(state['pending']))
         if args.save_continuation is not None and result.candidate_design is not None:

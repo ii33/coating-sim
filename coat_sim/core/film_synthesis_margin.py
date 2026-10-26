@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from copy import deepcopy
 from importlib import import_module
-import math
 
 import numpy as np
 
@@ -109,7 +108,7 @@ def refine_worst_margin(request, initial, *, evaluate, archive,
         if value['design'] != trial:
             raise ValueError('margin evaluator returned a different physical candidate')
         reduced = _original_reduction(request, value, ids)
-        mask = []
+        mask: list[bool] = []
         for condition in reduced.conditions:
             criterion = getattr(request.objectives[condition.objective_index], condition.reduction)
             if criterion.mode == 'value':
@@ -133,6 +132,7 @@ def refine_worst_margin(request, initial, *, evaluate, archive,
         return cache_q, cache_j, cache_mask
 
     q0, _, selected = data(x0)
+    assert cache_value is not None  # data(x0) committed the initial physical evaluation.
     if not _original_reduction(request, cache_value, ()).nominal_pass:
         raise ValueError('margin refinement requires nominally feasible raw initial responses')
     start = np.concatenate((x0, [float(np.max(q0[selected]))]))
@@ -167,7 +167,11 @@ def refine_worst_margin(request, initial, *, evaluate, archive,
     # A best line-search trial is not the solver's stationary endpoint. Only
     # return the exact feasible endpoint with its convergence claim; fallback
     # trials retain their evidence but cannot borrow that endpoint's status.
-    selected = terminal if converged else best
+    if converged:
+        assert terminal is not None
+        selected = terminal
+    else:
+        selected = best
     selected_margin = worst_signed_margin(request, selected)
     terminal_hash = None if terminal is None else physical_design_hash(terminal['design'])
     details.update(termination=('converged' if converged else

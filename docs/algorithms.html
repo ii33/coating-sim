@@ -265,6 +265,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 
 <section id="film-margin-continuation-20261026">
 <h2>14bb 自动合成局部余量、原目标减薄与结构续接</h2>
+<p><strong>正式达标与局部完成度分开：</strong>已有同一候选的原目标训练和独立审计通过时，保留其达标结果；预算耗尽、局部终态审计拒绝或局部求解未完成仍保留真实终止原因与 <code>local_converged=false</code>，默认不减薄，不借用另一候选的收敛标志。提案物理身份单列于 trace，模板 provenance 不混入新字段；搜索状态 sidecar 与原已审计候选 writer 分开。</p>
 <p class="source">更新：2026-10-26。实现：<code>film_synthesis_margin.py</code>、<code>film_synthesis_continuation.py</code>、<code>film_auto_synthesis.py</code>；接口与异步边界见 <a href="film-synthesis-continuation.md">阶段与续接核心契约</a>。本节新增 hybrid 默认阶段；原 legacy、候选 warm restart 与人工制造修复仍分别存在。</p>
 <p><strong>用途和输入输出：</strong>输入为冻结的目标、真实材料 n/k、光学环境、用户制造约束和既有结构候选。结构通过原训练与独立审计后，先在固定拓扑上改善最差安全余量，再按<strong>原正式目标</strong>减薄。输出的 <code>local_optimum</code> 是减薄前结果及其原始评分/独立审计；<code>candidate_design</code> 是最终可审查/写回候选，二者可不同。余量被减薄消费是允许的；最终候选仍必须独立通过原始阈值，容差不放宽阈值。</p>
 <figure><svg viewBox="0 0 1050 230" role="img" aria-label="结构搜索到固定拓扑余量再到减薄，结构进度独立保存" style="max-width:100%;height:auto">

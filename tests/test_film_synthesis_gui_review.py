@@ -302,6 +302,25 @@ def _optimizer(gui):
     return service, source, controller, scene
 
 
+def _expected_with_synthesis_search_progress(design, controller):
+    """Allow only the new validated progress reference; compare every other field."""
+    from coat_sim.ui.film_synthesis_search_state import check_reference
+    from coat_sim.core.film_synthesis_continuation import validate_search_state
+    reference = controller._synthesis_search_reference
+    record = controller._synthesis_search_record
+    assert reference is not None and record is not None
+    snapshot = controller.session.snapshot()
+    assert snapshot is not None
+    check_reference(controller.service, reference, snapshot)
+    assert reference['job_id'] == controller.queueJobId == record['job_id']
+    assert reference['spec_fingerprint'] == record['spec_fingerprint']
+    validate_search_state(record['request'], dict(record['checkpoint']))
+    assert snapshot.design['workflow_settings']['optimization']['synthesis']['search_reference'] == reference
+    expected = deepcopy(dict(design))
+    expected['workflow_settings']['optimization']['synthesis']['search_reference'] = deepcopy(reference)
+    return expected
+
+
 def _preview_sampled_candidate(scene, source, controller):
     before = source.session.snapshot()
     service = source.service
@@ -485,7 +504,7 @@ def test_qml_n0_grows_real_single_layer_and_freezes_current_targets_and_material
     gui[3].append(source_scene)
     source_scene.click(source_scene.item("filmUndoOptimizationButton"))
     _wait(lambda: source.currentDesign()["front_layers"] == [])
-    assert source.session.snapshot().design == before.design
+    assert source.session.snapshot().design == _expected_with_synthesis_search_progress(before.design, controller)
     assert not source.canUndoOptimizedDesign
 
 
@@ -543,7 +562,7 @@ def test_qml_real_queue_heartbeat_then_cancel_retains_audited_candidate_facts(gu
     normalized_candidate = service.validate(deepcopy(dict(candidate_design)))
     after = source.session.snapshot()
     if normalized_candidate == normalized_original:
-        assert after.design == original.design
+        assert after.design == _expected_with_synthesis_search_progress(original.design, controller)
         assert after.design_revision == original.design_revision
         assert after.dirty == original.dirty
         assert not source.canUndoOptimizedDesign
@@ -551,13 +570,14 @@ def test_qml_real_queue_heartbeat_then_cancel_retains_audited_candidate_facts(gu
         expected_candidate = deepcopy(dict(normalized_candidate))
         if "workflow_settings" in original.design:
             expected_candidate["workflow_settings"] = deepcopy(original.design["workflow_settings"])
-        assert after.design == expected_candidate
+        assert after.design == _expected_with_synthesis_search_progress(expected_candidate, controller)
         assert after.design_revision == original.design_revision + 1
         assert after.dirty and source.canUndoOptimizedDesign
         source_scene = _Scene(source, "FilmDesignQuick.qml")
         gui[3].append(source_scene)
+        expected_undo = _expected_with_synthesis_search_progress(original.design, controller)
         source_scene.click(source_scene.item("filmUndoOptimizationButton"))
-        _wait(lambda: source.session.snapshot().design == original.design)
+        _wait(lambda: source.session.snapshot().design == expected_undo)
         restored = source.session.snapshot()
         assert restored.design_revision == after.design_revision + 1
         assert not source.canUndoOptimizedDesign
@@ -742,7 +762,7 @@ def test_project_qml_synthesis_new_material_closure_survives_save_or_drift_undo(
     _wait(lambda: not controller.busy, seconds=30.)
     assert controller.synthesisCandidateAudit["targets_met"] is True
     assert controller.synthesisLayers[0]["material_id"] == "acceptance-film"
-    assert source.session.snapshot().design == original.design
+    assert source.session.snapshot().design == _expected_with_synthesis_search_progress(original.design, controller)
     if drift:
         changed = default_material_profile("Same ID, changed global optics", id="acceptance-film")
         changed.update(category="film", optical_constants=[_optical("film-set", 2.3)])
@@ -757,7 +777,7 @@ def test_project_qml_synthesis_new_material_closure_survives_save_or_drift_undo(
     accepted = applied_signal.count() == 1
     if not accepted:
         assert drift and (controller.error or source.session.snapshot().error)
-        assert source.session.snapshot().design == original.design
+        assert source.session.snapshot().design == _expected_with_synthesis_search_progress(original.design, controller)
         return
     applied = source.session.snapshot()
     assert len(applied.design["front_layers"]) == 1 and applied.path == original.path

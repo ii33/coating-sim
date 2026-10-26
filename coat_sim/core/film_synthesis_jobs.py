@@ -775,7 +775,8 @@ def submit_synthesis(service, payload, client_request_id=None):
 
 
 def execute_job(value: Mapping[str, Any], cancel_event, report, checkpoint_path, write_json,
-                execution_project_root: str, *, candidate_observer=None, candidate_observer_factory=None):
+                execution_project_root: str, *, candidate_observer=None, candidate_observer_factory=None,
+                search_state_writer=None):
     if isinstance(value, Mapping) and set(value) == {"payload"}:
         job = deepcopy(value["payload"])
         deserialize_job_payload(job)
@@ -841,8 +842,10 @@ def execute_job(value: Mapping[str, Any], cancel_event, report, checkpoint_path,
     def search_checkpoint(state):
         # Separate exploration durability from quality evidence. Even a run
         # cancelled before any passing audit can resume its structural frontier.
+        # The existing candidate observer/writer only receives audited designs.
+        from coat_sim.scheduler.io import write_json as atomic_write_json
         path = checkpoint_path.with_name(checkpoint_path.stem + '.search-state.json')
-        write_json(path, _json_snapshot(state))
+        (search_state_writer or atomic_write_json)(path, _json_snapshot(state))
 
     monitor = threading.Thread(target=heartbeat, name="film-synthesis-heartbeat", daemon=True)
     monitor.start()

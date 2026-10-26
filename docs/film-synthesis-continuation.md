@@ -39,7 +39,9 @@ next_request = continue_synthesis_request(
 
 ## 持久化与恢复
 
-`FilmSynthesisResult.search_checkpoint` 是带版本、指纹和 SHA256 的 JSON 值。独立回调 `search_checkpoint_callback(state)` 在已提交候选及终止边界发布深拷贝；异常原样传播并清理执行器。调度器沿用传入的原子 JSON writer，在最佳审计文件旁保存 `<stem>.search-state.json`；即使没有达标候选也保存结构进度。原最佳候选 checkpoint 的含义不变。
+`FilmSynthesisResult.search_checkpoint` 是带版本、指纹和 SHA256 的 JSON 值。独立回调 `search_checkpoint_callback(state)` 在已提交候选及终止边界发布深拷贝；异常原样传播并清理执行器。调度器复用现有原子 JSON writer，在最佳审计文件旁保存 `<stem>.search-state.json`；即使没有达标候选也保存结构进度。原最佳候选 checkpoint 的含义不变。
+
+`execute_job(..., write_json)` 保持原候选观察者契约，只接收已审计设计。搜索 sidecar 默认单独调用现有原子 JSON writer；需要定制存储时可传 `search_state_writer=`，不向旧候选回调混入不同结构的数据。进度引用写入文档时只合并 `search_reference`，不保存临时变量行或改写其它编辑设置。
 
 CLI：`--checkpoint best.json` 同时写 `best.search-state.json`；`--continue-search best.search-state.json` 与新请求配合。恢复输入不能与任何输出路径相同。`load_search_state(path)` 只读取最多64 MiB的 UTF-8 JSON；版本、形状、校验和、随机算法、冻结指纹和候选物理闭包均校验。截断、未知版本、不兼容状态给出错误且不覆盖原文件；无需 pickle 或反序列化 Python 对象。
 
@@ -48,6 +50,12 @@ CLI：`--checkpoint best.json` 同时写 `best.search-state.json`；`--continue-
 既有 DE 群体只在一次旋转片内生存；局部求解器也在阶段边界结束。这里不序列化这些求解器的内部状态，也不承诺任意物理调用处的逐位精确求解器续算。恢复时保留真实候选与源前沿、推进下一旋转 seed，避免从根随机搜索重启。墙钟预算与并行派发可改变最终采用前缀，真实计数始终按本次作业报告。
 
 ## 结果和错误边界
+
+`state / targets_met` 沿用正式指标达标的公共含义，不表示局部阶段已收敛。局部终态审计拒绝或求解未完成时，若回退候选的原目标训练与独立审计均通过，仍保留该达标结果；同时保留真实局部终止原因、`local_converged=false` 和回退身份，默认不减薄。界面区分“已审计回退候选”与真正的减薄前局部结果。
+
+评价/周期预算耗尽时，若已有同时通过正式训练及独立审计的冠军，保留历史的 `completed / targets_met=true` 达标语义，并保留实际 `evaluation_limit / cycle_limit` 终止原因；`local_margin.local_converged=false` 和 `budget_limited=true` 明确说明局部阶段未完成，不执行减薄。这不把候选达标冒充局部收敛。续接仍要求完成本轮新结构工作，不能因旧冠军返回成功；取消、截止、审计拒绝和求解失败保留各自状态。
+
+`structure_proposal` 消息继续保持原始 provenance 字段契约。提案物理身份单列为可省略的 `FilmSynthesisTrace.physical_hash`；旧记录缺省为 `None`，不向材料/模板 provenance 混入字段。
 
 跨进程回归比较的是同一 checkpoint 在进程内与新子进程恢复后的完整提案序列、预算、游标、待评候选、随机推进和反馈；与不中断运行只比较初始 BASE/extra 两个提案，不声称完整未中断轨迹逐位等价，也不恢复 SLSQP 内部迭代。
 

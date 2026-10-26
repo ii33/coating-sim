@@ -7,7 +7,6 @@ The controller retains its ordinary submission/apply/edit-epoch/undo owners.
 from copy import deepcopy
 from dataclasses import replace
 import hashlib
-import json
 from pathlib import Path
 import re
 
@@ -110,6 +109,7 @@ def load_record(service, reference, snapshot):
     from coat_sim.core.film_auto_synthesis import freeze_film_synthesis_request
     request = freeze_film_synthesis_request(None, request)
     state = validate_search_state(request, state)
+    assert request.frozen_material_snapshot is not None
     editable = restore_editable_snapshot_delta(request.frozen_material_snapshot, binding['synthesis_editable_delta'])
     return dict(structural_resume=True, mode='synthesis', request=request, checkpoint=state,
         editable_snapshot=editable, source_binding=binding, job_id=reference['job_id'],
@@ -137,6 +137,7 @@ def build_request(controller, record):
         max_working_set_bytes=options.get('max_working_set_bytes', 0), resource_guard_resolution=None,
         enable_thickness_reduction=options.get('enable_thickness_reduction', True))
     candidate = freeze_film_synthesis_request(controller.service, candidate)
+    assert candidate.frozen_material_snapshot is not None
     if search_fingerprint(candidate) != record['checkpoint']['fingerprint']:
         if candidate.frozen_material_snapshot['materials'] != old.frozen_material_snapshot['materials']:
             raise ValueError('材料 n/k 或可编辑材料闭包已改变，需重新开始搜索；原进度保留。')

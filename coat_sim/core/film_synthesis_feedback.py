@@ -158,7 +158,7 @@ class SparseFeedbackRegistry:
                 grid = point.wavelength_grid_nm
                 if (point.wavelength_nm is not None or not grid or grid[0] != low or grid[-1] != high
                         or any(not low <= _number(w) <= high for w in grid)
-                        or any(a >= b for a, b in zip(grid, grid[1:]))):
+                        or any(a >= b for a, b in zip(grid, grid[1:], strict=False))):
                     raise ValueError('checkpoint mean feedback needs a complete ordered band')
             points.add(point)
         self._points, self._revision = points, state['revision']

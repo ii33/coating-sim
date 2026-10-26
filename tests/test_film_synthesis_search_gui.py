@@ -1,16 +1,16 @@
 """Durable structural search through private Qt windows and real queue jobs."""
 from copy import deepcopy
 import json
-from pathlib import Path
 import subprocess
 import sys
 
 import pytest
 
 from coat_sim.core.project_store import ProjectStore
-from tests.test_film_optimization_autoapply import app, isolated_case
+from coat_sim.ui.film_optimization_quick_controller import FilmOptimizationQuickController
+from tests.test_film_optimization_autoapply import app as app, isolated_case
 from tests.test_film_optimization_cancel_spectrum import wait_done
-from tests.test_film_synthesis_gui_review import project_gui, _optimizer, _wait
+from tests.test_film_synthesis_gui_review import project_gui as project_gui, _optimizer, _Scene, _wait
 
 pytestmark = [pytest.mark.qt, pytest.mark.contract]
 
@@ -215,7 +215,8 @@ def test_cold_corrupt_checkpoint_is_reported_and_preserved(app, project_gui):
 def test_real_queue_refreshes_existing_spectrum_and_constraints(app, tmp_path, monkeypatch):
     from coat_sim.scheduler.client import SchedulerClient
     with isolated_case(tmp_path, monkeypatch) as case:
-        controllers, scenes = [], []
+        controllers: list[FilmOptimizationQuickController] = []
+        scenes: list[_Scene] = []
         try:
             _, source, controller, scene = _optimizer((case.service, case.source, controllers, scenes))
             assert controller.setSynthesisOption('max_evaluations', '160')

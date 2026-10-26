@@ -22,7 +22,7 @@ from coat_sim.ui.film_quick_controller import FilmDesignQuickController
 from coat_sim.ui.theme_service import ThemeService
 from tests.film_structure_fixtures import fixture as optical_fixture
 from tests.test_film_optimization_needle import _optical
-from tests.test_film_synthesis_gui_review import _Scene, _variant, _wait
+from tests.test_film_synthesis_gui_review import _Scene, _variant, _wait, _expected_with_synthesis_search_progress
 
 pytestmark = [pytest.mark.qt, pytest.mark.contract]
 
@@ -145,7 +145,7 @@ def test_equal_angle_typed_naturally_survives_each_key_and_submission(usable_gui
     assert applied.design == expected and controller._candidate_applied
     assert applied.design_revision == original.design_revision + 1
     assert source.undoOptimizedDesign()
-    assert source.currentDesign() == original.design
+    assert source.currentDesign() == _expected_with_synthesis_search_progress(original.design, controller)
 
 
 def _assert_horizontal_click_target(scene: _Scene, item: QQuickItem) -> None:
@@ -371,7 +371,7 @@ def test_dynamic_material_rows_delete_middle_reorder_persist_and_submit_exact_op
             row["id"] for row in applied.design["front_layers"]}
         assert all(row["enabled"] for row in variables)
         assert reopened.undoOptimizedDesign()
-        assert reopened.currentDesign() == before_design
+        assert reopened.currentDesign() == _expected_with_synthesis_search_progress(before_design, restored)
     finally:
         reopened.markSourceClosed()
         reopened.deleteLater()
