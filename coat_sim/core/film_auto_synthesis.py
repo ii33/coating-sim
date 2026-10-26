@@ -1918,23 +1918,13 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 return
             from .film_synthesis_feasibility import (
                 PreparedFeasibilityEvaluator, refine_feasibility_candidate,
-                interior_guides, MAX_REPAIR_ROUNDS, MAX_REPAIR_EVALUATIONS,
+                interior_guides, near_feasible_conditions, MAX_REPAIR_ROUNDS, MAX_REPAIR_EVALUATIONS,
             )
             _guides, margins = interior_guides(request.objectives)
-            thresholds = {}
-            for row in margins:
-                objective = request.objectives[row["objective_index"]]
-                constraint = getattr(objective, row["reduction"])
-                bound_ulps = [8 * math.ulp(float(bound)) for bound in (
-                    constraint.lower_bound, constraint.upper_bound, constraint.target_value) if bound is not None]
-                thresholds[row["objective_index"], row["reduction"]] = max(
-                    row["lower_margin"], row["upper_margin"], *bound_ulps) / objective.normalization_scale
             # A loose user solver tolerance must not prematurely end ordinary
             # topology search. Every active condition must be near its own
             # interval/ULP scale; no wide band can hide a narrow group's miss.
-            if not source["score"].get("errors") or any(
-                    e.normalized_violation > thresholds[e.objective_index, e.reduction]
-                    for e in source["score"]["errors"]):
+            if not near_feasible_conditions(request.objectives, source["score"].get("errors", ()), margins):
                 return
             input_key = hashlib.sha256(json.dumps(dict(
                 physical_hash=physical_design_hash(source["design"]), margins=margins),

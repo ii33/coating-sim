@@ -9,7 +9,7 @@ import pytest
 from coat_sim.core import film_auto_synthesis as synthesis
 from coat_sim.core import film_synthesis_feasibility as repair
 from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint as Constraint, validate_objective_criteria
-from coat_sim.core.film_optimization import FilmOptimizationObjective
+from coat_sim.core.film_optimization import FilmOptimizationObjective, OpticalMetric, Polarization
 from coat_sim.core.film_optimization_structure import evaluate_frozen_structure_candidate
 from coat_sim.core.film_synthesis_audit import audit_frozen_synthesis_candidate
 from coat_sim.core.film_synthesis_archive import physical_design_hash
@@ -55,6 +55,7 @@ def test_internal_margin_respects_physical_and_narrow_interiors(constraint):
     if constraint.upper_bound == 1. and not constraint.strict_upper:
         assert c.upper_bound == 1.
     if constraint.lower_bound == 0. and constraint.upper_bound == 1. and constraint.strict_lower:
+        assert c.lower_bound is not None and c.upper_bound is not None
         assert c.lower_bound > 0. and c.upper_bound < 1.
     assert c.strict_lower == constraint.strict_lower and c.strict_upper == constraint.strict_upper
 
@@ -89,7 +90,7 @@ def test_joint_physical_evaluator_preserves_original_scores_across_families(fami
 
 def near_case(*, strict=False, budget=100):
     service, request = setup_problem(materials=('low',), low=520., high=580., samples=5)
-    seed = deepcopy(request.environment)
+    seed = deepcopy(dict(request.environment))
     seed['front_layers'] = [dict(id='public-local-seed', material_id='low', optical_set_id='nk',
         thickness=dict(value=550. / (4 * np.sqrt(1.5)), unit='nm'), note='Synthetic boundary fixture')]
     request = replace(request, seed_designs=(seed,), warm_start_seed_index=0, search_strategy='hybrid',
@@ -113,7 +114,7 @@ def test_actual_offgrid_cavity_peak_becomes_constraint_without_rms_dilution():
     center = 550.123456
     mirror = [('high', center / (4 * 2.2)), ('low', center / (4 * 1.3))] * 14
     recipe = mirror + [('low', center / (2 * 1.3))] + list(reversed(mirror))
-    design = deepcopy(request.environment)
+    design = deepcopy(dict(request.environment))
     design['front_layers'] = [dict(id=f'public-cavity-{i}', material_id=m, optical_set_id='nk',
         thickness=dict(value=d, unit='nm'), note='Synthetic physical stress fixture') for i, (m, d) in enumerate(recipe)]
     audited = audit_frozen_synthesis_candidate(request, design)
@@ -176,13 +177,14 @@ def test_mean_feedback_uses_whole_dense_integral_without_changing_original_measu
 
 def test_multiband_bandpass_angles_weights_and_scales_keep_canonical_measure():
     _, request, initial, _, _ = physical_fixture('mixed_RT', 'pointwise')
+    bands: list[tuple[float, float, int, OpticalMetric, Polarization, float, float]] = [
+        (500., 520., 9, 'R', 'unpolarized', 1., .01),
+        (540., 560., 7, 'T', 's', 3., .1),
+        (600., 620., 5, 'R', 'p', 2., 1.)]
     objectives = tuple(FilmOptimizationObjective(low, high, count, metric=metric,
         angles_deg=(0., 15., 35.), polarization=pol, pointwise=Constraint(lower_bound=.99, upper_bound=None),
         weight=weight, normalization_scale=scale)
-        for low, high, count, metric, pol, weight, scale in [
-            (500., 520., 9, 'R', 'unpolarized', 1., .01),
-            (540., 560., 7, 'T', 's', 3., .1),
-            (600., 620., 5, 'R', 'p', 2., 1.)])
+        for low, high, count, metric, pol, weight, scale in bands)
     request = replace(request, objectives=objectives)
     audited = audit_frozen_synthesis_candidate(request, initial['design'])
     evaluator = repair.PreparedFeasibilityEvaluator(request, audited)
@@ -204,6 +206,8 @@ def test_real_parent_repairs_before_rotation_and_enters_existing_cost_stage(stri
     assert phase['trigger_evaluations'] == 2 and phase['trigger_cycle'] == 0
     assert phase['training_evaluations_used'] > 0 and phase['audit_physical_evaluations'] > 0
     assert phase['status'] == 'original_training_and_independent_audit_pass'
+    assert result.training_score is not None and result.validation_score is not None
+    assert result.candidate_design is not None
     assert result.training_score['nominal_pass'] and result.validation_score['nominal_pass']
     assert len(result.candidate_design['front_layers']) == 1
     assert result.candidate_design['front_layers'][0]['material_id'] == seed['front_layers'][0]['material_id']
@@ -222,6 +226,7 @@ def test_fixed_infeasible_topology_returns_to_search_without_false_success():
     request = replace(request, minimum_nonzero_thickness_nm=fixed, max_layer_thickness_nm=fixed)
     result = synthesis.synthesize_film_design(service, request)
     assert not result.targets_met and result.state == 'not_found'
+    assert result.candidate_design is not None
     assert result.candidate_design['front_layers'] == seed['front_layers']
     assert any(t.stage == 'hybrid_rotation' for t in result.trace)
     assert result.performance['search']['hybrid']['feasibility_repair']['rounds']
@@ -244,7 +249,7 @@ def test_cold_seed_discovery_repairs_after_screening_before_global_work():
 
 def test_failed_fixed_high_index_topology_still_discovers_feasible_low_index_topology():
     service, request = setup_problem(low=550., high=550., samples=1)
-    seed = deepcopy(request.environment)
+    seed = deepcopy(dict(request.environment))
     seed['front_layers'] = [dict(id='public-infeasible-high', material_id='high', optical_set_id='nk',
         thickness=dict(value=550. / (2 * 2.2), unit='nm'), note='Synthetic high-index half-wave')]
     request = synthesis.freeze_film_synthesis_request(service, replace(request,
@@ -256,6 +261,8 @@ def test_failed_fixed_high_index_topology_still_discovers_feasible_low_index_top
         upper_bound=max(e.actual for e in value['score']['errors']) - 1e-12))
     result = synthesis.synthesize_film_design(service, replace(request, objectives=(obj,)))
     assert result.targets_met, result.termination_reason
+    assert result.candidate_design is not None
+    assert result.training_score is not None and result.validation_score is not None
     assert len(result.candidate_design['front_layers']) == 1
     assert result.candidate_design['front_layers'][0]['material_id'] == 'low'
     record = result.performance['search']['hybrid']['feasibility_repair_attempts'][0]
@@ -290,10 +297,12 @@ def test_cancel_during_local_repair_does_not_admit_later_audit_or_cost_work(at_s
     complete = next(entry for entry in entries if entry['physical_hash'] == physical_design_hash(seed))
     assert complete['audit_status'] == 'complete'
     assert complete['audit']['physical_hash'] == physical_design_hash(complete['design']) == physical_design_hash(seed)
+    assert result.candidate_design is not None
     final_matches = physical_design_hash(result.candidate_design) == complete['physical_hash']
     assert result.validation_complete is final_matches
     assert result.candidate_provenance['validation_matches_candidate'] is final_matches
     if final_matches:
+        assert result.validation_score is not None
         assert physical_design_hash(result.validation_score['design']) == complete['physical_hash']
     else:
         assert result.validation_score is None
@@ -314,6 +323,7 @@ def test_extra_feedback_memory_guard_runs_before_local_optics(monkeypatch):
     monkeypatch.setattr(repair, 'PreparedFeasibilityEvaluator', excessive)
     result = synthesis.synthesize_film_design(service, request)
     assert result.state != 'failed' and not result.targets_met
+    assert result.candidate_design is not None
     assert result.candidate_design['front_layers'] == seed['front_layers']
     record = result.performance['search']['hybrid']['feasibility_repair']
     assert record['status'] == 'resource_guard' and record['training_evaluations_used'] == 0
@@ -327,6 +337,7 @@ def test_shared_budget_stops_local_repair_and_keeps_original_candidate(monkeypat
     monkeypatch.setattr(repair, 'refine_feasibility_candidate', consume)
     result = synthesis.synthesize_film_design(service, request)
     assert not result.targets_met and result.evaluations <= 8 and result.state != 'failed'
+    assert result.candidate_design is not None
     assert result.candidate_design['front_layers'] == seed['front_layers']
     assert any(t.stage == 'hybrid_rotation' for t in result.trace)
 
@@ -341,6 +352,7 @@ def test_missing_analytic_gradient_retains_audited_candidate_without_false_pass(
     monkeypatch.setattr(repair, 'simulate_with_thickness_jacobian', unavailable)
     result = synthesis.synthesize_film_design(service, request)
     assert not result.targets_met and result.state == 'not_found'
+    assert result.candidate_design is not None
     assert result.performance['search']['hybrid']['feasibility_repair']['status'] == 'feasibility_repair_unavailable'
     assert result.candidate_design['front_layers'] == seed['front_layers']
     assert result.validation_complete

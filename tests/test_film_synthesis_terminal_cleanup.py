@@ -20,6 +20,17 @@ QUARTER_WAVE_NM = 550. / (4. * 1.23)
 QUARTER_WAVE_R = ((1.5 - 1.23**2) / (1.5 + 1.23**2))**2
 
 
+@pytest.fixture
+def isolate_champion_cleanup(monkeypatch):
+    """Reach the old terminal boundary instead of the earlier audit shortcut.
+
+    These fixtures assert exact cleanup slice ownership/counters. Full hybrid
+    integration, including the early audit, remains enabled in the other tests.
+    """
+    monkeypatch.setattr('coat_sim.core.film_synthesis_feasibility.near_feasible_conditions',
+                        lambda *_args: False)
+
+
 def _problem(tmp_path, *, seed=False, seed_multiple=1., alternate_set=False, budget=12):
     service, library, design = fixture(tmp_path)
     if alternate_set:
@@ -87,7 +98,7 @@ def _assert_one_scored_and_audited_layer(response, checkpoints):
     assert response["review"]["layers"][0]["thickness_nm"] == row["thickness"]["value"]
 
 
-def test_twelve_evaluation_job_compresses_lagging_real_champion_not_explorer(tmp_path):
+def test_twelve_evaluation_job_compresses_lagging_real_champion_not_explorer(tmp_path, isolate_champion_cleanup):
     service, library, request = _problem(tmp_path)
     frozen_before, materials_before = deepcopy(request), library._records()
     response, progress, checkpoints = _execute(tmp_path, service, request)
@@ -162,7 +173,7 @@ def test_distinct_optical_sets_are_not_merged_or_evaluated_again(tmp_path):
     assert not any(row["stage"] == "hybrid_cleanup" for row in progress)
 
 
-def test_exhausted_training_budget_preserves_last_slot_for_real_audit(tmp_path):
+def test_exhausted_training_budget_preserves_last_slot_for_real_audit(tmp_path, isolate_champion_cleanup):
     service, _library, request = _problem(tmp_path, seed=True, budget=4)
     response, progress, _checkpoints = _execute(tmp_path, service, request)
     result = response["result"]
@@ -177,7 +188,7 @@ def test_exhausted_training_budget_preserves_last_slot_for_real_audit(tmp_path):
 @pytest.mark.parametrize(("seed", "stop_stage", "evaluations"), [
     (False, "hybrid_exploration_terminal", 6), (True, "structure_proposal", 3),
 ])
-def test_cancellation_never_adds_champion_cleanup_work(tmp_path, seed, stop_stage, evaluations):
+def test_cancellation_never_adds_champion_cleanup_work(tmp_path, seed, stop_stage, evaluations, isolate_champion_cleanup):
     service, _library, request = _problem(tmp_path, seed=seed)
     cancel = Event()
     response, progress, _checkpoints = _execute(tmp_path, service, request, cancel=cancel,
@@ -187,6 +198,54 @@ def test_cancellation_never_adds_champion_cleanup_work(tmp_path, seed, stop_stag
     assert result["targets_met"] is False and result["evaluations"] == evaluations
     assert len(result["candidate_design"]["front_layers"]) == 2
     assert not any(row["stage"] == "hybrid_cleanup" for row in progress)
+
+
+def test_integrated_early_audit_still_scores_and_audits_terminal_cleanup(tmp_path):
+    service, _library, request = _problem(tmp_path)
+    response, progress, checkpoints = _execute(tmp_path, service, request)
+    _assert_one_scored_and_audited_layer(response, checkpoints)
+    result = response['result']
+    assert result['evaluations'] <= request.max_evaluations
+    validation_rows = [row for row in progress if row['stage'] == 'validation_complete']
+    assert [row['layer_count'] for row in validation_rows] == [2, 1]
+    assert not any(row['stage'] == 'hybrid_exploration_terminal' for row in progress)
+    details = result['performance']['search']['hybrid']
+    assert not any(row['stage'] == 'full_original_slsqp_minimax' for row in details['stages'])
+    record = details['terminal_champion_cleanup']
+    assert record['status'] == 'complete' and record['evaluations_used'] == 1
+    assert record['full_original_spectral_equivalence'] is True
+    assert record['selected_physical_hash'] == record['result_physical_hash']
+    assert result['validation_evaluations'] == 2
+
+
+def test_integrated_early_audit_uses_the_last_shared_slot_without_cleanup(tmp_path):
+    service, _library, request = _problem(tmp_path, seed=True, budget=3)
+    response, progress, _checkpoints = _execute(tmp_path, service, request)
+    result = response['result']
+    assert result['state'] == 'completed' and result['targets_met']
+    assert result['evaluations'] == request.max_evaluations == 3
+    assert result['validation_evaluations'] == 1 and result['validation_complete']
+    assert result['audit_physical_evaluations'] > 0
+    assert result['validation_score']['design'] == result['candidate_design']
+    assert len(result['candidate_design']['front_layers']) == 2
+    record = result['performance']['search']['hybrid']['terminal_champion_cleanup']
+    assert record['status'] == 'skipped_evaluation_limit' and record['evaluations_used'] == 0
+    assert not any(row['stage'] == 'hybrid_cleanup' for row in progress)
+
+
+def test_integrated_cancel_after_early_audit_keeps_exact_audited_design_without_cleanup(tmp_path):
+    service, _library, request = _problem(tmp_path)
+    cancel = Event()
+    response, progress, _checkpoints = _execute(tmp_path, service, request, cancel=cancel,
+        observer=lambda row: cancel.set() if row['stage'] == 'validation_complete' else None)
+    result = response['result']
+    assert cancel.is_set() and result['state'] == 'cancelled' and not result['targets_met']
+    at = next(i for i, row in enumerate(progress) if row['stage'] == 'validation_complete')
+    assert all(row['evaluations'] == progress[at]['evaluations'] for row in progress[at + 1:])
+    assert result['validation_complete'] and result['candidate_provenance']['validation_matches_candidate']
+    assert result['validation_score']['design'] == result['candidate_design']
+    assert len(result['candidate_design']['front_layers']) == 2
+    assert not any(row['stage'] in {'hybrid_cleanup', 'thickness_reduction_trial'} for row in progress[at + 1:])
 
 
 def test_champion_cleanup_observer_failure_keeps_original_exception(tmp_path):

@@ -6,16 +6,29 @@ budgets, cancellation, archival and subsequent independent audits.
 """
 from copy import deepcopy
 from dataclasses import replace
+from importlib import import_module
 import math
+from typing import Callable, Mapping, Protocol, Sequence, TypedDict, cast
 
 import numpy as np
 
-from .film_objective_criteria import active_constraints, reduce_objective_responses
-from .film_optimization import _checked_frozen_snapshot
+from .film_objective_criteria import FilmConditionError, active_constraints, reduce_objective_responses
+from .film_optimization import FilmOptimizationObjective, _checked_frozen_snapshot
 from .film_optimization_derivatives import _PreparedMaterialData, simulate_with_thickness_jacobian
 from .film_optimization_scoring import reduction_score
 from .film_optimization_structure import _StructureCancelled
+from .film_synthesis_hr_minimax import Array, _Constraint, _Result
 from .film_synthesis_refinement import SynthesisStageBudget, SynthesisResourceGuard
+
+
+class _CallbackMinimize(Protocol):
+    """Existing scalar minimizer boundary, with the accepted-step callback."""
+
+    def __call__(self, fun: Callable[[Array], float], x0: Array, *,
+                 jac: Callable[[Array], Array], method: str,
+                 bounds: Sequence[tuple[float | None, float | None]],
+                 constraints: Sequence[_Constraint], callback: Callable[[Array], None],
+                 options: Mapping[str, int | float]) -> _Result: ...
 
 
 # Project search conventions, not physical tolerances or manufacturing limits.
@@ -25,7 +38,15 @@ MAX_REPAIR_EVALUATIONS = 64
 MAX_LOCAL_ITERATIONS = 40
 
 
-def interior_guides(objectives):
+class _InteriorMargin(TypedDict):
+    objective_index: int
+    reduction: str
+    common_width: float
+    lower_margin: float
+    upper_margin: float
+
+
+def interior_guides(objectives) -> tuple[tuple[FilmOptimizationObjective, ...], list[_InteriorMargin]]:
     """Shrink enabled ranges inside their common physical feasible interval.
 
     Value/zero-width targets have no interior. Inclusive 0/1 bounds are untouched;
@@ -33,7 +54,8 @@ def interior_guides(objectives):
     An eight-ULP displacement is used only when it fits below width/4; otherwise
     that side stays original. Coupled mean/pointwise ranges cannot be emptied.
     """
-    guides, records = [], []
+    guides = []
+    records: list[_InteriorMargin] = []
     for index, objective in enumerate(objectives):
         active = active_constraints(objective)
         intervals = [(c.target_value, c.target_value) if c.mode == 'value' else
@@ -65,6 +87,22 @@ def interior_guides(objectives):
                                 lower_margin=margins['lower'], upper_margin=margins['upper']))
         guides.append(replace(objective, **changes))
     return tuple(guides), records
+
+
+def near_feasible_conditions(objectives: Sequence[FilmOptimizationObjective],
+                             errors: Sequence[FilmConditionError],
+                             margins: Sequence[_InteriorMargin]) -> bool:
+    """Pure per-condition gate; admits no audit, solver or physical work."""
+    thresholds = {}
+    for row in margins:
+        objective = objectives[row['objective_index']]
+        constraint = getattr(objective, row['reduction'])
+        bound_ulps = [8 * math.ulp(float(bound)) for bound in (
+            constraint.lower_bound, constraint.upper_bound, constraint.target_value) if bound is not None]
+        thresholds[row['objective_index'], row['reduction']] = max(
+            row['lower_margin'], row['upper_margin'], *bound_ulps) / objective.normalization_scale
+    return bool(errors) and not any(
+        e.normalized_violation > thresholds[e.objective_index, e.reduction] for e in errors)
 
 
 def canonical_candidate(value):
@@ -191,7 +229,7 @@ def refine_feasibility_candidate(request, initial, *, evaluate, archive,
                                  cancel_check=lambda: None, progress=lambda *args: None,
                                  max_iterations=MAX_LOCAL_ITERATIONS):
     """Full original + admitted audit inequalities, with an internal guide only."""
-    from scipy.optimize import minimize
+    minimize = cast(_CallbackMinimize, import_module('scipy.optimize').minimize)
     design = initial['design']
     ds = np.asarray([r['thickness']['value'] for r in design['front_layers']], float)
     if not len(ds):
@@ -254,7 +292,7 @@ def refine_feasibility_candidate(request, initial, *, evaluate, archive,
             accepted = data(z[:-1])[2]
             iterations += 1
             cancel_check()
-        constraints = [dict(type='ineq', fun=constraint, jac=derivative)]
+        constraints: list[_Constraint] = [dict(type='ineq', fun=constraint, jac=derivative)]
         if request.max_total_thickness_nm is not None:
             constraints.append(dict(type='ineq', fun=lambda z: request.max_total_thickness_nm - float(z[:-1] @ scales),
                                     jac=lambda z: np.r_[-scales, 0.]))
