@@ -116,10 +116,11 @@ def test_example_page_configurations_restore_without_guessing(example):
         config = design["workflow_settings"]["optimization"]
         assert optimization.loadOptimizationConfiguration(config)
         restored = optimization.exportOptimizationConfiguration()
-        # The current example omits the optional synthesis section. Restoring
-        # it must retain all saved criteria and add explicit editor defaults.
+        # The current example omits optional synthesis and reduction settings.
+        # Restoring must retain saved criteria and add explicit editor defaults.
         assert {key: restored[key] for key in config} == config
-        assert set(restored) == set(config) | {"synthesis"}
+        assert set(restored) == set(config) | {"synthesis", "reduction_mode"}
+        assert restored["reduction_mode"] == "combined"
         explicit_false = {
             **restored,
             "objectives": [{**row, "pointwise": {**row["pointwise"], "strict_upper": False}}

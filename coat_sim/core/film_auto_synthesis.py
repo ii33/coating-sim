@@ -914,7 +914,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
 
     prepared_training: list[_PreparedStructureEvaluator | None] = [None]
 
-    def evaluate(design, *, jacobian=False, zero_ids=(), holdout=False, outcome=None, gpu_forward=False, _reserved=False):
+    def evaluate(design, *, jacobian=False, zero_ids=(), holdout=False, outcome=None, gpu_forward=False, _reserved=False,
+                 feasibility_evaluator=None):
         nonlocal evaluations, validation_evaluations, failures, reserved_training_slots
         nonlocal audit_physical_evaluations, audit_wavelength_points
         nonlocal completed_training_best, completed_training_validation, fully_scored_evaluations
@@ -954,6 +955,10 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             else:
                 task = EvaluationTask(design, jacobian, tuple(zero_ids))
                 def physical_call():
+                    if feasibility_evaluator is not None:
+                        if not jacobian or zero_ids or outcome is not None or gpu_forward:
+                            raise ValueError("feasibility repair requires a serial complete analytic evaluation")
+                        return feasibility_evaluator.evaluate(design, cancel_event=cancel_event)
                     prepared = prepared_training[0]
                     if prepared is None:
                         prepared = _PreparedStructureEvaluator(_proxy(request))
@@ -979,6 +984,10 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         value = execution.take(outcome)
                     except InfrastructureFailure:
                         value = execution.serial(physical_call, task, fallback=True)
+            if feasibility_evaluator is not None:
+                # The executor counted the exact joint physical grids. Restore
+                # canonical original responses before any rank/display/commit.
+                value = feasibility_evaluator.restore(value)
             # Expose the same synthesis ordering used by the archive; the
             # underlying physical evaluator keeps its legacy score semantics.
             value["score"]["key"] = rank(value)
@@ -1032,12 +1041,13 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         slack = min(slacks, default=0.) if score["max_error"] == 0 else 0.
         return (int(not passed), score["max_error"], -slack, *legacy)
 
-    def audit_archive(value, *, allow_feedback_repair=True):
+    def audit_archive(value, *, allow_feedback_repair=True, refresh=False):
         nonlocal audited_best, completed_training_validation
         signature = hashlib.sha256(json.dumps(value["design"], sort_keys=True, allow_nan=False).encode("utf-8")).digest()
         _check_cancel(cancel_event)
-        if signature in audited_signatures:
-            return
+        if signature in audited_signatures and not refresh:
+            return (audited_best[1] if audited_best is not None
+                    and audited_best[0]["design"] == value["design"] else None)
         emit("validation", "Audit dense, offset and local-extremum physical responses", value["design"], value["score"])
         audited = evaluate(value["design"], holdout=True)
         audited_signatures.add(signature)
@@ -1084,6 +1094,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             # independent audit may register later points but never recurse.
             archive(repaired, audit_eligible=False)
             audit_archive(repaired, allow_feedback_repair=False)
+        return audited
 
     def targets_verified():
         return (audited_best is not None
@@ -1105,7 +1116,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         if (audit_eligible and feasible(value["design"])
                 and value["score"]["max_error"] <= request.acceptable_normalized_error
                 and solver_acceptable(request, value["score"])):
-            audit_archive(value)
+            audit_archive(value, allow_feedback_repair=request.search_strategy == "legacy")
 
 
     def clean(design):
@@ -1434,9 +1445,11 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             archive_storage_cache[:] = [key, estimate]
             return estimate
 
-        def resource_check(design, *, jacobian=False, epigraph=False):
+        def resource_check(design, *, jacobian=False, epigraph=False, additional_points=0, additional_constraints=0):
             numerical_estimate = _synthesis_working_set_estimate_bytes(request, len(design["front_layers"]),
                 jacobian=jacobian, epigraph=epigraph)
+            numerical_estimate += (additional_points * len(design["front_layers"]) * 64
+                                   + 16 * additional_constraints * (len(design["front_layers"]) + 1))
             archive_estimate = archive_storage_estimate_bytes()
             estimate = numerical_estimate + archive_estimate
             limit = resource_resolution["effective_bytes"]
@@ -1894,7 +1907,149 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             iter(iter_dual_substack_hr_proposals(source_request, cancel_check=check_training_admission, report=report))]
         hybrid_streams.extend(streams)
         source_cursor = 0
+        repair_attempted = set()
 
+        def repair_near_feasible(trigger_boundary="initial_champion"):
+            """Resolve audited boundary failures before another topology rotation."""
+            if targets_verified() or best is None:
+                return
+            source = best
+            if not source["design"]["front_layers"]:
+                return
+            from .film_synthesis_feasibility import (
+                PreparedFeasibilityEvaluator, refine_feasibility_candidate,
+                interior_guides, MAX_REPAIR_ROUNDS, MAX_REPAIR_EVALUATIONS,
+            )
+            _guides, margins = interior_guides(request.objectives)
+            thresholds = {}
+            for row in margins:
+                objective = request.objectives[row["objective_index"]]
+                constraint = getattr(objective, row["reduction"])
+                bound_ulps = [8 * math.ulp(float(bound)) for bound in (
+                    constraint.lower_bound, constraint.upper_bound, constraint.target_value) if bound is not None]
+                thresholds[row["objective_index"], row["reduction"]] = max(
+                    row["lower_margin"], row["upper_margin"], *bound_ulps) / objective.normalization_scale
+            # A loose user solver tolerance must not prematurely end ordinary
+            # topology search. Every active condition must be near its own
+            # interval/ULP scale; no wide band can hide a narrow group's miss.
+            if not source["score"].get("errors") or any(
+                    e.normalized_violation > thresholds[e.objective_index, e.reduction]
+                    for e in source["score"]["errors"]):
+                return
+            input_key = hashlib.sha256(json.dumps(dict(
+                physical_hash=physical_design_hash(source["design"]), margins=margins),
+                sort_keys=True).encode()).hexdigest()
+            # Frozen inputs and a physical candidate determine its audit.
+            # Deduplicate BEFORE a potentially expensive cache refresh, without
+            # retaining an unbounded cache of full spectra/Jacobians.
+            if input_key in repair_attempted:
+                details["feasibility_repair_deduplicated_checks"] = (
+                    details.get("feasibility_repair_deduplicated_checks", 0) + 1)
+                return
+            # Strict equality may be solver-unacceptable despite zero residual;
+            # audit the near-feasible champion without that legacy audit gate.
+            audited = audit_archive(source, allow_feedback_repair=False)
+            if audited is None:
+                audited = audit_archive(source, allow_feedback_repair=False, refresh=True)
+            if targets_verified():
+                return
+            record = dict(status="running", rounds=[], fixed_topology=True,
+                trigger_evaluations=evaluations, trigger_cycle=cycle, trigger_boundary=trigger_boundary,
+                initial_physical_hash=physical_design_hash(source["design"]),
+                initial_total_thickness_nm=sum(r["thickness"]["value"] for r in source["design"]["front_layers"]),
+                margin_semantics="private 2e-4 of common feasible interval; inclusive 0/1/value/empty interiors unchanged",
+                margins=margins, maximum_rounds=MAX_REPAIR_ROUNDS,
+                trigger_scale="per enabled criterion interior displacement / ULP; not solver tolerance",
+                maximum_shared_evaluations=MAX_REPAIR_EVALUATIONS,
+                formal_target_changed=False, original_rms_measure_unchanged=True)
+            attempt_key = hashlib.sha256(json.dumps(dict(
+                physical_hash=record["initial_physical_hash"], margins=margins,
+                failed_conditions=[(e.objective_index, e.angle_deg, e.reduction, e.wavelength_nm)
+                                   for e in audited["score"]["errors"]
+                                   if e.normalized_violation > 0 or (
+                                       e.strict_lower and e.actual <= e.lower_bound) or (
+                                       e.strict_upper and e.actual >= e.upper_bound)]),
+                sort_keys=True).encode()).hexdigest()
+            record["attempt_key"] = attempt_key
+            record["preaudit_attempt_key"] = input_key
+            repair_attempted.add(input_key)
+            details["feasibility_repair"] = record
+            details.setdefault("feasibility_repair_attempts", []).append(record)
+            emit("feasibility_repair_start", json.dumps(record, sort_keys=True), source["design"], source["score"])
+            before = evaluations
+            before_validation = validation_evaluations
+            before_audit_calls, before_audit_points = audit_physical_evaluations, audit_wavelength_points
+            stop = "feasibility_repair_round_limit"
+            try:
+                begin_slice("audited_feasibility_repair", .85, MAX_REPAIR_EVALUATIONS)
+                previous_evaluator = None
+                for round_number in range(1, MAX_REPAIR_ROUNDS + 1):
+                    stage_check()
+                    evaluator = PreparedFeasibilityEvaluator(request, audited, previous=previous_evaluator)
+                    def repair_evaluate(design, _evaluator=evaluator):
+                        stage_check()
+                        resource_check(design, jacobian=True, epigraph=True,
+                            additional_points=_evaluator.additional_points,
+                            additional_constraints=2 * _evaluator.additional_conditions)
+                        return evaluate(design, jacobian=True, feasibility_evaluator=_evaluator)
+                    initial = repair_evaluate(source["design"])
+                    candidate, local = refine_feasibility_candidate(request, initial,
+                        evaluate=repair_evaluate, archive=archive, cancel_check=stage_check,
+                        progress=local_progress)
+                    archive(candidate, audit_eligible=False, operator="audited_feasibility_repair")
+                    stage_check()
+                    next_audit = audit_archive(candidate, allow_feedback_repair=False)
+                    row = dict(round=round_number, local=local,
+                        additional_points=evaluator.additional_points,
+                        training_max_error=candidate["score"]["max_error"],
+                        audit_max_error=None if next_audit is None else next_audit["score"]["max_error"],
+                        layer_count=len(candidate["design"]["front_layers"]),
+                        total_thickness_nm=sum(r["thickness"]["value"] for r in candidate["design"]["front_layers"]),
+                        shared_evaluations_used=evaluations - before)
+                    record["rounds"].append(row)
+                    emit("feasibility_repair_round", json.dumps(row, sort_keys=True), candidate["design"], candidate["score"])
+                    if targets_verified():
+                        record["status"] = "original_training_and_independent_audit_pass"
+                        return
+                    if next_audit is None:
+                        stop = "feasibility_repair_cached_audit_unavailable"
+                        break
+                    old_points = (evaluator.points, evaluator.mean_grids)
+                    following = PreparedFeasibilityEvaluator(request, next_audit, previous=evaluator)
+                    if old_points == (following.points, following.mean_grids):
+                        stop = "feasibility_repair_stalled"
+                        break
+                    source, audited, previous_evaluator = candidate, next_audit, evaluator
+                record["status"] = stop
+                # A finite fixed-topology failure is not global infeasibility.
+                # The attempt key prevents repetition; ordinary search and its
+                # existing independent budgets/stopping conditions continue.
+                return
+            except _StructureCancelled:
+                record["status"] = "cancelled_or_deadline"
+                raise
+            except _Stopped as exc:
+                if record["status"] == "running":
+                    record["status"] = str(exc)
+                raise
+            except SynthesisStageBudget:
+                record["status"] = "feasibility_repair_stage_budget"
+                return
+            except SynthesisResourceGuard:
+                record["status"] = "resource_guard"
+                return
+            except (ValueError, ArithmeticError, RuntimeError) as exc:
+                record.update(status="feasibility_repair_unavailable", error=str(exc))
+                return
+            finally:
+                record["shared_evaluations_used"] = evaluations - before
+                record["training_evaluations_used"] = evaluations - before - (validation_evaluations - before_validation)
+                record["audit_evaluations_used"] = validation_evaluations - before_validation
+                record["audit_physical_evaluations"] = audit_physical_evaluations - before_audit_calls
+                record["audit_wavelength_points"] = audit_wavelength_points - before_audit_points
+                end_slice(record["status"])
+
+        repair_near_feasible()
         while not targets_verified():
             check_training_admission()
             if request.max_cycles is not None and cycle >= request.max_cycles:
@@ -2010,6 +2165,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 end_slice("resource_guard" if isinstance(exc, SynthesisResourceGuard) else "stage_budget")
             finally:
                 end_slice()
+            repair_near_feasible("engineering_prior_screen")
             if targets_verified():
                 break
 
@@ -2072,6 +2228,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             finally:
                 end_slice()
 
+            repair_near_feasible("local_global_exploration")
+            if targets_verified():
+                break
             parent_hash = physical_design_hash(explorer["design"])
             archive_context.update(parent_hash=parent_hash, operator="analytic_batch_needle",
                                    provenance=dict(family="needle_exploration"))
@@ -2211,6 +2370,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 end_slice("resource_guard" if isinstance(exc, SynthesisResourceGuard) else "stage_budget")
             finally:
                 end_slice()
+            repair_near_feasible("joint_needle_sse_growth")
+            if targets_verified():
+                break
             assert best is not None
             endpoint = dict(cycle=cycle, physical_hash=physical_design_hash(explorer["design"]),
                 design=deepcopy(explorer["design"]), layer_count=len(explorer["design"]["front_layers"]),
@@ -2251,6 +2413,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 finally:
                     end_slice()
 
+            repair_near_feasible("deletion_and_same_reference_merge")
+            if targets_verified():
+                break
             # Always start the terminal epigraph from the real exploration
             # endpoint, even when its physical strict max has become worse.
             begin_slice("full_original_slsqp_minimax", .85, 256)
@@ -2282,6 +2447,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             # acceptance. Audit feedback cannot consume the next scan reserve.
             terminal_hybrid_cleanup()
             audit_archive(best, allow_feedback_repair=False)
+            repair_near_feasible("rotation_audit")
             details["completed_rotations"] = cycle
             details["real_growth_rounds"] = total_real_growth
             if not streams and not explorer["design"]["front_layers"] and details["resource_skips"]:
@@ -2290,6 +2456,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         # All normal success exits, including the early engineering-prior
         # break, converge here. No optional optics after failure/deadline/cancel.
         reduce_audited_thickness()
+        if "feasibility_repair" in details:
+            details["feasibility_repair"]["subsequent_thickness_reduction"] = (
+                details.get("thickness_reduction", {}).get("status", "disabled_or_not_entered"))
 
     try:
         try:

@@ -12,7 +12,7 @@
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px solid #c8e0db;border-radius:8px;padding:16px;font-size:.88rem;line-height:1.5}</style>
 </head>
 <body>
-<p class="source">算法更新：2026-10-25；<a href="#film-manufacturing-pair-20261025">14ax 独立可选制造修复算子</a>；<a href="#film-objective-progress-handoff-20261025">14aw 可选原目标进展诊断与极小极大交接</a>，默认关闭，合成协议 v5，不改变原指标或求解器容差。</p>
+<p class="source">算法更新：2026-10-25；新增<a href="#film-audited-feasibility-repair">14ay 审计边界可行性修复</a>，固定拓扑、保留原始验收与积分分母；<a href="#film-manufacturing-pair-20261025">14ax 独立可选制造修复算子</a>；<a href="#film-objective-progress-handoff-20261025">14aw 可选原目标进展诊断与极小极大交接</a>仍默认关闭。</p>
 <p class="source">算法更新：2026-10-24；<a href="#film-band-criteria-20261024">14at 波段平均值/逐点独立约束</a>，统一积分质量、判定、审计与冻结重放。</p>
 <p class="source">算法补充日期：2026-10-24；新增 <a href="#film-template-randomization-20261024">14as 可选模板随机厚度起点</a>，默认关闭，实际 seed 随请求冻结。</p>
 <p class="source">实时光谱与展示评分补充：2026-10-23，见<a href="#candidate-display-score">14ar</a>；仅复用已算结果，默认关闭谱预览，展示分不改变优化目标。</p>
@@ -72,6 +72,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#film-cancel-warm-restart-20261025">14ay 取消后从保留候选重新启动求解器（2026-10-25）</a>
 <a href="#film-objective-progress-handoff-20261025">14aw 可选原目标进展诊断与极小极大交接（2026-10-25）</a>
 <a href="#film-manufacturing-pair-20261025">14ax 显式缺陷选层的成对制造修复（2026-10-25）</a>
+<a href="#film-audited-feasibility-repair">14ay 审计边界可行性修复与正式减量交接（2026-10-25）</a>
 <a href="#film-manufacturing-admission-20261025">14ax-2 本地 CPU 整次审计准入</a>
 <a href="#film-total-thickness-reduction-20261024">14av 固定层序、原指标下的总厚度缩减（2026-10-24）</a>
 <a href="#film-current-benchmark-20261024">14au 通用膜系基准的当前格式登记（2026-10-24）</a>
@@ -3966,6 +3967,26 @@ score_and_audit(candidate, original_request)  # 启用的 mean 与 pointwise 仍
 <p>当前 synthesis 协议为 4，ordinary/structure/classic 协议为 2，理想敏感性为 3，独立误差参数表为 2，GUI 优化配置为 2；旧格式明确拒绝，不迁移或 fallback，不改写历史研究记录。敏感性 F、scale 和逐波长逐角 baseline guard 保持原义；freeze 固定全部启用名义上下界的方向并集，写入 identity/结果，不能从新 UI 重推旧任务。mean-only 不能让局部退化被均值补偿掩盖。参数表仍保留逐点误差响应，逐点目标关闭时该点名义通过为 null，并单独保存两组归约名义条件。</p>
 <p><strong>实现：</strong><code>film_objective_criteria.py</code>、<code>film_objective_payload.py</code>；结构先验准入见 <code>film_synthesis_multispectral_priors.py</code>、<code>film_synthesis_hr_priors.py</code>、<code>film_synthesis_global.py</code>、<code>film_synthesis_matching.py</code>。接入 <code>film_optimization*</code>、<code>film_synthesis_refinement.py</code>、<code>film_synthesis_*minimax.py</code>、<code>film_nominal_acceptance.py</code>、<code>film_synthesis_audit.py</code>、<code>film_ideal_sensitivity.py</code> 与当前 job/GUI 协议。默认 GUI 波长精度仍 1 nm、逐点开/均值关；数值尺度和求解器停止容差沿用已有设置。启用均值不是制造误差模型。</p>
 <p><strong>参考：</strong><a href="https://numpy.org/doc/stable/reference/generated/numpy.trapezoid.html">NumPy 官方复合梯形积分说明</a>支持非均匀 λ 积分形式；双组质量、early reject、派发与审计边界均为本项目约定，不能据此声称物理可达。有关状态所有权、草稿和取消见 <a href="film-band-criteria-contract.md">双约束契约</a>。</p>
+</section>
+<section id="film-audited-feasibility-repair">
+<h2>14ay 审计边界可行性修复与正式减量交接</h2>
+<p>用途：hybrid 已有接近可行的训练冠军，但密网格/offset/极值审计仍违规或数值贴边时，在初始冠军以及先验筛选、局部/全局、联合 SSE、生长压缩的安全交接点尝试固定层序与材料的局部修复，不等全局总预算耗尽。日志保存触发边界、循环和评估位置。输入为原始目标、冻结材料、实际设计及完整审计；输出为原始评分的实际候选、局部诊断与新的独立审计。反射/透射为 fraction，波长与厚度均为 nm，角度为度；只有现有单正面相干厚度 Jacobian 支持域适用。</p>
+<pre>q_lower = (lower - actual) / normalization_scale
+q_upper = (actual - upper) / normalization_scale
+minimize t, subject to q_guide(original + admitted audit conditions) &lt;= t, t &gt;= 0
+nominal_success = original_training_pass AND independent_original_audit_pass</pre>
+<p>私有数值引导采用启用约束共同物理可行区间宽度 W 的 2×10<sup>−4</sup> 作为向内余量；仅当位移可表示且不超过 W/4 时使用至少 8 ULP。值目标、零宽/过窄区间及包含等号的自然 0/1 边界不强加余量；严格 &gt;0、&lt;1 有非空内部时可向内引导，物理无解的 &lt;0、&gt;1 不冒充通过，严格标志保持不变。共同区间约束使同时启用的均值与逐点目标不会因引导而被挤成空集。该比例是<strong>本项目搜索约定，不是验收容差</strong>，没有把所有目标统一缩成固定绝对余量。</p>
+<div class="diagram"><pre>原冠军 + 完整审计失败
+          ↓ 原网格接近可行
+原网格 ∪ 已知漏峰 → 固定拓扑局部 epigraph → 原目标完整独立审计
+          ↑ 新漏峰（最多3轮）                 ↓ 双重名义通过
+  有界预算/取消/停滞保留冠军             现有减量阶段
+          ↓ 未通过
+记录局部失败；去重后返回原搜索</pre><p>图：附加波长仅形成约束；训练和审计的均值、RMS仍各自使用原固定积分网格。</p></div>
+<p>默认本阶段最多 64 次共享逻辑评价（包含阶段审计），最多 3 轮，每轮最多 40 次 SLSQP 迭代；变量按 100 nm 编码、ftol=10<sup>−11</sup>，厚度局部盒为初值 ±5 nm 与原生上下限的交集。局部盒不是新的制造上限，不加层、不换材料；不能据局部失败宣称全局无解。每轮点集冻结，峰移动时再完整审计并有限增补，已纳入的条件跨轮保留；补充均值证据必须是该审计原密网格的完整积分。均值关闭时没有均值目标或额外均值奖励。新增点的物理调用、波长点数和资源估计均计入父级账户。</p>
+<p>触发判定要求每条启用条件的原始归一化违规均不超过该条件的向内位移或 8 ULP 尺度；不使用可能很宽的用户求解器容差作为“接近边界”阈值，也不让宽波段掩盖窄目标组。该判定只负责路由，不把 solver_acceptable 冒充达标。严格等边界也可先审计，不受旧的 solver_acceptable 审计门阻挡。同一冻结输入、物理冠军与余量在昂贵审计前去重，完整 attempt_key 另绑定失败条件；不保存无限全光谱缓存。局部失败、局部预算或无可用梯度以明确诊断返回原搜索；共享全局预算与原停止条件仍生效，不因一次 ±5 nm 修复失败否定后续合法拓扑。原冠军及已完成审计保留；取消传播，禁止后续新评价。取消后若返回另一个未审计训练候选，validation_matches_candidate=false 且 validation_complete=false；最后完整审计设计和绑定哈希仍在有界档案内。仅双重原始名义通过后进入原减量流程；减量仍可能因预算或独立审计拒绝而无改善。</p>
+<p>实现：<code>film_synthesis_feasibility.py</code> 的区间引导、精确联合波长评价与局部求解；<code>film_auto_synthesis.py</code> 的即时触发、共享预算、工作计数、审计、保存与减量交接。新增点不进入 canonical 原网格响应，评价器先按联合网格记账，再恢复原响应供排名与观察；私有引导数组不导出。保持原始名义判据、目标权重与原始光谱语义，不使用原始曲线标准差惩罚。</p>
+<p class="source">来源与限制：未找到外部依据，仅为本项目实现。epigraph、局部盒、余量比例、触发和预算均为工程约定；验证只支持有限采样/极值审计，不是连续全波长证书、全局最优或普遍收敛证明。公开回归使用合成材料及边界数据，不包含用户工程、路径或配方。</p>
 </section>
 </body>
 </html>
