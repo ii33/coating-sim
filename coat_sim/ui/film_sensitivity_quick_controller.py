@@ -1382,6 +1382,30 @@ class FilmSensitivityQuickController(QObject):
         return self.saveReport(url.toLocalFile(), overwrite)
 
     @Slot()
+    def sourceChanged(self):
+        """End an old source observation without disposing this reusable page."""
+        if self._closed:
+            return
+        generation = self._generation
+        self._generation += 1
+        self._disconnected.set()
+        if self.owner.project_context is None:
+            self.cancel()
+        # The old task keeps its permanently-set event and its own cancel.
+        # New work gets a different gate; late callbacks keep the old generation.
+        self._disconnected = threading.Event()
+        self._busy = False
+        self._cancel = None
+        self._context = self._table_context = self._ideal_context = None
+        self._prepared_source = self._prepared_signature = None
+        self._unknown_submission = False
+        self._error = ""
+        self.owner._live_display.end(("sensitivity", generation))
+        message = "来源已切换；重新准备后可运行。下方旧冻结报告仅供回看，不能应用。"
+        self._table_status = self._ideal_status = message
+        self.changed.emit()
+
+    @Slot()
     def detach(self):
         self._closed = True
         self._disconnected.set()

@@ -223,12 +223,14 @@ def lower_limit(target_nm: float, thickness_tolerance_nm: float) -> float:
     return max(0.0, target_nm - thickness_tolerance_nm)
 
 
-def deficient_ids(design: Mapping[str, Any], floor: float) -> list[str]:
-    return [r["id"] for r in design["front_layers"] if r["thickness"]["value"] < floor]
+def deficient_ids(design: Mapping[str, Any], floor: float, *, include_zero=True) -> list[str]:
+    return [r["id"] for r in design["front_layers"] if r["thickness"]["value"] < floor
+            and (include_zero or r["thickness"]["value"] != 0.0)]
 
 
 def legal_thicknesses(
-    request: FilmSynthesisRequest, design: Mapping[str, Any], floor: float
+    request: FilmSynthesisRequest, design: Mapping[str, Any], floor: float, *,
+    allow_zero=False, minimum_probe_id=None,
 ) -> bool:
     rows = design["front_layers"]
     lower = max(floor, request.minimum_nonzero_thickness_nm or 0.0)
@@ -236,7 +238,9 @@ def legal_thicknesses(
         len(rows) <= min(MAX_LAYERS, request.max_layers or MAX_LAYERS)
         and all(
             row["thickness"]["unit"] == "nm"
-            and row["thickness"]["value"] >= lower
+            and (row["thickness"]["value"] >= lower
+                 or (allow_zero and row["thickness"]["value"] == 0.0)
+                 or (row["id"] == minimum_probe_id and row["thickness"]["value"] >= 0.0))
             and (
                 request.max_layer_thickness_nm is None
                 or row["thickness"]["value"] <= request.max_layer_thickness_nm
@@ -914,13 +918,14 @@ def automatic_repair(
 # Version-three live repair uses the same frozen optics and independent auditor,
 # but separates useful repair progress from full attainment of the thickness goal.
 LIVE_POLICY = dict(version=3, local_iterations=80, feedback_rounds=1, trace_capacity=128)
+ZERO_COLLAPSE_OPERATOR = "collapse_thin_layer:"
 
 
 def thickness_defects(design: Mapping[str, Any], floor: float) -> Value:
     if not math.isfinite(floor) or floor < 0:
         raise ValueError("repair floor must be finite and nonnegative")
     deficits = [max(0.0, floor - float(row["thickness"]["value"])) / floor
-                for row in design["front_layers"]] if floor else []
+                for row in design["front_layers"] if row["thickness"]["value"] != 0.0] if floor else []
     return dict(sum=math.fsum(deficits), max=max(deficits, default=0.0),
                 count=sum(value > 0.0 for value in deficits))
 
@@ -1068,7 +1073,8 @@ def assess_live_candidate(snapshot, source_snapshot, request, floor, *, original
     thickness_complete = thickness_defects(snapshot["design"], floor)["count"] == 0
     nominal = _live_nominal(snapshot) if original_targets_present else None
     applicable = bool(complete and optical_pass and protection and improved
-                      and legal_thicknesses(request, snapshot["design"], 0.0))
+                      and legal_thicknesses(request, snapshot["design"], 0.0)
+                      and all(r["thickness"]["value"] > 0.0 for r in snapshot["design"]["front_layers"]))
     all_met = bool(complete and thickness_complete and optical_pass and (nominal is not False))
     return dict(rank=rank, source_rank=source_rank, optical_pass=bool(optical_pass),
         original_protection_pass=bool(protection), complete_evidence=bool(complete),
@@ -1084,24 +1090,32 @@ def live_layers(design, origins):
             for r in design["front_layers"]]
 
 
+def _live_cleanup(request, raw, mapping):
+    """Exact zero is absence; merge only identical material/data references."""
+    result = cleanup_batch_needle_design(raw, request.frozen_material_snapshot)
+    lineage = {k: list(v) for k, v in mapping.items()}
+    for removed, retained in result.merged_ids.items():
+        lineage[retained] = sorted(set(lineage.get(retained, ())) | set(lineage.get(removed, ())))
+    return result, {r["id"]: lineage.get(r["id"], []) for r in result.design["front_layers"]}
+
+
 def _live_structures(request, base, origins, source, target, floor):
     """Finite deterministic neighborhood; successful progress can start a new one."""
     yield "compensate_thin_layers", deepcopy(base), deepcopy(origins)
-
-    def cleaned(raw, mapping):
-        result = cleanup_batch_needle_design(raw, request.frozen_material_snapshot)
-        lineage = {k: list(v) for k, v in mapping.items()}
-        for removed, retained in result.merged_ids.items():
-            lineage[retained] = sorted(set(lineage.get(retained, ())) | set(lineage.get(removed, ())))
-        return result.design, {r["id"]: lineage.get(r["id"], []) for r in result.design["front_layers"]}
+    for row in sorted(base["front_layers"], key=lambda r: r["thickness"]["value"]):
+        if 0.0 < row["thickness"]["value"] < floor:
+            # The grow-to-floor quadratic has no descent direction toward
+            # removal. Give each deficient layer a separate zero-directed
+            # local solve while all other layers can compensate optically.
+            yield ZERO_COLLAPSE_OPERATOR + row["id"], deepcopy(base), deepcopy(origins)
 
     for row in sorted(base["front_layers"], key=lambda r: r["thickness"]["value"]):
         raw = deepcopy(base)
         raw["front_layers"] = [r for r in raw["front_layers"] if r["id"] != row["id"]]
         if raw.get("expression", {}).get("text"):
             raw["expression"]["in_sync"] = False
-        design, lineage = cleaned(raw, origins)
-        yield "delete_layer_merge", design, lineage
+        result, lineage = _live_cleanup(request, raw, origins)
+        yield "delete_layer_merge", result.design, lineage
     pairs = list(dict.fromkeys((r["material_id"], r["optical_set_id"]) for r in source["front_layers"]))
     for index in range(len(base["front_layers"]) + 1):
         for material, optical in pairs:
@@ -1141,7 +1155,7 @@ def automatic_repair_live(request, source, *, target_nm, thickness_tolerance_nm,
     guide = _guard_request(request, optical_tolerance)
     settings = simulation_settings(deepcopy(dict(optical_settings or
         (request.frozen_material_snapshot or {}).get("settings") or {})))
-    if not legal_thicknesses(request, source, 0.0) or settings["first_surface"] != "front":
+    if not legal_thicknesses(request, source, 0.0, allow_zero=True) or settings["first_surface"] != "front":
         raise ValueError("live repair source violates native limits or supported incidence")
     source_hash = physical_design_hash(source)
     identity = dict(request_identity or dict(request_id="live-repair", request_hash=source_hash,
@@ -1159,6 +1173,8 @@ def automatic_repair_live(request, source, *, target_nm, thickness_tolerance_nm,
     seen: set[str] = set()
     cursor: Value = dict(generation=0, proposal_index=0, frontier_base_hash=source_hash)
     owners: dict[str, Any] = {}
+    zero_directed_work: set[tuple[str, str]] = set()
+    owners["zero_directed_work"] = zero_directed_work
     pairs: list[CurvePair] = []
     audit_memory: Value | None = None
     origins = {r["id"]: [r["id"]] for r in source["front_layers"]}
@@ -1194,7 +1210,7 @@ def automatic_repair_live(request, source, *, target_nm, thickness_tolerance_nm,
 
     def body():
         return dict(source=source_snapshot, best=champion, reviewed=reviewed,
-            detected_layer_ids=deficient_ids(source, floor), lower_limit_nm=floor,
+            detected_layer_ids=deficient_ids(source, floor, include_zero=False), lower_limit_nm=floor,
             policy=controls, work=deepcopy(work), trace=deepcopy(trace), trace_total=trace_total,
             elapsed_seconds=monotonic() - started, termination=reason,
             progress=dict(seq=frames, cursor=deepcopy(cursor), tried_hashes=sorted(seen), current=current))
@@ -1228,7 +1244,9 @@ def automatic_repair_live(request, source, *, target_nm, thickness_tolerance_nm,
         work["partial_physical_work_possible"] = True
         value = evaluate_frozen_structure_candidate(_proxy(active), design,
             variable_ids=tuple(r["id"] for r in design["front_layers"]) if jacobian else (),
-            with_jacobian=jacobian, cancel_event=cancel_event, optical_settings=settings)
+            with_jacobian=jacobian, zero_thickness_layer_ids=tuple(
+                r["id"] for r in design["front_layers"] if r["thickness"]["value"] == 0.0),
+            cancel_event=cancel_event, optical_settings=settings)
         work["partial_physical_work_possible"] = previous
         return value
 
@@ -1336,6 +1354,20 @@ def automatic_repair_live(request, source, *, target_nm, thickness_tolerance_nm,
         nonlocal champion, reviewed, current, trace_total
         check()
         assert source_snapshot is not None
+        if any(r["thickness"]["value"] == 0.0 for r in raw["design"]["front_layers"]):
+            cleanup, lineage = _live_cleanup(request, raw["design"], lineage)
+            if not legal_thicknesses(request, cleanup.design, 0.0):
+                return False
+            if champion is not None and physical_design_hash(cleanup.design) == champion["physical_hash"]:
+                return False
+            raw_hash = physical_design_hash(raw["design"])
+            raw = physical(cleanup.design)  # New topology, new complete physical score.
+            record_trace(dict(kind="zero_layer_canonicalization", raw_physical_hash=raw_hash,
+                physical_hash=physical_design_hash(raw["design"]),
+                removed_layer_ids=list(cleanup.removed_exact_zero_ids), merged_ids=dict(cleanup.merged_ids)))
+            converged = False  # A different topology did not share the solver's stationarity test.
+        if not legal_thicknesses(request, raw["design"], 0.0):
+            return False  # Native-minimum probes are previews, never applicable evidence.
         prospective = thickness_defects(raw["design"], floor)
         incumbent = thickness_defects((champion or source_snapshot)["design"], floor)
         original_defects = thickness_defects(source, floor)
@@ -1414,8 +1446,11 @@ def automatic_repair_live(request, source, *, target_nm, thickness_tolerance_nm,
         ids = tuple(r["id"] for r in rows)
         ds = np.asarray([r["thickness"]["value"] for r in rows], float)
         scale = max(1.0, floor)
-        initially_thin = ds < floor
-        lower = request.minimum_nonzero_thickness_nm or np.finfo(float).tiny
+        initially_thin = (ds > 0.0) & (ds < floor)
+        collapse_id = operator[len(ZERO_COLLAPSE_OPERATOR):] if operator.startswith(ZERO_COLLAPSE_OPERATOR) else None
+        collapse_mask = np.asarray([identifier == collapse_id for identifier in ids], bool)
+        native_lower = request.minimum_nonzero_thickness_nm or 0.0
+        lower = 0.0
         upper = request.max_layer_thickness_nm
         bounds = [(lower / scale, None if upper is None else upper / scale) for _ in rows]
         cache: Value = dict(x=None, value=None, q=None, j=None)
@@ -1441,7 +1476,9 @@ def automatic_repair_live(request, source, *, target_nm, thickness_tolerance_nm,
             thickness = x * scale
             if np.array_equal(x, ds / scale):
                 thickness = ds.copy()
-            if (np.any(thickness < lower) or (upper is not None and np.any(thickness > upper))
+            below_native = (thickness > 0.0) & (thickness < native_lower) & ~collapse_mask
+            if (np.any(thickness < lower) or np.any(below_native)
+                    or (upper is not None and np.any(thickness > upper))
                     or (request.max_total_thickness_nm is not None and math.fsum(thickness) > request.max_total_thickness_nm)):
                 return dict(value=None, q=np.full(count, 1e6), j=np.zeros((count, len(ids))))
             design = deepcopy(base)
@@ -1492,6 +1529,8 @@ def automatic_repair_live(request, source, *, target_nm, thickness_tolerance_nm,
             # A quadratic on initially deficient layers avoids an arbitrarily
             # large overshoot into the zero-hinge plateau above the floor.
             residual = np.where(initially_thin, thickness - floor, -deficit)
+            residual = np.where(collapse_mask, thickness, residual)
+            residual = np.where(thickness == 0.0, 0.0, residual)
             return float(np.sum((residual / denominator) ** 2)), 2.0 * residual * scale / denominator**2
 
         def accepted(x):
@@ -1593,7 +1632,7 @@ def automatic_repair_live(request, source, *, target_nm, thickness_tolerance_nm,
         current = candidate_frame(source, origins, "frozen_source", source_hash, "audited")
         emit(persist=True)
         del raw_source, source_audit, zero
-        if not deficient_ids(source, floor):
+        if not deficient_ids(source, floor, include_zero=False):
             reason = "no_thin_layers"
         else:
             base, lineage = deepcopy(source), deepcopy(origins)
@@ -1605,9 +1644,13 @@ def automatic_repair_live(request, source, *, target_nm, thickness_tolerance_nm,
                     check()
                     cursor["proposal_index"] = index
                     hashed = physical_design_hash(proposed)
-                    if hashed in seen or not legal_thicknesses(request, proposed, 0.0):
+                    zero_directed = operator.startswith(ZERO_COLLAPSE_OPERATOR)
+                    tried = (hashed, operator) in zero_directed_work if zero_directed else hashed in seen
+                    if tried or not legal_thicknesses(request, proposed, 0.0, allow_zero=True):
                         continue
                     seen.add(hashed)
+                    if zero_directed:
+                        zero_directed_work.add((hashed, operator))
                     work["candidates"] += 1
                     memory()
                     local(proposed, mapping, operator, cursor["frontier_base_hash"])

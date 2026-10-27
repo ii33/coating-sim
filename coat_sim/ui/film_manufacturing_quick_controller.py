@@ -21,7 +21,9 @@ from PySide6.QtCore import QObject, Property, QRunnable, QUrl, Signal, Slot
 
 from coat_sim.scheduler import SchedulerClient, freeze_spec
 from coat_sim.scheduler.desktop import RemoteCancelEvent, observe_job, submit_local_with_receipt
-from coat_sim.ui.film_manufacturing_quick_adapter import comparison_rows, comparison_scope_text, layer_change_rows
+from coat_sim.ui.film_manufacturing_quick_adapter import (
+    comparison_rows, comparison_scope_text, layer_change_rows, layer_total_nm,
+)
 from coat_sim.ui.film_optimization_run_coordinator import FilmOptimizationRunCoordinator
 
 
@@ -184,6 +186,7 @@ class FilmManufacturingQuickController(QObject):
         self._payload: dict | None = None
         self._live_frame: dict | None = None
         self._live_seq = -1
+        self._live_bar_scale_nm = 0.0
         self._stop_reason = ""
         self._auto_apply_attempted = False
         self._apply_in_progress = False
@@ -279,16 +282,56 @@ class FilmManufacturingQuickController(QObject):
             return payload.get("request")
         return (self._context or {}).get("frozen_request")
 
-    @Property(list, notify=changed)
-    def liveLayerRows(self):
-        source = self._application_source()
+    def _live_display_snapshots(self):
+        payload = self._application_payload()
+        source = self._application_source(payload)
         if source is None:
             request = (self._context or {}).get("frozen_request") or {}
             source = {"design": request.get("source_design", self.owner._design)}
-        current = (self._live_frame or {}).get("current")
+        best = self._selected_snapshot()
+        sequence = payload.get("seq", self._live_seq) if isinstance(payload, Mapping) else self._live_seq
+        if self._applied_snapshot is not None:
+            return source, self._applied_snapshot, self._applied_snapshot, "applied", sequence
+        if isinstance(payload, Mapping) and payload.get("schema_version") == 3 and payload.get("stage") != "repair_live":
+            return source, best if best is not None else source, best, "terminal_best" if best is not None else "source_unchanged", sequence
+        current = (payload or {}).get("current")
         if current is None:
             current = ((self._payload or {}).get("result") or {}).get("reviewed")
-        return layer_change_rows(source, current, self._selected_snapshot())
+        mode = "frozen_preview" if self._stale or self._source_invalidated.is_set() else "preview"
+        return source, current, best, mode, sequence
+
+    def _expand_live_bar_scale(self):
+        source, current, best, _mode, _seq = self._live_display_snapshots()
+        rows = layer_change_rows(source, current, best)
+        self._live_bar_scale_nm = max(self._live_bar_scale_nm, *(float(row[key])
+            for row in rows for key in ("original_nm", "current_nm", "best_nm")
+            if isinstance(row[key], (float, int)) and math.isfinite(row[key])), 0.0)
+
+    @Property(float, notify=changed)
+    def liveBarScaleNm(self):
+        return self._live_bar_scale_nm
+
+    @Property(list, notify=changed)
+    def liveLayerRows(self):
+        source, current, best, _mode, _seq = self._live_display_snapshots()
+        return layer_change_rows(source, current, best, bar_scale_nm=self._live_bar_scale_nm)
+
+    @Property(dict, notify=changed)
+    def liveTotals(self):
+        _source, current, best, mode, sequence = self._live_display_snapshots()
+        current_nm, best_nm = layer_total_nm(current), layer_total_nm(best)
+        def show(value):
+            return "未知" if value is None else format_film_thickness(value) + " nm"
+        def identity(snapshot):
+            return "" if snapshot is None else str(snapshot.get("physical_hash", ""))
+        current_label = {"applied": "已应用候选总厚度（回看）", "terminal_best": "本轮最佳候选总厚度",
+                         "source_unchanged": "原设计总厚度", "frozen_preview": "冻结试探总厚度（非当前编辑）"}.get(mode, "当前试探总厚度")
+        if mode in {"terminal_best", "source_unchanged"} and (self._stale or self._source_invalidated.is_set()):
+            current_label += "（冻结回看，非当前编辑）"
+        return dict(current_nm=current_nm, best_nm=best_nm, current=show(current_nm), best=show(best_nm),
+            current_hash=identity(current), best_hash=identity(best), seq=sequence, mode=mode,
+            current_label=current_label,
+            scale=format_film_thickness(self._live_bar_scale_nm) + " nm")
 
     @Property(str, notify=changed)
     def liveSummary(self):
@@ -584,6 +627,8 @@ class FilmManufacturingQuickController(QObject):
             raise ValueError("unsupported manufacturing report")
         self._payload, self._job_id = deepcopy(payload), str(job_id)
         self._live_frame = None
+        self._live_seq = -1
+        self._live_bar_scale_nm = 0.0
         self._pending_application = self._applied_snapshot = self._applied_payload = None
         self._comparison_rows = comparison_rows(payload)
         self._context = None
@@ -591,6 +636,7 @@ class FilmManufacturingQuickController(QObject):
         self._error = ""
         self._status = "只读队列历史；未绑定当前来源设计，不能应用。"
         self._prime_application_validation()
+        self._expand_live_bar_scale()
         self.changed.emit()
 
     @Slot(result=bool)
@@ -803,6 +849,7 @@ class FilmManufacturingQuickController(QObject):
             self._context, self._source_invalidated = context, invalidated
             self._cancel_intent = self._applied = False
             self._live_frame, self._live_seq = None, -1
+            self._live_bar_scale_nm = 0.0
             self._stop_reason = ""
             self._auto_apply_attempted = self._apply_in_progress = False
             self._pending_application = self._applied_snapshot = self._applied_payload = None
@@ -849,6 +896,7 @@ class FilmManufacturingQuickController(QObject):
                 prepared = progress.get("prepared")
                 if isinstance(prepared, dict) and self._context is not None:
                     self._context.update(prepared)
+                self._expand_live_bar_scale()
                 self.changed.emit()
                 return
             if progress.get("stage") == "repair_live":
@@ -865,6 +913,7 @@ class FilmManufacturingQuickController(QObject):
                     self.changed.emit()
                     return  # A late, mismatched or incomplete frame never replaces the verified champion.
                 self._live_frame, self._live_seq = frame, frame["seq"]
+                self._expand_live_bar_scale()
                 self._prime_application_validation()
                 self._status = "正在修复；当前厚度是计算预览，最佳列只显示完成光学核验的改进。"
                 self.changed.emit()
@@ -895,6 +944,7 @@ class FilmManufacturingQuickController(QObject):
         if self._payload is not None and self._payload.get('schema_version') in (2, 3):
             self._route = 'automatic'
         self._prime_application_validation()
+        self._expand_live_bar_scale()
         self._status = (f"{payload.get('state')} / {payload.get('termination_reason')}；仅比较，未应用。"
                         if self._payload is not None else "没有可验证报告；原设计未改变。")
         if self._payload is not None and self._payload.get('schema_version') in (2, 3):

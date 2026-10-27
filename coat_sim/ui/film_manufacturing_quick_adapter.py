@@ -45,8 +45,21 @@ def _layer_map(snapshot: Mapping[str, Any] | None) -> dict[str, dict[str, Any]]:
     return {str(row["id"]): dict(row, order=index + 1) for index, row in enumerate(layers)}
 
 
+def layer_total_nm(snapshot: Mapping[str, Any] | None) -> float | None:
+    """Sum one displayed candidate's physical layers; unknown QW is not zero."""
+    if not isinstance(snapshot, Mapping):
+        return None
+    values: list[float] = []
+    for row in _layer_map(snapshot).values():
+        value = row.get("thickness_nm")
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+            return None
+        values.append(float(value))
+    return math.fsum(values)
+
+
 def layer_change_rows(source: Mapping[str, Any] | None, current: Mapping[str, Any] | None,
-                      champion: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+                      champion: Mapping[str, Any] | None, *, bar_scale_nm: float = 0.0) -> list[dict[str, Any]]:
     """Join only stable IDs; lineage explains topology changes, never row positions."""
     original, working, best = _layer_map(source), _layer_map(current), _layer_map(champion)
     identifiers = dict.fromkeys((*original, *working, *best))
@@ -63,6 +76,8 @@ def layer_change_rows(source: Mapping[str, Any] | None, current: Mapping[str, An
 
     def relationship(identifier, row, rows):
         if row is not None:
+            if thickness(row) == 0:
+                return "厚度归零，待核验消层"
             ancestry = origins(row)
             if len(ancestry) > 1:
                 names = [f"原第{original[key]['order']}层" if key in original else str(key)
@@ -80,6 +95,8 @@ def layer_change_rows(source: Mapping[str, Any] | None, current: Mapping[str, An
         base, now, optimum = original.get(identifier), working.get(identifier), best.get(identifier)
         original_nm, current_nm, best_nm = thickness(base), thickness(now), thickness(optimum)
         metadata = now or optimum or base or {}
+        current_deleted = current is not None and now is None
+        best_deleted = champion is not None and optimum is None
         label = (f"原第{base['order']}层" if base is not None else "新增层")
         label += " · " + str(metadata.get("material_id", "材料未知"))
 
@@ -94,6 +111,9 @@ def layer_change_rows(source: Mapping[str, Any] | None, current: Mapping[str, An
         rows.append(dict(row_id=identifier, id=identifier, label=label, original_nm=original_nm,
             current_nm=current_nm, best_nm=best_nm, original=show(original_nm), current=show(current_nm),
             best=show(best_nm), current_delta=delta(now, current_nm), best_delta=delta(optimum, best_nm),
+            current_deleted=current_deleted, best_deleted=best_deleted,
+            current_ratio=(current_nm / bar_scale_nm if current_nm is not None and bar_scale_nm > 0 else 0.0),
+            best_ratio=(best_nm / bar_scale_nm if best_nm is not None and bar_scale_nm > 0 else 0.0),
             current_origins=origins(now), best_origins=origins(optimum), origins=origins(now or optimum),
             status=("当前：" + relationship(identifier, now, working) if current is not None else "当前：尚无计算")
                 + "；" + ("最佳：" + relationship(identifier, optimum, best) if champion is not None else "最佳：尚无可应用改进")))

@@ -29,7 +29,7 @@ ThemeControls.ThemeDialogBase {
             spacing: dialog.themeTokens.spaceMd
             ThemeControls.ThemeLabel {
                 Layout.fillWidth: true
-                text: "自动处理低于“单层目标厚度−厚度容差”的薄层，无需勾选。允许联动调整和增删合并。完整核验的阶段改进即可应用，不必等全部厚度修好或求解收敛；用户取消时自动应用当前最佳改进，无改进则保持原设计。"
+                text: "自动处理低于“单层目标厚度−厚度容差”的薄层，无需勾选。允许厚度降到 0 并消层，也可联动调整和增删合并；非零保留层继续核验厚度下限。完整核验的阶段改进即可应用，不必等全部厚度修好或求解收敛；用户取消时自动应用当前最佳改进，无改进则保持原设计。"
                 wrapMode: Text.Wrap
             }
             ThemeControls.ThemeLabel {
@@ -132,30 +132,66 @@ ThemeControls.ThemeDialogBase {
                     text: dialog.controller.liveSummary
                     wrapMode: Text.Wrap
                 }
+                ThemeControls.ThemeLabel {
+                    objectName: "filmRepairLiveTotal"
+                    Layout.fillWidth: true
+                    text: dialog.controller.liveTotals.current_label + "：" + dialog.controller.liveTotals.current
+                        + "；最佳改进总厚度：" + dialog.controller.liveTotals.best
+                    wrapMode: Text.Wrap
+                }
+                ThemeControls.ThemeLabel {
+                    objectName: "filmRepairLiveIdentity"
+                    Layout.fillWidth: true
+                    muted: true
+                    text: "背景条表示当前显示候选的厚度，各层共用本轮刻度 0–"
+                        + dialog.controller.liveTotals.scale + "（只扩展）。"
+                    wrapMode: Text.Wrap
+                }
                 Repeater {
                     model: dialog.controller.liveLayerRows
-                    delegate: ColumnLayout {
+                    delegate: Item {
                         id: liveLayerRow
                         required property var modelData
                         Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        implicitHeight: layerContent.implicitHeight + 2 * dialog.themeTokens.spaceSm
                         objectName: "filmRepairLiveLayer_" + modelData.row_id
-                        ThemeControls.ThemeLabel {
-                            Layout.fillWidth: true
-                            text: liveLayerRow.modelData.label
-                            wrapMode: Text.Wrap
+                        Rectangle {
+                            objectName: "filmRepairLiveBar_" + liveLayerRow.modelData.row_id
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            width: parent.width * liveLayerRow.modelData.current_ratio
+                            radius: dialog.themeTokens.radiusSm
+                            color: dialog.themeTokens.colorAccent
+                            opacity: 0.12
                         }
-                        ThemeControls.ThemeLabel {
-                            Layout.fillWidth: true
-                            text: "原厚：" + liveLayerRow.modelData.original + "；当前：" + liveLayerRow.modelData.current
-                                + "（变化 " + liveLayerRow.modelData.current_delta + "）；最佳改进：" + liveLayerRow.modelData.best
-                                + "（变化 " + liveLayerRow.modelData.best_delta + "）"
-                            wrapMode: Text.Wrap
-                        }
-                        ThemeControls.ThemeLabel {
-                            Layout.fillWidth: true
-                            muted: true
-                            text: liveLayerRow.modelData.status
-                            wrapMode: Text.Wrap
+                        ColumnLayout {
+                            id: layerContent
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: dialog.themeTokens.spaceSm
+                            ThemeControls.ThemeLabel {
+                                Layout.fillWidth: true
+                                text: liveLayerRow.modelData.label
+                                wrapMode: Text.Wrap
+                            }
+                            ThemeControls.ThemeLabel {
+                                objectName: "filmRepairLiveValues_" + liveLayerRow.modelData.row_id
+                                Layout.fillWidth: true
+                                text: "原厚：" + liveLayerRow.modelData.original + "；当前："
+                                    + (liveLayerRow.modelData.current_deleted ? "0 nm（已消层，见来源）" : liveLayerRow.modelData.current)
+                                    + "（变化 " + liveLayerRow.modelData.current_delta + "）；最佳改进："
+                                    + (liveLayerRow.modelData.best_deleted ? "0 nm（已消层，见来源）" : liveLayerRow.modelData.best)
+                                    + "（变化 " + liveLayerRow.modelData.best_delta + "）"
+                                wrapMode: Text.Wrap
+                            }
+                            ThemeControls.ThemeLabel {
+                                Layout.fillWidth: true
+                                muted: true
+                                text: liveLayerRow.modelData.status
+                                wrapMode: Text.Wrap
+                            }
                         }
                     }
                 }

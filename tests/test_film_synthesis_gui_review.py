@@ -77,6 +77,8 @@ class _Scene:
         self.window.setWidth(1100)
         self.window.setHeight(760)
         self.window.show()
+        self.window.requestActivate()
+        _wait(self.window.isActive)
         QTest.qWait(50)
 
     def item(self, name):
@@ -186,10 +188,18 @@ class _Scene:
         QTest.qWait(20)
 
     def edit(self, item, text):
+        self.window.requestActivate()
+        _wait(self.window.isActive)
         self.click(item)
+        _wait(lambda: bool(item.property("activeFocus")))
         QTest.keyClick(self.window, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
+        _wait(lambda: item.property("selectedText") == item.property("text"))
+        QCoreApplication.processEvents()
+        prefix = ""
         for character in str(text):
             QTest.keyClick(self.window, Qt.Key(ord(character.upper())))
+            prefix += character
+            assert item.property("text") == prefix, (item.objectName(), prefix, item.property("text"))
         QTest.keyClick(self.window, Qt.Key.Key_Return)
         QTest.qWait(20)
 
@@ -319,6 +329,24 @@ def _expected_with_synthesis_search_progress(design, controller):
     expected = deepcopy(dict(design))
     expected['workflow_settings']['optimization']['synthesis']['search_reference'] = deepcopy(reference)
     return expected
+
+
+def test_scene_keyboard_edit_reactivates_its_window_and_keeps_every_digit(gui):
+    _service, _source, controller, scene = _optimizer(gui)
+    scene.click(scene.item("filmOptimizationAlgorithmTab"))
+    other = QQuickWindow()
+    try:
+        other.show()
+        other.requestActivate()
+        _wait(other.isActive)
+        assert not scene.window.isActive()
+        scene.edit(scene.item("filmSynthesis_max_evaluationsField"), "123")
+        assert scene.window.isActive()
+        assert controller.synthesisOptions["max_evaluations"] == 123
+    finally:
+        other.hide()
+        other.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 def _preview_sampled_candidate(scene, source, controller):

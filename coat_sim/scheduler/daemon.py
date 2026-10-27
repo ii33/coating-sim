@@ -881,8 +881,14 @@ class Scheduler:
             elif outcome.get('state') in ('failed', 'cancelled'):
                 outcome = self._attach_best_candidate_checkpoint(job_id, outcome)
             if outcome.get('state') == 'succeeded':
-                from .result_capability import is_synthesis_result
-                if is_synthesis_result(outcome.get('result')) or is_sensitivity_result(outcome.get('result')) or is_manufacturing_result(outcome.get('result')):
+                from .result_capability import is_film_optimization_result, is_synthesis_result
+                if (is_film_optimization_result(outcome.get('result'))
+                        or is_synthesis_result(outcome.get('result'))
+                        or is_sensitivity_result(outcome.get('result'))
+                        or is_manufacturing_result(outcome.get('result'))):
+                    # Typed film envelopes own their exact schema. Generic
+                    # artifact registration adds result_artifacts even when
+                    # empty, which invalidates a verified reduction result.
                     pass
                 else:
                     try: outcome['result'] = self.register_artifacts(job_id, outcome['result'])

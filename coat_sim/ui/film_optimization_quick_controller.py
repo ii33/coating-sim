@@ -94,6 +94,19 @@ class FilmOptimizationSourceSnapshot:
     owner_token: object | None = None
 
 
+def _same_configuration_value(first: object, second: object) -> bool:
+    """A nonphysical shortcut must preserve JSON value and container types."""
+    if type(first) is not type(second):
+        return False
+    if isinstance(first, dict) and isinstance(second, dict):
+        return first.keys() == second.keys() and all(
+            type(key) is str and _same_configuration_value(value, second[key]) for key, value in first.items())
+    if isinstance(first, (list, tuple)) and isinstance(second, (list, tuple)):
+        return len(first) == len(second) and all(
+            _same_configuration_value(left, right) for left, right in zip(first, second, strict=True))
+    return first == second
+
+
 def _number(value, label: str) -> float:
     if isinstance(value, bool):
         raise ValueError(f"{label}必须是有限数字")
@@ -1718,8 +1731,9 @@ class FilmOptimizationQuickController(QObject):
             except (TypeError, ValueError, OverflowError):
                 existing = None
             if (existing is not None
-                    and {key: value for key, value in configuration.items() if key != "sensitivity_table"}
-                    == {key: value for key, value in existing.items() if key != "sensitivity_table"}):
+                    and _same_configuration_value(
+                        {key: value for key, value in configuration.items() if key != "sensitivity_table"},
+                        {key: value for key, value in existing.items() if key != "sensitivity_table"})):
                 if not self._restore_sensitivity_table_draft(table_configuration):
                     raise ValueError("敏感性参数表未恢复；请先结束当前计算，原配置保持不变。")
                 self._sensitivity_table_configuration = table_configuration
@@ -2206,7 +2220,10 @@ class FilmOptimizationQuickController(QObject):
         if dispose_display:
             self._live_display.shutdown()
         if self._sensitivity_controller is not None:
-            self._sensitivity_controller.detach()
+            if dispose_display:
+                self._sensitivity_controller.detach()
+            else:
+                self._sensitivity_controller.sourceChanged()
         if self._manufacturing_controller is not None:
             if dispose_display:
                 self._manufacturing_controller.detach()

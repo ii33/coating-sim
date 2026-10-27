@@ -804,11 +804,12 @@ def _validate_live_layers(layers, design, source):
             raise ValueError("live layer identity or original-layer provenance differs")
 
 
-def _validate_live_design(design, request, source):
+def _validate_live_design(design, request, source, *, allow_zero=False, minimum_probe_id=None):
     from .film_automatic_repair import legal_thicknesses
     from .film_synthesis_archive import physical_design_hash
     checked = validate_design(deepcopy(design))
-    if checked != design or not legal_thicknesses(request, checked, 0.0):
+    if checked != design or not legal_thicknesses(request, checked, 0.0,
+            allow_zero=allow_zero, minimum_probe_id=minimum_probe_id):
         raise ValueError("live design violates native physical boundaries")
     if checked.get("workflow_settings") != source.get("workflow_settings"):
         raise ValueError("live repair metadata differs from the frozen source workflow")
@@ -872,7 +873,9 @@ def _validate_live_snapshot(raw, source_snapshot, payload, request, source, *, i
     from .film_synthesis_archive import physical_design_hash
     if not isinstance(raw, Mapping):
         raise ValueError("live candidate must be a complete snapshot")
-    checked = _validate_live_design(raw["design"], request, source)
+    checked = _validate_live_design(raw["design"], request, source, allow_zero=is_source)
+    if not is_source and any(r["thickness"]["value"] == 0.0 for r in checked["front_layers"]):
+        raise ValueError("live audited candidate must delete exact zero layers before scoring")
     identity = _live_identity(payload)
     if (raw.get("physical_hash") != physical_design_hash(checked)
             or raw.get("evidence_binding") != dict(training_hash=physical_design_hash(checked), audit_hash=physical_design_hash(checked))
@@ -934,6 +937,7 @@ def applicable_improvement(snapshot, source_snapshot, request_payload):
 
 def _validate_live_current(current, payload, request, source):
     from .film_synthesis_archive import physical_design_hash
+    from .film_automatic_repair import ZERO_COLLAPSE_OPERATOR
     if current is None:
         return
     if (not isinstance(current, Mapping) or set(current) != {"design", "physical_hash", "candidate_id",
@@ -942,7 +946,12 @@ def _validate_live_current(current, payload, request, source):
             or not isinstance(current["candidate_id"], str) or not isinstance(current["operator"], str)
             or not isinstance(current["parent_hash"], str)):
         raise ValueError("invalid live current-preview record")
-    checked = _validate_live_design(current["design"], request, source)
+    probe_id = (current["operator"][len(ZERO_COLLAPSE_OPERATOR):]
+        if current["evidence_scope"] == "training" and current["operator"].startswith(ZERO_COLLAPSE_OPERATOR) else None)
+    checked = _validate_live_design(current["design"], request, source,
+        allow_zero=True, minimum_probe_id=probe_id)
+    if probe_id is not None and probe_id not in {r["id"] for r in checked["front_layers"]}:
+        raise ValueError("live zero-directed preview does not identify its current mathematical probe")
     if current["physical_hash"] != physical_design_hash(checked):
         raise ValueError("live preview hash differs from its design")
     _validate_live_layers(current["layers"], checked, source)
@@ -1014,7 +1023,7 @@ def _validate_live_result(value, *, expected_job=None, replay=False):
     if reason not in allowed or value["state"] != state or value["is_final"] is not (reason != "running"):
         raise ValueError("live repair terminal state/reason differs")
     floor = lower_limit(value["request"]["reference_nm"], value["request"]["thickness_tolerance_nm"])
-    if body["lower_limit_nm"] != floor or body["detected_layer_ids"] != deficient_ids(source, floor):
+    if body["lower_limit_nm"] != floor or body["detected_layer_ids"] != deficient_ids(source, floor, include_zero=False):
         raise ValueError("live repair original layer detection differs")
     if body["source"] is not None:
         _validate_live_snapshot(body["source"], None, value["request"], request, source, is_source=True)

@@ -9,6 +9,7 @@ from coat_sim.core.film_auto_synthesis import freeze_film_synthesis_request
 from coat_sim.core.film_synthesis_jobs import deserialize_job_payload
 from coat_sim.scheduler.jobs import JobSpec
 from coat_sim.ui.film_synthesis_quick_adapter import synthesis_spec
+from coat_sim.ui.film_optimization_quick_controller import _same_configuration_value
 from tests.film_structure_fixtures import fixture
 from tests.test_film_optimization_restore_layout import optimizer
 from tests.test_film_synthesis_gui_review import _Scene
@@ -86,3 +87,69 @@ def test_busy_pending_and_invalid_configuration_cannot_mutate_choice(app, tmp_pa
         assert controller.synthesisOptions["enable_thickness_reduction"] is True
         assert controller.setSynthesisOption("max_seconds", "")
         assert controller.setSynthesisOption("enable_thickness_reduction", False)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("synthesis.options.enable_thickness_reduction", 1),
+    ("synthesis.cpu_workers", 0.0),
+    ("solver.seed", False),
+    ("objectives.0.pointwise.enabled", 1),
+    ("objectives.0.mean.enabled", 0),
+])
+def test_python_equal_but_wrong_scalar_types_cannot_skip_configuration_validation(app, tmp_path, field, value):
+    service, _library, design = fixture(tmp_path)
+    with optimizer(service, design) as (controller, source, session):
+        configure(controller)
+        saved = deepcopy(controller.exportOptimizationConfiguration())
+        persisted = session.workflow_configuration("optimization")
+        epoch, revision = source.pendingEditEpoch, session.snapshot().design_revision
+        malformed = deepcopy(saved)
+        path = field.split(".")
+        parent = malformed
+        for key in path[:-1]:
+            parent = parent[int(key)] if isinstance(parent, list) else parent[key]
+        parent[path[-1]] = value
+        assert malformed == saved  # The bug is specifically Python's scalar equality shortcut.
+        assert not controller.loadOptimizationConfiguration(malformed)
+        assert controller.exportOptimizationConfiguration() == saved
+        assert session.workflow_configuration("optimization") == persisted
+        assert source.pendingEditEpoch == epoch and session.snapshot().design_revision == revision
+
+
+def test_type_distinct_container_and_strict_seed_do_not_bypass_configuration_validation(app, tmp_path):
+    service, _library, design = fixture(tmp_path)
+    with optimizer(service, design) as (controller, _source, _session):
+        configure(controller)
+        assert controller.setSynthesisOption("structure_search_seed", "0")
+        saved = deepcopy(controller.exportOptimizationConfiguration())
+        malformed = deepcopy(saved)
+        malformed["synthesis"]["options"]["structure_search_seed"] = 0.0
+        assert malformed == saved
+        assert not controller.loadOptimizationConfiguration(malformed)
+        assert controller.exportOptimizationConfiguration() == saved
+        malformed = deepcopy(saved)
+        malformed["objectives"] = tuple(malformed["objectives"])
+        assert not controller.loadOptimizationConfiguration(malformed)
+        assert controller.exportOptimizationConfiguration() == saved
+
+
+def test_valid_qt_integral_double_is_validated_and_normalized_not_forbidden(app, tmp_path):
+    service, _library, design = fixture(tmp_path)
+    with optimizer(service, design) as (controller, _source, _session):
+        configure(controller)
+        incoming = deepcopy(controller.exportOptimizationConfiguration())
+        expected = incoming["solver"]["max_iterations"]
+        incoming["solver"]["max_iterations"] = float(expected)
+        assert controller.loadOptimizationConfiguration(incoming), controller.error
+        actual = controller.exportOptimizationConfiguration()["solver"]["max_iterations"]
+        assert type(actual) is int and actual == expected
+
+
+@pytest.mark.parametrize("first,second", [
+    (True, 1), (False, 0), (1, 1.0), ([1], (1,)),
+    ({"nested": [True]}, {"nested": [1]}),
+    ({"nested": {"count": 1}}, {"nested": {"count": 1.0}}),
+])
+def test_nonphysical_configuration_shortcut_requires_same_recursive_types(first, second):
+    assert not _same_configuration_value(first, second)
+    assert _same_configuration_value(first, deepcopy(first))

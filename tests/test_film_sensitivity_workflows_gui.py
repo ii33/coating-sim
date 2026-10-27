@@ -13,6 +13,7 @@ import pytest
 from PySide6.QtCore import QObject, Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQuick import QQuickItem
+from PySide6.QtQml import QQmlExpression, qmlContext
 from PySide6.QtTest import QTest
 
 from coat_sim.core import film_sensitivity_workflow_jobs as workflow_jobs
@@ -115,6 +116,28 @@ def _find_visual_item(root, object_name):
         if found is not None:
             return found
     return None
+
+
+def _scroll_editor_into_view(app, item):
+    """Reach the real editor before testing key input in a clipped table."""
+    context = qmlContext(item)
+    assert context is not None
+    expression = QQmlExpression(context, item, """(function () {
+        let ancestor = parent;
+        while (ancestor !== null) {
+            if ("contentY" in ancestor) {
+                const point = mapToItem(ancestor.contentItem, 0, 0);
+                const maximum = Math.max(0, ancestor.contentHeight - ancestor.height);
+                ancestor.contentY = Math.min(maximum, Math.max(0, point.y - 15));
+            }
+            ancestor = ancestor.parent;
+        }
+        return true;
+    })()""")
+    expression.evaluate()
+    assert not expression.hasError(), expression.error().toString()
+    QTest.qWait(20)
+    app.processEvents()
 
 
 def _run_table(harness):
@@ -342,7 +365,8 @@ def test_table_reorder_and_material_label_change_preserve_drafts_by_layer_id(har
     assert preserved["layer_label"] != first["layer_label"] or preserved["nominal"] == first["nominal"]
 
 
-def test_table_and_ideal_drafts_are_isolated_and_focus_survives_typing(harness, app):
+@pytest.mark.parametrize("window_height,font_scale", [(520, 1.0), (760, 1.0), (520, 2.0)])
+def test_table_and_ideal_drafts_are_isolated_and_focus_survives_typing(harness, app, window_height, font_scale):
     panel = harness.panel
     layer_id = panel.thicknessErrorRows[0]["layer_id"]
     _set_bias(panel, layer_id, "1")
@@ -350,17 +374,26 @@ def test_table_and_ideal_drafts_are_isolated_and_focus_survives_typing(harness, 
     assert panel.idealSensitivityMode == "relative"
     assert panel.thicknessErrorRows[0]["bias_text"] == "1"
     with window_runtime(app, harness.owner) as (window, warnings):
+        window.setHeight(window_height)
+        from coat_sim.ui.theme_service import ThemeService
+        ThemeService.instance().configure(font_scale=font_scale)
+        app.processEvents()
         click_operation_bar_action(app, window, "filmSensitivityOpenButton")
         click(app, window, _find_visual_item(window.contentItem(), "filmSensitivityTableTab"))
         assert panel.activeWorkflow == "table"
         section = _find_visual_item(window.contentItem(), "filmThicknessLayerOverridesSection")
         assert section is not None
-        click(app, window, section.findChild(QQuickItem, "themeSectionHeader"))
+        header = section.findChild(QQuickItem, "themeSectionHeader")
+        assert header is not None
+        _scroll_editor_into_view(app, header)
+        click(app, window, header)
         assert section.property("expanded")
         field = _find_visual_item(window.contentItem(), "filmThicknessBias_" + layer_id)
         assert field is not None, warnings
+        _scroll_editor_into_view(app, field)
         click(app, window, field)
         QTest.qWait(15)
+        assert field.property("activeFocus")
         QTest.keyClick(window, Qt.Key.Key_1)
         QTest.keyClick(window, Qt.Key.Key_E)
         app.processEvents()
