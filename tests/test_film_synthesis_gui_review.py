@@ -197,7 +197,11 @@ class _Scene:
         QCoreApplication.processEvents()
         prefix = ""
         for character in str(text):
-            QTest.keyClick(self.window, Qt.Key(ord(character.upper())))
+            # Use QtTest's ASCII overload: the key-enum overload supplies
+            # lowercase event text even when Shift is included on QWindow.
+            modifiers = (Qt.KeyboardModifier.ShiftModifier if character.isupper()
+                         else Qt.KeyboardModifier.NoModifier)
+            QTest.keyClick(self.window, ord(character), modifiers)
             prefix += character
             assert item.property("text") == prefix, (item.objectName(), prefix, item.property("text"))
         QTest.keyClick(self.window, Qt.Key.Key_Return)
