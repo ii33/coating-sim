@@ -1,11 +1,13 @@
 """Display ranges/statistics use existing full curves and the same champion."""
 from copy import deepcopy
+from threading import Event
 
 import numpy as np
 import pytest
 from PySide6.QtCore import QObject
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQuick import QQuickItem
+from PySide6.QtTest import QTest
 
 from coat_sim.core import film_candidate_display as display
 from coat_sim.core.film_objective_criteria import reduce_objective_responses
@@ -100,3 +102,90 @@ def test_qml_details_bind_best_not_trial_or_display_top_rank(app, tmp_path):
             image = window.grabWindow()
             if not image.isNull():
                 assert image.save(str(tmp_path / 'live-details.png'))
+
+
+@pytest.mark.parametrize('mode', ['fixed_topology', 'synthesis'])
+@pytest.mark.parametrize('rebind', [False, True])
+@pytest.mark.parametrize('cancel_between', [False, True])
+def test_real_qml_repeated_run_retains_this_attempt_best_details(
+        app, tmp_path, monkeypatch, mode, rebind, cancel_between):
+    from tests.test_film_optimization_autoapply import isolated_case
+    from tests.test_film_synthesis_gui_review import _Scene, _wait
+    from coat_sim.ui.film_quick_controller import FilmDesignQuickController
+
+    with isolated_case(tmp_path, monkeypatch) as case:
+        controller = case.controller
+        assert controller.setSearchMode(mode)
+        assert controller.setObjectiveField('wavelength_min_nm', '550')
+        assert controller.setObjectiveField('wavelength_max_nm', '550')
+        assert controller.setObjectiveField('pointwise.upper_bound_percent', '0.1')
+        if mode == 'synthesis':
+            assert controller.setStructureMaterialSelected('acceptance-film', 'film-set', True)
+            assert controller.setSynthesisOption('max_cycles', '1')
+            assert controller.setSynthesisOption('max_evaluations', '60')
+        controller.liveDisplay.setEnabled(True)
+        scene = _Scene(controller, 'FilmOptimizationWindow.qml')
+        replacement = None
+        try:
+            previous_generation = None
+            for attempt in range(3 if mode == 'synthesis' else 2):
+                if rebind and attempt == 1:
+                    replacement = FilmDesignQuickController(service=case.service,
+                        edit_session=case.source.session, project_context=case.workspace)
+                    assert controller.reuseWindowOpen('', replacement)
+                if cancel_between and attempt == 1:
+                    entered, release = Event(), Event()
+                    admission_verifier = controller._compute_target.admission_verifier
+
+                    def held_admission(*args, verifier=admission_verifier,
+                                       entered_event=entered, release_event=release):
+                        verify, current = verifier(*args)
+
+                        def verify_when_released():
+                            verify()
+                            entered_event.set()
+                            assert release_event.wait(5.)
+
+                        return verify_when_released, current
+
+                    with monkeypatch.context() as held:
+                        held.setattr(controller._compute_target, 'admission_verifier', held_admission)
+                        try:
+                            scene.click(scene.item('filmOptimizationStartButton'))
+                            _wait(entered.is_set)
+                            # The new attempt has no candidate. Never present
+                            # the previous run's genuine winner as this run's.
+                            assert controller._live_display._packet == {}
+                            assert '等待' in scene.item('filmOptimizationBestDetails').property('text')
+                            scene.click(scene.item('filmOptimizationCancelButton'))
+                        finally:
+                            release.set()
+                        _wait(lambda: not controller.busy, seconds=45.)
+                        assert controller._live_display._packet == {}
+                previous_job = controller.queueJobId
+                scene.click(scene.item('filmSynthesisContinueSearchButton' if attempt == 2
+                                       else 'filmOptimizationStartButton'))
+                _wait(lambda previous=previous_job: controller.queueJobId != previous)
+                _wait(lambda: not controller.busy, seconds=45.)
+                QTest.qWait(300)
+                details = scene.item('filmOptimizationBestDetails')
+                live = controller._live_display
+                assert live._configuration['generation'] != previous_generation
+                previous_generation = live._configuration['generation']
+                assert live._binding is not None and live._binding[1] == controller.queueJobId
+                best = live._packet['best']
+                assert best['statistics']['physical_hash'] == best['physical_hash']
+                assert controller._result is not None
+                assert best['total_thickness_nm'] == pytest.approx(sum(
+                    row['thickness']['value'] for side in ('front_layers', 'back_layers')
+                    for row in controller._result.best_design[side]))
+                assert best['max_normalized_error'] == controller._result.max_normalized_error
+                assert details.isVisible(), (attempt, controller.statusText)
+                assert details.width() > 100., (attempt, details.width())
+                assert details.height() > 0.
+                assert '总厚' in details.property('text'), (attempt, details.property('text'))
+                assert '均值 ' in details.property('text')
+        finally:
+            scene.close()
+            if replacement is not None:
+                replacement.markSourceClosed()

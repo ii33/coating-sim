@@ -68,20 +68,26 @@ def test_bound_stationarity_does_not_require_zero_raw_optical_gradient():
     assert result['responses'][0]['jacobian_values_by_layer_id']['d'][0] != 0.
 
 
-def test_best_line_search_trial_does_not_borrow_terminal_convergence(monkeypatch):
+@pytest.mark.parametrize('terminal_nm,keep_trial', [(6., True), (5.000001, False)])
+def test_best_line_search_trial_does_not_borrow_terminal_convergence(monkeypatch, terminal_nm, keep_trial):
     from types import SimpleNamespace
     from coat_sim.core import film_synthesis_margin as margin
     request, initial, evaluate, _ = margin_fixture()
     def minimize(fun, start, **kwargs):
         kwargs['constraints'][0]['fun'](np.array([.05, -.75]))  # Better trial, not returned endpoint.
-        return SimpleNamespace(x=np.array([.06, -.5]), success=True, status=0, nit=2,
+        return SimpleNamespace(x=np.array([terminal_nm / 100., -.75 + .25 * (terminal_nm - 5.)**2]),
+            success=True, status=0, nit=2,
             message='synthetic successful endpoint for identity test')
     monkeypatch.setattr(margin.import_module('scipy.optimize'), 'minimize', minimize)
     result, detail = margin.refine_worst_margin(request, initial, evaluate=evaluate, archive=lambda *a,**k:None)
-    assert result['design']['front_layers'][0]['thickness']['value'] == 6.
-    assert detail['termination'] == 'converged'
-    assert detail['solver_terminal']['physical_hash'] == physical_design_hash(result['design'])
-    assert detail['returned_best']['is_solver_terminal']
+    assert result['design']['front_layers'][0]['thickness']['value'] == pytest.approx(5. if keep_trial else terminal_nm)
+    assert worst_signed_margin(request, result) == pytest.approx(-.75)
+    assert detail['termination'] == ('best_feasible_not_stationary' if keep_trial else 'converged')
+    assert detail['success'] is not keep_trial
+    assert (detail['solver_terminal']['physical_hash'] != physical_design_hash(result['design'])) == keep_trial
+    assert detail['solver_terminal']['local_stationary']
+    assert detail['returned_best']['is_solver_terminal'] is not keep_trial
+    assert detail['returned_best']['physical_hash'] == physical_design_hash(result['design'])
     assert detail['best_feasible_trial']['physical_hash'] != detail['solver_terminal']['physical_hash']
 
 
@@ -122,6 +128,69 @@ def test_terminal_audit_rejection_does_not_label_fallback_converged_or_thin(monk
     assert local['audited_selected']['physical_hash'] != local['solver_terminal']['physical_hash']
     assert local['role'] == 'audited_fallback_before_incomplete_local_stage'
     assert 'thickness_reduction' not in result.performance['search']['hybrid']
+
+
+def test_audited_better_trial_survives_without_borrowing_terminal_stationarity(monkeypatch):
+    from coat_sim.core import film_synthesis_margin as margin, film_synthesis_thickness as thickness
+    from tests.test_film_synthesis_thickness_integration import request_case
+    service, request, _ = request_case('AR', 'pointwise')
+    original = margin.refine_worst_margin
+    chosen = []
+
+    def return_nonstationary_best(request, initial, **kwargs):
+        value, detail = original(request, initial, **kwargs)
+        # Keep the real optical optimum but model a solver returning another
+        # stationary endpoint. The analytic solver test above exercises the
+        # selection itself; this tests real independent audit and handoff.
+        assert detail['termination'] == 'converged'
+        chosen.append(physical_design_hash(value['design']))
+        detail['solver_terminal'] = dict(physical_hash=physical_design_hash(initial['design']),
+            nominal_pass=True, epigraph_feasible=True, local_stationary=True)
+        detail['returned_best'] = dict(physical_hash=chosen[-1], role='best_feasible_trial',
+            is_solver_terminal=False)
+        detail.update(termination='best_feasible_not_stationary', success=False)
+        return value, detail
+
+    monkeypatch.setattr(margin, 'refine_worst_margin', return_nonstationary_best)
+    monkeypatch.setattr(thickness, 'reduce_total_thickness',
+        lambda *a, **k: pytest.fail('nonstationary best must not enter thinning'))
+    result = synthesize_film_design(service, request)
+    assert result.targets_met and result.validation_complete
+    assert result.candidate_design is not None and result.local_optimum is not None
+    local = result.local_optimum
+    assert physical_design_hash(result.candidate_design) == chosen[-1]
+    assert local['audited_selected']['physical_hash'] == chosen[-1]
+    assert local['validation_score']['nominal_pass']
+    assert not local['local_converged']
+    assert result.termination_reason == 'local_margin_best_feasible_not_stationary'
+    assert local['role'] == 'audited_best_feasible_before_incomplete_local_stage'
+    assert 'thickness_reduction' not in result.performance['search']['hybrid']
+
+
+def test_local_audit_promotion_updates_display_best_before_thinning():
+    from coat_sim.core.film_candidate_display import candidate_physical_hash
+    from tests.test_film_candidate_display import harness
+    from tests.test_film_synthesis_thickness_integration import request_case
+    service, request, _ = request_case('AR', 'pointwise')
+    observer, _packets, clock, _control = harness(request.objectives[0])
+    at_local_completion = []
+
+    def progress(value):
+        clock[0] += 1.1
+        if value.stage == 'local_margin_complete':
+            at_local_completion.append(deepcopy(observer._best[0]))
+
+    result = synthesize_film_design(service, request, candidate_observer=observer, progress_callback=progress)
+    assert result.local_optimum is not None
+    local = result.local_optimum
+    thicknesses = [row['thickness']['value'] for side in ('front_layers', 'back_layers')
+                   for row in local['design'].get(side, ())]
+    assert at_local_completion[-1]['physical_hash'] == candidate_physical_hash(local['design'], thicknesses)
+    assert at_local_completion[-1]['max_normalized_error'] == local['training_score']['max_error']
+    assert not any(row.reduction == 'mean' for row in local['training_score']['errors'])
+    completed = next(row for row in result.trace if row.stage == 'local_margin_complete')
+    assert completed.physical_hash == local['physical_hash']
+    assert all(row.physical_hash for row in result.trace if row.stage.endswith('margin_preparation_trial'))
 
 
 @pytest.mark.parametrize('criterion, actual', [

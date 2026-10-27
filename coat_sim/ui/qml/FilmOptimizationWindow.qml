@@ -2677,12 +2677,14 @@ AppWindow {
                             color: window.themeTokens.colorTextMuted
                         }
                         ScrollView {
+                            id: conditionErrorsScroll
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
+                            contentWidth: availableWidth
                             ScrollBar.vertical.policy: ScrollBar.AsNeeded
                             Column {
-                                width: parent.width
+                                width: conditionErrorsScroll.availableWidth
                                 Label {
                                     objectName: "filmOptimizationBestDetails"
                                     width: parent.width

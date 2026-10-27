@@ -2081,7 +2081,7 @@ class FilmOptimizationQuickController(QObject):
             self._error = "不能把其他项目的来源绑定到此优化窗口。"
             self.changed.emit()
             return False
-        self.detach_observers()
+        self.detach_observers(dispose_display=False)
         # Detaching fences callbacks from the old source permanently. A newly
         # accepted source gets a fresh gate; never clear the old event because
         # an old worker may still hold it.
@@ -2117,11 +2117,12 @@ class FilmOptimizationQuickController(QObject):
         return True
 
     @Slot()
-    def detach_observers(self) -> None:
-        """Stop receiving source/session events before this window is destroyed."""
+    def detach_observers(self, *, dispose_display: bool = True) -> None:
+        """Fence source callbacks; dispose window-owned display only on close."""
         if self._observers_detached:
             return
-        self._live_display.shutdown()
+        if dispose_display:
+            self._live_display.shutdown()
         if self._sensitivity_controller is not None:
             self._sensitivity_controller.detach()
         if self._manufacturing_controller is not None:
@@ -4834,6 +4835,7 @@ class FilmOptimizationQuickController(QObject):
             margin = local.get('signed_margin')
             margin_text = ('区间安全余量不适用' if margin is None else f'最差归一化安全余量 {-margin:.6g}')
             label = ('局部未完成，已审计回退候选' if local.get('role') == 'audited_fallback_before_incomplete_local_stage'
+                     else '局部未收敛，已审计最佳可行候选' if local.get('role') == 'audited_best_feasible_before_incomplete_local_stage'
                      else '减薄前局部结果')
             stage_summary = (f"\n{label}：{len(local_rows)} 层 / {local_total} nm，{margin_text}。"
                 f"\n局部阶段：{local.get('termination', '未知')}。最终返回候选：{len(final_rows)} 层 / {final_total} nm；以下审计绑定最终候选。")

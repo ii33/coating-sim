@@ -14,11 +14,15 @@
 
 收敛身份分开记录为 `solver_terminal`、`best_feasible_trial`、`returned_best` 和 `audited_selected` 物理哈希。求解器成功只能赋予同一终态候选；较好的线搜索试探不能借用其驻点标签。只有最终固定拓扑的求解终态本身通过原门限独立审计，`local_converged` 才为 true。终态审计拒绝时保留已审计来源，标为 `audit_rejected` / `audited_fallback_before_incomplete_local_stage` 并停止，不进入默认减薄。
 
+若最佳完整可行试探的最差有符号余量确实优于 solver 终态，返回该试探供原目标独立审计；审计通过后保留为最佳可行解，标记 `best_feasible_not_stationary` 和 `audited_best_feasible_before_incomplete_local_stage`，不宣告局部收敛、不开始减薄。只在归一化余量改善超过 `1e-10 * max(1, |best_margin|, |terminal_margin|)` 时区分二者，以免舍入差异丢掉真实终态的收敛身份；这是本项目选择约定，不放宽任何原目标训练或审计阈值。每次独立审计晋升也更新实时最佳显示，避免局部阶段仍显示旧的厚度优先训练冠军。
+
 407 集成后的现有优化窗口增加“继续搜索”和结构搜索 / 局部优化 / 减薄 / 本轮完成状态。一次任务默认完成局部优化、减薄后停止，用户点击才开始下一轮。候选审计区分别列出减薄前局部结果及最终返回候选；局部的归一化安全余量不会冒充最终候选的余量。
 
 界面仅在原文档 `workflow_settings.optimization.synthesis.search_reference` 保存任务引用及编辑器设置指纹，真正的前沿保存在原调度目录 `best-candidate.search-state.json`。查看、保存、撤销和兼容的膜厚/拓扑编辑不清空引用；保存膜系并关闭重开后，从原任务的不可变 spec/source binding 与状态文件恢复。当前编辑设计重新冻结并作为首 seed，原候选重新评分。目标/角度/验收、候选材料/吸收假设、原生厚度/层数约束或搜索参数改变时分别显示需要重建的原因，旧任务文件保留。改变预算、CPU、显示精度不重建前沿。
 
 继续提交仍使用原作业协调器、排队取消、来源修订和 pending edit epoch 检查，自动写回沿用原撤销事务并刷新光谱和约束层列表。未完成、输入摘要不匹配、未知引用/状态版本、截断 JSON、缺失状态和冻结材料变化都明确报错；不退化成拿旧候选重新随机搜索。极早取消但未生成新 sidecar 时，可恢复该新任务冻结请求内继承的 checkpoint。
+
+实时显示控制器归优化窗口所有。复用窗口切换来源时只解除旧来源订阅、清空旧帧并用新 generation/作业摘要重新绑定，不销毁显示控制器；真正关闭窗口时才停止显示执行器。新一轮尚无完整帧时显示等待状态，不复用旧一轮摘要充当本轮结果。
 
 ```python
 from coat_sim.core.film_synthesis_continuation import continue_synthesis_request
@@ -55,7 +59,7 @@ CLI：`--checkpoint best.json` 同时写 `best.search-state.json`；`--continue-
 
 评价/周期预算耗尽时，若已有同时通过正式训练及独立审计的冠军，保留历史的 `completed / targets_met=true` 达标语义，并保留实际 `evaluation_limit / cycle_limit` 终止原因；`local_margin.local_converged=false` 和 `budget_limited=true` 明确说明局部阶段未完成，不执行减薄。这不把候选达标冒充局部收敛。续接仍要求完成本轮新结构工作，不能因旧冠军返回成功；取消、截止、审计拒绝和求解失败保留各自状态。
 
-`structure_proposal` 消息继续保持原始 provenance 字段契约。提案物理身份单列为可省略的 `FilmSynthesisTrace.physical_hash`；旧记录缺省为 `None`，不向材料/模板 provenance 混入字段。
+`structure_proposal` 消息继续保持原始 provenance 字段契约。提案、局部试探、审计和阶段切换的物理身份单列为可省略的 `FilmSynthesisTrace.physical_hash`；旧记录缺省为 `None`，不向材料/模板 provenance 混入字段。
 
 跨进程回归比较的是同一 checkpoint 在进程内与新子进程恢复后的完整提案序列、预算、游标、待评候选、随机推进和反馈；与不中断运行只比较初始 BASE/extra 两个提案，不声称完整未中断轨迹逐位等价，也不恢复 SLSQP 内部迭代。
 

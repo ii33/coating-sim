@@ -889,7 +889,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         last_stage_time, last_stage = now, stage
         layers = len(design["front_layers"]) if design is not None else 0
         error = score["max_error"] if score is not None else None
-        if stage == 'structure_proposal' and design is not None:
+        if design is not None:
             from .film_synthesis_archive import physical_design_hash
             kwargs['physical_hash'] = physical_design_hash(design)
         trace.append(FilmSynthesisTrace(stage, cycle, evaluations, layers, error, weighted_rms_error=None if score is None else score["weighted_rms_error"],
@@ -1235,6 +1235,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     and nominal_targets_pass(request, audited['score'], independent_audit=True))
                 or (not prefer_phase and audited_rank(value, audited) < audited_rank(*audited_best))):
             audited_best = (_copy_internal_candidate(value), _copy_internal_candidate(audited))
+            display_value(value, is_best=True, is_current=False)
             emit("audit_incumbent", "Saved best audited candidate", value["design"], audited["score"])
             publish_audited_checkpoint(value, audited)
         emit("validation_complete", "Independent physical candidate audit completed", value["design"], audited["score"])
@@ -1925,6 +1926,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 signed_margin=worst_signed_margin(request, independent),
                 role=('fixed_topology_local_result_before_thickness_reduction' if record['local_converged']
                     or record['status'] in {'no_interval_margin','empty_topology','disabled'}
+                    else 'audited_best_feasible_before_incomplete_local_stage'
+                    if selected_hash != record['initial_physical_hash']
+                    and (record['returned_best'] or {}).get('physical_hash') == selected_hash
                     else 'audited_fallback_before_incomplete_local_stage'), termination=record['status'])
             record['final_audit_signed_margin'] = local_optimum['signed_margin']
             emit('local_margin_complete', json.dumps(record, sort_keys=True), selected['design'], selected['score'])

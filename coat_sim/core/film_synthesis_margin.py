@@ -164,20 +164,26 @@ def refine_worst_margin(request, initial, *, evaluate, archive,
     terminal = cache_value if terminal_evaluated else None
     nominal_terminal = terminal is not None and _original_reduction(request, terminal, ()).nominal_pass
     converged = bool(outcome.success and feasible and nominal_terminal)
-    # A best line-search trial is not the solver's stationary endpoint. Only
-    # return the exact feasible endpoint with its convergence claim; fallback
-    # trials retain their evidence but cannot borrow that endpoint's status.
-    if converged:
+    # A better feasible trial remains useful even when it is not stationary.
+    # The scaled allowance only avoids treating solver roundoff as improvement;
+    # it is never used to relax any original training or audit constraint.
+    terminal_margin = None if terminal is None else worst_signed_margin(request, terminal)
+    improvement_tolerance = 1e-10 * max(1., abs(best_margin),
+        0. if terminal_margin is None else abs(terminal_margin))
+    prefer_trial = terminal_margin is None or best_margin < terminal_margin - improvement_tolerance
+    if converged and not prefer_trial:
         assert terminal is not None
         selected = terminal
     else:
         selected = best
+    selected_is_terminal = terminal is not None and selected['design'] == terminal['design']
+    selected_converged = converged and selected_is_terminal
     selected_margin = worst_signed_margin(request, selected)
     terminal_hash = None if terminal is None else physical_design_hash(terminal['design'])
-    details.update(termination=('converged' if converged else
-        'best_feasible_not_stationary' if outcome.success else
+    details.update(termination=('converged' if selected_converged else
+        'best_feasible_not_stationary' if converged or outcome.success else
         'iteration_limit' if int(outcome.status) == 9 else 'solver_failure'),
-        success=converged, terminal_epigraph_feasible=feasible,
+        success=selected_converged, terminal_epigraph_feasible=feasible,
         message=str(outcome.message), iterations=int(outcome.nit),
         final_signed_margin=float(selected_margin), optimizer_t=float(outcome.x[-1]),
         scaled_improvement=float(initial_margin - selected_margin),
@@ -185,6 +191,6 @@ def refine_worst_margin(request, initial, *, evaluate, archive,
             epigraph_feasible=feasible, local_stationary=converged),
         best_feasible_trial=dict(physical_hash=physical_design_hash(best['design']), signed_margin=float(best_margin)),
         returned_best=dict(physical_hash=physical_design_hash(selected['design']),
-            role='solver_terminal' if converged else 'best_feasible_trial',
-            is_solver_terminal=converged))
+            role='solver_terminal' if selected_is_terminal else 'best_feasible_trial',
+            is_solver_terminal=selected_is_terminal))
     return selected, details
