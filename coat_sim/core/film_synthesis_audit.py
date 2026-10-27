@@ -83,6 +83,8 @@ def objective_constraint_status(objectives, errors, tolerance):
 def audit_frozen_synthesis_candidate(
     request: Any, design: Mapping[str, Any], *, cancel_event: Any = None,
     progress_callback: Callable[[Mapping[str, Any]], None] | None = None,
+    response_transform: Callable[[tuple[FilmOptimizationObjective, ...], Mapping[str, Any], int | None], dict[str, Any]] | None = None,
+    optical_settings: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Audit dense endpoints, shifted midpoints and bracketed power extrema.
 
@@ -96,6 +98,9 @@ def audit_frozen_synthesis_candidate(
     # inputs. Strict samplers, lazy prepared optics and final audit metadata
     # must describe the same snapshot; cancellation remains a live event.
     request = deepcopy(request)
+    if optical_settings is not None:
+        from .film_design_service import simulation_settings
+        optical_settings = simulation_settings(deepcopy(dict(optical_settings)))
     if request.frozen_material_snapshot is None:
         raise ValueError("synthesis audit requires a frozen material snapshot")
     design = validate_design(deepcopy(dict(design)))
@@ -143,7 +148,9 @@ def audit_frozen_synthesis_candidate(
         if optical is None:
             raise ValueError(f"{context}: active frozen optical set is missing")
         try:
-            strict_samplers[key] = prepare_optical_set(optical, k_sampling_policy="source")
+            strict_samplers[key] = (prepare_optical_set(optical, k_sampling_policy="source")
+                                   if optical_settings is None else prepare_optical_set(optical,
+                                       k_sampling_policy="source_only_zero_defaults"))
         except (ValueError, TypeError, KeyError, ArithmeticError) as exc:
             raise ValueError(f"{context}: invalid active optical source: {exc}") from exc
     checked_waves: set[float] = set()
@@ -173,11 +180,15 @@ def audit_frozen_synthesis_candidate(
                 for (material_id, optical_set_id), sampler in strict_samplers.items():
                     context = f'audit material={material_id}, optical_set={optical_set_id}, wavelength={wavelength:g} nm; target intervals: {domains}'
                     try:
-                        n, k, details = sample_synthesis_optical(sampler, wavelength,
-                            assume_unknown_k_zero=assumed)
+                        if optical_settings is None:
+                            n, k, details = sample_synthesis_optical(sampler, wavelength,
+                                assume_unknown_k_zero=assumed)
+                        else:
+                            n, k, details = sampler(wavelength, "nm",
+                                extrapolation_policy=optical_settings["extrapolation_policy"], include_k=True)
                     except (ValueError, ArithmeticError) as exc:
                         raise ValueError(f'{context}: {exc}') from exc
-                    if not np.isfinite(n) or n <= 0 or k is None or not np.isfinite(k) or k < 0 or (not details.get('k_known') and not assumed):
+                    if not np.isfinite(n) or n <= 0 or k is None or not np.isfinite(k) or k < 0 or (optical_settings is None and not details.get('k_known') and not assumed):
                         raise ValueError(f'{context}: explicit finite passive n/k source data required; unknown k cannot be zero')
                 checked_waves.add(wavelength)
         current = prepared
@@ -186,10 +197,15 @@ def audit_frozen_synthesis_candidate(
             current = _PreparedStructureEvaluator(proxy)
             prepared = current
         check()
+        evaluation_options: dict[str, Any] = {} if optical_settings is None else dict(optical_settings=optical_settings)
         value = current.evaluate(
             design, objectives=objectives, evaluator=evaluate_frozen_structure_candidate,
-            cancel_event=cancel_event,
+            cancel_event=cancel_event, **evaluation_options,
         )
+        if response_transform is not None:
+            # Independent curve-difference audits transform paired responses,
+            # so extrema are sought on the difference, not either spectrum.
+            value = response_transform(objectives, value, index)
         check()
         physical += 1
         points += sum(o.wavelength_samples * len(o.angles_deg) for o in objectives)
@@ -202,9 +218,10 @@ def audit_frozen_synthesis_candidate(
     dense = evaluate(dense_objectives, stage="audit_dense")
     dense_points = points
     series = {(int(row["objective_index"]), float(row["angle_deg"])):
-              list(zip(row["wavelength_nm"], row["actual_values"], strict=True))
+              list(zip(row["wavelength_nm"], row.get("extremum_values", row["actual_values"]), strict=True))
               for row in dense["responses"]}
-    raw_points = {key: dict(values) for key, values in series.items()}
+    raw_points = {(int(row['objective_index']),float(row['angle_deg'])):
+                  dict(zip(row['wavelength_nm'],row['actual_values'],strict=True)) for row in dense['responses']}
 
     def add_errors(value, index: int) -> None:
         for row in value["responses"]:
@@ -241,7 +258,7 @@ def audit_frozen_synthesis_candidate(
         offset_points += points - previous_points
         add_errors(value, index)
         for row in value["responses"]:
-            series[(index, float(row["angle_deg"]))].extend(zip(row["wavelength_nm"], row["actual_values"], strict=True))
+            series[(index, float(row["angle_deg"]))].extend(zip(row["wavelength_nm"], row.get("extremum_values",row["actual_values"]), strict=True))
 
     def extremum_function(objective: FilmOptimizationObjective, angle: float, index: int,
                           a: float, b: float, sign: float,
@@ -256,7 +273,8 @@ def audit_frozen_synthesis_candidate(
                     wavelength_max_nm=wavelength, wavelength_samples=1, angles_deg=(angle,))
                 value = evaluate((local,), stage="audit_extremum", index=index)
                 add_errors(value, index)
-                scalar_cache[wavelength] = value["responses"][0]["actual_values"][0]
+                response = value['responses'][0]
+                scalar_cache[wavelength] = response.get('extremum_values',response['actual_values'])[0]
             return sign * float(scalar_cache[wavelength])
         return scalar
 
@@ -318,6 +336,12 @@ def audit_frozen_synthesis_candidate(
         condition_count=len(errors))
     score["key"] = (0.0 if score["solver_acceptable"] else 1.0, maximum, score["weighted_rms_error"])
     objective_status = objective_constraint_status(request.objectives, errors, request.acceptable_normalized_error)
+    absorption = synthesis_absorption_assumption(request, design)
+    if optical_settings is not None:
+        absorption.update(policy="ordinary_simulation",
+            wavelength_extrapolation=optical_settings["extrapolation_policy"],
+            k_sampling_policy="source_only_zero_defaults",
+            claim="Finite sampled R/T model evidence under the frozen ordinary simulation policy; not an experimental or continuous certificate.")
     metadata = dict(physical_evaluations=physical, wavelength_points=points,
         dense_points=dense_points, offset_points=offset_points,
         extra_points=points - dense_points,
@@ -327,7 +351,7 @@ def audit_frozen_synthesis_candidate(
         continuous_certificate=False, rms_measure="fixed_dense_grid_only",
         mean_measure="fixed_dense_grid_only",
         objective_status=objective_status,
-        absorption_assumption=synthesis_absorption_assumption(request, design))
+        absorption_assumption=absorption)
     score["audit"] = deepcopy(metadata)
     check()
     return dict(design=deepcopy(dense["design"]), score=score,

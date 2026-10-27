@@ -559,6 +559,7 @@ def evaluate_frozen_structure_candidate(
     derived_validation_grid: bool = False,
     forward_responses: Sequence[Mapping[str, Any]] | None = None,
     _prepared: _PreparedStructureEvaluator | None = None,
+    optical_settings: Mapping[str, Any] | None = None,
 ) -> Mapping[str, Any]:
     """Pure complete-grid score/Jacobian evaluation over a frozen snapshot.
 
@@ -664,6 +665,8 @@ def evaluate_frozen_structure_candidate(
                     "polarization": objective.polarization,
                     "first_surface": "front",
                 }
+                if optical_settings is not None:
+                    settings["extrapolation_policy"] = optical_settings["extrapolation_policy"]
                 try:
                     response = simulate_with_thickness_jacobian(
                         candidate, payload, variable_rows, settings,

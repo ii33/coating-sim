@@ -12,6 +12,7 @@
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px solid #c8e0db;border-radius:8px;padding:16px;font-size:.88rem;line-height:1.5}</style>
 </head>
 <body>
+<p class="source">算法更新：2026-10-27；新增<a href="#film-automatic-repair-20261027">14bc 三参数自动薄层修复</a>：单层厚度下限、允许增删合并，以及相对固定原曲线的逐点最大变化；原光学目标独立核验。</p>
 <p class="source">算法更新：2026-10-26；新增<a href="#film-numeric-zero-20261026">14ba 候选发布前的数值零清理与同冠军详情</a>，保留原始求解精度、目标、预算和独立审计。</p>
 <p class="source">算法更新：2026-10-25；新增<a href="#film-audited-feasibility-repair">14ay 审计边界可行性修复</a>，固定拓扑、保留原始验收与积分分母；<a href="#film-manufacturing-pair-20261025">14ax 独立可选制造修复算子</a>；<a href="#film-objective-progress-handoff-20261025">14aw 可选原目标进展诊断与极小极大交接</a>仍默认关闭。</p>
 <p class="source">算法更新：2026-10-24；<a href="#film-band-criteria-20261024">14at 波段平均值/逐点独立约束</a>，统一积分质量、判定、审计与冻结重放。</p>
@@ -69,6 +70,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <p class="source" style="grid-column:1/-1">结构合成更新：2026-10-12。新增14o至14o-2：实验性经典零厚敏感度针插、有界已有层增长与分组局部精修；独立结构请求与固定层序/有限试插分开，Dmax是硬约束。补充验证切片、真实求值计数与增长前局部边界检查。接口见 <a href="film-structure-optimization-contract.md">结构合成契约</a>，操作见 <a href="film-structure-optimization-guide.md">使用指南</a>，实际验收见 本轮状态 <span class="historical-reference">（历史验证记录，未随公开源码发布）</span>。</p>
 <p class="source">存储格式补充：2026-10-18。工程 BBS、助手精简记忆和可恢复文件清理均为非物理持久化契约，不改变仿真公式、坐标或数值精度。见<a href="#engineering-notes-storage-20261018">工程记录与助手工作区格式</a>。</p>
 <nav aria-label="章节目录">
+<a href="#film-automatic-repair-20261027">14bc 三参数自动薄层修复与成对曲线差分（2026-10-27）</a>
 <a href="#film-margin-continuation-20261026">14bb 自动合成局部余量、原目标减薄与结构续接（2026-10-26）</a>
 <a href="#film-numeric-zero-20261026">14ba 数值零清理与实时详情（2026-10-26）</a>
 <a href="#film-reduction-20261025">14az 独立减层 / 减厚后优化（2026-10-25）</a>
@@ -286,6 +288,18 @@ value 与有效零宽区间仅作原约束；没有区间方向时返回 no_inte
 <p>版本、SHA256和冻结目标/材料/制造与搜索参数指纹校验后，池中设计在新预算中全部重新评分；旧评分/旧审计不冒充本次证据。查看和保存不清空状态。膜厚/拓扑编辑先作为 seed，冻结材料闭包和原制造边界必须仍成立；目标/材料/约束不兼容时明确要求重建，原 JSON 不被改写。JSON读取/输出沿用有界字节读取和调度器原子替换机制，限制64 MiB，不使用 pickle。</p>
 <p><strong>一次继续会话有界：</strong>旧达标冠军不能立即返回。继续既有源前沿的一片候选筛选，选择新分支，即使暂时变差也独立进行一次最多96步的固定拓扑可行性局部会话。新分支达标时再走余量/减薄；未达标或不优于历史冠军时保留历史最好并结束本次会话，保存已推进的游标，不能把该分支局部停止表述为全局无解。资源或无有效物理工作也明确结束。取消/截止时不再补审计，返回已完成证据且保持候选/审计身份绑定。</p>
 <p><strong>参考与限制：</strong><a href="https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html">SciPy SLSQP 官方文档</a>说明 ftol 涉及拉格朗日梯度、约束违反、步长和目标变化等条件。余量方向、物理端点排除、256/96迭代保护、候选调度和续接数据结构均为本项目约定；未找到外部依据，仅为本项目实现。独立密网格、偏移点及极值审计是数值证据，不能称连续光谱证书；n/k 来源与域外策略不因本节改变。</p>
+</section>
+
+<section id="film-automatic-repair-20261027">
+<h2>14bc 三参数自动薄层修复与成对曲线差分</h2>
+<p class="source">更新：2026-10-27。实现：<code>film_automatic_repair.py</code>、<code>film_automatic_repair_jobs.py</code>；界面及异步契约见<a href="film-automatic-repair-contract.md">自动薄层修复契约</a>。这是独立的当前设计修复操作，不改变自动合成14bb的终态身份、局部余量或结构续接。旧14ax的v1程序接口和历史报告保留，新界面使用v2自动修复。</p>
+<p><strong>输入与输出：</strong>仅三项用户输入：单层目标厚度 T（nm）、厚度容差 δd（nm）、光学变化容差 εpp（百分点）。冻结当前设计、材料 n/k、目标波段/角度/偏振及 R/T 后，自动识别低于 L=max(0,T−δd) 的层；较厚层没有 T+δd 上界。输出包括原设计、通过厚度、差分及所有适用原目标联合审计的最佳修复候选、最近完整候选及实际停止原因。两类光学证据分别保留；原目标失败的候选只供回看，不能成为可应用最佳修复，无原目标时该项不适用。</p>
+<div class="formula">每个最终保留层 dᵢ≥L；已有更严格原生约束仍有效。T 不约束总厚度 Σd。<br>Δ=max |Ycandidate(λ,θ,p,metric)−Ysource(λ,θ,p,metric)|；接受要求 Δ≤εpp/100，且所有启用原目标的训练与独立审计均通过。<br>例如 T=10 nm、δd=2 nm，L=8 nm；100 nm 和 60 nm 层均允许，不要求它们降到12 nm。<br>50%→51% 是1个百分点（内部0.50→0.51，变化0.01）；相反方向的变化不得均值抵消。</div>
+<figure><svg viewBox="0 0 1060 170" role="img" aria-label="固定原快照与结构候选逐点配对，审计差分后返回可审查修复结果" style="max-width:100%;height:auto"><g fill="#132638" stroke="#38bdf8" stroke-width="2"><rect x="10" y="45" width="215" height="80" rx="8"/><rect x="270" y="45" width="230" height="80" rx="8"/><rect x="545" y="45" width="235" height="80" rx="8"/><rect x="825" y="45" width="225" height="80" rx="8"/></g><g fill="#e2e8f0" text-anchor="middle" font-size="17"><text x="117" y="77">固定原膜系与真实 n/k</text><text x="117" y="103">自动识别 d&lt;L 的层</text><text x="385" y="77">增厚 / 删层 / 合并 / 插层</text><text x="385" y="103">其余层可联动，全层复验 L</text><text x="663" y="77">同物理键成对计算曲线</text><text x="663" y="103">稠密 / 偏移 / 差分极值审计</text><text x="937" y="77">最佳可行候选与原指标</text><text x="937" y="103">查看 / 另存 / 明确应用</text></g><g stroke="#38bdf8" stroke-width="2"><path d="M225 85H270M500 85H545M780 85H825"/></g></svg><figcaption>图14bc-1：本轮原快照始终固定；每一步都与它比较。连续两步各变化0.6个百分点若累计偏离原快照1.2个百分点，必须被1个百分点容差拒绝。</figcaption></figure>
+<p><strong>复用与数值求解：</strong>先把薄层最小增厚到L并精修原拓扑，其后才比较目标厚度附近和删层/合并/插层。删层/合并复用14az候选与既有物理合并；插层只使用原膜系已有材料/光学数据引用。每个候选先满足层厚和原生约束，再调用全层 <code>refine_synthesis_full_minimax</code>。差分引导取 z=0.5+(Ycandidate−Ysource)/2，Jacobian为原值一半，内部界限0.5±εg/2，εg=ε−min(0.01ε,10⁻⁵)、ε=εpp/100；0容差仍为0。所有真实原目标作为独立约束行共同求解，原权重、归一化和显式mean保留，不添加未启用mean。仅range的内部边界b∈(0,1)留最多min(10⁻⁵,10⁻³min(b,1−b),0.01区间宽)的引导余量；value、零宽及0/1端点不收紧。上述均为内部数值引导，不改变用户正式目标或正式差分验收。</p>
+<p><strong>独立验收与有界反馈：</strong>实际返回候选以新缓存、同一固定源快照在相同波长、角度、偏振和metric上成对计算；训练与独立审计各自绑定候选物理hash，记录最坏差及波长/角度/偏振/metric、原目标最大违规、求解终态hash和实际停止原因。审计复用原稠密网格、半步偏移和局部极值搜索，但极值函数是曲线差，不能仅合并两条曲线各自的极值。原目标另做真实独立审计；最终接受必须同时通过厚度、正式差分和全部启用原目标。失败审计最多反馈8个违规条件，最多进行一次局部修复并重新审计，全部计入原预算；联合通过即结束，不继续盲目删层。取消后不补算物理。上述接受不由引导t、RMS、显示均值或求解器success推断。已检查采样与局部极值不是连续谱证明；原曲线无法计算、证据不完整或配对错误时不得伪报零变化。</p>
+<p><strong>范围、默认值和停止：</strong>有启用目标时使用其原波段/角度/偏振和 R/T；即使原约束仅启用均值，差分仍逐点检查。无启用目标时继承当前仿真配置/原曲线的波段、采样、角度和偏振来比较 R/T，原目标状态标为不适用；仅缺少现有配置时复用既有 <code>simulation_settings()</code> 默认值，不另设固定波段。材料插值及外推沿用现有政策，不另加源数据范围限制；既有政策下原曲线真正无法计算时才标未核验。三个输入无暗设默认值；0厚度容差和0光学容差有效，无隐性宽松地板。搜索预算为内部版本化有限片：版本1默认32结构提案、每次局部80轮、2048物理调用和60秒，继承请求有更小额度时取较小值；记录实际策略、调用、引用源计算、审计和停止原因。上述为本项目调度约定，并非物理限制；取消及资源限制可结束本轮，未找到只表示本轮未找到，不能声称物理无解。已审计结果可回看；取消、迟到结果或来源/比较设置变化不自动覆盖来源。</p>
+<p><strong>来源与限制：</strong>沿用冻结的材料/相位模型、TMM和SLSQP接口；差分坐标、自动薄层门槛及有限结构片均为本项目实现约定，未找到外部工艺认证依据。SLSQP方法见<a href="https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html">SciPy官方文档</a>。不承诺全局最优、制造良率或任意材料/入射方向能力；材料范围和支持边界沿用现有引擎。</p>
 </section>
 
 <section id="film-manufacturing-pair-20261025">

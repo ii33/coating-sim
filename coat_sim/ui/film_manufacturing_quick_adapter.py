@@ -19,6 +19,21 @@ def _flag(value: Any) -> str:
     return "通过" if value is True else "未通过" if value is False else "未知/未通过"
 
 
+def comparison_scope_text(settings: Mapping[str, Any] | None) -> str:
+    """Describe the frozen simulation scope without inventing missing evidence."""
+    if not isinstance(settings, Mapping):
+        return "比较范围未记录"
+    polarization = {"unpolarized": "非偏振", "s": "s 偏振", "p": "p 偏振"}.get(
+        str(settings.get("polarization")), "偏振未知")
+    surface = {"front": "前面入射", "back": "背面入射"}.get(
+        str(settings.get("first_surface")), "入射面未知")
+    policy = {"endpoint_hold": "材料范围外沿用端点值", "error": "材料范围外报错"}.get(
+        str(settings.get("extrapolation_policy")), "材料外推策略未记录")
+    return (f"{_num(settings.get('wavelength_min_nm'))}–{_num(settings.get('wavelength_max_nm'))} nm、"
+            f"{settings.get('samples', '未知')} 点（{_num(settings.get('step_nm'))} nm 网格）、"
+            f"{_num(settings.get('angle_deg'))}°{polarization}、{surface} R/T；{policy}")
+
+
 def score_text(score: Mapping[str, Any] | None, objectives: list[dict]) -> str:
     """Show every original band/angle. Never infer acceptance from a scalar."""
     if not isinstance(score, Mapping):
@@ -103,6 +118,38 @@ def snapshot_text(snapshot: Mapping[str, Any] | None, objectives: list[dict]) ->
 def comparison_rows(payload: Mapping[str, Any] | None) -> list[dict[str, Any]]:
     if not isinstance(payload, Mapping):
         return []
+    if payload.get('schema_version') == 2:
+        request, result = payload['request'], payload.get('result') or {}
+        objectives = request['synthesis']['request']['objectives']
+        present = request['original_targets_present']
+        rows = []
+        for key, label in (('source','修复前原始膜系'),('best','已通过联合验收的修复结果'),('reviewed','最近完整候选（可能未通过联合验收）')):
+            snapshot = result.get(key)
+            if not isinstance(snapshot, Mapping):
+                if key in ('source', 'best'):
+                    rows.append(dict(route='original' if key == 'source' else 'automatic', label=label, available=False,
+                        details=('原曲线尚未完整计算，光学变化未知，不以 0 代替。' if key == 'source' else
+                                 '本轮尚无通过厚度、逐点光学变化及适用原目标联合验收的结果；不表示不存在可行修复。')))
+                continue
+            guard = snapshot.get('optical_guard')
+            if present:
+                details = snapshot_text(snapshot, objectives)
+            else:
+                layers = snapshot['design']['front_layers']
+                details = (f"层数 {len(layers)}；总厚 {format_film_thickness(sum(r['thickness']['value'] for r in layers))} nm。\n"
+                    '没有启用的原光学目标，原目标验收不适用；本轮冻结比较范围为 '
+                    + comparison_scope_text(request.get('comparison_settings')) + '。')
+            if isinstance(guard, Mapping):
+                from coat_sim.core.film_automatic_repair import candidate_accepted
+                details = (f"联合验收：{_flag(candidate_accepted(snapshot, present))}；"
+                    + ('须同时通过全部启用原目标的训练与独立审计。\n' if present else '原目标不适用。\n')
+                    + f"单层接受下限 {result['lower_limit_nm']:g} nm；保留层厚度下限复验：{_flag(snapshot.get('thickness_pass'))}。\n"
+                    f"相对原曲线最大变化 {100*guard['maximum_absolute_change']:.8g} 个百分点 / "
+                    f"允许 {request['optical_tolerance_percentage_points']:g} 个百分点：{_flag(guard['passed'])}。\n"
+                    '逐点比较同一波长、角度、偏振和 R/T，不用均值抵消；采样及差分极值审计不等于连续谱证书。\n' + details)
+            rows.append(dict(route='original' if key=='source' else 'automatic' if key=='best' else 'reviewed',
+                label=label,available=True,details=details))
+        return rows
     request = payload.get("request", {})
     objectives = request.get("synthesis", {}).get("request", {}).get("objectives", [])
     result = payload.get("result")

@@ -98,11 +98,18 @@ def request_from_payload(value: Mapping[str, Any]) -> tuple[ManufacturingRepairR
 def canonical_parameters(service: Any, supplied: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(supplied, Mapping) or set(supplied) != {"payload"}:
         raise ValueError("manufacturing repair requires exactly one frozen payload")
-    request_from_payload(supplied["payload"])
+    if isinstance(supplied['payload'], Mapping) and supplied['payload'].get('schema_version') == 2:
+        from .film_automatic_repair_jobs import request_from_payload as automatic_request
+        automatic_request(supplied['payload'])
+    else:
+        request_from_payload(supplied["payload"])
     return {"payload": _json(supplied["payload"])}
 
 
 def build_job_payload(service: Any, request: Mapping[str, Any]) -> dict[str, Any]:
+    if isinstance(request, Mapping) and request.get('schema_version') == 2:
+        from .film_automatic_repair_jobs import build_job_payload as automatic_job
+        return automatic_job(service, request)
     frozen = canonical_parameters(service, {"payload": request})["payload"]
     return {"schema_version": SCHEMA_VERSION, "kind": JOB_KIND, "request": frozen}
 
@@ -163,7 +170,7 @@ def _expanded_json_sizes(value: Any) -> tuple[int, int]:
 
 
 def estimate_result_resources(request_payload: Mapping[str, Any], synthesis: FilmSynthesisRequest,
-                              design: Mapping[str, Any]) -> dict[str, int]:
+                              design: Mapping[str, Any], *, audit_physical_call_limit: int | None = None) -> dict[str, int]:
     """Reserve the *combined* terminal serialization/validation phase.
 
     Up to 7 unique snapshots expand into 9 training-score/design occurrences
@@ -181,7 +188,8 @@ def estimate_result_resources(request_payload: Mapping[str, Any], synthesis: Fil
     points = sum(o.wavelength_samples * len(o.angles_deg) for o in synthesis.objectives)
     angles = sum(len(o.angles_deg) for o in synthesis.objectives)
     bands = len(synthesis.objectives)
-    audit = estimate_audit_resources(synthesis, design)
+    audit = (estimate_audit_resources(synthesis, design) if audit_physical_call_limit is None else
+             estimate_audit_resources(synthesis, design, physical_call_limit=audit_physical_call_limit))
     dense = sum((1 if o.wavelength_samples == 1 else
         (o.wavelength_samples - 1) * synthesis.validation_samples_multiplier + 1) * len(o.angles_deg)
         for o in synthesis.objectives)
@@ -201,7 +209,8 @@ def estimate_result_resources(request_payload: Mapping[str, Any], synthesis: Fil
         "expanded_training_score_occurrences": 9, "expanded_audit_score_occurrences": 5}
 
 
-def estimate_audit_resources(synthesis: FilmSynthesisRequest, design: Mapping[str, Any]) -> dict[str, int]:
+def estimate_audit_resources(synthesis: FilmSynthesisRequest, design: Mapping[str, Any], *,
+                             physical_call_limit: int | None = None) -> dict[str, int]:
     """Full dense/offset/extremum worst case, never just one TMM chunk.
 
     A bracket consumes at most EXTREMUM_MAXITER scalar calls. Both signs and
@@ -225,6 +234,13 @@ def estimate_audit_resources(synthesis: FilmSynthesisRequest, design: Mapping[st
         c = objective.pointwise
         sides = (2 if c.mode == "value" else int(c.lower_bound is not None) + int(c.upper_bound is not None)) if c.enabled else 0
         scalar += sides * max(0, 2 * d - 3) * a * EXTREMUM_MAXITER
+    if physical_call_limit is not None:
+        if type(physical_call_limit) is not int or physical_call_limit < 0:
+            raise ValueError('audit physical call limit must be a nonnegative integer')
+        # The automatic repair owner reserves every candidate/reference call.
+        # Dense and offset buffers remain fully reserved; scalar extrema cannot
+        # exceed the remaining whole physical-call allowance.
+        scalar = min(scalar, max(0, physical_call_limit - 1 - calls))
     points = dense + offset + scalar
     layers = len(design["front_layers"])
     # At most one pointwise condition record per objective/angle/wavelength;
@@ -234,12 +250,18 @@ def estimate_audit_resources(synthesis: FilmSynthesisRequest, design: Mapping[st
     # for complete dense/offset raw coverage even with no scalar extrema.
     working = (128 * 1024**2 + 9 * 2048 * points + 384 * dense * (layers + 1)
                + 6 * _owned_bytes(synthesis, design))
-    return {"physical_evaluations_upper_bound": 1 + calls + scalar,
+    physical_upper = 1 + calls + scalar
+    if physical_call_limit is not None:
+        physical_upper = min(physical_upper, physical_call_limit)
+    return {"physical_evaluations_upper_bound": physical_upper,
             "kernel_calls_upper_bound": kernel_calls + scalar,
             "wavelength_points_upper_bound": points, "working_set_bytes": working}
 
 
 def estimate_resources(request_payload: Mapping[str, Any]) -> dict[str, Any]:
+    if isinstance(request_payload, Mapping) and request_payload.get('schema_version') == 2:
+        from .film_automatic_repair_jobs import estimate_resources as automatic_resources
+        return automatic_resources(request_payload)
     request, source = request_from_payload(request_payload)
     return {"source_training_calls": 1, "source_audit_calls": 1,
         "routes": 2, "training_calls_per_route_upper_bound": 1 + request.refinement_evaluations_per_route,
@@ -287,6 +309,10 @@ def execute_job(parameters, cancel_event, report, checkpoint_path, write_json, *
     """
     if not isinstance(parameters, Mapping) or set(parameters) != {"payload"}:
         raise ValueError("manufacturing executor requires one frozen job")
+    if isinstance(parameters['payload'], Mapping) and parameters['payload'].get('schema_version') == 2:
+        from .film_automatic_repair_jobs import execute_job as automatic_execute
+        return automatic_execute(parameters, cancel_event, report, checkpoint_path, write_json,
+            external_retained_bytes=external_retained_bytes)
     job = deepcopy(parameters["payload"])
     request, source_design = deserialize_job_payload(job)
     synthesis = request.synthesis
@@ -457,8 +483,11 @@ def validate_result_payload(value: Mapping[str, Any], *, expected_job=None, repl
     A scheduler completion/cancellation never starts physical replay. Callers
     requesting replay receive a fresh independent check before applying history.
     """
+    if isinstance(value, Mapping) and value.get('schema_version') == 2:
+        from .film_automatic_repair_jobs import validate_result_payload as automatic_validate
+        return automatic_validate(value, expected_job=expected_job, replay=replay)
     if (not isinstance(value, Mapping) or set(value) != _RESULT_FIELDS
-            or type(value.get("schema_version")) is not int or value["schema_version"] != SCHEMA_VERSION
+            or type(value.get("schema_version")) is not int or value["schema_version"] not in (1, 2)
             or value.get("kind") != RESULT_KIND or value.get("is_final") is not True
             or value.get("state") not in ("completed", "failed", "cancelled")
             or not isinstance(value.get("termination_reason"), str) or not isinstance(value.get("work"), Mapping)):
@@ -612,12 +641,15 @@ def terminal_reply(value: Mapping[str, Any], state: str) -> dict[str, Any]:
     if saved["state"] != state:
         saved["state"] = state
         saved["termination_reason"] = "scheduler_cancel_won" if state == "cancelled" else "scheduler_failed"
+        if saved.get('schema_version') == 2:
+            saved['result']['termination'] = saved['termination_reason']
+            saved['result']['routes'][0]['status'] = saved['termination_reason']
     return saved
 
 
 def validate_checkpoint(value: Mapping[str, Any], *, expected_job, terminal_state="cancelled") -> dict[str, Any]:
     if (not isinstance(value, Mapping) or set(value) != {"schema_version", "kind", "job", "result"}
-            or type(value.get("schema_version")) is not int or value["schema_version"] != SCHEMA_VERSION
+            or type(value.get("schema_version")) is not int or value["schema_version"] not in (1, 2)
             or value.get("kind") != CHECKPOINT_KIND or value.get("job") != expected_job):
         raise ValueError("manufacturing checkpoint is not bound to the exact frozen job")
     validated = validate_result_payload(value["result"], expected_job=expected_job, replay=False)

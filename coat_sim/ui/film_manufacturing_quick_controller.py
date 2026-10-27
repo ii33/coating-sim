@@ -1,10 +1,11 @@
-"""Explicit A/B manufacturing repair UI over the durable local CPU scheduler.
+"""Automatic repair UI and read-only legacy A/B compatibility over the queue.
 
 Only this controller owns drafts/report selection. Numerical execution and
 physical replay stay in the existing job worker, never on the Qt UI thread.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from copy import deepcopy
 from .film_display_format import format_film_thickness
 from decimal import Decimal, InvalidOperation
@@ -20,15 +21,35 @@ from PySide6.QtCore import QObject, Property, QRunnable, QUrl, Signal, Slot
 
 from coat_sim.scheduler import SchedulerClient, freeze_spec
 from coat_sim.scheduler.desktop import RemoteCancelEvent, observe_job, submit_local_with_receipt
-from coat_sim.ui.film_manufacturing_quick_adapter import comparison_rows
+from coat_sim.ui.film_manufacturing_quick_adapter import comparison_rows, comparison_scope_text
 from coat_sim.ui.film_optimization_run_coordinator import FilmOptimizationRunCoordinator
 
 
 _EXECUTOR = "film_manufacturing_repair"
 _MAX_FINITE_NUMERIC_INPUT = Decimal.from_float(sys.float_info.max)
-_ROUTES = ("raise_selected", "delete_selected_merge")
-_OPTION_LABELS = {"reference_nm": "参考厚度 nm", "refinement_evaluations_per_route": "每路精修评价配额",
+_ROUTES = ("raise_selected", "delete_selected_merge", "automatic")
+_LEGACY_LABELS = {"reference_nm": "参考厚度 nm", "refinement_evaluations_per_route": "每路精修评价配额",
                   "max_iterations_per_route": "每路最大迭代", "seconds_per_route": "每路秒数配额"}
+_OPTION_LABELS = {'reference_nm': '单层目标厚度（nm）', 'thickness_tolerance_nm': '厚度容差（nm）',
+                  'optical_tolerance_percentage_points': '光学指标容差（百分点）'}
+
+
+def _automatic_terminal_summary(payload):
+    body = payload.get('result') or {}
+    reason = str(payload.get('termination_reason', ''))
+    if payload.get('state') == 'cancelled':
+        return '本轮已取消；保留已经完成的证据供回看，未应用。'
+    if payload.get('state') == 'failed':
+        return '本轮修复未完成；保留可用证据供回看，原设计未改变。'
+    if reason == 'no_thin_layers':
+        return '当前没有低于单层接受下限的薄层，无需修复。'
+    ending = {'search_quantum_complete': '本轮结构比较完成',
+              'proposal_quantum_limit': '本轮结构搜索结束',
+              'evaluation_limit': '本轮计算预算已用完',
+              'time_limit': '本轮时间已用完'}.get(reason, '本轮已结束')
+    if body.get('best') is not None:
+        return ending + '；已保留通过厚度、光学变化及适用原目标联合验收的结果，未自动应用。'
+    return ending + '；本轮尚未找到通过联合验收的候选，不表示不存在可行修复。'
 
 
 class _Signals(QObject):
@@ -63,9 +84,11 @@ class _ManufacturingTask(QRunnable):
             from coat_sim.core.film_synthesis_io import film_synthesis_request_from_payload
 
             self._check()
-            request = jobs.make_request_payload(
-                self.service, self.synthesis, self.source, defect_layer_ids=self.selected,
-                request_id=self.job_id, **self.options)
+            from coat_sim.core.film_automatic_repair_jobs import make_request_payload as automatic_request
+            make_request = automatic_request if 'thickness_tolerance_nm' in self.options else jobs.make_request_payload
+            selection = {} if make_request is automatic_request else {'defect_layer_ids': self.selected}
+            request = make_request(
+                self.service, self.synthesis, self.source, request_id=self.job_id, **selection, **self.options)
             _, frozen_synthesis, _ = film_synthesis_request_from_payload(request["synthesis"])
             closure = freeze_synthesis_editable_snapshot(
                 self.service, self.source, frozen_synthesis.frozen_material_snapshot)
@@ -117,13 +140,17 @@ class FilmManufacturingQuickController(QObject):
         self._run_coordinator.finished.connect(self._on_finished)
         self._rows: list[dict] = []
         self._options = dict.fromkeys(_OPTION_LABELS, "")
+        self._legacy_options = dict.fromkeys(_LEGACY_LABELS, '')
+        self._legacy_mode = False  # Old programmatic/manual jobs only; never selected by the new QML.
+        self._has_original_targets = True
+        self._comparison_settings: dict[str, Any] | None = None
         self._prepared_signature = None
         self._context: dict | None = None
         self._payload: dict | None = None
         self._comparison_rows: list[dict] = []
         self._job_id = ""
         self._error = ""
-        self._status = "请选择当前前层并填写参考厚度和所有每路配额；原始设计不会自动改变。"
+        self._status = "填写三个参数后自动识别薄层；可联动调整其他层及增删合并。结果不会自动应用。"
         self._route = ""
         self._closed = self._stale = self._cancel_intent = self._applied = False
         self._unknown_submission = False
@@ -160,7 +187,20 @@ class FilmManufacturingQuickController(QObject):
 
     @Property(dict, notify=changed)
     def options(self):
+        return dict(self._legacy_options if self._legacy_mode else self._options)
+
+    @Property(dict, notify=changed)
+    def automaticOptions(self):
+        """The three-field UI never reads the legacy quota/selection drafts."""
         return dict(self._options)
+
+    @Property(str, notify=changed)
+    def comparisonScopeSummary(self):
+        pairing = ("按当前启用目标的波段、角度、偏振和 R/T 配对。" if self._has_original_targets else
+                   "没有启用目标，按当前仿真配置比较 "
+                   + comparison_scope_text(self._comparison_settings) + "。")
+        return ("光学容差逐点比较本轮开始时原曲线与修复后的对应曲线，不用均值抵消。" + pairing
+                + "存在启用的原光学目标时，候选还须全部通过原目标；不放宽原指标。")
 
     @Property(str, notify=changed)
     def selectedRoute(self):
@@ -179,6 +219,15 @@ class FilmManufacturingQuickController(QObject):
         if self._payload is None:
             return "尚无验证报告。"
         payload, request = self._payload, self._payload.get("request", {})
+        if payload.get('schema_version') == 2:
+            body = payload.get('result') or {}
+            return (_automatic_terminal_summary(payload) + '\n'
+                f"单层接受下限 {body.get('lower_limit_nm', '未知')} nm；自动识别 {len(body.get('detected_layer_ids', []))} 层。\n"
+                f"光学变化上限 {request.get('optical_tolerance_percentage_points')} 个百分点；逐点最大绝对变化，不用均值抵消。\n"
+                + ('厚度、逐点光学变化及全部启用的原光学目标须联合通过；原目标训练与独立审计另列证据。'
+                   if request.get('original_targets_present') else
+                    '无启用目标：本轮冻结比较范围为 '
+                    + comparison_scope_text(request.get('comparison_settings')) + '；原目标验收不适用。'))
         result = payload.get("result") or {}
         accounting = payload.get("work", payload.get("work_ledger", payload.get("budget_accounting", {})))
         return (f"终态：{payload.get('state', '未知')}；终止原因：{payload.get('termination_reason', '未知')}\n"
@@ -189,10 +238,47 @@ class FilmManufacturingQuickController(QObject):
                 f"资源上限 {result.get('effective_limit_bytes', '未知')} bytes\n"
                 "任务账目：" + json.dumps(accounting, ensure_ascii=False, sort_keys=True))
 
-    @staticmethod
-    def _signature(base):
+    def _signature(self, base):
         return deepcopy((base.design_revision, base.design_snapshot, base.objectives,
-                         base.acceptable_normalized_error, base.validation_samples_multiplier))
+                         base.acceptable_normalized_error, base.validation_samples_multiplier,
+                         None if self._legacy_mode else self._comparison_settings))
+
+    def _current_comparison_settings(self) -> dict[str, Any]:
+        """Reuse the current simulator configuration, including its material policy."""
+        from coat_sim.core.film_design_service import simulation_settings
+        session = self.owner.session
+        design = (session.snapshot().design if session is not None else self.owner._design)
+        configuration = session.workflow_configuration("simulation") if session is not None else {}
+        if not configuration:
+            source = self.owner._source_controller
+            current = getattr(source, "settings", None)
+            if isinstance(current, Mapping):
+                return simulation_settings(deepcopy(dict(current)))
+            configuration = design.get("workflow_settings", {}).get("simulation", {})
+        parameters = deepcopy(configuration.get("parameters", {}))
+        parameters.setdefault("first_surface", design.get("first_surface", "front"))
+        return simulation_settings(parameters)
+
+    def _build_base_request(self):
+        if self._legacy_mode:
+            self._has_original_targets = True
+            return self.owner._build_request(require_variables=False, fixed_topology=False)
+        self._comparison_settings = self._current_comparison_settings()
+        if any(row[group].get('enabled') for row in self.owner._objectives for group in ('mean', 'pointwise')):
+            self._has_original_targets = True
+            return self.owner._build_request(require_variables=False, fixed_topology=False)
+        from coat_sim.core.film_optimization import FilmOptimizationObjective, FilmOptimizationRequest
+        from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
+        snapshot = self.owner.session.snapshot() if self.owner.session is not None else None
+        self._has_original_targets = False
+        design = deepcopy(self.owner._design if snapshot is None else snapshot.design)
+        settings = self._comparison_settings
+        objectives = tuple(FilmOptimizationObjective(
+            settings['wavelength_min_nm'], settings['wavelength_max_nm'], settings['samples'],
+            angles_deg=(settings['angle_deg'],), polarization=settings['polarization'], metric=metric,
+            pointwise=FilmObjectiveConstraint(lower_bound=0., upper_bound=1.)) for metric in ('R','T'))
+        return FilmOptimizationRequest(design, self.owner._source_revision if snapshot is None else snapshot.design_revision,
+            (), objectives, validation_samples_multiplier=4)
 
     def _context_is_current(self):
         context, owner = self._context, self.owner
@@ -229,14 +315,31 @@ class FilmManufacturingQuickController(QObject):
         route: dict[str, Any] = next((r for r in result.get("routes", ()) if r.get("route") == self._route), {})
         return route.get("champion")
 
+    def _automatic_candidate_accepted(self, snapshot):
+        request = (self._payload or {}).get("request")
+        if not isinstance(request, Mapping) or type(request.get("original_targets_present")) is not bool:
+            return False
+        from coat_sim.core.film_automatic_repair import candidate_accepted
+        return candidate_accepted(snapshot, request["original_targets_present"])
+
     @Property(str, notify=changed)
     def selectedRouteWarning(self):
         snapshot = self._selected_snapshot()
         if not isinstance(snapshot, dict):
+            if self._payload is not None and self._context is None:
+                return '历史报告只读，未绑定当前来源；可以回看或另存，不能应用。'
+            if not self._legacy_mode:
+                return '本轮尚无完整、通过容差的修复候选；不完整或超出容差的结果不能应用。'
             return "尚未选择完整 A/B 候选；不会自动选择或应用。"
         audit, training = snapshot.get("audit_score"), snapshot.get("training_score")
         if not isinstance(audit, dict) or not isinstance(training, dict):
             return "未知/未通过：所选候选缺少完整独立审计，不能应用。"
+        if self._payload is not None and self._payload.get('schema_version') == 2:
+            if not self._automatic_candidate_accepted(snapshot):
+                return '所选候选未通过完整联合验收，不能应用；请查看厚度、逐点光学变化及原启用目标的真实失败或未知证据。'
+            if not self._payload['request']['original_targets_present']:
+                return '单层下限和相对原曲线的变化均通过；没有启用的原光学目标，原目标验收不适用。'
+            return '单层下限、逐点光学变化及全部启用原目标的训练与独立审计均通过；应用前仍会复核来源、目标、材料和项目。'
         if audit.get("nominal_pass") is True and training.get("nominal_pass") is True:
             return "所选候选的冻结训练与独立审计均通过原始目标；应用前仍会复核来源、目标、材料和项目。"
         return "警告：所选候选未通过原始光学目标。应用只替换膜系，不表示光学验收通过，也不会放宽原始目标。"
@@ -251,6 +354,8 @@ class FilmManufacturingQuickController(QObject):
         if (not isinstance(snapshot, dict) or not isinstance(snapshot.get("audit_score"), dict)
                 or type(snapshot.get("training_score", {}).get("nominal_pass")) is not bool
                 or type(snapshot["audit_score"].get("nominal_pass")) is not bool):
+            return False
+        if self._payload.get('schema_version') == 2 and not self._automatic_candidate_accepted(snapshot):
             return False
         check = getattr(self.owner, "_manufacturing_can_apply", None)
         try:
@@ -280,7 +385,7 @@ class FilmManufacturingQuickController(QObject):
             session = self.owner.session
             if (session is not None and session.snapshot().design_revision != self.owner._source_revision):
                 self.owner.refreshDesign()
-            base = self.owner._build_request(require_variables=False, fixed_topology=False)
+            base = self._build_base_request()
             old = {row["layer_id"]: row["selected"] for row in self._rows}
             self._rows = [{"layer_id": row["id"], "label": f"{index + 1}. {row['material_id']} / {row['optical_set_id']}",
                            "thickness_value": row['thickness']['value'],
@@ -292,7 +397,7 @@ class FilmManufacturingQuickController(QObject):
             self._error = ""
             if not self._rows:
                 raise ValueError("没有当前前层；请先添加实际膜系。")
-            self._status = ("已刷新当前来源；新层默认不勾选。填写所有显式配额后运行 A/B 比较。"
+            self._status = ("已刷新当前来源；自动识别低于“单层目标厚度−厚度容差”的层，无需勾选。"
                             if self._payload is None else "来源已刷新；下方仍为上次冻结报告，不代表当前草稿。")
             self.layerRowsChanged.emit()
             self.changed.emit()
@@ -318,18 +423,33 @@ class FilmManufacturingQuickController(QObject):
         if row is None:
             return False
         row["selected"] = selected
+        self._legacy_mode = True
         self._edited()
         self.layerRowsChanged.emit()
         return True
 
     @Slot(str, str, result=bool)
     def setOption(self, name, text):
-        if self.busy or self._closed or name not in _OPTION_LABELS or not isinstance(text, str):
+        if self.busy or self._closed or name not in (_OPTION_LABELS | _LEGACY_LABELS) or not isinstance(text, str):
             return False
-        self._options[name] = text
+        if name in _LEGACY_LABELS and name != 'reference_nm':
+            self._legacy_mode = True
+        elif name in ('thickness_tolerance_nm', 'optical_tolerance_percentage_points'):
+            self._legacy_mode = False
+        if name in _OPTION_LABELS:
+            self._options[name] = text
+        if name in _LEGACY_LABELS:
+            self._legacy_options[name] = text
         # Do not recreate editors or validate/replace an in-progress draft.
         self._edited()
         return True
+
+    @Slot(str, str, result=bool)
+    def setAutomaticOption(self, name, text):
+        if self.busy or self._closed or name not in _OPTION_LABELS or not isinstance(text, str):
+            return False
+        self._legacy_mode = False
+        return self.setOption(name, text)
 
     @Slot(str, result=bool)
     def setSelectedRoute(self, route):
@@ -340,8 +460,9 @@ class FilmManufacturingQuickController(QObject):
         return True
 
     def _parse_option(self, name):
-        caption = _OPTION_LABELS[name]
-        text = self._options[name].strip()
+        legacy = name in _LEGACY_LABELS and (self._legacy_mode or name not in _OPTION_LABELS)
+        caption = (_LEGACY_LABELS if legacy else _OPTION_LABELS)[name]
+        text = (self._legacy_options if legacy else self._options)[name].strip()
         if not text:
             raise ValueError(caption + "必须明确填写；空白不等于零或无限。")
         if name in ("refinement_evaluations_per_route", "max_iterations_per_route"):
@@ -356,17 +477,18 @@ class FilmManufacturingQuickController(QObject):
             if exact != exact.to_integral_value():
                 raise ValueError(caption + "必须是正整数；不会自动舍入。")
             return int(exact)
+        domain = '非负有限数' if name in ('thickness_tolerance_nm','optical_tolerance_percentage_points') else '有限正数'
         try:
             value = float(text)
         except (ValueError, OverflowError) as exc:
-            raise ValueError(caption + "必须是有限正数；原始草稿已保留。") from exc
-        if not math.isfinite(value) or value <= 0:
-            raise ValueError(caption + "必须是有限正数；原始草稿已保留。")
+            raise ValueError(caption + '必须是' + domain + '；原始草稿已保留。') from exc
+        if not math.isfinite(value) or (value < 0 if name in ('thickness_tolerance_nm','optical_tolerance_percentage_points') else value <= 0):
+            raise ValueError(caption + '必须是' + domain + '；原始草稿已保留。')
         return value
 
     @Slot(str, result=bool)
     def finishOptionEdit(self, name):
-        if self.busy or name not in _OPTION_LABELS:
+        if self.busy or name not in (_OPTION_LABELS | _LEGACY_LABELS):
             return False
         try:
             self._parse_option(name)
@@ -378,8 +500,24 @@ class FilmManufacturingQuickController(QObject):
         self.changed.emit()
         return True
 
+    @Slot(str, result=bool)
+    def finishAutomaticOptionEdit(self, name):
+        if self.busy or self._closed or name not in _OPTION_LABELS:
+            return False
+        self._legacy_mode = False
+        return self.finishOptionEdit(name)
+
     def _validated_options(self):
-        return {name: self._parse_option(name) for name in _OPTION_LABELS}
+        return {name: self._parse_option(name) for name in (_LEGACY_LABELS if self._legacy_mode else _OPTION_LABELS)}
+
+    @Slot(result=bool)
+    def startAutomatic(self):
+        """New UI entry; old API drafts cannot switch its algorithm or budget."""
+        if self.busy or self._closed or self.owner.busy:
+            return False
+        self._legacy_mode = False
+        self.changed.emit()
+        return self.start()
 
     @Slot(result=bool)
     def start(self):
@@ -392,15 +530,23 @@ class FilmManufacturingQuickController(QObject):
         try:
             from coat_sim.core.film_auto_synthesis import FilmSynthesisRequest
             from coat_sim.core.film_optimization_needle import FilmNeedleMaterialReference
-            base = self.owner._build_request(require_variables=False, fixed_topology=False)
-            if self._prepared_signature is None or self._signature(base) != self._prepared_signature or self._stale:
+            base = self._build_base_request()
+            signature, prepared_signature = self._signature(base), self._prepared_signature
+            if self._legacy_mode and prepared_signature is not None:
+                # Legacy selection/quota edits switch modes after Prepare. Its
+                # v1 worker does not consume the automatic comparison scope.
+                signature, prepared_signature = signature[:-1], prepared_signature[:-1]
+            if prepared_signature is None or signature != prepared_signature or self._stale:
                 raise ValueError("来源设计或当前目标已改变；请先刷新来源，核对层 ID 后重新运行。")
             options = self._validated_options()
+            if not self._legacy_mode:
+                options['original_targets_present'] = self._has_original_targets
+                options['comparison_settings'] = deepcopy(self._comparison_settings)
             selected = tuple(row["layer_id"] for row in self._rows if row["selected"])
-            if not selected:
+            if self._legacy_mode and not selected:
                 raise ValueError("请明确勾选当前前层；不会按隐藏阈值自动选择薄层。")
             source = deepcopy(dict(base.design_snapshot))
-            if any(row["thickness"]["value"] >= options["reference_nm"] for row in source["front_layers"] if row["id"] in selected and row["thickness"]["unit"] == "nm"):
+            if self._legacy_mode and any(row["thickness"]["value"] >= options["reference_nm"] for row in source["front_layers"] if row["id"] in selected and row["thickness"]["unit"] == "nm"):
                 raise ValueError("勾选层必须小于明确填写的参考厚度；不会自动删除选择或提高参考值。")
             environment = deepcopy(source)
             environment["front_layers"], environment["back_layers"] = [], []
@@ -415,23 +561,27 @@ class FilmManufacturingQuickController(QObject):
             job_id = uuid4().hex
             compute = getattr(self.owner, "_project_compute", None)
             operation = compute.capture(job_id) if compute is not None else None
-            metadata = {"summary": "工艺薄层修复 A/B", "origin": {"surface": "desktop"}}
+            metadata = {"summary": "工艺薄层修复 A/B" if self._legacy_mode else "自动薄层修复", "origin": {"surface": "desktop"}}
             if compute is not None:
                 metadata = compute.metadata(operation, metadata)
             context = {"session": self.owner.session, "source": self.owner._source_controller,
                        "revision": base.design_revision, "epoch": self.owner._source_edit_epoch(),
                        "signature": self._signature(base), "draft_epoch": self._draft_epoch,
+                       "comparison_settings": deepcopy(self._comparison_settings) if not self._legacy_mode else None,
                        "project_compute": compute, "project_operation": operation,
                        "project_root": str(Path(getattr(self.owner.service, "root", Path.cwd())).resolve())}
             client = self.client_factory(getattr(self.owner.service, "root", Path.cwd()))
             invalidated = threading.Event()
             session, source_owner = context["session"], context["source"]
+            comparison_settings = deepcopy(self._comparison_settings) if not self._legacy_mode else None
 
             def admission_check():
                 return (not invalidated.is_set()
                         and (compute is None or (not compute.editing_frozen and compute.accepts(operation)))
                         and (session is None or (session.snapshot().design_revision == context["revision"]
-                             and int(getattr(source_owner, "pendingEditEpoch", 0)) == context["epoch"])))
+                              and int(getattr(source_owner, "pendingEditEpoch", 0)) == context["epoch"]))
+                         and (comparison_settings is None
+                              or self._current_comparison_settings() == comparison_settings))
 
             self._context, self._source_invalidated = context, invalidated
             self._cancel_intent = self._applied = False
@@ -463,7 +613,8 @@ class FilmManufacturingQuickController(QObject):
         if compute is not None:
             compute.register_job(job_id, module_key="film_optimization", state="queued",
                                  metadata={"search_mode": "manufacturing_repair"})
-        self._status = "独立 A/B 修复作业已进入本地 CPU 共享队列；原设计保持不变。"
+        self._status = ("独立 A/B 修复作业已进入本地 CPU 共享队列；原设计保持不变。" if self._legacy_mode else
+                        "自动薄层修复已进入本地 CPU 共享队列；原设计保持不变。")
         self.changed.emit()
 
     @Slot(int, object)
@@ -471,7 +622,9 @@ class FilmManufacturingQuickController(QObject):
         if self._closed:
             return
         if isinstance(progress, dict):
-            self._status = (f"{progress.get('stage', 'running')} · 评价 {progress.get('evaluations', '未知')} · "
+            stage = {'repair_local':'正在联动优化各保留层', 'repair_audit':'正在独立核验逐点光学变化',
+                     'repair_audited_best':'已保留通过联合验收的候选，继续比较结构'}.get(str(progress.get('stage')), progress.get('stage', 'running'))
+            self._status = (f"{stage} · 计算 {progress.get('physical_calls', progress.get('evaluations', '未知'))} · "
                             f"{progress.get('message', '')}")
         self.changed.emit()
 
@@ -486,8 +639,12 @@ class FilmManufacturingQuickController(QObject):
             self._context.update({key: deepcopy(value) for key, value in prepared.items()
                                   if key != "comparison_rows"})
         self._payload = deepcopy(payload) if isinstance(payload, dict) else None
+        if self._payload is not None and self._payload.get('schema_version') == 2:
+            self._route = 'automatic'
         self._status = (f"{payload.get('state')} / {payload.get('termination_reason')}；仅比较，未应用。"
                         if self._payload is not None else "没有可验证报告；原设计未改变。")
+        if self._payload is not None and self._payload.get('schema_version') == 2:
+            self._status = _automatic_terminal_summary(self._payload)
         if self._stale or self._source_invalidated.is_set():
             self._status += " 来源已改变，报告仅供只读比较。"
         if self._cancel_intent:
@@ -509,6 +666,18 @@ class FilmManufacturingQuickController(QObject):
             if error is not None:
                 self._error = f"取消请求未确认：{error}；可重试同一作业的取消。"
             self.changed.emit()
+
+    @Slot()
+    def simulationSettingsChanged(self):
+        """Invalidate on configuration events without recomputing on QML reads."""
+        if self._legacy_mode or self._comparison_settings is None:
+            return
+        try:
+            if self._current_comparison_settings() == self._comparison_settings:
+                return
+        except (ValueError, TypeError, KeyError, AttributeError, RuntimeError, OverflowError):
+            pass
+        self.sourceChanged()
 
     @Slot()
     def sourceChanged(self):

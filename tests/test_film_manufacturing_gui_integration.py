@@ -67,7 +67,8 @@ def test_history_binding_no_extra_optics_and_no_wrong_product_route(tmp_path, mo
     assert loaded.payload["result"] == payload["result"]
 
 
-def test_real_source_apply_once_undo_and_stale_material_guard(tmp_path, monkeypatch):
+@pytest.mark.parametrize("automatic", [False, True])
+def test_real_source_apply_once_undo_and_stale_material_guard(tmp_path, monkeypatch, automatic):
     service, library, design = fixture(tmp_path)
     session = FilmDesignEditSession(service)
     assert session.request_replace_design(design)
@@ -83,9 +84,10 @@ def test_real_source_apply_once_undo_and_stale_material_guard(tmp_path, monkeypa
         assert panel.prepare(), panel.error
         original = deepcopy(session.snapshot().design)
         original_revision = session.snapshot().design_revision
-        assert panel.setLayerSelected(cast(list[dict], panel.property("layerRows"))[0]["layer_id"], True)
-        for key, text in (("reference_nm", "110"), ("refinement_evaluations_per_route", "2"),
-                          ("max_iterations_per_route", "2"), ("seconds_per_route", "10")):
+        if not automatic:
+            assert panel.setLayerSelected(cast(list[dict], panel.property("layerRows"))[0]["layer_id"], True)
+        options = (("reference_nm","110"),("thickness_tolerance_nm","1"),("optical_tolerance_percentage_points","1")) if automatic else (("reference_nm","110"),("refinement_evaluations_per_route","2"),("max_iterations_per_route","2"),("seconds_per_route","10"))
+        for key, text in options:
             assert panel.setOption(key, text)
         assert panel.start(), panel.error
         assert owner.busy and not owner.canStart
@@ -95,7 +97,7 @@ def test_real_source_apply_once_undo_and_stale_material_guard(tmp_path, monkeypa
         assert session.snapshot().design == original
         assert session.snapshot().design_revision == original_revision
         assert not source.canUndoOptimizedDesign
-        assert panel.setSelectedRoute("raise_selected")
+        assert panel.setSelectedRoute("automatic" if automatic else "raise_selected")
         assert panel.canApply, panel.error
         material = library.read("acceptance-film")["record"]
         altered = deepcopy(material)
@@ -113,9 +115,11 @@ def test_real_source_apply_once_undo_and_stale_material_guard(tmp_path, monkeypa
         assert source.canUndoOptimizedDesign
         assert session.snapshot().design_revision == original_revision + 1
         assert session.snapshot().design != original
+        assert {row['layer_id'] for row in cast(list[dict], owner.property('variables'))} == {row['id'] for row in session.snapshot().design['front_layers']}
         assert not panel.applySelectedRoute()
         assert source.undoOptimizedDesign()
         assert session.snapshot().design == original
+        assert {row['layer_id'] for row in cast(list[dict], owner.property('variables'))} == {row['id'] for row in original['front_layers']}
         assert not source.canUndoOptimizedDesign
     finally:
         owner.shutdown(1000)
@@ -125,9 +129,98 @@ def test_real_source_apply_once_undo_and_stale_material_guard(tmp_path, monkeypa
         shiboken6.delete(source)
 
 
-def test_optimizer_toolbar_opens_repair_and_preserves_editor_drafts(tmp_path):
+def test_automatic_topology_apply_undo_and_source_reuse_keep_full_variable_model(tmp_path, monkeypatch):
+    from coat_sim.core import film_automatic_repair as automatic
+
+    service, _library, design = fixture(tmp_path)
+    template = design['front_layers'][0]
+    design['front_layers'] = [{**deepcopy(template), 'id':name,
+        'thickness':{'value':thickness,'unit':'nm'}} for name,thickness in
+        (('left',40.),('thin',.5),('right',40.))]
+    session = FilmDesignEditSession(service)
+    assert session.request_replace_design(design)
+    source = FilmDesignQuickController(service=service,edit_session=session)
+    owner = FilmOptimizationQuickController(source)
+    pool,client = HeldPool(),PhysicsClient(tmp_path)
+    monkeypatch.setattr(QThreadPool,'globalInstance',lambda:pool)
+    original_candidates = automatic.structural_candidates
+
+    def deletion_branch_first(*args,**kwargs):
+        # Exercise the editor's topology handoff with a legal existing
+        # candidate; real local optics and the independent guard still run.
+        for name,candidate in original_candidates(*args,**kwargs):
+            if name == 'delete_thin_layers_merge':
+                yield name,candidate
+                return
+
+    monkeypatch.setattr(automatic,'structural_candidates',deletion_branch_first)
+    replacement = None
+    try:
+        assert owner.setObjectiveField('wavelength_min_nm',550.)
+        assert owner.setObjectiveField('wavelength_max_nm',550.)
+        panel = cast(FilmManufacturingQuickController,owner.manufacturingController)
+        panel.client_factory = lambda _root:client
+        assert panel.prepare(),panel.error
+        before = deepcopy(session.snapshot().design)
+
+        def run_automatic():
+            for key,value in (('reference_nm','1'),('thickness_tolerance_nm','.1'),('optical_tolerance_percentage_points','5')):
+                assert panel.setOption(key,value)
+            assert panel.startAutomatic(),panel.error
+            pool.run()
+            QCoreApplication.processEvents()
+            assert panel.hasResult and not panel.busy,panel.error
+
+        run_automatic()
+        payload = panel._payload
+        assert payload is not None and payload['schema_version'] == 2
+        assert len(payload['result']['best']['design']['front_layers']) == 1
+        source_layers = payload['result']['source']['design']['front_layers']
+        assert source_layers[1]['id'] == 'thin'
+        assert source_layers[1]['thickness']['value'] == .5 < payload['result']['lower_limit_nm']
+        assert payload['result']['best']['thickness_pass'] is True
+        details = {row['route']:row['details'] for row in
+                   cast(list[dict],panel.property('comparisonRows'))}
+        assert '保留层厚度下限复验：通过。' not in details['original']
+        assert '保留层厚度下限复验：通过。' in details['automatic']
+        assert panel.canApply,panel.error
+        assert panel.applySelectedRoute(),panel.error
+        applied = session.snapshot().design
+        assert len(applied['front_layers']) == 1
+        assert {r['layer_id'] for r in cast(list[dict], owner.property('variables'))} == {r['id'] for r in applied['front_layers']}
+        assert source.undoOptimizedDesign()
+        QCoreApplication.processEvents()
+        assert session.snapshot().design == before
+        assert {r['layer_id'] for r in cast(list[dict], owner.property('variables'))} == {'left','thin','right'}
+        replacement = FilmDesignQuickController(service=service,edit_session=session)
+        assert owner.reuseWindowOpen('',replacement)
+        assert owner.manufacturingController is panel
+        assert panel.prepare(),panel.error
+        run_automatic()
+        reused = panel._payload
+        assert reused is not None
+        assert reused['request']['source_design']['front_layers'] == before['front_layers']
+        assert len(reused['result']['best']['design']['front_layers']) == 1
+        assert session.snapshot().design == before
+    finally:
+        owner.shutdown(1000)
+        if replacement is not None:
+            replacement.markSourceClosed()
+            shiboken6.delete(replacement)
+        source.markSourceClosed()
+        cast(ComputeTarget,owner.computeTarget)._executor.shutdown(wait=True,cancel_futures=True)
+        shiboken6.delete(owner)
+        shiboken6.delete(source)
+
+
+def test_optimizer_toolbar_opens_repair_and_preserves_editor_drafts(tmp_path, monkeypatch):
     service, _library, design = fixture(tmp_path)
     with optimizer(service, design) as (owner, _source, _session):
+        configuration = _session.workflow_configuration
+        monkeypatch.setattr(
+            _session, "workflow_configuration",
+            lambda scope: {} if scope == "simulation" else configuration(scope),
+        )
         scene = _Scene(owner, "FilmOptimizationWindow.qml")
         try:
             scene.window.setWidth(1500)

@@ -1443,6 +1443,8 @@ class FilmOptimizationQuickController(QObject):
             return False
         if not any(route.get("champion") is snapshot for route in payload.get("result", {}).get("routes", ())):
             return False
+        if payload.get('schema_version') == 2 and not panel._automatic_candidate_accepted(snapshot):
+            return False
         compute, operation = context.get("project_compute"), context.get("project_operation")
         if compute is not self._project_compute:
             return False
@@ -1462,7 +1464,7 @@ class FilmOptimizationQuickController(QObject):
         # not repeated property reads while the dialog renders or animates.
         if not full_validation:
             return True
-        current = self._build_request(require_variables=False, fixed_topology=False)
+        current = panel._build_base_request()
         if panel._signature(current) != context.get("signature") or payload.get("request") != frozen:
             return False
         from coat_sim.core.film_synthesis_manufacturing import manufacturing_source_fingerprint
@@ -1487,12 +1489,10 @@ class FilmOptimizationQuickController(QObject):
         accepted = bool(apply(deepcopy(dict(snapshot["design"])), context["revision"], context["epoch"],
                               deepcopy(context["editable_snapshot"])))
         if accepted:
-            current = session.snapshot()
-            self._source_revision = int(current.design_revision)
-            self._design, self._path = deepcopy(current.design), str(current.path or "")
-            self._source_stale = False
+            self._load_source(preserve_variables=True)
             self._error = ""
             self.changed.emit()
+            self.plotDataChanged.emit()
         return accepted
 
     def _apply_sensitivity_candidate(self, result, context) -> bool:
@@ -2126,7 +2126,10 @@ class FilmOptimizationQuickController(QObject):
         if self._sensitivity_controller is not None:
             self._sensitivity_controller.detach()
         if self._manufacturing_controller is not None:
-            self._manufacturing_controller.detach()
+            if dispose_display:
+                self._manufacturing_controller.detach()
+            else:
+                self._manufacturing_controller.sourceChanged()
         self._synthesis_forward_probe.cancel()
         if self._busy and self._pending_angle_preparation is not None:
             # Pre-submission preparation is local work even for project-owned
@@ -2335,6 +2338,8 @@ class FilmOptimizationQuickController(QObject):
                 and snapshot.design_revision != self._source_revision):
             self._manufacturing_controller.sourceChanged()
         categories = getattr(change, "categories", ())
+        if self._manufacturing_controller is not None and "workflow_settings" in categories:
+            self._manufacturing_controller.simulationSettingsChanged()
         document_replaced = (snapshot.design.get("id") != self._design.get("id")
                              or ("workflow_settings" in categories
                                  and snapshot.design_revision != self._source_revision))
@@ -2354,7 +2359,9 @@ class FilmOptimizationQuickController(QObject):
         elif "workflow_settings" in categories and not self._busy:
             self._restore_session_configuration(reset_missing=False)
         elif snapshot.design_revision != self._source_revision:
-            if self._candidate_applied and not self._busy and not self._pending_edit_error:
+            manufacturing_applied_without_proposal = (self._manufacturing_controller is not None
+                and self._manufacturing_controller._applied and self._result is None)
+            if (self._candidate_applied or manufacturing_applied_without_proposal) and not self._busy and not self._pending_edit_error:
                 # An applied result no longer protects an unapplied proposal.
                 # Undo/subsequent committed edits must rebuild the variable
                 # model too; in-flight or unapplied conflicts stay fenced.

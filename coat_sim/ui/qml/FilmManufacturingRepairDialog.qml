@@ -9,7 +9,7 @@ ThemeControls.ThemeDialogBase {
     id: dialog
     objectName: "filmManufacturingRepairDialog"
     required property var controller
-    title: "工艺薄层修复"
+    title: "自动薄层修复"
     modal: true
     closePolicy: Popup.CloseOnEscape
     width: Math.min(1060, Math.max(280, parent ? parent.width - 32 : 1060))
@@ -29,13 +29,14 @@ ThemeControls.ThemeDialogBase {
             spacing: dialog.themeTokens.spaceMd
             ThemeControls.ThemeLabel {
                 Layout.fillWidth: true
-                text: "实验性独立 A/B 比较，不保证更优或满足实际制造要求；不改变原始设计或原始光学目标。A 保留并增厚选中层；B 删除选中层后合并。两路随后均精修全部保留层，参考厚度不是全局硬下限。没有隐藏薄层阈值，也不自动选择或应用。"
+                text: "自动处理低于“单层目标厚度−厚度容差”的薄层，无需勾选。较厚层可联动调整，允许增加、删除和合并膜层；所有保留层都重新检查厚度下限。结果不会自动应用。"
                 wrapMode: Text.Wrap
             }
             ThemeControls.ThemeLabel {
                 Layout.fillWidth: true
                 muted: true
-                text: "来源厚度保留原始单位显示；QW 会在后台按冻结材料及原参考波长，通过已有物理厚度接口转换为 nm，不把 QW 数值当成 nm。每路评价配额仅指精修调用，起点评价和独立审计另列账目。"
+                objectName: "filmManufacturingScopeHelp"
+                text: dialog.controller.comparisonScopeSummary
                 wrapMode: Text.Wrap
             }
             RowLayout {
@@ -48,49 +49,40 @@ ThemeControls.ThemeDialogBase {
                 }
                 ThemeControls.ThemeLabel {
                     Layout.fillWidth: true
-                    text: "只勾选明确要处理的当前前层，稳定 ID 与实际厚度如下。"
+                    text: "当前来源层（只读；QW 会按原材料和参考波长换算为物理 nm 后自动识别）"
                     wrapMode: Text.Wrap
                 }
             }
             Repeater {
                 model: dialog.controller.layerRows
-                delegate: CheckBox {
+                delegate: ThemeControls.ThemeLabel {
                     id: layerCheck
                     required property var modelData
                     Layout.fillWidth: true
                     objectName: "filmManufacturingLayer_" + modelData.layer_id
-                    enabled: !dialog.controller.busy
-                    checked: modelData.selected
-                    text: modelData.label + " · " + modelData.thickness + " · ID: " + modelData.layer_id
-                    onClicked: dialog.controller.setLayerSelected(modelData.layer_id, checked)
-                    contentItem: Text {
-                        text: layerCheck.text
-                        font: layerCheck.font
-                        color: layerCheck.enabled ? dialog.themeTokens.colorText : dialog.themeTokens.colorDisabledText
-                        leftPadding: layerCheck.indicator.width + layerCheck.spacing
-                        wrapMode: Text.Wrap
-                        verticalAlignment: Text.AlignVCenter
-                    }
+                    text: modelData.label + " · " + modelData.thickness
+                    wrapMode: Text.Wrap
                 }
             }
             GridLayout {
                 Layout.fillWidth: true
-                columns: dialog.width > 720 ? 4 : dialog.width > 420 ? 2 : 1
+                columns: dialog.width > 720 ? 3 : 1
                 columnSpacing: dialog.themeTokens.spaceMd
                 rowSpacing: dialog.themeTokens.spaceSm
                 Repeater {
                     model: [
-                        {key: "reference_nm", label: "参考厚度 nm（必须填写）"},
-                        {key: "refinement_evaluations_per_route", label: "每路精修评价配额（正整数）"},
-                        {key: "max_iterations_per_route", label: "每路最大迭代（正整数）"},
-                        {key: "seconds_per_route", label: "每路秒数配额（正数）"}
+                        {key: "reference_nm", label: "单层目标厚度（nm）", help: "针对一层，不是膜系总厚度；待修复薄层从这个厚度附近开始调整。"},
+                        {key: "thickness_tolerance_nm", label: "厚度容差（nm）", help: "允许比单层目标薄多少。例如目标 10、容差 1，保留层须不薄于 9 nm；较厚层没有 11 nm 上限。可填 0。"},
+                        {key: "optical_tolerance_percentage_points", label: "光学指标容差（百分点）", help: "相对原曲线的最大绝对变化。例如 R 从 50% 变为 51%，变化为 1 个百分点，不是相对变化 1%。可填 0。"}
                     ]
                     delegate: ColumnLayout {
                         id: optionCell
                         required property var modelData
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
+                        Layout.alignment: Qt.AlignTop
                         ThemeControls.ThemeLabel {
+                            objectName: "filmManufacturingLabel_" + optionCell.modelData.key
                             Layout.fillWidth: true
                             text: optionCell.modelData.label
                             wrapMode: Text.Wrap
@@ -100,11 +92,19 @@ ThemeControls.ThemeDialogBase {
                             Layout.minimumWidth: 0
                             objectName: "filmManufacturing_" + optionCell.modelData.key
                             accessibleLabel: optionCell.modelData.label
+                            accessibleDescription: optionCell.modelData.help
                             enabled: !dialog.controller.busy
-                            text: dialog.controller.options[optionCell.modelData.key]
-                            placeholderText: "空白不是零或无限"
-                            onTextEdited: dialog.controller.setOption(optionCell.modelData.key, text)
-                            onEditingFinished: dialog.controller.finishOptionEdit(optionCell.modelData.key)
+                            text: dialog.controller.automaticOptions[optionCell.modelData.key]
+                            placeholderText: optionCell.modelData.key === "reference_nm" ? "填写正数" : "填写非负数"
+                            onTextEdited: dialog.controller.setAutomaticOption(optionCell.modelData.key, text)
+                            onEditingFinished: dialog.controller.finishAutomaticOptionEdit(optionCell.modelData.key)
+                        }
+                        ThemeControls.ThemeLabel {
+                            objectName: "filmManufacturingHelp_" + optionCell.modelData.key
+                            Layout.fillWidth: true
+                            muted: true
+                            text: optionCell.modelData.help
+                            wrapMode: Text.Wrap
                         }
                     }
                 }
@@ -130,11 +130,11 @@ ThemeControls.ThemeDialogBase {
             }
             ThemeControls.ThemeSection {
                 Layout.fillWidth: true
-                title: "显式选择与应用"
+                title: "查看与应用修复结果"
                 visible: dialog.controller.hasResult
                 ThemeControls.ThemeLabel {
                     Layout.fillWidth: true
-                    text: "警告：比较不会放宽原始目标。完整审计的候选也可能显示原目标未通过，应用不代表光学验收通过。请逐波段核对训练与独立审计；未审计的结果不能应用。仅选定 A/B 并明确确认后，才会替换来源膜系，可在设计窗口撤销。"
+                    text: "只有完整审计且满足单层下限、光学变化容差及全部启用原目标的结果可应用；没有启用原目标时，该项不适用。请核对下方联合验收证据，点击并确认后才替换来源膜系，可在设计窗口撤销。"
                     wrapMode: Text.Wrap
                 }
                 ThemeControls.ThemeLabel {
@@ -146,6 +146,7 @@ ThemeControls.ThemeDialogBase {
                 RowLayout {
                     Layout.fillWidth: true
                     ThemeControls.ThemeComboBox {
+                        visible: false // Legacy A/B reports remain readable; new repair has one audited best.
                         objectName: "filmManufacturingRoute"
                         Layout.fillWidth: true
                         enabled: !dialog.controller.busy
@@ -158,7 +159,7 @@ ThemeControls.ThemeDialogBase {
                     }
                     ThemeControls.ThemeButton {
                         objectName: "filmManufacturingApply"
-                        text: "应用所选路线…"
+                        text: "应用修复结果…"
                         enabled: dialog.controller.canApply
                         onClicked: applyConfirm.open()
                     }
@@ -181,10 +182,10 @@ ThemeControls.ThemeDialogBase {
         ThemeControls.ThemeButton {
             Layout.fillWidth: dialog.width <= 720
             objectName: "filmManufacturingRun"
-            text: "运行 A/B 比较"
+            text: "开始自动修复"
             primary: true
             enabled: !dialog.controller.busy
-            onClicked: dialog.controller.start()
+            onClicked: dialog.controller.startAutomatic()
         }
         ThemeControls.ThemeButton {
             Layout.fillWidth: dialog.width <= 720
@@ -211,7 +212,7 @@ ThemeControls.ThemeDialogBase {
         standardButtons: Dialog.Ok | Dialog.Cancel
         ThemeControls.ThemeLabel {
             width: applyConfirm.availableWidth
-            text: dialog.controller.selectedRouteWarning + "\n将用已选择的 A/B 候选替换当前来源膜系。是否按比较中显示的真实分类应用？来源、目标、材料或项目发生变化时会拒绝整个应用。"
+            text: dialog.controller.selectedRouteWarning + "\n将用比较中显示的完整候选替换当前来源膜系，层数可能改变。是否按上面的真实分类应用？来源、目标、材料或项目发生变化时会拒绝整个应用。"
             wrapMode: Text.Wrap
         }
         onAccepted: dialog.controller.applySelectedRoute()
