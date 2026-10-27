@@ -153,7 +153,18 @@ Window {
         app.processEvents()
 
 
-def test_material_picker_duplicate_labels_are_human_facing_and_keep_ids():
+@pytest.mark.parametrize("object_variant", ["metaobject", "native"])
+def test_material_picker_duplicate_labels_are_human_facing_and_keep_ids(monkeypatch, object_variant):
+    if object_variant == "metaobject":
+        original_qml = qml
+
+        def opaque_object_result(engine: QQmlEngine, scope: QObject, expression: str) -> object:
+            value = original_qml(engine, scope, expression)
+            # Model the exact CI return type only at the object-valued QVariant
+            # boundary. Scalar labels/IDs still come from the real QML engine.
+            return value.metaObject() if isinstance(value, QObject) else value
+
+        monkeypatch.setitem(globals(), "qml", opaque_object_result)
     app = QGuiApplication.instance() or QGuiApplication([])
     engine = QQmlEngine()
     tokens = build_theme_snapshot("light")
@@ -202,9 +213,10 @@ Window {
         assert picker.property("popupVisible")
         labels = []
         for index in range(7):
-            option = qml(engine, picker, f"optionsListView.itemAtIndex({index})")
-            assert option is not None
-            labels.append(str(option.property("text")))
+            assert qml(engine, picker, f"optionsListView.itemAtIndex({index}) !== null") is True
+            label = qml(engine, picker, f"optionsListView.itemAtIndex({index}).text")
+            assert isinstance(label, str), f"Option {index} text returned {type(label).__name__}"
+            labels.append(label)
         assert labels == [
             "Air · 薄膜材料", "Air · 基片材料",
             "ZnS · 全局材料库", "ZnS · 当前工程",
