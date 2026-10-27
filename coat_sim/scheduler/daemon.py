@@ -26,6 +26,19 @@ from .lifecycle import (DEFAULT_IDLE_SECONDS, PREPARE_LEASE_SECONDS, acquire_sta
 MAX_RPC_BODY_BYTES = 64 * 1024 * 1024
 
 
+def _repair_live_json(path, *, serialized=False):
+    """Read only bounded, owned job files; preserve exact frozen-spec bytes."""
+    path = Path(path)
+    if path.is_symlink():
+        raise ValueError('repair_live_symlink_not_owned')
+    with path.open('rb') as stream:
+        raw = stream.read(MAX_RPC_BODY_BYTES + 1)
+    if len(raw) > MAX_RPC_BODY_BYTES:
+        raise ValueError('repair_live_packet_too_large')
+    text = raw.decode('utf-8')
+    return text if serialized else json.loads(text)
+
+
 def _appearance_gpu_python(root: Path) -> str:
     """Select only the project's dedicated Mitsuba environment for CUDA jobs."""
     if is_frozen():
@@ -132,6 +145,21 @@ def public_payload(value):
         if Path(value).is_absolute() or PureWindowsPath(value).is_absolute():
             return PureWindowsPath(value).name
     return value
+
+
+def _public_repair_live_payload(frame):
+    # The dispatcher has statically validated these exact design/lineage types.
+    # Their user text/IDs are literal data, not provider filesystem references.
+    # Keep every other score/guard/extension under the normal privacy projection.
+    result = public_payload(frame)
+    if frame is not None:
+        result['request_id'] = frame['request_id']  # Exact frozen identity, not a path.
+        for key in ('current', 'source', 'champion'):
+            if frame[key] is not None:
+                result[key]['design'] = frame[key]['design']
+                result[key]['layers'] = frame[key]['layers']
+    return result
+
 
 class InstanceLock:
     """An OS lock, held until process exit; a stale filename is never a lease."""
@@ -615,6 +643,8 @@ class Scheduler:
                 return self._commit('submit', **arguments)
         if action == 'status':
             return self.memory_status(**arguments)
+        if action == 'repair_live':
+            return self.repair_live(**arguments)
         if action == 'film_display_control':
             with self.condition:
                 self._expire_exit()
@@ -717,6 +747,57 @@ class Scheduler:
             self.stopping.set()
             return {'stopping': True, 'queued_preserved': True}
         raise ValueError('unknown_scheduler_action')
+
+    def repair_live(self, job_id, *, input_digest, after_sequence=-1):
+        """Return a newer, statically verified repair frame from this exact job."""
+        import re
+        from .jobs import JobSpec
+        from coat_sim.core.film_automatic_repair_jobs import validate_live_progress
+
+        if (not isinstance(job_id, str) or re.fullmatch(r'[A-Za-z0-9_-]{1,128}', job_id) is None
+                or not isinstance(input_digest, str) or re.fullmatch(r'[0-9a-f]{64}', input_digest) is None
+                or type(after_sequence) is not int or after_sequence < -1):
+            raise ValueError('invalid_repair_live_identity')
+        row = self.memory_status(job_id)
+        if row.get('kind') != 'film_manufacturing_repair' or row.get('input_digest') != input_digest:
+            raise ValueError('repair_live_job_identity_mismatch')
+        jobs_path = self.runtime / 'jobs'
+        directory_path = jobs_path / job_id
+        if (jobs_path.is_symlink() or jobs_path.is_junction()
+                or directory_path.is_symlink() or directory_path.is_junction()):
+            raise ValueError('repair_live_job_directory_not_owned')
+        jobs = jobs_path.resolve()
+        directory = directory_path.resolve()
+        if not jobs.is_relative_to(self.root) or not directory.is_relative_to(jobs):
+            raise ValueError('repair_live_job_directory_not_owned')
+        spec_path = directory / 'spec.json'
+        live_path = directory / 'repair-live.json'
+        if (not spec_path.resolve().is_relative_to(directory)
+                or not live_path.resolve().is_relative_to(directory)):
+            raise ValueError('repair_live_pointer_not_owned')
+        try:
+            frozen = JobSpec.parse_frozen_json(_repair_live_json(spec_path, serialized=True))
+        except FileNotFoundError:
+            # A queued job has not published its worker files yet.
+            return None
+        if frozen.executor != 'film_manufacturing_repair' or frozen.fingerprint != input_digest:
+            raise ValueError('repair_live_frozen_job_mismatch')
+        job = frozen.parameters.get('payload')
+        if not isinstance(job, dict) or job.get('schema_version') != 3:
+            raise ValueError('repair_live_requires_current_request')
+        expected_request = job.get('request')
+        if not isinstance(expected_request, dict) or expected_request.get('schema_version') != 3:
+            raise ValueError('repair_live_requires_current_request')
+        try:
+            frame = _repair_live_json(live_path)
+        except FileNotFoundError:
+            return None
+        sequence = frame.get('seq') if isinstance(frame, dict) else None
+        if type(sequence) is not int or sequence < 0:
+            raise ValueError('invalid_repair_live_sequence')
+        if sequence <= after_sequence:
+            return None
+        return validate_live_progress(frame, expected_request, after_seq=after_sequence)
 
     def start_job(self, value, spec):
         job_id = value['job_id']
@@ -915,7 +996,9 @@ class Scheduler:
                     if request.get('protocol_version') != 1:
                         raise ValueError('unsupported_protocol_version')
                     result = scheduler.dispatch(request['action'], request.get('arguments', {}))
-                    body = json.dumps({'ok': True, 'protocol_version': 1, 'result': public_payload(result)}, ensure_ascii=False, allow_nan=False).encode('utf-8')
+                    visible = (_public_repair_live_payload(result)
+                        if request['action'] == 'repair_live' else public_payload(result))
+                    body = json.dumps({'ok': True, 'protocol_version': 1, 'result': visible}, ensure_ascii=False, allow_nan=False).encode('utf-8')
                     self.send_response(200)
                 except Exception as exc:
                     body = json.dumps({'ok': False, 'protocol_version': 1, 'error': f'{type(exc).__name__}: {exc}'}).encode('utf-8')

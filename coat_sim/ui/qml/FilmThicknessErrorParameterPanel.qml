@@ -12,6 +12,91 @@ ColumnLayout {
     signal saveRequested()
     spacing: themeTokens.spaceSm
 
+    component ParameterFields: GridLayout {
+        id: fields
+        required property var controller
+        required property var themeTokens
+        required property var values
+        property string layerId: ""
+        readonly property bool common: fields.layerId.length === 0
+        columns: width >= 640 ? 5 : 2
+        columnSpacing: fields.themeTokens.spaceSm
+        rowSpacing: fields.themeTokens.spaceXs
+        enabled: !fields.controller.busy
+        function setValue(name: string, value: string) {
+            if (fields.common) fields.controller.setTableDefault(name, value)
+            else if (name === "bias_text" || name === "uncertainty_text")
+                fields.controller.setTableDraft(fields.layerId, name === "bias_text" ? "bias" : "uncertainty_magnitude", value)
+            else if (name === "uncertainty_kind") fields.controller.setTableUncertaintyKind(fields.layerId, value)
+            else fields.controller.setTableUnit(fields.layerId, name === "bias_unit" ? "bias" : "uncertainty", value)
+        }
+        ColumnLayout {
+            Layout.fillWidth: true
+            Label { text: "偏差"; color: fields.themeTokens.colorTextMuted }
+            ThemeControls.ThemeField {
+                objectName: fields.common ? "filmThicknessCommonBias" : "filmThicknessBias_" + fields.layerId
+                Layout.fillWidth: true
+                Layout.minimumWidth: 70
+                text: fields.values.bias_text
+                placeholderText: "有符号值"
+                accessibleLabel: fields.common ? "公共厚度偏差" : "本层厚度偏差"
+                onTextEdited: fields.setValue("bias_text", text)
+            }
+        }
+        ColumnLayout {
+            Layout.fillWidth: true
+            Label { text: "偏差单位"; color: fields.themeTokens.colorTextMuted }
+            ThemeControls.ThemeComboBox {
+                objectName: fields.common ? "filmThicknessCommonBiasUnit" : "filmThicknessBiasUnit_" + fields.layerId
+                Layout.fillWidth: true
+                model: [{id: "", label: "单位"}, {id: "absolute_nm", label: "nm"}, {id: "relative_percent", label: "%"}]
+                textRole: "label"
+                currentIndex: Math.max(0, model.findIndex(item => item.id === fields.values.bias_unit))
+                onActivated: fields.setValue("bias_unit", model[currentIndex].id)
+                Accessible.name: "偏差单位"
+            }
+        }
+        ColumnLayout {
+            Layout.fillWidth: true
+            Label { text: "不确定度类型"; color: fields.themeTokens.colorTextMuted }
+            ThemeControls.ThemeComboBox {
+                objectName: fields.common ? "filmThicknessCommonUncertaintyKind" : "filmThicknessUncertaintyKind_" + fields.layerId
+                Layout.fillWidth: true
+                model: [{id: "", label: "类型未设"}, {id: "bounded", label: "有界"}, {id: "stddev", label: "标准差"}]
+                textRole: "label"
+                currentIndex: Math.max(0, model.findIndex(item => item.id === fields.values.uncertainty_kind))
+                onActivated: fields.setValue("uncertainty_kind", model[currentIndex].id)
+                Accessible.name: "不确定度类型"
+            }
+        }
+        ColumnLayout {
+            Layout.fillWidth: true
+            Label { text: "不确定度"; color: fields.themeTokens.colorTextMuted }
+            ThemeControls.ThemeField {
+                objectName: fields.common ? "filmThicknessCommonUncertainty" : "filmThicknessUncertainty_" + fields.layerId
+                Layout.fillWidth: true
+                Layout.minimumWidth: 70
+                text: fields.values.uncertainty_text
+                placeholderText: "非负值"
+                accessibleLabel: fields.common ? "公共厚度不确定度" : "本层厚度不确定度"
+                onTextEdited: fields.setValue("uncertainty_text", text)
+            }
+        }
+        ColumnLayout {
+            Layout.fillWidth: true
+            Label { text: "不确定度单位"; color: fields.themeTokens.colorTextMuted }
+            ThemeControls.ThemeComboBox {
+                objectName: fields.common ? "filmThicknessCommonUncertaintyUnit" : "filmThicknessUncertaintyUnit_" + fields.layerId
+                Layout.fillWidth: true
+                model: [{id: "", label: "单位"}, {id: "absolute_nm", label: "nm"}, {id: "relative_percent", label: "%"}]
+                textRole: "label"
+                currentIndex: Math.max(0, model.findIndex(item => item.id === fields.values.uncertainty_unit))
+                onActivated: fields.setValue("uncertainty_unit", model[currentIndex].id)
+                Accessible.name: "不确定度单位"
+            }
+        }
+    }
+
     ScrollView {
         objectName: "filmThicknessErrorTableScroll"
         Layout.fillWidth: true
@@ -24,91 +109,80 @@ ColumnLayout {
             spacing: panel.themeTokens.spaceSm
             Label {
                 Layout.fillWidth: true
-                text: "为每层填写偏差与不确定度参数；空白表示未定义，不是零。厚度单位仅支持 nm 或真实百分比。禁用层及缺项会显示在覆盖范围中，不会伪称覆盖全膜。"
+                text: "一次填写公共偏差与不确定度；空白表示未定义，不是零。厚度单位仅支持 nm 或真实百分比。禁用层及缺项会显示在覆盖范围中，不会伪称覆盖全膜。"
                 color: panel.themeTokens.colorTextMuted
                 wrapMode: Text.WordWrap
             }
-            RowLayout {
+            Label {
                 Layout.fillWidth: true
-                spacing: panel.themeTokens.spaceXs
-                Label { Layout.preferredWidth: 185; text: "膜层 / 名义厚度"; color: panel.themeTokens.colorTextMuted }
-                Label { Layout.fillWidth: true; text: "偏差（可留空）"; color: panel.themeTokens.colorTextMuted }
-                Label { Layout.fillWidth: true; text: "不确定度（可留空）"; color: panel.themeTokens.colorTextMuted }
+                text: "公共参数：所有层默认继承，逐层例外与取消选择不会被公共修改覆盖。"
+                color: panel.themeTokens.colorText
+                wrapMode: Text.WordWrap
+            }
+            ParameterFields {
+                Layout.fillWidth: true
+                controller: panel.controller
+                themeTokens: panel.themeTokens
+                values: panel.controller.tableDefaults
             }
             Label {
-                objectName: "filmThicknessErrorTableEmptyState"
                 Layout.fillWidth: true
-                visible: panel.controller.thicknessErrorRows.length === 0
-                text: "暂无可分析膜层。请先添加真实膜系。"
+                text: "已纳入 " + panel.controller.thicknessErrorRows.filter(row => row.enabled).length
+                      + " / " + panel.controller.thicknessErrorRows.length + " 层"
                 color: panel.themeTokens.colorTextMuted
             }
-            Repeater {
-                objectName: "filmThicknessErrorTableRows"
-                model: panel.controller.thicknessErrorRows
-                delegate: RowLayout {
-                    id: errorRow
-                    objectName: "filmThicknessErrorRow_" + errorRow.modelData.layer_id
-                    required property var modelData
+            ThemeControls.ThemeSection {
+                objectName: "filmThicknessLayerOverridesSection"
+                Layout.fillWidth: true
+                title: "逐层选择与例外"
+                expanded: false
+                Label {
+                    objectName: "filmThicknessErrorTableEmptyState"
                     Layout.fillWidth: true
-                    enabled: !panel.controller.busy
-                    CheckBox {
-                        objectName: "filmThicknessErrorEnabled_" + errorRow.modelData.layer_id
-                        checked: errorRow.modelData.enabled
-                        onToggled: panel.controller.setTableLayerEnabled(errorRow.modelData.layer_id, checked)
-                        Accessible.name: "纳入参数表分析 " + errorRow.modelData.layer_label
-                    }
-                    Label {
-                        Layout.preferredWidth: 165
-                        text: errorRow.modelData.layer_label + "\n" + errorRow.modelData.nominal
-                        color: panel.themeTokens.colorText
-                        elide: Text.ElideMiddle
-                        wrapMode: Text.WordWrap
-                        Accessible.name: text
-                    }
-                    ThemeControls.ThemeField {
-                        objectName: "filmThicknessBias_" + errorRow.modelData.layer_id
+                    visible: panel.controller.thicknessErrorRows.length === 0
+                    text: "暂无可分析膜层。请先添加真实膜系。"
+                    color: panel.themeTokens.colorTextMuted
+                }
+                Repeater {
+                    objectName: "filmThicknessErrorTableRows"
+                    model: panel.controller.thicknessErrorRows
+                    delegate: ColumnLayout {
+                        id: errorRow
+                        objectName: "filmThicknessErrorRow_" + errorRow.modelData.layer_id
+                        required property var modelData
                         Layout.fillWidth: true
-                        Layout.minimumWidth: 78
-                        text: errorRow.modelData.bias_text
-                        placeholderText: "有符号值"
-                        accessibleLabel: "厚度偏差值 " + errorRow.modelData.layer_label
-                        onTextEdited: panel.controller.setTableDraft(errorRow.modelData.layer_id, "bias", text)
-                    }
-                    ThemeControls.ThemeComboBox {
-                        objectName: "filmThicknessBiasUnit_" + errorRow.modelData.layer_id
-                        Layout.preferredWidth: 86
-                        model: [{id: "", label: "单位"}, {id: "absolute_nm", label: "nm"}, {id: "relative_percent", label: "%"}]
-                        textRole: "label"
-                        currentIndex: Math.max(0, model.findIndex(item => item.id === errorRow.modelData.bias_unit))
-                        onActivated: panel.controller.setTableUnit(errorRow.modelData.layer_id, "bias", model[currentIndex].id)
-                        Accessible.name: "偏差单位 " + errorRow.modelData.layer_label
-                    }
-                    ThemeControls.ThemeComboBox {
-                        objectName: "filmThicknessUncertaintyKind_" + errorRow.modelData.layer_id
-                        Layout.preferredWidth: 118
-                        model: [{id: "", label: "类型未设"}, {id: "bounded", label: "有界"}, {id: "stddev", label: "标准差"}]
-                        textRole: "label"
-                        currentIndex: Math.max(0, model.findIndex(item => item.id === errorRow.modelData.uncertainty_kind))
-                        onActivated: panel.controller.setTableUncertaintyKind(errorRow.modelData.layer_id, model[currentIndex].id)
-                        Accessible.name: "不确定度类型 " + errorRow.modelData.layer_label
-                    }
-                    ThemeControls.ThemeField {
-                        objectName: "filmThicknessUncertainty_" + errorRow.modelData.layer_id
-                        Layout.fillWidth: true
-                        Layout.minimumWidth: 78
-                        text: errorRow.modelData.uncertainty_text
-                        placeholderText: "非负值"
-                        accessibleLabel: "厚度不确定度 " + errorRow.modelData.layer_label
-                        onTextEdited: panel.controller.setTableDraft(errorRow.modelData.layer_id, "uncertainty_magnitude", text)
-                    }
-                    ThemeControls.ThemeComboBox {
-                        objectName: "filmThicknessUncertaintyUnit_" + errorRow.modelData.layer_id
-                        Layout.preferredWidth: 86
-                        model: [{id: "", label: "单位"}, {id: "absolute_nm", label: "nm"}, {id: "relative_percent", label: "%"}]
-                        textRole: "label"
-                        currentIndex: Math.max(0, model.findIndex(item => item.id === errorRow.modelData.uncertainty_unit))
-                        onActivated: panel.controller.setTableUnit(errorRow.modelData.layer_id, "uncertainty", model[currentIndex].id)
-                        Accessible.name: "不确定度单位 " + errorRow.modelData.layer_label
+                        enabled: !panel.controller.busy
+                        RowLayout {
+                            Layout.fillWidth: true
+                            CheckBox {
+                                objectName: "filmThicknessErrorEnabled_" + errorRow.modelData.layer_id
+                                text: "纳入"
+                                checked: errorRow.modelData.enabled
+                                onToggled: panel.controller.setTableLayerEnabled(errorRow.modelData.layer_id, checked)
+                                Accessible.name: "纳入参数表分析 " + errorRow.modelData.layer_label
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                text: errorRow.modelData.layer_label + " · " + errorRow.modelData.nominal
+                                color: panel.themeTokens.colorText
+                                elide: Text.ElideMiddle
+                            }
+                            CheckBox {
+                                objectName: "filmThicknessOverride_" + errorRow.modelData.layer_id
+                                text: "本层例外"
+                                checked: errorRow.modelData.override
+                                onToggled: panel.controller.setTableLayerOverride(errorRow.modelData.layer_id, checked)
+                                Accessible.description: "取消本层例外会恢复公共参数，不改变是否纳入分析。"
+                            }
+                        }
+                        ParameterFields {
+                            Layout.fillWidth: true
+                            visible: errorRow.modelData.override
+                            controller: panel.controller
+                            themeTokens: panel.themeTokens
+                            values: errorRow.modelData
+                            layerId: errorRow.modelData.layer_id
+                        }
                     }
                 }
             }

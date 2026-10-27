@@ -7,6 +7,7 @@ request and never silently changes the source design or nominal acceptance.
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import dataclass
 import json
 import inspect
 import math
@@ -22,6 +23,93 @@ from coat_sim.core.film_thickness_error_table import thickness_error_table_reque
 from coat_sim.core.film_result_service import atomic_film_json
 from coat_sim.scheduler import SchedulerClient, freeze_spec
 from coat_sim.scheduler.desktop import RemoteCancelEvent, observe_job, submit_local_with_receipt
+
+
+_TABLE_FIELDS = ("bias_text", "bias_unit", "uncertainty_kind", "uncertainty_text", "uncertainty_unit")
+_TABLE_UNITS = ("", "absolute_nm", "relative_percent")
+
+
+@dataclass(frozen=True)
+class _TableRowDraft:
+    enabled: bool
+    override: bool
+    values: dict[str, str]
+
+
+def _table_values(value: object) -> dict[str, str]:
+    if not isinstance(value, dict) or set(value) != set(_TABLE_FIELDS):
+        raise ValueError("参数表字段必须包含偏差、单位及不确定度类型、数值、单位。")
+    result: dict[str, str] = {}
+    for field in _TABLE_FIELDS:
+        item = value[field]
+        if not isinstance(item, str):
+            raise ValueError("参数表草稿字段必须是文本。")
+        result[field] = item
+    if (result["bias_unit"] not in _TABLE_UNITS or result["uncertainty_unit"] not in _TABLE_UNITS
+            or result["uncertainty_kind"] not in ("", "bounded", "stddev")):
+        raise ValueError("参数表单位或不确定度类型不受支持。")
+    return result
+
+
+@dataclass(frozen=True)
+class _TableConfigurationDraft:
+    defaults: dict[str, str]
+    rows: dict[str, _TableRowDraft]
+    text: str
+    bound_ids: tuple[str, ...] | None
+    invalidated: bool
+    uncorrelated: bool
+    finite_bias: bool
+
+
+def parse_table_configuration(configuration: object) -> _TableConfigurationDraft:
+    """Validate the existing draft schema without changing a live controller."""
+    if not isinstance(configuration, dict):
+        raise ValueError("参数表配置必须为对象。")
+    if not configuration:
+        configuration = {"version": 1, "defaults": {field: "" for field in _TABLE_FIELDS},
+            "layers": [], "correlation_text": "", "correlation_layer_ids": None,
+            "correlation_invalidated": False, "uncorrelated": False, "include_finite_bias": False}
+    expected = {"version", "defaults", "layers", "correlation_text", "correlation_layer_ids",
+                "correlation_invalidated", "uncorrelated", "include_finite_bias"}
+    if set(configuration) != expected or type(configuration["version"]) is not int or configuration["version"] != 1:
+        raise ValueError("参数表配置版本或字段不受支持。")
+    defaults = _table_values(configuration["defaults"])
+    rows: dict[str, _TableRowDraft] = {}
+    raw_layers: object = configuration["layers"]
+    if not isinstance(raw_layers, list):
+        raise ValueError("参数表膜层配置必须为数组。")
+    for raw in raw_layers:
+        if not isinstance(raw, dict) or set(raw) != {"layer_id", "enabled", "override", "values"}:
+            raise ValueError("参数表膜层配置字段不受支持。")
+        key, enabled, override = raw["layer_id"], raw["enabled"], raw["override"]
+        if (not isinstance(key, str) or not key or key in rows
+                or type(enabled) is not bool or type(override) is not bool):
+            raise ValueError("参数表膜层 ID 或选择/例外标志无效。")
+        values = _table_values(raw["values"]) if override else {}
+        if not override and raw["values"] != {}:
+            raise ValueError("继承公共参数的膜层不能同时保存例外数值。")
+        rows[key] = _TableRowDraft(enabled, override, values)
+    text: object = configuration["correlation_text"]
+    ids: object = configuration["correlation_layer_ids"]
+    if not isinstance(text, str):
+        raise ValueError("相关矩阵草稿或有序层 ID 无效。")
+    bound_ids: list[str] | None = None
+    if ids is not None:
+        if not isinstance(ids, list):
+            raise ValueError("相关矩阵有序层 ID 必须为数组。")
+        bound_ids = []
+        for key in ids:
+            if not isinstance(key, str) or not key or key in bound_ids:
+                raise ValueError("相关矩阵有序层 ID 无效或重复。")
+            bound_ids.append(key)
+    invalidated: object = configuration["correlation_invalidated"]
+    uncorrelated: object = configuration["uncorrelated"]
+    finite_bias: object = configuration["include_finite_bias"]
+    if not isinstance(invalidated, bool) or not isinstance(uncorrelated, bool) or not isinstance(finite_bias, bool):
+        raise ValueError("参数表配置标志必须为布尔值。")
+    return _TableConfigurationDraft(defaults, rows, text, None if bound_ids is None else tuple(bound_ids),
+                                    invalidated, uncorrelated, finite_bias)
 
 
 class _Signals(QObject):
@@ -117,6 +205,7 @@ class FilmSensitivityQuickController(QObject):
     changed = Signal()
     tableRowsChanged = Signal()
     idealRowsChanged = Signal()
+    tableConfigurationEdited = Signal()
     overwriteRequested = Signal(str)
 
     def __init__(self, owner: Any, *, client_factory=SchedulerClient):
@@ -149,6 +238,8 @@ class FilmSensitivityQuickController(QObject):
         # Keep drafts and frozen reports separate so switching pages cannot
         # migrate assumptions or reset either result.
         self._table_rows: list[dict[str, Any]] = []
+        self._table_defaults: dict[str, str] = {field: "" for field in _TABLE_FIELDS}
+        self._table_saved_rows: dict[str, _TableRowDraft] = {}
         self._ideal_layer_rows: list[dict[str, Any]] = []
         self._table_correlation_json = ""
         self._table_correlation_bound_layer_ids: tuple[str, ...] | None = None
@@ -200,6 +291,86 @@ class FilmSensitivityQuickController(QObject):
     @Property(list, notify=tableRowsChanged)
     def thicknessErrorRows(self):
         return deepcopy(self._table_rows)
+
+    @Property(dict, notify=changed)
+    def tableDefaults(self) -> dict[str, str]:
+        return dict(self._table_defaults)
+
+    @Slot(result="QVariantMap")
+    def exportTableConfiguration(self) -> dict[str, object]:
+        states = ({row["layer_id"]: _TableRowDraft(
+            bool(row["enabled"]), bool(row["override"]),
+            {field: row[field] for field in _TABLE_FIELDS} if row["override"] else {})
+            for row in self._table_rows} if self._table_rows else self._table_saved_rows)
+        return {"version": 1, "defaults": dict(self._table_defaults),
+                "layers": [{"layer_id": key, "enabled": row.enabled, "override": row.override,
+                            "values": dict(row.values)} for key, row in states.items()],
+                "correlation_text": self._table_correlation_json,
+                "correlation_layer_ids": (None if self._table_correlation_bound_layer_ids is None
+                                           else list(self._table_correlation_bound_layer_ids)),
+                "correlation_invalidated": self._table_correlation_invalidated,
+                "uncorrelated": self._table_uncorrelated, "include_finite_bias": self._table_finite_bias}
+
+    @Slot("QVariantMap", result=bool)
+    def loadTableConfiguration(self, configuration: dict[str, object]) -> bool:
+        if self._busy or self._closed:
+            return False
+        try:
+            draft = parse_table_configuration(configuration)
+        except (ValueError, TypeError) as exc:
+            self._table_error = str(exc)
+            self.changed.emit()
+            return False
+        self._table_defaults, self._table_saved_rows = draft.defaults, draft.rows
+        self._table_rows = []
+        self._prepared_source = self._prepared_signature = None
+        self._table_correlation_json = draft.text
+        self._table_correlation_bound_layer_ids = draft.bound_ids
+        self._table_correlation_invalidated = draft.invalidated
+        self._table_uncorrelated = draft.uncorrelated
+        self._table_finite_bias = draft.finite_bias
+        self._table_error = ""
+        self._table_status = "参数表草稿已恢复；重新准备来源后使用当前名义厚度。"
+        self.tableRowsChanged.emit()
+        self.changed.emit()
+        return True
+
+    @Slot(str, str, result=bool)
+    def setTableDefault(self, field: str, value: str) -> bool:
+        if self._busy or self._closed or field not in _TABLE_FIELDS or not isinstance(value, str):
+            return False
+        candidate = {**self._table_defaults, field: value}
+        try:
+            _table_values(candidate)
+        except ValueError:
+            return False
+        if candidate == self._table_defaults:
+            return True
+        self._table_defaults = candidate
+        for row in self._table_rows:
+            if not row["override"]:
+                row[field] = value
+        self._typed_edit("table")
+        self._refresh_table_correlation_identity_error()
+        self.tableRowsChanged.emit()
+        return True
+
+    @Slot(str, bool, result=bool)
+    def setTableLayerOverride(self, layer_id: str, enabled: bool) -> bool:
+        if self._busy or self._closed or type(enabled) is not bool:
+            return False
+        row = self._table_row(layer_id)
+        if row is None:
+            return False
+        if row["override"] == enabled:
+            return True
+        row["override"] = enabled
+        if not enabled:
+            row.update(self._table_defaults)
+        self._typed_edit("table")
+        self._refresh_table_correlation_identity_error()
+        self.tableRowsChanged.emit()
+        return True
 
     @Property(str, notify=changed)
     def tableCorrelationJson(self):
@@ -562,20 +733,22 @@ class FilmSensitivityQuickController(QObject):
             self._prepared_source = deepcopy(dict(base.design_snapshot))
             self._prepared_signature = self._request_signature(base)
             previous_table = {row["layer_id"]: row for row in self._table_rows}
-            self._table_rows = [
-                {
+            table_rows = []
+            for index, row in enumerate(base.design_snapshot["front_layers"]):
+                previous = previous_table.get(row["id"], {})
+                saved = self._table_saved_rows.get(row["id"])
+                enabled = saved.enabled if saved is not None else previous.get("enabled", True)
+                override = saved.override if saved is not None else previous.get("override", False)
+                values = (saved.values if saved is not None else previous) if override else self._table_defaults
+                table_rows.append({
                     "layer_id": row["id"],
                     "layer_label": f"{index + 1}. {row['material_id']} / {row['optical_set_id']}",
                     "nominal": f"{row['thickness']['value']:g} {row['thickness']['unit']}",
-                    "enabled": previous_table.get(row["id"], {}).get("enabled", True),
-                    "bias_text": previous_table.get(row["id"], {}).get("bias_text", ""),
-                    "bias_unit": previous_table.get(row["id"], {}).get("bias_unit", ""),
-                    "uncertainty_kind": previous_table.get(row["id"], {}).get("uncertainty_kind", ""),
-                    "uncertainty_text": previous_table.get(row["id"], {}).get("uncertainty_text", ""),
-                    "uncertainty_unit": previous_table.get(row["id"], {}).get("uncertainty_unit", ""),
-                }
-                for index, row in enumerate(base.design_snapshot["front_layers"])
-            ]
+                    "enabled": enabled, "override": override,
+                    **{field: values.get(field, "") for field in _TABLE_FIELDS},
+                })
+            self._table_rows = table_rows
+            self._table_saved_rows = {}
             self._refresh_table_correlation_identity_error()
             self._ideal_layer_rows = [
                 {"layer_id": row["id"],
@@ -660,7 +833,11 @@ class FilmSensitivityQuickController(QObject):
 
     @staticmethod
     def _request_signature(base):
-        return deepcopy((base.design_revision, base.design_snapshot, base.objectives, base.variables,
+        design = deepcopy(dict(base.design_snapshot))
+        # Page drafts are not physical inputs. Persisting this table must not
+        # invalidate its own prepared source; objectives/variables stay bound.
+        design.pop("workflow_settings", None)
+        return deepcopy((base.design_revision, design, base.objectives, base.variables,
                          base.frozen_material_snapshot, base.acceptable_normalized_error))
 
     def _typed_edit(self, workflow):
@@ -668,6 +845,8 @@ class FilmSensitivityQuickController(QObject):
             self._table_error = ""
             self._table_status = ("参数已编辑；下方仍保留上次冻结结果，不代表当前草稿。"
                                  if self._table_payload is not None else "填写参数表后运行；未填写不等于零。")
+            self._refresh_table_correlation_identity_error()
+            self.tableConfigurationEdited.emit()
         else:
             self._ideal_error = ""
             self._ideal_status = ("配置已编辑；下方仍保留上次冻结结果，不代表当前草稿。"
@@ -688,6 +867,7 @@ class FilmSensitivityQuickController(QObject):
         if row is None:
             return False
         row["bias_text" if field == "bias" else "uncertainty_text"] = value
+        row["override"] = True
         # Intentionally avoid tableRowsChanged while editing, so a QML
         # Repeater never rebuilds the active editor, selection, or IME state.
         self._typed_edit("table")
@@ -702,6 +882,7 @@ class FilmSensitivityQuickController(QObject):
         if row is None:
             return False
         row["bias_unit" if component == "bias" else "uncertainty_unit"] = unit
+        row["override"] = True
         self.tableRowsChanged.emit()
         self._typed_edit("table")
         self._refresh_table_correlation_identity_error()
@@ -715,6 +896,7 @@ class FilmSensitivityQuickController(QObject):
         if row is None:
             return False
         row["uncertainty_kind"] = value
+        row["override"] = True
         self.tableRowsChanged.emit()
         self._typed_edit("table")
         self._refresh_table_correlation_identity_error()

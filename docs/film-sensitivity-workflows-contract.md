@@ -8,6 +8,48 @@ unsupported; there is no conversion, compatibility page or fallback parser.
 Ordinary optimization targets are unchanged.
 The implementation and offline diagrams are in [algorithms.html](algorithms.html).
 
+## Common parameter-table draft and per-layer exceptions (2026-10-27)
+
+The parameter-table page starts with one common set of the existing five fields:
+signed bias text/unit and uncertainty kind/magnitude text/unit. Every new front
+layer is enabled and inherits that set. Values remain undefined until supplied;
+neither zero nor an uncertainty kind, unit or independence declaration is invented.
+The collapsible per-layer section retains explicit exclusions and whole-row
+exceptions. Editing an individual row creates an exception; turning its exception
+off restores all five current common fields without changing its enabled flag.
+Folding the section does not reset anything. Common edits never overwrite an
+exception or enable an excluded layer.
+
+`FilmSensitivityQuickController` is the sole draft owner. Its
+`tableConfigurationEdited()` signal has no arguments and is emitted after an
+edit and correlation-identity refresh, never by loading/preparing a draft.
+The shared optimization-page bridge stores `exportTableConfiguration()` under
+its optional `sensitivity_table` UI field and restores it through
+`loadTableConfiguration(configuration)` before normal `prepare()`. The UI-only
+version-1 dictionary contains `defaults`, stable-ID `layers` (enabled, override,
+and exception values), correlation text/ordered IDs/invalidation, the explicit
+uncorrelated flag and finite-bias flag. Malformed/duplicate IDs, invalid types,
+units or schema fields reject the load atomically. Incomplete numeric text is a
+draft, not a valid analysis value. Loading resets the prepared capture so the
+next prepare/start uses current physical data; it creates no job or storage of
+its own. Previously frozen reports remain separate from the restored draft.
+
+Preparing preserves only matching stable layer IDs, follows current layer
+order, gives added layers the common defaults, and drops removed IDs rather
+than transferring their choices by position or material. Percent values are
+stored as percent text and converted by the existing request builder/core using
+each current nominal physical thickness and frozen optical set, including QW
+conversion after thickness/material changes. Persisted `workflow_settings` are
+UI metadata, not part of this page's physical source signature; design revision,
+physical design, objectives, variables and frozen materials remain bound.
+
+The analysis request still contains the same flat per-layer parameters; no
+common/override fields, new solver knobs or perturbation scan steps are added.
+Bounded amplitudes and standard deviations keep their different meanings.
+Changing the ordered defined standard-deviation ID set retains and invalidates
+an existing rho draft exactly as before, without silently reordering it or
+assuming independence. Editing is disabled while a job is running.
+
 ## Two entry points and sole state owner
 
 The existing sensitivity dialog exposes parameter-table analysis and ideal

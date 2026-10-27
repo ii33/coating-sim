@@ -85,6 +85,10 @@ def _compact_progress(value):
         number = value.get(key)
         if isinstance(number, (int, float)) and not isinstance(number, bool) and math.isfinite(number):
             result[key] = number
+    sequence = value.get("repair_live_sequence")
+    if type(sequence) is int and sequence >= 0:
+        # Geometry and optical arrays stay in the job-local bounded snapshot.
+        result["repair_live_sequence"] = sequence
     if type(value.get("accepted")) is bool:
         result["accepted"] = value["accepted"]
     for key in ("stalled", "unresponsive"):

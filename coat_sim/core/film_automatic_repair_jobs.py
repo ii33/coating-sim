@@ -142,7 +142,7 @@ def request_from_payload(value):
     if (
         not isinstance(value, Mapping)
         or set(value) != FIELDS
-        or value["schema_version"] != 2
+        or value["schema_version"] not in (2, 3)
         or type(value["schema_version"]) is not int
         or value["kind"] != REQUEST_KIND
         or type(value["original_targets_present"]) is not bool
@@ -160,6 +160,9 @@ def request_from_payload(value):
     _, synthesis, structures = film_synthesis_request_from_payload(value["synthesis"])
     if structures or synthesis.cpu_workers != 1 or synthesis.forward_backend != "cpu":
         raise ValueError("automatic repair uses frozen local CPU optics")
+    if value["schema_version"] == 3 and any(getattr(synthesis, k) is not None
+            for k in ("max_evaluations", "max_seconds", "max_cycles")):
+        raise ValueError("live repair must not inherit ordinary optimizer total quotas")
     settings = simulation_settings(value["comparison_settings"])
     if settings != value["comparison_settings"]:
         raise ValueError("automatic repair comparison settings are not canonical")
@@ -223,16 +226,16 @@ def request_from_payload(value):
 
 def build_job_payload(service, request):
     request_from_payload(request)
-    return dict(schema_version=2, kind=JOB_KIND, request=deepcopy(dict(request)))
+    return dict(schema_version=request["schema_version"], kind=JOB_KIND, request=deepcopy(dict(request)))
 
 
 def result_matches_job(value, job):
     return bool(
         isinstance(value, Mapping)
         and isinstance(job, Mapping)
-        and value.get("schema_version") == 2
+        and value.get("schema_version") in (2, 3)
         and value.get("kind") == RESULT_KIND
-        and job.get("schema_version") == 2
+        and job.get("schema_version") == value.get("schema_version")
         and job.get("kind") == JOB_KIND
         and value.get("request") == job.get("request")
     )
@@ -248,6 +251,12 @@ def estimate_resources(request_payload, frozen=None, source=None):
 
     if frozen is None or source is None:
         frozen, source = request_from_payload(request_payload)
+    if request_payload["schema_version"] == 3:
+        guide = _guard_request(frozen, request_payload["optical_tolerance_percentage_points"] / 100.0)
+        numerical = manufacturing_refinement_working_set_bytes(guide, len(source["front_layers"]))
+        audit = estimate_audit_resources(guide, source, physical_call_limit=1 + len(guide.objectives))
+        return dict(working_set_bytes=max(numerical, audit["working_set_bytes"]) + _owned_bytes(frozen, source),
+                    ownership_model="dense upfront; actual scalar/live/checkpoint ownership checked incrementally")
     controls = effective_policy(frozen)
     guide = _guard_request(frozen, request_payload["optical_tolerance_percentage_points"] / 100.0)
     largest = dict(source)
@@ -274,6 +283,8 @@ def estimate_resources(request_payload, frozen=None, source=None):
 
 def execute_job(parameters, cancel_event, report, checkpoint_path, write_json, **_kwargs):
     job = parameters["payload"]
+    if isinstance(job, Mapping) and job.get("schema_version") == 3:
+        return _execute_live_job(parameters, cancel_event, report, checkpoint_path, write_json, **_kwargs)
     if (
         set(job) != {"schema_version", "kind", "request"}
         or job.get("kind") != JOB_KIND
@@ -488,6 +499,8 @@ def _validate_guard(guard, request, tolerance, *, independent=False):
 
 
 def validate_result_payload(value, *, expected_job=None, replay=True):
+    if isinstance(value, Mapping) and value.get("schema_version") == 3:
+        return _validate_live_result(value, expected_job=expected_job, replay=replay)
     from .film_manufacturing_jobs import _json, _snapshot
 
     if (
@@ -756,3 +769,385 @@ def validate_result_payload(value, *, expected_job=None, replay=True):
             if _json(expected) != _json(raw["optical_guard"]):
                 raise ValueError("persisted curve-difference evidence fails physical replay")
     return _json(value)
+
+
+def make_live_request_payload(service, synthesis, source_design, **kwargs):
+    """Version three removes inherited total quotas, not native process limits."""
+    frozen = replace(synthesis, max_evaluations=None, max_seconds=None, max_cycles=None)
+    value = make_request_payload(service, frozen, source_design, **kwargs)
+    value["schema_version"] = 3
+    request_from_payload(value)
+    return value
+
+
+def _live_identity(request_payload):
+    from .film_manufacturing_jobs import _json
+    from .film_synthesis_archive import physical_design_hash
+    request_hash = hashlib.sha256(json.dumps(_json(request_payload), sort_keys=True,
+        ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode()).hexdigest()
+    return dict(request_id=request_payload["synthesis"]["request_id"], request_hash=request_hash,
+                source_fingerprint=request_payload["source_fingerprint"],
+                source_hash=physical_design_hash(request_payload["source_design"]))
+
+
+def _validate_live_layers(layers, design, source):
+    if not isinstance(layers, list) or len(layers) != len(design["front_layers"]):
+        raise ValueError("live layer lineage does not cover the current design")
+    originals = {r["id"]: r for r in source["front_layers"]}
+    for row, physical in zip(layers, design["front_layers"], strict=True):
+        if (not isinstance(row, Mapping) or set(row) != {"id", "material_id", "optical_set_id", "thickness_nm", "origins"}
+                or any(row[k] != physical[k] for k in ("id", "material_id", "optical_set_id"))
+                or row["thickness_nm"] != physical["thickness"]["value"]
+                or not isinstance(row["origins"], list) or len(set(row["origins"])) != len(row["origins"])
+                or any(k not in originals or any(originals[k][name] != row[name] for name in ("material_id", "optical_set_id"))
+                       for k in row["origins"])):
+            raise ValueError("live layer identity or original-layer provenance differs")
+
+
+def _validate_live_design(design, request, source):
+    from .film_automatic_repair import legal_thicknesses
+    from .film_synthesis_archive import physical_design_hash
+    checked = validate_design(deepcopy(design))
+    if checked != design or not legal_thicknesses(request, checked, 0.0):
+        raise ValueError("live design violates native physical boundaries")
+    if checked.get("workflow_settings") != source.get("workflow_settings"):
+        raise ValueError("live repair metadata differs from the frozen source workflow")
+    ports, original = deepcopy(checked), deepcopy(source)
+    ports["front_layers"], original["front_layers"] = [], []
+    if physical_design_hash(ports) != physical_design_hash(original):
+        raise ValueError("live repair changed frozen physical ports")
+    allowed = {(r["material_id"], r["optical_set_id"]) for r in source["front_layers"]}
+    if any((r["material_id"], r["optical_set_id"]) not in allowed for r in checked["front_layers"]):
+        raise ValueError("live repair introduced an unfrozen material pair")
+    return checked
+
+
+def _validate_live_curve_binding(records, candidate, source_snapshot, *, objective_indices=None,
+                                 require_candidate_extrema=False):
+    """Bind paired numbers to already recorded complete training/dense spectra."""
+    from .film_automatic_repair import _live_field
+    by_key = {(r["objective_index"], float(r["angle_deg"])): r for r in records}
+    for snapshot, field in ((candidate, "candidate_values"), (source_snapshot, "reference_values")):
+        for scope in ("training_score", "audit_score"):
+            for coverage in snapshot[scope]["coverage"]:
+                key = _live_field(coverage, "objective_index"), float(_live_field(coverage, "angle_deg"))
+                if objective_indices is not None and key[0] not in objective_indices:
+                    continue
+                if key not in by_key:
+                    raise ValueError("paired optical proof is missing a physical condition")
+                row = by_key[key]
+                waves = np.asarray(row["wavelength_nm"], float)
+                expected = np.asarray(_live_field(coverage, "wavelength_nm"), float)
+                positions = np.searchsorted(waves, expected)
+                if (np.any(positions >= len(waves)) or not np.array_equal(waves[positions], expected)
+                        or not np.array_equal(np.asarray(row[field], float)[positions],
+                                              np.asarray(_live_field(coverage, "actual_values"), float))):
+                    raise ValueError("paired optical values are not bound to the candidate/source spectra")
+        for coverage in snapshot["audit_score"].get("audit_coverage", ()):
+            key = _live_field(coverage, "objective_index"), float(_live_field(coverage, "angle_deg"))
+            if objective_indices is not None and key[0] not in objective_indices:
+                continue
+            if key not in by_key:
+                if require_candidate_extrema and field == "candidate_values":
+                    raise ValueError("original-protection proof is missing audited candidate extrema")
+                continue
+            row = by_key[key]
+            waves = np.asarray(row["wavelength_nm"], float)
+            expected = np.asarray(_live_field(coverage, "wavelength_nm"), float)
+            positions = np.searchsorted(waves, expected)
+            valid = positions < len(waves)
+            matching = np.zeros(len(expected), dtype=bool)
+            matching[valid] = waves[positions[valid]] == expected[valid]
+            if require_candidate_extrema and field == "candidate_values" and not np.all(matching):
+                raise ValueError("original-protection proof does not cover the complete candidate audit")
+            if not np.array_equal(np.asarray(row[field], float)[positions[matching]],
+                                  np.asarray(_live_field(coverage, "actual_values"), float)[matching]):
+                raise ValueError("paired optical values differ at an already audited physical point")
+
+
+def _validate_live_snapshot(raw, source_snapshot, payload, request, source, *, is_source=False):
+    from types import SimpleNamespace
+    from .film_manufacturing_jobs import _snapshot, _json
+    from .film_automatic_repair import assess_live_candidate, thickness_defects
+    from .film_synthesis_archive import physical_design_hash
+    if not isinstance(raw, Mapping):
+        raise ValueError("live candidate must be a complete snapshot")
+    checked = _validate_live_design(raw["design"], request, source)
+    identity = _live_identity(payload)
+    if (raw.get("physical_hash") != physical_design_hash(checked)
+            or raw.get("evidence_binding") != dict(training_hash=physical_design_hash(checked), audit_hash=physical_design_hash(checked))
+            or any(raw.get(k) != identity[k] for k in ("request_hash", "source_fingerprint", "source_hash"))
+            or raw.get("complete_evidence") is not True or type(raw.get("converged")) is not bool):
+        raise ValueError("live evidence identity/completeness differs from the frozen job")
+    _validate_live_layers(raw["layers"], checked, source)
+    _snapshot({k: raw[k] for k in ("design", "training_score", "audit_score")}, SimpleNamespace(synthesis=request))
+    _validate_guard(raw["optical_guard"], request,
+        payload["optical_tolerance_percentage_points"] / 100.0, independent=True)
+    if is_source and checked != source:
+        raise ValueError("live source snapshot differs from the frozen original")
+    if raw["optical_guard"]["audit"].get("kind") == "identical_frozen_design":
+        if checked != source or raw["optical_guard"]["maximum_absolute_change"] != 0.0:
+            raise ValueError("identical-curve proof does not belong to the frozen source")
+        for row in raw["optical_guard"]["records"]:
+            if row["candidate_values"] != row["reference_values"]:
+                raise ValueError("identical source has nonzero paired difference")
+        from .film_automatic_repair import _live_field
+        coverage_by_key = {(_live_field(c, "objective_index"), float(_live_field(c, "angle_deg"))): c
+                           for c in raw["training_score"]["coverage"]}
+        for row in raw["optical_guard"]["records"]:
+            coverage = coverage_by_key[row["objective_index"], float(row["angle_deg"])]
+            if (row["wavelength_nm"] != list(_live_field(coverage, "wavelength_nm"))
+                    or row["candidate_values"] != list(_live_field(coverage, "actual_values"))):
+                raise ValueError("identical curve proof is not the computed original spectrum")
+    if source_snapshot is not None:
+        if raw["optical_guard"]["audit"].get("kind") != "identical_frozen_design":
+            _validate_live_curve_binding(raw["optical_guard"]["records"], raw, source_snapshot)
+        if raw["protection_guard"].get("kind") == "per_condition_nonincrease":
+            _validate_live_curve_binding(raw["protection_guard"]["records"], raw, source_snapshot,
+                objective_indices={i for i, objective in enumerate(request.objectives) if objective.pointwise.enabled},
+                require_candidate_extrema=True)
+        assessment = assess_live_candidate(raw, source_snapshot, request,
+            lower_limit(payload["reference_nm"], payload["thickness_tolerance_nm"]),
+            original_targets_present=payload["original_targets_present"])
+        if raw.get("assessment") != assessment or raw.get("fully_repaired") is not assessment["all_requirements_met"]:
+            raise ValueError("live improvement assessment is stale or forged")
+        if raw["protection_guard"].get("passed") is not assessment["original_protection_pass"]:
+            raise ValueError("declared original-protection flag differs from paired evidence")
+        if raw.get("thickness_pass") is not (thickness_defects(checked,
+                lower_limit(payload["reference_nm"], payload["thickness_tolerance_nm"]))["count"] == 0):
+            raise ValueError("live thickness completion flag differs from actual layers")
+    return _json(raw)
+
+
+def applicable_improvement(snapshot, source_snapshot, request_payload):
+    """Pure UI/worker gate. No optical evaluation or solver work is performed."""
+    try:
+        if request_payload.get("schema_version") != 3 or source_snapshot is None or snapshot is None:
+            return False
+        request, source = request_from_payload(request_payload)
+        _validate_live_snapshot(source_snapshot, None, request_payload, request, source, is_source=True)
+        checked = _validate_live_snapshot(snapshot, source_snapshot, request_payload, request, source)
+        return checked["assessment"]["applicable_improvement"] is True
+    except (ValueError, TypeError, KeyError, ArithmeticError, AttributeError):
+        return False
+
+
+def _validate_live_current(current, payload, request, source):
+    from .film_synthesis_archive import physical_design_hash
+    if current is None:
+        return
+    if (not isinstance(current, Mapping) or set(current) != {"design", "physical_hash", "candidate_id",
+            "evidence_scope", "operator", "parent_hash", "layers"}
+            or current["evidence_scope"] not in {"training", "audited"}
+            or not isinstance(current["candidate_id"], str) or not isinstance(current["operator"], str)
+            or not isinstance(current["parent_hash"], str)):
+        raise ValueError("invalid live current-preview record")
+    checked = _validate_live_design(current["design"], request, source)
+    if current["physical_hash"] != physical_design_hash(checked):
+        raise ValueError("live preview hash differs from its design")
+    _validate_live_layers(current["layers"], checked, source)
+
+
+def validate_live_progress(frame, expected_request, after_seq=-1):
+    from .film_manufacturing_jobs import _json
+    request, source = request_from_payload(expected_request)
+    if expected_request["schema_version"] != 3:
+        raise ValueError("live progress requires the exact version-three request")
+    identity = _live_identity(expected_request)
+    if (not isinstance(frame, Mapping) or set(frame) != {"stage", "schema_version", "seq", "request_id",
+            "request_hash", "source_fingerprint", "source_hash", "status", "current", "champion", "source", "work"}
+            or frame.get("stage") != "repair_live" or type(frame.get("schema_version")) is not int
+            or frame["schema_version"] != 1 or type(frame.get("seq")) is not int or frame["seq"] < 0
+            or type(after_seq) is not int or frame["seq"] <= after_seq
+            or any(frame.get(k) != v for k, v in identity.items())
+            or frame["status"] not in {"running", "completed", "cancelled"}):
+        raise ValueError("live progress identity, sequence or status differs")
+    if frame["source"] is not None:
+        _validate_live_snapshot(frame["source"], None, expected_request, request, source, is_source=True)
+    if frame["champion"] is not None and not applicable_improvement(frame["champion"], frame["source"], expected_request):
+        raise ValueError("live champion lacks complete protected improvement evidence")
+    _validate_live_current(frame["current"], expected_request, request, source)
+    if frame["current"] is not None and frame["current"]["evidence_scope"] == "audited":
+        hashes = {v["physical_hash"] for v in (frame["source"], frame["champion"]) if v is not None}
+        if frame["current"]["physical_hash"] not in hashes:
+            raise ValueError("audited preview is not a complete source or champion")
+    _validate_live_work(frame["work"])
+    return _json(frame)
+
+
+def _validate_live_work(work):
+    counters = {"physical_calls", "wavelength_points", "candidates", "local_calls", "audit_calls", "reference_calls"}
+    if (not isinstance(work, Mapping) or set(work) != counters | {"partial_physical_work_possible"}
+            or type(work["partial_physical_work_possible"]) is not bool
+            or any(type(work[k]) is not int or work[k] < 0 for k in counters)
+            or work["audit_calls"] > work["physical_calls"] or work["reference_calls"] > work["physical_calls"]):
+        raise ValueError("invalid live repair work ledger")
+
+
+def _validate_live_result(value, *, expected_job=None, replay=False):
+    from .film_manufacturing_jobs import _json
+    from .film_automatic_repair import LIVE_POLICY
+    if (not isinstance(value, Mapping) or set(value) != {"schema_version", "kind", "request", "state", "is_final",
+            "termination_reason", "result", "work"} or type(value.get("schema_version")) is not int
+            or value["schema_version"] != 3 or value["kind"] != RESULT_KIND):
+        raise ValueError("invalid live repair result envelope")
+    if expected_job is not None and not result_matches_job(value, expected_job):
+        raise ValueError("live repair result is not bound to its frozen job")
+    request, source = request_from_payload(value["request"])
+    body = value["result"]
+    if (not isinstance(body, Mapping) or set(body) != {"source", "best", "reviewed", "detected_layer_ids", "lower_limit_nm",
+            "policy", "work", "trace", "trace_total", "elapsed_seconds", "termination", "progress", "routes"}
+            or body["policy"] != LIVE_POLICY or value["work"] != body["work"]
+            or value["termination_reason"] != body["termination"]):
+        raise ValueError("live repair result policy or evidence structure differs")
+    if (any(type(body["policy"][k]) is not int for k in LIVE_POLICY)
+            or isinstance(body["elapsed_seconds"], bool) or not isinstance(body["elapsed_seconds"], (int, float))
+            or not math.isfinite(body["elapsed_seconds"]) or body["elapsed_seconds"] < 0):
+        raise ValueError("live policy types or elapsed time are invalid")
+    _validate_live_work(value["work"])
+    reason = body["termination"]
+    allowed = {"running", "cancelled", "resource_guard", "no_thin_layers", "frontier_exhausted", "no_effective_improvement",
+               "local_stagnation", "thickness_goal_reached", "thickness_goal_reached_original_targets_unmet",
+               "scheduler_cancel_won", "scheduler_failed"}
+    state = ("running" if reason == "running" else "cancelled" if reason in {"cancelled", "scheduler_cancel_won"}
+             else "failed" if reason == "scheduler_failed" else "completed")
+    if reason not in allowed or value["state"] != state or value["is_final"] is not (reason != "running"):
+        raise ValueError("live repair terminal state/reason differs")
+    floor = lower_limit(value["request"]["reference_nm"], value["request"]["thickness_tolerance_nm"])
+    if body["lower_limit_nm"] != floor or body["detected_layer_ids"] != deficient_ids(source, floor):
+        raise ValueError("live repair original layer detection differs")
+    if body["source"] is not None:
+        _validate_live_snapshot(body["source"], None, value["request"], request, source, is_source=True)
+    for key in ("best", "reviewed"):
+        if body[key] is not None:
+            if body["source"] is None:
+                raise ValueError("live repair candidate has no original audit")
+            _validate_live_snapshot(body[key], body["source"], value["request"], request, source)
+    if body["best"] is not None and not applicable_improvement(body["best"], body["source"], value["request"]):
+        raise ValueError("live best is not a protected improvement")
+    if (type(body["trace_total"]) is not int or body["trace_total"] < 0 or not isinstance(body["trace"], list)
+            or len(body["trace"]) > LIVE_POLICY["trace_capacity"] or len(body["trace"]) > body["trace_total"]):
+        raise ValueError("live repair rolling trace/cumulative count differs")
+    if body["routes"] != [dict(route="automatic", champion=body["best"], status=reason)]:
+        raise ValueError("live displayed champion differs from complete evidence")
+    _validate_live_current(body["progress"]["current"], value["request"], request, source)
+    if replay:
+        _replay_live_result(value)
+    return _json(value)
+
+
+def _execute_live_job(parameters, cancel_event, report, checkpoint_path, write_json, **kwargs):
+    from .film_automatic_repair import automatic_repair_live
+    from .film_manufacturing_jobs import _expanded_json_sizes
+    job = parameters["payload"]
+    if set(job) != {"schema_version", "kind", "request"} or job["kind"] != JOB_KIND or job["schema_version"] != 3:
+        raise ValueError("invalid live repair job")
+    frozen, source = request_from_payload(job["request"])
+    identity = _live_identity(job["request"])
+    identity.pop("source_hash")
+    external = kwargs.get("external_retained_bytes", lambda: 0)
+    limit = (frozen.resource_guard_resolution or {}).get("effective_bytes")
+    if limit is not None and estimate_resources(job["request"], frozen, source)["working_set_bytes"] + external() > limit:
+        raise ValueError("live repair pre-admission exceeds existing resource guard")
+
+    def envelope(result):
+        reason = result["termination"]
+        state = "running" if reason == "running" else "cancelled" if reason == "cancelled" else "completed"
+        body = dict(result, routes=[dict(route="automatic", champion=result["best"], status=reason)])
+        value = dict(schema_version=3, kind=RESULT_KIND, request=job["request"], state=state,
+                     is_final=reason != "running", termination_reason=reason, result=body, work=body["work"])
+        owned, encoded = _expanded_json_sizes(value)
+        if limit is not None and 128 * 1024**2 + 4 * owned + 2 * encoded + external() > limit:
+            raise ValueError("live repair checkpoint serialization exceeds the resource guard")
+        return validate_result_payload(value, expected_job=job, replay=False)
+
+    def save(result):
+        write_json(checkpoint_path, dict(schema_version=3, kind="coat_sim.film_manufacturing_checkpoint",
+            job=job, result=envelope(result)))
+
+    result = automatic_repair_live(frozen, source, target_nm=job["request"]["reference_nm"],
+        thickness_tolerance_nm=job["request"]["thickness_tolerance_nm"],
+        optical_tolerance=job["request"]["optical_tolerance_percentage_points"] / 100.0,
+        cancel_event=cancel_event, report=report, checkpoint=save, optical_settings=job["request"]["comparison_settings"],
+        original_targets_present=job["request"]["original_targets_present"],
+        external_retained_bytes=external, request_identity=identity)
+    save(result)
+    return envelope(result)
+
+
+def _replay_live_result(value):
+    """Explicit history replay, never used by cancellation or live progress."""
+    from .film_auto_synthesis import _proxy
+    from .film_optimization_structure import evaluate_frozen_structure_candidate
+    from .film_synthesis_audit import audit_frozen_synthesis_candidate
+    from .film_synthesis_manufacturing import manufacturing_snapshot
+    from .film_manufacturing_jobs import _json
+    from .film_automatic_repair import (
+        CurvePair, _guard_request, curve_audit_metadata, _live_nominal,
+        _live_mean_actual, original_protection_pass,
+    )
+    request, source = request_from_payload(value["request"])
+    settings = value["request"]["comparison_settings"]
+    original_present = value["request"]["original_targets_present"]
+    source_snapshot = value["result"]["source"]
+    tolerance = value["request"]["optical_tolerance_percentage_points"] / 100.0
+
+    def physical(design, *, objectives=None, jacobian=False):
+        active = request if objectives is None else replace(request, objectives=tuple(objectives))
+        return evaluate_frozen_structure_candidate(_proxy(active), design, optical_settings=settings)
+
+    seen = set()
+    for snapshot in (value["result"]["source"], value["result"]["best"], value["result"]["reviewed"]):
+        if snapshot is None or snapshot["physical_hash"] in seen:
+            continue
+        seen.add(snapshot["physical_hash"])
+        raw = physical(snapshot["design"])
+        original_pair = CurvePair(request, source, physical)
+
+        def observe(objectives, incoming, index=None, owner=original_pair):
+            if original_present and not _live_nominal(source_snapshot):
+                owner.transform(objectives, incoming, index)
+            return incoming
+
+        audit = audit_frozen_synthesis_candidate(request, snapshot["design"], optical_settings=settings,
+                                               response_transform=observe)
+        checked = manufacturing_snapshot(request, dict(raw), audit_value=audit)
+        if _json(checked.training_score) != _json(snapshot["training_score"]) or _json(checked.audit_score) != _json(snapshot["audit_score"]):
+            raise ValueError("live persisted original evidence fails physical replay")
+        if snapshot["design"] == source:
+            continue
+        guide = _guard_request(request, tolerance)
+        pair = CurvePair(guide, source, physical)
+        difference_audit = audit_frozen_synthesis_candidate(guide, snapshot["design"],
+            optical_settings=settings, response_transform=pair.transform)
+        guard = pair.evidence(tolerance)
+        guard["audit"] = curve_audit_metadata(difference_audit)
+        if _json(guard) != _json(snapshot["optical_guard"]):
+            raise ValueError("live persisted paired optical evidence fails physical replay")
+        if not original_present:
+            protection = dict(kind="not_applicable", records=[], means=[], passed=True)
+        elif _live_nominal(source_snapshot):
+            protection = dict(kind="nominal_preserved", records=[], means=[], passed=_live_nominal(snapshot))
+        else:
+            combined: dict[tuple[int, float], dict[float, tuple[float, float]]] = {}
+            for owner in (original_pair, pair):
+                for key, points in owner.points.items():
+                    combined.setdefault(key, {}).update(points)
+            records = []
+            for (index, angle), points in sorted(combined.items()):
+                objective = request.objectives[index]
+                if objective.pointwise.enabled:
+                    waves = sorted(points)
+                    records.append(dict(objective_index=index, angle_deg=angle, metric=objective.metric,
+                        polarization=objective.polarization, wavelength_nm=waves,
+                        candidate_values=[points[w][0] for w in waves], reference_values=[points[w][1] for w in waves]))
+            means = [dict(scope=scope, objective_index=i, angle_deg=float(a),
+                candidate_actual=_live_mean_actual(snapshot, scope, i, a),
+                reference_actual=_live_mean_actual(source_snapshot, scope, i, a))
+                for scope in ("training_score", "audit_score") for i, o in enumerate(request.objectives)
+                if o.mean.enabled for a in o.angles_deg]
+            protection = dict(kind="per_condition_nonincrease", records=records, means=means)
+            temporary = dict(snapshot, protection_guard=protection)
+            protection["passed"] = original_protection_pass(temporary, source_snapshot, request)
+        if _json(protection) != _json(snapshot["protection_guard"]):
+            raise ValueError("live persisted original-protection pairs fail physical replay")

@@ -185,6 +185,10 @@ class SchedulerClient:
         return self._call('submit', spec=spec, job_id=job_id, metadata=metadata or {})
     def status(self, job_id): return self._call('status', job_id=job_id)
     def read_job(self, job_id): return self.status(job_id)
+    def repair_live(self, job_id, *, input_digest, after_sequence=-1):
+        """Read one bound repair snapshot; never start or replay computation."""
+        return self._call('repair_live', start=False, job_id=job_id,
+                          input_digest=input_digest, after_sequence=after_sequence)
     def cancel(self, job_id): return self._call('cancel', job_id=job_id)
     def film_display_control(self, job_id, *, input_digest, generation, enabled, selection):
         # Read/CAS only in the caller's existing background control pump. Never

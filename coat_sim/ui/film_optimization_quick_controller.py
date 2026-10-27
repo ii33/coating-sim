@@ -49,7 +49,7 @@ from coat_sim.ui.film_synthesis_quick_adapter import (
     verify_synthesis_file_references,
 )
 from coat_sim.ui.film_synthesis_forward_probe import FilmSynthesisForwardProbe
-from coat_sim.ui.film_sensitivity_quick_controller import FilmSensitivityQuickController
+from coat_sim.ui.film_sensitivity_quick_controller import FilmSensitivityQuickController, parse_table_configuration
 from coat_sim.ui.film_objective_progress_editor import ObjectiveProgressDraft, PROGRESS_FIELD_LABELS
 from coat_sim.ui.film_optimization_run_coordinator import (
     FilmOptimizationRunCoordinator,
@@ -1092,6 +1092,8 @@ class FilmOptimizationQuickController(QObject):
         from .theme_service import ThemeService
         ThemeService.instance().filmThicknessDecimalsChanged.connect(self._on_film_display_precision)
         self._sensitivity_controller: FilmSensitivityQuickController | None = None
+        self._sensitivity_table_configuration: dict | None = None
+        self._sensitivity_table_loading = False
         self._manufacturing_controller: FilmManufacturingQuickController | None = None
         self._result_terminal_state = ""
         self._result_application_eligible = False
@@ -1409,9 +1411,43 @@ class FilmOptimizationQuickController(QObject):
     @Property(QObject, constant=True)
     def sensitivityController(self):
         if self._sensitivity_controller is None:
+            parse_table_configuration(self._sensitivity_table_configuration or {})
             self._sensitivity_controller = FilmSensitivityQuickController(self)
+            if not self._restore_sensitivity_table_draft(self._sensitivity_table_configuration):
+                self._sensitivity_controller.deleteLater()
+                self._sensitivity_controller = None
+                raise ValueError("敏感性参数表草稿未恢复；原配置保持不变。")
             self._sensitivity_controller.changed.connect(self.changed.emit)
+            table_changed = getattr(self._sensitivity_controller, "tableConfigurationEdited", None)
+            if table_changed is not None and hasattr(table_changed, "connect"):
+                table_changed.connect(self._on_sensitivity_table_configuration_changed)
         return self._sensitivity_controller
+
+    def _restore_sensitivity_table_draft(self, configuration: dict | None) -> bool:
+        loader = getattr(self._sensitivity_controller, "loadTableConfiguration", None)
+        if not callable(loader):
+            return self._sensitivity_controller is None
+        self._sensitivity_table_loading = True
+        try:
+            return bool(loader(deepcopy(configuration or {})))
+        finally:
+            self._sensitivity_table_loading = False
+
+    def _export_sensitivity_table_draft(self):
+        exporter = getattr(self._sensitivity_controller, "exportTableConfiguration", None)
+        if callable(exporter):
+            draft = exporter()
+            if not isinstance(draft, dict):
+                raise ValueError("敏感性参数表配置必须为对象")
+            json.dumps(draft, allow_nan=False)
+            self._sensitivity_table_configuration = deepcopy(draft)
+        return deepcopy(self._sensitivity_table_configuration)
+
+    @Slot()
+    def _on_sensitivity_table_configuration_changed(self) -> None:
+        if self._sensitivity_table_loading or self._configuration_loading or self._shutting_down:
+            return
+        self._persist_configuration()
 
     @Property(QObject, constant=True)
     def manufacturingController(self):
@@ -1429,21 +1465,25 @@ class FilmOptimizationQuickController(QObject):
         session = self.session
         if session is None or context is None:
             return False
-        if (panel is None or id(panel._payload) != id(payload) or id(panel._context) != id(context)
-                or panel.busy or self._busy or self._shutting_down
+        live = panel is not None and panel._live_application(payload)
+        if (panel is None or panel._application_payload() is not payload or id(panel._context) != id(context)
+                or (panel.busy and not live) or self._busy or self._shutting_down
                 or (self._sensitivity_controller is not None and self._sensitivity_controller.busy)
                 or self._source_closed or self._observers_detached
                 or self._source_controller is None
                 or id(context.get("session")) != id(session)
                 or context.get("source") is not self._source_controller
-                or payload.get("state") != "completed" or payload.get("is_final") is not True
+                or (not live and (payload.get("state") != "completed" or payload.get("is_final") is not True))
                 or not isinstance(snapshot, Mapping) or not isinstance(snapshot.get("audit_score"), Mapping)
                 or type(snapshot.get("training_score", {}).get("nominal_pass")) is not bool
                 or type(snapshot["audit_score"].get("nominal_pass")) is not bool):
             return False
-        if not any(route.get("champion") is snapshot for route in payload.get("result", {}).get("routes", ())):
+        if not panel._application_matches(payload, snapshot):
             return False
-        if payload.get('schema_version') == 2 and not panel._automatic_candidate_accepted(snapshot):
+        if live and (panel._closed or panel._stale or panel._source_invalidated.is_set()
+                     or panel._applied or panel._stop_reason in {"source_changed", "owner_close", "shutdown"}):
+            return False
+        if (live or payload.get('schema_version') == 2) and not panel._automatic_candidate_accepted(snapshot):
             return False
         compute, operation = context.get("project_compute"), context.get("project_operation")
         if compute is not self._project_compute:
@@ -1465,8 +1505,17 @@ class FilmOptimizationQuickController(QObject):
         if not full_validation:
             return True
         current = panel._build_base_request()
-        if panel._signature(current) != context.get("signature") or payload.get("request") != frozen:
+        if panel._signature(current) != context.get("signature") or panel._application_request(payload) != frozen:
             return False
+        if live:
+            if payload.get("stage") == "repair_live":
+                from coat_sim.core.film_automatic_repair_jobs import validate_live_progress
+                validate_live_progress(dict(payload), expected_request=frozen)
+            else:
+                from coat_sim.core.film_manufacturing_jobs import validate_result_payload
+                validate_result_payload(dict(payload), expected_job=context.get("frozen_job"), replay=False)
+            if not panel._automatic_candidate_accepted(snapshot, force=True):
+                return False
         from coat_sim.core.film_synthesis_manufacturing import manufacturing_source_fingerprint
         source_design = frozen.get("source_design")
         if (not isinstance(source_design, Mapping) or frozen.get("source_fingerprint")
@@ -1486,7 +1535,16 @@ class FilmOptimizationQuickController(QObject):
         apply = getattr(self._source_controller, "applySynthesizedDesign", None)
         if not callable(apply):
             return False
-        accepted = bool(apply(deepcopy(dict(snapshot["design"])), context["revision"], context["epoch"],
+        candidate = deepcopy(dict(snapshot["design"]))
+        current_optimization = session.snapshot().design.get("workflow_settings", {}).get("optimization", {})
+        candidate_optimization = candidate.get("workflow_settings", {}).get("optimization")
+        if "sensitivity_table" in current_optimization:
+            if not isinstance(candidate_optimization, dict):
+                candidate_optimization = candidate.setdefault("workflow_settings", {}).setdefault("optimization", {})
+            candidate_optimization["sensitivity_table"] = deepcopy(current_optimization["sensitivity_table"])
+        elif isinstance(candidate_optimization, dict):
+            candidate_optimization.pop("sensitivity_table", None)
+        accepted = bool(apply(candidate, context["revision"], context["epoch"],
                               deepcopy(context["editable_snapshot"])))
         if accepted:
             self._load_source(preserve_variables=True)
@@ -1591,7 +1649,7 @@ class FilmOptimizationQuickController(QObject):
             raise ValueError(self._error or "请先完成角度输入")
         if self._pending_edit_error or self._objective_bounds_pending():
             raise ValueError(self._error or "请先修正尚未提交的优化输入")
-        return {
+        configuration = {
             "version": 2,
             "objectives": self._export_objective_editor_rows(),
             "variables": [{key: deepcopy(row[key]) for key in
@@ -1626,6 +1684,10 @@ class FilmOptimizationQuickController(QObject):
                                      "optical_set_id": row["optical_set_id"]}
                                     for row in self._structure_material_options if row.get("selected")],
         }
+        table = self._export_sensitivity_table_draft()
+        if table is not None:
+            configuration["sensitivity_table"] = table
+        return configuration
 
     @Slot("QVariantMap", result=bool)
     def loadOptimizationConfiguration(self, configuration: dict) -> bool:
@@ -1642,10 +1704,27 @@ class FilmOptimizationQuickController(QObject):
                 raise ValueError("优化配置必须为对象")
             json.dumps(configuration, allow_nan=False)
             allowed = {"version", "objectives", "variables", "solver", "search_mode",
-                       "structure_mode", "reduction_mode", "structure_options", "structure_materials", "synthesis"}
+                       "structure_mode", "reduction_mode", "structure_options", "structure_materials", "synthesis",
+                       "sensitivity_table"}
             if (set(configuration) - allowed or type(configuration.get("version")) is not int
                     or configuration.get("version") != 2):
                 raise ValueError("优化配置版本或字段不受支持")
+            table_configuration = deepcopy(configuration.get("sensitivity_table"))
+            if table_configuration is not None and not isinstance(table_configuration, dict):
+                raise ValueError("敏感性参数表配置必须为对象")
+            parse_table_configuration(table_configuration or {})
+            try:
+                existing = self.exportOptimizationConfiguration()
+            except (TypeError, ValueError, OverflowError):
+                existing = None
+            if (existing is not None
+                    and {key: value for key, value in configuration.items() if key != "sensitivity_table"}
+                    == {key: value for key, value in existing.items() if key != "sensitivity_table"}):
+                if not self._restore_sensitivity_table_draft(table_configuration):
+                    raise ValueError("敏感性参数表未恢复；请先结束当前计算，原配置保持不变。")
+                self._sensitivity_table_configuration = table_configuration
+                self.changed.emit()
+                return True
             defaults = deepcopy(self._configuration_defaults)
             raw_objectives = configuration.get("objectives", defaults["objectives"])
             if not isinstance(raw_objectives, list):
@@ -1793,6 +1872,9 @@ class FilmOptimizationQuickController(QObject):
                     "options", "cpu_workers", "forward_backend", "forward_device",
                     "use_current_seed", "material_rows", "assume_unknown_k_zero", "objective_progress_editor", "search_reference"}:
                 raise ValueError("Invalid synthesis configuration")
+            incoming_search = deepcopy(synthesis_config.get('search_reference'))
+            if incoming_search is not None and not isinstance(incoming_search, dict):
+                raise ValueError('结构搜索进度引用损坏；请从原任务历史恢复。')
             synthesis_values = synthesis_options(synthesis_config.get("options", {}))
             progress_draft = ObjectiveProgressDraft.from_configuration(
                 synthesis_config.get("objective_progress_editor"), synthesis_values["objective_progress_policy"])
@@ -1845,6 +1927,8 @@ class FilmOptimizationQuickController(QObject):
                 if key not in available_refs or key in selected_refs:
                     raise ValueError(f"结构候选材料已不可用或重复：{key}")
                 selected_refs.add(key)
+            if not self._restore_sensitivity_table_draft(table_configuration):
+                raise ValueError("敏感性参数表未恢复；请先结束当前计算，原配置保持不变。")
         except (TypeError, ValueError, OverflowError) as exc:
             self._configuration_load_error = f"未恢复优化配置：{exc}"
             self._error = self._configuration_load_error
@@ -1887,9 +1971,6 @@ class FilmOptimizationQuickController(QObject):
             self._synthesis_assume_unknown_k_zero = synthesis_assumption
             self._synthesis_material_rows = synthesis_rows
             self._synthesis_rows_initialized = True
-            incoming_search = deepcopy(synthesis_config.get('search_reference'))
-            if incoming_search is not None and not isinstance(incoming_search, dict):
-                raise ValueError('结构搜索进度引用损坏；请从原任务历史恢复。')
             current_search = self._synthesis_search_reference
             preserve_search = (reconcile_layers and self.session is not None and isinstance(current_search, dict)
                 and current_search.get('design_id') == self.session.snapshot().design['id'])
@@ -1908,6 +1989,7 @@ class FilmOptimizationQuickController(QObject):
             self._pending_edit_error = False
             self._pending_edit_error_key = None
             self._configuration_load_error = self._error = ""
+            self._sensitivity_table_configuration = table_configuration
             self._configuration_restore_notice = restore_notice
             self._invalidate_result()
         finally:
@@ -2719,6 +2801,12 @@ class FilmOptimizationQuickController(QObject):
 
     @Property("QVariantMap", notify=plotDataChanged)
     def plotData(self) -> dict:
+        manufacturing = self._manufacturing_controller
+        if (manufacturing is not None and manufacturing._applied
+                and (self._result is None or self._candidate_applied or self._inspection_objectives is not None)):
+            applied = manufacturing._applied_plot_data()
+            if applied:
+                return applied
         objectives = self._inspection_objectives or self._objectives
         if self._result is None or not 0 <= self._plot_objective < len(objectives):
             return {}

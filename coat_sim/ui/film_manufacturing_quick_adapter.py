@@ -34,6 +34,72 @@ def comparison_scope_text(settings: Mapping[str, Any] | None) -> str:
             f"{_num(settings.get('angle_deg'))}°{polarization}、{surface} R/T；{policy}")
 
 
+def _layer_map(snapshot: Mapping[str, Any] | None) -> dict[str, dict[str, Any]]:
+    if not isinstance(snapshot, Mapping):
+        return {}
+    layers = snapshot.get("layers")
+    if not isinstance(layers, list):
+        layers = [dict(row, thickness_nm=(row.get("thickness", {}).get("value")
+                  if row.get("thickness", {}).get("unit") == "nm" else None))
+                  for row in snapshot.get("design", {}).get("front_layers", ())]
+    return {str(row["id"]): dict(row, order=index + 1) for index, row in enumerate(layers)}
+
+
+def layer_change_rows(source: Mapping[str, Any] | None, current: Mapping[str, Any] | None,
+                      champion: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+    """Join only stable IDs; lineage explains topology changes, never row positions."""
+    original, working, best = _layer_map(source), _layer_map(current), _layer_map(champion)
+    identifiers = dict.fromkeys((*original, *working, *best))
+
+    def thickness(row):
+        value = None if row is None else row.get("thickness_nm")
+        return value if isinstance(value, (int, float)) and math.isfinite(value) else None
+
+    def show(value):
+        return "—" if value is None else format_film_thickness(value) + " nm"
+
+    def origins(row):
+        return [] if row is None else list(row.get("origins", ()))
+
+    def relationship(identifier, row, rows):
+        if row is not None:
+            ancestry = origins(row)
+            if len(ancestry) > 1:
+                names = [f"原第{original[key]['order']}层" if key in original else str(key)
+                         for key in ancestry]
+                return "合并自" + "、".join(names)
+            if identifier not in original:
+                return "新增" if not ancestry else "拆分/衍生自" + "、".join(
+                    f"原第{original[key]['order']}层" if key in original else str(key) for key in ancestry)
+            return "保留"
+        descendants = [str(item["order"]) for item in rows.values() if identifier in origins(item)]
+        return "合并/拆分至第" + "、".join(descendants) + "层" if descendants else "已删除"
+
+    rows = []
+    for identifier in identifiers:
+        base, now, optimum = original.get(identifier), working.get(identifier), best.get(identifier)
+        original_nm, current_nm, best_nm = thickness(base), thickness(now), thickness(optimum)
+        metadata = now or optimum or base or {}
+        label = (f"原第{base['order']}层" if base is not None else "新增层")
+        label += " · " + str(metadata.get("material_id", "材料未知"))
+
+        def delta(candidate, value, source_nm=original_nm, layer_id=identifier):
+            if value is None or source_nm is None:
+                return "—"
+            if origins(candidate) not in ([], [layer_id]):
+                return "结构变化，见来源"
+            difference = value - source_nm
+            return ("+" if difference > 0 else "") + format_film_thickness(difference) + " nm"
+
+        rows.append(dict(row_id=identifier, id=identifier, label=label, original_nm=original_nm,
+            current_nm=current_nm, best_nm=best_nm, original=show(original_nm), current=show(current_nm),
+            best=show(best_nm), current_delta=delta(now, current_nm), best_delta=delta(optimum, best_nm),
+            current_origins=origins(now), best_origins=origins(optimum), origins=origins(now or optimum),
+            status=("当前：" + relationship(identifier, now, working) if current is not None else "当前：尚无计算")
+                + "；" + ("最佳：" + relationship(identifier, optimum, best) if champion is not None else "最佳：尚无可应用改进")))
+    return rows
+
+
 def score_text(score: Mapping[str, Any] | None, objectives: list[dict]) -> str:
     """Show every original band/angle. Never infer acceptance from a scalar."""
     if not isinstance(score, Mapping):
@@ -118,18 +184,22 @@ def snapshot_text(snapshot: Mapping[str, Any] | None, objectives: list[dict]) ->
 def comparison_rows(payload: Mapping[str, Any] | None) -> list[dict[str, Any]]:
     if not isinstance(payload, Mapping):
         return []
-    if payload.get('schema_version') == 2:
+    if payload.get('schema_version') in (2, 3):
         request, result = payload['request'], payload.get('result') or {}
         objectives = request['synthesis']['request']['objectives']
         present = request['original_targets_present']
         rows = []
-        for key, label in (('source','修复前原始膜系'),('best','已通过联合验收的修复结果'),('reviewed','最近完整候选（可能未通过联合验收）')):
+        live = payload.get("schema_version") == 3
+        for key, label in (('source','修复前原始膜系'),
+                           ('best','最佳可应用改进（未必全部完成）' if live else '已通过联合验收的修复结果'),
+                           ('reviewed','最近完整候选（请核对真实验收结果）')):
             snapshot = result.get(key)
             if not isinstance(snapshot, Mapping):
                 if key in ('source', 'best'):
                     rows.append(dict(route='original' if key == 'source' else 'automatic', label=label, available=False,
                         details=('原曲线尚未完整计算，光学变化未知，不以 0 代替。' if key == 'source' else
-                                 '本轮尚无通过厚度、逐点光学变化及适用原目标联合验收的结果；不表示不存在可行修复。')))
+                                 ('本轮尚无完整核验的严格改进，原设计未改变。' if live else
+                                  '本轮尚无通过厚度、逐点光学变化及适用原目标联合验收的结果；不表示不存在可行修复。'))))
                 continue
             guard = snapshot.get('optical_guard')
             if present:
@@ -140,9 +210,17 @@ def comparison_rows(payload: Mapping[str, Any] | None) -> list[dict[str, Any]]:
                     '没有启用的原光学目标，原目标验收不适用；本轮冻结比较范围为 '
                     + comparison_scope_text(request.get('comparison_settings')) + '。')
             if isinstance(guard, Mapping):
-                from coat_sim.core.film_automatic_repair import candidate_accepted
-                details = (f"联合验收：{_flag(candidate_accepted(snapshot, present))}；"
-                    + ('须同时通过全部启用原目标的训练与独立审计。\n' if present else '原目标不适用。\n')
+                if live:
+                    assessment = snapshot.get("assessment") or {}
+                    verdict = (f"可应用改进：{_flag(assessment.get('applicable_improvement'))}；"
+                               f"全部条件满足：{_flag(assessment.get('all_requirements_met'))}。\n"
+                               f"光学保护：{_flag(assessment.get('optical_protection_pass'))}；原目标名义通过："
+                               + ("不适用" if not present else _flag(assessment.get("original_nominal_pass"))) + "。\n")
+                else:
+                    from coat_sim.core.film_automatic_repair import candidate_accepted
+                    verdict = (f"联合验收：{_flag(candidate_accepted(snapshot, present))}；"
+                               + ('须同时通过全部启用原目标的训练与独立审计。\n' if present else '原目标不适用。\n'))
+                details = (verdict
                     + f"单层接受下限 {result['lower_limit_nm']:g} nm；保留层厚度下限复验：{_flag(snapshot.get('thickness_pass'))}。\n"
                     f"相对原曲线最大变化 {100*guard['maximum_absolute_change']:.8g} 个百分点 / "
                     f"允许 {request['optical_tolerance_percentage_points']:g} 个百分点：{_flag(guard['passed'])}。\n"

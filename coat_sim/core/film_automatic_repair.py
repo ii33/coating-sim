@@ -909,3 +909,725 @@ def automatic_repair(
     except SynthesisResourceGuard:
         reason = "resource_guard"
     return result()
+
+
+# Version-three live repair uses the same frozen optics and independent auditor,
+# but separates useful repair progress from full attainment of the thickness goal.
+LIVE_POLICY = dict(version=3, local_iterations=80, feedback_rounds=1, trace_capacity=128)
+
+
+def thickness_defects(design: Mapping[str, Any], floor: float) -> Value:
+    if not math.isfinite(floor) or floor < 0:
+        raise ValueError("repair floor must be finite and nonnegative")
+    deficits = [max(0.0, floor - float(row["thickness"]["value"])) / floor
+                for row in design["front_layers"]] if floor else []
+    return dict(sum=math.fsum(deficits), max=max(deficits, default=0.0),
+                count=sum(value > 0.0 for value in deficits))
+
+
+def _live_field(value, name):
+    return value[name] if isinstance(value, Mapping) else getattr(value, name)
+
+
+def repair_rank(snapshot: Mapping[str, Any], floor: float, *, original_targets_present=True):
+    defects = thickness_defects(snapshot["design"], floor)
+    violation = (max(float(snapshot[name]["max_error"]) for name in ("training_score", "audit_score"))
+                 if original_targets_present else 0.0)
+    difference = float(snapshot.get("optical_guard", {}).get("maximum_absolute_change", 0.0))
+    return [defects["sum"], defects["max"], defects["count"], violation, difference]
+
+
+def _live_nominal(snapshot):
+    return all(isinstance(snapshot.get(name), Mapping) and snapshot[name].get("nominal_pass") is True
+               for name in ("training_score", "audit_score"))
+
+
+def _criterion_violation(criterion, actual):
+    if criterion.mode == "value":
+        return abs(actual - criterion.target_value)
+    return max(0.0, 0.0 if criterion.lower_bound is None else criterion.lower_bound - actual,
+               0.0 if criterion.upper_bound is None else actual - criterion.upper_bound)
+
+
+def _live_no_worse(criterion, actual, reference):
+    from .film_nominal_acceptance import nominal_condition_pass
+    return bool(_criterion_violation(criterion, actual) <= _criterion_violation(criterion, reference)
+        and (not nominal_condition_pass(criterion, reference) or nominal_condition_pass(criterion, actual)))
+
+
+def _live_protection_guide(request, source_snapshot, original_targets_present):
+    """A private interior no tighter than half the audited source's own slack."""
+    if not original_targets_present or not _live_nominal(source_snapshot):
+        return request
+    objectives = []
+    for index, original in enumerate(request.objectives):
+        suggested = _interior_margin_objective(original)
+        changes = {}
+        for name in ("pointwise", "mean"):
+            criterion, interior = getattr(original, name), getattr(suggested, name)
+            if not criterion.enabled or criterion.mode != "range":
+                continue
+            values = [float(_live_field(e, "actual")) for scope in ("training_score", "audit_score")
+                      for e in source_snapshot[scope]["errors"]
+                      if _live_field(e, "objective_index") == index and _live_field(e, "reduction") == name]
+            if not values:
+                continue
+            low, high = criterion.lower_bound, criterion.upper_bound
+            if low is not None:
+                low += min(interior.lower_bound - low, max(0.0, min(values) - low) * 0.5)
+            if high is not None:
+                high -= min(high - interior.upper_bound, max(0.0, high - max(values)) * 0.5)
+            changes[name] = replace(criterion, lower_bound=low, upper_bound=high)
+        objectives.append(replace(original, **changes))
+    return replace(request, objectives=tuple(objectives))
+
+
+def _live_mean_actual(snapshot, scope, index, angle):
+    rows = [e for e in snapshot[scope]["errors"] if _live_field(e, "objective_index") == index
+            and _live_field(e, "angle_deg") == angle and _live_field(e, "reduction") == "mean"]
+    if len(rows) != 1:
+        raise ValueError("live repair mean protection requires one complete fixed-grid condition")
+    return float(_live_field(rows[0], "actual"))
+
+
+def original_protection_pass(snapshot, source_snapshot, request, *, original_targets_present=True):
+    """Check paired original violations without relabeling nominal attainment."""
+    guard = snapshot.get("protection_guard", {})
+    if not original_targets_present:
+        return guard.get("kind") == "not_applicable"
+    if guard.get("kind") == "baseline_identity":
+        return physical_design_hash(snapshot["design"]) == physical_design_hash(source_snapshot["design"])
+    if _live_nominal(source_snapshot):
+        return guard.get("kind") == "nominal_preserved" and _live_nominal(snapshot)
+    if guard.get("kind") != "per_condition_nonincrease":
+        return False
+    expected = {(i, float(a)) for i, o in enumerate(request.objectives) if o.pointwise.enabled
+                for a in o.angles_deg}
+    seen = set()
+    for row in guard.get("records", ()):
+        key = row["objective_index"], float(row["angle_deg"])
+        if key not in expected or key in seen:
+            return False
+        seen.add(key)
+        objective = request.objectives[key[0]]
+        waves = np.asarray(row["wavelength_nm"], float)
+        actual = np.asarray(row["candidate_values"], float)
+        before = np.asarray(row["reference_values"], float)
+        if (waves.ndim != 1 or not len(waves) or np.any(np.diff(waves) <= 0)
+                or actual.shape != waves.shape or before.shape != waves.shape
+                or not all(np.all(np.isfinite(v)) for v in (waves, actual, before))
+                or row["metric"] != objective.metric or row["polarization"] != objective.polarization):
+            return False
+        for scope in ("training_score", "audit_score"):
+            coverage_key = "audit_coverage" if scope == "audit_score" else "coverage"
+            coverage = [c for c in snapshot[scope][coverage_key]
+                        if _live_field(c, "objective_index") == key[0] and _live_field(c, "angle_deg") == key[1]]
+            if len(coverage) != 1 or not covers_grid(waves, _live_field(coverage[0], "wavelength_nm")):
+                return False
+        if not all(_live_no_worse(objective.pointwise, float(a), float(b))
+                   for a, b in zip(actual, before, strict=True)):
+            return False
+    if seen != expected:
+        return False
+    means = guard.get("means", ())
+    expected_means = {(scope, i, float(a)) for scope in ("training_score", "audit_score")
+                      for i, o in enumerate(request.objectives) if o.mean.enabled for a in o.angles_deg}
+    seen_means = set()
+    for row in means:
+        mean_key = row["scope"], row["objective_index"], float(row["angle_deg"])
+        if mean_key not in expected_means or mean_key in seen_means:
+            return False
+        seen_means.add(mean_key)
+        actual = _live_mean_actual(snapshot, *mean_key)
+        before = _live_mean_actual(source_snapshot, *mean_key)
+        if (row["candidate_actual"] != actual or row["reference_actual"] != before
+                or not _live_no_worse(request.objectives[mean_key[1]].mean, actual, before)):
+            return False
+    # Explicit strict conditions are checked by _live_no_worse even where the
+    # numerical hinge is zero. A source equality at a strict bound is not pass.
+    return seen_means == expected_means
+
+
+def assess_live_candidate(snapshot, source_snapshot, request, floor, *, original_targets_present=True):
+    """Pure assessment; complete physical evidence is validated at the job boundary."""
+    rank = repair_rank(snapshot, floor, original_targets_present=original_targets_present)
+    source_rank = repair_rank(source_snapshot, floor, original_targets_present=original_targets_present)
+    guard = snapshot.get("optical_guard", {})
+    optical_pass = (guard.get("passed") is True and bool(guard.get("records"))
+        and all(paired_interval_pass(r["candidate_values"], r["reference_values"], guard["tolerance_fraction"])
+                for r in guard.get("records", ())))
+    protection = original_protection_pass(snapshot, source_snapshot, request,
+                                           original_targets_present=original_targets_present)
+    expected_hash = physical_design_hash(snapshot["design"])
+    complete = (snapshot.get("complete_evidence") is True
+        and snapshot.get("evidence_binding") == dict(training_hash=expected_hash, audit_hash=expected_hash)
+        and all(isinstance(snapshot.get(name), Mapping) for name in ("training_score", "audit_score"))
+        and isinstance(snapshot["audit_score"].get("audit"), Mapping)
+        and snapshot["audit_score"]["audit"].get("continuous_certificate") is False)
+    improved = tuple(rank[:3]) < tuple(source_rank[:3]) and physical_design_hash(snapshot["design"]) != physical_design_hash(source_snapshot["design"])
+    thickness_complete = thickness_defects(snapshot["design"], floor)["count"] == 0
+    nominal = _live_nominal(snapshot) if original_targets_present else None
+    applicable = bool(complete and optical_pass and protection and improved
+                      and legal_thicknesses(request, snapshot["design"], 0.0))
+    all_met = bool(complete and thickness_complete and optical_pass and (nominal is not False))
+    return dict(rank=rank, source_rank=source_rank, optical_pass=bool(optical_pass),
+        original_protection_pass=bool(protection), complete_evidence=bool(complete),
+        improved_over_source=bool(improved), thickness_complete=thickness_complete,
+        original_nominal_pass=nominal, optical_protection_pass=bool(optical_pass and protection),
+        all_requirements_met=all_met, fully_repaired=all_met,
+        applicable=applicable, applicable_improvement=applicable)
+
+
+def live_layers(design, origins):
+    return [dict(id=r["id"], material_id=r["material_id"], optical_set_id=r["optical_set_id"],
+                 thickness_nm=float(r["thickness"]["value"]), origins=sorted(origins.get(r["id"], ())))
+            for r in design["front_layers"]]
+
+
+def _live_structures(request, base, origins, source, target, floor):
+    """Finite deterministic neighborhood; successful progress can start a new one."""
+    yield "compensate_thin_layers", deepcopy(base), deepcopy(origins)
+
+    def cleaned(raw, mapping):
+        result = cleanup_batch_needle_design(raw, request.frozen_material_snapshot)
+        lineage = {k: list(v) for k, v in mapping.items()}
+        for removed, retained in result.merged_ids.items():
+            lineage[retained] = sorted(set(lineage.get(retained, ())) | set(lineage.get(removed, ())))
+        return result.design, {r["id"]: lineage.get(r["id"], []) for r in result.design["front_layers"]}
+
+    for row in sorted(base["front_layers"], key=lambda r: r["thickness"]["value"]):
+        raw = deepcopy(base)
+        raw["front_layers"] = [r for r in raw["front_layers"] if r["id"] != row["id"]]
+        if raw.get("expression", {}).get("text"):
+            raw["expression"]["in_sync"] = False
+        design, lineage = cleaned(raw, origins)
+        yield "delete_layer_merge", design, lineage
+    pairs = list(dict.fromkeys((r["material_id"], r["optical_set_id"]) for r in source["front_layers"]))
+    for index in range(len(base["front_layers"]) + 1):
+        for material, optical in pairs:
+            raw = deepcopy(base)
+            identifier = f"live-repair-{physical_design_hash(base)[:12]}-{index}-{pairs.index((material, optical))}"
+            while any(r["id"] == identifier for r in raw["front_layers"]):
+                identifier += "-new"
+            raw["front_layers"].insert(index, dict(id=identifier, material_id=material,
+                optical_set_id=optical, thickness=dict(value=max(target, floor, np.finfo(float).tiny), unit="nm"), note=""))
+            if raw.get("expression", {}).get("text"):
+                raw["expression"]["in_sync"] = False
+            lineage = deepcopy(origins)
+            lineage[identifier] = []
+            yield "insert_material_layer", raw, lineage
+
+
+def automatic_repair_live(request, source, *, target_nm, thickness_tolerance_nm,
+        optical_tolerance, cancel_event=None, report=lambda value: None,
+        checkpoint=lambda value: None, policy=None, optical_settings=None,
+        original_targets_present=True, external_retained_bytes=lambda: 0,
+        request_identity=None):
+    """Live repair progress under fixed optical protection, without a total quota."""
+    from importlib import import_module
+    from .film_design_service import simulation_settings
+    from .film_synthesis_multispectral_minimax import _signed_bounds, _original_reduction
+    from .film_objective_criteria import signed_bound_count
+    from .film_synthesis_manufacturing import manufacturing_source_fingerprint
+    from .film_manufacturing_jobs import _json, estimate_audit_resources
+
+    controls = dict(LIVE_POLICY if policy is None else policy)
+    if (set(controls) != set(LIVE_POLICY) or controls["version"] != 3
+            or any(type(controls[k]) is not int or controls[k] < (0 if k == "feedback_rounds" else 1)
+                   for k in controls)):
+        raise ValueError("invalid finite local live-repair policy; total work quotas are not supported")
+    source = validate_design(deepcopy(dict(source)))
+    floor = lower_limit(target_nm, thickness_tolerance_nm)
+    guide = _guard_request(request, optical_tolerance)
+    settings = simulation_settings(deepcopy(dict(optical_settings or
+        (request.frozen_material_snapshot or {}).get("settings") or {})))
+    if not legal_thicknesses(request, source, 0.0) or settings["first_surface"] != "front":
+        raise ValueError("live repair source violates native limits or supported incidence")
+    source_hash = physical_design_hash(source)
+    identity = dict(request_identity or dict(request_id="live-repair", request_hash=source_hash,
+        source_fingerprint=manufacturing_source_fingerprint(request, source)))
+    work = dict(physical_calls=0, wavelength_points=0, candidates=0, local_calls=0,
+        audit_calls=0, reference_calls=0, partial_physical_work_possible=False)
+    started = monotonic()
+    source_snapshot: Value | None = None
+    champion: Value | None = None
+    reviewed: Value | None = None
+    current: Value | None = None
+    frames = 0
+    trace: list[dict[str, Any]] = []
+    trace_total = 0
+    seen: set[str] = set()
+    cursor: Value = dict(generation=0, proposal_index=0, frontier_base_hash=source_hash)
+    owners: dict[str, Any] = {}
+    pairs: list[CurvePair] = []
+    audit_memory: Value | None = None
+    origins = {r["id"]: [r["id"]] for r in source["front_layers"]}
+    reason = "running"
+
+    def check():
+        if cancel_event is not None and cancel_event.is_set():
+            raise _StructureCancelled()
+
+    def memory(working=0):
+        extra = external_retained_bytes()
+        if type(extra) is not int or extra < 0:
+            raise ValueError("external retained bytes must be nonnegative integer")
+        limit = (request.resource_guard_resolution or {}).get("effective_bytes")
+        if limit is None:
+            return
+        if audit_memory is None:
+            actual = _owned_bytes(request, source, source_snapshot, champion, reviewed, current,
+                trace, seen, cursor, owners, *(p.retained_values() for p in pairs))
+        else:
+            # The source/champion/local owners cannot change inside one audit.
+            # Reserve incremental paired records instead of recursively walking
+            # their growing grids before and after every scalar extremum call.
+            # The existing audit model pays nine 2048-byte owners per point;
+            # another nine cover the paired reference response/cache/evidence.
+            # Count *all* candidate/reference samples, plus one complete pending
+            # grid, so pre-call admission also covers not-yet-counted responses.
+            added = work["wavelength_points"] - audit_memory["start_points"]
+            actual = audit_memory["retained"] + 18 * 2048 * (added + audit_memory["pending_points"])
+            working = max(working, audit_memory["working"])
+        if limit is not None and working + actual + extra > limit:
+            raise SynthesisResourceGuard("live repair actual retained state exceeds resource guard")
+
+    def body():
+        return dict(source=source_snapshot, best=champion, reviewed=reviewed,
+            detected_layer_ids=deficient_ids(source, floor), lower_limit_nm=floor,
+            policy=controls, work=deepcopy(work), trace=deepcopy(trace), trace_total=trace_total,
+            elapsed_seconds=monotonic() - started, termination=reason,
+            progress=dict(seq=frames, cursor=deepcopy(cursor), tried_hashes=sorted(seen), current=current))
+
+    def record_trace(event):
+        nonlocal trace_total
+        trace_total += 1
+        trace.append(dict(seq=trace_total, **event))
+        del trace[:-controls["trace_capacity"]]
+
+    def emit(status="running", *, persist=False):
+        nonlocal frames
+        frames += 1
+        frame = dict(stage="repair_live", schema_version=1, seq=frames,
+            **identity, source_hash=source_hash, status=status,
+            current=current, champion=champion, source=source_snapshot, work=deepcopy(work))
+        if status == "running":
+            memory()
+        if persist:
+            checkpoint(body())
+        report(_json(frame))
+
+    def physical(design, *, objectives=None, jacobian=False, _reference=False):
+        check()
+        active = request if objectives is None else replace(request, objectives=tuple(objectives))
+        memory(manufacturing_refinement_working_set_bytes(active, len(design["front_layers"])))
+        work["physical_calls"] += 1
+        work["reference_calls"] += int(_reference)
+        work["wavelength_points"] += sum(o.wavelength_samples * len(o.angles_deg) for o in active.objectives)
+        previous = work["partial_physical_work_possible"]
+        work["partial_physical_work_possible"] = True
+        value = evaluate_frozen_structure_candidate(_proxy(active), design,
+            variable_ids=tuple(r["id"] for r in design["front_layers"]) if jacobian else (),
+            with_jacobian=jacobian, cancel_event=cancel_event, optical_settings=settings)
+        work["partial_physical_work_possible"] = previous
+        return value
+
+    def reference_physical(design, *, objectives=None, jacobian=False):
+        return physical(design, objectives=objectives, jacobian=jacobian, _reference=True)
+
+    def audited(design, active, transform=None):
+        nonlocal audit_memory
+        check()
+        # Dense/offset buffers are reserved up front; scalar-owner growth is
+        # checked incrementally, without an artificial whole-job call cap.
+        reserve = estimate_audit_resources(active, design, physical_call_limit=1 + len(active.objectives))
+        memory(reserve["working_set_bytes"])
+        audit_memory = dict(retained=_owned_bytes(request, source, source_snapshot, champion,
+            reviewed, current, trace, seen, cursor, owners, *(p.retained_values() for p in pairs)),
+            start_points=work["wavelength_points"], pending_points=reserve["wavelength_points_upper_bound"],
+            working=reserve["working_set_bytes"])
+        previous = work["partial_physical_work_possible"]
+        work["partial_physical_work_possible"] = True
+        last = [0, 0]
+
+        def progress(value):
+            calls, points = value["physical_evaluations"], value["wavelength_points"]
+            if calls == last[0]:
+                check()
+                work["physical_calls"] += 1
+            work["wavelength_points"] += points - last[1]
+            last[:] = calls, points
+
+        def retained(value):
+            owners["auditor"] = value
+            memory(reserve["working_set_bytes"])
+
+        audit_failed = False
+        try:
+            result = audit_frozen_synthesis_candidate(active, design, cancel_event=cancel_event,
+                progress_callback=progress, response_transform=transform,
+                optical_settings=settings, retained_callback=retained)
+        except BaseException:
+            audit_failed = True
+            raise
+        finally:
+            owners.pop("auditor", None)
+            audit_memory = None
+            try:
+                memory(reserve["working_set_bytes"])
+            except Exception:
+                # Cleanup still measures the full retained state, but a
+                # secondary accounting failure must not replace cancellation
+                # or the original failed-audit reason/champion checkpoint.
+                if not audit_failed:
+                    raise
+        work["audit_calls"] += 1
+        work["partial_physical_work_possible"] = previous
+        return result
+
+    def snapshot(raw, audit, lineage, optical_guard, protection, *, converged=False):
+        frozen = manufacturing_snapshot(request, dict(raw), audit_value=audit)
+        value = dict(design=deepcopy(raw["design"]), training_score=frozen.training_score,
+            audit_score=frozen.audit_score, optical_guard=optical_guard,
+            protection_guard=protection, complete_evidence=True, converged=bool(converged),
+            layers=live_layers(raw["design"], lineage), physical_hash=physical_design_hash(raw["design"]),
+            evidence_binding=dict(training_hash=physical_design_hash(raw["design"]),
+                                  audit_hash=physical_design_hash(audit["design"])),
+            request_hash=identity["request_hash"], source_fingerprint=identity["source_fingerprint"],
+            source_hash=source_hash)
+        value["thickness_pass"] = thickness_defects(value["design"], floor)["count"] == 0
+        return value
+
+    def candidate_frame(design, lineage, operator, parent, scope):
+        hashed = physical_design_hash(design)
+        return dict(design=deepcopy(design), physical_hash=hashed,
+            candidate_id=f"{work['candidates']}:{hashed}", evidence_scope=scope,
+            operator=operator, parent_hash=parent, layers=live_layers(design, lineage))
+
+    def protection_for(value, original_pair, difference_pair):
+        if not original_targets_present:
+            return dict(kind="not_applicable", records=[], means=[], passed=True)
+        if _live_nominal(source_snapshot):
+            return dict(kind="nominal_preserved", records=[], means=[], passed=_live_nominal(value))
+        combined: dict[tuple[int, float], dict[float, tuple[float, float]]] = {}
+        for pair in (original_pair, difference_pair):
+            for key, points in pair.points.items():
+                combined.setdefault(key, {}).update(points)
+        records = []
+        for (index, angle), points in sorted(combined.items()):
+            objective = request.objectives[index]
+            if not objective.pointwise.enabled:
+                continue
+            waves = sorted(points)
+            records.append(dict(objective_index=index, angle_deg=angle, metric=objective.metric,
+                polarization=objective.polarization, wavelength_nm=waves,
+                candidate_values=[points[w][0] for w in waves], reference_values=[points[w][1] for w in waves]))
+        means = [dict(scope=scope, objective_index=i, angle_deg=float(a),
+            candidate_actual=_live_mean_actual(value, scope, i, a),
+            reference_actual=_live_mean_actual(source_snapshot, scope, i, a))
+            for scope in ("training_score", "audit_score") for i, o in enumerate(request.objectives)
+            if o.mean.enabled for a in o.angles_deg]
+        result = dict(kind="per_condition_nonincrease", records=records, means=means)
+        value["protection_guard"] = result
+        result["passed"] = original_protection_pass(value, source_snapshot, request)
+        return result
+
+    def consider(raw, lineage, operator, parent, *, converged=False):
+        nonlocal champion, reviewed, current, trace_total
+        check()
+        assert source_snapshot is not None
+        prospective = thickness_defects(raw["design"], floor)
+        incumbent = thickness_defects((champion or source_snapshot)["design"], floor)
+        original_defects = thickness_defects(source, floor)
+        if (prospective["sum"], prospective["max"], prospective["count"]) >= (
+                original_defects["sum"], original_defects["max"], original_defects["count"]):
+            return False
+        if champion is not None and champion["physical_hash"] == physical_design_hash(raw["design"]):
+            if converged:
+                champion["converged"] = True
+                checkpoint(body())
+            return False
+        if (prospective["sum"], prospective["max"], prospective["count"]) > (incumbent["sum"], incumbent["max"], incumbent["count"]):
+            return False
+        difference = CurvePair(guide, source, reference_physical)
+        pairs.append(difference)
+        difference.transform(guide.objectives, raw)
+        train_guard = difference.evidence(optical_tolerance)
+        if not train_guard["passed"]:
+            pairs.remove(difference)
+            return False
+        if original_targets_present:
+            if _live_nominal(source_snapshot):
+                training_protected = raw["score"].get("nominal_pass") is True
+            else:
+                reference = _original_reduction(request, next(iter(difference.cache.values())), ())
+                candidate_reduction = _original_reduction(request, raw, ())
+                training_protected = all(_live_no_worse(
+                    getattr(request.objectives[e.objective_index], e.reduction), e.actual, before.actual)
+                    for e, before in zip(candidate_reduction.conditions, reference.conditions, strict=True))
+            if not training_protected:
+                record_trace(dict(kind="training_optical_rejected", physical_hash=physical_design_hash(raw["design"]),
+                    operator=operator, reason="original_training_protection", original_training_max_error=raw["score"]["max_error"]))
+                pairs.remove(difference)
+                return False
+        # Use distinct owners for independent evidence, never optimizer caches.
+        verification = CurvePair(guide, source, reference_physical)
+        original_pair = CurvePair(request, source, reference_physical)
+        pairs.extend((verification, original_pair))
+        delta_audit = audited(raw["design"], guide, verification.transform)
+        guard = verification.evidence(optical_tolerance)
+        guard["audit"] = curve_audit_metadata(delta_audit)
+
+        def observe(objectives, value, index=None):
+            if original_targets_present and not _live_nominal(source_snapshot):
+                original_pair.transform(objectives, value, index)
+            return value
+
+        original_audit = audited(raw["design"], request, observe)
+        value = snapshot(raw, original_audit, lineage, guard, {}, converged=converged)
+        value["protection_guard"] = protection_for(value, original_pair, verification)
+        value["assessment"] = assess_live_candidate(value, source_snapshot, request, floor,
+            original_targets_present=original_targets_present)
+        value["fully_repaired"] = value["assessment"]["all_requirements_met"]
+        reviewed = value
+        record_trace(dict(kind="audited_candidate", physical_hash=value["physical_hash"], operator=operator,
+            assessment=deepcopy(value["assessment"]), converged=bool(converged)))
+        pairs.remove(difference)
+        pairs.remove(verification)
+        pairs.remove(original_pair)
+        improved = (value["assessment"]["applicable_improvement"] and (champion is None
+            or tuple(value["assessment"]["rank"]) < tuple(champion["assessment"]["rank"])))
+        if improved:
+            champion = value
+            current = candidate_frame(value["design"], lineage, operator, parent, "audited")
+            emit(persist=True)
+            check()  # An observer may cancel after the committed champion.
+        return bool(improved)
+
+    def local(base, lineage, operator, parent):
+        nonlocal current
+        rows = base["front_layers"]
+        if not rows:
+            raw = physical(base)
+            consider(raw, lineage, operator, parent)
+            return
+        ids = tuple(r["id"] for r in rows)
+        ds = np.asarray([r["thickness"]["value"] for r in rows], float)
+        scale = max(1.0, floor)
+        initially_thin = ds < floor
+        lower = request.minimum_nonzero_thickness_nm or np.finfo(float).tiny
+        upper = request.max_layer_thickness_nm
+        bounds = [(lower / scale, None if upper is None else upper / scale) for _ in rows]
+        cache: Value = dict(x=None, value=None, q=None, j=None)
+        count = signed_bound_count(guide.objectives) + (signed_bound_count(request.objectives) if original_targets_present else 0)
+        pair = CurvePair(guide, source, reference_physical)
+        pairs.append(pair)
+        auxiliary: list[Value] = []
+        reference_reduction = None
+        protected_request = _live_protection_guide(request, source_snapshot, original_targets_present)
+        local_started = monotonic()
+        before_calls, before_local = work["physical_calls"], work["local_calls"]
+        session: Value = dict(kind="local_solver", operator=operator, parent_hash=parent,
+            initial_hash=physical_design_hash(base), role="accepted_iterates_and_actual_solver_terminal",
+            accepted_iterations=0, last_accepted_hash=None, terminal_hash=None,
+            termination="running", converged=False, feedback_rounds=0, feedback_points=0)
+
+        def data(x):
+            nonlocal current, reference_reduction
+            check()
+            x = np.asarray(x, float)
+            if cache["x"] is not None and np.array_equal(cache["x"], x):
+                return cache
+            thickness = x * scale
+            if np.array_equal(x, ds / scale):
+                thickness = ds.copy()
+            if (np.any(thickness < lower) or (upper is not None and np.any(thickness > upper))
+                    or (request.max_total_thickness_nm is not None and math.fsum(thickness) > request.max_total_thickness_nm)):
+                return dict(value=None, q=np.full(count, 1e6), j=np.zeros((count, len(ids))))
+            design = deepcopy(base)
+            for row, d in zip(design["front_layers"], thickness, strict=True):
+                row["thickness"] = dict(value=float(d), unit="nm")
+            if design.get("expression", {}).get("text"):
+                design["expression"]["in_sync"] = False
+            value = physical(design, jacobian=True)
+            value["variable_ids"] = ids
+            changed = pair.transform(guide.objectives, value)
+            q, jac, _ = _signed_bounds(guide, changed, ids)
+            if original_targets_present:
+                original = _original_reduction(protected_request, value, ids)
+                if reference_reduction is None:
+                    reference = next(iter(pair.cache.values()))
+                    reference_reduction = _original_reduction(request, reference, ())
+                source_violation = np.asarray([e.normalized_violation for e in reference_reduction.conditions])
+                envelope = source_violation[np.asarray(original.signed_bound_condition_indices, dtype=int)]
+                q = np.concatenate((q, original.signed_bound_values - envelope))
+                jac = np.vstack((jac, original.signed_bound_jacobian))
+            for extra in auxiliary:
+                extra_raw = physical(design, objectives=extra["request"].objectives, jacobian=True)
+                extra_raw["variable_ids"] = ids
+                transformed = extra["pair"].transform(extra["guide"].objectives, extra_raw)
+                extra_q, extra_j, _ = _signed_bounds(extra["guide"], transformed, ids)
+                if original_targets_present and extra["protect_original"]:
+                    reduced = _original_reduction(extra["protected_request"], extra_raw, ids)
+                    if extra["reference"] is None:
+                        extra["reference"] = _original_reduction(extra["request"],
+                            next(iter(extra["pair"].cache.values())), ())
+                    violations = np.asarray([e.normalized_violation for e in extra["reference"].conditions])
+                    allowed = violations[np.asarray(reduced.signed_bound_condition_indices, dtype=int)]
+                    extra_q = np.concatenate((extra_q, reduced.signed_bound_values - allowed))
+                    extra_j = np.vstack((extra_j, reduced.signed_bound_jacobian))
+                q, jac = np.concatenate((q, extra_q)), np.vstack((jac, extra_j))
+            cache.update(x=x.copy(), value=value, q=q, j=jac)
+            owners["local_cache"] = cache
+            work["local_calls"] += 1
+            current = candidate_frame(value["design"], lineage, operator, parent, "training")
+            emit()
+            return cache
+
+        def objective(x):
+            check()
+            thickness = np.asarray(x, float) * scale
+            deficit = np.maximum(0.0, floor - thickness)
+            denominator = floor if floor else 1.0
+            # A quadratic on initially deficient layers avoids an arbitrarily
+            # large overshoot into the zero-hinge plateau above the floor.
+            residual = np.where(initially_thin, thickness - floor, -deficit)
+            return float(np.sum((residual / denominator) ** 2)), 2.0 * residual * scale / denominator**2
+
+        def accepted(x):
+            value = data(x)
+            session["accepted_iterations"] += 1
+            if value["value"] is not None:
+                session["last_accepted_hash"] = physical_design_hash(value["value"]["design"])
+            # SLSQP residuals are guides, never physical acceptance evidence.
+            # Consider complete accepted points through the exact curve and
+            # independent original/protection gates even at tiny guide residuals.
+            if value["value"] is not None:
+                consider(value["value"], lineage, operator, parent)
+            check()
+
+        constraints = [dict(type="ineq", fun=lambda x: -data(x)["q"], jac=lambda x: -data(x)["j"] * scale)]
+        if request.max_total_thickness_nm is not None:
+            constraints.append(dict(type="ineq", fun=lambda x: request.max_total_thickness_nm - math.fsum(np.asarray(x) * scale),
+                                    jac=lambda x: np.full(len(ids), -scale)))
+        try:
+            point = ds / scale
+            for feedback_round in range(controls["feedback_rounds"] + 1):
+                check()
+                session.update(feedback_rounds=feedback_round, feedback_points=len(auxiliary))
+                before_review = reviewed
+                cache.update(x=None, value=None, q=None, j=None)
+                outcome = import_module("scipy.optimize").minimize(objective, point, jac=True,
+                    method="SLSQP", bounds=bounds, constraints=constraints, callback=accepted,
+                    options=dict(maxiter=controls["local_iterations"], ftol=1e-12))
+                final = data(outcome.x)
+                session.update(termination="converged" if outcome.success else
+                    "iteration_limit" if int(getattr(outcome, "status", -1)) == 9 else "solver_failure",
+                    converged=bool(outcome.success), iterations=int(getattr(outcome, "nit", 0)),
+                    feedback_rounds=feedback_round, feedback_points=len(auxiliary),
+                    message=str(outcome.message)[:512], terminal_hash=(
+                        physical_design_hash(final["value"]["design"]) if final["value"] is not None else None))
+                if final["value"] is not None:
+                    consider(final["value"], lineage, operator, parent, converged=bool(outcome.success))
+                if (feedback_round >= controls["feedback_rounds"] or reviewed is None or reviewed is before_review
+                        or reviewed["assessment"]["optical_protection_pass"]
+                        or (champion is not None and champion["assessment"]["thickness_complete"])):
+                    break
+                # Reuse the existing bounded audit-point feedback selector.
+                # The new constraints compare source violations at those exact
+                # points, so an already failing source is never forced nominal.
+                feedback = _audit_feedback(request, reviewed["optical_guard"],
+                    dict(score=reviewed["audit_score"]), original_targets_present=original_targets_present)
+                if not feedback:
+                    break
+                for kind, index, sampled in feedback:
+                    protect_original = kind == "original" or request.objectives[index].pointwise.enabled
+                    if not sampled.pointwise.enabled and not sampled.mean.enabled:
+                        sampled = replace(sampled, pointwise=FilmObjectiveConstraint())
+                    active = replace(request, objectives=(sampled,))
+                    protected_sample = protected_request.objectives[index]
+                    protected = replace(active, objectives=(replace(sampled,
+                        pointwise=replace(protected_sample.pointwise, enabled=sampled.pointwise.enabled),
+                        mean=replace(protected_sample.mean, enabled=sampled.mean.enabled)),))
+                    delta = _guard_request(active, optical_tolerance)
+                    owner = CurvePair(delta, source, reference_physical)
+                    auxiliary.append(dict(request=active, protected_request=protected, guide=delta, pair=owner,
+                        reference=None, protect_original=protect_original))
+                    pairs.append(owner)
+                    count += signed_bound_count(delta.objectives) + (
+                        signed_bound_count(active.objectives) if original_targets_present and protect_original else 0)
+                point = np.asarray(outcome.x, float) if final["value"] is not None else ds / scale
+                owners["local_feedback"] = auxiliary
+                memory(manufacturing_refinement_working_set_bytes(replace(request,
+                    objectives=request.objectives + tuple(e["request"].objectives[0] for e in auxiliary)), len(ids)))
+        except _StructureCancelled:
+            session["termination"] = "cancelled"
+            raise
+        except SynthesisResourceGuard:
+            session["termination"] = "resource_guard"
+            raise
+        finally:
+            session.update(elapsed_seconds=monotonic() - local_started,
+                physical_calls=work["physical_calls"] - before_calls,
+                local_calls=work["local_calls"] - before_local)
+            record_trace(session)
+            owners.pop("local_cache", None)
+            owners.pop("local_feedback", None)
+            pairs.remove(pair)
+            for extra in auxiliary:
+                pairs.remove(extra["pair"])
+
+    try:
+        check()
+        raw_source = physical(source)
+        source_audit = audited(source, request)
+        zero = CurvePair(guide, source, lambda _design, computed=raw_source, **_kwargs: computed)
+        zero.transform(guide.objectives, raw_source)
+        zero_guard = zero.evidence(optical_tolerance)
+        zero_guard["audit"] = dict(kind="identical_frozen_design", physical_hash=source_hash)
+        source_snapshot = snapshot(raw_source, source_audit, origins, zero_guard,
+            dict(kind="not_applicable" if not original_targets_present else "baseline_identity", records=[], means=[], passed=True))
+        source_snapshot["assessment"] = assess_live_candidate(source_snapshot, source_snapshot, request, floor,
+            original_targets_present=original_targets_present)
+        source_snapshot["fully_repaired"] = source_snapshot["assessment"]["all_requirements_met"]
+        current = candidate_frame(source, origins, "frozen_source", source_hash, "audited")
+        emit(persist=True)
+        del raw_source, source_audit, zero
+        if not deficient_ids(source, floor):
+            reason = "no_thin_layers"
+        else:
+            base, lineage = deepcopy(source), deepcopy(origins)
+            while True:
+                check()
+                generation_start = None if champion is None else champion["physical_hash"]
+                cursor["frontier_base_hash"] = physical_design_hash(base)
+                for index, (operator, proposed, mapping) in enumerate(_live_structures(request, base, lineage, source, target_nm, floor)):
+                    check()
+                    cursor["proposal_index"] = index
+                    hashed = physical_design_hash(proposed)
+                    if hashed in seen or not legal_thicknesses(request, proposed, 0.0):
+                        continue
+                    seen.add(hashed)
+                    work["candidates"] += 1
+                    memory()
+                    local(proposed, mapping, operator, cursor["frontier_base_hash"])
+                    checkpoint(body())
+                    if champion is not None and champion["assessment"]["thickness_complete"]:
+                        break
+                if champion is not None and champion["assessment"]["thickness_complete"]:
+                    reason = ("thickness_goal_reached" if champion["assessment"]["all_requirements_met"]
+                              else "thickness_goal_reached_original_targets_unmet")
+                    break
+                if champion is None or champion["physical_hash"] == generation_start:
+                    reason = "frontier_exhausted" if seen else "no_effective_improvement"
+                    break
+                base = deepcopy(champion["design"])
+                lineage = {r["id"]: list(r["origins"]) for r in champion["layers"]}
+                cursor["generation"] += 1
+                checkpoint(body())
+    except _StructureCancelled:
+        reason = "cancelled"
+    except SynthesisResourceGuard:
+        reason = "resource_guard"
+    emit("cancelled" if reason == "cancelled" else "completed", persist=True)
+    return body()

@@ -143,17 +143,17 @@ def test_automatic_topology_apply_undo_and_source_reuse_keep_full_variable_model
     owner = FilmOptimizationQuickController(source)
     pool,client = HeldPool(),PhysicsClient(tmp_path)
     monkeypatch.setattr(QThreadPool,'globalInstance',lambda:pool)
-    original_candidates = automatic.structural_candidates
+    original_candidates = automatic._live_structures
 
     def deletion_branch_first(*args,**kwargs):
         # Exercise the editor's topology handoff with a legal existing
         # candidate; real local optics and the independent guard still run.
-        for name,candidate in original_candidates(*args,**kwargs):
-            if name == 'delete_thin_layers_merge':
-                yield name,candidate
+        for name,candidate,lineage in original_candidates(*args,**kwargs):
+            if name == 'delete_layer_merge':
+                yield name,candidate,lineage
                 return
 
-    monkeypatch.setattr(automatic,'structural_candidates',deletion_branch_first)
+    monkeypatch.setattr(automatic,'_live_structures',deletion_branch_first)
     replacement = None
     try:
         assert owner.setObjectiveField('wavelength_min_nm',550.)
@@ -173,7 +173,7 @@ def test_automatic_topology_apply_undo_and_source_reuse_keep_full_variable_model
 
         run_automatic()
         payload = panel._payload
-        assert payload is not None and payload['schema_version'] == 2
+        assert payload is not None and payload['schema_version'] == 3
         assert len(payload['result']['best']['design']['front_layers']) == 1
         source_layers = payload['result']['source']['design']['front_layers']
         assert source_layers[1]['id'] == 'thin'

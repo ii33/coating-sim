@@ -31,6 +31,50 @@ class FileCancelEvent:
 
 class ResultSaveError(RuntimeError): pass
 
+
+class _RepairLivePublisher:
+    """Coalesce previews while durably publishing every new audited champion."""
+
+    MAX_BYTES = 64 * 1024 * 1024
+
+    def __init__(self, directory, expected_request, *, clock=None):
+        self.path = Path(directory) / 'repair-live.json'
+        self.expected_request = expected_request
+        self.clock = clock or time.monotonic
+        self.seen_sequence = -1
+        self.sequence = -1
+        self.last_write = -float('inf')
+        self.champion_hash: str | None = None
+        self.source_ready = False
+        self.status: str | None = None
+
+    def publish(self, value, *, force=False):
+        from coat_sim.core.film_automatic_repair_jobs import validate_live_progress
+        import hashlib
+
+        frame = validate_live_progress(value, self.expected_request, after_seq=self.seen_sequence)
+        if self.status in ('cancelled', 'completed'):
+            raise ValueError('repair_live_after_terminal')
+        champion = frame.get('champion')
+        champion_hash = (hashlib.sha256(canonical(champion).encode('utf-8')).hexdigest()
+                         if isinstance(champion, dict) else None)
+        source_ready = frame.get('source') is not None
+        now = self.clock()
+        force = (force or champion_hash != self.champion_hash
+                 or source_ready != self.source_ready
+                 or frame['status'] != 'running')
+        self.seen_sequence = frame['seq']
+        if not force and now - self.last_write < .25:
+            return False
+        write_json(self.path, frame, max_bytes=self.MAX_BYTES)
+        self.sequence = frame['seq']
+        self.last_write = now
+        self.champion_hash = champion_hash
+        self.source_ready = source_ready
+        self.status = frame['status']
+        return True
+
+
 def load_result(reply, client=None):
     """Array loading is explicit and local; never part of a status RPC."""
     import numpy as np
@@ -469,8 +513,20 @@ def run(root, job_id, owner_pid, owner_instance):
     if json.loads((directory / 'launch.json').read_text(encoding='utf-8')).get('instance') != owner_instance:
         return 75
     last_report = [0., 0.]
+    repair_live_publisher: _RepairLivePublisher | None = None
     def report(value, *, force=False):
         from coat_sim.core.compute_tasks import _compact_progress
+        if (repair_live_publisher is not None and isinstance(value, dict)
+                and value.get('stage') == 'repair_live'):
+            try:
+                force = repair_live_publisher.publish(value, force=force) or force
+            except (OSError, TypeError, ValueError) as exc:
+                # Optional live observation cannot replace a good frame with
+                # an invalid/truncated one or reject the physical computation.
+                print(f'repair_live_persistence_warning: {exc}', flush=True)
+            value = dict(value)
+            if repair_live_publisher.sequence >= 0:
+                value['repair_live_sequence'] = repair_live_publisher.sequence
         value = _compact_progress(value) or {}
         now = time.monotonic()
         if now - last_report[0] < .25 and not force: return
@@ -499,6 +555,10 @@ def run(root, job_id, owner_pid, owner_instance):
             raise ValueError('frozen_input_digest_mismatch')
         if queue_kind != spec.executor:
             raise ValueError('queue_executor_mismatch')
+        if spec.executor == 'film_manufacturing_repair':
+            manufacturing = spec.parameters.get('payload')
+            if isinstance(manufacturing, dict) and manufacturing.get('schema_version') == 3:
+                repair_live_publisher = _RepairLivePublisher(directory, manufacturing.get('request'))
         from .film_display import FILM_DISPLAY_EXECUTORS, WorkerDisplaySession, display_configuration_for_job
         if spec.executor in FILM_DISPLAY_EXECUTORS:
             try:

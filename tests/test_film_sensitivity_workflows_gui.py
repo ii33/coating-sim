@@ -353,6 +353,10 @@ def test_table_and_ideal_drafts_are_isolated_and_focus_survives_typing(harness, 
         click_operation_bar_action(app, window, "filmSensitivityOpenButton")
         click(app, window, _find_visual_item(window.contentItem(), "filmSensitivityTableTab"))
         assert panel.activeWorkflow == "table"
+        section = _find_visual_item(window.contentItem(), "filmThicknessLayerOverridesSection")
+        assert section is not None
+        click(app, window, section.findChild(QQuickItem, "themeSectionHeader"))
+        assert section.property("expanded")
         field = _find_visual_item(window.contentItem(), "filmThicknessBias_" + layer_id)
         assert field is not None, warnings
         click(app, window, field)

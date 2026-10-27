@@ -116,6 +116,13 @@ def harness(app, tmp_path, monkeypatch):
                               pool=pool, client=client, tmp_path=tmp_path)
 
 
+@pytest.fixture
+def legacy_v2_harness(harness, monkeypatch):
+    """Exercise preserved v2 jobs through the real worker, not the new live mode."""
+    monkeypatch.setattr(automatic_jobs, "make_live_request_payload", automatic_jobs.make_request_payload)
+    return harness
+
+
 def configure(h):
     panel = h.panel
     assert panel.setLayerSelected(panel.layerRows[0]["layer_id"], True)
@@ -462,7 +469,7 @@ AppWindow {
         QCoreApplication.processEvents()
         assert h.panel.hasResult and not h.panel.busy, h.panel.error
         payload = h.panel._payload
-        assert payload["schema_version"] == 2
+        assert payload["schema_version"] == 3
         request = payload["request"]
         assert (
             request["reference_nm"],
@@ -527,8 +534,8 @@ def _configure_automatic(h, *, target="110", thickness_tolerance="1", optical_to
     assert h.panel.startAutomatic(), h.panel.error
 
 
-def test_automatic_cancel_retains_audited_result_for_review_without_apply(harness):
-    h = harness
+def test_legacy_v2_cancel_retains_audited_result_for_review_without_apply(legacy_v2_harness):
+    h = legacy_v2_harness
     original = deepcopy(h.session.snapshot().design)
     h.client.cancel_stage = "repair_audited_best"
     _configure_automatic(h)
@@ -547,10 +554,10 @@ def test_automatic_cancel_retains_audited_result_for_review_without_apply(harnes
     assert h.panel.hasResult and not h.panel.canApply
 
 
-def test_real_automatic_curve_guard_pass_with_failed_original_goal_is_review_only_and_cannot_apply(
-    harness,
+def test_legacy_v2_real_curve_guard_pass_with_failed_original_goal_is_review_only_and_cannot_apply(
+    legacy_v2_harness,
 ):
-    h = harness
+    h = legacy_v2_harness
     assert h.owner.setObjectiveField("pointwise.upper_bound_percent", 0.)
     assert h.owner.setSolverOption("max_evaluations", 192)
     assert h.panel.prepare(), h.panel.error
@@ -612,7 +619,7 @@ def test_automatic_repeat_uses_new_frozen_source_and_old_terminal_cannot_replace
     h.pool.run()
     second = deepcopy(h.panel._payload)
     assert (
-        second["schema_version"] == 2
+        second["schema_version"] == 3
         and second["request"]["source_design"]["front_layers"][0]["thickness"]["value"] == 105.0
     )
     assert second["request"]["source_fingerprint"] != first["request"]["source_fingerprint"]
@@ -631,7 +638,7 @@ def test_automatic_cancel_before_admission_can_restart_without_reusing_old_frame
     assert h.panel.prepare(), h.panel.error
     _configure_automatic(h)
     h.pool.run()
-    assert h.panel.hasResult and h.panel._payload["schema_version"] == 2, h.panel.error
+    assert h.panel.hasResult and h.panel._payload["schema_version"] == 3, h.panel.error
     assert len(h.client.submissions) == 1
     assert h.panel._payload["result"]["best"] is not None
     assert h.session.snapshot().design == original
@@ -658,10 +665,10 @@ def test_automatic_cancel_before_admission_can_restart_without_reusing_old_frame
     ],
     ids=["current-scope", "existing-endpoint-hold", "existing-error-policy"],
 )
-def test_no_original_goal_uses_current_simulation_scope_and_existing_material_policy(
-    harness, settings, can_calculate,
+def test_legacy_v2_no_original_goal_uses_current_simulation_scope_and_existing_material_policy(
+    legacy_v2_harness, settings, can_calculate,
 ):
-    h = harness
+    h = legacy_v2_harness
     h.source.settings = deepcopy(settings)
     h.owner._objectives = []
     assert h.panel.prepare(), h.panel.error
@@ -721,10 +728,10 @@ def test_no_original_goal_uses_current_simulation_scope_and_existing_material_po
     assert h.session.snapshot().design == original
 
 
-def test_automatic_session_simulation_scope_precedes_live_defaults_and_change_fences_old_apply(
-    harness, monkeypatch,
+def test_legacy_v2_session_simulation_scope_precedes_live_defaults_and_change_fences_old_apply(
+    legacy_v2_harness, monkeypatch,
 ):
-    h = harness
+    h = legacy_v2_harness
     h.source.settings = dict(wavelength_min_nm=400., wavelength_max_nm=700., samples=31,
                              angle_deg=0., polarization="unpolarized",
                              extrapolation_policy="endpoint_hold")

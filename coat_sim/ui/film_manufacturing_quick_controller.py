@@ -21,7 +21,7 @@ from PySide6.QtCore import QObject, Property, QRunnable, QUrl, Signal, Slot
 
 from coat_sim.scheduler import SchedulerClient, freeze_spec
 from coat_sim.scheduler.desktop import RemoteCancelEvent, observe_job, submit_local_with_receipt
-from coat_sim.ui.film_manufacturing_quick_adapter import comparison_rows, comparison_scope_text
+from coat_sim.ui.film_manufacturing_quick_adapter import comparison_rows, comparison_scope_text, layer_change_rows
 from coat_sim.ui.film_optimization_run_coordinator import FilmOptimizationRunCoordinator
 
 
@@ -37,6 +37,16 @@ _OPTION_LABELS = {'reference_nm': '单层目标厚度（nm）', 'thickness_toler
 def _automatic_terminal_summary(payload):
     body = payload.get('result') or {}
     reason = str(payload.get('termination_reason', ''))
+    if payload.get("schema_version") == 3:
+        if payload.get("state") == "cancelled":
+            return "本轮已停止；保留最后完整核验的改进，取消写回仍须通过当前来源保护。"
+        if payload.get("state") == "failed":
+            return "本轮未正常完成；保留已完成证据，未自动写回。"
+        ending = {"thickness_goal_reached": "保留层厚度下限已达到",
+                  "thickness_goal_reached_original_targets_unmet": "厚度下限已达到，原光学目标仍未全部通过",
+                  "no_thin_layers": "当前没有需要修复的薄层"}.get(reason, "本轮自然结束")
+        return ending + ("；已有可应用阶段改进，等待手动确认。" if body.get("best") is not None else
+                         "；没有严格改善且通过光学保护的候选，原设计未改变。")
     if payload.get('state') == 'cancelled':
         return '本轮已取消；保留已经完成的证据供回看，未应用。'
     if payload.get('state') == 'failed':
@@ -84,7 +94,7 @@ class _ManufacturingTask(QRunnable):
             from coat_sim.core.film_synthesis_io import film_synthesis_request_from_payload
 
             self._check()
-            from coat_sim.core.film_automatic_repair_jobs import make_request_payload as automatic_request
+            from coat_sim.core.film_automatic_repair_jobs import make_live_request_payload as automatic_request
             make_request = automatic_request if 'thickness_tolerance_nm' in self.options else jobs.make_request_payload
             selection = {} if make_request is automatic_request else {'defect_layer_ids': self.selected}
             request = make_request(
@@ -93,7 +103,12 @@ class _ManufacturingTask(QRunnable):
             closure = freeze_synthesis_editable_snapshot(
                 self.service, self.source, frozen_synthesis.frozen_material_snapshot)
             spec = freeze_spec(None, _EXECUTOR, {"payload": request})
+            from coat_sim.scheduler.jobs import JobSpec
+            input_digest = JobSpec.parse_frozen(spec).fingerprint
             job = spec["parameters"]["payload"]
+            prepared = {"frozen_request": job.get("request", request), "frozen_job": job, "synthesis_request": frozen_synthesis,
+                        "editable_snapshot": closure}
+            self.signals.progress.emit(self.operation_id, {"stage": "repair_prepared", "prepared": prepared})
             self._check()
             if _EXECUTOR not in self.client.capabilities().get("executors", ()):
                 raise ValueError("当前本地调度器不支持工艺薄层修复；请正常关闭并重启应用后重试。")
@@ -101,10 +116,31 @@ class _ManufacturingTask(QRunnable):
             submit_local_with_receipt(self.client, spec, job_id=self.job_id, metadata=self.metadata)
             self.cancel_event.mark_admitted()
             self.signals.jobIdChanged.emit(self.operation_id, self.job_id)
+            last_sequence = -1
+
+            def observe_progress(item):
+                nonlocal last_sequence
+                if isinstance(item, dict) and item.get("stage") == "repair_live":
+                    from coat_sim.core.film_automatic_repair_jobs import validate_live_progress
+                    try:
+                        if "repair_live_sequence" in item:
+                            item = self.client.repair_live(self.job_id, input_digest=input_digest,
+                                                          after_sequence=last_sequence)
+                            if item is None:
+                                return
+                        if type(item.get("seq")) is int and item["seq"] <= last_sequence:
+                            return
+                        item = validate_live_progress(item, expected_request=prepared["frozen_request"], after_seq=last_sequence)
+                    except (ValueError, TypeError, KeyError, OSError, RuntimeError) as exc:
+                        self.signals.progress.emit(self.operation_id,
+                            {"stage": "repair_live_rejected", "message": str(exc)})
+                        return
+                    last_sequence = item["seq"]
+                self.signals.progress.emit(self.operation_id, item)
+
             try:
                 payload = observe_job(
-                    self.client, self.job_id,
-                    lambda item: self.signals.progress.emit(self.operation_id, item),
+                    self.client, self.job_id, observe_progress,
                     disconnected=self.disconnected.is_set)
             except (InterruptedError, RuntimeError):
                 row = self.client.status(self.job_id)
@@ -116,8 +152,7 @@ class _ManufacturingTask(QRunnable):
                 raise ValueError("工艺修复报告未绑定此冻结来源、目标与作业，结果已拒绝。")
             payload = jobs.validate_result_payload(payload, expected_job=job, replay=False)
             self.signals.finished.emit(self.operation_id, payload,
-                                       {"frozen_request": request, "synthesis_request": frozen_synthesis, "editable_snapshot": closure,
-                                        "comparison_rows": comparison_rows(payload)}, None)
+                                       dict(prepared, comparison_rows=comparison_rows(payload)), None)
         except Exception as exc:
             from coat_sim.scheduler.remote_client import RemoteSubmissionUnknown
             prefix = "submission_unknown: " if isinstance(exc, RemoteSubmissionUnknown) else ""
@@ -147,10 +182,21 @@ class FilmManufacturingQuickController(QObject):
         self._prepared_signature = None
         self._context: dict | None = None
         self._payload: dict | None = None
+        self._live_frame: dict | None = None
+        self._live_seq = -1
+        self._stop_reason = ""
+        self._auto_apply_attempted = False
+        self._apply_in_progress = False
+        self._pending_application: dict | None = None
+        self._applied_snapshot: dict | None = None
+        self._applied_payload: dict | None = None
+        self._applied_source_revision: int | None = None
+        self._completed_operation_id: int | None = None
+        self._eligibility_cache: dict | None = None
         self._comparison_rows: list[dict] = []
         self._job_id = ""
         self._error = ""
-        self._status = "填写三个参数后自动识别薄层；可联动调整其他层及增删合并。结果不会自动应用。"
+        self._status = "填写三个参数后自动识别薄层；实时显示当前计算和已核验改进。用户取消时应用当前改进，无改进则保持原设计。"
         self._route = ""
         self._closed = self._stale = self._cancel_intent = self._applied = False
         self._unknown_submission = False
@@ -200,7 +246,7 @@ class FilmManufacturingQuickController(QObject):
                    "没有启用目标，按当前仿真配置比较 "
                    + comparison_scope_text(self._comparison_settings) + "。")
         return ("光学容差逐点比较本轮开始时原曲线与修复后的对应曲线，不用均值抵消。" + pairing
-                + "存在启用的原光学目标时，候选还须全部通过原目标；不放宽原指标。")
+                + "原目标达标状态另列；须守住原光学保护，已有违规不冒充达标，曲线变化容差不放宽。")
 
     @Property(str, notify=changed)
     def selectedRoute(self):
@@ -209,6 +255,95 @@ class FilmManufacturingQuickController(QObject):
     @Property(bool, notify=changed)
     def hasResult(self):
         return self._payload is not None
+
+    @Property(bool, notify=changed)
+    def hasLivePreview(self):
+        return self._live_frame is not None or (self._payload or {}).get("schema_version") == 3
+
+    def _application_payload(self):
+        if self._applied_payload is not None:
+            return self._applied_payload
+        if self._pending_application is not None:
+            return self._pending_application["payload"]
+        return self._payload if self._payload is not None else self._live_frame
+
+    def _application_source(self, payload=None):
+        payload = self._application_payload() if payload is None else payload
+        if not isinstance(payload, dict):
+            return None
+        return payload.get("source") if payload.get("stage") == "repair_live" else (payload.get("result") or {}).get("source")
+
+    def _application_request(self, payload=None):
+        payload = self._application_payload() if payload is None else payload
+        if isinstance(payload, dict) and payload.get("stage") != "repair_live":
+            return payload.get("request")
+        return (self._context or {}).get("frozen_request")
+
+    @Property(list, notify=changed)
+    def liveLayerRows(self):
+        source = self._application_source()
+        if source is None:
+            request = (self._context or {}).get("frozen_request") or {}
+            source = {"design": request.get("source_design", self.owner._design)}
+        current = (self._live_frame or {}).get("current")
+        if current is None:
+            current = ((self._payload or {}).get("result") or {}).get("reviewed")
+        return layer_change_rows(source, current, self._selected_snapshot())
+
+    @Property(str, notify=changed)
+    def liveSummary(self):
+        if self._payload is not None and self._context is None:
+            return "只读冻结报告；未绑定当前设计，不能应用。"
+        candidate = self._selected_snapshot()
+        if candidate is None:
+            return "当前厚度仅为计算预览；尚无通过光学保护且严格改善薄层问题的候选，原设计未改变。"
+        if not self._applied and not self._automatic_candidate_accepted(candidate):
+            return "候选尚无完整的光学保护与改进证据，只可预览，不能应用。"
+        assessment = candidate.get("assessment") or {}
+        completion = "全部保留层已达到厚度下限。" if assessment.get("thickness_complete") else "仍有膜层未达到厚度下限；这是可应用的阶段改进，不冒充修复完成。"
+        if assessment.get("original_nominal_pass") is False:
+            completion += "原光学目标仍未通过，真实违规另列；当前只通过光学不恶化保护。"
+        return ("已应用的改进保留供回看。" if self._applied else "最佳改进已完成光学核验，无需等待求解收敛。") + completion
+
+    @Property(dict, notify=changed)
+    def appliedPlotData(self):
+        return self._applied_plot_data()
+
+    def _applied_plot_data(self) -> dict[str, Any]:
+        snapshot = self._applied_snapshot
+        request = self._application_request(self._applied_payload)
+        if (snapshot is None or not isinstance(request, Mapping)
+                or self._applied_source_revision != self.owner._source_revision):
+            return {}
+        objectives = request.get("synthesis", {}).get("request", {}).get("objectives", ())
+        index = int(getattr(self.owner, "_plot_objective", 0))
+        if not 0 <= index < len(objectives):
+            return {}
+        coverage = snapshot.get("training_score", {}).get("coverage", ())
+        candidates = [row for row in coverage if row.get("objective_index") == index]
+        angle = float(getattr(self.owner, "_plot_angle", 0.0))
+        raw = next((row for row in candidates if math.isclose(float(row["angle_deg"]), angle, abs_tol=1e-10)), None)
+        if raw is None and not request.get("original_targets_present") and candidates:
+            raw = candidates[0]
+        if raw is None:
+            return {}
+        source = self._application_source(self._applied_payload) or {}
+        baseline: dict[str, Any] = next((row for row in source.get("training_score", {}).get("coverage", ())
+                         if row.get("objective_index") == index and row.get("angle_deg") == raw["angle_deg"]
+                         and row.get("wavelength_nm") == raw["wavelength_nm"]), {})
+        objective = objectives[index]
+        criterion = objective["pointwise"]
+        return dict(wavelength_nm=list(raw["wavelength_nm"]), candidate=list(raw["actual_values"]),
+            baseline=list(baseline.get("actual_values", ())), baseline_label="修复前原设计",
+            metric=objective["metric"], mode=criterion["mode"], angle_deg=raw["angle_deg"],
+            target_value=criterion.get("target_value") if criterion["enabled"] else None,
+            lower_bound=criterion.get("lower_bound") if criterion["enabled"] else None,
+            upper_bound=criterion.get("upper_bound") if criterion["enabled"] else None,
+            source="manufacturing_applied")
+
+    @Property(str, notify=changed)
+    def pendingApplicationHash(self):
+        return "" if self._pending_application is None else self._pending_application["physical_hash"]
 
     @Property(list, notify=changed)
     def comparisonRows(self):
@@ -219,15 +354,19 @@ class FilmManufacturingQuickController(QObject):
         if self._payload is None:
             return "尚无验证报告。"
         payload, request = self._payload, self._payload.get("request", {})
-        if payload.get('schema_version') == 2:
+        if payload.get('schema_version') in (2, 3):
             body = payload.get('result') or {}
+            if not request.get("original_targets_present"):
+                scope = ('无启用目标：本轮冻结比较范围为 '
+                         + comparison_scope_text(request.get('comparison_settings')) + '；原目标验收不适用。')
+            elif payload.get("schema_version") == 3:
+                scope = "可应用改进与全部条件满足分别判定；原光学目标仍显示真实训练和独立审计结果。"
+            else:
+                scope = "厚度、逐点光学变化及全部启用的原光学目标须联合通过；原目标训练与独立审计另列证据。"
             return (_automatic_terminal_summary(payload) + '\n'
                 f"单层接受下限 {body.get('lower_limit_nm', '未知')} nm；自动识别 {len(body.get('detected_layer_ids', []))} 层。\n"
                 f"光学变化上限 {request.get('optical_tolerance_percentage_points')} 个百分点；逐点最大绝对变化，不用均值抵消。\n"
-                + ('厚度、逐点光学变化及全部启用的原光学目标须联合通过；原目标训练与独立审计另列证据。'
-                   if request.get('original_targets_present') else
-                    '无启用目标：本轮冻结比较范围为 '
-                    + comparison_scope_text(request.get('comparison_settings')) + '；原目标验收不适用。'))
+                + scope)
         result = payload.get("result") or {}
         accounting = payload.get("work", payload.get("work_ledger", payload.get("budget_accounting", {})))
         return (f"终态：{payload.get('state', '未知')}；终止原因：{payload.get('termination_reason', '未知')}\n"
@@ -239,7 +378,11 @@ class FilmManufacturingQuickController(QObject):
                 "任务账目：" + json.dumps(accounting, ensure_ascii=False, sort_keys=True))
 
     def _signature(self, base):
-        return deepcopy((base.design_revision, base.design_snapshot, base.objectives,
+        design = deepcopy(dict(base.design_snapshot))
+        optimization = design.get("workflow_settings", {}).get("optimization")
+        if isinstance(optimization, dict):
+            optimization.pop("sensitivity_table", None)  # UI-only draft; no physical or goal change.
+        return deepcopy((base.design_revision, design, base.objectives,
                          base.acceptable_normalized_error, base.validation_samples_multiplier,
                          None if self._legacy_mode else self._comparison_settings))
 
@@ -307,6 +450,14 @@ class FilmManufacturingQuickController(QObject):
             return False
 
     def _selected_snapshot(self):
+        if self._applied_snapshot is not None:
+            return self._applied_snapshot
+        if self._pending_application is not None:
+            return self._pending_application["snapshot"]
+        if self._payload is not None and self._payload.get("schema_version") == 3:
+            return (self._payload.get("result") or {}).get("best")
+        if self._payload is None and self._live_frame is not None:
+            return self._live_frame.get("champion")
         if self._payload is None or self._route not in _ROUTES:
             return None
         result = self._payload.get("result")
@@ -315,25 +466,80 @@ class FilmManufacturingQuickController(QObject):
         route: dict[str, Any] = next((r for r in result.get("routes", ()) if r.get("route") == self._route), {})
         return route.get("champion")
 
-    def _automatic_candidate_accepted(self, snapshot):
-        request = (self._payload or {}).get("request")
+    def _automatic_candidate_accepted(self, snapshot, *, force=False):
+        payload = self._application_payload()
+        request = self._application_request(payload)
         if not isinstance(request, Mapping) or type(request.get("original_targets_present")) is not bool:
             return False
+        if request.get("schema_version") == 3:
+            source = self._application_source(payload)
+            cached = self._eligibility_cache
+            if not force:
+                return bool(cached is not None and cached["payload"] is payload
+                    and cached["snapshot"] is snapshot and cached["source"] is source
+                    and cached["request"] is request and cached["eligible"] and self._context_is_current())
+            from coat_sim.core.film_automatic_repair_jobs import applicable_improvement
+            eligible = applicable_improvement(snapshot, source, request)
+            self._eligibility_cache = dict(payload=payload, snapshot=snapshot, source=source,
+                request=request, eligible=eligible, seq=self._live_seq,
+                physical_hash=None if not isinstance(snapshot, Mapping) else snapshot.get("physical_hash"),
+                assessment={} if not isinstance(snapshot, Mapping) else deepcopy(snapshot.get("assessment", {})))
+            return eligible
         from coat_sim.core.film_automatic_repair import candidate_accepted
         return candidate_accepted(snapshot, request["original_targets_present"])
 
+    def _prime_application_validation(self):
+        cached = self._eligibility_cache
+        if (cached is not None and cached["payload"] is self._application_payload()
+                and cached["snapshot"] is self._selected_snapshot()):
+            return
+        try:
+            self._automatic_candidate_accepted(self._selected_snapshot(), force=True)
+        except (ValueError, TypeError, KeyError):
+            self._eligibility_cache = None
+
+    def _live_application(self, payload=None):
+        payload = self._application_payload() if payload is None else payload
+        return isinstance(payload, dict) and (payload.get("stage") == "repair_live"
+                                              or payload.get("schema_version") == 3)
+
+    def _application_matches(self, payload, snapshot):
+        if payload is not self._application_payload() or snapshot is not self._selected_snapshot():
+            return False
+        if self._pending_application is not None and self._pending_application["context"] is not self._context:
+            return False
+        if self._live_application(payload):
+            return self._automatic_candidate_accepted(snapshot)
+        return any(route.get("champion") is snapshot for route in (payload.get("result") or {}).get("routes", ()))
+
     @Property(str, notify=changed)
     def selectedRouteWarning(self):
+        if self._payload is not None and self._context is None:
+            return "只读冻结报告，未绑定当前来源；可以回看或另存，不能应用。"
+        if self._applied:
+            return "本次确认的完整改进已应用；以下保留冻结证据供回看，不会重复写回。"
         snapshot = self._selected_snapshot()
         if not isinstance(snapshot, dict):
             if self._payload is not None and self._context is None:
                 return '历史报告只读，未绑定当前来源；可以回看或另存，不能应用。'
+            if self.hasLivePreview:
+                return "尚无完整核验且严格改善薄层问题的候选；当前试探只作预览。"
             if not self._legacy_mode:
                 return '本轮尚无完整、通过容差的修复候选；不完整或超出容差的结果不能应用。'
             return "尚未选择完整 A/B 候选；不会自动选择或应用。"
         audit, training = snapshot.get("audit_score"), snapshot.get("training_score")
         if not isinstance(audit, dict) or not isinstance(training, dict):
             return "未知/未通过：所选候选缺少完整独立审计，不能应用。"
+        if self._live_application():
+            if not self._automatic_candidate_accepted(snapshot):
+                return "候选未通过光学保护或没有严格改善薄层问题，不能应用。"
+            assessment = snapshot.get("assessment") or {}
+            thickness = ("厚度下限已全部达到。" if assessment.get("thickness_complete") else
+                         "厚度下限尚未全部达到，可应用当前阶段改进。")
+            nominal = assessment.get("original_nominal_pass")
+            goals = ("原光学目标不适用。" if nominal is None else "原光学目标通过。" if nominal else
+                     "原光学目标仍未通过；保留真实违规，当前候选仅通过不恶化保护。")
+            return "已完整核验光学变化和原光学保护；" + thickness + goals
         if self._payload is not None and self._payload.get('schema_version') == 2:
             if not self._automatic_candidate_accepted(snapshot):
                 return '所选候选未通过完整联合验收，不能应用；请查看厚度、逐点光学变化及原启用目标的真实失败或未知证据。'
@@ -346,20 +552,27 @@ class FilmManufacturingQuickController(QObject):
 
     @Property(bool, notify=changed)
     def canApply(self):
-        if (self.busy or self._applied or self._cancel_intent or self._unknown_submission
-                or self._payload is None or self._payload.get("state") != "completed"
-                or not self._payload.get("is_final") or not self._context_is_current()):
+        payload = self._application_payload()
+        live = self._live_application(payload)
+        if (self._applied or self._apply_in_progress or self._unknown_submission
+                or payload is None or not self._context_is_current()):
+            return False
+        if live:
+            if self._stop_reason in {"source_changed", "owner_close", "shutdown"} or (self._cancel_intent and self.busy):
+                return False
+        elif (self.busy or self._cancel_intent or payload.get("state") != "completed"
+                or not payload.get("is_final")):
             return False
         snapshot = self._selected_snapshot()
         if (not isinstance(snapshot, dict) or not isinstance(snapshot.get("audit_score"), dict)
                 or type(snapshot.get("training_score", {}).get("nominal_pass")) is not bool
                 or type(snapshot["audit_score"].get("nominal_pass")) is not bool):
             return False
-        if self._payload.get('schema_version') == 2 and not self._automatic_candidate_accepted(snapshot):
+        if (live or payload.get('schema_version') == 2) and not self._automatic_candidate_accepted(snapshot):
             return False
         check = getattr(self.owner, "_manufacturing_can_apply", None)
         try:
-            return bool(callable(check) and check(self._payload, self._context, snapshot))
+            return bool(callable(check) and check(payload, self._context, snapshot))
         except (ValueError, TypeError, KeyError, AttributeError, RuntimeError):
             return False
 
@@ -370,11 +583,14 @@ class FilmManufacturingQuickController(QObject):
         if not isinstance(payload, dict) or payload.get("kind") != "coat_sim.film_manufacturing_result":
             raise ValueError("unsupported manufacturing report")
         self._payload, self._job_id = deepcopy(payload), str(job_id)
+        self._live_frame = None
+        self._pending_application = self._applied_snapshot = self._applied_payload = None
         self._comparison_rows = comparison_rows(payload)
         self._context = None
         self._route = ""
         self._error = ""
         self._status = "只读队列历史；未绑定当前来源设计，不能应用。"
+        self._prime_application_validation()
         self.changed.emit()
 
     @Slot(result=bool)
@@ -569,7 +785,8 @@ class FilmManufacturingQuickController(QObject):
                        "signature": self._signature(base), "draft_epoch": self._draft_epoch,
                        "comparison_settings": deepcopy(self._comparison_settings) if not self._legacy_mode else None,
                        "project_compute": compute, "project_operation": operation,
-                       "project_root": str(Path(getattr(self.owner.service, "root", Path.cwd())).resolve())}
+                       "project_root": str(Path(getattr(self.owner.service, "root", Path.cwd())).resolve()),
+                       "operation_id": self._run_coordinator.operation_serial + 1}
             client = self.client_factory(getattr(self.owner.service, "root", Path.cwd()))
             invalidated = threading.Event()
             session, source_owner = context["session"], context["source"]
@@ -585,6 +802,13 @@ class FilmManufacturingQuickController(QObject):
 
             self._context, self._source_invalidated = context, invalidated
             self._cancel_intent = self._applied = False
+            self._live_frame, self._live_seq = None, -1
+            self._stop_reason = ""
+            self._auto_apply_attempted = self._apply_in_progress = False
+            self._pending_application = self._applied_snapshot = self._applied_payload = None
+            self._completed_operation_id = None
+            self._eligibility_cache = None
+            self._payload = None
             self._route, self._error, self._job_id = "", "", job_id
             operation_id = self._run_coordinator.start(
                 submit=None, edit_epoch=context["epoch"],
@@ -593,9 +817,8 @@ class FilmManufacturingQuickController(QObject):
                     client, job_id, metadata, admission_check))
             if operation_id is None:
                 raise ValueError("修复操作正在运行或已关闭；没有重复提交。")
-            self._payload = None
             self._comparison_rows = []
-            self._status = "正在后台冻结来源、原始目标、材料与可编辑闭包，然后提交本地 CPU 队列；原设计不变。"
+            self._status = "正在后台冻结来源、目标、材料与可编辑闭包；核验后的阶段改进可应用，用户取消时自动应用当前改进。"
             self.changed.emit()
             return True
         except (ValueError, TypeError, KeyError, RuntimeError, OverflowError, OSError) as exc:
@@ -619,9 +842,37 @@ class FilmManufacturingQuickController(QObject):
 
     @Slot(int, object)
     def _on_progress(self, operation_id, progress):
-        if self._closed:
+        if self._closed or (self._context is not None and operation_id != self._context.get("operation_id", operation_id)):
             return
         if isinstance(progress, dict):
+            if progress.get("stage") == "repair_prepared":
+                prepared = progress.get("prepared")
+                if isinstance(prepared, dict) and self._context is not None:
+                    self._context.update(prepared)
+                self.changed.emit()
+                return
+            if progress.get("stage") == "repair_live":
+                if self._stale or self._applied or self._source_invalidated.is_set() or self._context is None:
+                    return
+                if type(progress.get("seq")) is int and progress["seq"] <= self._live_seq:
+                    return
+                from coat_sim.core.film_automatic_repair_jobs import validate_live_progress
+                try:
+                    frame = validate_live_progress(progress, expected_request=self._context.get("frozen_request"),
+                                                   after_seq=self._live_seq)
+                except (ValueError, TypeError, KeyError) as exc:
+                    self._error = "实时帧未通过身份或证据检查，已保留上一有效帧：" + str(exc)
+                    self.changed.emit()
+                    return  # A late, mismatched or incomplete frame never replaces the verified champion.
+                self._live_frame, self._live_seq = frame, frame["seq"]
+                self._prime_application_validation()
+                self._status = "正在修复；当前厚度是计算预览，最佳列只显示完成光学核验的改进。"
+                self.changed.emit()
+                return
+            if progress.get("stage") == "repair_live_rejected":
+                self._error = "实时帧身份或证据不完整，已忽略：" + str(progress.get("message", ""))
+                self.changed.emit()
+                return
             stage = {'repair_local':'正在联动优化各保留层', 'repair_audit':'正在独立核验逐点光学变化',
                      'repair_audited_best':'已保留通过联合验收的候选，继续比较结构'}.get(str(progress.get('stage')), progress.get('stage', 'running'))
             self._status = (f"{stage} · 计算 {progress.get('physical_calls', progress.get('evaluations', '未知'))} · "
@@ -630,8 +881,10 @@ class FilmManufacturingQuickController(QObject):
 
     @Slot(int, object, object, object)
     def _on_finished(self, operation_id, payload, prepared, error):
-        if self._closed:
+        if (self._closed or self._completed_operation_id == operation_id
+                or (self._context is not None and operation_id != self._context.get("operation_id", operation_id))):
             return
+        self._completed_operation_id = operation_id
         self._error = str(error or "")
         self._unknown_submission = self._error.startswith("submission_unknown:")
         if isinstance(prepared, dict) and self._context is not None:
@@ -639,15 +892,16 @@ class FilmManufacturingQuickController(QObject):
             self._context.update({key: deepcopy(value) for key, value in prepared.items()
                                   if key != "comparison_rows"})
         self._payload = deepcopy(payload) if isinstance(payload, dict) else None
-        if self._payload is not None and self._payload.get('schema_version') == 2:
+        if self._payload is not None and self._payload.get('schema_version') in (2, 3):
             self._route = 'automatic'
+        self._prime_application_validation()
         self._status = (f"{payload.get('state')} / {payload.get('termination_reason')}；仅比较，未应用。"
                         if self._payload is not None else "没有可验证报告；原设计未改变。")
-        if self._payload is not None and self._payload.get('schema_version') == 2:
+        if self._payload is not None and self._payload.get('schema_version') in (2, 3):
             self._status = _automatic_terminal_summary(self._payload)
         if self._stale or self._source_invalidated.is_set():
             self._status += " 来源已改变，报告仅供只读比较。"
-        if self._cancel_intent:
+        if self._cancel_intent and not self._live_application():
             self._status += " 已请求取消，本次结果不可应用。"
         compute = (self._context or {}).get("project_compute")
         if compute is not None:
@@ -655,14 +909,36 @@ class FilmManufacturingQuickController(QObject):
                      else "cancelled" if (payload or {}).get("state") == "cancelled"
                      else "failed" if (payload or {}).get("state") == "failed" else "succeeded")
             compute.update_job(self._job_id, state)
+        if (self._payload is not None and self._payload.get("schema_version") == 3
+                and self._stop_reason == "user_cancel" and not self._auto_apply_attempted
+                and not self._applied and not self._error):
+            self._auto_apply_attempted = True
+            if self.canApply:
+                self._apply_candidate(automatic=True)
+            else:
+                self._status = "已取消；没有可安全写回的完整改进，原设计未改变。"
+        elif self._applied:
+            self._status = "本轮已结束，已应用先前确认的改进；后续报告仅供回看，不会再次写回。"
         self.changed.emit()
 
     @Slot()
     def cancel(self):
+        self._request_cancel("user_cancel")
+
+    def _request_cancel(self, reason):
+        invalidation = {"source_changed", "owner_close", "shutdown"}
+        if (self._stop_reason != "shutdown"
+                and not (self._stop_reason in invalidation and reason not in invalidation)
+                and not (self._stop_reason == "manual_apply" and reason == "user_cancel")):
+            self._stop_reason = reason
+        if reason == "user_cancel" and not self._apply_in_progress:
+            self._pending_application = None
         if self.busy:
             self._cancel_intent = True
             error = self._run_coordinator.request_cancel()
-            self._status = "已请求取消；等待服务确认终态，不把取消意图当成完成。本次结果不会应用。"
+            self._status = ("已请求取消；等待服务终态后自动应用最后完整核验的改进，无改进则保持原设计。"
+                            if self._stop_reason == "user_cancel" and not self._legacy_mode else
+                            "已请求停止；来源或窗口失效时只保留报告，不自动写回。")
             if error is not None:
                 self._error = f"取消请求未确认：{error}；可重试同一作业的取消。"
             self.changed.emit()
@@ -683,28 +959,84 @@ class FilmManufacturingQuickController(QObject):
     def sourceChanged(self):
         self._stale = True
         self._source_invalidated.set()
+        self._eligibility_cache = None
+        if not self._apply_in_progress:
+            self._pending_application = None
         if self.busy:
-            self.cancel()
+            self._request_cancel("manual_apply" if self._apply_in_progress else "source_changed")
+        elif not self._apply_in_progress:
+            self._stop_reason = "source_changed"
         self._status = "来源、原始目标或项目已改变；需刷新并重新核对。本次报告不可应用。"
         self.changed.emit()
 
     @Slot(result=bool)
-    def applySelectedRoute(self):
+    def prepareApplication(self):
         if not self.canApply:
             self._error = "候选缺少完整独立审计，或来源/目标/材料/项目已改变；整个候选未应用。"
             self.changed.emit()
             return False
+        from coat_sim.core.film_synthesis_archive import physical_design_hash
+        payload = deepcopy(self._application_payload())
+        if payload.get("stage") == "repair_live":
+            snapshot = payload["champion"]
+        elif payload.get("schema_version") == 3:
+            snapshot = payload["result"]["best"]
+        else:
+            snapshot = next(route["champion"] for route in payload["result"]["routes"] if route["route"] == self._route)
+        self._pending_application = dict(payload=payload, snapshot=snapshot, context=self._context,
+                                         physical_hash=physical_design_hash(snapshot["design"]))
+        self._prime_application_validation()
+        self.changed.emit()
+        return True
+
+    @Slot()
+    def discardPreparedApplication(self):
+        if not self._apply_in_progress:
+            self._pending_application = None
+            self._prime_application_validation()
+            self.changed.emit()
+
+    @Slot(str, result=bool)
+    def applyPreparedCandidate(self, physical_hash):
+        if self._pending_application is None or self._pending_application["physical_hash"] != physical_hash:
+            self._error = "确认候选已失效，未改动来源；请重新核对当前改进。"
+            self.changed.emit()
+            return False
+        return self._apply_candidate(automatic=False)
+
+    @Slot(result=bool)
+    def applySelectedRoute(self):
+        if self._live_application() and self._pending_application is None and not self.prepareApplication():
+            return False
+        return self._apply_candidate(automatic=False)
+
+    def _apply_candidate(self, *, automatic):
+        if not self.canApply:
+            self._error = "候选缺少完整核验改进证据，或来源已变化；原设计未改变。"
+            self.changed.emit()
+            return False
+        payload, context, snapshot = self._application_payload(), self._context, self._selected_snapshot()
         apply = getattr(self.owner, "_apply_manufacturing_candidate", None)
+        self._apply_in_progress = True
         try:
-            if not callable(apply) or not apply(self._payload, self._context, self._selected_snapshot()):
+            if self.busy:
+                self._request_cancel("manual_apply")
+            if not callable(apply) or not apply(payload, context, snapshot):
                 raise ValueError("来源修订、未提交编辑、目标或材料已改变；整个候选未应用。")
             self._applied = True
-            self._status = "所选工艺修复候选已显式应用；原始光学目标未放宽，可在设计窗口撤销。"
+            self._applied_payload, self._applied_snapshot = payload, snapshot
+            self._applied_source_revision = self.owner._source_revision
+            self._pending_application = None
+            self._status = ("已取消并自动应用最后完整核验的改进；可在设计窗口撤销。" if automatic else
+                            "已应用本次确认的完整改进并结束本轮；可在设计窗口撤销。")
             self._error = ""
+            self.owner.plotDataChanged.emit()
         except (ValueError, TypeError, RuntimeError, KeyError) as exc:
             self._error = str(exc)
             self.changed.emit()
             return False
+        finally:
+            self._apply_in_progress = False
         self.changed.emit()
         return True
 
@@ -745,20 +1077,23 @@ class FilmManufacturingQuickController(QObject):
         A rejected unsaved-document confirmation leaves a usable controller.
         The durable worker is independently retained, so closure never blocks.
         """
-        if getattr(self.owner, "project_context", None) is None:
-            self.cancel()
+        if not self._legacy_mode or getattr(self.owner, "project_context", None) is None:
+            self._request_cancel("owner_close")
+        else:
+            self._stop_reason = "owner_close"
         return True
 
     @Slot()
     def detach(self):
         if self._closed:
             return
-        if getattr(self.owner, "project_context", None) is None:
-            self.cancel()
+        if not self._legacy_mode or getattr(self.owner, "project_context", None) is None:
+            self._request_cancel("owner_close")
         self._closed = True
         self._source_invalidated.set()
         self._run_coordinator.detach_service_observer()
 
     def shutdown(self, timeout_ms=1000):
+        self._stop_reason = "shutdown"
         self.detach()
         return self._run_coordinator.shutdown(timeout_ms)

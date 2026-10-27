@@ -11,7 +11,9 @@ import pytest
 from PySide6.QtCore import QObject, Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQuick import QQuickItem
+from PySide6.QtQml import QQmlEngine, QQmlExpression
 from PySide6.QtTest import QTest
+from coat_sim.ui.theme_service import ThemeService
 
 from tests.film_structure_fixtures import fixture as film_fixture
 from tests.test_film_optimization_restore_layout import (
@@ -52,6 +54,99 @@ def _visual(root: QQuickItem, name: str):
         if found is not None:
             return found
     return None
+
+
+def _reveal_click(app, window, item):
+    assert item is not None
+    context = QQmlEngine.contextForObject(item)
+    assert context is not None
+    expression = QQmlExpression(context, item, """(function () {
+        let ancestor = parent;
+        while (ancestor !== null) {
+            if ("contentY" in ancestor) {
+                const point = mapToItem(ancestor.contentItem, 0, 0);
+                ancestor.contentY = Math.min(Math.max(0, ancestor.contentHeight - ancestor.height),
+                                            Math.max(0, point.y - 15));
+            }
+            ancestor = ancestor.parent;
+        }
+    })()""")
+    expression.evaluate()
+    assert not expression.hasError(), expression.error().toString()
+    QTest.qWait(15)
+    click(app, window, item)
+
+
+def _enter_table_text(app, window, name, keys):
+    field = _visual(window.contentItem(), name)
+    _reveal_click(app, window, field)
+    QTest.keyClick(window, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
+    for key in keys:
+        QTest.keyClick(window, key)
+        app.processEvents()
+        assert _visual(window.contentItem(), name) is field
+        assert field.property("activeFocus")
+
+
+def _choose_table_option(app, window, name, index):
+    combo = _visual(window.contentItem(), name)
+    _reveal_click(app, window, combo)
+    QTest.keyClick(window, Qt.Key.Key_Home)
+    for _ in range(index):
+        QTest.keyClick(window, Qt.Key.Key_Down)
+    QTest.keyClick(window, Qt.Key.Key_Return)
+    app.processEvents()
+
+
+@pytest.mark.parametrize("mode,width,height", [("light", 1280, 760), ("dark", 560, 500)])
+def test_real_batch_fields_exceptions_fold_reset_and_request_mapping(
+        sensitivity_window, app, tmp_path, mode, width, height):
+    owner, panel, window, warnings = sensitivity_window
+    window.resize(width, height)
+    ThemeService.instance().configure(mode=mode)
+    _reveal_click(app, window, _visual(window.contentItem(), "filmSensitivityTableTab"))
+    assert all(row["enabled"] and not row["override"] for row in panel.thicknessErrorRows)
+    _enter_table_text(app, window, "filmThicknessCommonBias",
+                      (Qt.Key.Key_Minus, Qt.Key.Key_2, Qt.Key.Key_Period, Qt.Key.Key_5))
+    _choose_table_option(app, window, "filmThicknessCommonBiasUnit", 2)
+    _choose_table_option(app, window, "filmThicknessCommonUncertaintyKind", 1)
+    _enter_table_text(app, window, "filmThicknessCommonUncertainty", (Qt.Key.Key_1,))
+    _choose_table_option(app, window, "filmThicknessCommonUncertaintyUnit", 1)
+    base = owner._build_request(require_variables=False, fixed_topology=False)
+    request = panel._build_thickness_error_request(base)
+    assert all(row.enabled and row.bias == -.025 and row.bias_unit == "relative_fraction" for row in request.rows)
+    assert all(row.uncertainty_kind == "bounded" and row.uncertainty_magnitude == 1. for row in request.rows)
+    scroll = _visual(window.contentItem(), "filmThicknessErrorTableScroll")
+    context = QQmlEngine.contextForObject(scroll)
+    assert context is not None
+    top = QQmlExpression(context, scroll, "contentItem.contentY = 0")
+    top.evaluate()
+    assert not top.hasError(), top.error().toString()
+    QTest.qWait(25)
+    image = window.grabWindow()
+    if not image.isNull():
+        assert image.save(str(tmp_path / ("sensitivity-batch-" + mode + ".png")))
+
+    section = _visual(window.contentItem(), "filmThicknessLayerOverridesSection")
+    assert section is not None and not section.property("expanded")
+    header = section.findChild(QQuickItem, "themeSectionHeader")
+    _reveal_click(app, window, header)
+    first, second = (row["layer_id"] for row in panel.thicknessErrorRows)
+    _reveal_click(app, window, _visual(window.contentItem(), "filmThicknessOverride_" + first))
+    _enter_table_text(app, window, "filmThicknessBias_" + first, (Qt.Key.Key_0,))
+    _reveal_click(app, window, _visual(window.contentItem(), "filmThicknessErrorEnabled_" + second))
+    _reveal_click(app, window, header)
+    assert not section.property("expanded")
+    _enter_table_text(app, window, "filmThicknessCommonBias", (Qt.Key.Key_2,))
+    assert panel.thicknessErrorRows[0]["bias_text"] == "0"
+    assert panel.thicknessErrorRows[0]["override"]
+    assert not panel.thicknessErrorRows[1]["enabled"]
+    _reveal_click(app, window, header)
+    _reveal_click(app, window, _visual(window.contentItem(), "filmThicknessOverride_" + first))
+    assert not panel.thicknessErrorRows[0]["override"]
+    assert panel.thicknessErrorRows[0]["bias_text"] == "2"
+    assert not panel.thicknessErrorRows[1]["enabled"]
+    assert not warnings, warnings
 
 
 def test_real_qml_exposes_exactly_two_current_pages_and_default_ideal(sensitivity_window):

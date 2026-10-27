@@ -29,7 +29,7 @@ ThemeControls.ThemeDialogBase {
             spacing: dialog.themeTokens.spaceMd
             ThemeControls.ThemeLabel {
                 Layout.fillWidth: true
-                text: "自动处理低于“单层目标厚度−厚度容差”的薄层，无需勾选。较厚层可联动调整，允许增加、删除和合并膜层；所有保留层都重新检查厚度下限。结果不会自动应用。"
+                text: "自动处理低于“单层目标厚度−厚度容差”的薄层，无需勾选。允许联动调整和增删合并。完整核验的阶段改进即可应用，不必等全部厚度修好或求解收敛；用户取消时自动应用当前最佳改进，无改进则保持原设计。"
                 wrapMode: Text.Wrap
             }
             ThemeControls.ThemeLabel {
@@ -122,6 +122,44 @@ ThemeControls.ThemeDialogBase {
                 text: dialog.controller.error
                 wrapMode: Text.Wrap
             }
+            ThemeControls.ThemeSection {
+                Layout.fillWidth: true
+                title: "逐层厚度变化"
+                visible: dialog.controller.hasLivePreview
+                ThemeControls.ThemeLabel {
+                    objectName: "filmRepairLiveSummary"
+                    Layout.fillWidth: true
+                    text: dialog.controller.liveSummary
+                    wrapMode: Text.Wrap
+                }
+                Repeater {
+                    model: dialog.controller.liveLayerRows
+                    delegate: ColumnLayout {
+                        id: liveLayerRow
+                        required property var modelData
+                        Layout.fillWidth: true
+                        objectName: "filmRepairLiveLayer_" + modelData.row_id
+                        ThemeControls.ThemeLabel {
+                            Layout.fillWidth: true
+                            text: liveLayerRow.modelData.label
+                            wrapMode: Text.Wrap
+                        }
+                        ThemeControls.ThemeLabel {
+                            Layout.fillWidth: true
+                            text: "原厚：" + liveLayerRow.modelData.original + "；当前：" + liveLayerRow.modelData.current
+                                + "（变化 " + liveLayerRow.modelData.current_delta + "）；最佳改进：" + liveLayerRow.modelData.best
+                                + "（变化 " + liveLayerRow.modelData.best_delta + "）"
+                            wrapMode: Text.Wrap
+                        }
+                        ThemeControls.ThemeLabel {
+                            Layout.fillWidth: true
+                            muted: true
+                            text: liveLayerRow.modelData.status
+                            wrapMode: Text.Wrap
+                        }
+                    }
+                }
+            }
             FilmManufacturingComparison {
                 Layout.fillWidth: true
                 visible: dialog.controller.hasResult
@@ -131,10 +169,10 @@ ThemeControls.ThemeDialogBase {
             ThemeControls.ThemeSection {
                 Layout.fillWidth: true
                 title: "查看与应用修复结果"
-                visible: dialog.controller.hasResult
+                visible: dialog.controller.hasResult || dialog.controller.hasLivePreview
                 ThemeControls.ThemeLabel {
                     Layout.fillWidth: true
-                    text: "只有完整审计且满足单层下限、光学变化容差及全部启用原目标的结果可应用；没有启用原目标时，该项不适用。请核对下方联合验收证据，点击并确认后才替换来源膜系，可在设计窗口撤销。"
+                    text: "当前试探仅供预览；最佳改进须完成独立光学核验并严格改善薄层问题。厚度尚未全部修好也可应用，原指标是否达标和剩余差距如实显示。确认应用会结束本轮并替换完整膜系，可在设计窗口撤销。"
                     wrapMode: Text.Wrap
                 }
                 ThemeControls.ThemeLabel {
@@ -159,28 +197,33 @@ ThemeControls.ThemeDialogBase {
                     }
                     ThemeControls.ThemeButton {
                         objectName: "filmManufacturingApply"
-                        text: "应用修复结果…"
+                        text: "应用当前改进并结束本轮…"
                         enabled: dialog.controller.canApply
-                        onClicked: applyConfirm.open()
+                        onClicked: {
+                            if (dialog.controller.prepareApplication()) {
+                                applyConfirm.candidateHash = dialog.controller.pendingApplicationHash
+                                applyConfirm.open()
+                            }
+                        }
                     }
                 }
             }
         }
     }
     footer: GridLayout {
-        columns: dialog.width > 720 ? 5 : 2
+        columns: dialog.width > 900 ? 5 : dialog.width > 560 ? 2 : 1
         columnSpacing: dialog.themeTokens.spaceSm
         rowSpacing: dialog.themeTokens.spaceSm
         ThemeControls.ThemeButton {
-            Layout.fillWidth: dialog.width <= 720
+            Layout.fillWidth: dialog.width <= 900
             objectName: "filmManufacturingSave"
             text: "保存完整报告…"
             enabled: dialog.controller.hasResult && !dialog.controller.busy
             onClicked: saveDialog.open()
         }
-        Item { Layout.fillWidth: true; visible: dialog.width > 720 }
+        Item { Layout.fillWidth: true; visible: dialog.width > 900 }
         ThemeControls.ThemeButton {
-            Layout.fillWidth: dialog.width <= 720
+            Layout.fillWidth: dialog.width <= 900
             objectName: "filmManufacturingRun"
             text: "开始自动修复"
             primary: true
@@ -188,22 +231,23 @@ ThemeControls.ThemeDialogBase {
             onClicked: dialog.controller.startAutomatic()
         }
         ThemeControls.ThemeButton {
-            Layout.fillWidth: dialog.width <= 720
+            Layout.fillWidth: dialog.width <= 900
             objectName: "filmManufacturingCancel"
-            text: "取消作业"
+            text: "取消并应用当前改进"
             enabled: dialog.controller.busy
             onClicked: dialog.controller.cancel()
         }
         ThemeControls.ThemeButton {
-            Layout.fillWidth: dialog.width <= 720
+            Layout.fillWidth: dialog.width <= 900
             objectName: "filmManufacturingClose"
-            text: dialog.controller.busy ? "取消并关闭" : "关闭"
+            text: dialog.controller.busy ? "取消、应用改进并关闭" : "关闭"
             onClicked: dialog.close()
         }
     }
     ThemeControls.ThemeDialogBase {
         id: applyConfirm
         objectName: "filmManufacturingApplyConfirm"
+        property string candidateHash: ""
         title: "确认应用工艺修复候选"
         modal: true
         width: Math.min(580, dialog.width - 24)
@@ -212,10 +256,11 @@ ThemeControls.ThemeDialogBase {
         standardButtons: Dialog.Ok | Dialog.Cancel
         ThemeControls.ThemeLabel {
             width: applyConfirm.availableWidth
-            text: dialog.controller.selectedRouteWarning + "\n将用比较中显示的完整候选替换当前来源膜系，层数可能改变。是否按上面的真实分类应用？来源、目标、材料或项目发生变化时会拒绝整个应用。"
+            text: dialog.controller.selectedRouteWarning + "\n本次确认已固定候选，新到结果不会静默替换它。确认后应用此完整膜系并结束本轮，层数可能改变。来源、目标、材料或项目发生变化时会拒绝整个应用。"
             wrapMode: Text.Wrap
         }
-        onAccepted: dialog.controller.applySelectedRoute()
+        onAccepted: dialog.controller.applyPreparedCandidate(candidateHash)
+        onRejected: dialog.controller.discardPreparedApplication()
     }
     NativeDialogs.FileDialog {
         id: saveDialog

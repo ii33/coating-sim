@@ -85,6 +85,7 @@ def audit_frozen_synthesis_candidate(
     progress_callback: Callable[[Mapping[str, Any]], None] | None = None,
     response_transform: Callable[[tuple[FilmOptimizationObjective, ...], Mapping[str, Any], int | None], dict[str, Any]] | None = None,
     optical_settings: Mapping[str, Any] | None = None,
+    retained_callback: Callable[[Mapping[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
     """Audit dense endpoints, shifted midpoints and bracketed power extrema.
 
@@ -155,12 +156,16 @@ def audit_frozen_synthesis_candidate(
             raise ValueError(f"{context}: invalid active optical source: {exc}") from exc
     checked_waves: set[float] = set()
     extra_errors: dict[tuple[int, float, float, str], Any] = {}
+    audit_owners: dict[str, Any] = dict(request=request, design=design,
+        checked_waves=checked_waves, extra_errors=extra_errors)
 
     def check() -> None:
         if cancel_event is not None and cancel_event.is_set():
             raise _StructureCancelled()
 
     def emit(stage: str, index: int | None = None) -> None:
+        if retained_callback is not None:
+            retained_callback(audit_owners)
         if progress_callback is not None:
             progress_callback(dict(stage=stage, objective_index=index,
                                    physical_evaluations=physical, wavelength_points=points))
@@ -206,6 +211,9 @@ def audit_frozen_synthesis_candidate(
             # Independent curve-difference audits transform paired responses,
             # so extrema are sought on the difference, not either spectrum.
             value = response_transform(objectives, value, index)
+        if retained_callback is not None:
+            audit_owners["current_response"] = value
+            retained_callback(audit_owners)
         check()
         physical += 1
         points += sum(o.wavelength_samples * len(o.angles_deg) for o in objectives)
@@ -216,12 +224,14 @@ def audit_frozen_synthesis_candidate(
         (o.wavelength_samples - 1) * request.validation_samples_multiplier + 1))
         for o in request.objectives)
     dense = evaluate(dense_objectives, stage="audit_dense")
+    audit_owners["dense"] = dense
     dense_points = points
     series = {(int(row["objective_index"]), float(row["angle_deg"])):
               list(zip(row["wavelength_nm"], row.get("extremum_values", row["actual_values"]), strict=True))
               for row in dense["responses"]}
     raw_points = {(int(row['objective_index']),float(row['angle_deg'])):
                   dict(zip(row['wavelength_nm'],row['actual_values'],strict=True)) for row in dense['responses']}
+    audit_owners.update(series=series, raw_points=raw_points)
 
     def add_errors(value, index: int) -> None:
         for row in value["responses"]:
@@ -290,6 +300,7 @@ def audit_frozen_synthesis_candidate(
                  tuple(sign for bound, sign in ((constraint.upper_bound, -1.0),
                                                 (constraint.lower_bound, 1.0)) if bound is not None))
         scalar_cache: dict[float, Any] = {}
+        audit_owners["scalar_cache"] = scalar_cache
         for sign in signs:
             for cursor in range(1, len(records) - 1):
                 left, center, right = records[cursor - 1:cursor + 2]

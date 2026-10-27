@@ -98,7 +98,7 @@ def request_from_payload(value: Mapping[str, Any]) -> tuple[ManufacturingRepairR
 def canonical_parameters(service: Any, supplied: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(supplied, Mapping) or set(supplied) != {"payload"}:
         raise ValueError("manufacturing repair requires exactly one frozen payload")
-    if isinstance(supplied['payload'], Mapping) and supplied['payload'].get('schema_version') == 2:
+    if isinstance(supplied['payload'], Mapping) and supplied['payload'].get('schema_version') in (2, 3):
         from .film_automatic_repair_jobs import request_from_payload as automatic_request
         automatic_request(supplied['payload'])
     else:
@@ -107,7 +107,7 @@ def canonical_parameters(service: Any, supplied: Mapping[str, Any]) -> dict[str,
 
 
 def build_job_payload(service: Any, request: Mapping[str, Any]) -> dict[str, Any]:
-    if isinstance(request, Mapping) and request.get('schema_version') == 2:
+    if isinstance(request, Mapping) and request.get('schema_version') in (2, 3):
         from .film_automatic_repair_jobs import build_job_payload as automatic_job
         return automatic_job(service, request)
     frozen = canonical_parameters(service, {"payload": request})["payload"]
@@ -259,7 +259,7 @@ def estimate_audit_resources(synthesis: FilmSynthesisRequest, design: Mapping[st
 
 
 def estimate_resources(request_payload: Mapping[str, Any]) -> dict[str, Any]:
-    if isinstance(request_payload, Mapping) and request_payload.get('schema_version') == 2:
+    if isinstance(request_payload, Mapping) and request_payload.get('schema_version') in (2, 3):
         from .film_automatic_repair_jobs import estimate_resources as automatic_resources
         return automatic_resources(request_payload)
     request, source = request_from_payload(request_payload)
@@ -309,7 +309,7 @@ def execute_job(parameters, cancel_event, report, checkpoint_path, write_json, *
     """
     if not isinstance(parameters, Mapping) or set(parameters) != {"payload"}:
         raise ValueError("manufacturing executor requires one frozen job")
-    if isinstance(parameters['payload'], Mapping) and parameters['payload'].get('schema_version') == 2:
+    if isinstance(parameters['payload'], Mapping) and parameters['payload'].get('schema_version') in (2, 3):
         from .film_automatic_repair_jobs import execute_job as automatic_execute
         return automatic_execute(parameters, cancel_event, report, checkpoint_path, write_json,
             external_retained_bytes=external_retained_bytes)
@@ -483,7 +483,7 @@ def validate_result_payload(value: Mapping[str, Any], *, expected_job=None, repl
     A scheduler completion/cancellation never starts physical replay. Callers
     requesting replay receive a fresh independent check before applying history.
     """
-    if isinstance(value, Mapping) and value.get('schema_version') == 2:
+    if isinstance(value, Mapping) and value.get('schema_version') in (2, 3):
         from .film_automatic_repair_jobs import validate_result_payload as automatic_validate
         return automatic_validate(value, expected_job=expected_job, replay=replay)
     if (not isinstance(value, Mapping) or set(value) != _RESULT_FIELDS
@@ -641,15 +641,17 @@ def terminal_reply(value: Mapping[str, Any], state: str) -> dict[str, Any]:
     if saved["state"] != state:
         saved["state"] = state
         saved["termination_reason"] = "scheduler_cancel_won" if state == "cancelled" else "scheduler_failed"
-        if saved.get('schema_version') == 2:
+        if saved.get('schema_version') in (2, 3):
             saved['result']['termination'] = saved['termination_reason']
             saved['result']['routes'][0]['status'] = saved['termination_reason']
+            if saved.get('schema_version') == 3:
+                saved['is_final'] = True
     return saved
 
 
 def validate_checkpoint(value: Mapping[str, Any], *, expected_job, terminal_state="cancelled") -> dict[str, Any]:
     if (not isinstance(value, Mapping) or set(value) != {"schema_version", "kind", "job", "result"}
-            or type(value.get("schema_version")) is not int or value["schema_version"] not in (1, 2)
+            or type(value.get("schema_version")) is not int or value["schema_version"] not in (1, 2, 3)
             or value.get("kind") != CHECKPOINT_KIND or value.get("job") != expected_job):
         raise ValueError("manufacturing checkpoint is not bound to the exact frozen job")
     validated = validate_result_payload(value["result"], expected_job=expected_job, replay=False)
