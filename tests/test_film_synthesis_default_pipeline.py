@@ -7,6 +7,8 @@ from threading import Event
 import pytest
 
 from coat_sim.core.film_auto_synthesis import freeze_film_synthesis_request
+from coat_sim.core.film_auto_synthesis import synthesize_film_design
+from coat_sim.core.film_synthesis_continuation import continue_synthesis_request
 from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationRequest, FilmOptimizationObjective
 from coat_sim.core.film_synthesis_jobs import deserialize_job_payload, execute_job
@@ -92,7 +94,7 @@ def test_gui_default_request_survives_freeze_job_roundtrip_and_executes_global_s
     assert any(item["layer_count"] > 1 for item in generated)
 
 
-def test_gui_v23_matching_mode_recovers_after_training_pass_but_dense_audit_failure(tmp_path):
+def test_gui_v23_matching_mode_requires_explicit_continue_after_dense_audit_failure(tmp_path):
     service, fixture = setup_problem(upper=.05, low=450., high=700., samples=2)
     service.materials.records['glass']['optical_sets'][0]['n'] = [1.5, 3., 1.5]
     base = FilmOptimizationRequest(fixture.environment, 74, (), fixture.objectives,
@@ -115,14 +117,32 @@ def test_gui_v23_matching_mode_recovers_after_training_pass_but_dense_audit_fail
         lambda item, **_kwargs: progress.append(item), tmp_path / 'ar-best.json',
         lambda _path, _value: None, str(tmp_path.resolve()))
     result = response['result']
-    assert result['state'] == 'completed' and result['targets_met']
+    # A training-grid hit whose independent dense audit fails completes this
+    # local session honestly; it does not silently start another structure pass.
+    assert result['state'] == 'completed' and not result['targets_met']
+    assert result['termination_reason'] == 'local_session_audit_rejected_targets_unmet'
     assert result['cycles'] > 0
-    assert response['best_candidate_audit']['targets_met'] is True
+    assert response['best_candidate_audit']['targets_met'] is False
     assert result['training_score']['max_error'] <= request.acceptable_normalized_error
-    assert result['validation_score']['max_error'] <= request.acceptable_normalized_error
-    assert len(result['validation_score']['errors']) >= 9
+    assert result['validation_score']['max_error'] > request.acceptable_normalized_error
     assert result['validation_score']['audit']['dense_points'] == 5
-    assert any(row.get('stage') == 'structure_proposal' and '"family": "matching"' in row.get('status', '')
-               for row in progress)
     assert result['performance']['cleanup_complete']
     assert result['performance']['unknown_tasks'] == 0
+
+    # Only an explicit user continuation advances the saved matching/cluster
+    # frontier. The fresh session must then recover an independently audited pass.
+    prior_cursors = result['search_checkpoint']['cursors']
+    continued_request = continue_synthesis_request(decoded, result['search_checkpoint'],
+        current_design=result['candidate_design'])
+    continued = synthesize_film_design(None, continued_request)
+    assert continued.state == 'completed' and continued.targets_met
+    assert continued.training_score is not None and continued.validation_score is not None
+    assert continued.search_checkpoint is not None
+    assert continued.training_score['max_error'] <= request.acceptable_normalized_error
+    assert continued.validation_score['max_error'] <= request.acceptable_normalized_error
+    assert len(continued.validation_score['errors']) >= 9
+    assert continued.validation_score['audit']['dense_points'] == 5
+    assert any(row.stage == 'structure_proposal' and '"family": "matching"' in row.message
+               for row in continued.trace)
+    assert (continued.search_checkpoint['cursors']['matching'] > prior_cursors['matching']
+            or continued.search_checkpoint['cursors']['ar_cluster'] > prior_cursors['ar_cluster'])

@@ -536,7 +536,11 @@ data=dict(state=result.search_checkpoint,design=result.candidate_design,reason=r
           evaluations=result.evaluations,sequence=[row.physical_hash for row in result.trace if row.stage=='structure_proposal'])
 Path(sys.argv[2]).write_text(json.dumps(data),encoding='utf8')
 '''
-    env = dict(os.environ, OPENBLAS_NUM_THREADS='1', OMP_NUM_THREADS='1', PYTHONUTF8='1')
+    # Keep the parent and child numerical runtimes identical. Pinning only the
+    # child to single-threaded BLAS can move SLSQP termination by a couple of
+    # exact evaluations; that is not frontier loss and must not be hidden with
+    # an approximate counter assertion.
+    env = dict(os.environ, PYTHONUTF8='1')
     subprocess.run([sys.executable, '-c', script, str(envelope), str(output)],
                    cwd=Path(__file__).resolve().parents[1], env=env, check=True, capture_output=True, timeout=45)
     child = json.loads(output.read_text(encoding='utf8'))

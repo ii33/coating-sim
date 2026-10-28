@@ -6,7 +6,7 @@ import json
 import pytest
 
 from coat_sim.core.film_auto_synthesis import (
-    _phase_step_limits_nm, _proxy, freeze_film_synthesis_request, synthesize_film_design,
+    FilmSynthesisResult, _phase_step_limits_nm, _proxy, freeze_film_synthesis_request, synthesize_film_design,
 )
 from coat_sim.core.film_optimization_structure import evaluate_frozen_structure_candidate
 from coat_sim.core.film_physical_structures import (
@@ -17,6 +17,9 @@ from coat_sim.core.film_process_import import _sha256
 from coat_sim.core.film_synthesis_absorption import (
     annotate_synthesis_design, synthesis_absorption_assumption,
 )
+from coat_sim.core.film_synthesis_archive import physical_design_hash
+from coat_sim.core.film_synthesis_audit import audit_frozen_synthesis_candidate
+from coat_sim.core.film_synthesis_continuation import continue_synthesis_request, validate_search_state
 from coat_sim.core.film_synthesis_io import (
     film_synthesis_request_from_payload, film_synthesis_request_to_payload,
     film_synthesis_result_to_payload, prepare_film_synthesis_payload,
@@ -38,6 +41,25 @@ def opt_in(request):
     return replace(request, environment=environment, seed_designs=seeds)
 
 
+def assert_actual_unmet_candidate(result: FilmSynthesisResult):
+    """Recompute physical training and independent audit, without stored scores."""
+    assert result.candidate_design is not None
+    assert result.training_score is not None and result.validation_score is not None
+    assert result.validation_complete and not result.targets_met
+    identity = physical_design_hash(result.candidate_design)
+    assert physical_design_hash(result.training_score['design']) == identity
+    assert physical_design_hash(result.validation_score['design']) == identity
+    training = evaluate_frozen_structure_candidate(_proxy(result.frozen_request), result.candidate_design)
+    audited = audit_frozen_synthesis_candidate(result.frozen_request, result.candidate_design)
+    assert physical_design_hash(training['design']) == physical_design_hash(audited['design']) == identity
+    assert training['score']['max_error'] == result.training_score['max_error'] > 0.
+    assert audited['score']['max_error'] == result.validation_score['max_error'] > 0.
+    assert not training['score']['nominal_pass'] and not audited['score']['nominal_pass']
+    assert audited['audit']['physical_evaluations'] > 0
+    assert all(objective.pointwise.upper_bound == 0. and not objective.mean.enabled
+               for objective in result.frozen_request.objectives)
+
+
 def test_unknown_k_explicit_opt_in_grows_audits_and_replays_without_patching_sources():
     service, strict = setup_problem(upper=0., low=550., high=550., samples=1, materials=('low',))
     service.materials.records['low']['optical_sets'][0]['k'] = None
@@ -51,7 +73,13 @@ def test_unknown_k_explicit_opt_in_grows_audits_and_replays_without_patching_sou
     result = synthesize_film_design(None, frozen, snapshot_callback=lambda *items: checkpoints.append(items[0]))
     # Keep the exact zero-R target unchanged. A tiny positive residual cannot
     # become nominal success merely because the solver tolerance accepts it.
-    assert result.state == 'not_found' and not result.targets_met
+    assert result.state == 'completed' and not result.targets_met
+    assert result.termination_reason == 'local_session_stalled_targets_unmet'
+    local = result.performance['search']['legacy_local_session']
+    assert local['session_complete'] and not local['local_converged']
+    assert local['completed_cycles'] >= local['required_stagnant_cycles'] >= 2
+    assert result.search_checkpoint is None  # Legacy replay is not structural continuation.
+    assert_actual_unmet_candidate(result)
     assert result.solver_acceptable is True
     assert result.validation_score is not None
     assert 0. < result.validation_score['max_error'] <= request.acceptable_normalized_error
@@ -77,6 +105,49 @@ def test_unknown_k_explicit_opt_in_grows_audits_and_replays_without_patching_sou
     assert low['optical_sets'][0]['k'] is None
     replay = synthesize_film_design(None, result.frozen_request)
     assert replay.candidate_design == result.candidate_design
+    assert replay.state == result.state and replay.termination_reason == result.termination_reason
+    assert replay.cycles == result.cycles and replay.evaluations == result.evaluations
+    assert_actual_unmet_candidate(replay)
+    assert replay.search_checkpoint is None
+    assert json.dumps(service.materials.records, sort_keys=True) == original
+
+
+def test_unknown_k_hybrid_continue_advances_real_structural_frontier_with_fresh_physical_evidence():
+    service, request = setup_problem(upper=0., materials=('low', 'high'))
+    service.materials.records['low']['optical_sets'][0]['k'] = None
+    original = json.dumps(service.materials.records, sort_keys=True)
+    seed = deepcopy(dict(request.environment))
+    seed['front_layers'] = [dict(id='unknown-seed', material_id='low', optical_set_id='nk',
+        thickness=dict(value=80., unit='nm'))]
+    request = opt_in(replace(request, search_strategy='hybrid', seed_designs=(seed,), cpu_workers=1,
+        parallel_batch_size=1, max_layers=3, max_cycles=1, max_evaluations=200,
+        enable_thickness_reduction=False))
+    first = synthesize_film_design(service, request)
+    assert first.state == 'completed' and not first.targets_met
+    assert first.termination_reason.startswith('local_session_')
+    assert first.evaluations < 200
+    assert_actual_unmet_candidate(first)
+    assert first.candidate_design is not None and first.search_checkpoint is not None
+    saved = deepcopy(dict(first.search_checkpoint))
+    frozen_materials = deepcopy(first.frozen_request.frozen_material_snapshot)
+    continued = continue_synthesis_request(first.frozen_request, saved, current_design=first.candidate_design)
+    second = synthesize_film_design(None, continued)
+    assert second.state == 'completed' and not second.targets_met
+    assert second.termination_reason.startswith('local_session_')
+    assert second.evaluations < 200
+    assert_actual_unmet_candidate(second)
+    assert second.search_checkpoint is not None
+    assert validate_search_state(second.frozen_request, second.search_checkpoint)
+    new_structures = set(second.search_checkpoint['tried']) - set(saved['tried'])
+    assert new_structures and any(row.physical_hash in new_structures for row in second.trace)
+    assert second.search_checkpoint['rotations'] > saved['rotations']
+    assert any(second.search_checkpoint['cursors'][source] > cursor for source, cursor in saved['cursors'].items())
+    assert first.search_checkpoint == saved  # Viewing/saving/continuing did not consume the original object.
+    assert continued.frozen_material_snapshot == frozen_materials == second.frozen_request.frozen_material_snapshot
+    assert second.frozen_request.frozen_material_snapshot is not None
+    low = next(row for row in second.frozen_request.frozen_material_snapshot['materials'] if row['id'] == 'low')
+    assert low['optical_sets'][0]['k'] is None
+    assert json.dumps(service.materials.records, sort_keys=True) == original
 
 
 def test_known_nonzero_absorption_still_changes_the_actual_frozen_response():

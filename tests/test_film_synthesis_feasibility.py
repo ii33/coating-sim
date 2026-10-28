@@ -220,17 +220,48 @@ def test_real_parent_repairs_before_rotation_and_enters_existing_cost_stage(stri
     assert replayed['result']['targets_met'] and is_synthesis_result(replayed)
 
 
-def test_fixed_infeasible_topology_returns_to_search_without_false_success():
+def test_fixed_infeasible_topology_finishes_local_session_without_false_target_success():
     service, request, seed = near_case()
     fixed = seed['front_layers'][0]['thickness']['value']
     request = replace(request, minimum_nonzero_thickness_nm=fixed, max_layer_thickness_nm=fixed)
     result = synthesis.synthesize_film_design(service, request)
-    assert not result.targets_met and result.state == 'not_found'
+    assert not result.targets_met and result.state == 'completed'
+    assert result.termination_reason == 'local_session_converged_targets_unmet'
     assert result.candidate_design is not None
     assert result.candidate_design['front_layers'] == seed['front_layers']
+    assert result.frozen_request.minimum_nonzero_thickness_nm == fixed
+    assert result.frozen_request.max_layer_thickness_nm == fixed
+    assert result.frozen_request.objectives == request.objectives
+    assert not result.frozen_request.objectives[0].mean.enabled
+    assert result.training_score is not None and result.validation_score is not None
+    assert result.validation_complete
+    identity = physical_design_hash(result.candidate_design)
+    original = evaluate_frozen_structure_candidate(synthesis._proxy(result.frozen_request), result.candidate_design)
+    independent = audit_frozen_synthesis_candidate(result.frozen_request, result.candidate_design)
+    for actual, repeated in ((result.training_score, original['score']),
+                             (result.validation_score, independent['score'])):
+        assert physical_design_hash(actual['design']) == identity
+        assert not actual['nominal_pass'] and not repeated['nominal_pass']
+        assert actual['max_error'] > 0.
+        assert actual['max_error'] == pytest.approx(repeated['max_error'], rel=1e-12, abs=1e-16)
+    local = result.performance['search']['hybrid']['local_session']
+    assert local['session_complete'] and local['local_converged']
+    assert local['solver_terminal']['physical_hash'] == local['audited_selected']['physical_hash'] == identity
+    terminal = local['attempts'][-1]
+    assert terminal['termination'] == 'converged' and terminal['success']
+    assert terminal['free_thickness_variables'] == 0
+    assert terminal['fixed_layer_ids'] == [seed['front_layers'][0]['id']]
+    assert terminal['solver_terminal']['physical_valid']
+    assert terminal['solver_terminal']['local_stationary']
+    assert terminal['terminal_full_grid_epigraph_feasible']
+    assert result.local_optimum is not None and result.local_optimum['physical_hash'] == identity
+    assert result.local_optimum['validation_complete'] and result.local_optimum['local_converged']
     assert any(t.stage == 'hybrid_rotation' for t in result.trace)
     assert result.performance['search']['hybrid']['feasibility_repair']['rounds']
     assert result.performance['search']['hybrid']['feasibility_repair_deduplicated_checks'] > 0
+    completed = next(i for i, row in enumerate(result.trace) if row.stage == 'local_session_complete')
+    assert not any(row.stage in {'hybrid_rotation', 'growth_restart'} for row in result.trace[completed + 1:])
+    assert is_synthesis_result(film_synthesis_result_to_payload('fixed-unmet-local-session', result))
 
 
 def test_cold_seed_discovery_repairs_after_screening_before_global_work():

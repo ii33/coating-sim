@@ -4,6 +4,7 @@ from copy import deepcopy
 from dataclasses import replace
 import json
 from pathlib import Path
+import sys
 from tempfile import TemporaryDirectory
 from threading import Event
 import time
@@ -121,32 +122,76 @@ def test_audit_can_only_be_reused_for_the_identical_cancel_candidate():
     assert not jobs.is_synthesis_result(payload)
 
 
-def test_real_scheduler_cancel_preserves_current_reply_instead_of_old_checkpoint(tmp_path):
+def test_real_scheduler_cancel_preserves_current_reply_instead_of_old_checkpoint(tmp_path, monkeypatch):
     from coat_sim.core.api import CoatService
-    from coat_sim.scheduler.client import SchedulerClient
+    from coat_sim.scheduler import daemon, result_capability
     from coat_sim.scheduler.jobs import freeze_spec
-    from tests.test_film_synthesis_jobs import _cancel_payload
+    from tests.scheduler_queue_support import SchedulerHarness
+    from coat_sim.core.film_synthesis_archive import physical_design_hash
+    from coat_sim.scheduler.io import write_json
 
     root = tmp_path / "real-cancel-worker"
-    client = SchedulerClient(root)
+    harness = SchedulerHarness(root)
+    client = harness.client()
     job_id = "synthesis-current-cancel-reply"
     directory = root / "artifacts/runtime/scheduler/jobs" / job_id
+    original_command = daemon.module_command
+    def gated_command(module, *arguments):
+        if module == 'coat_sim.scheduler' and 'worker' in arguments:
+            return [sys.executable, '-m', 'tests.film_synthesis_cancel_worker', *arguments]
+        return original_command(module, *arguments)
+    monkeypatch.setattr(daemon, 'module_command', gated_command)
+    monkeypatch.setattr(result_capability, 'load_best_candidate_checkpoint',
+        lambda *_a, **_k: pytest.fail('current cancellation must not replay an audited checkpoint'))
     try:
-        parameters = jobs.canonical_parameters(None, {"payload": _cancel_payload()})
+        # The bare design violates .03; the first improving real proposal is a
+        # distinct complete champion. No large budget/delay keeps it running.
+        service, request = setup_problem(upper=.03)
+        request = freeze_film_synthesis_request(service, replace(request,
+            search_strategy='hybrid', max_cycles=None, max_evaluations=None,
+            seed_designs=(deepcopy(request.environment),)))
+        request_payload = film_synthesis_request_to_payload('cancel-at-complete-commit', request)
+        parameters = jobs.canonical_parameters(None, {"payload": request_payload})
         spec = freeze_spec(CoatService(root), "film_synthesis", parameters)
+        # Historical checkpoint evidence is calculated on the same frozen
+        # request before the queued job starts. Hybrid rightly does not audit
+        # an infeasible initial design merely to make a cancellation test wait.
+        training = jobs.evaluate_frozen_structure_candidate(jobs._proxy(request),
+            request.environment, derived_validation_grid=False)
+        audited = audit.audit_frozen_synthesis_candidate(request, request.environment)
+        previous = jobs._json_snapshot(dict(schema_version=jobs.SCHEMA_VERSION,
+            kind=jobs.AUDITED_CHECKPOINT_KIND, checkpoint_state='audited',
+            job=spec['parameters']['payload'], design=request.environment,
+            training_score=training['score'], validation_score=audited['score'], audit=audited['audit'],
+            progress=dict(evaluations=2, cycle=0, layer_count=0), physical_structure_metadata=[]))
+        from coat_sim.scheduler.worker import _film_reply_matches_payload
+        historical = jobs.validate_checkpoint(previous)
+        assert jobs.is_synthesis_result(historical)
+        assert _film_reply_matches_payload(historical, spec['parameters']['payload'])
+        assert historical['result']['candidate_design']['front_layers'] == []
+        write_json(directory / 'best-candidate.json', previous)
         client.submit(spec, job_id=job_id, metadata={"execution_project_root": str(root.resolve())})
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
+            harness.tick()
             status = client.status(job_id)
-            if (directory / "best-candidate.json").is_file() and (status.get("progress") or {}).get("heartbeat_sequence", 0) >= 1:
+            if (directory / 'cancel-boundary-ready.json').is_file():
                 break
             assert status["state"] not in {"succeeded", "failed", "cancelled"}, status
             time.sleep(.04)
         else:
-            pytest.fail("real worker did not publish its audit checkpoint/heartbeat")
+            pytest.fail("real worker did not reach its complete improving-candidate barrier")
+        assert status['state'] == 'running' and status['cancel_requested'] is False
+        ready = json.loads((directory / 'cancel-boundary-ready.json').read_text(encoding='utf-8'))
+        checkpoint = json.loads((directory / 'best-candidate.json').read_text(encoding='utf-8'))
+        assert ready['physical_hash'] != ready['checkpoint_hash']
+        assert ready['checkpoint_hash'] == physical_design_hash(checkpoint['design'])
+        assert ready['max_error'] < checkpoint['training_score']['max_error']
         client.cancel(job_id)
+        assert client.status(job_id)['cancel_requested'] is True
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
+            harness.tick()
             status = client.status(job_id)
             if status["state"] in {"cancelled", "failed", "succeeded"}:
                 break
@@ -155,6 +200,17 @@ def test_real_scheduler_cancel_preserves_current_reply_instead_of_old_checkpoint
         payload = client.result(job_id)
         assert jobs.is_synthesis_result(payload)
         assert payload["result"]["candidate_provenance"]["selection"] == "completed_training_at_cancel"
+        body = payload['result']
+        assert body['candidate_design'] == ready['candidate_design']
+        assert physical_design_hash(body['candidate_design']) == ready['physical_hash']
+        assert body['training_score']['max_error'] == ready['max_error']
+        assert body['training_score']['weighted_rms_error'] == ready['weighted_rms_error']
+        assert body['training_score']['errors'] == ready['errors']
+        assert body['training_score']['coverage'] == ready['coverage']
+        assert body['evaluations'] == ready['evaluations']
+        assert body['validation_score'] is None and body['validation_complete'] is False
+        boundary = json.loads((directory / 'cancel-boundary-final.json').read_text(encoding='utf-8'))
+        assert boundary == dict(gated=True, cancel_seen=True, audits_after_cancel=0, forwards_after_cancel=0)
         assert payload["result"]["termination_reason"] != "audited_checkpoint_recovered"
         assert payload["review"]["cancel_snapshot"]["replay_performed"] is False
         assert "recovery_replay_work" not in payload.get("work_counters", {})
@@ -166,7 +222,7 @@ def test_real_scheduler_cancel_preserves_current_reply_instead_of_old_checkpoint
         assert expected_public == payload
         print("real scheduler current cancel", payload["result"]["candidate_provenance"], payload["review"]["cancel_snapshot"])
     finally:
-        client.stop()
+        harness.close()
 
 
 def test_real_regular_optimizer_cancel_keeps_full_worker_best_without_holdout_replay(tmp_path):

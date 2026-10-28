@@ -236,16 +236,29 @@ def test_real_scheduler_worker_persists_success_and_mcp_returns_layer_table(tmp_
 
 def test_real_worker_heartbeat_then_cancel_retains_complete_best_and_truthful_audit(tmp_path, monkeypatch):
     from coat_sim.core.film_synthesis_jobs import canonical_parameters
-    from coat_sim.scheduler.client import SchedulerClient
+    from coat_sim.core.film_synthesis_archive import physical_design_hash
+    from coat_sim.scheduler import daemon
     from coat_sim.scheduler.jobs import freeze_spec
     from coat_sim.mcp import server
+    from tests.scheduler_queue_support import SchedulerHarness
+    import sys
 
     root = tmp_path / "cancel-worker-root"
     service = CoatService(root)
     monkeypatch.setattr(server, "service", service)
-    client = SchedulerClient(root)
+    harness = SchedulerHarness(root)
+    client = harness.client()
+    monkeypatch.setattr('coat_sim.scheduler.SchedulerClient', harness.client)
     job_id = "film-synthesis-worker-cancel-audited"
     checkpoint_path = root / "artifacts/runtime/scheduler/jobs" / job_id / "best-candidate.json"
+    directory = checkpoint_path.parent
+    original_command = daemon.module_command
+    def gated_command(module, *arguments):
+        if module == 'coat_sim.scheduler' and 'worker' in arguments:
+            return [sys.executable, '-m', 'tests.film_synthesis_cancel_worker',
+                    '--gate-mode', 'any_complete', *arguments]
+        return original_command(module, *arguments)
+    monkeypatch.setattr(daemon, 'module_command', gated_command)
     try:
         values = canonical_parameters(service, {"payload": _cancel_payload()})
         spec = freeze_spec(service, "film_synthesis", values)
@@ -256,9 +269,10 @@ def test_real_worker_heartbeat_then_cancel_retains_complete_best_and_truthful_au
         state = None
         observed = False
         while time.monotonic() < deadline:
+            harness.tick()
             state = client.status(job_id)
             progress = state.get("progress") or {}
-            if (checkpoint_path.is_file()
+            if ((directory / 'cancel-boundary-ready.json').is_file() and checkpoint_path.is_file()
                     and progress.get("heartbeat_sequence", 0) >= 1
                     and progress.get("score_scope") == "audited"):
                 observed = True
@@ -267,10 +281,14 @@ def test_real_worker_heartbeat_then_cancel_retains_complete_best_and_truthful_au
                 break
             time.sleep(.08)
         assert observed, state
+        assert state is not None
+        assert state['state'] == 'running' and state['cancel_requested'] is False
         assert json.loads(checkpoint_path.read_text(encoding="utf-8"))["checkpoint_state"] == "audited"
         client.cancel(job_id)
+        assert client.status(job_id)['cancel_requested'] is True
         deadline = time.monotonic() + 35
         while time.monotonic() < deadline:
+            harness.tick()
             state = client.status(job_id)
             if state["state"] in {"succeeded", "failed", "cancelled"}:
                 break
@@ -299,6 +317,7 @@ def test_real_worker_heartbeat_then_cancel_retains_complete_best_and_truthful_au
         assert tuple(raw["training_score"]["key"]) <= tuple(checkpoint["training_score"]["key"])
         if raw["validation_complete"]:
             assert raw["validation_score"] is not None
+            assert physical_design_hash(raw['candidate_design']) == physical_design_hash(raw['validation_score']['design'])
             assert result["best_candidate_audit"]["available"] is True
             assert result["best_candidate_audit"]["targets_met"] is False
         else:
@@ -310,5 +329,7 @@ def test_real_worker_heartbeat_then_cancel_retains_complete_best_and_truthful_au
         assert len(result["review"]["layers"]) == len(raw["candidate_design"]["front_layers"])
         assert raw["performance"]["cleanup_complete"] is True
         assert result["execution_project_root"] == str(root.resolve())
+        boundary = json.loads((directory / 'cancel-boundary-final.json').read_text(encoding='utf-8'))
+        assert boundary == dict(gated=True, cancel_seen=True, audits_after_cancel=0, forwards_after_cancel=0)
     finally:
-        client.stop()
+        harness.close()

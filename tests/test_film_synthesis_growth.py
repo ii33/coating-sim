@@ -10,6 +10,7 @@ import pytest
 from coat_sim.core import film_auto_synthesis as synthesis
 from coat_sim.core.film_design_service import simulate_frozen
 from coat_sim.core.film_optimization_needle import FilmNeedleMaterialReference
+from coat_sim.core.film_synthesis_archive import physical_design_hash
 from tests.test_film_auto_synthesis import setup_problem
 
 pytestmark = pytest.mark.algorithm
@@ -153,15 +154,79 @@ def test_accepted_seed_thickness_refinement_respects_physical_step_cap(monkeypat
     assert result.training_score["max_error"] < .04
 
 
-def test_plateau_is_not_an_infeasibility_or_implicit_two_cycle_stop():
+@pytest.mark.parametrize('stagnation_cycles', [1, 2, 3])
+def test_completed_legacy_turns_stop_on_scaled_plateau_without_claiming_infeasibility(stagnation_cycles):
     service, request = setup_problem(upper=0., low=550., high=550., samples=1, materials=("high",))
-    request = replace(request, max_cycles=3, max_evaluations=1000, stagnation_cycles=1,
+    request = replace(request, max_cycles=6, max_evaluations=1000, stagnation_cycles=stagnation_cycles,
                       growth_quarter_wave_fractions=(1.,), position_samples=0)
     result = synthesis.synthesize_film_design(service, request)
-    report("plateau_continues", result)
-    assert result.cycles == 3 and result.termination_reason == "cycle_limit"
-    assert any(t.stage == "search_plateau" for t in result.trace)
+    report("legacy_completed_plateau", result)
+    assert result.state == 'completed'
+    assert result.termination_reason == 'local_session_stalled_targets_unmet'
     assert result.validation_complete and not result.targets_met
+    # The initial turn establishes its first audited pair; only subsequent
+    # complete turns can establish joint training/audit stagnation. Varying the
+    # required count proves that this is not a fixed two-cycle search ceiling.
+    assert result.cycles == stagnation_cycles + 1 < request.max_cycles
+    assert result.evaluations > 2 * result.cycles
+    assert result.evaluations < request.max_evaluations
+    for cycle in range(1, result.cycles + 1):
+        scan = next(row for row in result.trace if row.stage == 'needle_scan' and row.cycle == cycle)
+        growth = next(row for row in result.trace if row.stage == 'growth_restart' and row.cycle == cycle)
+        assert growth.evaluations > scan.evaluations
+        assert any(row.stage == 'growth_trial' and row.cycle == cycle for row in result.trace)
+    local = result.performance['search']['legacy_local_session']
+    assert local['session_complete'] and local['status'] == 'stalled'
+    assert not local['local_converged']
+    assert local['completed_cycles'] == result.cycles
+    assert local['stagnant_cycles'] == local['required_stagnant_cycles'] == stagnation_cycles
+    assert local['last_scaled_improvement'] == 0.
+    assert local['last_audit_scaled_improvement'] == 0.
+    assert local['previous_audited_max_error'] == local['final_audited_max_error'] > 0.
+    assert local['thickness_reduction'] == 'skipped_no_fixed_topology_stationarity_evidence'
+    assert result.local_optimum is not None
+    assert result.local_optimum['solver_terminal'] is None
+    assert result.local_optimum['session_complete'] and not result.local_optimum['local_converged']
+    assert result.candidate_design is not None and result.training_score is not None
+    assert result.validation_score is not None
+    identity = physical_design_hash(result.candidate_design)
+    assert identity == local['returned_physical_hash']
+    assert physical_design_hash(result.training_score['design']) == identity
+    assert physical_design_hash(result.validation_score['design']) == identity
+    assert request.objectives[0].pointwise.upper_bound == 0.
+    assert not request.objectives[0].mean.enabled
+    completed = next(i for i, row in enumerate(result.trace) if row.stage == 'local_session_complete')
+    assert not any(row.stage == 'growth_restart' for row in result.trace[completed + 1:])
+    # This reproduction route reports completed turns, not a fabricated hybrid
+    # frontier or a promise that its random search can resume after saving.
+    assert result.search_checkpoint is None
+
+
+@pytest.mark.parametrize('boundary', ['cycle_limit', 'evaluation_limit', 'cancelled'])
+def test_explicit_boundaries_interrupt_legacy_growth_without_becoming_local_stagnation(boundary):
+    service, request = setup_problem(upper=0., low=550., high=550., samples=1, materials=('high',))
+    request = replace(request, max_cycles=1 if boundary == 'cycle_limit' else 6,
+        max_evaluations=3 if boundary == 'evaluation_limit' else 1000,
+        stagnation_cycles=1, growth_quarter_wave_fractions=(1.,), position_samples=0)
+    cancel = Event()
+    observed = []
+    def progress(row):
+        observed.append(row)
+        if boundary == 'cancelled' and row.stage == 'growth_restart':
+            cancel.set()
+    result = synthesis.synthesize_film_design(service, request, cancel_event=cancel, progress_callback=progress)
+    assert result.termination_reason == boundary and not result.targets_met
+    assert result.state == ('cancelled' if boundary == 'cancelled' else 'not_found')
+    assert not result.performance['search'].get('legacy_local_session', {}).get('session_complete', False)
+    assert not any(row.stage == 'local_session_complete' for row in result.trace)
+    assert result.search_checkpoint is None
+    if boundary == 'cycle_limit':
+        assert result.cycles == request.max_cycles == 1
+    elif boundary == 'evaluation_limit':
+        assert result.evaluations <= request.max_evaluations == 3
+    else:
+        stopped = next(i for i, row in enumerate(observed) if row.stage == 'growth_restart')
+        assert not any(row.stage in {'needle_scan', 'growth_trial', 'validation'} for row in observed[stopped + 1:])
 
 
 def test_audited_checkpoint_is_copied_and_cancellation_keeps_audited_best():

@@ -542,6 +542,10 @@ def test_qml_n0_grows_real_single_layer_and_freezes_current_targets_and_material
 
 def test_qml_real_queue_heartbeat_then_cancel_retains_audited_candidate_facts(gui, monkeypatch):
     service, source, controller, scene = _optimizer(gui)
+    # A synthesis candidate carries a blanked physics expression, but applying
+    # it must not discard expression-symbol definitions owned by the source.
+    symbol_id = source._symbol_stable_ids['H']
+    assert source.setLayerValue('symbol', symbol_id, 'note', 'user-defined H placeholder')
     assert controller.setSynthesisOption("max_cycles", "")
     assert controller.setSynthesisOption("max_evaluations", "")
     assert controller.duplicateSelectedObjective()
@@ -593,15 +597,22 @@ def test_qml_real_queue_heartbeat_then_cancel_retains_audited_candidate_facts(gu
     normalized_original = service.validate(deepcopy(dict(original.design)))
     normalized_candidate = service.validate(deepcopy(dict(candidate_design)))
     after = source.session.snapshot()
-    if normalized_candidate == normalized_original:
+    expected_candidate = deepcopy(dict(normalized_candidate))
+    expected_candidate["expression"] = deepcopy(original.design["expression"])
+    if "workflow_settings" in original.design:
+        expected_candidate["workflow_settings"] = deepcopy(original.design["workflow_settings"])
+    candidate_changed = expected_candidate != normalized_original
+    assert after.design["expression"] == original.design["expression"]
+    assert after.design["expression"]["symbols"]["H"]["note"] == "user-defined H placeholder"
+    # The numerical candidate blanks expression state before synthesis. When
+    # source-owned expression semantics are restored, identical physical
+    # designs must not create a fake optimization edit or undo entry.
+    if expected_candidate == normalized_original:
         assert after.design == _expected_with_synthesis_search_progress(original.design, controller)
         assert after.design_revision == original.design_revision
         assert after.dirty == original.dirty
         assert not source.canUndoOptimizedDesign
     else:
-        expected_candidate = deepcopy(dict(normalized_candidate))
-        if "workflow_settings" in original.design:
-            expected_candidate["workflow_settings"] = deepcopy(original.design["workflow_settings"])
         assert after.design == _expected_with_synthesis_search_progress(expected_candidate, controller)
         assert after.design_revision == original.design_revision + 1
         assert after.dirty and source.canUndoOptimizedDesign
@@ -613,12 +624,13 @@ def test_qml_real_queue_heartbeat_then_cancel_retains_audited_candidate_facts(gu
         restored = source.session.snapshot()
         assert restored.design_revision == after.design_revision + 1
         assert not source.canUndoOptimizedDesign
-    assert len(refreshes) == 1
-    assert refreshes[0].design == after.design
+    assert len(refreshes) == (1 if candidate_changed else 0)
+    if candidate_changed:
+        assert refreshes[0].design == after.design
     final_revision = source.session.snapshot().design_revision
     controller.cancelOptimization()
     assert source.session.snapshot().design_revision == final_revision
-    assert len(refreshes) == 1
+    assert len(refreshes) == (1 if candidate_changed else 0)
 
 
 @pytest.mark.parametrize("change", ["revision", "edit_epoch", "source_closed"])
