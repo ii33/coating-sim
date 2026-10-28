@@ -31,7 +31,7 @@ def total(result):
 @pytest.mark.parametrize('family', ['HR', 'AR', 'mixed_RT'])
 @pytest.mark.parametrize('mode', ['mean', 'pointwise', 'both'])
 def test_real_default_hybrid_enabled_disabled_cross_family(family, mode):
-    service, request, initial = request_case(family, mode)
+    service, request, initial = request_case(family, mode, budget=None)
     disabled = run_case(service, replace(request, enable_thickness_reduction=False))
     enabled = run_case(service, request)
     assert disabled.targets_met and enabled.targets_met
@@ -42,9 +42,11 @@ def test_real_default_hybrid_enabled_disabled_cross_family(family, mode):
     on = enabled.performance['search']['hybrid']
     assert 'thickness_reduction' not in off
     detail = on['thickness_reduction']
-    assert detail['training_evaluations_used'] <= 32
+    assert detail['max_iterations_per_call'] == 16  # Local numerical protection, not a total work cap.
+    assert detail['solver_calls']
+    stage = next(row for row in on['stages'] if row['stage'] == 'nominal_thickness_reduction')
+    assert stage['admitted_evaluation_quantum'] is None and stage['wall_time_share'] is None
     assert detail['initial_physical_hash']
-    assert enabled.evaluations <= request.max_evaluations
     assert enabled.evaluations >= disabled.evaluations
     assert enabled.cycles == disabled.cycles == 1  # Early prior success, not another search rotation.
     assert any(row.stage == 'thickness_reduction_complete' for row in enabled.trace)
@@ -81,22 +83,33 @@ def test_low_remaining_budget_does_not_start_optional_solver(monkeypatch):
     assert 'thickness_reduction' not in result.performance['search']['hybrid']
 
 
-def test_dense_mean_rejection_preserves_exact_audited_incumbent():
+def test_mean_quality_guard_keeps_incumbent_instead_of_consuming_margin():
     service, request, _ = request_case(mode='mean')
-    # Keep this known off-grid rejection fixture focused on the cost stage;
-    # margin optimization deliberately changes its starting feasible design.
+    # The old cost-only policy consumed this mean margin and reached an
+    # off-grid rejection. Preserving each enabled optical group now blocks
+    # that physical tradeoff before there is a thinner candidate to audit.
     request = replace(request, enable_local_margin_refinement=False)
     off = run_case(service, replace(request, enable_thickness_reduction=False))
     result = run_case(service, request)
     record = result.performance['search']['hybrid']['thickness_reduction']
-    assert record['audit_outcome'] == 'rejected_incumbent_retained'
-    assert record['independent_audit_performed'] and not record['promoted']
+    assert not record['independent_audit_performed'] and not record['promoted']
+    assert record['status'] == 'no_quality_preserving_improvement'
     assert result.targets_met and result.candidate_design == off.candidate_design
     assert result.validation_score['nominal_pass']
-    assert record['proposed_total_thickness_nm'] < total(result)
+    assert total(result) == total(off)
 
 
-def test_stage_budget_keeps_candidate_and_reserves_original_audit(monkeypatch):
+def cost_stage_with_real_improving_trials():
+    service, request, _ = request_case()
+    seed = deepcopy(request.seed_designs[0])
+    # A thicker, still nominally passing real AR seed can become thinner while
+    # improving R. Disabling the preceding margin solve keeps that work for
+    # the cost stage, so cancel/deadline tests reach actual physical trials.
+    seed['front_layers'][0]['thickness']['value'] = 130.
+    return service, replace(request, seed_designs=(seed,), enable_local_margin_refinement=False)
+
+
+def test_explicit_budget_limits_cost_work_without_an_internal_stage_cap(monkeypatch):
     service, request, _ = request_case(budget=60)
     calls = []
     def consume(request, initial, *, evaluate, archive, cancel_check, **kwargs):
@@ -106,18 +119,22 @@ def test_stage_budget_keeps_candidate_and_reserves_original_audit(monkeypatch):
             value = evaluate(initial['design'], jacobian=True)
             calls.append(value)
             archive(value, audit_eligible=False)
-        pytest.fail('parent stage budget did not stop repeated requests')
+        pytest.fail('explicit total evaluation budget did not stop repeated requests')
     monkeypatch.setattr(thickness, 'reduce_total_thickness', consume)
     result = run_case(service, request)
     detail = result.performance['search']['hybrid']['thickness_reduction']
-    assert result.targets_met and detail['status'] == 'partial_stage_budget'
-    assert 0 < len(calls) <= 32 and result.evaluations < request.max_evaluations
+    assert result.targets_met and detail['status'] == 'evaluation_limit'
+    assert detail['stop_reason'] == 'evaluation_limit'
+    assert 32 < len(calls) < 60  # The former private stage cap cannot stop this work.
+    # The parent reserves one original-audit slot. Once stopped, an unapproved
+    # cost trial must not spend that slot on a new terminal audit.
+    assert result.evaluations == request.max_evaluations - 1 == 59
     assert detail['promoted'] is False
 
 
 @pytest.mark.parametrize('at', ['before', 'during'])
 def test_cancel_never_launches_later_optics_or_audit(monkeypatch, at):
-    service, request, _ = request_case()
+    service, request = cost_stage_with_real_improving_trials()
     cancel = Event()
     entered = []
     actual = thickness.reduce_total_thickness
@@ -141,7 +158,7 @@ def test_cancel_never_launches_later_optics_or_audit(monkeypatch, at):
 
 
 def test_time_deadline_during_cost_stage_does_not_trigger_terminal_audit(monkeypatch):
-    service, request, _ = request_case()
+    service, request = cost_stage_with_real_improving_trials()
     now = [0.]
     monkeypatch.setattr(synthesis, 'monotonic', lambda: now[0])
     events = []
@@ -167,7 +184,7 @@ def test_combined_resource_estimate_blocks_even_when_components_each_fit(monkeyp
     result = run_case(service, request)
     assert result.targets_met
     record = result.performance['search']['hybrid']['thickness_reduction']
-    assert record['status'] == 'skipped_resource_guard'
+    assert record['status'] == 'resource_guard'
     assert record['numerical_estimate_bytes'] <= limit
     assert record['retained_archive_estimate_bytes'] <= limit
     assert record['estimated_peak_bytes'] > limit

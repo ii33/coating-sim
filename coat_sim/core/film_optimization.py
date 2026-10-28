@@ -289,6 +289,7 @@ def optimize_film_design(
     performance_options: Any = None,
     performance_callback: Callable[[dict[str, Any]], None] | None = None,
     candidate_observer: Any = None,
+    baseline_limits: tuple[int | None, int | None] | None = None,
 ) -> FilmOptimizationResult:
     """Optimize only requested layer thicknesses through the film service.
 
@@ -338,6 +339,19 @@ def optimize_film_design(
     max_iterations = controls["max_iterations"]
     max_evaluations = controls["max_evaluations"]
     solver = controls["solver"]
+    # Reduction may request a naturally terminating baseline repair without
+    # inheriting ordinary optimization's finite default budgets. None denotes
+    # no cap, not a fabricated large integer. Other solver contracts stay intact.
+    iteration_limit: int | float = max_iterations
+    evaluation_limit: int | float = max_evaluations
+    if baseline_limits is not None:
+        if solver != "baseline" or not isinstance(baseline_limits, tuple) or len(baseline_limits) != 2:
+            raise ValueError("baseline_limits requires the baseline solver and two optional limits")
+        for limit in baseline_limits:
+            if limit is not None and (type(limit) is not int or limit < 1):
+                raise ValueError("baseline limits must be positive integers or None")
+        iteration_limit = math.inf if baseline_limits[0] is None else baseline_limits[0]
+        evaluation_limit = math.inf if baseline_limits[1] is None else baseline_limits[1]
     seed = controls["seed"]
     multistart_count = controls["multistart_count"]
     population_size = controls["population_size"]
@@ -604,13 +618,13 @@ def optimize_film_design(
                 "evaluations": int(evaluations),
             })
         if progress_callback is not None:
-            emit("running", 0.05 + 0.85 * min(1.0, evaluations / max_evaluations),
+            emit("running", 0.05 + 0.85 * min(1.0, evaluations / evaluation_limit),
                  iteration, evaluations,
                  None if best is None else float(best["max_error"]))
 
     def consider(values: np.ndarray) -> dict[str, Any] | None:
         nonlocal evaluations, failed_evaluations, cancel_after_evaluation
-        if evaluations >= max_evaluations:
+        if evaluations >= evaluation_limit:
             return None
         try:
             current = evaluate(values)
@@ -644,7 +658,7 @@ def optimize_film_design(
         # global-optimality guarantee, especially with coupled variables.
         for axis, span in enumerate(spans):
             for fraction in np.linspace(0.0, 1.0, 17):
-                if evaluations >= max_evaluations or cancel_after_evaluation:
+                if evaluations >= evaluation_limit or cancel_after_evaluation:
                     break
                 probe = best["values"].copy()
                 probe[axis] = lows[axis] + float(fraction) * span
@@ -653,7 +667,7 @@ def optimize_film_design(
                 consider(probe)
                 if best["solver_acceptable"]:
                     break
-            if best["solver_acceptable"] or evaluations >= max_evaluations or cancel_after_evaluation:
+            if best["solver_acceptable"] or evaluations >= evaluation_limit or cancel_after_evaluation:
                 break
 
     if solver == "baseline" and has_unbounded_axis:
@@ -665,16 +679,23 @@ def optimize_film_design(
                                   np.maximum(initial - lows, reference_scale))
         step_nm = physical_spans * initial_step
         minimum_step_nm = physical_spans * min_step
-        while (not best["solver_acceptable"] and iteration < max_iterations and
-               evaluations < max_evaluations and not cancel_after_evaluation and
+        while (not best["solver_acceptable"] and iteration < iteration_limit and
+               evaluations < evaluation_limit and not cancel_after_evaluation and
                np.any(step_nm > minimum_step_nm)):
+            # A pass can contain only duplicate or unrepresentable probes, so
+            # cancellation must not depend on completing another evaluation.
+            cancel_after_evaluation = cancelled()
+            if cancel_after_evaluation:
+                break
             iteration += 1
             for axis in range(len(normalized_variables)):
-                if evaluations >= max_evaluations or cancel_after_evaluation:
+                cancel_after_evaluation = cancel_after_evaluation or cancelled()
+                if evaluations >= evaluation_limit or cancel_after_evaluation:
                     break
                 improved = False
                 for direction in (-1.0, 1.0):
-                    if evaluations >= max_evaluations or cancel_after_evaluation:
+                    cancel_after_evaluation = cancel_after_evaluation or cancelled()
+                    if evaluations >= evaluation_limit or cancel_after_evaluation:
                         break
                     probe = best["values"].copy()
                     trial = float(probe[axis]) + direction * float(step_nm[axis])
@@ -689,7 +710,12 @@ def optimize_film_design(
                     if improved or best["solver_acceptable"]:
                         break
                 if improved:
-                    step_nm[axis] *= 2.0
+                    expanded_step = float(step_nm[axis]) * 2.0
+                    # Retain the finite step if doubling is unrepresentable.
+                    # This constrains arithmetic, not the physical domain; a
+                    # failed next pass can still halve this finite step.
+                    if math.isfinite(expanded_step):
+                        step_nm[axis] = expanded_step
                 else:
                     step_nm[axis] *= 0.5
                 if best["solver_acceptable"]:
@@ -697,16 +723,16 @@ def optimize_film_design(
 
     elif solver == "baseline":
         step = np.full(len(normalized_variables), initial_step, dtype=float)
-        while (not best["solver_acceptable"] and iteration < max_iterations and
-               evaluations < max_evaluations and not cancel_after_evaluation and
+        while (not best["solver_acceptable"] and iteration < iteration_limit and
+               evaluations < evaluation_limit and not cancel_after_evaluation and
                np.any(step > min_step)):
             iteration += 1
             improved = False
             for axis in range(len(normalized_variables)):
-                if evaluations >= max_evaluations or cancel_after_evaluation:
+                if evaluations >= evaluation_limit or cancel_after_evaluation:
                     break
                 for direction in (-1.0, 1.0):
-                    if evaluations >= max_evaluations or cancel_after_evaluation:
+                    if evaluations >= evaluation_limit or cancel_after_evaluation:
                         break
                     probe = best["values"].copy()
                     probe[axis] = min(highs[axis], max(
@@ -1202,10 +1228,10 @@ def optimize_film_design(
         message = "batch evaluation failed; last complete best candidate retained"
     elif best["solver_acceptable"]:
         message = "all sampled training conditions meet the requested normalized error"
-    elif termination_reason == "evaluation_budget" or evaluations >= max_evaluations:
+    elif termination_reason == "evaluation_budget" or evaluations >= evaluation_limit:
         termination_reason = termination_reason or "evaluation_budget"
         message = "maximum evaluation budget reached; target attainment is not guaranteed"
-    elif termination_reason == "iteration_limit" or iteration >= max_iterations:
+    elif termination_reason == "iteration_limit" or iteration >= iteration_limit:
         termination_reason = termination_reason or "iteration_limit"
         message = "maximum iteration count reached; target attainment is not guaranteed"
     else:

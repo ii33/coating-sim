@@ -1240,6 +1240,12 @@ AppWindow {
                                 wrapMode: Text.WordWrap
                                 font.pointSize: window.themeTokens.fontSizeSmall
                             }
+                            FilmThicknessBoundsBatchPanel {
+                                Layout.fillWidth: true
+                                Layout.maximumWidth: setupTabs.width
+                                controller: window.controller
+                                themeTokens: window.themeTokens
+                            }
                             ScrollView {
                                 id: variableScroll
                                 objectName: "filmOptimizationVariableScroll"
@@ -1523,28 +1529,38 @@ AppWindow {
                                     columns: 2
                                     columnSpacing: window.themeTokens.spaceSm
                                     rowSpacing: window.themeTokens.spaceXs
-                                    Label { text: "最大迭代数"; color: window.themeTokens.colorText }
+                                    Label { text: window.controller.searchMode === "reduction" ? "减量迭代上限（空 = 不限）" : "最大迭代数"; color: window.themeTokens.colorText }
                                     ThemeControls.ThemeField {
                                         objectName: "filmOptimizationMaxIterationsField"
                                         Layout.fillWidth: true
-                                        numericDisplayValue: window.controller.maxIterations
-                                        validator: RegularExpressionValidator { regularExpression: /^[1-9][0-9]*$/ }
+                                        numericDisplayValue: window.controller.searchMode === "reduction"
+                                            ? (window.controller.reductionLimits.max_iterations ?? null)
+                                            : window.controller.maxIterations
+                                        placeholderText: window.controller.searchMode === "reduction" ? "不设限制" : ""
+                                        validator: RegularExpressionValidator { regularExpression: window.controller.searchMode === "reduction" ? /^([1-9][0-9]*)?$/ : /^[1-9][0-9]*$/ }
                                         function commitDraft() {
                                             if (!numericValueEdited) return
-                                            window.controller.setSolverOption("max_iterations", numericEditText)
+                                            if (window.controller.searchMode === "reduction")
+                                                window.controller.setReductionLimit("max_iterations", numericEditText)
+                                            else window.controller.setSolverOption("max_iterations", numericEditText)
                                             numericValueEdited = false
                                         }
                                         onEditingFinished: commitDraft()
                                     }
-                                    Label { text: "最大评估数"; color: window.themeTokens.colorText }
+                                    Label { text: window.controller.searchMode === "reduction" ? "减量完整网格评估上限（空 = 不限）" : "最大评估数"; color: window.themeTokens.colorText }
                                     ThemeControls.ThemeField {
                                         objectName: "filmOptimizationMaxEvaluationsField"
                                         Layout.fillWidth: true
-                                        numericDisplayValue: window.controller.maxEvaluations
-                                        validator: RegularExpressionValidator { regularExpression: /^[1-9][0-9]*$/ }
+                                        numericDisplayValue: window.controller.searchMode === "reduction"
+                                            ? (window.controller.reductionLimits.max_evaluations ?? null)
+                                            : window.controller.maxEvaluations
+                                        placeholderText: window.controller.searchMode === "reduction" ? "不设限制" : ""
+                                        validator: RegularExpressionValidator { regularExpression: window.controller.searchMode === "reduction" ? /^([1-9][0-9]*)?$/ : /^[1-9][0-9]*$/ }
                                         function commitDraft() {
                                             if (!numericValueEdited) return
-                                            window.controller.setSolverOption("max_evaluations", numericEditText)
+                                            if (window.controller.searchMode === "reduction")
+                                                window.controller.setReductionLimit("max_evaluations", numericEditText)
+                                            else window.controller.setSolverOption("max_evaluations", numericEditText)
                                             numericValueEdited = false
                                         }
                                         onEditingFinished: commitDraft()

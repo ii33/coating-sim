@@ -232,7 +232,10 @@ def test_real_between_node_violation_is_caught_on_independent_dense_grid(monkeyp
     assert result.validation_score is not None
     assert request.acceptable_normalized_error < result.validation_score['max_error'] <= initial_audit['score']['max_error']
     assert result.cycles > 0  # Independent-audit failure must not stop at training pass.
-    assert result.state == 'not_found' and not result.targets_met
+    assert result.state == 'completed' and not result.targets_met
+    assert result.termination_reason == 'local_session_stalled_targets_unmet'
+    assert result.local_optimum is not None
+    assert result.local_optimum['session_complete'] and not result.local_optimum['local_converged']
     assert len(result.validation_score['errors']) >= 9
     assert result.validation_score['audit']['dense_points'] == 5
 

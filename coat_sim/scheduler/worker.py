@@ -648,6 +648,11 @@ def run(root, job_id, owner_pid, owner_instance):
             outcome = {'state': 'cancelled', 'result': saved, 'error_code': 'cancelled',
                 'error': 'Cancelled by user', 'cancel_snapshot': {'source': 'worker_completed_reply',
                     'replay_performed': False}}
+        elif (spec.executor == 'film_optimization'
+              and reply.get('kind') == 'coat_sim.film_reduction_result'
+              and reply.get('state') == 'failed'):
+            outcome = {'state': 'failed', 'result': reply, 'error_code': 'algorithm_failed',
+                       'error': reply.get('message') or 'Film reduction failed.'}
         elif spec.executor in ('film_ideal_sensitivity', 'film_thickness_error_table', 'film_manufacturing_repair') and reply.get('state') == 'failed':
             outcome = {'state': 'failed', 'result': reply, 'error_code': 'algorithm_failed',
                        'error': reply.get('message') or 'Sensitivity evaluation failed.'}

@@ -129,6 +129,26 @@ def deserialize_job_payload(value: Mapping[str, Any]):
     return request_id, request, deepcopy(value["physical_structure_metadata"])
 
 
+def _saved_completed_local_session(checkpoint):
+    """Completion evidence is separate from nominal feasibility and worker life."""
+    from .film_synthesis_archive import physical_design_hash
+    local = checkpoint.get('local_optimum')
+    audit = checkpoint.get('audit')
+    performance = checkpoint.get('synthesis_performance')
+    if not isinstance(performance, Mapping) and isinstance(audit, Mapping):
+        performance = audit.get('synthesis_performance')
+    if not isinstance(local, Mapping) or not isinstance(performance, Mapping):
+        return False
+    search = performance.get('search', {})
+    hybrid = search.get('hybrid', {}) if isinstance(search, Mapping) else {}
+    session = hybrid.get('local_session', {}) if isinstance(hybrid, Mapping) else {}
+    if not session and isinstance(search, Mapping):
+        session = search.get('legacy_local_session', {})
+    return (isinstance(session, Mapping) and session.get('session_complete') is True
+        and local.get('session_complete') is True and local.get('validation_complete') is True
+        and session.get('returned_physical_hash') == physical_design_hash(checkpoint['design']))
+
+
 def _partial_result(request, request_id, checkpoint, *, terminal_state="cancelled"):
     design = deepcopy(checkpoint["design"])
     progress = checkpoint.get("progress", {})
@@ -159,7 +179,8 @@ def _partial_result(request, request_id, checkpoint, *, terminal_state="cancelle
     performance = _historical_checkpoint_performance(saved_performance)
     nominal = (nominal_targets_pass(request, checkpoint["training_score"])
         and nominal_targets_pass(request, validation, independent_audit=True))
-    state = "not_found" if terminal_state == "completed" and not nominal else terminal_state
+    session_complete = _saved_completed_local_session(checkpoint)
+    state = "not_found" if terminal_state == "completed" and not nominal and not session_complete else terminal_state
     result = FilmSynthesisResult(
         state=state, termination_reason=("validation_targets_not_met" if state != terminal_state
             else "audited_checkpoint_recovered"),
@@ -322,6 +343,8 @@ def validate_checkpoint(value: Mapping[str, Any], *, terminal_state="cancelled")
                    "audit_physical_evaluations": audited.get("audit", {}).get("physical_evaluations", 0),
                    "audit_wavelength_points": audited.get("audit", {}).get("wavelength_points", 0)},
                "physical_structure_metadata": metadata}
+    if isinstance(audit_record.get('synthesis_performance'), Mapping):
+        checked['synthesis_performance'] = deepcopy(audit_record['synthesis_performance'])
     search_state = audit_record.get('search_checkpoint')
     if search_state is not None:
         from .film_synthesis_continuation import validate_search_state
@@ -338,12 +361,18 @@ def validate_checkpoint(value: Mapping[str, Any], *, terminal_state="cancelled")
             raise ValueError('local checkpoint audit belongs to another candidate')
         if local.get('termination') == 'converged' or local.get('local_converged') is True:
             terminal, returned, selected = (local.get(k) for k in ('solver_terminal','returned_best','audited_selected'))
+            numerical_session = (local.get('session_complete') is True
+                and local.get('role') == 'fixed_topology_local_session_result_before_thickness_reduction'
+                and isinstance(local.get('convergence_scope'), str))
             if (local.get('local_converged') is not True or local.get('termination') != 'converged'
                     or any(not isinstance(r,dict) or r.get('physical_hash') != local['physical_hash']
                            for r in (terminal,returned,selected))
-                    or terminal.get('local_stationary') is not True or terminal.get('nominal_pass') is not True
+                    or terminal.get('local_stationary') is not True
                     or terminal.get('epigraph_feasible') is not True or returned.get('is_solver_terminal') is not True
-                    or returned.get('role') != 'solver_terminal' or selected.get('nominal_pass') is not True
+                    or returned.get('role') != 'solver_terminal'
+                    or (not numerical_session and (terminal.get('nominal_pass') is not True
+                        or selected.get('nominal_pass') is not True))
+                    or (numerical_session and selected.get('validation_complete') is not True)
                     or selected.get('topology_matches_fixed') is not True):
                 raise ValueError('local checkpoint convergence identity does not match the audited candidate')
         local_training = evaluate_frozen_structure_candidate(_proxy(request), local_design,
@@ -604,7 +633,9 @@ def is_synthesis_result(value: Any) -> bool:
                 or review.get("targets_met") is not result["targets_met"]
                 or review.get("solver_acceptable") is not acceptable
                 or result["targets_met"] is not (result["state"] == "completed" and nominal is True)
-                or (result["state"] == "completed" and nominal is not True)):
+                or (result["state"] == "completed" and nominal is not True
+                    and not _saved_completed_local_session(dict(design=result['candidate_design'],
+                        local_optimum=result.get('local_optimum'), synthesis_performance=result.get('performance'))))):
             return False
     except (KeyError, TypeError, ValueError, ArithmeticError):
         return False
@@ -718,7 +749,7 @@ def _replay_synthesis_result(value: Mapping[str, Any]) -> dict[str, Any]:
         data.update(candidate_design=candidate, training_score=training, validation_score=validation,
             frozen_request=request, targets_met=body["state"] == "completed" and nominal,
             trace=tuple(FilmSynthesisTrace(**row) for row in body["trace"]))
-        if body["state"] == "completed" and not nominal:
+        if body["state"] == "completed" and body['targets_met'] and not nominal:
             data.update(state="not_found", termination_reason="replay_nominal_targets_not_met",
                 message="Frozen physical replay did not satisfy the original nominal bounds.")
         upgraded = film_synthesis_result_to_payload(request_id, FilmSynthesisResult(**data),

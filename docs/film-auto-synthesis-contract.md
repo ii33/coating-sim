@@ -30,7 +30,7 @@
 
 ## 结果、进度、取消与失败
 
-结果含对应同一candidate_design的training_score/validation_score、逐条件误差、audit每目标最坏位置和域、计数、trace、来源revision与冻结请求。最终候选优先返回已审计最好档案；取消时仍可返回此前完整审计，validation_complete不等于targets_met。只训练/独审全部目标均≤acceptable_normalized_error且正常提交才completed/targets_met=True，默认1e-3在scale1下为0.1个百分点。权重小不放宽最大违规门。
+结果含对应同一candidate_design的training_score/validation_score、逐条件误差、audit每目标最坏位置和域、计数、trace、来源revision与冻结请求。最终候选优先返回已审计最好档案；取消时仍可返回此前完整审计，validation_complete不等于targets_met。本轮正常数值结束与正式达标分开：completed不要求targets_met=True；targets_met仅在同一候选的原门限训练和独立审计均通过时为True。未达标局部收敛/无有效改善可正常结束本轮，保留实际误差和真实停止原因；acceptable_normalized_error仍只是求解可接受尺度，不放宽名义目标。权重小不放宽最大违规门。
 
 进度给stage/cycle/evaluations/layers/best最大违规，snapshot_callback(candidate,training_score,validation_score,audit)仅在更优完整独审后调用。CLI外壳提供真实活动与独立墙钟心跳，不伪造无限预算百分比。文件输出由外壳负责排他/原子语义。
 

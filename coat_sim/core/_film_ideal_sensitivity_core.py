@@ -240,11 +240,12 @@ def _estimate_physical_resources(
 
 
 def _check_frozen_material_domain(request):
-    """Require captured source n/k over every original sample, never infer k=0.
+    """Require source n and any existing source k over every original sample.
 
-    Explicit use_k=False remains a user-authored idealization. The independent
-    source sampler validates the underlying kernel's complete domain before that
-    kernel can enter its source-only-zero-default calculation convention.
+    Missing source k follows the ordinary spectrum/Jacobian calculation's zero
+    default without rewriting frozen data. Keep the strict source sampler so an
+    existing k table outside its domain cannot enter that default branch.
+    Explicit use_k=False remains a user-authored idealization.
     """
     frozen = request.frozen_material_snapshot
     if frozen is None:
@@ -279,11 +280,9 @@ def _check_frozen_material_domain(request):
                 if series is not None and series[0] is not None:
                     continue
                 for wave in waves:
-                    _n, k, _details = sampler(
+                    sampler(
                         float(wave), "nm", extrapolation_policy="error", include_k=use_k
                     )
-                    if use_k and k is None:
-                        raise ValueError("missing calculable source k; no k=0 assumption was made")
             except (ValueError, ArithmeticError) as exc:
                 raise ValueError(
                     f"frozen optical source {key[0]}/{key[1]} cannot cover original "

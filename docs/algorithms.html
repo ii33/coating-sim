@@ -12,6 +12,7 @@
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px solid #c8e0db;border-radius:8px;padding:16px;font-size:.88rem;line-height:1.5}</style>
 </head>
 <body>
+<p class="source">算法更新：2026-10-28；<a href="#film-sensitivity-missing-k-20261028">敏感度缺失 k 规则</a>与普通光谱一致：无来源 k 仅计算时取 0，已有 k 保留真实值并严格检查完整原波段。</p>
 <p class="source">算法更新：2026-10-27；新增<a href="#film-automatic-repair-20261027">14bc 三参数自动薄层修复</a>：单层厚度下限、允许增删合并，以及相对固定原曲线的逐点最大变化；原光学目标独立核验。</p>
 <p class="source">算法更新：2026-10-26；新增<a href="#film-numeric-zero-20261026">14ba 候选发布前的数值零清理与同冠军详情</a>，保留原始求解精度、目标、预算和独立审计。</p>
 <p class="source">算法更新：2026-10-25；新增<a href="#film-audited-feasibility-repair">14ay 审计边界可行性修复</a>，固定拓扑、保留原始验收与积分分母；<a href="#film-manufacturing-pair-20261025">14ax 独立可选制造修复算子</a>；<a href="#film-objective-progress-handoff-20261025">14aw 可选原目标进展诊断与极小极大交接</a>仍默认关闭。</p>
@@ -71,7 +72,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <p class="source">存储格式补充：2026-10-18。工程 BBS、助手精简记忆和可恢复文件清理均为非物理持久化契约，不改变仿真公式、坐标或数值精度。见<a href="#engineering-notes-storage-20261018">工程记录与助手工作区格式</a>。</p>
 <nav aria-label="章节目录">
 <a href="#film-automatic-repair-20261027">14bc 三参数薄层修复、实时改善与取消应用（2026-10-27）</a>
-<a href="#film-margin-continuation-20261026">14bb 自动合成局部余量、原目标减薄与结构续接（2026-10-26）</a>
+<a href="#film-margin-continuation-20261026">14bb 自动合成本轮数值停止、指标保护减薄与结构续接（2026-10-28）</a>
 <a href="#film-numeric-zero-20261026">14ba 数值零清理与实时详情（2026-10-26）</a>
 <a href="#film-reduction-20261025">14az 独立减层 / 减厚后优化（2026-10-25）</a>
 <a href="#film-cancel-warm-restart-20261025">14ay 取消后从保留候选重新启动求解器（2026-10-25）</a>
@@ -259,6 +260,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#film-hybrid-parallel-20261023">14am 混合合成独立物理批次与真实多进程</a>
 <a href="#film-ideal-local-sensitivity-20261023">14ao 理想局部导数敏感度优化</a>
 <a href="#film-thickness-error-table-20261023">14ap 独立厚度参数表预期误差</a>
+<a href="#film-sensitivity-missing-k-20261028">14ap-1 敏感度缺失 k 与已有 k 的域检查</a>
 <a href="#film-ideal-controlled-degradation-20261023">14aq 固定初始光谱的受控退化理想优化</a>
 <a href="#film-ideal-scalar-probes-20261023">14aq-1 理想敏感度标量探针</a>
 <a href="#candidate-display-score">14ar 可开关实时光谱与独立候选展示评分</a>
@@ -266,28 +268,27 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <main>
 
 <section id="film-margin-continuation-20261026">
-<h2>14bb 自动合成局部余量、原目标减薄与结构续接</h2>
-<p><strong>正式达标与局部完成度分开：</strong>已有同一候选的原目标训练和独立审计通过时，保留其达标结果；预算耗尽、局部终态审计拒绝或局部求解未完成仍保留真实终止原因与 <code>local_converged=false</code>，默认不减薄，不借用另一候选的收敛标志。提案物理身份单列于 trace，模板 provenance 不混入新字段；搜索状态 sidecar 与原已审计候选 writer 分开。</p>
-<p><strong>最佳可行试探与驻点：</strong>若完整可行试探的最差有符号余量优于求解终态，保留该试探并独立审计；通过后可成为最佳可行解，但标为 <code>best_feasible_not_stationary</code>，不借用终态驻点身份、不进入减薄。为免舍入差异冒充改善，仅当 margin 改善超过 <code>1e-10·max(1,|best_margin|,|terminal_margin|)</code> 才偏好另一试探（本项目选择约定）；该尺度判定不影响原目标的严格训练或独立审计门限。每次审计晋升同步实时最佳曲线；减薄阶段仍允许在原目标内消费已取得的余量，不加入未启用 mean 目标。</p>
-<p class="source">更新：2026-10-26。实现：<code>film_synthesis_margin.py</code>、<code>film_synthesis_continuation.py</code>、<code>film_auto_synthesis.py</code>；接口与异步边界见 <a href="film-synthesis-continuation.md">阶段与续接核心契约</a>。本节新增 hybrid 默认阶段；原 legacy、候选 warm restart 与人工制造修复仍分别存在。</p>
-<p><strong>用途和输入输出：</strong>输入为冻结的目标、真实材料 n/k、光学环境、用户制造约束和既有结构候选。结构通过原训练与独立审计后，先在固定拓扑上改善最差安全余量，再按<strong>原正式目标</strong>减薄。输出的 <code>local_optimum</code> 是减薄前结果及其原始评分/独立审计；<code>candidate_design</code> 是最终可审查/写回候选，二者可不同。余量被减薄消费是允许的；最终候选仍必须独立通过原始阈值，容差不放宽阈值。</p>
-<figure><svg viewBox="0 0 1050 230" role="img" aria-label="结构搜索到固定拓扑余量再到减薄，结构进度独立保存" style="max-width:100%;height:auto">
+<h2>14bb 自动合成本轮数值停止、指标保护减薄与结构续接</h2>
+<p class="source">更新：2026-10-28。实现：<code>film_auto_synthesis.py</code>、<code>film_synthesis_refinement.py</code>、<code>film_synthesis_margin.py</code>、<code>film_synthesis_thickness.py</code>及既有续接/作业模块。接口、持久化和异步边界见<a href="film-synthesis-continuation.md">阶段与续接核心契约</a>。本节为 hybrid 默认会话策略；不把实验 mean 引导或边界生长研究加入默认。</p>
+<p><strong>用途、输入输出：</strong>输入为冻结的启用目标、真实 n/k、光学环境、制造约束和结构前沿。一次会话先完成结构筛选及实质局部优化，再在固定层序/材料/ID 上进行完整精修及同一终态的独立审计。数值局部停止与目标达标分离：即使当前结构未达到目标，也可正常结束本轮，保存最佳完整候选和剩余违规；用户点击继续才推进后续结构。显式 legacy 仅按既有充分轮计数检查训练及同候选独审误差停滞，不新增 legacy 求解器内部状态恢复。<code>local_optimum</code>保存减薄前候选及证据，<code>candidate_design</code>是最终返回/写回候选。两者和求解终态可能不同，不可互借标签。</p>
+<figure><svg viewBox="0 0 1060 285" role="img" aria-label="一次结构筛选和固定拓扑优化后结束，用户继续才推进保存的前沿" style="max-width:100%;height:auto">
 <defs><marker id="margin-arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#38bdf8"/></marker></defs>
-<g fill="#132638" stroke="#38bdf8" stroke-width="2"><rect x="15" y="20" width="270" height="88" rx="10"/><rect x="370" y="20" width="310" height="88" rx="10"/><rect x="765" y="20" width="270" height="88" rx="10"/><rect x="195" y="155" width="660" height="60" rx="10"/></g>
-<g fill="#e2e8f0" text-anchor="middle" font-size="19"><text x="150" y="55">新结构 / 可行性</text><text x="150" y="84">原目标训练 + 独立审计</text><text x="525" y="55">固定层序 / 材料 / 层 ID</text><text x="525" y="84">有符号最差余量 → 局部停止</text><text x="900" y="55">原目标减薄</text><text x="900" y="84">重新审计后交付</text><text x="525" y="181">结构族游标 · 待评候选 · 真实候选池 · 随机推进 · 审计反馈</text><text x="525" y="204">独立保存；查看 / 保存不清空；兼容编辑重新评分后继续</text></g>
-<g stroke="#38bdf8" stroke-width="2" marker-end="url(#margin-arrow)"><path d="M285,64 H358"/><path d="M680,64 H753"/><path d="M150,108 V185 H185"/><path d="M855,185 H900 V118"/></g></svg>
-<figcaption>图14bb-1：结构探索进度与一次局部会话分开保存。初步余量求解结束后可作 canonical 数值零层清理，随后在最终固定层 ID/材料上单独确认收敛；每次局部求解本身不插层、删层或换材料。</figcaption></figure>
-<p><strong>量与归一化：</strong>膜厚 d 为 nm，坐标 x=d/100；R、T 为 0–1 fraction。每个已启用目标、角度和 reduction 产生原始有符号条件 q：下界为 (L−y)/s，上界为 (y−U)/s，s 为该目标已有的 <code>normalization_scale</code>。跨波段、多角和多个指标取同一归一化距离的最大值；权重不替换最差条件，也不添加 mean。mean 仅启用时沿用完整波段的梯形积分；pointwise 仅启用时沿用各原样本。</p>
-<pre>局部余量：min t；q_margin(d) ≤ t；全部 q_original(d) ≤ 0；原膜厚/总厚约束。
-t 没有 t≥0 下限；负 t 表示仍在改善可行域内的余量。
-AR 的 L=0 / HR 的 U=1 保留为物理约束，但不作为余量方向。
-value 与有效零宽区间仅作原约束；没有区间方向时返回 no_interval_margin。
-减薄：min Σd；全部原约束 q_original(d) ≤ 0；再做独立原目标审计。</pre>
-<p><strong>停止和预算：</strong>余量阶段使用解析 Jacobian 的 SLSQP，默认 <code>ftol=1e-11</code>、最多256次迭代作为数值保护。只有受约束最优性/步长/函数变化等求解条件通过且完整 epigraph 可行时报告 <code>converged</code>；迭代上限、资源保护、评价/时间预算、数值失败和取消均分别报告。非收敛余量阶段不进入减薄。受约束驻点不要求每个原始光学梯度为零，不保证全局最优。减薄沿用已有≤32候选/≤16 SLSQP步的有限调度片；结束时保留通过原审计的候选。</p>
-<p><strong>结构续接：</strong>JSON search-state v1 保存既有8族的消费游标、仍活动的源顺序、源轮转位置、未评分候选、真实设计池及插入/父候选身份、已试物理哈希、全局轮次推进、固定根 seed/模板 PCG64 算法版本及 NumPy版本、稀疏审计反馈。确定性生成器跳到保存游标而不重复物理计算；随机模板由 root/stage/物理模板哈希分离生成，已展开的待评 extra 不二次随机化。短生命周期 DE 群体及局部求解器内部状态不保存；在下一旋转边界重新建立，其 seed 随持久轮次前进，已完成候选仍留在池中。</p>
-<p>版本、SHA256和冻结目标/材料/制造与搜索参数指纹校验后，池中设计在新预算中全部重新评分；旧评分/旧审计不冒充本次证据。查看和保存不清空状态。膜厚/拓扑编辑先作为 seed，冻结材料闭包和原制造边界必须仍成立；目标/材料/约束不兼容时明确要求重建，原 JSON 不被改写。JSON读取/输出沿用有界字节读取和调度器原子替换机制，限制64 MiB，不使用 pickle。</p>
-<p><strong>一次继续会话有界：</strong>旧达标冠军不能立即返回。继续既有源前沿的一片候选筛选，选择新分支，即使暂时变差也独立进行一次最多96步的固定拓扑可行性局部会话。新分支达标时再走余量/减薄；未达标或不优于历史冠军时保留历史最好并结束本次会话，保存已推进的游标，不能把该分支局部停止表述为全局无解。资源或无有效物理工作也明确结束。取消/截止时不再补审计，返回已完成证据且保持候选/审计身份绑定。</p>
-<p><strong>参考与限制：</strong><a href="https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html">SciPy SLSQP 官方文档</a>说明 ftol 涉及拉格朗日梯度、约束违反、步长和目标变化等条件。余量方向、物理端点排除、256/96迭代保护、候选调度和续接数据结构均为本项目约定；未找到外部依据，仅为本项目实现。独立密网格、偏移点及极值审计是数值证据，不能称连续光谱证书；n/k 来源与域外策略不因本节改变。</p>
+<g fill="#132638" stroke="#38bdf8" stroke-width="2"><rect x="10" y="20" width="230" height="105" rx="10"/><rect x="280" y="20" width="230" height="105" rx="10"/><rect x="550" y="20" width="230" height="105" rx="10"/><rect x="820" y="20" width="230" height="105" rx="10"/><rect x="130" y="190" width="800" height="75" rx="10"/></g>
+<g fill="#e2e8f0" text-anchor="middle" font-size="18"><text x="125" y="52">本轮结构筛选</text><text x="125" y="80">局部 / 成长 / 扫描</text><text x="125" y="108">不是任意单次局部退出</text><text x="395" y="52">固定拓扑完整精修</text><text x="395" y="80">数值停止 + 同终态审计</text><text x="395" y="108">未达标仍可完成本轮</text><text x="665" y="52">保护最佳指标减薄</text><text x="665" y="80">只接受不恶化候选</text><text x="665" y="108">无改善即保留局部结果</text><text x="935" y="52">本轮完成 / 交付</text><text x="935" y="80">单列是否达标及差距</text><text x="935" y="108">用户点击才继续搜索</text><text x="530" y="220">结构族游标 · 待评候选 · 实际候选池 · 随机推进 · 审计反馈</text><text x="530" y="249">独立保存；查看 / 保存不清空；兼容编辑重评 seed 后继续</text></g>
+<g stroke="#38bdf8" stroke-width="2" fill="none" marker-end="url(#margin-arrow)"><path d="M240,72 H268"/><path d="M510,72 H538"/><path d="M780,72 H808"/><path d="M125,125 V224 H142"/><path d="M930,224 H988 V137"/></g></svg>
+<figcaption>图14bb-1：数值停止、正式达标、结构进度是不同状态。数值零层 canonical 清理先结束原求解，再对新层 ID 单独求解/核验；不会把另一拓扑或另一候选的收敛声明转移过来。</figcaption></figure>
+<p><strong>量和归一化：</strong>膜厚 d 为 nm，局部坐标沿用 x=d/100；R/T 为 0–1 fraction。启用目标、角度和 reduction 各自生成有符号条件 q：下界 (L−y)/s，上界 (y−U)/s，s 为用户已有 normalization_scale。跨波段/角度/目标取同一归一化口径的最坏违规；权重不代替最差条件，不添加 mean。只有用户启用 mean 时才沿用完整波段梯形积分。value/有效零宽目标继续使用原约束，不伪造区间余量。</p>
+<pre>未达标可行性精修：min t；q_original(d) ≤ t；t ≥ 0；原制造约束。
+达标后余量精修：min t；q_margin(d) ≤ t；全部 q_original(d) ≤ 0。
+余量 t 无非负下限；AR 的 L=0 / HR 的 U=1 不作为吸引方向。
+减薄：min Σd；保持启用指标的既有方向/最坏归一化值不恶化；
+最终仍按原冻结目标独审，未达标就如实保留差距，不抬高正式目标上限。</pre>
+<p><strong>同终态身份与最佳候选：</strong>分别记录 solver_terminal、returned_best 和 audited_selected 的物理 hash/固定拓扑。完整可行试探或历史冠军优于终态时可保留为最佳，但不借用终态驻点标签。达标余量分支只有原门限训练及独审均通过的同终态才可 local_converged；未达标分支数值局部收敛不表示目标已通过。返回候选、审计、最佳光谱和详情必须身份一致。求解器终态与返回冠军不同仍可结束本轮，终态证据独立保留。</p>
+<p><strong>余量分片与中断：</strong>达标余量的单次 SLSQP 最多256次迭代仅为工作分片。若触限后最差有符号余量仍改善超过 ε<sub>q</sub>=relative_improvement_tolerance×max(1,|q<sub>before</sub>|,|q<sub>after</sub>|)，先按原目标独审，再从同一已审物理解继续，外层不设固定次数或秒数上限。无尺度化改善记 scaled_stagnation，不宣称驻点或减薄；显式预算、取消、资源保护与求解失败保持真实原因。减薄中截止时间即使在两次 admission 检查之间到期，也返回此前已审冠军及其原审计，不追加停止后的计算。</p>
+<p><strong>非法终点和浮点边界：</strong>有限但违反制造边界的求解终点不能改名为上一合法点。solver_terminal 单列原始终点坐标、t、物理 hash 和 physical_valid=false；retained_terminal 及顶层 terminal 字段绑定上一已接受点及该点自己的 t，二者都不获得收敛标签。无预算 baseline 的自适应厚度步长翻倍若超出有限浮点范围，则保留原有限步长供后续正常收缩；循环及轴/方向边界直接检查取消，避免没有新评价时失去响应。这是算术保护，不增加物理厚度上限或搜索预算。</p>
+<p><strong>停止与默认参数：</strong>仅在完成本轮实质工作后的完整精修边界判断，不把一次工程先验或任意局部调用退出当作整轮完成。SLSQP 的数值成功、尺度化无有效改善、内部迭代保护、求解失败、资源保护、评价/周期/时间限制及取消分别报告；预算/取消不能改名为梯度收敛。保留每次 SLSQP 最多16次迭代的局部数值保护，减薄外层没有固定总评价数、时长或调用次数上限；内部迭代保护后仍有通过双质量审计的实质变薄便继续同拓扑。厚度尺度阈值沿用 relative_improvement_tolerance·max(initial_total_nm,1 nm)。取消、用户显式预算和资源停止优先；无有效改善便保留已审冠军结束，不以32次候选量子冒称收敛。受约束局部数值停止不保证每个光学梯度直接为零，不证明全局最优或目标不可行；独立有限网格审计不是连续证书。无可接受减薄候选即保留局部结果结束，不因未达标卡在减薄或自动增长循环。</p>
+<p><strong>结构续接与编辑：</strong>复用 search-state v1 的既有 8 族源游标、活动顺序、待评原/随机候选、实际候选池/父身份、已试物理 hash、根 seed/下一旋转、算法版本和审计反馈。仅恢复结构搜索进度，不恢复 SLSQP/L-BFGS/短生命周期 DE 内部迭代。旧评分和独审不冒充新结果；当前兼容编辑先作为 seed 重评。查看、保存、关闭重开不清空前沿；目标/材料/制造约束或搜索参数不兼容时精确说明需重建项并保留旧文件。继续必须推进新结构工作，不能因旧达标冠军立即返回。JSON 仍经版本/指纹/SHA256校验、有界64MiB读取和原子替换，不使用 pickle。来源修订、编辑代际和项目切换保护保留。</p>
+<p><strong>参考与限制：</strong><a href="https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html">SciPy SLSQP 官方文档</a>为原数值求解器参考。一次会话边界、最佳候选选择、指标保护减薄和持久化结构均为本项目约定；未找到外部依据，仅为本项目实现，不声称新的全局收敛保证。未启用指标、材料插值/外推政策及用户正式目标不因本节改变。</p>
 </section>
 
 <section id="film-automatic-repair-20261027">
@@ -363,7 +364,19 @@ for bounded_proposal in selected_layer_deletions_merges_or_thickness_trials:
 </pre>
 <h3>完整验证、停止与限制</h3>
 <p>复用当前目标归约器的全部启用 mean / pointwise 条件及 R / T、角度、偏振。均值按原积分定义计算，逐点条件检查完整网格，权重与数值求解容差均不放宽名义目标。源设计和每个被接纳的减量候选使用同一原网格和独立加密网格。默认验证倍率沿用普通请求的 2；波长端点及角度保持原请求。仅完成离散网格验证，不能推断网格之间或制造扰动下的性能。</p>
-<p>默认预算沿用当前优化请求的 200 次迭代 / 1000 次完整网格评估，可由页面配置；原网格、修复及独立验证都占用真实评估预算。确定性有限删层、同引用合并、既有有界光谱修复及坐标减厚仍属于局部搜索；修复预算不足或未收敛可能错过可行低层数膜系。纯减层允许以更厚的存活层换取层数下降；联合模式同时限制两项均不增加，不把总厚增加标成联合减量。没有可删层时纯减层提前说明原因，联合模式可继续尝试减厚。原设计未达标必须显式报告；未找到达标候选不得悄悄放宽目标。无改善、预算耗尽或不可行目标不证明全局不可减。</p>
+<p><strong>默认参数与终止（2026-10-28）：</strong>独立减量默认不设全局次数、轮次或时长硬上限，不再继承普通优化的 200 次迭代 / 1000 次完整网格评估；普通优化仍保留其原有语义。算法页可选填减量专用迭代/评估上限，留空即不限，分别最小 1 / 2。删层后存活层的 baseline 修复取消内部 8 次迭代和 max(35,18N+1) 次评估截断，只按数值步长收敛、满足完整目标、用户取消或用户选填上限停止；显式限额传递剩余额度并保留 1 次独立网格审计。原设计完整双网格审计恰计 2 次，不会把普通 1000 次默认预算直接耗尽。原网格、内部修复和独立验证都计入完整网格总数，分块正向次数另行区分，不把 6 次网格评估误写成 6 次物理正向。</p>
+<pre>freeze reduction limits = (optional_iterations, optional_full_grid_evaluations)  # null = unlimited
+audit source on original + independent grid                         # 2 grid evaluations
+repeat until cancelled/error or an explicitly configured limit:
+    try legal delete/merge proposals; repair survivors to numerical stopping
+    accept only full_pass(candidate) and the selected physical reduction rule
+    try bounded thickness-coordinate proposals
+    if incumbent changed: clear topology cache and continue
+    if topology-only or no proposals: stop(proposal_exhausted)
+    halve thickness step; if below numerical tolerance: stop(step_tolerance)
+return last complete audited incumbent, actual termination reason and counters</pre>
+<p>同一最佳设计下已检查的删层/合并提案不随减厚步长反复修复；最佳设计变化后缓存失效。结果明确区分 proposal_exhausted、step_tolerance、evaluation_budget、iteration_limit、cancelled 与 failed，不把局部收敛记成预算耗尽。新请求/结果为严格 v3，独立 limits 的两个键可为 null；历史严格 v2 保持原字段与原冻结有限预算，不静默重解释为新默认。页面配置 reduction_limits 与普通 solver 配置分别保存，旧编辑配置缺新键时恢复为不限。</p>
+<p>确定性删层、同引用合并、既有边界内光谱修复及坐标减厚仍属于局部搜索；没有硬次数限制也不证明找到全局最优。纯减层允许以更厚的存活层换取层数下降；联合模式同时限制两项均不增加，不把总厚增加标成联合减量。没有可删层时纯减层提前说明原因，联合模式可继续尝试减厚。原设计未达标必须显式报告；未找到达标候选不得悄悄放宽目标。无改善、用户限额停止或不可行目标不证明全局不可减。</p>
 <p>冻结请求通过现有后台队列执行，结果绑定真实请求和实际候选。取消在候选/光谱分块边界检查，已完整评估且复核的候选可以保留；取消/失败后不额外启动终态光学工作。完成、取消、失败均不自动应用。显式应用检查来源项目/session、revision、未提交编辑 epoch、材料闭包及减量拓扑，经一次原子事务写入且支持一次撤销。来源不匹配保留用户设计和候选。</p>
 <p>资源计量包含内层修复的训练和独立验证。一个完整网格可包含多个目标、角度及 10,001 点波长分块；因此网格次数不等同单次正向调用数。两目标、两角度、含 10,002 点分块的协议回归实际执行 40 次正向，计为 6 次完整网格（其中 2 次独立验证），取消/失败分块不补做后续光学工作。此边界复用现有优化器的分块顺序和 holdout 前进度通知，是本项目接口约定。</p>
 <p><strong>实现位置：</strong><code>coat_sim/core/film_reduction.py</code>，复用 <code>film_optimization.py</code>、<code>film_optimization_job.py</code> 与 <code>film_objective_criteria.py</code>；界面复用 <code>film_optimization_quick_controller.py</code> 和 <code>FilmOptimizationWindow.qml</code>。完整交互与异步所有权见 <a href="film-reduction-contract.md">独立减量契约</a>。新增回归涵盖多类小膜系及失败、取消、来源漂移；实际执行范围见实施报告，不据有限样例声称通用优化性能。</p>
@@ -3382,7 +3395,12 @@ close/shutdown/history/late old operation: do not trigger automatic apply</pre>
 <figure><svg viewBox="0 0 900 150" role="img" aria-labelledby="error-table-flow-title"><title id="error-table-flow-title">参数表的三种分栏和未知相关性边界</title><g stroke="#087f78" fill="#e9f4f1"><rect x="10" y="24" width="205" height="86" rx="8"/><rect x="265" y="24" width="240" height="86" rx="8"/><rect x="555" y="8" width="330" height="120" rx="8"/><path d="M215 67H265 M505 67H555" fill="none"/></g><g fill="#18303a" font-size="16"><text x="26" y="55">冻结层表＋用户参数</text><text x="26" y="84">空值保留，原网格不变</text><text x="283" y="55">解析J与可选真实bias复算</text><text x="283" y="84">只对明确定义子集计量</text><text x="577" y="40">bias / bounded / stddev 独立分栏</text><text x="577" y="70">无ρ → 逐层贡献，聚合σ不可用</text><text x="577" y="100">不合成总概率或制造良率</text></g></svg><figcaption>图14ap-1：有界±幅度不是标准差；没有相关信息不能默认独立。两种未完成状态：参数覆盖不足与任务运行中断分别记录。</figcaption></figure>
 <p>bias只计一次。可选真实bias复算仅改变已明确填写的选中层，其它层保持nominal并标defined_subset_only，负厚度拒绝不clip。bounded为局部一阶三角不等式和，不是RSS或非线性有限厚度严格保证。stddev默认只给逐层|J|σ；只有用户明确ρ或明确声明互不相关而生成单位阵时才聚合。不自动选独立、共模、漂移、分布、行业精度，也不要求工艺校准资料才能使用理想优化。</p>
 <p>ρ按启用且已定义stddev行的有序ID绑定，必须精确对称/diag=1，不自动平均归一。PSD不确定带τ=64εn max(1,||ρ||₂)：λmin&lt;−τ拒绝；[−τ,0)标数值不确定并保留原矩阵，不clip特征值。二次型使用正尺度化稳定归并，避免先平方上下溢；此缩放不改变ρ。任何负q的条件sigma=null/numerical_indeterminate，整体aggregate_status=partial，不开平方或夹0；精确反相关q=0合法。运行cancel/budget partial另有state，不能与统计聚合partial混淆。bounded/stddev混合分栏，不伪造总sigma/概率。</p>
-<p>冻结、CLI与replay同样检查完整源n/k；use_k=True缺失或越域明确报具体材料/波段，显式覆盖源域的k=0有效；use_k=False才明示理想化。完整原网格的精确float slice由14ao所述additive API传入物理核，不能报告原波长而实际重采样1ULP并误判strict边界。保存/working资源独立透明限额，超限明确拒绝不降采样。</p>
+<p>冻结、CLI与replay同样检查完整源n及已有k；use_k=True且没有k来源时遵循下述计算默认0，已有k越域仍明确报具体材料/波段；use_k=False保留显式理想化。完整原网格的精确float slice由14ao所述additive API传入物理核，不能报告原波长而实际重采样1ULP并误判strict边界。保存/working资源独立透明限额，超限明确拒绝不降采样。</p>
+<h3 id="film-sensitivity-missing-k-20261028">14ap-1 敏感度与普通光谱的缺失 k 规则（2026-10-28）</h3>
+<p><strong>输入、输出与单位：</strong>14ao理想敏感度和14ap误差表共用冻结设计、活动材料/光学组、use_k及完整原始波长网格。真空波长和物理厚度为nm，N=n+ik、n/k及R/T无量纲，传播符号沿用14节。开启use_k时，真正没有k来源的n-only表或Sellmeier/Cauchy/RII模型仅在计算中使用k=0；源记录仍保留未知，不补表、不改摘要。已有非负有限k按原值/线性插值进入名义Jacobian、标准差传播及可选有限bias复算。此缺失k默认是<strong>本项目约定；未找到外部依据，仅为本项目实现</strong>，不表示材料实测透明。</p>
+<div class="formula">先校验源记录及每个原采样点的n；use_k=True：<br>没有k来源 → kcalc=0；有k来源 → 严格检查Dk并使用源值/域内插值；<br>源记录非法、n不可计算或已有k越域 → 拒绝，不能转入缺失分支。</div>
+<figure class="figure"><svg viewBox="0 0 900 175" role="img" aria-label="敏感度先区分真正缺失k与已有k来源，再严格检查有效域"><g fill="#e9f4f1" stroke="#087f78"><rect x="10" y="45" width="200" height="75" rx="8"/><rect x="270" y="10" width="290" height="60" rx="8"/><rect x="270" y="105" width="290" height="60" rx="8"/><rect x="630" y="45" width="255" height="75" rx="8"/></g><g class="svgtext"><text x="24" y="76">校验冻结源与原网格n</text><text x="24" y="101">use_k=True</text><text x="286" y="35">无k来源：计算默认0</text><text x="286" y="58">源记录继续未知</text><text x="286" y="130">已有k：完整域内源值/插值</text><text x="286" y="153">域外/非法：拒绝</text><text x="646" y="76">同一物理核：名义/J/σ</text><text x="646" y="101">及有限bias复算</text></g><path d="M210 82H240V40H270M240 82V135H270M560 40H595V82H630M560 135H595V82" fill="none" stroke="#50616a" stroke-width="2"/></svg><figcaption>图14ap-k：默认0只适用于没有k来源的分支。已有k表即使只覆盖部分目标波段也不能被当作缺失；两种敏感度入口保留严格来源域检查。</figcaption></figure>
+<p><strong>实现、默认与重放：</strong><code>_film_ideal_sensitivity_core.py::_check_frozen_material_domain</code>和<code>film_thickness_error_table.py::_check_frozen_material_domain</code>保留source严格采样，仅移除对未知k的额外拒绝；实际计算继续复用<code>film_optimization_derivatives.py::_PreparedMaterialData</code>，不改变14f或通用材料API。原波段、点数、角度、偏振、相关矩阵和有限偏差设置不变；不忽略负值、NaN、坏表、模型奇点或不足域。关闭use_k仍为显式全程k=0。误差表schema 2不增字段：仅活动引用确有缺k且use_k开启时，既有<code>material_k_policy</code>取<code>missing_source_k_zero_known_source_k_required</code>；全部活动源有k时仍为<code>source_k_required</code>，关闭时仍为<code>explicit_use_k_false_idealization</code>。writer、reader和物理replay按同一冻结数据重建并校验精确标签，旧全k结果标签保持。回归以400–700nm合成n-only/Sellmeier例对照普通光谱与中心差分σ，并核对有限bias、真实非零吸收及非法/域外拒绝；这些软件检查不构成制造良率或真实材料吸收认证。</p>
 <p class="source">一阶不确定度/相关量传播参考：<a href="https://www.bipm.org/documents/20126/2071204/JCGM_100_2008_E.pdf">JCGM 100:2008（GUM，5.1/5.2）</a>。参数表/UI、PSD不确定带、数值缩放与资源策略为本项目约定；参考公式不等于实际制造分布、工艺精度或良率已校准。</p>
 </section>
 <section id="film-ideal-controlled-degradation-20261023">

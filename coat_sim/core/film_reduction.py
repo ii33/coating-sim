@@ -1,6 +1,6 @@
 """Independent conservative film reduction over an immutable complete design.
 
-The bounded deterministic search uses nominal feasibility followed by a
+The deterministic search uses nominal feasibility followed by a
 lexicographic physical reduction key. It never relaxes an optical objective.
 """
 from __future__ import annotations
@@ -28,6 +28,11 @@ MODES = ("layer_count", "thickness", "combined")
 class FilmReductionRequest:
     base_request: FilmOptimizationRequest
     mode: str = "combined"
+    max_iterations: int | None = None
+    max_evaluations: int | None = None
+    # Preserve exact historical v2 envelopes and their finite frozen budgets.
+    # Newly constructed requests always use the independent optional v3 limits.
+    _payload_version: int = 3
 
 
 @dataclass(frozen=True)
@@ -77,8 +82,15 @@ def _validate_request(request):
     _validate_replay_request(base)
     if base.validation_samples_multiplier < 2:
         raise ValueError("reduction requires validation_samples_multiplier>=2 for independent coverage")
-    if base.max_evaluations < 2:
-        raise ValueError("reduction needs at least two evaluations for the audited source")
+    if type(request._payload_version) is not int or request._payload_version not in (2, 3):
+        raise ValueError("unsupported reduction request version")
+    for name, minimum in (("max_iterations", 1), ("max_evaluations", 2)):
+        value = getattr(request, name)
+        if value is not None and (type(value) is not int or value < minimum):
+            raise ValueError(f"reduction {name} must be an integer >= {minimum} or None")
+    if request._payload_version == 2 and (
+            request.max_iterations != base.max_iterations or request.max_evaluations != base.max_evaluations):
+        raise ValueError("historical reduction budgets must match their frozen base request")
     if base.execution_device is not None or base.execution_mode != "serial":
         raise ValueError("film reduction currently requires serial CPU evaluation")
     design = validate_design(deepcopy(dict(base.design_snapshot)))
@@ -103,15 +115,22 @@ def freeze_film_reduction_request(service, request: FilmReductionRequest) -> Fil
 def film_reduction_request_to_payload(request: FilmReductionRequest) -> dict[str, Any]:
     from .film_optimization_job import serialize_request
     _validate_request(request)
-    return {"schema_version": 2, "kind": REQUEST_KIND, "mode": request.mode,
-            "base_request": serialize_request(request.base_request)}
+    payload = {"schema_version": request._payload_version, "kind": REQUEST_KIND, "mode": request.mode,
+               "base_request": serialize_request(request.base_request)}
+    if request._payload_version == 3:
+        payload["limits"] = {"max_iterations": request.max_iterations, "max_evaluations": request.max_evaluations}
+    return payload
 
 
 def film_reduction_request_from_payload(payload: Mapping[str, Any]) -> FilmReductionRequest:
     from .film_optimization_job import deserialize_request
-    if (not isinstance(payload, Mapping) or set(payload) != {
-            "schema_version", "kind", "mode", "base_request"} or
-            type(payload["schema_version"]) is not int or payload["schema_version"] != 2 or
+    if not isinstance(payload, Mapping):
+        raise ValueError("film reduction request must be a mapping")
+    version = payload.get("schema_version")
+    fields = {"schema_version", "kind", "mode", "base_request"}
+    if version == 3:
+        fields.add("limits")
+    if (set(payload) != fields or type(version) is not int or version not in (2, 3) or
             payload["kind"] != REQUEST_KIND):
         raise ValueError("film reduction request kind/version/fields are invalid")
     base_payload = payload["base_request"]
@@ -120,7 +139,12 @@ def film_reduction_request_from_payload(payload: Mapping[str, Any]) -> FilmReduc
     base_request = deserialize_request(base_payload)
     if not isinstance(base_request, FilmOptimizationRequest):
         raise ValueError("reduction base_request must be a FilmOptimizationRequest")
-    request = FilmReductionRequest(base_request, payload["mode"])
+    limits = payload.get("limits", {"max_iterations": base_request.max_iterations,
+                                    "max_evaluations": base_request.max_evaluations})
+    if not isinstance(limits, Mapping) or set(limits) != {"max_iterations", "max_evaluations"}:
+        raise ValueError("reduction limits require exactly max_iterations and max_evaluations")
+    request = FilmReductionRequest(base_request, payload["mode"],
+        limits["max_iterations"], limits["max_evaluations"], version)
     _validate_request(request)
     return request
 
@@ -241,7 +265,8 @@ def _summary(request, baseline, candidate):
         "saved_thickness_nm": baseline["total_thickness_nm"] - candidate["total_thickness_nm"]}
 
 
-def _base_result(request, design, metric, state, iterations, evaluations, message, validation_evaluations=None):
+def _base_result(request, design, metric, state, iterations, evaluations, message,
+                 validation_evaluations=None, termination_reason=None):
     train, validation = metric, metric["validation"]
     return FilmOptimizationResult(state=state, design_revision=request.base_request.design_revision,
         best_design=deepcopy(design), best_thickness_nm=_physical(request, design),
@@ -252,7 +277,7 @@ def _base_result(request, design, metric, state, iterations, evaluations, messag
         per_condition_errors=tuple(condition_from_payload(row) for row in train["per_condition_errors"]),
         raw_coverage=tuple(coverage_from_payload(row) for row in train["raw_coverage"]),
         iterations=iterations, evaluations=evaluations, message=message,
-        solver="baseline", seed=request.base_request.seed, termination_reason=state,
+        solver="baseline", seed=request.base_request.seed, termination_reason=termination_reason or state,
         validation_samples_multiplier=request.base_request.validation_samples_multiplier,
         validation_evaluations=(evaluations // 2 if validation_evaluations is None else validation_evaluations), validation_complete=True,
         validation_max_normalized_error=validation["max_normalized_error"],
@@ -265,6 +290,10 @@ def _base_result(request, design, metric, state, iterations, evaluations, messag
 
 
 class _Cancelled(Exception):
+    pass
+
+
+class _BudgetReached(Exception):
     pass
 
 
@@ -314,15 +343,16 @@ def _repair_candidate(service, request, design, event, evaluation_started,
     ids = {row["id"] for side in ("front", "back") for row in design[side + "_layers"]}
     variables = tuple(variable for variable in base.variables if variable.layer_id in ids and
         (variable.side == "front" or design["substrate"]["sides"] == "double"))
-    if not variables or iteration_budget < 1 or evaluation_budget < 3:
-        return deepcopy(design), _evaluate(service, request, design, event, evaluation_started)
-    # A bounded quota prevents the first rejected topology spending the whole
-    # job budget; every optical call still uses the job's global hard budget.
-    training_budget = min(evaluation_budget - 1, max(35, 18 * len(variables) + 1))
+    if (not variables or (iteration_budget is not None and iteration_budget < 1) or
+            (evaluation_budget is not None and evaluation_budget < 3)):
+        limited = (None if not variables else "iteration_limit" if iteration_budget == 0 else "evaluation_budget")
+        return deepcopy(design), _evaluate(service, request, design, event, evaluation_started), limited
+    # Reserve one complete independent grid only when the user chose a cap.
+    # No per-topology iteration/evaluation quota truncates numerical repair.
+    training_budget = None if evaluation_budget is None else evaluation_budget - 1
     repair_request = replace(base, design_snapshot=deepcopy(design), variables=variables,
         frozen_material_snapshot=_snapshot_for_candidate(base, design), solver="baseline",
-        acceptable_normalized_error=0.0, max_evaluations=training_budget,
-        max_iterations=min(iteration_budget, 8), execution_mode="serial", execution_device=None)
+        acceptable_normalized_error=0.0, execution_mode="serial", execution_device=None)
     repair_service = copy(service)
     phase = {"validation": False, "frame": 0, "iteration": 0}
     frame_counts = {
@@ -358,7 +388,8 @@ def _repair_candidate(service, request, design, event, evaluation_started,
         return response
     repair_service.simulate = simulate
     repaired = optimize_film_design(repair_service, repair_request, cancel_event=event,
-                                   progress_callback=progress)
+                                   progress_callback=progress,
+                                   baseline_limits=(iteration_budget, training_budget))
     if repaired.state == "cancelled" or _cancelled(event):
         raise _Cancelled()
     if not repaired.validation_complete:
@@ -378,7 +409,8 @@ def _repair_candidate(service, request, design, event, evaluation_started,
             "targets_met": reduction.nominal_pass, "solver_acceptable": reduction.solver_acceptable,
             "per_condition_errors": [asdict(row) for row in reduction.conditions],
             "raw_coverage": [coverage_to_payload(row) for row in reduction.coverage]}
-    return deepcopy(dict(repaired.best_design)), _metric(request, repaired.best_design, score(False), score(True))
+    limited = repaired.termination_reason if repaired.termination_reason in {"iteration_limit", "evaluation_budget"} else None
+    return deepcopy(dict(repaired.best_design)), _metric(request, repaired.best_design, score(False), score(True)), limited
 
 
 def _changed(design):
@@ -439,7 +471,7 @@ def _proposals(request, design, step_fraction):
 def reduce_film_design(service, request: FilmReductionRequest, *, cancel_event=None,
         progress_callback: Callable | None = None, checkpoint_callback: Callable | None = None,
         candidate_observer=None) -> FilmReductionResult:
-    """Bounded serial reduction; only complete audited candidates enter archive."""
+    """Serial reduction until natural termination, cancellation or optional user limits."""
     from .film_optimization_job import _service_with_frozen_materials
     request = freeze_film_reduction_request(service, request)
     base = request.base_request
@@ -454,8 +486,8 @@ def reduce_film_design(service, request: FilmReductionRequest, *, cancel_event=N
         nonlocal evaluations, validation_evaluations
         if _cancelled(cancel_event):
             raise _Cancelled()
-        if evaluations >= base.max_evaluations:
-            raise ValueError("frozen evaluation budget exhausted")
+        if request.max_evaluations is not None and evaluations >= request.max_evaluations:
+            raise _BudgetReached("evaluation_budget")
         evaluations += 1
         validation_evaluations += int(validation)
     try:
@@ -467,9 +499,11 @@ def reduce_film_design(service, request: FilmReductionRequest, *, cancel_event=N
     def iteration_advanced(count):
         nonlocal iterations
         iterations += count
+    reason = "incumbent"
     def result(state, message, final=True):
         return FilmReductionResult(_base_result(request, best, metric, state,
-                iterations, evaluations, message, validation_evaluations), request,
+                iterations, evaluations, message, validation_evaluations,
+                state if request._payload_version == 2 else reason), request,
             {"baseline": deepcopy(baseline), "candidate": deepcopy(metric)},
             _summary(request, baseline, metric),
             validate_film_reduction_candidate_topology(request, best), digest, True, final)
@@ -482,57 +516,82 @@ def reduce_film_design(service, request: FilmReductionRequest, *, cancel_event=N
                 observe(deepcopy(best))
     publish()
     step = base.initial_step_fraction
+    tested_topologies = set()
     state, message = "completed", "Reduction search completed"
+    def check_limits():
+        if _cancelled(cancel_event):
+            raise _Cancelled()
+        if request.max_iterations is not None and iterations >= request.max_iterations:
+            raise _BudgetReached("iteration_limit")
+        if request.max_evaluations is not None and evaluations + 2 > request.max_evaluations:
+            raise _BudgetReached("evaluation_budget")
     try:
-        while iterations < base.max_iterations and evaluations + 2 <= base.max_evaluations:
-            if _cancelled(cancel_event):
-                raise _Cancelled()
+        while True:
+            check_limits()
             iterations += 1
             improved = False
             seen = set()
             for candidate in _proposals(request, best, step):
                 if _cancelled(cancel_event):
                     raise _Cancelled()
-                if evaluations + 2 > base.max_evaluations:
-                    break
+                if request.max_evaluations is not None and evaluations + 2 > request.max_evaluations:
+                    raise _BudgetReached("evaluation_budget")
                 fingerprint = _digest(candidate)
                 if fingerprint in seen:
                     continue
                 seen.add(fingerprint)
                 validate_film_reduction_candidate_topology(request, candidate)
                 topology_changed = sum(len(candidate[side + "_layers"]) for side in ("front", "back")) < metric["layer_count"]
+                repair_stop = None
                 if topology_changed:
-                    candidate, candidate_metric = _repair_candidate(service, request, candidate, cancel_event,
-                        evaluation_started, iteration_advanced, base.max_evaluations - evaluations,
-                        base.max_iterations - iterations)
+                    # Thickness step reduction does not change these proposals.
+                    # A new incumbent invalidates this local-search cache below.
+                    if fingerprint in tested_topologies:
+                        continue
+                    tested_topologies.add(fingerprint)
+                    candidate, candidate_metric, repair_stop = _repair_candidate(service, request, candidate, cancel_event,
+                        evaluation_started, iteration_advanced,
+                        None if request.max_evaluations is None else request.max_evaluations - evaluations,
+                        None if request.max_iterations is None else request.max_iterations - iterations)
                 else:
                     candidate_metric = _evaluate(service, request, candidate, cancel_event, evaluation_started)
                 if _qualifies(request, baseline, candidate_metric) and (
                         not _feasible(metric) or _key(request, candidate_metric) < _key(request, metric)):
                     validate_film_reduction_candidate_topology(request, candidate)
                     best, metric = candidate, candidate_metric
+                    tested_topologies.clear()
                     improved = True
                     publish()
+                    if repair_stop:
+                        raise _BudgetReached(repair_stop)
                     break
+                if repair_stop:
+                    raise _BudgetReached(repair_stop)
+                if request.max_iterations is not None and iterations >= request.max_iterations:
+                    raise _BudgetReached("iteration_limit")
             if progress_callback is not None:
                 progress_callback(FilmOptimizationProgress("running",
-                    min(iterations / base.max_iterations, evaluations / base.max_evaluations),
+                    max(iterations / request.max_iterations if request.max_iterations else 0.0,
+                        evaluations / request.max_evaluations if request.max_evaluations else 0.0),
                     iterations, evaluations, metric["max_normalized_error"], "Conservative film reduction"))
             if not improved:
+                if not seen or request.mode == "layer_count":
+                    reason, message = "proposal_exhausted", "All current legal topology proposals exhausted without improvement"
+                    break
                 step *= 0.5
                 if step < base.min_step_fraction:
+                    reason, message = "step_tolerance", "Reduction step tolerance reached; no further local improvement found"
                     break
         if _cancelled(cancel_event):
             raise _Cancelled()
     except _Cancelled:
-        state, message = "cancelled", "Cancelled; last complete audited candidate retained"
+        reason, state, message = "cancelled", "cancelled", "Cancelled; last complete audited candidate retained"
+    except _BudgetReached as exc:
+        reason = str(exc)
+        label = "Evaluation" if reason == "evaluation_budget" else "Iteration"
+        message = f"{label} budget reached (user configured); last complete audited candidate retained; search not exhausted"
     except Exception as exc:
-        state, message = "failed", f"Reduction failed; last complete audited candidate retained: {exc}"
-    if state == "completed":
-        if evaluations + 2 > base.max_evaluations:
-            message = "Evaluation budget reached; last complete audited candidate retained; remaining topology proposals were not exhaustively searched"
-        elif iterations >= base.max_iterations:
-            message = "Iteration budget reached; last complete audited candidate retained; remaining topology proposals were not exhaustively searched"
+        reason, state, message = "failed", "failed", f"Reduction failed; last complete audited candidate retained: {exc}"
     if not _feasible(baseline):
         message += "; source is infeasible on original/independent grids; original unmet status preserved"
     return result(state, message)
@@ -545,7 +604,7 @@ def film_reduction_result_to_payload(request: FilmReductionRequest,
     if (request != result.frozen_request or result.request_digest != _digest(frozen_payload)):
         raise ValueError("reduction result is not bound to this frozen source request")
     payload = serialize_result(request.base_request, result.base_result)
-    payload.update(kind=RESULT_KIND, request=frozen_payload)
+    payload.update(kind=RESULT_KIND, request=frozen_payload, schema_version=request._payload_version)
     payload["reduction"] = {"metrics": deepcopy(dict(result.metrics)),
         "summary": deepcopy(dict(result.summary)), "topology_audit": deepcopy(dict(result.topology_audit)),
         "request_digest": result.request_digest, "is_final": result.is_final}
@@ -585,11 +644,13 @@ def film_reduction_result_from_payload(payload: Mapping[str, Any]) -> FilmReduct
     from .film_objective_criteria import reduce_objective_responses
     if (not isinstance(payload, Mapping) or set(payload) != {"schema_version", "kind", "request",
             "candidate", "partial_result", "solver_validation", "state", "message", "reduction"} or
-            type(payload["schema_version"]) is not int or payload["schema_version"] != 2 or
+            type(payload["schema_version"]) is not int or payload["schema_version"] not in (2, 3) or
             payload["kind"] != RESULT_KIND or payload["state"] not in ("completed", "failed", "cancelled") or
             not isinstance(payload["message"], str)):
         raise ValueError("film reduction result kind/version/fields are invalid")
     request = film_reduction_request_from_payload(payload["request"])
+    if payload["schema_version"] != request._payload_version:
+        raise ValueError("reduction result/request versions differ")
     metadata = payload["reduction"]
     if (not isinstance(metadata, Mapping) or set(metadata) != {"metrics", "summary", "topology_audit",
             "request_digest", "is_final"} or type(metadata["is_final"]) is not bool or
@@ -637,7 +698,8 @@ def film_reduction_result_from_payload(payload: Mapping[str, Any]) -> FilmReduct
     for key in ("iterations", "evaluations"):
         if type(candidate.get(key)) is not int or candidate[key] < (0 if key == "iterations" else 2):
             raise ValueError("candidate counters are invalid")
-    if candidate["iterations"] > request.base_request.max_iterations or candidate["evaluations"] > request.base_request.max_evaluations:
+    if ((request.max_iterations is not None and candidate["iterations"] > request.max_iterations) or
+            (request.max_evaluations is not None and candidate["evaluations"] > request.max_evaluations)):
         raise ValueError("candidate counters exceed frozen budget")
     partial = payload["partial_result"]
     if not isinstance(partial, Mapping) or type(partial.get("candidate_verified")) is not bool:
@@ -647,8 +709,21 @@ def film_reduction_result_from_payload(payload: Mapping[str, Any]) -> FilmReduct
     validation_evaluations = payload["solver_validation"].get("validation_evaluations")
     if type(validation_evaluations) is not int or not 1 <= validation_evaluations <= candidate["evaluations"] - 1:
         raise ValueError("validation evaluation count is invalid")
+    reason = payload["solver_validation"].get("termination_reason")
+    if request._payload_version == 3:
+        allowed_reasons = ({"incumbent"} if not metadata["is_final"] else
+            {"proposal_exhausted", "step_tolerance", "evaluation_budget", "iteration_limit"})
+        if payload["state"] != "completed":
+            allowed_reasons = {payload["state"]}
+        if not isinstance(reason, str) or reason not in allowed_reasons:
+            raise ValueError("reduction termination reason is invalid for its state")
+        if ((reason == "evaluation_budget" and request.max_evaluations is None) or
+                (reason == "iteration_limit" and request.max_iterations is None)):
+            raise ValueError("reduction budget termination requires an explicit frozen limit")
+    else:
+        reason = payload["state"]
     result = FilmReductionResult(_base_result(request, design, canonical_metrics["candidate"],
-        payload["state"], candidate["iterations"], candidate["evaluations"], payload["message"], validation_evaluations),
+        payload["state"], candidate["iterations"], candidate["evaluations"], payload["message"], validation_evaluations, reason),
         request, canonical_metrics, summary, audit, metadata["request_digest"],
         partial["candidate_verified"], metadata["is_final"])
     _check_equal(payload, film_reduction_result_to_payload(request, result), "reduction result")

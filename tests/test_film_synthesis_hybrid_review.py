@@ -154,7 +154,7 @@ def test_sse_positive_minimum_roundtrip_does_not_reject_feasible_initial():
     assert diagnostics['weighted_sse'] is not None
 
 
-def test_unlimited_evaluation_budget_continues_after_per_stage_quanta():
+def test_unlimited_budget_finishes_local_session_after_exploration_quanta():
     service, request = setup_problem(low=550., high=550., samples=1)
     request = replace(request, search_strategy='hybrid', max_evaluations=None,
         max_seconds=None, max_cycles=3, max_layers=2,
@@ -163,9 +163,13 @@ def test_unlimited_evaluation_budget_continues_after_per_stage_quanta():
         acceptable_normalized_error=0.)
     result = synthesize_film_design(service, request)
     hybrid = result.performance['search']['hybrid']
-    assert result.termination_reason == 'cycle_limit'
-    assert result.cycles == hybrid['completed_rotations'] == 3
-    assert len(hybrid['needle_scans']) == 3
+    assert result.state == 'completed' and not result.targets_met
+    assert result.termination_reason == 'local_session_converged_targets_unmet'
+    assert result.cycles == hybrid['completed_rotations'] == 1
+    assert len(hybrid['needle_scans']) == 1
+    assert hybrid['local_session']['session_complete']
+    assert hybrid['local_session']['status'] == 'converged'
+    assert hybrid['local_session']['attempts'][-1]['terminal_full_grid_epigraph_feasible']
     assert any(row['termination'] == 'stage_budget' for row in hybrid['stages'])
 
 

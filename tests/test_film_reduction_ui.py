@@ -32,7 +32,7 @@ def audited(h):
     return request, result
 
 
-def finish(h, request, result, *, error=None):
+def finish(h, request, result, *, error=None, before_completion=None):
     c = h.controller
     assert c.setSearchMode('reduction')
     c._operation_serial = 1
@@ -40,12 +40,14 @@ def finish(h, request, result, *, error=None):
     c._attempt_full_request = request
     c._operation_edit_epoch = h.source.pendingEditEpoch
     c._capture_cancel_attempt(1, 'reduction-job', {}, Event(), search_mode='reduction')
+    if before_completion is not None:
+        before_completion(c)
     c._on_finished(1, result, [], error)
     return c
 
 
-@pytest.mark.parametrize('state', ['completed', 'cancelled', 'failed'])
-def test_reduction_terminal_never_autoapplies_and_explicit_apply_undo(review, state):
+@pytest.mark.parametrize('state', ['cancelled', 'failed'])
+def test_reduction_cancel_failure_retains_explicit_apply_and_undo(review, state):
     h = review
     request, result = audited(h)
     if state != 'completed':
@@ -73,15 +75,16 @@ def test_reduction_terminal_never_autoapplies_and_explicit_apply_undo(review, st
 def test_reduction_rejects_changed_source(review, change):
     h = review
     request, result = audited(h)
-    c = finish(h, request, result)
-    if change == 'epoch':
-        h.source.markEditingDirty()
-    elif change == 'revision':
-        assert h.source.session.set_design_value('name', 'changed')
-    elif change == 'materials':
-        c._attempt_materials_owner = object()
-    else:
-        c._attempt_full_request = replace(request, mode='thickness')
+    def mutate(c):
+        if change == 'epoch':
+            h.source.markEditingDirty()
+        elif change == 'revision':
+            assert h.source.session.set_design_value('name', 'changed')
+        elif change == 'materials':
+            c._attempt_materials_owner = object()
+        else:
+            c._attempt_full_request = replace(request, mode='thickness')
+    c = finish(h, request, result, before_completion=mutate)
     before = deepcopy(h.source.session.snapshot().design)
     assert not c.applyCandidate()
     assert h.source.session.snapshot().design == before
@@ -188,12 +191,12 @@ def test_reduction_source_entry_available_and_routes_explicit_mode(review, monke
 
 def test_reduction_apply_uses_audited_result_without_new_optical_evaluations(review, monkeypatch):
     request, result = audited(review)
-    c = finish(review, request, result)
-    assert c.hasReductionResult
     def no_optics(*args, **kwargs):
         raise AssertionError('apply must not start optical simulation')
     monkeypatch.setattr(review.service, 'simulate', no_optics)
-    assert c.applyCandidate(), c.error
+    c = finish(review, request, result)
+    assert c.hasReductionResult and c._candidate_applied, c.error
+    assert not c.applyCandidate()
 
 
 def test_reduction_no_improvement_kept_for_save_but_never_apply(review):
@@ -286,6 +289,7 @@ def test_normal_entry_and_f6_preserve_existing_reduction_candidate(review, monke
     from PySide6.QtCore import QObject
     h = review
     request, result = audited(h)
+    result = replace(result, is_final=False)
     c = finish(h, request, result)
     retained = c._result
     starts = []

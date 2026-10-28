@@ -1145,6 +1145,7 @@ class FilmOptimizationQuickController(QObject):
         self._candidate_applied = False
         self._search_mode = "fixed_topology"
         self._reduction_mode = "combined"
+        self._reduction_limits: dict[str, int | None] = {"max_iterations": None, "max_evaluations": None}
         self._reduction_result: FilmReductionResult | None = None
         self._requested_search_mode = getattr(source_controller, "_requested_optimizer_search_mode", "")
         if self._requested_search_mode:
@@ -1691,6 +1692,7 @@ class FilmOptimizationQuickController(QObject):
             "search_mode": self._search_mode,
             "structure_mode": self._structure_mode,
             "reduction_mode": self._reduction_mode,
+            "reduction_limits": deepcopy(self._reduction_limits),
             "structure_options": {key: list(value) if isinstance(value, tuple) else value
                                   for key, value in self._structure_options.items()},
             "structure_materials": [{"material_id": row["material_id"],
@@ -1717,7 +1719,7 @@ class FilmOptimizationQuickController(QObject):
                 raise ValueError("优化配置必须为对象")
             json.dumps(configuration, allow_nan=False)
             allowed = {"version", "objectives", "variables", "solver", "search_mode",
-                       "structure_mode", "reduction_mode", "structure_options", "structure_materials", "synthesis",
+                       "structure_mode", "reduction_mode", "reduction_limits", "structure_options", "structure_materials", "synthesis",
                        "sensitivity_table"}
             if (set(configuration) - allowed or type(configuration.get("version")) is not int
                     or configuration.get("version") != 2):
@@ -1853,6 +1855,11 @@ class FilmOptimizationQuickController(QObject):
             search_mode = configuration.get("search_mode", "fixed_topology")
             structure_mode = configuration.get("structure_mode", "combined")
             reduction_mode = configuration.get("reduction_mode", "combined")
+            reduction_limits = configuration.get("reduction_limits", {"max_iterations": None, "max_evaluations": None})
+            if not isinstance(reduction_limits, dict) or set(reduction_limits) != {"max_iterations", "max_evaluations"}:
+                raise ValueError("减量预算字段无效")
+            reduction_limits = {name: None if value is None else _integer(value, name, 2 if name == "max_evaluations" else 1)
+                                for name, value in reduction_limits.items()}
             if reduction_mode not in {"layer_count", "thickness", "combined"}:
                 raise ValueError("减层 / 减厚模式无效")
             if search_mode not in {"fixed_topology", "structure", "synthesis", "reduction"} or structure_mode not in {"combined", "needle_only", "growth_only"}:
@@ -1970,6 +1977,7 @@ class FilmOptimizationQuickController(QObject):
                 setattr(self, "_" + name, solver[name])
             self._search_mode, self._structure_mode = search_mode, structure_mode
             self._reduction_mode = reduction_mode
+            self._reduction_limits = reduction_limits
             self._compute_target.setTask("film_synthesis" if search_mode == "synthesis" else "film_optimization")
             self._synthesis_options, self._synthesis_use_current_seed = synthesis_values, synthesis_seed
             search_seed = synthesis_values["structure_search_seed"]
@@ -2648,6 +2656,29 @@ class FilmOptimizationQuickController(QObject):
     def reductionMode(self) -> str:
         return self._reduction_mode
 
+    @Property(dict, notify=changed)
+    def reductionLimits(self) -> dict:
+        return deepcopy(self._reduction_limits)
+
+    @Slot(str, str, result=bool)
+    def setReductionLimit(self, name: str, text: str) -> bool:
+        if self._busy or self._shutting_down or name not in self._reduction_limits:
+            return False
+        key = "reduction_limit:" + name
+        if not self._pending_edit_allows(key):
+            return False
+        try:
+            value = None if not text.strip() else _integer(text, name, 2 if name == "max_evaluations" else 1)
+        except (TypeError, ValueError, OverflowError) as exc:
+            self._record_pending_edit_error(key, str(exc))
+            return False
+        self._reduction_limits[name] = value
+        if not self._clear_pending_edit_error(key):
+            return False
+        self._error = ""
+        self._invalidate_result()
+        return True
+
     @Property(list, notify=changed)
     def reductionModeOptions(self) -> list[dict]:
         return [{"id": "layer_count", "label": "仅减层"},
@@ -2666,11 +2697,12 @@ class FilmOptimizationQuickController(QObject):
         }
         rule = ("沿用全部原始光学约束与已选厚度变量。仅下界明确为 0 nm 的已选层可删除 / 合并；"
                 "下界大于 0 nm 的层不可删除。参与合并的每层都须允许删除，且材料和光学数据集完全相同；"
-                "保留层仍受原边界约束，不新增材料。完成或取消均不会自动应用。")
+                "保留层仍受原边界约束，不新增材料。正常完成且有完整审计通过的改善才自动应用（不保存，可撤销）；取消、失败或无改善均保留原设计。")
         note = f"已选允许删除 {deletable} 层；下界大于 0 的已选保留层 {protected} 层。"
         if self._reduction_mode == "combined" and not deletable:
             note += "当前没有可删除层，联合模式仍可尝试减厚。"
-        return modes[self._reduction_mode] + rule + note
+        return (modes[self._reduction_mode] + rule + note +
+                "减量默认不设全局次数或时长限制，直至提案穷尽、数值收敛或用户取消；可在算法页选填减量上限，留空即不限。")
 
     @Property(bool, notify=changed)
     def hasReductionResult(self) -> bool:
@@ -2689,7 +2721,7 @@ class FilmOptimizationQuickController(QObject):
     def reductionComparison(self) -> str:
         reduction = self._reduction_result
         if reduction is None:
-            return f"{self.reductionPolicySummary}原始全部目标及独立加密网格均通过且确有减量的候选才可显式应用。"
+            return f"{self.reductionPolicySummary}只有全部原目标及独立加密网格通过、且确有减量的完整终态才自动应用；其他终态会说明原因。"
         lines = []
         for key, label in (("baseline", "原设计"), ("candidate", "候选")):
             row = reduction.metrics[key]
@@ -2700,7 +2732,7 @@ class FilmOptimizationQuickController(QObject):
                 value = row[side]
                 lines.append(f"  {name}：{value['layer_count']} 层 · {format_film_thickness(value['total_thickness_nm'])} nm · 最薄 {format_film_thickness(value['min_thickness_nm']) + ' nm' if value['layer_count'] else '无膜层'}")
         if self._candidate_applied:
-            lines.append("候选已显式应用；可在来源设计中撤销本次应用。")
+            lines.append("合格减量候选已应用（未保存）；可在来源设计中撤销本次应用。")
         elif self.canApply:
             lines.append("候选已通过独立审计且有减量，可显式应用。")
         elif self._reduction_eligible():
@@ -2982,7 +3014,11 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(str, notify=changed)
     def statusText(self) -> str:
-        text = self._status_text()
+        text: str | None = None
+        if self._search_mode == "reduction" or self._reduction_result is not None:
+            from .film_reduction_feedback import reduction_status
+            text = reduction_status(self)
+        text = text if text is not None else self._status_text()
         notice = self._numeric_cleanup_notice()
         return text + "\n" + notice if notice else text
 
@@ -3043,6 +3079,12 @@ class FilmOptimizationQuickController(QObject):
             if self._candidate_applied:
                 return "已满足所有采样目标；候选已应用，未保存，并已请求刷新光谱。"
             return "已满足所有采样目标；可预览、另存或显式应用。"
+        if self._synthesis_payload is not None:
+            session_stop = self._synthesis_session_stop_text()
+            if session_stop:
+                detail = ("候选已应用，未保存，并已请求刷新光谱。" if self._candidate_applied
+                          else "已保留本轮已审计最佳候选，可预览或另存。")
+                return session_stop + "\n" + detail
         if self._candidate_applied:
             return "未全部达标；候选已应用，未保存，并已请求刷新光谱。"
         return "当前候选未满足所有目标；仍可预览或另存。"
@@ -3156,8 +3198,6 @@ class FilmOptimizationQuickController(QObject):
                 return "仅减层需要至少一个已选且下界明确为 0 nm 的可删除层；下界大于 0 的层不可删除。"
             if self._validation_samples_multiplier < 2:
                 return "减量优化要求独立加密验证倍率至少为 2；请在算法页调整。"
-            if self._max_evaluations < 2:
-                return "减量优化至少需要两次完整评估以审计原设计。"
             return self._error if self._pending_edit_error else ""
         reason = self._solver_unavailable_reason(self._solver_id)
         if reason:
@@ -3366,8 +3406,6 @@ class FilmOptimizationQuickController(QObject):
                 return "仅减层需要至少一个已选且下界明确为 0 nm 的可删除层；下界大于 0 的层不可删除。"
             if self._validation_samples_multiplier < 2:
                 return "减量优化要求独立加密验证倍率至少为 2；请在算法页调整。"
-            if self._max_evaluations < 2:
-                return "减量优化至少需要两次完整评估以审计原设计。"
             return self._error if self._pending_edit_error else ""
         reason = self._solver_unavailable_reason(self._solver_id)
         if reason:
@@ -4006,6 +4044,41 @@ class FilmOptimizationQuickController(QObject):
         self._error = ""
         self._invalidate_result()
 
+    @Slot(str, str, str, result=bool)
+    def applyVariableBoundsBatch(self, scope: str, lower_text: str, upper_text: str) -> bool:
+        """Validate every final row before one edit and one workflow persistence."""
+        if self.busy or self._shutting_down or self._pending_edit_error:
+            return False
+        from .film_thickness_bounds_batch import plan_thickness_bounds
+        try:
+            for text, label in ((lower_text, "厚度下限（nm）"), (upper_text, "厚度上限（nm）")):
+                if text.strip() and _number(text, label) < 0:
+                    raise ValueError(f"{label}必须非负")
+            lower = (_edited_thickness_bound(lower_text, "厚度下限（nm）")
+                     if lower_text.strip() else None)
+            upper = (_edited_thickness_bound(upper_text, "厚度上限（nm）")
+                     if upper_text.strip() else None)
+            plan = plan_thickness_bounds(self._variables, scope, lower, upper)
+        except ValueError as exc:
+            self._error = str(exc)
+            self.changed.emit()
+            return False
+        if not plan:
+            if self._error:
+                self._error = ""
+                self.changed.emit()
+            return True
+        by_id = {(change.side, change.layer_id): change for change in plan}
+        rows = []
+        for row in self._variables:
+            change = by_id.get((row["side"], row["layer_id"]))
+            rows.append(dict(row, lower_nm=change.lower_nm, upper_nm=change.upper_nm)
+                        if change is not None else row)
+        self._variables = rows
+        self._error = ""
+        self._invalidate_result()
+        return True
+
     @Slot(str, str, str, "QVariant")
     def setVariableBound(self, side: str, layer_id: str, field: str, value) -> bool:
         if self._busy or self._shutting_down:
@@ -4223,7 +4296,10 @@ class FilmOptimizationQuickController(QObject):
 
     def _build_reduction_request(self, *, prepared_angles=None):
         from coat_sim.core.film_reduction import FilmReductionRequest
-        return FilmReductionRequest(self._build_request(prepared_angles=prepared_angles, fixed_topology=False), self._reduction_mode)
+        return FilmReductionRequest(self._build_request(prepared_angles=prepared_angles, fixed_topology=False),
+                                    self._reduction_mode,
+                                    max_iterations=self._reduction_limits["max_iterations"],
+                                    max_evaluations=self._reduction_limits["max_evaluations"])
 
     def _build_structure_request(self, *,
                                  prepared_angles: tuple[tuple[float, ...], ...] | None = None):
@@ -4945,15 +5021,19 @@ class FilmOptimizationQuickController(QObject):
             local_total = format_film_thickness(sum(r['thickness']['value'] for r in local_rows))
             final_total = format_film_thickness(sum(r['thickness']['value'] for r in final_rows))
             margin = local.get('signed_margin')
-            margin_text = ('区间安全余量不适用' if margin is None else f'最差归一化安全余量 {-margin:.6g}')
+            margin_text = ('区间安全余量不适用' if margin is None else
+                           f'最差归一化超限 {margin:.6g}' if margin > 0 else
+                           f'最差归一化安全余量 {-margin:.6g}')
             label = ('局部未完成，已审计回退候选' if local.get('role') == 'audited_fallback_before_incomplete_local_stage'
                      else '局部未收敛，已审计最佳可行候选' if local.get('role') == 'audited_best_feasible_before_incomplete_local_stage'
+                     else '本轮局部优化后已审计最佳候选' if local.get('role') == 'audited_best_after_local_session'
                      else '减薄前局部结果')
             stage_summary = (f"\n{label}：{len(local_rows)} 层 / {local_total} nm，{margin_text}。"
                 f"\n局部阶段：{local.get('termination', '未知')}。最终返回候选：{len(final_rows)} 层 / {final_total} nm；以下审计绑定最终候选。")
         elif raw.get('performance', {}).get('search', {}).get('hybrid', {}).get('local_margin', {}).get('budget_limited'):
             stage_summary = f"\n局部阶段未完成（{raw['termination_reason']}）；已保留达标审计候选，本轮未减薄。"
-        return (f"任务状态：{raw['state']} / {raw['termination_reason']}\n"
+        session_stop = self._synthesis_session_stop_text()
+        return ((session_stop + '\n') if session_stop else '') + (f"任务状态：{raw['state']} / {raw['termination_reason']}\n"
                 + stage_summary + '\n'
                 f"候选独立审计：原门限名义验收{quality}，层数 {len(layers)}\n"
                 f"求解容差可接受：{acceptable}，最大归一化违规 {facts.get('audit_max_normalized_error')}，"
@@ -4964,6 +5044,21 @@ class FilmOptimizationQuickController(QObject):
                 + self._synthesis_work_counters_note()
                 + ("\n" + "\n".join(str(warning) for warning in payload.get("review", {}).get("warnings", []))
                    if payload.get("review", {}).get("warnings") else ""))
+
+    def _synthesis_session_stop_text(self) -> str:
+        raw = (self._synthesis_payload or {}).get('result', {})
+        if raw.get('state') != 'completed' or raw.get('targets_met') is not False:
+            return ''
+        reason = raw.get('termination_reason')
+        label = {
+            'local_session_converged_targets_unmet': '本轮固定拓扑局部优化已收敛；目标仍未全部达到。',
+            'local_session_stalled_targets_unmet': '本轮局部优化已无有效改进；目标仍未全部达到。',
+            'local_session_terminal_converged_best_retained_targets_unmet':
+                '本轮求解终态已收敛；返回更优的已审计候选，尚未确认该候选的局部驻点；目标仍未全部达到。',
+            'local_session_audit_rejected_targets_unmet':
+                '本轮独立审计未通过原门限，保留完整最佳候选；未确认局部收敛，目标仍未全部达到。',
+        }.get(reason)
+        return (label + '结构搜索进度已保留，可选择“继续搜索新结构”。') if label else ''
 
     @Property(str, notify=changed)
     def synthesisPreviewLabel(self):
@@ -6539,11 +6634,12 @@ class FilmOptimizationQuickController(QObject):
                 return
         if self._shutting_down or operation_id != self._operation_serial:
             return
+        if self._attempt_search_mode == 'synthesis':
+            self._synthesis_phase = '本轮完成'
         self._live_display.end(("optimization", operation_id))
         synthesis_result = result if isinstance(result, SynthesisQuickResult) else None
         self._synthesis_payload = deepcopy(dict(synthesis_result.payload)) if synthesis_result is not None else None
         if synthesis_result is not None:
-            self._synthesis_phase = '本轮完成'
             result = synthesis_result.optimization_result
             synthesis_payload = self._synthesis_payload
             raw_cancel = synthesis_payload.get("result", {}) if synthesis_payload is not None else {}
@@ -6674,6 +6770,9 @@ class FilmOptimizationQuickController(QObject):
             self._continuation_unavailable_reason = "只有已取消并保留完整评分候选的作业可以继续。"
         if has_candidate and result.evaluations > 0 and result.per_condition_errors:
             self._prior_run_fallback = None
+        if self._attempt_search_mode == "reduction":
+            from .film_reduction_feedback import complete_reduction
+            complete_reduction(self, operation_id, error)
         self.changed.emit()
         self.plotDataChanged.emit()
         if (self._terminal_operation_id == self._attempt_operation_id

@@ -412,11 +412,12 @@ def freeze_film_thickness_error_table_request(service: Any,
 
 
 def _check_frozen_material_domain(request):
-    """Prevent the legacy forward sampler's unknown/out-of-domain k=0 default.
+    """Check n and existing k sources on the complete original grid.
 
-    This entry point accepts only calculable source n/k on the complete original
-    grid. Explicit use_k=False is preserved, never selected on the user's behalf.
-    Frozen source records are not rewritten or padded with synthetic k samples.
+    Missing source k uses the ordinary spectrum/Jacobian zero default. Existing
+    k still needs complete source coverage, so this gate keeps the strict source
+    sampler rather than the forward sampler's out-of-domain zero default.
+    Explicit use_k=False and frozen source records are preserved.
     """
     frozen = request.frozen_material_snapshot
     assert frozen is not None
@@ -440,17 +441,32 @@ def _check_frozen_material_domain(request):
         waves = np.linspace(objective.wavelength_min_nm, objective.wavelength_max_nm, objective.wavelength_samples)
         for key, sampler in samplers.items():
             try:
-                # Unknown k or non-tabulated sources need scalar inspection.
+                # N-only tables and model sources need scalar inspection.
                 series = sampler.evaluate_many(waves, "nm", extrapolation_policy="error", include_k=use_k)
                 if series is not None and series[0] is not None:
                     continue
                 for wave in waves:
-                    _n, k, _details = sampler(float(wave), "nm", extrapolation_policy="error", include_k=use_k)
-                    if use_k and k is None:
-                        raise ValueError("missing calculable k; no k=0 assumption was made")
+                    sampler(float(wave), "nm", extrapolation_policy="error", include_k=use_k)
             except (ValueError, ArithmeticError) as exc:
                 raise ValueError(f"material={key[0]} optical_set={key[1]} original band "
                     f"[{objective.wavelength_min_nm}, {objective.wavelength_max_nm}] nm: {exc}") from exc
+
+
+def _material_k_policy(request):
+    """Retain the historical label when every active source already supplies k."""
+    if not request.design_snapshot["use_k"]:
+        return "explicit_use_k_false_idealization"
+    records = {row["id"]: row for row in request.frozen_material_snapshot["materials"]}
+    references = [*request.design_snapshot["front_layers"], request.design_snapshot["substrate"]]
+    incident = request.design_snapshot["incident_medium"]
+    if incident.get("kind") == "material":
+        references.append(incident)
+    for reference in references:
+        optical = next(row for row in records[reference["material_id"]]["optical_sets"]
+                       if row["id"] == reference["optical_set_id"])
+        if optical.get("k") is None and optical.get("k_data") is None:
+            return "missing_source_k_zero_known_source_k_required"
+    return "source_k_required"
 
 
 def _physical_parameters(request):
@@ -602,7 +618,7 @@ def execute_film_thickness_error_table_request(service: Any, request: FilmThickn
             None if finite is None else finite.nominal_pass,
             "defined_subset_only" if request.include_finite_bias else None, aggregate,
             tuple(conditions), tuple(summaries),
-            "source_k_required" if request.design_snapshot["use_k"] else "explicit_use_k_false_idealization",
+            _material_k_policy(request),
             () if nominal is None else nominal.conditions, () if finite is None else finite.conditions)
 
 
@@ -855,7 +871,7 @@ def _validate_result(result):
             result.state == "completed" and not analysis.conditions_complete):
         raise ValueError("analysis coverage count/completeness differs from original conditions")
     if (type(analysis.correlation.matrix_unmodified) is not bool or not analysis.correlation.matrix_unmodified or
-            analysis.material_k_policy != ("source_k_required" if request.design_snapshot["use_k"] else "explicit_use_k_false_idealization")):
+            analysis.material_k_policy != _material_k_policy(request)):
         raise ValueError("invalid correlation preservation or material-k policy metadata")
     for value in (analysis.correlation.tau, analysis.correlation.min_eigenvalue):
         if value is not None:

@@ -663,25 +663,38 @@ def test_no_explicit_iteration_budget_records_actual_scipy_default_and_does_not_
     assert result.resolved_max_iterations > 0 and result.scipy_version
 
 
-@pytest.mark.parametrize("missing", ["unknown", "k_domain"])
-def test_strict_source_gate_rejects_unknown_or_out_of_domain_k_but_allows_explicit_user_ignore(
-    missing,
-):
+@pytest.mark.parametrize("kind", ["tabulated", "sellmeier"])
+def test_missing_source_k_is_zero_only_in_calculation_and_frozen_replay(kind):
+    service, request = problem()
+    optical = service.materials.records["glass"]["optical_sets"][0]
+    optical["k"] = None
+    if kind == "sellmeier":
+        for key in ("n", "k", "wavelengths"):
+            optical.pop(key)
+        optical.update(kind="sellmeier", parameters=dict(B1=1.2, B2=.05, B3=.01,
+            C1=6000., C2=20000., C3=1.e8))
+    original = deepcopy(service.materials.records)
+    result = analysis(service, request)
+    frozen = result.frozen_request.frozen_material_snapshot
+    assert frozen is not None and result.frozen_request.design_snapshot["use_k"] is True
+    assert next(r for r in frozen["materials"] if r["id"] == "glass")["optical_sets"][0] == optical
+    assert service.materials.records == original
+    direct = simulate_frozen(".", frozen)["R"]
+    assert result.best_analysis.nominal_conditions[0].actual == pytest.approx(direct[0], abs=2e-14)
+    ideal.validate_film_ideal_sensitivity_result_payload(
+        ideal.film_ideal_sensitivity_result_to_payload(result), expected_request=result.frozen_request)
+    ignored = analysis(service, replace(request, design_snapshot={**request.design_snapshot, "use_k": False}))
+    assert result.best_analysis.objective_value == ignored.best_analysis.objective_value
+
+
+def test_strict_source_gate_rejects_out_of_domain_known_k_but_allows_explicit_user_ignore():
     service, request = problem()
     optical = service.materials.records["low"]["optical_sets"][0]
-    optical["k"] = None
-    if missing == "k_domain":
-        optical.pop("n")
-        optical.pop("k")
-        optical.pop("wavelengths")
-        optical.update(kind="cauchy", parameters=dict(A=float(np.sqrt(1.5)), B=0.0, C=0.0))
-        optical["k_data"] = dict(
-            wavelength_unit="nm",
-            wavelength_min=500.0,
-            wavelength_max=540.0,
-            wavelengths=[500.0, 540.0],
-            k=[0.0, 0.0],
-        )
+    for key in ("n", "k", "wavelengths"):
+        optical.pop(key)
+    optical.update(kind="cauchy", parameters=dict(A=float(np.sqrt(1.5)), B=0., C=0.))
+    optical["k_data"] = dict(wavelength_unit="nm", wavelength_min=500.0, wavelength_max=540.0,
+        wavelengths=[500.0, 540.0], k=[0.0, 0.0])
     with pytest.raises(ValueError, match="low/nk.*550-550 nm"):
         ideal.freeze_film_ideal_sensitivity_request(service, request)
     changed = deepcopy(request.design_snapshot)
@@ -699,7 +712,12 @@ def test_strict_source_gate_is_applied_to_frozen_replay_not_only_live_freeze():
     result = analysis(service, request)
     payload = ideal.film_ideal_sensitivity_result_to_payload(result)
     frozen = payload["frozen_request"]["frozen_material_snapshot"]
-    next(r for r in frozen["materials"] if r["id"] == "low")["optical_sets"][0]["k"] = None
+    optical = next(r for r in frozen["materials"] if r["id"] == "low")["optical_sets"][0]
+    for key in ("n", "k", "wavelengths"):
+        optical.pop(key)
+    optical.update(kind="cauchy", parameters=dict(A=float(np.sqrt(1.5)), B=0., C=0.))
+    optical["k_data"] = dict(wavelength_unit="nm", wavelength_min=500.0, wavelength_max=540.0,
+        wavelengths=[500.0, 540.0], k=[0.0, 0.0])
     import hashlib
 
     frozen.pop("sha256")

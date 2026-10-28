@@ -437,8 +437,9 @@ def test_incomplete_local_stage_stops_before_thinning(monkeypatch, status):
     result = synthesize_film_design(service, request)
     assert result.targets_met and result.state == 'completed'
     assert result.local_optimum is not None
-    assert result.termination_reason == 'local_margin_' + status
-    assert result.local_optimum['termination'] == status
+    expected = 'scaled_stagnation' if status == 'iteration_limit' else status
+    assert result.termination_reason == 'local_margin_' + expected
+    assert result.local_optimum['termination'] == expected
     assert not result.local_optimum['local_converged']
     assert result.training_score is not None and result.validation_score is not None
     assert result.training_score['nominal_pass'] and result.validation_score['nominal_pass']

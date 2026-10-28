@@ -429,7 +429,7 @@ def refine_synthesis_explorer(request, initial, *, evaluate, archive,
 
 def refine_synthesis_full_minimax(request, initial, *, evaluate, archive,
         cancel_check=lambda: None, progress=lambda *args: None, max_iterations=120,
-        lower_bounds_nm: Mapping[str, float] | None = None):
+        lower_bounds_nm: Mapping[str, float] | None = None, terminal_callback=None):
     """Mature full-original-constraint SLSQP epigraph, with physical verification.
 
     No sparse active set and no optimizer t-only acceptance. Original responses
@@ -504,6 +504,8 @@ def refine_synthesis_full_minimax(request, initial, *, evaluate, archive,
     q_terminal = None
     t_terminal = None
     full_feasibility = None
+    endpoint_evidence: dict[str, object] | None = None
+    terminal_role = 'last_accepted_iterate_or_initial_when_interrupted'
     rejected_infeasible_trials = 0
     condition_count = signed_bound_count(request.objectives)
 
@@ -584,17 +586,37 @@ def refine_synthesis_full_minimax(request, initial, *, evaluate, archive,
         if endpoint.shape != (len(ids) + 1,) or not np.all(np.isfinite(endpoint)):
             raise ValueError('full minimax returned invalid epigraph endpoint')
         endpoint_ds = _coordinate_thicknesses_nm(endpoint[:-1], scales, lower, upper, ds / scales, ds)
-        endpoint_physical = (np.all(endpoint_ds >= lower)
+        endpoint_physical = (np.all(np.isfinite(endpoint_ds)) and np.all(endpoint_ds >= lower)
             and (upper is None or np.all(endpoint_ds <= upper))
             and (total is None or (float(sum(endpoint_ds)) if lower_bounds_nm is None
                                   else math.fsum(endpoint_ds)) <= total))
-        t_terminal = float(endpoint[-1])
+        endpoint_design = deepcopy(design)
+        for row, thickness in zip(endpoint_design['front_layers'], endpoint_ds, strict=True):
+            row['thickness'] = dict(value=float(thickness), unit='nm')
+        endpoint_evidence = dict(
+            role='actual_solver_endpoint',
+            physical_hash=(physical_design_hash(endpoint_design) if np.all(np.isfinite(endpoint_ds)) else None),
+            scaled_thickness_coordinates=endpoint[:-1].tolist(),
+            physical_valid=bool(endpoint_physical), optimizer_t=float(endpoint[-1]),
+            signed_max=None, nominal_pass=False, epigraph_feasible=False, local_stationary=False)
         if endpoint_physical:
+            t_terminal = float(endpoint[-1])
             q_terminal = float(np.max(data(endpoint[:-1])[0]))
+            assert cache_value is not None  # A physical endpoint has complete optical data.
             terminal = cache_value
             full_feasibility = q_terminal <= t_terminal + 1e-8 and t_terminal >= -1e-12
+            terminal_role = 'actual_solver_endpoint'
+            endpoint_evidence.update(signed_max=q_terminal,
+                nominal_pass=bool(terminal['score'].get('nominal_pass', terminal['score']['max_error'] == 0.)),
+                epigraph_feasible=bool(full_feasibility),
+                local_stationary=bool(outcome.success) and bool(full_feasibility))
         else:
-            terminal = accepted
+            # An invalid endpoint has no optical evaluation. Retain the last
+            # complete accepted point with its own epigraph t; raw solver
+            # coordinates and identity remain separate evidence, never relabelled
+            # as the accepted geometry or a stationary physical endpoint.
+            terminal, t_terminal = accepted, accepted_t
+            terminal_role = 'last_accepted_iterate_or_initial_after_invalid_solver_endpoint'
             full_feasibility = False
         termination = ('converged' if bool(outcome.success) and full_feasibility else
                        'iteration_limit' if int(getattr(outcome, 'status', -1)) == 9 else 'solver_failure')
@@ -606,7 +628,16 @@ def refine_synthesis_full_minimax(request, initial, *, evaluate, archive,
         terminal, t_terminal = accepted, accepted_t
     if q_terminal is None and terminal.get('responses'):
         q_terminal = float(np.max(_signed_bounds(request, terminal, ())[0]))
-    return best, dict(method='SLSQP_full_original_epigraph', termination=termination,
+    retained_evidence = dict(physical_hash=physical_design_hash(terminal['design']),
+        role=terminal_role, physical_valid=True, optimizer_t=t_terminal,
+        signed_max=q_terminal, max_error=float(terminal['score']['max_error']),
+        nominal_pass=bool(terminal['score'].get('nominal_pass', terminal['score']['max_error'] == 0.)),
+        epigraph_feasible=bool(q_terminal is not None and t_terminal is not None
+            and q_terminal <= t_terminal + 1e-8 and t_terminal >= -1e-12),
+        local_stationary=termination == 'converged')
+    best_is_solver_terminal = (endpoint_evidence is not None
+        and endpoint_evidence['physical_hash'] == physical_design_hash(best['design']))
+    details = dict(method='SLSQP_full_original_epigraph', termination=termination,
         success=bool(outcome.success) and bool(full_feasibility) if outcome is not None else False,
         message=str(outcome.message) if outcome is not None else termination,
         iterations=int(getattr(outcome, 'nit', 0)) if outcome is not None else accepted_iterations, physical_candidates=calls,
@@ -615,10 +646,17 @@ def refine_synthesis_full_minimax(request, initial, *, evaluate, archive,
         fixed_layer_ids=fixed_ids,
         free_thickness_variables=len(ids) - len(fixed_ids),
         original_signed_constraints=(0 if cache_data is None else len(cache_data[0])),
-        terminal_role=('actual_solver_endpoint' if outcome is not None and termination not in ('stage_budget', 'resource_guard')
-                       else 'last_accepted_iterate_or_initial_when_interrupted'),
+        terminal_role=terminal_role,
         terminal_physical_hash=physical_design_hash(terminal['design']),
         terminal_max_error=float(terminal['score']['max_error']),
         terminal_signed_max=q_terminal, optimizer_t=t_terminal,
         terminal_full_grid_epigraph_feasible=full_feasibility,
-        returned_role='strict_original_grid_champion_not_optimizer_t')
+        returned_role='strict_original_grid_champion_not_optimizer_t',
+        solver_terminal=endpoint_evidence if endpoint_evidence is not None else retained_evidence,
+        retained_terminal=retained_evidence,
+        returned_best=dict(physical_hash=physical_design_hash(best['design']),
+            is_solver_terminal=best_is_solver_terminal,
+            role='solver_terminal' if best_is_solver_terminal else 'best_training_trial'))
+    if terminal_callback is not None:
+        terminal_callback(terminal)
+    return best, details

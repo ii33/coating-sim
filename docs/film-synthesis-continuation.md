@@ -1,18 +1,18 @@
 # 自动合成阶段与结构续接核心契约
 
-更新：2026-10-26；基线 `708a9a39f9b024334f7d2117548d6ed3c6c1cab2`。
+更新：2026-10-28；实现基线 `3368edcbf297300af30169ef6b89a9f6413e4645`。
 
 ## 状态所有者与阶段
 
 `synthesize_film_design` 唯一拥有物理评价、预算、取消、训练/审计档案和阶段调度。UI 只持有冻结请求、返回结果及搜索状态，不修改状态内部字段。核心不操作编辑器，不直接保存用户设计。
 
-默认 hybrid 顺序为：结构搜索和原目标独立审计 → 数值 canonical 准备 → 固定拓扑最差余量局部收敛确认 → 原目标有限减薄 → 原目标独立审计。准备求解若形成数值零层，先结束该求解、完成光谱等价清理，再对清理后的层 ID/材料/层数独立确认收敛；不会把原变量数的收敛标志借给删层后的设计。`local_margin.canonical_preparation` 单独记录准备求解、清理前后层数、实际耗时和评价数；`local_margin.fixed_layer_ids` 保存最终固定拓扑会话的真实起点。若第二次又需改拓扑，明确结束为未完成，不继续减薄。算法定义、单位、限制与来源见 [算法图册14bb](algorithms.html#film-margin-continuation-20261026)。
+默认 hybrid 顺序为：本轮结构筛选及实质局部优化 → 固定拓扑完整精修与独立审计 → 在不恶化最佳指标的条件下尝试减薄 → 结束本轮。未达标时精修最差归一化违规；达标后仍走最差安全余量局部阶段。目标未达到不再强制自动扩展下一轮结构，用户主动点击继续才推进原前沿。准备求解若形成数值零层，先结束该求解、完成光谱等价清理，再对清理后的层 ID/材料/层数独立确认收敛；不会把原变量数的收敛标志借给删层后的设计。`local_margin.canonical_preparation` 单独记录准备求解、清理前后层数、实际耗时和评价数；`local_margin.fixed_layer_ids` 保存最终固定拓扑会话的真实起点。若第二次又需改拓扑，明确结束为未完成，不继续减薄。算法定义、单位、限制与来源见 [算法图册14bb](algorithms.html#film-margin-continuation-20261026)。
 
 `candidate_design`、`training_score`、`validation_score` 始终绑定最终返回候选。新增 `local_optimum` 保存减薄前设计、训练/独立审计、物理哈希、最差有符号余量和局部终止原因；它可能比最终候选更厚、余量更大。它不是自动应用授权。历史冠军优于本次新结构时，继续会话可返回历史冠军，但会明确记录选择和新结构局部结果。
 
 ## 最小 UI 接口
 
-收敛身份分开记录为 `solver_terminal`、`best_feasible_trial`、`returned_best` 和 `audited_selected` 物理哈希。求解器成功只能赋予同一终态候选；较好的线搜索试探不能借用其驻点标签。只有最终固定拓扑的求解终态本身通过原门限独立审计，`local_converged` 才为 true。终态审计拒绝时保留已审计来源，标为 `audit_rejected` / `audited_fallback_before_incomplete_local_stage` 并停止，不进入默认减薄。
+收敛身份分开记录为 `solver_terminal`、`best_feasible_trial`、`returned_best` 和 `audited_selected` 物理哈希。求解器成功只能赋予同一终态候选；较好的线搜索试探不能借用其驻点标签。只有最终固定拓扑的求解终态本身完成对应的独立审计且身份一致，才可给它数值局部收敛标记。达标后的余量分支仍要求原门限训练和独审均通过；未达标的可行性精修分支可以数值收敛，但其 `targets_met=false`、逐条件违规及独审结果必须保留。历史冠军或较好的非终态试探不能借用该标记。终态审计拒绝时保留已审计来源，标为 `audit_rejected` / `audited_fallback_before_incomplete_local_stage` 并停止，不进入默认减薄。
 
 若最佳完整可行试探的最差有符号余量确实优于 solver 终态，返回该试探供原目标独立审计；审计通过后保留为最佳可行解，标记 `best_feasible_not_stationary` 和 `audited_best_feasible_before_incomplete_local_stage`，不宣告局部收敛、不开始减薄。只在归一化余量改善超过 `1e-10 * max(1, |best_margin|, |terminal_margin|)` 时区分二者，以免舍入差异丢掉真实终态的收敛身份；这是本项目选择约定，不放宽任何原目标训练或审计阈值。每次独立审计晋升也更新实时最佳显示，避免局部阶段仍显示旧的厚度优先训练冠军。
 
@@ -41,6 +41,14 @@ next_request = continue_synthesis_request(
 
 最终候选继续走既有候选应用入口、冻结来源/作业身份和当前设计修订校验；自动写回仅在该既有保护通过后执行。撤销沿用原编辑器命令；核心不会覆盖未保存草稿，也不会因返回 `local_optimum` 自动应用它。UI 在应用失败或修订变化时保留结果供查看。
 
+减薄不再设置内部固定总评价数、时长或求解次数上限。单次 SLSQP 保留16次迭代作为局部数值保护；达到该保护但仍有双质量审计通过的实质变薄时，继续同一拓扑求解。无有效改善、数值收敛、求解失败、资源保护、用户显式预算及取消均有真实 `stop_reason`；不会把32次评价量子当成减薄已收敛。尺度化厚度改善阈值沿用 `relative_improvement_tolerance * max(initial_total_nm, 1 nm)`，不增加用户目标或参数。中断只保留此前已通过训练和独审质量保护的冠军，不补做停止后的光学评价。
+
+达标余量阶段同样没有固定总迭代或求解次数限制。单次256迭代是可重复的 SLSQP 工作分片；触限且最差归一化余量改善超过 `relative_improvement_tolerance * max(1, abs(before), abs(after))` 时，独审通过后在相同拓扑继续。`local_margin.solver_calls` 分别保存各分片真实评价、耗时和物理身份；无改善明确记 `scaled_stagnation`，保持 `local_converged=false`，默认不减薄。原目标、正式验收及共享预算不变。减薄的 `_Stopped(time_limit)` 与取消路径均冻结同一已审冠军对，截止后不追加审计，不返回中途未审训练试探替代它。
+
+完整 minimax 的 `solver_terminal` 记录真实求解终点；终点物理非法时保留其坐标、t、hash 及 `physical_valid=false`，另以 `retained_terminal` 记录上一已接受候选。顶层 `terminal_*`、`optimizer_t` 和 terminal callback 都对应这个保留候选及自己的 t；`returned_best.is_solver_terminal` 只与真实终点比较，回退点不能借用原终点角色或驻点证据。
+
+显式 legacy 路线仅复用既有充分轮停滞计数：全部当轮审计反馈修复后，同时检查训练最好与同一已审候选的最差归一化误差；任一实质改善均重置计数。它不声明梯度收敛、不进入无驻点依据的减薄，也未新增 legacy DE 内部状态恢复。真正结构前沿续接仍为现有 hybrid 接口。
+
 ## 持久化与恢复
 
 `FilmSynthesisResult.search_checkpoint` 是带版本、指纹和 SHA256 的 JSON 值。独立回调 `search_checkpoint_callback(state)` 在已提交候选及终止边界发布深拷贝；异常原样传播并清理执行器。调度器复用现有原子 JSON writer，在最佳审计文件旁保存 `<stem>.search-state.json`；即使没有达标候选也保存结构进度。原最佳候选 checkpoint 的含义不变。
@@ -55,7 +63,7 @@ CLI：`--checkpoint best.json` 同时写 `best.search-state.json`；`--continue-
 
 ## 结果和错误边界
 
-`state / targets_met` 沿用正式指标达标的公共含义，不表示局部阶段已收敛。局部终态审计拒绝或求解未完成时，若回退候选的原目标训练与独立审计均通过，仍保留该达标结果；同时保留真实局部终止原因、`local_converged=false` 和回退身份，默认不减薄。界面区分“已审计回退候选”与真正的减薄前局部结果。
+`state=completed` 表示本轮按正常规则完成，`targets_met` 仅表示实际返回候选通过原门限训练及独立审计，两者分离。未达标完整局部会话可返回 `completed / targets_met=false`，以 `local_session_converged_targets_unmet` 或 `local_session_stalled_targets_unmet` 说明数值收敛或无有效改善；后者不是梯度驻点证明。终态已收敛但返回另一条更优非驻点候选时，使用 `local_session_terminal_converged_best_retained_targets_unmet`，不薄化或借用驻点标签。训练通过而独审拒绝则使用 `local_session_audit_rejected_targets_unmet`，不冒称停滞。预算、取消和数值失败不能改名为收敛。局部终态审计拒绝或求解未完成时，若回退候选的原目标训练与独立审计均通过，仍保留该达标结果；同时保留真实局部终止原因、`local_converged=false` 和回退身份，默认不减薄。界面区分“已审计回退候选”与真正的减薄前局部结果。
 
 评价/周期预算耗尽时，若已有同时通过正式训练及独立审计的冠军，保留历史的 `completed / targets_met=true` 达标语义，并保留实际 `evaluation_limit / cycle_limit` 终止原因；`local_margin.local_converged=false` 和 `budget_limited=true` 明确说明局部阶段未完成，不执行减薄。这不把候选达标冒充局部收敛。续接仍要求完成本轮新结构工作，不能因旧冠军返回成功；取消、截止、审计拒绝和求解失败保留各自状态。
 
@@ -67,6 +75,6 @@ CLI：`--checkpoint best.json` 同时写 `best.search-state.json`；`--continue-
 
 `performance.search.hybrid.first_feasible/local_margin/thickness_reduction` 保存阶段墙钟和真实评价、训练物理调用/波长点及独立审计调用/点数；未知底层物理计数保留 `None`。`continuation_session` 记录选中新分支、局部终止、原审计结论和历史/新候选的返回选择。
 
-局部收敛、迭代保护、数值失败、资源保护、评价限制、时间截止与取消分别报告。余量阶段未收敛不继续减薄。资源拒绝或没有有效工作时结束当前片/会话，不能声称全局无解。取消/截止不开始额外验证，只有匹配实际返回候选的完整审计可以附加。新局部结果达不到原目标时可返回已审计历史冠军；本次终止为 `continuation_local_session_complete`，不声称新结构达标或优于历史结果。
+局部收敛、迭代保护、数值失败、资源保护、评价限制、时间截止与取消分别报告。达标后余量阶段未收敛不继续减薄。未达标分支仅在完整局部终态及对应独审成立后，尝试不恶化当前最佳指标的减薄；无可接受减薄候选时保留局部结果并结束，不等待目标达标或继续扩结构。资源拒绝或没有有效工作时结束当前片/会话，不能声称全局无解。取消/截止不开始额外验证，只有匹配实际返回候选的完整审计可以附加。新局部结果达不到原目标时可返回已审计历史冠军；本次终止为 `continuation_local_session_complete`，不声称新结构达标或优于历史结果。
 
 请求协议仍为 v5；`search_checkpoint` 和 `enable_local_margin_refinement` 是可省略的增量字段，旧 v5 请求读入时分别为 `None/True`。旧候选 warm restart 仍是独立操作，不能显示为结构进度恢复。

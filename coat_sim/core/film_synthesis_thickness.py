@@ -23,6 +23,39 @@ if TYPE_CHECKING:
 Value = dict[str, Any]
 
 
+def optical_quality_by_group(request: FilmSynthesisRequest, value: Value) -> dict[tuple[int, float, str], float]:
+    """Directed worst normalized condition per enabled objective/angle/reduction.
+
+    Interior interval sides retain their signed safety distance; physical R/T
+    endpoints do not pull AR/HR toward the interval centre. Value and zero-width
+    targets retain the original nonnegative violation, never an invented margin.
+    """
+    from .film_synthesis_margin import _field, _margin_sides
+    result: dict[tuple[int, float, str], float] = {}
+    for row in value['score']['errors']:
+        index, reduction = _field(row, 'objective_index'), _field(row, 'reduction')
+        objective = request.objectives[index]
+        criterion = getattr(objective, reduction)
+        lower, upper = _margin_sides(criterion)
+        actual = float(_field(row, 'actual'))
+        sides = []
+        if lower:
+            sides.append((criterion.lower_bound - actual) / objective.normalization_scale)
+        if upper:
+            sides.append((actual - criterion.upper_bound) / objective.normalization_scale)
+        quality = max(sides) if sides else float(_field(row, 'normalized_violation'))
+        key = (index, float(_field(row, 'angle_deg')), reduction)
+        result[key] = max(result.get(key, -math.inf), quality)
+    if not result or any(not math.isfinite(number) for number in result.values()):
+        raise ValueError('optical quality requires complete finite original condition scores')
+    return result
+
+
+def preserves_optical_quality(request: FilmSynthesisRequest, source: Value, candidate: Value) -> bool:
+    before, after = optical_quality_by_group(request, source), optical_quality_by_group(request, candidate)
+    return before.keys() == after.keys() and all(after[key] <= before[key] for key in before)
+
+
 def thickness_reduction_working_set_bytes(request: FilmSynthesisRequest, layers: int) -> int:
     """Conservative project estimate, not a layer limit or OS memory guarantee.
 
@@ -39,10 +72,14 @@ def reduce_total_thickness(request: FilmSynthesisRequest, initial: Value, *,
         cancel_check: Callable[[], None] = lambda: None,
         progress: Callable[..., None] = lambda *args: None,
         resource_check: Callable[..., None] = lambda *args, **kwargs: None,
-        max_iterations: int = 64) -> tuple[Value, dict[str, Any]]:
+        max_iterations: int = 64, preserve_quality: bool = False) -> tuple[Value, dict[str, Any]]:
     """Minimize sum(d_nm) at fixed layer IDs/materials with original q <= 0.
 
-    The initial candidate must pass every active canonical nominal constraint.
+    Normally the initial candidate must pass every active nominal constraint.
+    With preserve_quality, each enabled objective/angle/reduction instead keeps
+    its initial directed worst normalized value as an internal sublevel; this
+    also supports incomplete goals without modifying the original request or
+    reporting them as passed. Final independent audit remains the caller's job.
     Solver tolerance does not grant acceptance, especially for strict bounds.
     Return the thinnest actually evaluated nominally passing candidate, never
     a penalty value or a merely solver-acceptable endpoint. All callback errors
@@ -71,6 +108,30 @@ def reduce_total_thickness(request: FilmSynthesisRequest, initial: Value, *,
     upper, total_cap = request.max_layer_thickness_nm, request.max_total_thickness_nm
     ds = np.asarray([row['thickness']['value'] for row in rows], float)
     initial_total = float(sum(ds))
+    quality_bounds = optical_quality_by_group(request, initial) if preserve_quality else None
+
+    def accepted(value, reduced):
+        return (preserves_optical_quality(request, initial, value) if preserve_quality else reduced.nominal_pass)
+
+    def optical_caps(reduced):
+        if quality_bounds is None:
+            return np.zeros(len(reduced.signed_bound_values))
+        from .film_synthesis_margin import _margin_sides
+        caps: list[float] = []
+        for condition in reduced.conditions:
+            criterion = getattr(request.objectives[condition.objective_index], condition.reduction)
+            cap = quality_bounds[(condition.objective_index, float(condition.angle_deg), condition.reduction)]
+            sides = _margin_sides(criterion)
+            if criterion.mode == 'value':
+                caps.extend((cap, cap))
+            else:
+                degenerate = (criterion.lower_bound is not None and criterion.upper_bound is not None
+                    and criterion.lower_bound == criterion.upper_bound)
+                if criterion.lower_bound is not None:
+                    caps.append(cap if sides[0] or degenerate else 0.)
+                if criterion.upper_bound is not None:
+                    caps.append(cap if sides[1] or degenerate else 0.)
+        return np.asarray(caps, float)
 
     def physical(d):
         return bool(d.shape == ds.shape and np.all(np.isfinite(d)) and np.all(d >= lower)
@@ -102,7 +163,7 @@ def reduce_total_thickness(request: FilmSynthesisRequest, initial: Value, *,
         nonlocal calls, best, best_total, best_reduction, cache_d, cache_value, cache_reduction
         reduced = _original_reduction(request, value, ids)
         candidate_total = float(sum(d))
-        if reduced.nominal_pass and candidate_total < best_total:
+        if accepted(value, reduced) and candidate_total < best_total:
             best, best_total, best_reduction = value, candidate_total, reduced
         cache_d, cache_value, cache_reduction = d.copy(), value, reduced
         if physical_call:
@@ -132,7 +193,7 @@ def reduce_total_thickness(request: FilmSynthesisRequest, initial: Value, *,
     # Raw complete spectra, not score flags or tolerated error, establish entry.
     if initial.get('responses'):
         best_reduction = _original_reduction(request, initial, ())
-        if not best_reduction.nominal_pass:
+        if not preserve_quality and not best_reduction.nominal_pass:
             raise ValueError('thickness reduction requires a nominally passing initial candidate')
     if not ids:
         if best_reduction is None:
@@ -146,8 +207,8 @@ def reduce_total_thickness(request: FilmSynthesisRequest, initial: Value, *,
             best, best_reduction = refreshed, reduced
     if not cache_reduction and ids:
         raise AssertionError('initial derivative contract was not established')
-    if best_reduction is None or not best_reduction.nominal_pass or (
-            cache_reduction is not None and not cache_reduction.nominal_pass):
+    if best_reduction is None or (not preserve_quality and (not best_reduction.nominal_pass or (
+            cache_reduction is not None and not cache_reduction.nominal_pass))):
         raise ValueError('thickness reduction requires a nominally passing initial candidate')
 
     count = signed_bound_count(request.objectives)
@@ -183,7 +244,7 @@ def reduce_total_thickness(request: FilmSynthesisRequest, initial: Value, *,
             derivative = 2 * (below + above + excess) * scales
             return np.full(count, -penalty), np.tile(-derivative, (count, 1))
         _, reduced = measure(d)
-        return -reduced.signed_bound_values, -reduced.signed_bound_jacobian * scales
+        return optical_caps(reduced) - reduced.signed_bound_values, -reduced.signed_bound_jacobian * scales
 
     constraints = [dict(type='ineq', fun=lambda x: constraint_data(x)[0], jac=lambda x: constraint_data(x)[1])]
     # A feasible initial total is a lossless objective sublevel, not an added
@@ -208,7 +269,7 @@ def reduce_total_thickness(request: FilmSynthesisRequest, initial: Value, *,
             # Repair representation-level strict-bound failures first, then
             # search a bounded segment toward a known feasible incumbent. No
             # altered goal, epsilon acceptance or undisclosed safety margin.
-            if not terminal_reduction.nominal_pass and float(sum(endpoint)) < best_total:
+            if not accepted(terminal_value, terminal_reduction) and float(sum(endpoint)) < best_total:
                 anchor = np.asarray([r['thickness']['value'] for r in best['design']['front_layers']])
                 near = endpoint.copy()
                 for _ in range(4):
@@ -220,11 +281,11 @@ def reduce_total_thickness(request: FilmSynthesisRequest, initial: Value, *,
                     if not physical(near):
                         break
                     repair_nextafter += 1
-                    _, reduced = measure(near)
-                    if reduced.nominal_pass:
+                    repaired, reduced = measure(near)
+                    if accepted(repaired, reduced):
                         break
                 assert cache_reduction is not None
-                if not cache_reduction.nominal_pass:
+                if not accepted(cache_value, cache_reduction):
                     passing, failing = anchor.copy(), near.copy()
                     for _ in range(8):
                         cancel_check()
@@ -234,8 +295,8 @@ def reduce_total_thickness(request: FilmSynthesisRequest, initial: Value, *,
                         if not physical(middle):
                             break
                         repair_bisection += 1
-                        _, reduced = measure(middle)
-                        if reduced.nominal_pass:
+                        repaired, reduced = measure(middle)
+                        if accepted(repaired, reduced):
                             passing = middle
                         else:
                             failing = middle
@@ -262,7 +323,7 @@ def reduce_total_thickness(request: FilmSynthesisRequest, initial: Value, *,
         initial_total_thickness_nm=initial_total, final_total_thickness_nm=best_total,
         cost_sublevel_total_nm=initial_total,
         reduction_nm=initial_total - best_total, improved=best_total < initial_total,
-        nominal_pass=True, max_signed_violation=float(max(best_reduction.signed_bound_values)),
+        nominal_pass=best_reduction.nominal_pass, max_signed_violation=float(max(best_reduction.signed_bound_values)),
         layer_count=len(ids), layer_ids=list(ids), signed_bound_conditions=count,
         boundary_nextafter_evaluations=repair_nextafter, boundary_bisection_evaluations=repair_bisection,
         terminal_physically_feasible=terminal_physical,
@@ -271,5 +332,7 @@ def reduce_total_thickness(request: FilmSynthesisRequest, initial: Value, *,
             row['thickness']['value'] for row in terminal_value['design']['front_layers'])),
         optical_extrema=extrema, estimated_working_set_bytes=estimated_bytes,
         resource_guard_resolution=resolution,
-        acceptance_scope='original nominal constraints on training grid; independent original audit required',
+        acceptance_scope=('per-enabled-objective/angle/reduction signed-worst sublevel of the local result; original targets unchanged; independent audit required'
+            if preserve_quality else 'original nominal constraints on training grid; independent original audit required'),
+        preserves_local_optical_quality=preserve_quality,
         boundary_repair_policy='at most 4 physical-nm nextafter steps then 8 segment bisections; no goal margins')

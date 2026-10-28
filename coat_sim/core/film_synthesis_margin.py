@@ -53,7 +53,10 @@ def refine_worst_margin(request, initial, *, evaluate, archive,
         progress=lambda *args: None, max_iterations=256):
     """Minimize unrestricted t with q_margin <= t and all original q <= 0.
 
-    A finite iteration safeguard is reported as a limit, not convergence.
+    Each call is a finite numerical quantum, not a whole-stage budget. The
+    parent continues improving iteration-limited points under its shared
+    cancellation/resource/explicit-budget checks; scaled stagnation stops
+    honestly without claiming stationarity.
     SLSQP success means constrained local stationarity to its scaled ftol;
     neither a zero raw optical gradient nor global optimality is claimed.
     Parent callbacks retain all work/budget/cancellation and audit ownership.

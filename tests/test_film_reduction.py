@@ -359,7 +359,9 @@ def test_real_relevant_layer_deletion_requires_bounded_repair_and_layer_mode_all
     assert all(0.015 <= value <= 0.022 for row in result.base_result.validation_raw_coverage for value in row.actual_values)
     payload = film_reduction_result_to_payload(result.frozen_request, result)
     validate_film_reduction_payload(service, payload)
-    joint = reduce_film_design(Service(), replace(source, mode="combined"))
+    # Preserve the old finite search example as an explicitly limited run.
+    joint = reduce_film_design(Service(), replace(source, mode="combined",
+        max_iterations=4, max_evaluations=80))
     assert not joint.summary["reduction_achieved"]
     assert joint.metrics["candidate"]["layer_count"] == 2
     assert joint.metrics["candidate"]["total_thickness_nm"] == 45.0
@@ -436,7 +438,7 @@ def test_cancel_inside_real_survivor_repair_stops_forward_calls_and_preserves_pr
 @pytest.mark.parametrize("budget", [3, 4, 5])
 def test_global_tiny_budget_counts_inner_real_repair_and_stops_all_remaining_proposals(budget):
     service = Service()
-    result = reduce_film_design(service, _meaningful_repair_source(max_evaluations=budget))
+    result = reduce_film_design(service, replace(_meaningful_repair_source(), max_evaluations=budget))
     assert result.state == "completed"
     assert len(service.calls) == result.base_result.evaluations <= budget
     assert "Evaluation budget reached" in result.message

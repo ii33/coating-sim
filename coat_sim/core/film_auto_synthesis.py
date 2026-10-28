@@ -53,6 +53,7 @@ _RESOURCE_FALLBACK_BASES = frozenset(("unknown_memory_fallback",
 
 
 class _SearchDiagnostics(TypedDict):
+    legacy_local_session: NotRequired[dict[str, Any]]
     structural_proposals: list[dict[str, object]]
     global_search: list[dict[str, object]]
     layer_distribution: dict[str, int]
@@ -684,7 +685,10 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                            snapshot_callback: Callable[[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]], None] | None = None,
                            candidate_observer: Any = None,
                            search_checkpoint_callback: Callable[[Mapping[str, Any]], None] | None = None) -> FilmSynthesisResult:
-    """Return a reviewable candidate; completed means training and audit passed.
+    """Return a reviewable candidate; completed means the local session finished.
+
+    Target attainment is reported separately by targets_met and requires the
+    returned candidate's original training conditions and independent audit.
 
     Invalid requests raise ValueError. Numerical failures, cancellation and
     exhausted user limits are explicit result states. Callbacks run on the
@@ -1226,11 +1230,18 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             if resume_branch_audited is None or audited_rank(*pair) < audited_rank(*resume_branch_audited):
                 resume_branch_audited = pair
         phase_preferred = bool(prefer_phase)
+        quality_preferred = False
+        if prefer_phase == 'quality_preserving_thickness' and audited_best is not None:
+            from .film_synthesis_thickness import preserves_optical_quality
+            phase_preferred = False
+            quality_preferred = (preserves_optical_quality(request, audited_best[0], value)
+                and preserves_optical_quality(request, audited_best[1], audited))
         if prefer_phase == 'margin' and audited_best is not None:
             from .film_synthesis_margin import worst_signed_margin
             phase_preferred = (worst_signed_margin(request, audited) is not None
                 and worst_signed_margin(request, audited) < worst_signed_margin(request, audited_best[1]))
         if (audited_best is None
+                or quality_preferred
                 or (phase_preferred and nominal_targets_pass(request, value['score'])
                     and nominal_targets_pass(request, audited['score'], independent_audit=True))
                 or (not prefer_phase and audited_rank(value, audited) < audited_rank(*audited_best))):
@@ -1272,7 +1283,10 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         value = value.get("_numeric_zero_canonical", value)
         from .film_synthesis_archive import physical_design_hash
         identity = physical_design_hash(value['design'])
-        if (resumed and operator == 'engineering_prior' and identity not in resume_blocked
+        exploration_operator = operator or archive_context.get('operator', 'evaluated')
+        if (resumed and cycle > 0 and exploration_operator in {'engineering_prior',
+                'low_dimensional_global', 'analytic_batch_needle', 'finite_optical_growth',
+                'physical_layer_deletion'} and identity not in resume_blocked
                 and (resume_branch is None or rank(value) < rank(resume_branch))):
             resume_branch = _copy_internal_candidate(value)
         tried_search.add(identity)
@@ -1848,14 +1862,57 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 if limit is not None and estimate > limit:
                     details['resource_limited'] = True
                     raise SynthesisResourceGuard('margin epigraph + archive + worker estimate exceeds resource guard')
+            def margin_chunks(initial, progress):
+                # A finite SLSQP call is a scheduling quantum, never a hidden
+                # whole-stage budget. Continue a genuinely improving feasible
+                # point on this topology, retaining each independently audited
+                # improvement before starting another numerical call.
+                current = initial
+                record.setdefault('solver_calls', [])
+                record['iteration_policy'] = 'finite SLSQP calls; improving iteration limits continue on the same topology; scaled stagnation is not stationarity'
+                while True:
+                    check_training_admission()
+                    previous_margin = worst_signed_margin(request, current)
+                    call_before, call_started = evaluations, monotonic()
+                    refined, numerical = refine_worst_margin(request, current,
+                        evaluate=hybrid_evaluate, archive=archive, cancel_check=check_training_admission,
+                        resource_check=margin_resource, progress=progress)
+                    record['solver_calls'].append(dict(deepcopy(numerical),
+                        initial_physical_hash=physical_design_hash(current['design']),
+                        returned_physical_hash=physical_design_hash(refined['design']),
+                        evaluations_used=evaluations - call_before,
+                        elapsed_seconds=monotonic() - call_started))
+                    if numerical['termination'] != 'iteration_limit':
+                        return refined, numerical
+                    canonical = refined.get('_numeric_zero_canonical')
+                    if canonical is not None and canonical['design'] != refined['design']:
+                        # Canonicalization starts a separate fixed-topology
+                        # solve below; the old topology supplies no stationarity.
+                        return refined, numerical
+                    next_margin = worst_signed_margin(request, refined)
+                    tolerance = request.relative_improvement_tolerance * max(
+                        1., abs(previous_margin or 0.), abs(next_margin or 0.))
+                    if (previous_margin is None or next_margin is None
+                            or previous_margin - next_margin <= tolerance):
+                        return refined, dict(numerical, termination='scaled_stagnation', success=False,
+                            scaled_margin_improvement_tolerance=tolerance)
+                    incumbent = audited_best
+                    assert incumbent is not None
+                    if physical_design_hash(refined['design']) != physical_design_hash(incumbent[0]['design']):
+                        audit_archive(refined, allow_feedback_repair=False, prefer_phase=True, refresh=True)
+                    incumbent = audited_best
+                    assert incumbent is not None
+                    if incumbent[0]['design'] != refined['design']:
+                        record['audit_outcome'] = 'iteration_limited_improvement_audit_rejected_source_retained'
+                        return refined, dict(numerical, termination='audit_rejected', success=False)
+                    current = refined
             emit('local_margin', '固定拓扑改善启用指标的最差安全余量；随后按原目标减薄', source['design'], source['score'])
             try:
                 if request.enable_local_margin_refinement:
                     if worst_signed_margin(request, source) is not None and source['design']['front_layers']:
                         margin_resource(source['design'])
-                    refined, numerical = refine_worst_margin(request, source,
-                        evaluate=hybrid_evaluate, archive=archive, cancel_check=check_training_admission,
-                        resource_check=margin_resource, progress=lambda stage, value, metadata:
+                    refined, numerical = margin_chunks(source,
+                        progress=lambda stage, value, metadata:
                             local_progress('canonical_margin_preparation_trial', value, metadata))
                     canonical = refined.get('_numeric_zero_canonical')
                     if canonical is not None and canonical['design'] != refined['design']:
@@ -1879,13 +1936,12 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                              source['design'], source['score'])
                         before, started_local, work_before = evaluations, monotonic(), phase_work()
                         emit('local_margin', 'Canonical 清理完成；固定此层数、材料与层 ID 验证局部收敛', source['design'], source['score'])
-                        refined, numerical = refine_worst_margin(request, source,
-                            evaluate=hybrid_evaluate, archive=archive, cancel_check=check_training_admission,
-                            resource_check=margin_resource, progress=local_progress)
+                        refined, numerical = margin_chunks(source, progress=local_progress)
                         if refined.get('_numeric_zero_canonical') is not None and refined['_numeric_zero_canonical']['design'] != refined['design']:
                             numerical = dict(numerical, termination='canonical_topology_changed_again', success=False)
                     record.update(status=numerical['termination'], numerical=numerical)
-                    if physical_design_hash(refined['design']) != physical_design_hash(audited_best[0]['design']):
+                    if (record['status'] != 'audit_rejected'
+                            and physical_design_hash(refined['design']) != physical_design_hash(audited_best[0]['design'])):
                         audit_archive(refined, allow_feedback_repair=False, prefer_phase=True, refresh=True)
                         if audited_best[0]['design'] != refined['design']:
                             record['audit_outcome'] = 'terminal_audit_rejected_source_retained'
@@ -1938,20 +1994,19 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 raise _Stopped('local_margin_' + record['status'])
 
         def reduce_audited_thickness():
-            """One optional in-budget cost slice after normal hybrid success.
-
-            Never called from terminal cleanup or failure/cancel paths. A
-            reduced training champion cannot replace the independent audited
-            incumbent unless its own original audit also passes.
-            """
+            """Finish cost improvement without a hidden outer work budget."""
+            nonlocal postprocess_complete, completed_training_best, completed_training_validation
             if not request.enable_thickness_reduction:
                 return
             record: dict[str, Any] = dict(enabled=True, status="not_started",
-                policy="single audited incumbent; <=32 shared physical candidates, <=16 SLSQP iterations; original independent audit",
+                policy="same-topology SLSQP calls with <=16 internal iterations each; continue actual audited quality-preserving thickness improvement; no outer evaluation/time/call cap",
+                max_iterations_per_call=16, solver_calls=[],
                 initial_cost_sublevel="audited incumbent total; not a user manufacturing cap",
                 independent_audit_performed=False, promoted=False)
             details["thickness_reduction"] = record
-            if not targets_verified() or audited_best is None:
+            completed_local = bool(local_optimum is not None and local_optimum.get('session_complete')
+                and local_optimum.get('local_converged'))
+            if (not targets_verified() and not completed_local) or audited_best is None:
                 record["status"] = "skipped_no_audited_nominal_incumbent"
                 return
             source = audited_best[0]
@@ -1961,20 +2016,23 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             source_hash = physical_design_hash(source["design"])
             source_total = sum(row["thickness"]["value"] for row in source["design"]["front_layers"])
             record.update(initial_physical_hash=source_hash, initial_total_thickness_nm=source_total)
-            # Skip optional work without turning existing success into a budget
-            # error. Cancellation and wall deadline still remain authoritative.
-            _check_cancel(cancel_event)
-            if request.max_evaluations is not None and evaluations + reserved_training_slots >= request.max_evaluations - 1:
-                record["status"] = "skipped_evaluation_budget"
-                return
             from .film_synthesis_thickness import (reduce_total_thickness,
-                                                   thickness_reduction_working_set_bytes)
+                thickness_reduction_working_set_bytes, preserves_optical_quality)
             reduced = source
-            before = evaluations
+            reduced_identity: dict[str, Any] = {}
+            before, validation_before = evaluations, validation_evaluations
             reduction_started, reduction_work = monotonic(), phase_work()
+            tolerance = request.relative_improvement_tolerance * max(source_total, 1.)
+            record['scaled_thickness_improvement_tolerance_nm'] = tolerance
+            stage_record: dict[str, Any] = dict(stage='nominal_thickness_reduction', cycle=cycle,
+                start_evaluations=evaluations, admitted_evaluation_quantum=None,
+                remaining_training_evaluations=None if request.max_evaluations is None
+                    else max(0, request.max_evaluations - evaluations - 1),
+                wall_time_share=None, termination='running', evaluations_used=0, elapsed_seconds=0.)
+            details['stages'].append(stage_record)
 
             def admit(design, **_kwargs):
-                stage_check()
+                check_training_admission()
                 numerical = thickness_reduction_working_set_bytes(request, len(design["front_layers"]))
                 retained = archive_storage_estimate_bytes()
                 resident = (0 if execution.closed else len(execution.children)) * 128 * 1024**2
@@ -1993,50 +2051,265 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         reason="combined_thickness_solver_archive_worker_estimate_exceeds_resource_guard"))
                     raise SynthesisResourceGuard("combined thickness solver/archive/worker estimate exceeds resource guard")
 
+            def canonical_candidate(value):
+                if value.get('_numeric_zero_unpublished'):
+                    return None
+                return value.get('_numeric_zero_canonical', value)
+
+            def proposal_identity(raw, canonical):
+                raw_ids = [r['id'] for r in raw['design']['front_layers']]
+                canonical_ids = None if canonical is None else [r['id'] for r in canonical['design']['front_layers']]
+                return dict(raw_proposal_hash=physical_design_hash(raw['design']),
+                    canonical_proposal_hash=None if canonical is None else physical_design_hash(canonical['design']),
+                    raw_layer_ids=raw_ids, canonical_layer_ids=canonical_ids,
+                    topology_changed=canonical_ids is not None and raw_ids != canonical_ids,
+                    proposal_publishable=canonical is not None)
+
             def retain(value, *, audit_eligible=False):
-                nonlocal reduced
+                nonlocal reduced, reduced_identity
                 archive(value, audit_eligible=False, parent_hash=source_hash,
                         operator="nominal_total_thickness_reduction")
+                canonical = canonical_candidate(value)
+                if canonical is None:
+                    return
+                identity = proposal_identity(value, canonical)
+                value = canonical
                 candidate_total = sum(row["thickness"]["value"] for row in value["design"]["front_layers"])
                 reduced_total = sum(row["thickness"]["value"] for row in reduced["design"]["front_layers"])
-                if nominal_targets_pass(request, value["score"]) and candidate_total < reduced_total:
+                if preserves_optical_quality(request, source, value) and candidate_total < reduced_total:
                     reduced = value
+                    reduced_identity = identity
 
             try:
-                begin_slice("nominal_thickness_reduction", .15, 32)
-                admit(source["design"])
-                reduced, numerical_details = reduce_total_thickness(request, source,
-                    evaluate=hybrid_evaluate, archive=retain, cancel_check=stage_check,
-                    resource_check=admit, progress=local_progress, max_iterations=16)
-                record.update(status="complete", numerical=numerical_details)
-            except SynthesisStageBudget:
-                record["status"] = "partial_stage_budget"
+                emit('thickness_reduction', '保持各启用指标的局部最佳值减薄；持续实际改进，不设置外层隐藏预算', source['design'], source['score'])
+                while True:
+                    check_training_admission()
+                    source = audited_best[0]
+                    chunk_total = sum(row['thickness']['value'] for row in source['design']['front_layers'])
+                    reduced = source
+                    reduced_identity = proposal_identity(source, source)
+                    admit(source['design'])
+                    proposal, numerical_details = reduce_total_thickness(request, source,
+                        evaluate=hybrid_evaluate, archive=retain, cancel_check=check_training_admission,
+                        resource_check=admit, progress=local_progress, max_iterations=16, preserve_quality=True)
+                    retain(proposal)
+                    record.update(numerical=numerical_details)
+                    raw_identity = proposal_identity(proposal, canonical_candidate(proposal))
+                    record['solver_calls'].append(dict(deepcopy(numerical_details), **raw_identity,
+                        selected_canonical_hash=physical_design_hash(reduced['design'])))
+                    reduced_total = sum(row['thickness']['value'] for row in reduced['design']['front_layers'])
+                    record.update(proposed_total_thickness_nm=reduced_total,
+                        proposed_physical_hash=physical_design_hash(reduced['design']),
+                        raw_proposal_hash=raw_identity['raw_proposal_hash'],
+                        canonical_proposal_hash=raw_identity['canonical_proposal_hash'])
+                    record['topology_changed'] = record.get('topology_changed', False) or reduced_identity['topology_changed']
+                    status = numerical_details.get('termination')
+                    if chunk_total - reduced_total <= tolerance:
+                        record.update(status='no_quality_preserving_improvement' if status in {
+                            'solver_converged', 'empty_topology', 'fixed_bounds', 'iteration_limit'} else 'solver_failure',
+                            audit_outcome='not_needed_no_quality_preserving_reduction')
+                        break
+                    # Every promoted chunk has its own original independent
+                    # audit; solver output and training flags alone never win.
+                    audit_archive(reduced, allow_feedback_repair=False,
+                        prefer_phase='quality_preserving_thickness', refresh=True)
+                    record['independent_audit_performed'] = True
+                    promoted = physical_design_hash(audited_best[0]['design']) == physical_design_hash(reduced['design'])
+                    record['last_proposal_promoted'] = promoted
+                    record['promoted'] = record['promoted'] or promoted
+                    record['audit_outcome'] = 'promoted' if promoted else 'rejected_incumbent_retained'
+                    if not promoted:
+                        record['status'] = 'audit_rejected'
+                        break
+                    if reduced_identity['topology_changed']:
+                        # This call optimized the raw topology. Its canonical
+                        # representative has its own audited identity and must
+                        # start a new fixed-topology cost call before any local
+                        # convergence claim, even when the old solver succeeded.
+                        record['canonical_restarts'] = record.get('canonical_restarts', 0) + 1
+                        continue
+                    if status in {'solver_converged', 'empty_topology', 'fixed_bounds'}:
+                        record['status'] = 'converged'
+                        break
+                    if status != 'iteration_limit':
+                        record['status'] = 'solver_failure'
+                        break
+                _check_cancel(cancel_event)
             except _Stopped as exc:
-                if str(exc) != "evaluation_limit":
-                    raise
-                record["status"] = "partial_evaluation_budget"
+                record.update(status=str(exc), stop_reason=str(exc))
+                # Do not let terminal cleanup/auditing bypass the optical
+                # sublevel with a merely training-scored thinning candidate.
+                if audited_best is not None:
+                    completed_training_best = _copy_internal_candidate(audited_best[0])
+                    completed_training_validation = _copy_internal_candidate(audited_best[1])
+                postprocess_complete = True
+                raise
+            except _StructureCancelled:
+                stopped = ('time_limit' if stop_event.time_limit_reached()
+                    and not stop_event.caller_cancelled() else 'cancelled')
+                record.update(status=stopped, stop_reason=stopped)
+                if audited_best is not None:
+                    completed_training_best = _copy_internal_candidate(audited_best[0])
+                    completed_training_validation = _copy_internal_candidate(audited_best[1])
+                postprocess_complete = True
+                raise
             except SynthesisResourceGuard:
-                record["status"] = "skipped_resource_guard"
+                record.update(status='resource_guard', stop_reason='resource_guard')
             finally:
-                end_slice(record["status"])
-                record["training_evaluations_used"] = evaluations - before
-            _check_cancel(cancel_event)
-            reduced_total = sum(row["thickness"]["value"] for row in reduced["design"]["front_layers"])
-            record.update(proposed_total_thickness_nm=reduced_total,
-                proposed_physical_hash=physical_design_hash(reduced["design"]))
-            if reduced_total < source_total:
-                # The training slice preserves the global audit slot. Parent
-                # auditing owns final acceptance and retains the old incumbent
-                # when dense means or off-grid extrema reject this proposal.
-                audit_archive(reduced, allow_feedback_repair=False, prefer_phase=True, refresh=True)
-                record["independent_audit_performed"] = True
-                record["promoted"] = (audited_best is not None
-                    and physical_design_hash(audited_best[0]["design"]) == physical_design_hash(reduced["design"]))
-                record["audit_outcome"] = "promoted" if record["promoted"] else "rejected_incumbent_retained"
-            record["evaluations_used_including_audit"] = evaluations - before
-            record.update(elapsed_seconds=monotonic() - reduction_started, work=phase_delta(reduction_work))
+                record.setdefault('stop_reason', record['status'])
+                record.update(training_evaluations_used=evaluations - before - (validation_evaluations - validation_before),
+                    evaluations_used_including_audit=evaluations - before,
+                    elapsed_seconds=monotonic() - reduction_started, work=phase_delta(reduction_work))
+                stage_record.update(termination=record['status'], evaluations_used=evaluations - before,
+                    elapsed_seconds=record['elapsed_seconds'])
+            record.setdefault('audit_outcome', 'not_performed')
+            record['final_total_thickness_nm'] = sum(row['thickness']['value'] for row in audited_best[0]['design']['front_layers'])
             emit("thickness_reduction_complete", json.dumps(record, sort_keys=True),
                  audited_best[0]["design"], audited_best[0]["score"])
+
+        def finish_unmet_local_session(source):
+            """Finish one genuine search turn without requiring feasibility.
+
+            Search scheduling quanta are not local stopping criteria. Once the
+            complete search turn has supplied a physical topology, finish its
+            full original-condition local solve under only the caller's real
+            cancellation/resource/budget limits. An improving iteration-limited
+            solve continues this same topology; scaled lack of improvement ends
+            the session honestly as stalled, never as gradient convergence.
+            """
+            nonlocal local_optimum, postprocess_complete, resume_session_complete
+            end_slice()
+            source = physical_cleanup(source)
+            before, local_started, work_before = evaluations, monotonic(), phase_work()
+            record: dict[str, Any] = dict(session_complete=False, local_converged=False,
+                status='running', attempts=[], initial_physical_hash=physical_design_hash(source['design']),
+                fixed_layer_ids=[r['id'] for r in source['design']['front_layers']],
+                fixed_materials=[[r['material_id'], r['optical_set_id']] for r in source['design']['front_layers']],
+                scope='full original training-grid epigraph numerical local session; target attainment and independent audit reported separately',
+                policy='complete search turn before local session; no automatic new topology after local convergence or scaled stagnation')
+            details['local_session'] = record
+            emit('local_session', '固定本轮合理结构完成局部优化；数值收敛与指标达标分别判断', source['design'], source['score'])
+            from .film_synthesis_thickness import optical_quality_by_group
+
+            def quality(value):
+                return max(optical_quality_by_group(request, value).values())
+
+            candidate = terminal = source
+            numerical: dict[str, Any] = {}
+            try:
+                check_training_admission()
+                resource_check(source['design'], jacobian=bool(source['design']['front_layers']),
+                    epigraph=bool(source['design']['front_layers']))
+                if not source['design']['front_layers'] and len(tried_search) < 2:
+                    record['status'] = 'no_effective_search_work'
+                    raise _Stopped('no_effective_search_work_resource_or_frontier_limit')
+                while source['design']['front_layers']:
+                    check_training_admission()
+                    resource_check(source['design'], jacobian=True, epigraph=True)
+                    previous = quality(source)
+                    terminals: list[dict[str, Any]] = []
+                    candidate, numerical = refine_synthesis_full_minimax(request, source,
+                        evaluate=hybrid_evaluate, archive=archive, cancel_check=check_training_admission,
+                        progress=local_progress, max_iterations=120, terminal_callback=terminals.append)
+                    record['attempts'].append(deepcopy(numerical))
+                    if not terminals:
+                        record['status'] = 'terminal_evidence_unavailable'
+                        raise _Stopped('local_session_terminal_evidence_unavailable')
+                    terminal = terminals[-1]
+                    canonical = terminal.get('_numeric_zero_canonical')
+                    if canonical is not None and canonical['design'] != terminal['design']:
+                        # Canonicalization is a topology boundary, not a reason
+                        # to attach the old solver's stationarity to new IDs.
+                        source = physical_cleanup(terminal)
+                        candidate = terminal = source
+                        numerical = {}
+                        record.update(fixed_layer_ids=[r['id'] for r in source['design']['front_layers']],
+                            fixed_materials=[[r['material_id'],r['optical_set_id']] for r in source['design']['front_layers']])
+                        continue
+                    improvement = previous - quality(candidate)
+                    tolerance = request.relative_improvement_tolerance * max(abs(previous), 1e-12)
+                    record.update(last_scaled_improvement=improvement, scaled_stagnation_tolerance=tolerance)
+                    status = numerical.get('termination')
+                    if status == 'converged':
+                        record['status'] = 'converged'
+                        break
+                    if status in {'iteration_limit', 'solver_failure'} and improvement <= tolerance:
+                        if (numerical.get('physical_candidates', 0) >= 2
+                                and numerical.get('iterations', 0) >= 2
+                                and numerical.get('terminal_full_grid_epigraph_feasible')):
+                            record['status'] = 'stalled'
+                            break
+                    if status == 'iteration_limit' and improvement > tolerance:
+                        source = candidate
+                        continue
+                    record['status'] = status or 'solver_failure'
+                    raise _Stopped('local_session_' + record['status'])
+                else:
+                    record['status'] = 'stalled'
+                archive(candidate, audit_eligible=False)
+                terminal_audit = audit_archive(terminal, allow_feedback_repair=False, refresh=True)
+                if candidate['design'] != terminal['design']:
+                    audit_archive(candidate, allow_feedback_repair=False, refresh=True)
+                assert audited_best is not None and terminal_audit is not None
+                if targets_verified():
+                    record.update(status='feasible_handoff', session_complete=True)
+                    return False
+                selected, independent = audited_best
+                selected_hash, terminal_hash = physical_design_hash(selected['design']), physical_design_hash(terminal['design'])
+                fixed = ([r['id'] for r in selected['design']['front_layers']] == record['fixed_layer_ids']
+                    and [[r['material_id'],r['optical_set_id']] for r in selected['design']['front_layers']] == record['fixed_materials'])
+                audit_rejected = (nominal_targets_pass(request, terminal['score'])
+                    and not nominal_targets_pass(request, terminal_audit['score'], independent_audit=True))
+                record.update(solver_terminal=deepcopy(numerical.get('solver_terminal')),
+                    returned_best=deepcopy(numerical.get('returned_best')),
+                    audited_selected=dict(physical_hash=selected_hash, topology_matches_fixed=fixed,
+                        validation_complete=True, nominal_pass=nominal_targets_pass(request, selected['score'])
+                            and nominal_targets_pass(request, independent['score'], independent_audit=True)),
+                    terminal_audit_complete=True, terminal_audit_max_error=terminal_audit['score']['max_error'])
+                record['local_converged'] = bool(record['status'] == 'converged' and fixed
+                    and selected_hash == terminal_hash and not audit_rejected
+                    and numerical.get('solver_terminal', {}).get('local_stationary'))
+                if audit_rejected:
+                    record['status'] = 'audit_rejected'
+                from .film_synthesis_margin import worst_signed_margin
+                local_optimum = dict(design=deepcopy(selected['design']), training_score=deepcopy(selected['score']),
+                    validation_score=deepcopy(independent['score']), validation_complete=True,
+                    physical_hash=selected_hash, local_converged=record['local_converged'],
+                    solver_terminal=deepcopy(record['solver_terminal']), returned_best=deepcopy(record['returned_best']),
+                    audited_selected=deepcopy(record['audited_selected']), signed_margin=worst_signed_margin(request, independent),
+                    role='fixed_topology_local_session_result_before_thickness_reduction'
+                        if record['local_converged'] else 'audited_best_after_local_session',
+                    termination=('best_audited_not_stationary' if record['status'] == 'converged'
+                        and not record['local_converged'] else record['status']),
+                    convergence_scope=record['scope'], session_complete=True)
+                emit('local_session_complete', json.dumps(record, sort_keys=True), selected['design'], selected['score'])
+                publish_audited_checkpoint(selected, independent)
+                if record['local_converged']:
+                    reduce_audited_thickness()
+                else:
+                    details['thickness_reduction'] = dict(enabled=request.enable_thickness_reduction,
+                        status='skipped_returned_best_not_stationary', promoted=False)
+                assert audited_best is not None
+                record.update(session_complete=True, returned_physical_hash=physical_design_hash(audited_best[0]['design']))
+                record.update(evaluations_used=evaluations - before, elapsed_seconds=monotonic() - local_started,
+                    work=phase_delta(work_before))
+                resume_session_complete = True
+                postprocess_complete = True
+                publish_audited_checkpoint(*audited_best)
+                capture_search_checkpoint(publish=True)
+                return True
+            except _Stopped as exc:
+                record['status'] = str(exc)
+                raise
+            except _StructureCancelled:
+                record['status'] = 'cancelled_or_deadline'
+                raise
+            except SynthesisResourceGuard:
+                record['status'] = 'resource_guard'
+                raise _Stopped('local_session_resource_guard') from None
+            finally:
+                record.update(evaluations_used=evaluations - before, elapsed_seconds=monotonic() - local_started,
+                    work=phase_delta(work_before))
 
         def score_sse(value):
             return weighted_sse_loss_gradient(request, value, ())[0]
@@ -2386,6 +2659,39 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 record["audit_wavelength_points"] = audit_wavelength_points - before_audit_points
                 end_slice(record["status"])
 
+        def remaining_rotation_work():
+            """Finite prior exhaustion is not exhaustion of remaining operators."""
+            maximum = request.max_layers if request.max_layers is not None else MAX_LAYERS
+            lower = request.minimum_nonzero_thickness_nm or np.finfo(float).tiny
+            for entry in design_archive.entries.values():
+                design = entry.design
+                rows = design['front_layers']
+                total = sum(r['thickness']['value'] for r in rows)
+                if rows and (request.max_layer_thickness_nm is None or request.max_layer_thickness_nm > lower):
+                    if any(r['thickness']['value'] > lower for r in rows):
+                        return True
+                    if request.max_total_thickness_nm is None or total < request.max_total_thickness_nm:
+                        return True
+                if len(rows) < maximum:
+                    for ref in request.candidate_materials:
+                        thicknesses = {legal_growth_thickness(design,
+                            quarter[(ref.material_id,ref.optical_set_id)] * fraction)
+                            for fraction in request.growth_quarter_wave_fractions}
+                        for thickness in thicknesses - {None}:
+                            for interface in range(len(rows) + 1):
+                                check_training_admission()
+                                ids = _proposal_layer_ids(design, 'continuation-frontier', 'continuation-frontier-split',
+                                    reserved_ids=reserved_layer_ids)
+                                trial = _insert_at_site(design, dict(kind='interface', interface=interface), ref, thickness, *ids)
+                                if feasible(trial) and physical_design_hash(trial) not in tried_search:
+                                    return True
+                for row in rows:
+                    deleted = deepcopy(design)
+                    deleted['front_layers'] = [r for r in rows if r['id'] != row['id']]
+                    if feasible(deleted) and physical_design_hash(deleted) not in tried_search:
+                        return True
+            return False
+
         repair_near_feasible()
         while not targets_verified():
             check_training_admission()
@@ -2532,50 +2838,38 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 details['continuation_session'] = session
                 if resume_branch is None:
                     session['status'] = 'no_admitted_new_structure'
-                    session['frontier_exhausted'] = not streams and not resume_pending and not pending_search
-                    postprocess_complete = True
-                    raise _Stopped('continuation_resource_limit' if details['resource_limited']
-                        else 'continuation_frontier_exhausted' if session['frontier_exhausted']
-                        else 'continuation_quantum_no_new_candidate')
-                if resume_branch_audited is None and resume_branch is not None:
-                    before_local, local_started = evaluations, monotonic()
-                    before_local_work = phase_work()
-                    emit('continuation_local', '在新结构上进行一次有界局部会话；历史冠军独立保留', resume_branch['design'], resume_branch['score'])
-                    try:
-                        resource_check(resume_branch['design'], jacobian=True, epigraph=True)
-                        candidate, local = refine_synthesis_full_minimax(request, resume_branch,
-                            evaluate=hybrid_evaluate, archive=archive, cancel_check=check_training_admission,
-                            progress=local_progress, max_iterations=96)
-                        session.update(local=local, new_candidate_physical_hash=physical_design_hash(candidate['design']),
-                                       new_candidate_training_max_error=candidate['score']['max_error'])
-                        if local['termination'] != 'converged' and not nominal_targets_pass(request, candidate['score']):
-                            postprocess_complete = True
-                            raise _Stopped('continuation_local_' + local['termination'])
-                        audited = audit_archive(candidate, allow_feedback_repair=False)
-                        session.update(new_candidate_audit_complete=audited is not None,
-                            new_candidate_audit_max_error=None if audited is None else audited['score']['max_error'])
-                    except SynthesisResourceGuard:
-                        session['status'] = 'resource_guard'
+                    source_exhausted = not streams and not resume_pending and not pending_search
+                    remaining_operators = source_exhausted and remaining_rotation_work()
+                    session['frontier_exhausted'] = source_exhausted and not remaining_operators
+                    if remaining_operators and not details['resource_limited']:
+                        session.update(status='prior_sources_exhausted_continue_remaining_operators',
+                            remaining_rotation_operators=True)
+                        emit('continuation_frontier_rotation', '先验流已耗尽，按保存轮次推进其余真实全局/针/生长操作',
+                            explorer['design'], explorer['score'])
+                    else:
                         postprocess_complete = True
-                        raise _Stopped('continuation_local_resource_guard') from None
-                    except _Stopped as exc:
-                        session['status'] = str(exc)
-                        raise
-                    except _StructureCancelled:
-                        session['status'] = 'cancelled_or_deadline'
-                        raise
-                    finally:
-                        session.update(evaluations_used=evaluations - before_local, work=phase_delta(before_local_work),
-                                       elapsed_seconds=monotonic() - local_started)
-                resume_session_complete = True
-                session['new_audited_pass'] = resume_branch_audited is not None
-                if resume_branch_audited is not None:
-                    audited_best = resume_branch_audited
-                    break
-                session['status'] = 'new_local_session_finished_historical_champion_retained'
-                postprocess_complete = True
-                capture_search_checkpoint(publish=True)
-                return
+                        raise _Stopped('continuation_resource_limit' if details['resource_limited']
+                            else 'continuation_frontier_exhausted' if session['frontier_exhausted']
+                            else 'continuation_quantum_no_new_candidate')
+                if resume_branch is not None:
+                    if resume_branch_audited is None and resume_branch is not None:
+                        if finish_unmet_local_session(resume_branch):
+                            session.update(status='new_local_session_complete_historical_champion_independent',
+                                new_candidate_physical_hash=details['local_session']['solver_terminal']['physical_hash']
+                                    if details['local_session'].get('solver_terminal') else None,
+                                returned_selection='historical_champion' if historical_audited is not None
+                                    and audited_best is not None and audited_best[0]['design'] == historical_audited[0]['design']
+                                    else 'new_session_candidate')
+                            return
+                    resume_session_complete = True
+                    session['new_audited_pass'] = resume_branch_audited is not None
+                    if resume_branch_audited is not None:
+                        audited_best = resume_branch_audited
+                        break
+                    session['status'] = 'new_local_session_finished_historical_champion_retained'
+                    postprocess_complete = True
+                    capture_search_checkpoint(publish=True)
+                    return
             if targets_verified():
                 break
 
@@ -2860,6 +3154,20 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             repair_near_feasible("rotation_audit")
             details["completed_rotations"] = cycle
             details["real_growth_rounds"] = total_real_growth
+            if not targets_verified():
+                if resumed and resume_branch is None:
+                    session = details['continuation_session']
+                    session.update(status='remaining_operator_quantum_no_new_candidate',
+                        frontier_exhausted=not streams and not resume_pending and not pending_search
+                            and not remaining_rotation_work())
+                    postprocess_complete = True
+                    raise _Stopped('continuation_frontier_exhausted' if session['frontier_exhausted']
+                        else 'continuation_quantum_no_new_candidate')
+                local_source = resume_branch if resumed else best
+                assert local_source is not None
+                if finish_unmet_local_session(local_source):
+                    return
+                break
             if evaluations == rotation_start_evaluations:
                 raise _Stopped('no_effective_search_work_resource_or_frontier_limit')
             if not streams and not explorer["design"]["front_layers"] and details["resource_skips"]:
@@ -2867,6 +3175,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
 
         # All normal success exits, including the early engineering-prior
         # break, converge here. No optional optics after failure/deadline/cancel.
+        if resumed and resume_branch_audited is not None:
+            audited_best = resume_branch_audited
         if not resumed:
             # Canonical champion compression is a topology boundary, before
             # local safety optimization, with its own original physical audit.
@@ -2990,7 +3300,18 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         and (audited_best is None or rank(best) < rank(audited_best[0]))):
                     audit_archive(best, allow_feedback_repair=False)
                 run_hybrid(working)
-                raise _Stopped("training_targets_met" if targets_verified() else "search_exhausted")
+                local_session = search_diagnostics.get('hybrid', {}).get('local_session', {})
+                if targets_verified():
+                    raise _Stopped('training_targets_met')
+                if local_session.get('session_complete'):
+                    completed_reason = {
+                        'converged': ('local_session_converged_targets_unmet' if local_session.get('local_converged')
+                            else 'local_session_terminal_converged_best_retained_targets_unmet'),
+                        'stalled': 'local_session_stalled_targets_unmet',
+                        'audit_rejected': 'local_session_audit_rejected_targets_unmet',
+                    }[local_session['status']]
+                    raise _Stopped(completed_reason)
+                raise _Stopped('search_exhausted')
             if automatic_cluster_route and not targets_verified():
                 # Try one physically legal homogeneous layer per allowed material
                 # before preparing the much larger multicluster prior sweep.
@@ -3703,10 +4024,63 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 audit_archive(candidate)
                 branches.append(candidate)
             stagnant = 0
+
+            def finish_legacy_turn(previous, previous_audited):
+                nonlocal stagnant, local_optimum, postprocess_complete
+                assert best is not None
+                audit_archive(best)
+                # A completed audit-feedback repair can still improve the
+                # training archive. Judge this whole turn after that work,
+                # never reuse a pre-feedback stagnation counter.
+                improved = previous - best["score"]["max_error"]
+                audited_merit = (None if audited_best is None else
+                    max(audited_best[0]['score']['max_error'], audited_best[1]['score']['max_error']))
+                audit_improved = (None if previous_audited is None or audited_merit is None
+                    else previous_audited - audited_merit)
+                training_progress = improved > request.relative_improvement_tolerance * max(previous, 1e-30)
+                audit_progress = (audited_merit is not None and (previous_audited is None
+                    or (audit_improved is not None and audit_improved > request.relative_improvement_tolerance
+                        * max(previous_audited, 1e-30))))
+                stagnant = 0 if training_progress or audit_progress else stagnant + 1
+                if stagnant >= request.stagnation_cycles:
+                    # This is a completed local search session, not a proof of
+                    # infeasibility or a raw-gradient stationarity certificate.
+                    # Caller cancellation and explicit budgets retain priority.
+                    check_training_admission()
+                    audit_archive(best, allow_feedback_repair=False, refresh=True)
+                    assert audited_best is not None
+                    selected, independent = audited_best
+                    from .film_synthesis_archive import physical_design_hash
+                    identity = physical_design_hash(selected['design'])
+                    search_diagnostics['legacy_local_session'] = dict(session_complete=True,
+                        status='stalled', local_converged=False, completed_cycles=cycle,
+                        stagnant_cycles=stagnant, required_stagnant_cycles=request.stagnation_cycles,
+                        last_scaled_improvement=improved, last_audit_scaled_improvement=audit_improved,
+                        previous_audited_max_error=previous_audited, final_audited_max_error=audited_merit,
+                        returned_physical_hash=identity,
+                        scope='complete legacy exploration/refinement cycles; scaled stagnation of both training archive and same-candidate max(training,audit) original normalized errors, not numerical stationarity',
+                        thickness_reduction='skipped_no_fixed_topology_stationarity_evidence')
+                    local_optimum = dict(design=deepcopy(selected['design']), training_score=deepcopy(selected['score']),
+                        validation_score=deepcopy(independent['score']), validation_complete=True,
+                        physical_hash=identity, local_converged=False, session_complete=True,
+                        solver_terminal=None, returned_best=None,
+                        audited_selected=dict(physical_hash=identity, validation_complete=True),
+                        signed_margin=None, role='audited_best_after_local_session', termination='stalled',
+                        convergence_scope=search_diagnostics['legacy_local_session']['scope'])
+                    postprocess_complete = True
+                    emit('local_session_complete', json.dumps(search_diagnostics['legacy_local_session'], sort_keys=True),
+                        selected['design'], selected['score'])
+                    publish_audited_checkpoint(selected, independent)
+                    raise _Stopped('local_session_stalled_targets_unmet')
+
             while not targets_verified():
                 _check_cancel(cancel_event)
                 if request.max_cycles is not None and cycle >= request.max_cycles:
                     raise _Stopped("cycle_limit")
+                assert best is not None
+                previous = best['score']['max_error']
+                previous_audited = (None if audited_best is None else
+                    max(audited_best[0]['score']['max_error'], audited_best[1]['score']['max_error']))
                 growth_available = len(blocked_branches) < len(branches)
                 cycle += 1
                 continuous_available = (bool(selected) or bool(pending_structural_scans)
@@ -3724,6 +4098,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                             and matching_stream[0] is None and cluster_stream[0] is None
                             and not matching_deferred[0]):
                         raise _Stopped("no_feasible_growth")
+                    finish_legacy_turn(previous, previous_audited)
                     emit("search_rotation", "Completed structural/thickness epoch; retain remaining proposals even when insertion branches are exhausted", best["design"], best["score"])
                     continue
                 if not growth_available:
@@ -3732,7 +4107,6 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 while branch_index in blocked_branches:
                     branch_index = (branch_index + 1) % len(branches)
                 working = branches[branch_index]
-                previous = best["score"]["weighted_rms_error"]
                 if working["design"]["front_layers"]:
                     working = replace_materials(working)
                     if targets_verified():
@@ -3847,14 +4221,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     working = polish(grown, protected_id=grown_protected_id)
                     emit("growth_restart", "增加光学厚度后重新开始针插周期（工作分支可暂时变差）", working["design"], working["score"])
                 branches[branch_index] = working
-                improved = previous - best["score"]["weighted_rms_error"]
-                stagnant = stagnant + 1 if improved <= request.relative_improvement_tolerance * max(previous, 1e-30) else 0
-                audit_archive(best)
-                if stagnant >= request.stagnation_cycles:
-                    # Stagnation of this branch is not a proof of infeasibility.
-                    # Keep growing; only an explicit user/resource boundary stops.
-                    emit("search_plateau", "No recent archive improvement; continue feasible structural exploration", working["design"], working["score"])
-                    stagnant = 0
+                finish_legacy_turn(previous, previous_audited)
             reason = "training_targets_met"
         except _Stopped as exc:
             reason = str(exc)
@@ -3884,16 +4251,19 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         local_status = search_diagnostics.get('hybrid', {}).get('local_margin', {}).get('status')
                         incomplete_local = (local_status is not None and local_status not in {
                             'converged', 'no_interval_margin', 'empty_topology', 'disabled'})
+                        thinning_stop = search_diagnostics.get('hybrid', {}).get('thickness_reduction', {}).get('stop_reason')
+                        explicit_thinning_stop = (thinning_stop == reason and reason in {
+                            'evaluation_limit', 'cycle_limit', 'time_limit', 'resource_limit'})
                         if (request.search_strategy == 'hybrid' and request.enable_local_margin_refinement
                                 and not postprocess_complete and reason in {
                                     'evaluation_limit', 'cycle_limit', 'resource_limit'}):
                             incomplete_local = True
-                        if targets_verified() and incomplete_local:
+                        if targets_verified() and (incomplete_local or explicit_thinning_stop):
                             # Keep the already audited nominal champion at its
                             # original budget. The unfinished local stage and
                             # actual budget stop remain explicit; no thinning.
                             state = 'completed'
-                            if reason in {'evaluation_limit','cycle_limit','resource_limit'}:
+                            if reason in {'evaluation_limit','cycle_limit','resource_limit'} and not explicit_thinning_stop:
                                 hybrid = search_diagnostics['hybrid']
                                 if 'local_margin' not in hybrid:
                                     hybrid['local_margin'] = dict(status='not_started_' + reason, local_converged=False)
@@ -3901,6 +4271,12 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         elif targets_verified() and not incomplete_local:
                             state, reason = 'completed', ('continuation_local_session_complete' if resumed
                                 else 'validated_targets_met')
+                        elif (postprocess_complete and local_optimum is not None
+                                and local_optimum.get('session_complete') and reason in {
+                                    'local_session_converged_targets_unmet', 'local_session_stalled_targets_unmet',
+                                    'local_session_terminal_converged_best_retained_targets_unmet',
+                                    'local_session_audit_rejected_targets_unmet'}):
+                            state = 'completed'
                         elif (nominal_targets_pass(request, validated_training["score"])
                                 and not nominal_targets_pass(request, validation['score'], independent_audit=True)
                                 and not incomplete_local
@@ -3957,6 +4333,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             and solver_acceptable(request, validation["score"], independent_audit=True)
             if best is not None and validation is not None else None)
         message = ("找到通过训练网格与独立密网格验证的候选；尚未应用到用户设计。" if met else
+                   "本轮局部优化已结束，当前指标尚未全部达到；已保留完整独立复核的最佳候选和真实搜索进度，可主动继续搜索新结构。" if state == 'completed' else
                    "已取消；保留此前完整评分的候选，未确认达标。" if state == "cancelled" else
                    "尚未找到通过全部验证的膜系；候选仅供审查。")
         if better_unpublished:

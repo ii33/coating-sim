@@ -119,8 +119,9 @@ def test_example_page_configurations_restore_without_guessing(example):
         # The current example omits optional synthesis and reduction settings.
         # Restoring must retain saved criteria and add explicit editor defaults.
         assert {key: restored[key] for key in config} == config
-        assert set(restored) == set(config) | {"synthesis", "reduction_mode"}
+        assert set(restored) == set(config) | {"synthesis", "reduction_mode", "reduction_limits"}
         assert restored["reduction_mode"] == "combined"
+        assert restored["reduction_limits"] == {"max_iterations": None, "max_evaluations": None}
         explicit_false = {
             **restored,
             "objectives": [{**row, "pointwise": {**row["pointwise"], "strict_upper": False}}

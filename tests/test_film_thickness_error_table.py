@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from coat_sim.core import film_thickness_error_table as table
+from coat_sim.core.film_design_service import FilmDesignService
 from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import FilmOptimizationObjective, FilmOptimizationRequest
 from tests.test_film_auto_synthesis import setup_problem
@@ -425,18 +426,140 @@ def test_serialization_roundtrip_exact_identity_and_frozen_physical_replay_rejec
         table.validate_film_thickness_error_table_result_payload(payload, expected_request=wrong)
 
 
-def test_k_policy_and_material_records_are_preserved_and_unknown_k_is_not_silently_zero():
-    service, request = problem()
-    service.materials.records['low']['optical_sets'][0]['k'] = None
+def direct_spectrum(service, design, settings):
+    # Exercise the ordinary spectrum implementation with in-memory synthetic
+    # materials; no material library or user project is created on disk.
+    direct = FilmDesignService.__new__(FilmDesignService)
+    cast(Any, direct).materials = service.materials
+    return direct.simulate(design, settings)['R']
+
+
+def required_values(values: list[float | None]) -> list[float]:
+    result = []
+    for value in values:
+        assert value is not None, 'every original condition must define the requested quantity'
+        result.append(value)
+    return result
+
+
+@pytest.mark.parametrize('material,kind', [('low', 'tabulated'), ('glass', 'sellmeier')])
+@pytest.mark.parametrize('finite_bias', [False, True])
+def test_missing_source_k_matches_ordinary_spectrum_sigma_and_finite_bias(material, kind, finite_bias):
+    rows = tuple(table.FilmThicknessErrorParameter(identifier, bias=.02, bias_unit='relative_fraction',
+        uncertainty_kind='stddev', uncertainty_magnitude=1., uncertainty_unit='absolute_nm')
+        for identifier in ('low-film', 'high-film'))
+    service, request = problem(two=True, low=400., high=700., samples=301, rows=rows,
+        correlation_layer_ids=('low-film', 'high-film'), correlation_matrix=((1., 0.), (0., 1.)),
+        include_finite_bias=finite_bias)
+    for record in service.materials.records.values():
+        record['optical_sets'][0].update(wavelength_min=400., wavelengths=[400., 550., 700.])
+    optical = service.materials.records[material]['optical_sets'][0]
+    optical['k'] = None
+    if kind == 'sellmeier':
+        # Synthetic n-only glass with the same nm Sellmeier representation as
+        # H-K9L. These coefficients are a test model, not material evidence.
+        for key in ('wavelengths', 'n', 'k'):
+            optical.pop(key)
+        optical.update(kind='sellmeier', parameters=dict(B1=1.2, B2=.05, B3=.01,
+            C1=6000., C2=20000., C3=1.e8))
+    original = deepcopy(service.materials.records)
     result = table.execute_film_thickness_error_table_request(service, request)
-    assert result.state == 'failed'
-    assert 'k' in result.message
-    assert result.frozen_request.design_snapshot['use_k'] is True
-    lossless_request = replace(request, design_snapshot={**request.design_snapshot, 'use_k': False})
-    lossless = table.execute_film_thickness_error_table_request(service, lossless_request)
-    assert lossless.state == 'completed'
-    assert lossless.frozen_request.frozen_material_snapshot is not None
-    assert lossless.frozen_request.frozen_material_snapshot['materials'] != []
+    assert result.state == 'completed', result.message
+    assert result.analysis is not None
+    assert result.analysis.material_k_policy == 'missing_source_k_zero_known_source_k_required'
+    frozen = result.frozen_request.frozen_material_snapshot
+    assert frozen is not None and frozen['design']['use_k'] is True
+    assert next(r for r in frozen['materials'] if r['id'] == material)['optical_sets'][0] == optical
+    assert service.materials.records == original
+    settings = frozen['settings']
+    nominal = direct_spectrum(service, request.design_snapshot, settings)
+    np.testing.assert_allclose([r.nominal_value for r in result.analysis.conditions], nominal, atol=2e-14)
+    gradients = []
+    for index in range(2):
+        values = []
+        for sign in (-1., 1.):
+            changed = deepcopy(request.design_snapshot)
+            changed['front_layers'][index]['thickness']['value'] += sign * .001
+            values.append(np.asarray(direct_spectrum(service, changed, settings)))
+        gradients.append((values[1] - values[0]) / .002)
+    np.testing.assert_allclose(required_values([r.aggregate_sigma for r in result.analysis.conditions]),
+        np.sqrt(np.sum(np.square(gradients), axis=0)), rtol=2e-7, atol=2e-12)
+    if finite_bias:
+        changed = deepcopy(request.design_snapshot)
+        for layer in changed['front_layers']:
+            layer['thickness']['value'] *= 1.02
+        np.testing.assert_allclose(required_values([r.finite_bias_value for r in result.analysis.conditions]),
+            direct_spectrum(service, changed, settings), atol=2e-14)
+    payload = table.film_thickness_error_table_result_to_payload(result)
+    table.validate_film_thickness_error_table_result_payload(payload, expected_request=result.frozen_request)
+    payload['analysis']['material_k_policy'] = 'source_k_required'
+    with pytest.raises(ValueError, match='material-k policy'):
+        table.validate_film_thickness_error_table_result_payload(payload, replay=False)
+
+
+def test_known_absorption_is_used_in_both_sigma_and_finite_bias():
+    service, request = problem(low=500., high=600., samples=7, include_finite_bias=True,
+        rows=(table.FilmThicknessErrorParameter('low-film', bias=.02, bias_unit='relative_fraction',
+            uncertainty_kind='stddev', uncertainty_magnitude=1., uncertainty_unit='absolute_nm'),),
+        correlation_layer_ids=('low-film',), correlation_matrix=((1.,),))
+    service.materials.records['low']['optical_sets'][0]['k'] = [.01, .03, .05]
+    result = table.execute_film_thickness_error_table_request(service, request)
+    assert result.state == 'completed', result.message
+    assert result.analysis is not None
+    assert result.analysis.material_k_policy == 'source_k_required'
+    frozen = result.frozen_request.frozen_material_snapshot
+    assert frozen is not None
+    settings = frozen['settings']
+    np.testing.assert_allclose([r.nominal_value for r in result.analysis.conditions],
+        direct_spectrum(service, request.design_snapshot, settings), atol=2e-14)
+    changed = deepcopy(request.design_snapshot)
+    changed['front_layers'][0]['thickness']['value'] *= 1.02
+    np.testing.assert_allclose(required_values([r.finite_bias_value for r in result.analysis.conditions]),
+        direct_spectrum(service, changed, settings), atol=2e-14)
+    values = []
+    for sign in (-1., 1.):
+        changed = deepcopy(request.design_snapshot)
+        changed['front_layers'][0]['thickness']['value'] += sign * .001
+        values.append(np.asarray(direct_spectrum(service, changed, settings)))
+    np.testing.assert_allclose(required_values([r.aggregate_sigma for r in result.analysis.conditions]),
+        np.abs((values[1] - values[0]) / .002), rtol=2e-7, atol=2e-12)
+    ignored = table.execute_film_thickness_error_table_request(service,
+        replace(request, design_snapshot={**request.design_snapshot, 'use_k': False}))
+    assert ignored.analysis is not None
+    assert max(abs(a.nominal_value - b.nominal_value) for a, b in
+        zip(result.analysis.conditions, ignored.analysis.conditions, strict=True)) > .001
+    assert ignored.analysis.material_k_policy == 'explicit_use_k_false_idealization'
+    payload = table.film_thickness_error_table_result_to_payload(result)
+    table.validate_film_thickness_error_table_result_payload(payload)
+    payload['analysis']['material_k_policy'] = 'missing_source_k_zero_known_source_k_required'
+    with pytest.raises(ValueError, match='material-k policy'):
+        table.validate_film_thickness_error_table_result_payload(payload, replay=False)
+
+
+@pytest.mark.parametrize('defect', ['k_domain', 'negative_k', 'nan_k', 'bad_k_data', 'n_domain', 'invalid_n'])
+@pytest.mark.parametrize('finite_bias', [False, True])
+def test_invalid_or_partial_sources_still_fail_before_forward_work(defect, finite_bias, monkeypatch):
+    service, request = problem(low=500., high=600., samples=5, include_finite_bias=finite_bias)
+    optical = service.materials.records['low']['optical_sets'][0]
+    if defect in ('k_domain', 'bad_k_data'):
+        for key in ('n', 'k', 'wavelengths'):
+            optical.pop(key)
+        optical.update(kind='cauchy', parameters=dict(A=float(np.sqrt(1.5)), B=0., C=0.))
+        optical['k_data'] = dict(wavelength_unit='nm', wavelength_min=520., wavelength_max=580.,
+            wavelengths=[520., 580.], k=[0., -.01] if defect == 'bad_k_data' else [.01, .02])
+    elif defect in ('negative_k', 'nan_k'):
+        optical['k'][1] = -.01 if defect == 'negative_k' else float('nan')
+    elif defect == 'n_domain':
+        optical.update(wavelength_min=520., wavelength_max=580.)
+        optical['k'] = None
+    else:
+        optical['n'][1] = -1.
+        optical['k'] = None
+    def forbidden(*args, **kwargs):
+        pytest.fail('invalid source must fail before nominal Jacobian or finite-bias work')
+    monkeypatch.setattr(table, 'simulate_with_thickness_jacobian', forbidden)
+    with pytest.raises(ValueError):
+        table.freeze_film_thickness_error_table_request(service, request)
 
 
 def test_physical_working_set_counts_full_topology_before_any_allocation(monkeypatch):

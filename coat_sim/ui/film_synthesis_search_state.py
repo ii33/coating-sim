@@ -147,7 +147,7 @@ def build_request(controller, record):
 
 def phase_label(message):
     stage = str(message).split('|',1)[0].strip()
-    if stage.startswith(('local_margin','canonical_margin')):
+    if stage.startswith(('local_margin','canonical_margin','local_session','local_refinement','canonical_local')):
         return '局部优化'
     if stage.startswith(('thickness_reduction','nominal_thickness_reduction')):
         return '减薄'
