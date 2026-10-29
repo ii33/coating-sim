@@ -108,6 +108,27 @@ def test_same_material_id_in_two_projects_produces_independent_existing_numerics
     assert first.project_id != second.project_id
 
 
+def test_interactive_group_metadata_is_ignored_by_optical_solver(tmp_path):
+    service = service_at(tmp_path / "project")
+    design = bound_design()
+    design["front_layers"] = [{
+        "id": "film-layer", "material_id": "shared", "optical_set_id": "visible",
+        "thickness": {"value": 125.0, "unit": "nm"}, "note": "",
+    }]
+    design = validate_design(design)
+    created = service.create_film(design, materials={"shared": material()})
+    grouped = deepcopy(created.design)
+    grouped["front_layers"][0]["interactive_group_id"] = 3
+    grouped = validate_design(grouped)
+    settings = {"wavelength_min_nm": 450.0, "wavelength_max_nm": 650.0,
+                "samples": 5, "angle_deg": 0.0, "polarization": "s"}
+
+    baseline = service.simulate(created.design, settings)
+    with_group_metadata = service.simulate(grouped, settings)
+    for key in ("R", "T", "A"):
+        assert with_group_metadata[key] == pytest.approx(baseline[key])
+
+
 def test_import_copies_file_and_resources_then_relocation_uses_project_only(tmp_path):
     source = tmp_path / "outside.cfilm"
     source.write_text(json.dumps(bound_design()), encoding="utf-8")

@@ -71,15 +71,38 @@ class FilmDesignTests(unittest.TestCase):
         design = new_design("AR coating", "design-1")
         design["front_layers"] = expand_expression("AB", symbols())
         design["expression"] = {"text": "AB", "symbols": symbols(), "in_sync": True}
+        # Interactive thickness groups are separate from the expression's
+        # existing G1/G2 marker and survive the canonical .cfilm round trip.
+        design["front_layers"][0]["group"] = "G1"
+        design["front_layers"][0]["interactive_group_id"] = 7
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "ar.cfilm"
             save_design(path, design)
             self.assertEqual(load_design(path), validate_design(design))
+            self.assertEqual(load_design(path)["front_layers"][0]["interactive_group_id"], 7)
+            self.assertEqual(load_design(path)["front_layers"][0]["group"], "G1")
             raw = json.loads(path.read_text(encoding="utf-8"))
             raw["schema_version"] = 2
             path.write_text(json.dumps(raw), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "unsupported"):
                 load_design(path)
+
+    def test_interactive_group_id_is_optional_but_requires_positive_safe_integer(self):
+        design = new_design("group test", "group-test")
+        design["front_layers"] = [{
+            "id": "one", "material_id": "film", "optical_set_id": "set",
+            "thickness": {"value": 0, "unit": "nm"}, "note": "",
+        }]
+        self.assertNotIn("interactive_group_id", validate_design(design)["front_layers"][0])
+        for invalid in (False, True, 0, -1, 1.5, "1", (1 << 53)):
+            with self.subTest(invalid=invalid):
+                candidate = json.loads(json.dumps(design))
+                candidate["front_layers"][0]["interactive_group_id"] = invalid
+                with self.assertRaisesRegex(ValueError, "interactive_group_id"):
+                    validate_design(candidate)
+        candidate = json.loads(json.dumps(design))
+        candidate["front_layers"][0]["interactive_group_id"] = None
+        self.assertNotIn("interactive_group_id", validate_design(candidate)["front_layers"][0])
 
     def test_default_save_refuses_overwrite_and_explicit_overwrite_replaces(self):
         with tempfile.TemporaryDirectory() as temporary:

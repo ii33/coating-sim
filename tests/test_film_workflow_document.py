@@ -161,6 +161,42 @@ class FilmWorkflowDocumentTests(unittest.TestCase):
         self.assertEqual(session.workflow_configuration("optimization"), {"threshold": .7})
         self.assertFalse(session.apply_optimized_design(before.design, before.design_revision))
 
+    def test_optimizer_apply_preserves_current_interactive_layer_groups(self):
+        self.assertTrue(self.design.addLayer("front"))
+        layer_id = self.design.front_layers.ids()[0]
+        self.assertTrue(self.design.setLayerValue(
+            "front", layer_id, "interactive_group_id", 4))
+        session = self.design.session
+        assert session is not None
+        before = session.snapshot()
+        candidate = deepcopy(dict(before.design))
+        # A candidate may omit editor-only metadata or carry an older value;
+        # neither is allowed to replace the current grouping assignment.
+        candidate["front_layers"][0].pop("interactive_group_id")
+        candidate["front_layers"][0]["thickness"]["value"] = 125.0
+        self.assertTrue(session.apply_optimized_design(
+            candidate, before.design_revision))
+        applied = self.design.currentDesign()["front_layers"][0]
+        self.assertEqual(applied["id"], layer_id)
+        self.assertEqual(applied["thickness"]["value"], 125.0)
+        self.assertEqual(applied["interactive_group_id"], 4)
+
+        next_source = session.snapshot()
+        stale_candidate = deepcopy(dict(next_source.design))
+        stale_candidate["front_layers"][0]["interactive_group_id"] = 99
+        self.assertTrue(session.apply_optimized_design(
+            stale_candidate, next_source.design_revision))
+        self.assertEqual(self.design.currentDesign()["front_layers"][0][
+            "interactive_group_id"], 99)
+
+        clear_source = session.snapshot()
+        clear_candidate = deepcopy(dict(clear_source.design))
+        clear_candidate["front_layers"][0]["interactive_group_id"] = None
+        self.assertTrue(session.apply_optimized_design(
+            clear_candidate, clear_source.design_revision))
+        self.assertNotIn("interactive_group_id",
+                         self.design.currentDesign()["front_layers"][0])
+
     def test_configuration_only_edit_keeps_calculation_token_current(self):
         self.sim.startCalculation()
         self.wait_done()

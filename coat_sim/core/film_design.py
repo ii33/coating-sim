@@ -24,7 +24,11 @@ _ROOT_KEYS = {"schema_version", "id", "name", "layer_order", "front_layers", "ba
               "reference_wavelength_nm", "substrate", "incident_medium", "exit_medium",
               "assume_lossless", "expression", "first_surface", "note", "use_k",
               "workflow_settings", "summary"}
-_LAYER_KEYS = {"id", "material_id", "optical_set_id", "thickness", "note", "symbol", "group"}
+_LAYER_KEYS = {"id", "material_id", "optical_set_id", "thickness", "note", "symbol", "group",
+               "interactive_group_id"}
+# Group IDs are also edited through Qt Quick / JavaScript numbers. Keep them
+# within the exact integer range shared by Python, JSON and JavaScript.
+MAX_INTERACTIVE_GROUP_ID = (1 << 53) - 1
 
 
 def _number(value, label, *, positive=False):
@@ -87,6 +91,14 @@ def _validate_layer(layer, label="layer"):
         if group not in (None, "G1", "G2"):
             raise ValueError(f"{label} group must be G1, G2, or null")
         result["group"] = group
+    if "interactive_group_id" in layer:
+        group_id = layer["interactive_group_id"]
+        if group_id is not None:
+            if (type(group_id) is not int or group_id < 1
+                    or group_id > MAX_INTERACTIVE_GROUP_ID):
+                raise ValueError(
+                    f"{label} interactive_group_id must be a positive safe integer or null")
+            result["interactive_group_id"] = group_id
     return result
 
 

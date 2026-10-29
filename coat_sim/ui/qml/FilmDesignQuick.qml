@@ -157,6 +157,8 @@ AppWindow {
     }
     function toggleSidebar() {
         if (sidebarExpanded) {
+            if (activeSidebarSection === "interactive")
+                controller.interactiveAnalysisController.clearInteractiveAnalysis()
             rememberSidebarFocus(activeSidebarSection)
             if (focusIsInsideSidebar(activeFocusItem)) pageTabs.forceActiveFocus()
             ++sidebarFocusRequestSerial
@@ -173,9 +175,14 @@ AppWindow {
             generatorPanel.clearPreview()
         if (activeSidebarSection === "library" && section !== "library")
             referencePanel.clearPreview()
+        if (activeSidebarSection === "interactive" && section !== "interactive")
+            controller.interactiveAnalysisController.clearInteractiveAnalysis()
         activeSidebarSection = section
         sidebarExpanded = true
         if (section === "library") controller.refreshSavedDesigns()
+        if (section === "interactive"
+                && !controller.interactiveAnalysisController.interactiveAnalysisActive)
+            controller.interactiveAnalysisController.startInteractiveAnalysis()
         restoreSidebarFocusLater(section)
     }
     function restoreWindowGeometry() {
@@ -300,7 +307,10 @@ AppWindow {
             close.accepted = false
             controller.requestClose()
         }
-        if (close.accepted) controller.markSourceClosed()
+        if (close.accepted) {
+            controller.interactiveAnalysisController.clearInteractiveAnalysis()
+            controller.markSourceClosed()
+        }
     }
     Connections {
         target: window.controller
@@ -769,12 +779,6 @@ AppWindow {
                     onClicked: if (window.commitExpressionDraft(true)) window.controller.openOptimization()
                 }
                 ThemeControls.ThemeButton {
-                    objectName: "filmDesignReductionButton"
-                    text: "减层 / 减厚优化"
-                    Accessible.name: "打开独立减层减厚优化"
-                    onClicked: if (window.commitExpressionDraft(true)) window.controller.openReductionOptimization()
-                }
-                ThemeControls.ThemeButton {
                     objectName: "filmUndoOptimizationButton"
                     text: "撤销优化应用"
                     visible: window.controller.canUndoOptimizedDesign
@@ -911,6 +915,15 @@ AppWindow {
                         Layout.maximumWidth: filmLayerMetrics.datasetWidth
                         color: Theme.snapshot.colorTextMuted
                         elide: Text.ElideRight
+                    }
+                    ThemeControls.ThemeLabel {
+                        objectName: "filmDesignHeaderGroup"
+                        text: "分组"
+                        Layout.preferredWidth: filmLayerMetrics.groupWidth
+                        Layout.minimumWidth: filmLayerMetrics.groupWidth
+                        Layout.maximumWidth: filmLayerMetrics.groupWidth
+                        color: Theme.snapshot.colorTextMuted
+                        horizontalAlignment: Text.AlignHCenter
                     }
                     ThemeControls.ThemeLabel {
                         objectName: "filmDesignHeaderQw"
@@ -1113,8 +1126,8 @@ Item {
                 GridLayout {
                     id: sidebarRail
                     objectName: "filmDesignSidebarRail"
-                    columns: window.sidebarUsesBottomLayout ? 4 : 1
-                    rows: window.sidebarUsesBottomLayout ? 1 : 5
+                    columns: window.sidebarUsesBottomLayout ? 5 : 1
+                    rows: window.sidebarUsesBottomLayout ? 1 : 6
                     Layout.column: 0
                     Layout.row: 0
                     Layout.preferredWidth: window.sidebarUsesBottomLayout ? 0 : 64
@@ -1208,6 +1221,33 @@ Item {
                         }
                         onClicked: sidebarRail.choose("library")
                     }
+                    ToolButton {
+                        objectName: "filmDesignSidebarInteractive"
+                        Layout.column: window.sidebarUsesBottomLayout ? 3 : 0
+                        Layout.row: window.sidebarUsesBottomLayout ? 0 : 3
+                        Layout.fillWidth: true
+                        Layout.fillHeight: window.sidebarUsesBottomLayout
+                        Layout.preferredHeight: window.sidebarUsesBottomLayout ? 64 : 56
+                        checkable: true
+                        checked: window.activeSidebarSection === "interactive"
+                        Accessible.name: "交互分析与批量修改"
+                        ToolTip.visible: hovered
+                        ToolTip.text: "逐层厚度调整、组系数与批量膜层修改"
+                        contentItem: Label {
+                            text: "交互分析"
+                            wrapMode: Text.WordWrap
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            color: parent.checked ? Theme.snapshot.colorTextOnAccent
+                                                   : Theme.snapshot.colorText
+                            font.pointSize: Theme.snapshot.fontSizeBody
+                        }
+                        background: Rectangle {
+                            color: parent.checked ? Theme.snapshot.colorAccent : "transparent"
+                            radius: Theme.snapshot.radiusSm
+                        }
+                        onClicked: sidebarRail.choose("interactive")
+                    }
                     Item {
                         objectName: "filmDesignSidebarSpacer"
                         visible: !window.sidebarUsesBottomLayout
@@ -1217,8 +1257,8 @@ Item {
                     }
                     ThemeControls.ThemeDoubleChevron {
                         objectName: "filmDesignSidebarToggle"
-                        Layout.column: window.sidebarUsesBottomLayout ? 3 : 0
-                        Layout.row: window.sidebarUsesBottomLayout ? 0 : 3
+                        Layout.column: window.sidebarUsesBottomLayout ? 4 : 0
+                        Layout.row: window.sidebarUsesBottomLayout ? 0 : 5
                         Layout.alignment: Qt.AlignHCenter
                         Layout.preferredWidth: 24
                         Layout.minimumWidth: 24
@@ -1245,7 +1285,8 @@ Item {
                     Layout.fillHeight: true
                     Layout.minimumWidth: 0
                     property int currentIndex: window.activeSidebarSection === "expression" ? 0
-                                               : window.activeSidebarSection === "generator" ? 1 : 2
+                                               : window.activeSidebarSection === "generator" ? 1
+                                               : window.activeSidebarSection === "library" ? 2 : 3
 
                     Item {
                         objectName: "filmDesignExpressionPage"
@@ -1284,6 +1325,25 @@ Item {
                             objectName: "filmDesignGeneratorPanel"
                             anchors.fill: parent
                             controller: window.controller
+                        }
+                    }
+                    Item {
+                        objectName: "filmDesignInteractivePage"
+                        anchors.fill: parent
+                        visible: sidebarStack.currentIndex === 3
+                        ScrollView {
+                            id: interactiveAnalysisScroll
+                            objectName: "filmDesignInteractiveScroll"
+                            anchors.fill: parent
+                            clip: true
+                            contentWidth: availableWidth
+                            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+                            FilmInteractiveAnalysisPanel {
+                                id: interactiveAnalysisPanel
+                                width: Math.max(0, interactiveAnalysisScroll.availableWidth - 18)
+                                analysis: window.controller.interactiveAnalysisController
+                                themeTokens: Theme.snapshot
+                            }
                         }
                     }
                     Item {

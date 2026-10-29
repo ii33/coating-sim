@@ -787,7 +787,7 @@ class FilmSimulationQuickController(QObject):
         self.service = service or FilmDesignService(self.root, restrict_to_root=False)
         self._source_controller_ref = (weakref.ref(source_controller)
                                        if source_controller is not None else None)
-        self._source_connections = []
+        self._source_connections: list[tuple[Any, Any]] = []
         self._pending_window_open = None
         self._pending_save_path = None
         self._pending_close = False
@@ -848,6 +848,8 @@ class FilmSimulationQuickController(QObject):
         self._optimization_preview_targets_met: bool | None = None
         self._optimization_preview_handoff_id = ""
         self._optimization_preview_auto_started = False
+        self._interactive_preview_active = False
+        self._interactive_preview_restore = None
         self._view_bounds: dict[str, float] | None = None
         self._cursor_readout = ""
         self._png_export_settings = copy.deepcopy(_DEFAULT_PNG_EXPORT)
@@ -870,6 +872,10 @@ class FilmSimulationQuickController(QObject):
             if destroyed is not None and hasattr(destroyed, "connect"):
                 destroyed.connect(self._on_source_destroyed)
                 self._source_connections.append((destroyed, self._on_source_destroyed))
+            preview_changed = getattr(source_controller, "interactivePreviewChanged", None)
+            if preview_changed is not None and hasattr(preview_changed, "connect"):
+                preview_changed.connect(self._on_interactive_preview_changed)
+                self._source_connections.append((preview_changed, self._on_interactive_preview_changed))
         self.plotBridge = FilmSpectrumPlotBridge(self)
         self._plot_data_cache = self._build_plot_data()
         self.loadSimulationConfiguration(self._design.get("workflow_settings", {}).get("simulation", {}))
@@ -877,6 +883,10 @@ class FilmSimulationQuickController(QObject):
         if not self._last_source_configuration and self._design.get("first_surface") in ("front", "back"):
             self._params["first_surface"] = self._design["first_surface"]
         self._refresh_validation()
+        if source_controller is not None:
+            initial_preview = getattr(source_controller, "interactivePreviewPayload", {})
+            if isinstance(initial_preview, dict) and initial_preview:
+                self._on_interactive_preview_changed(initial_preview)
 
     @Property("QVariantMap", notify=stateChanged)
     def settings(self) -> dict[str, Any]:
@@ -1053,7 +1063,8 @@ class FilmSimulationQuickController(QObject):
 
     @Property(bool, notify=stateChanged)
     def canExport(self) -> bool:
-        return self._result is not None and not self._stale and not self._busy
+        return (self._result is not None and not self._stale and not self._busy
+                and not self._interactive_preview_active)
 
     @Property(str, notify=stateChanged)
     def resultSummary(self) -> str:
@@ -1444,7 +1455,8 @@ class FilmSimulationQuickController(QObject):
         self._source_alive = True
         for name, callback in (("changed", self._on_source_changed),
                                ("optimizationApplied", self._on_source_optimization_applied),
-                               ("destroyed", self._on_source_destroyed)):
+                               ("destroyed", self._on_source_destroyed),
+                               ("interactivePreviewChanged", self._on_interactive_preview_changed)):
             signal = getattr(source, name, None)
             if signal is not None and hasattr(signal, "connect"):
                 signal.connect(callback)
@@ -1782,8 +1794,62 @@ class FilmSimulationQuickController(QObject):
         self._status = message
         self.stateChanged.emit()
 
+    @Slot(object)
+    def _on_interactive_preview_changed(self, payload: object) -> None:
+        """Display the design-owned temporary result without changing its source session."""
+        if payload is None:
+            if not self._interactive_preview_active:
+                return
+            restored = self._interactive_preview_restore or {}
+            self._result = restored.get("result")
+            self._summary = str(restored.get("summary", self._summary))
+            self._status = str(restored.get("status", self._status))
+            self._error = str(restored.get("error", ""))
+            self._stale = bool(restored.get("stale", self._result is None))
+            self._interactive_preview_restore = None
+            self._interactive_preview_active = False
+            self._refresh_plot_data()
+            self._render_plot()
+            self.plotDataChanged.emit()
+            self.plotViewChanged.emit()
+            self.stateChanged.emit()
+            return
+        if not isinstance(payload, dict) or not isinstance(payload.get("result"), dict):
+            self._error = "交互式临时光谱数据无效；原设计未改变。"
+            self.stateChanged.emit()
+            return
+        result = copy.deepcopy(payload["result"])
+        waves = result.get("wavelength_nm")
+        if (not isinstance(waves, (list, tuple)) or not waves
+                or any(not isinstance(result.get(key), (list, tuple))
+                       or len(result[key]) != len(waves) for key in ("R", "T", "A"))):
+            self._error = "交互式临时光谱波长与曲线长度不一致。"
+            self.stateChanged.emit()
+            return
+        if not self._interactive_preview_active:
+            self._interactive_preview_restore = {
+                "result": self._result, "summary": self._summary,
+                "status": self._status, "error": self._error, "stale": self._stale,
+            }
+        self._interactive_preview_active = True
+        self._result = result
+        self._stale = False
+        self._error = ""
+        self._summary = "临时交互分析预览（未写入设计）；取消/关闭分析可恢复仿真窗口原结果。"
+        self._status = str(payload.get("label") or "临时交互分析预览（未写入设计）")
+        self._invalidate_spectrum_analysis()
+        self._invalidate_calculation_items()
+        self._invalidate_extrema_items()
+        self._refresh_plot_data()
+        self._render_plot()
+        self.plotDataChanged.emit()
+        self.plotViewChanged.emit()
+        self.stateChanged.emit()
+
     @Slot()
     def _on_source_changed(self) -> None:
+        if self._interactive_preview_active:
+            self._on_interactive_preview_changed(None)
         if not self.refreshFromSource():
             # Saves and configuration-only changes can change path/dirty
             # without advancing the physical design revision.
@@ -1791,6 +1857,8 @@ class FilmSimulationQuickController(QObject):
 
     @Slot()
     def _on_source_optimization_applied(self) -> None:
+        if self._interactive_preview_active:
+            self._on_interactive_preview_changed(None)
         self.refreshFromSource()
         if self._source_alive and not self._closed:
             self._pending_recompute = True
@@ -1846,6 +1914,8 @@ class FilmSimulationQuickController(QObject):
         """Invalidate a paired source so late operations cannot reuse it."""
         if not self._source_alive:
             return
+        if self._interactive_preview_active:
+            self._on_interactive_preview_changed(None)
         project_session = self._source_session if self._project_draft_bound() else None
         project_revision = self._source_design_revision
         self._detach_from_source()

@@ -58,7 +58,7 @@ service.export_csv('data/results/plate.csv', result)
 
 `schema_version=1`，`layer_order='substrate_outward'`。正背面数组 `front_layers` / `back_layers` 都从各自基片面向外排列；计算时才转换传播次序，总计最多 4096 层。
 
-每层包含唯一 `id`、`material_id`、`optical_set_id`、`thickness:{value,unit}`、`note`，并可保留 `symbol` 与 `group`。层厚度单位为 nm/um/qw；qw 按选定常数组在 `reference_wavelength_nm` 处的实部 n 换算为物理厚度。不存在隐式常数组选择。
+每层包含唯一 `id`、`material_id`、`optical_set_id`、`thickness:{value,unit}`、`note`，并可保留 `symbol` 与表达式展开标签 `group`（`G1`/`G2`）。新增可选的 `interactive_group_id` 是另一独立字段：正安全整数表示分组号，字段缺失或 `null` 表示未分组；它沿用 schema v1 的可选字段兼容规则，保存/加载/复制和膜层编辑均保留。该字段仅供交互式膜厚分析管理组成员，光学仿真与优化器不会把它解释为物理参数；不得将既有表达式标签 `group` 改作该用途。层厚度单位为 nm/um/qw；qw 按选定常数组在 `reference_wavelength_nm` 处的实部 n 换算为物理厚度。不存在隐式常数组选择。
 
 `substrate` 包含材料 ID、常数组 ID、厚度（nm/um/mm）、`sides:single|double` 和 `mode:semi_infinite|incoherent|coherent`。单面模式不使用背面数组，存储的背面草稿不因此删除。`first_surface:front|back` 决定首入射面；有限基片背入射会交换膜堆和两外部介质，半无限模式拒绝背入射。
 

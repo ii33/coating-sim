@@ -10,7 +10,7 @@ from __future__ import annotations
 from copy import deepcopy
 from .film_display_format import format_film_thickness
 from collections.abc import Mapping
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 from coat_sim.core.film_design_service import FilmDesignService
 from coat_sim.core.project_paths import project_default_directory
 from coat_sim.core.film_design_templates import template_catalog, template_roles
@@ -27,6 +27,10 @@ import math
 from pathlib import Path
 import uuid
 import weakref
+
+if TYPE_CHECKING:
+    from .film_interactive_analysis_controller import FilmInteractiveAnalysisController
+
 
 from PySide6.QtCore import (
     QAbstractListModel,
@@ -57,11 +61,13 @@ _ROW_ROLES = {
     "derivedReason": Qt.ItemDataRole.UserRole + 10,
     "note": Qt.ItemDataRole.UserRole + 11,
     "physicalNmValue": Qt.ItemDataRole.UserRole + 12,
+    "interactiveGroupId": Qt.ItemDataRole.UserRole + 13,
 }
 _ROLE_NAME_BY_ID = {int(role): name for name, role in _ROW_ROLES.items()}
 _ROLE_ID_BY_NAME = {name: int(role) for name, role in _ROW_ROLES.items()}
 _AIR_MATERIAL_ID = "builtin_ideal_air"
 _AIR_OPTICAL_SET_ID = "ideal_air_n1_k0"
+_QVARIANT_PROPERTY_TYPE = cast(type, "QVariant")
 
 
 def _finite_nonnegative(value: object, label: str) -> float:
@@ -121,6 +127,7 @@ class FilmDesignRowsModel(QAbstractListModel):
             "qwText": "不可用",
             "derivedReason": "",
             "note": str(record.get("note", "")),
+            "interactiveGroupId": record.get("interactive_group_id"),
         }
 
     def replace(self, records: list[dict], *, stable_ids: dict[str, str] | None = None,
@@ -190,6 +197,9 @@ class FilmDesignRowsModel(QAbstractListModel):
         elif field == "note":
             row["note"] = str(value)
             roles = [_ROLE_ID_BY_NAME["note"]]
+        elif field == "interactive_group_id":
+            row["interactiveGroupId"] = None if value in (None, "") else int(str(value))
+            roles = [_ROLE_ID_BY_NAME["interactiveGroupId"]]
         elif field == "symbol":
             row["symbol"] = str(value)
             roles = [_ROLE_ID_BY_NAME["symbol"]]
@@ -371,6 +381,8 @@ class FilmDesignQuickController(QObject):
     tfcalcImportChanged = Signal()
     tfcalcImportRequested = Signal()
     tfcalcImportApplied = Signal()
+    interactiveAnalysisControllerChanged = Signal()
+    interactivePreviewChanged = Signal(object)
 
     _sessionChange = Signal(object)
 
@@ -417,6 +429,8 @@ class FilmDesignQuickController(QObject):
         self._tfcalc_preview = None
         self._tfcalc_confirmation_epoch = None
         self._tfcalc_state = {"loaded": False, "error": "", "ready": False}
+        self._interactive_analysis_controller: FilmInteractiveAnalysisController | None = None
+        self._interactive_preview_payload: dict[str, Any] | None = None
         self._geometry_settings = FilmQuickGeometrySettings(geometry_settings, self)
         from .theme_service import ThemeService
         ThemeService.instance().filmThicknessDecimalsChanged.connect(self._on_film_display_precision)
@@ -1204,6 +1218,7 @@ class FilmDesignQuickController(QObject):
                 "thickness.value": record.get("thickness", {}).get("value", 100.0),
                 "thickness.unit": str(record.get("thickness", {}).get("unit", "nm")),
                 "note": str(record.get("note", "")),
+                "interactive_group_id": record.get("interactive_group_id"),
             }
             current_values = {
                 "symbol": current.get("symbol", ""),
@@ -1212,6 +1227,7 @@ class FilmDesignQuickController(QObject):
                 "thickness.value": current.get("thicknessValue", 100.0),
                 "thickness.unit": current.get("thicknessUnit", "nm"),
                 "note": current.get("note", ""),
+                "interactive_group_id": current.get("interactiveGroupId"),
             }
             for field, value in desired.items():
                 if current_values.get(field) != value:
@@ -1967,6 +1983,34 @@ class FilmDesignQuickController(QObject):
         self._request_optimization_mode("fixed_topology")
         return self._open_optimization_window(start=True)
 
+    @Property(QObject, notify=interactiveAnalysisControllerChanged)
+    def interactiveAnalysisController(self):
+        if self._interactive_analysis_controller is None and not self._source_closed:
+            from .film_interactive_analysis_controller import FilmInteractiveAnalysisController
+            self._interactive_analysis_controller = FilmInteractiveAnalysisController(self, self)
+            self.interactiveAnalysisControllerChanged.emit()
+        return self._interactive_analysis_controller
+
+    @Slot(object)
+    def setInteractivePreview(self, payload: object) -> None:
+        self._interactive_preview_payload = deepcopy(payload) if isinstance(payload, dict) else None
+        self.interactivePreviewChanged.emit(deepcopy(self._interactive_preview_payload))
+
+    @Property(_QVARIANT_PROPERTY_TYPE, notify=interactivePreviewChanged)
+    def interactivePreviewPayload(self) -> dict:
+        return deepcopy(self._interactive_preview_payload or {})
+
+    @Slot(result=bool)
+    def openInteractiveSimulation(self) -> bool:
+        launcher = self.parent()
+        opener = getattr(launcher, "open_or_reuse_film_companion", None)
+        if callable(opener) and self.session is not None:
+            return bool(opener("film_simulation", self, start=False))
+        opener = getattr(launcher, "open_window", None)
+        if callable(opener):
+            return bool(opener("film_simulation", mode="new", payload=self))
+        return False
+
     @Slot(result=str)
     def openSimulationAndCalculate(self) -> str:
         launcher = self.parent()
@@ -1978,6 +2022,8 @@ class FilmDesignQuickController(QObject):
     @Slot()
     def markSourceClosed(self) -> None:
         self._source_closed = True
+        if self._interactive_analysis_controller is not None:
+            self._interactive_analysis_controller.markSourceClosed()
         if self._session_unsubscribe is not None:
             self._session_unsubscribe()
             self._session_unsubscribe = None

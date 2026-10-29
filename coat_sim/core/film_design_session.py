@@ -307,6 +307,41 @@ class FilmDesignEditSession:
             result.pop("workflow_settings", None)
         return result
 
+    def _preserve_interactive_group_assignments(
+            self, candidate: Mapping[str, Any],
+            submitted_candidate: Mapping[str, Any]) -> dict[str, Any]:
+        """Carry omitted editor-only grouping through optimizer output.
+
+        Optimizer output may omit management metadata, in which case assignments
+        are matched back to the current design by stable layer ID. An explicit
+        candidate field (including null to unassign) is respected so interactive
+        batch edits can share the same atomic apply path.
+        """
+        result = deepcopy(dict(candidate))
+        for side in ("front", "back"):
+            explicit_group_ids = {
+                str(layer.get("id", ""))
+                for layer in submitted_candidate.get(side + "_layers", [])
+                if isinstance(layer, Mapping) and "interactive_group_id" in layer
+            }
+            current_by_id = {
+                str(layer.get("id", "")): layer
+                for layer in self._design.get(side + "_layers", [])
+            }
+            for layer in result.get(side + "_layers", []):
+                identity = str(layer.get("id", ""))
+                if identity in explicit_group_ids:
+                    # validate_design removes null optional fields; because
+                    # presence was captured before validation, the omitted
+                    # normalized field still means an explicit unassignment.
+                    continue
+                source = current_by_id.get(identity)
+                if source is not None and "interactive_group_id" in source:
+                    layer["interactive_group_id"] = source["interactive_group_id"]
+                else:
+                    layer.pop("interactive_group_id", None)
+        return result
+
     def _generation_material_options(self) -> Mapping[str, Any]:
         return self._catalog_options
 
@@ -569,6 +604,8 @@ class FilmDesignEditSession:
             try:
                 normalized = self.service.validate(deepcopy(dict(candidate_design)))
                 normalized = self._preserve_workflow_configuration(normalized)
+                normalized = self._preserve_interactive_group_assignments(
+                    normalized, candidate_design)
                 generated_context = self._prepare_optimized_context(
                     normalized, frozen_material_snapshot)
             except Exception as exc:
@@ -1006,6 +1043,19 @@ class FilmDesignEditSession:
                     if value not in ("nm", "um", "qw"):
                         raise ValueError("layer thickness unit must be nm, um, or qw")
                     record["thickness"]["unit"] = str(value)
+                elif key == "interactive_group_id":
+                    if value in (None, ""):
+                        record.pop("interactive_group_id", None)
+                    else:
+                        if (isinstance(value, bool)
+                                or not isinstance(value, (int, float))
+                                or not math.isfinite(float(value))
+                                or not float(value).is_integer()
+                                or value < 1
+                                or value > film_design.MAX_INTERACTIVE_GROUP_ID):
+                            raise ValueError(
+                                "分组号须为 1 到 9007199254740991 之间的整数，或留空取消分组")
+                        record["interactive_group_id"] = int(value)
                 elif key == "note":
                     record["note"] = str(value)
                 elif key != "symbol":

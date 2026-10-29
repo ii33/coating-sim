@@ -174,19 +174,19 @@ def test_reduction_queue_submission_deduplicates_active_attempt(attempt_harness)
         _dispose(c)
 
 
-def test_reduction_source_entry_available_and_routes_explicit_mode(review, monkeypatch):
-    from tests.test_film_synthesis_gui_review import _Scene
+def test_reduction_uses_optimizer_mode_without_duplicate_design_button(review, app):
+    from pathlib import Path
+    from tests.test_film_optimization_restore_layout import window_runtime
     h = review
-    scene = _Scene(h.source, 'FilmDesignQuick.qml')
-    try:
-        button = scene.item('filmDesignReductionButton')
-        assert button.property('text') == '减层 / 减厚优化'
-        assert button.isVisible()
-        monkeypatch.setattr(h.source, '_open_optimization_window', lambda **kwargs: 'held-window')
-        assert h.source.openReductionOptimization() == 'held-window'
-        assert h.controller.searchMode == 'reduction'
-    finally:
-        scene.close()
+    qml = Path(__file__).resolve().parents[1] / 'coat_sim/ui/qml/FilmDesignQuick.qml'
+    assert 'filmDesignReductionButton' not in qml.read_text(encoding='utf-8')
+    reduction_index = next(i for i, row in enumerate(h.controller.searchModeOptions)
+                           if row['id'] == 'reduction')
+    assert h.controller.setSearchMode('reduction')
+    with window_runtime(app, h.controller) as (window, _warnings):
+        from PySide6.QtCore import QObject
+        mode = window.findChild(QObject, 'filmOptimizationSearchModeBox')
+        assert mode is not None and mode.property('currentIndex') == reduction_index
 
 
 def test_reduction_apply_uses_audited_result_without_new_optical_evaluations(review, monkeypatch):

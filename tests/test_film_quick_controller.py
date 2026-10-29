@@ -524,6 +524,27 @@ class FilmDesignQuickControllerTests(unittest.TestCase):
         self.assertEqual([row["id"] for row in rows], [second, first])
         self.assertEqual(rows[1]["thickness"], {"value": 225.0, "unit": "nm"})
 
+    def test_interactive_group_edit_is_persisted_and_exposed_as_row_role(self):
+        self.assertTrue(self.controller.addLayer("front"))
+        layer_id = self.controller.front_layers.ids()[0]
+        self.assertTrue(self.controller.setLayerValue(
+            "front", layer_id, "interactive_group_id", 7.0))
+        self.assertTrue(self.controller.setLayerValue("front", layer_id, "note", "kept"))
+
+        row = self.controller.currentDesign()["front_layers"][0]
+        self.assertEqual(row["interactive_group_id"], 7)
+        self.assertEqual(row["note"], "kept")
+        role = next(role for role, name in self.controller.front_layers.roleNames().items()
+                    if name == b"interactiveGroupId")
+        self.assertEqual(self.controller.front_layers.data(
+            self.controller.front_layers.index(0), role), 7)
+
+        self.assertTrue(self.controller.setLayerValue(
+            "front", layer_id, "interactive_group_id", None))
+        ungrouped = self.controller.currentDesign()["front_layers"][0]
+        self.assertNotIn("interactive_group_id", ungrouped)
+        self.assertEqual(ungrouped["note"], "kept")
+
     def test_substrate_thickness_is_independent_of_layer_thickness(self):
         self.controller.addLayer("front")
         layer_id = self.controller.front_layers.ids()[0]
@@ -1626,6 +1647,7 @@ class FilmDesignQuickControllerTests(unittest.TestCase):
                 ("filmDesignHeaderLayerNumber", "filmLayerNumber_" + stable_id),
                 ("filmDesignHeaderMaterial", "filmLayerMaterial_" + stable_id),
                 ("filmDesignHeaderDataset", "filmLayerOpticalSet_" + stable_id),
+                ("filmDesignHeaderGroup", "filmLayerGroup_" + stable_id),
                 ("filmDesignHeaderQw", "filmLayerQw_" + stable_id),
                 ("filmDesignHeaderNm", "filmLayerNm_" + stable_id),
                 ("filmDesignHeaderInsert", "filmDesignInsertAfter_" + stable_id),
@@ -1702,6 +1724,7 @@ class FilmDesignQuickControllerTests(unittest.TestCase):
                 ("filmDesignHeaderLayerNumber", "filmLayerNumber_"),
                 ("filmDesignHeaderMaterial", "filmLayerMaterial_"),
                 ("filmDesignHeaderDataset", "filmLayerOpticalSet_"),
+                ("filmDesignHeaderGroup", "filmLayerGroup_"),
                 ("filmDesignHeaderQw", "filmLayerQw_"),
                 ("filmDesignHeaderNm", "filmLayerNm_"),
                 ("filmDesignHeaderInsert", "filmDesignInsertAfter_"),
@@ -1711,6 +1734,7 @@ class FilmDesignQuickControllerTests(unittest.TestCase):
                 ("filmDesignSymbolHeaderIndex", "filmLayerSymbol_"),
                 ("filmDesignSymbolHeaderMaterial", "filmLayerMaterial_"),
                 ("filmDesignSymbolHeaderDataset", "filmLayerOpticalSet_"),
+                ("filmDesignSymbolHeaderGroupPlaceholder", "filmLayerGroupPlaceholder_"),
                 ("filmDesignSymbolHeaderQw", "filmLayerQw_"),
                 ("filmDesignSymbolHeaderNm", "filmLayerNm_"),
                 ("filmDesignSymbolHeaderInsert", "filmDesignInsertPlaceholder_"),
@@ -2013,6 +2037,7 @@ class FilmDesignQuickControllerTests(unittest.TestCase):
                 ("filmDesignSymbolHeaderIndex", "filmLayerSymbol_" + stable_id),
                 ("filmDesignSymbolHeaderMaterial", "filmLayerMaterial_" + stable_id),
                 ("filmDesignSymbolHeaderDataset", "filmLayerOpticalSet_" + stable_id),
+                ("filmDesignSymbolHeaderGroupPlaceholder", "filmLayerGroupPlaceholder_" + stable_id),
                 ("filmDesignSymbolHeaderQw", "filmLayerQw_" + stable_id),
                 ("filmDesignSymbolHeaderNm", "filmLayerNm_" + stable_id),
                 ("filmDesignSymbolHeaderInsert", "filmDesignInsertPlaceholder_" + stable_id),
@@ -2138,6 +2163,64 @@ class FilmDesignQuickControllerTests(unittest.TestCase):
         assert saved_row is not None
         self.assertEqual(saved_row["physicalNmText"], format(precise_nm, ".3f"))
         self.assertEqual(saved_row["physicalNmValue"], 123.123)
+
+    def test_qml_group_field_commits_positive_integer_and_blank_unassigns(self):
+        self.assertTrue(self.controller.addLayer("front"))
+        layer_id = self.controller.front_layers.ids()[0]
+        engine, _component, root = self.create_quick_window()
+        try:
+            front_tab = root.findChild(QQuickItem, "filmDesignTabFront")
+            self.assertIsNotNone(front_tab)
+            front_center = front_tab.mapToScene(
+                QPointF(front_tab.width() / 2, front_tab.height() / 2))
+            QTest.mouseClick(
+                root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier,
+                QPoint(round(front_center.x()), round(front_center.y())))
+
+            def find_visual_item(parent, object_name):
+                if parent.objectName() == object_name:
+                    return parent
+                for child in parent.childItems():
+                    found = find_visual_item(child, object_name)
+                    if found is not None:
+                        return found
+                return None
+
+            group = None
+            for _ in range(100):
+                QCoreApplication.processEvents()
+                group = find_visual_item(root.contentItem(), "filmLayerGroup_" + layer_id)
+                if group is not None:
+                    break
+                QTest.qWait(10)
+            self.assertIsNotNone(group)
+            self.assertIsNone(root.findChild(QQuickItem, "filmDesignReductionButton"))
+            assert group is not None
+            group.forceActiveFocus()
+            QCoreApplication.processEvents()
+            QTest.keyClick(root, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
+            for character in "12":
+                QTest.keyClick(root, Qt.Key(ord(character)))
+            QTest.keyClick(root, Qt.Key.Key_Tab)
+            QCoreApplication.processEvents()
+            self.assertEqual(self.controller.currentDesign()["front_layers"][0][
+                "interactive_group_id"], 12)
+
+            group.forceActiveFocus()
+            QCoreApplication.processEvents()
+            QTest.keyClick(root, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
+            QTest.keyClick(root, Qt.Key.Key_Backspace)
+            self.assertEqual(group.property("text"), "")
+            self.assertTrue(group.property("edited"))
+            QTest.keyClick(root, Qt.Key.Key_Tab)
+            QCoreApplication.processEvents()
+            self.assertFalse(group.property("activeFocus"))
+            self.assertEqual(self.controller.error, "")
+            self.assertEqual(group.property("text"), "")
+            self.assertNotIn("interactive_group_id",
+                             self.controller.currentDesign()["front_layers"][0])
+        finally:
+            self.dispose_quick_window(engine, root)
 
 
 if __name__ == "__main__":

@@ -260,6 +260,13 @@ Rectangle {
             color: Theme.snapshot.colorTextMuted
             elide: Text.ElideRight
         }
+        Item {
+            objectName: "filmDesignSymbolHeaderGroupPlaceholder"
+            Layout.preferredWidth: symbolColumnMetrics.groupWidth
+            Layout.minimumWidth: symbolColumnMetrics.groupWidth
+            Layout.maximumWidth: symbolColumnMetrics.groupWidth
+            Layout.minimumHeight: symbolColumnMetrics.themeTokens.controlHeightSm
+        }
         ThemeControls.ThemeLabel {
             objectName: "filmDesignSymbolHeaderQw"
             text: "光学厚度\nQW"

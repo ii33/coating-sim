@@ -16,6 +16,7 @@ Rectangle {
     required property string symbol
     required property string materialId
     required property string opticalSetId
+    required property var interactiveGroupId
     required property var physicalNmValue
     required property string physicalNmText
     required property string qwText
@@ -28,6 +29,7 @@ Rectangle {
     readonly property real controlContentHeight: Math.max(
         Theme.snapshot.controlHeightSm, layerNumber.implicitHeight,
         symbolInput.implicitHeight, materialBox.implicitHeight, setBox.implicitHeight,
+        interactiveGroupInput.implicitHeight,
         opticalThicknessInput.implicitHeight, physicalThicknessInput.implicitHeight,
         insertAfterButton.implicitHeight, removeButton.implicitHeight)
     signal removeRequested(string stableId)
@@ -72,6 +74,7 @@ Rectangle {
     }
     function focusColumnField(columnName) {
         const target = columnName === "symbol" ? symbolInput
+                     : columnName === "group" ? interactiveGroupInput
                      : columnName === "qw" ? opticalThicknessInput
                      : columnName === "thickness" ? physicalThicknessInput : null
         if (!target || !target.visible || !target.enabled)
@@ -128,6 +131,31 @@ Rectangle {
         if (!row.controller.setLayerValue(row.side, row.stableId, "thickness.nm", parsed))
             physicalThicknessInput.text = row.physicalNmText
         physicalThicknessInput.edited = false
+    }
+    function commitInteractiveGroup() {
+        if (!interactiveGroupInput.edited) return
+        const raw = interactiveGroupInput.text.trim()
+        // Empty QString crosses PySide's overloaded slot consistently; a JS
+        // null can arrive as a string-like QVariant on some Qt builds.
+        let value = ""
+        if (raw.length > 0) {
+            const parsed = Number(raw)
+            if (!/^[1-9][0-9]*$/.test(raw) || !isFinite(parsed)
+                    || parsed > 9007199254740991) {
+                interactiveGroupInput.text = row.interactiveGroupId === null
+                                             || row.interactiveGroupId === undefined
+                                             ? "" : String(row.interactiveGroupId)
+                interactiveGroupInput.edited = false
+                return
+            }
+            value = parsed
+        }
+        if (!row.controller.setLayerValue(row.side, row.stableId,
+                                         "interactive_group_id", value))
+            interactiveGroupInput.text = row.interactiveGroupId === null
+                                         || row.interactiveGroupId === undefined
+                                         ? "" : String(row.interactiveGroupId)
+        interactiveGroupInput.edited = false
     }
     RowLayout {
         anchors.fill: parent
@@ -270,6 +298,50 @@ Rectangle {
                     }
                 }
             }
+        }
+        ThemeControls.ThemeField {
+            id: interactiveGroupInput
+            objectName: row.symbolRow
+                         ? "filmLayerGroupHidden_" + row.stableId
+                         : "filmLayerGroup_" + row.stableId
+            visible: !row.symbolRow
+            Layout.preferredWidth: row.columnMetrics.groupWidth
+            Layout.minimumWidth: row.columnMetrics.groupWidth
+            Layout.maximumWidth: row.columnMetrics.groupWidth
+            Layout.preferredHeight: row.controlContentHeight
+            accessibleLabel: "膜层交互分组号"
+            accessibleDescription: "留空表示未分组；相同分组可在交互式分析中联动厚度。"
+            placeholderText: "—"
+            text: row.interactiveGroupId === null || row.interactiveGroupId === undefined
+                  ? "" : String(row.interactiveGroupId)
+            maximumLength: 16
+            validator: RegularExpressionValidator { regularExpression: /^[0-9]*$/ }
+            horizontalAlignment: TextInput.AlignHCenter
+            inputMethodHints: Qt.ImhDigitsOnly
+            selectByMouse: true
+            property bool edited: false
+            onTextEdited: { edited = true; row.controller.markEditingDirty() }
+            onEditingFinished: row.commitInteractiveGroup()
+            onActiveFocusChanged: if (!activeFocus) row.commitInteractiveGroup()
+            Keys.onEscapePressed: function(event) {
+                text = row.interactiveGroupId === null || row.interactiveGroupId === undefined
+                       ? "" : String(row.interactiveGroupId)
+                edited = false
+                event.accepted = true
+            }
+            Keys.onPressed: function(event) {
+                interactiveGroupInput.handleColumnNavigation(event, function(delta) {
+                    row.columnFocusRequested("group", delta)
+                })
+            }
+        }
+        Item {
+            objectName: "filmLayerGroupPlaceholder_" + row.stableId
+            visible: row.symbolRow
+            Layout.preferredWidth: row.columnMetrics.groupWidth
+            Layout.minimumWidth: row.columnMetrics.groupWidth
+            Layout.maximumWidth: row.columnMetrics.groupWidth
+            Layout.preferredHeight: row.controlContentHeight
         }
         ThemeControls.ThemeField {
             id: opticalThicknessInput

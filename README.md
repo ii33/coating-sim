@@ -26,7 +26,7 @@
 
 Git同提交云端交接入口与CPU命令见[Git交接指南](docs/film-synthesis-git-handoff-20261021.md)。
 
-以当前膜系为起点的独立“减层 / 减厚优化”保留原材料和完整光学目标，提供减层、减厚和联合模式。只改选中层，下界为 0 的层才允许删除；结果完整复核后由用户显式应用并可撤销。见[独立减量契约](docs/film-reduction-contract.md)、[离线算法 14az](docs/algorithms.html#film-reduction-20261025)及[实施与验证](docs/film-reduction-report-20261025.md)。
+以当前膜系为起点的独立“减层 / 减厚优化”由 FilmOptimization 的优化方式选择器唯一提供，保留原材料和完整光学目标，提供减层、减厚和联合模式。结果完整复核后由用户显式应用并可撤销。FilmDesignQuick 的 F4 设计侧栏提供物理厚度、QW、入射角与分组系数的临时全层交互分析及原子批量膜层修改，可在独立仿真窗口查看临时曲线；详情见[交互分析契约](docs/film-interactive-analysis-contract.md)。减量算法见[独立减量契约](docs/film-reduction-contract.md)、[离线算法 14az](docs/algorithms.html#film-reduction-20261025)及[实施与验证](docs/film-reduction-report-20261025.md)。
 
 ## 快速开始
 
@@ -105,6 +105,7 @@ python tools/run_tests.py all
 - [本地 refractiveindex 参考库](docs/refractiveindex-local-contract.md) · [离线浏览与按需导入](docs/refractiveindex-browser-contract.md) · [CLI/MCP](docs/refractiveindex-tools-contract.md)
 - [厂商 AGF 目录及空气参考近似](docs/vendor-optical-catalog-contract.md) · [官方参考来源与离线许可](docs/reference-sources.md)
 - [膜系光谱仿真](docs/film-simulation-quick.md) · [优化方法](docs/film-optimization-methods.md)
+- [全层交互分析与分组契约](docs/film-interactive-analysis-contract.md) · [膜系服务与验证边界](docs/film-design-validation.md)
 - [统一资产与材料编辑](docs/unified-asset-library-contract.md) · [最近保存配置策略](docs/project-recent-configuration-contract.md)
 - [CLI / MCP / 助手能力矩阵](docs/entrypoint-capabilities.md) · [MCP 接入](docs/mcp.md)
 - [工作流](docs/workflows.md) · [更新日志](docs/CHANGELOG.md)
