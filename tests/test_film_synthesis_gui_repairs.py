@@ -254,7 +254,7 @@ def test_unknown_k_assumption_configuration_roundtrip_copies_environment_and_see
     original = deepcopy(design)
     with optimizer(service, design) as (controller, _source, _session):
         assert controller.setSearchMode("synthesis")
-        assert controller.property("synthesisAssumeUnknownKZero") is False
+        assert controller.property("synthesisAssumeUnknownKZero") is True
         assert controller.setSynthesisAssumeUnknownKZero(True)
         assert controller.setSynthesisUseCurrentSeed(True)
         saved = controller.exportOptimizationConfiguration()
@@ -273,11 +273,14 @@ def test_unknown_k_assumption_configuration_roundtrip_copies_environment_and_see
         malformed["synthesis"]["assume_unknown_k_zero"] = "yes"
         assert not controller.loadOptimizationConfiguration(malformed)
         assert controller.property("synthesisAssumeUnknownKZero") is True
-        legacy = deepcopy(saved)
-        del legacy["synthesis"]["assume_unknown_k_zero"]
-        assert controller.loadOptimizationConfiguration(legacy)
-        assert controller.property("synthesisAssumeUnknownKZero") is False
-        assert controller._build_synthesis_request().environment["assume_lossless"] is False
+        # This optional current setting uses today's default when omitted;
+        # newly exported configs persist it explicitly and false roundtrips
+        # are covered separately.
+        omitted = deepcopy(saved)
+        del omitted["synthesis"]["assume_unknown_k_zero"]
+        assert controller.loadOptimizationConfiguration(omitted)
+        assert controller.property("synthesisAssumeUnknownKZero") is True
+        assert controller._build_synthesis_request().environment["assume_lossless"] is True
 
 
 def test_absorption_summary_distinguishes_pool_from_candidate_assumptions(app, tmp_path):
@@ -301,6 +304,9 @@ def test_unknown_k_checkbox_keeps_model_value_when_edits_are_locked(app, tmp_pat
     service, _library, design = fixture(tmp_path)
     with optimizer(service, design) as (controller, _source, _session):
         assert controller.setSearchMode("synthesis")
+        # Exercise locked-state retention for an explicitly saved false value;
+        # new configurations now default this option to true.
+        assert controller.setSynthesisAssumeUnknownKZero(False)
         with window_runtime(app, controller) as (window, warnings):
             window.setWidth(1100)
             window.setHeight(760)

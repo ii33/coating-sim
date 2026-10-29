@@ -257,6 +257,12 @@ class FilmDesignGuiTests(unittest.TestCase):
         self.assertGreater(output.stat().st_size,5000)
 
     def test_real_mouse_calculation_accepts_unknown_k_when_enabled(self):
+        # The window installs each QHeaderView with an explicit table parent;
+        # keep checking the C++ round-trip returns the real owned widget type.
+        for table in (*self.window.tables.values(), self.window.symbols_table):
+            header = table.horizontalHeader()
+            self.assertIsInstance(header, film_ui.QHeaderView)
+            self.assertIs(header.parentWidget(), table)
         from coat_sim.core.material_business import MaterialLibrary
         library=MaterialLibrary(self.root);record=library.read('test_film')['record']
         record['optical_constants'][0]['k']=None;library.write(record,update=True)

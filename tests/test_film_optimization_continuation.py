@@ -27,7 +27,6 @@ from coat_sim.core.film_synthesis_io import (
     film_synthesis_result_to_payload,
 )
 from coat_sim.core.film_synthesis_jobs import is_synthesis_result
-from coat_sim.core.film_synthesis_progress import HybridProgressPolicy
 from tests.test_film_auto_synthesis import setup_problem
 
 pytestmark = pytest.mark.contract
@@ -90,7 +89,7 @@ def synthesis_payload():
         max_total_thickness_nm=300., max_layers=4, archive_capacity=3,
         randomize_template_search=True, structure_search_seed=31415,
         parallel_batch_size=2, max_working_set_bytes=None,
-        objective_progress_policy=HybridProgressPolicy(4, .0001, .0002, 3)))
+))
     candidate = _seed(environment, "best", 110.)
     scored = evaluate_frozen_structure_candidate(_proxy(request), candidate)
     archive = SynthesisDesignArchive(len(request.objectives), capacity=request.archive_capacity)
@@ -274,7 +273,7 @@ def test_synthesis_keeps_best_archive_and_original_seeds_without_score_reuse(syn
     assert plan.metadata["saved_scores_reused"] is False
     assert "actual_values" not in json.dumps(asdict(plan.request))
     envelope = film_synthesis_request_to_payload("new-job", plan.request)
-    assert envelope["schema_version"] == 5
+    assert envelope["schema_version"] == 6
     _, restored, _ = film_synthesis_request_from_payload(json.loads(json.dumps(envelope)))
     assert restored == plan.request
     assert _synthesis_plan(json.loads(json.dumps(payload))).request == plan.request

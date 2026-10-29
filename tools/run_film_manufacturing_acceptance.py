@@ -29,7 +29,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools.run_film_synthesis_acceptance import atomic_json, jsonable, sha256_json, utc_now  # noqa: E402
-from tools.run_film_progress_acceptance import Work, grid_work, audit_upper_work, score_metrics  # noqa: E402
+from tools.film_acceptance_work import Work, grid_work, audit_upper_work, score_metrics  # noqa: E402
 
 FAMILIES = ("AR", "HR", "BPF", "mixed")
 MODES = ("mean", "pointwise", "both")
@@ -229,7 +229,7 @@ def protocol():
 def source_identity():
     paths = sorted((ROOT / "coat_sim").rglob("*.py"))
     paths += [ROOT / name for name in ("tools/run_film_manufacturing_acceptance.py",
-        "tools/run_film_progress_acceptance.py", "tools/run_film_synthesis_acceptance.py",
+        "tools/film_acceptance_work.py", "tools/run_film_synthesis_acceptance.py",
         "tests/test_film_auto_synthesis.py", "tests/test_film_manufacturing_acceptance.py",
         "docs/film-manufacturing-repair-contract.md", "docs/algorithms.html", "AGENTS.md")]
     hashes = {p.relative_to(ROOT).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}

@@ -1,4 +1,4 @@
-"""Schema 5 freezes the hybrid thickness-reduction decision across producers."""
+"""Schema 6 freezes the hybrid thickness-reduction decision across producers."""
 from copy import deepcopy
 from dataclasses import replace
 import asyncio
@@ -45,14 +45,14 @@ def test_new_core_and_gui_requests_default_to_explicit_true():
 def test_freeze_json_plan_and_durable_job_preserve_boolean(enabled):
     request = freeze_film_synthesis_request(None, replace(_request(), enable_thickness_reduction=enabled))
     payload = json.loads(json.dumps(film_synthesis_request_to_payload("reduction", request)))
-    assert SCHEMA_VERSION == payload["schema_version"] == 5
+    assert SCHEMA_VERSION == payload["schema_version"] == 6
     assert payload["request"]["enable_thickness_reduction"] is enabled
     request_id, restored, _ = film_synthesis_request_from_payload(payload)
     assert request_id == "reduction" and restored == request
     planned, metadata = prepare_film_synthesis_payload(None, payload)
     assert planned == payload and metadata == ()
     job = build_job_payload(canonical_parameters(None, {"payload": planned}))
-    assert job["schema_version"] == job["request"]["schema_version"] == 5
+    assert job["schema_version"] == job["request"]["schema_version"] == 6
     assert deserialize_job_payload(job)[1] == request
     spec = JobSpec.parse_frozen(synthesis_spec(None, request)).to_spec()
     assert deserialize_job_payload(spec.parameters["payload"])[1].enable_thickness_reduction is enabled
@@ -76,11 +76,20 @@ def test_boolean_never_coerces_at_core_gui_wire_or_mcp_boundary(value):
 @pytest.mark.parametrize("schema", [FILM_SYNTHESIS_PLAN_INPUT_SCHEMA, FILM_SYNTHESIS_SUBMIT_INPUT_SCHEMA])
 @pytest.mark.parametrize("enabled", [True, False])
 def test_mcp_discovery_and_validation_expose_strict_boolean(schema, enabled):
+    from coat_sim.core.mcp_contracts import validate_mcp_arguments
     payload = film_synthesis_request_to_payload("mcp-reduction", replace(_request(), enable_thickness_reduction=enabled))
     field = schema["properties"]["payload"]["properties"]["request"]["properties"]["enable_thickness_reduction"]
     assert field["type"] == "boolean" and field["default"] is True
     arguments = {"payload": payload}
     assert validate_mcp_arguments(schema, arguments) is arguments
+    parsed_id, parsed_request, _ = film_synthesis_request_from_payload(payload)
+    assert parsed_id == "mcp-reduction"
+    assert parsed_request.enable_thickness_reduction is enabled
+    # A schema annotation's default is not applied by the validator.
+    del payload["request"]["needle_pre_local"]
+    with pytest.raises(CapabilityError):
+        validate_mcp_arguments(schema, arguments)
+    payload["request"]["needle_pre_local"] = _request().needle_pre_local
     del payload["request"]["enable_thickness_reduction"]
     with pytest.raises(CapabilityError):
         validate_mcp_arguments(schema, arguments)
@@ -88,7 +97,7 @@ def test_mcp_discovery_and_validation_expose_strict_boolean(schema, enabled):
         film_synthesis_request_from_payload(payload)
 
 
-@pytest.mark.parametrize("version", [1, 2, 3, 4])
+@pytest.mark.parametrize("version", [1, 2, 3, 4, 5])
 def test_old_request_rejected_before_planning_estimation_and_queueing(tmp_path, version):
     payload = film_synthesis_request_to_payload("old-reduction", _request())
     payload["schema_version"] = version
@@ -100,15 +109,16 @@ def test_old_request_rejected_before_planning_estimation_and_queueing(tmp_path, 
         lambda: build_job_payload({"payload": payload, "physical_structure_metadata": []}),
         lambda: CoatService(tmp_path).estimate_compute_task("film_synthesis", {"payload": payload}),
     ):
-        with pytest.raises(FilmSynthesisPayloadError, match="current schema 5.*no migration"):
+        with pytest.raises(FilmSynthesisPayloadError, match="current schema 6.*no migration"):
             action()
     assert payload == original
 
 
 @pytest.mark.parametrize("enabled", [True, False])
-def test_registered_mcp_plan_keeps_request_choice(monkeypatch, enabled):
+def test_registered_mcp_plan_keeps_request_choice(monkeypatch, enabled, tmp_path):
     from coat_sim.mcp import server
-    monkeypatch.setattr(server, "service", None)
+    from types import SimpleNamespace
+    monkeypatch.setattr(server, "service", SimpleNamespace(root=tmp_path))
     payload = film_synthesis_request_to_payload("plan-reduction", replace(_request(), enable_thickness_reduction=enabled))
 
     async def plan():
@@ -129,7 +139,7 @@ def test_cli_result_and_replay_keep_frozen_boolean_and_reject_v2(tmp_path, enabl
     completed = _run_cli(source, output)
     assert completed.returncode == 0, completed.stdout + completed.stderr
     result = json.loads(output.read_text(encoding="utf-8"))
-    assert result["schema_version"] == 5
+    assert result["schema_version"] == 6
     assert result["result"]["frozen_request"]["enable_thickness_reduction"] is enabled
     assert is_synthesis_result(result)
     old_result = deepcopy(result)
@@ -140,7 +150,7 @@ def test_cli_result_and_replay_keep_frozen_boolean_and_reject_v2(tmp_path, enabl
     rejected_output = tmp_path / "old-result.json"
     rejected = _run_cli(source, rejected_output)
     assert rejected.returncode != 0
-    assert "current schema 5" in rejected.stdout + rejected.stderr
+    assert "current schema 6" in rejected.stdout + rejected.stderr
     assert not rejected_output.exists()
 
 

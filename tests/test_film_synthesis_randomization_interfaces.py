@@ -64,6 +64,7 @@ def test_plan_freezes_auto_seed_once_and_queue_replay_never_redraws(monkeypatch)
     assistant_plan = asyncio.run(replay_plan())
     assert assistant_plan["request"] == json.loads(json.dumps(planned))
     assert assistant_plan["request"]["request"]["structure_search_seed"] == 0
+    assert assistant_plan["execution_project_root"] is None
     assert draws == [32]
 
 

@@ -47,6 +47,11 @@ OPTIMIZATION_ACTIONS = {
     "duplicate_objective": frozenset({"objective_id"}),
     "remove_objective": frozenset({"objective_id"}),
     "set_variable": frozenset({"side", "layer_id", "enabled", "lower_nm", "upper_nm"}),
+    "set_synthesis_option": frozenset({"name", "value"}),
+    "add_synthesis_material": frozenset(),
+    "remove_synthesis_material": frozenset({"row_id"}),
+    "set_synthesis_material": frozenset({"row_id", "material_id", "optical_set_id"}),
+    "set_synthesis_substrate": frozenset({"material_id", "optical_set_id"}),
 }
 OBJECTIVE_FIELDS = frozenset({"name", "wavelength_min_nm", "wavelength_max_nm", "wavelength_samples",
     "sampling_basis", "wavelength_step_nm", "angle_sampling_mode", "angle_min_deg", "angle_max_deg",
@@ -157,7 +162,7 @@ def _optimization_update(controller: Any, fields: dict) -> None:
     if key not in OPTIMIZATION_FIELDS:
         raise UiControlError("invalid_field", "字段不在当前工程优化编辑白名单内。")
     if key == "search_mode":
-        if not isinstance(value, str) or value not in {"fixed_topology", "structure"}:
+        if not isinstance(value, str) or value not in {"fixed_topology", "structure", "synthesis"}:
             _invalid("未知优化模式。")
         accepted = controller.setSearchMode(value)
     elif key == "structure_mode":
@@ -271,6 +276,33 @@ def _optimization_action(controller: Any, editor: Any, name: str, args: dict) ->
         _ensure_accepted(editor.save_current(), controller)
     elif name in {"set_objective", "add_objective", "duplicate_objective", "remove_objective", "set_variable"}:
         _optimization_record_action(controller, editor, name, args)
+    elif name == "set_synthesis_option":
+        option, value = args["name"], args["value"]
+        if option in {"assume_unknown_k_zero", "use_current_seed"}:
+            if type(value) is not bool:
+                _invalid("合成开关须为明确布尔值。")
+            accepted = (controller.setSynthesisAssumeUnknownKZero(value) if option == "assume_unknown_k_zero"
+                        else controller.setSynthesisUseCurrentSeed(value))
+        else:
+            from .film_synthesis_quick_adapter import SYNTHESIS_DEFAULT_OPTIONS, SYNTHESIS_SEARCH_DEFAULTS
+            if not isinstance(option, str) or option not in set(SYNTHESIS_DEFAULT_OPTIONS) | set(SYNTHESIS_SEARCH_DEFAULTS):
+                _invalid("未知合成参数。")
+            accepted = controller.setSynthesisOption(option, value)
+        _ensure_accepted(accepted, controller)
+    elif name == "add_synthesis_material":
+        if not controller.addSynthesisMaterialRow():
+            raise UiControlError("action_rejected", "当前不能添加合成候选材料行。")
+    elif name == "remove_synthesis_material":
+        if not isinstance(args["row_id"], str):
+            _invalid("候选行须使用稳定 ID。")
+        _ensure_accepted(controller.removeSynthesisMaterialRow(args["row_id"]), controller)
+    elif name in {"set_synthesis_material", "set_synthesis_substrate"}:
+        if any(not isinstance(value, str) or not value for value in args.values()):
+            _invalid("合成材料须使用明确的材料/数据集 ID。")
+        accepted = (controller.setSynthesisSubstrateReference(args["material_id"], args["optical_set_id"])
+                    if name == "set_synthesis_substrate" else controller.setSynthesisRowReference(
+                        args["row_id"], args["material_id"], args["optical_set_id"]))
+        _ensure_accepted(accepted, controller)
     elif name == "set_solver_option":
         option, value = args["name"], args["value"]
         if not isinstance(option, str) or option not in SOLVER_OPTIONS:

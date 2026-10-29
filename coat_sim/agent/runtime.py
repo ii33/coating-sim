@@ -317,7 +317,8 @@ READ_TOOLS = frozenset({
     "design_workflow_status",
     "preview_film_stack_import", "read_process_layers", "read_simulation_asset", "simulation_summaries",
     "film_design_schema", "film_materials", "validate_film_design", "load_film_design",
-    "plan_film_synthesis", "plan_film_ideal_sensitivity", "plan_film_thickness_error_table",
+    "plan_film_synthesis", "film_synthesis_schema", "film_synthesis_job", "plan_film_synthesis_continuation",
+    "plan_film_ideal_sensitivity", "plan_film_thickness_error_table",
     "expand_film_expression",
     "estimate_compute_task", "estimate_film_optimization", "estimate_appearance_render",
     "inspect_appearance_asset",
@@ -1487,7 +1488,8 @@ EXECUTION_TOOLS = {
     "windows": frozenset({"project_list", "project_editor_snapshot", "project_open", "read_software_manual", "list_windows", "read_window", "open_window", "close_window", "update_window", "window_action"}),
     "design": _COMMON | _JOB_READ | DATA_WRITE_TOOLS | {"preview_design", "save_design", "export_pdf", "convert_time_fields", "convert_gear_geometry", "import_mask_dxf", "export_mask_dxf", "export_mask_drawing"},
     "simulation": _COMMON | _JOB_READ | {"estimate_calculation", "estimate_film_optimization",
-                                         "plan_film_synthesis", "plan_film_ideal_sensitivity", "plan_film_thickness_error_table",
+                                         "plan_film_synthesis", "film_synthesis_schema", "film_synthesis_job", "plan_film_synthesis_continuation",
+                                         "plan_film_ideal_sensitivity", "plan_film_thickness_error_table",
                                          "submit_film_synthesis", "submit_film_ideal_sensitivity", "submit_film_thickness_error_table",
                                          "estimate_appearance_render", "submit_appearance_render",
                                          "inspect_appearance_asset",
@@ -1889,6 +1891,9 @@ async def _run_task(command: dict[str, Any], writer: Any, *,
         "算法选型先按需读取algorithm_selection；结合当前设计、目标/采样、材料有效域、变量约束与设备判断，必要参数缺失先问，解释参数含义，不自行扩大昂贵搜索。"
         "薄膜厚度优化仅用estimate_film_optimization(request)和submit_film_optimization(request)；"
         "用户明确要求沿用已打开膜系优化窗口的参数时，主代理直接用project_list和project_editor_snapshot(window_type=film_optimization)取得optimization.submission.request，原样交给estimate_film_optimization和submit_film_optimization；不重建设计或目标，不自行改预算和求解器，不委派子代理重新设计。submission不可用时报告reason；结构模式不能交给厚度优化工具。"
+        "从零合成先读film_synthesis_schema；当前窗口submission.executor为film_synthesis时，将request原样交plan_film_synthesis冻结，再用estimate_compute_task(kind=film_synthesis,parameters={payload:冻结request})及submit_film_synthesis。先核对execution_project_root与明确工程身份，不从焦点选择项目。"
+        "从零作业状态/同源最佳用film_synthesis_job，普通取消用cancel_calculation_job；准备真实续搜用plan_film_synthesis_continuation(job_id,request_id,limits?,current_design?)再沿原确认队列提交。分开说明调度终态、局部收敛、targets_met、预算/取消/错误与候选审计，不从平均值或任务成功推断逐点通过。"
+        "目标进展交接已删除；真实checkpoint与结构续搜保留。助手工具不直接应用或保存候选，不绕过原生来源保护和计算确认。"
         "request必须是已有v1序列化FilmOptimizationRequest，服务冻结设计修订和材料快照哈希，原样保留预算；"
         "运行时为submit注入稳定client_request_id，并自动调用request_compute_confirmation接入原会话的放行策略。"
         "讨论不发起优化；操作/攻关按真实UI计算策略处理unknown耗时，不能自行批准、改写revision/哈希或把候选应用到设计。"

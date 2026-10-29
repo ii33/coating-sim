@@ -17,11 +17,10 @@ from .film_physical_structures import structure_spec_from_mapping, structure_spe
 from .film_physical_structures import generate_physical_structure
 from .optical_constants import UNITS_TO_UM
 from .film_synthesis_absorption import annotate_synthesis_design, synthesis_absorption_assumption
-from .film_synthesis_progress import progress_policy_from_payload
 
 REQUEST_KIND = "coat_sim.film_synthesis_request"
 RESULT_KIND = "coat_sim.film_synthesis_result"
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 class FilmSynthesisPayloadError(ValueError):
@@ -60,7 +59,6 @@ def film_synthesis_request_from_payload(payload: Mapping[str, Any], *, require_f
         raise FilmSynthesisPayloadError("current synthesis request requires every field and no unknown fields")
     data = deepcopy(dict(raw))
     try:
-        data["objective_progress_policy"] = progress_policy_from_payload(data["objective_progress_policy"])
         data["objectives"] = tuple(objective_from_payload(item) for item in data["objectives"])
         data["candidate_materials"] = tuple(FilmNeedleMaterialReference(**item)
                                              for item in data["candidate_materials"])

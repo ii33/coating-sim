@@ -39,7 +39,7 @@ def test_nullable_options_reject_ambiguous_limits(values):
 
 
 def test_blank_options_never_inherit_legacy_finite_budgets():
-    assert synthesis_options({key: "" for key in SYNTHESIS_DEFAULT_OPTIONS}) == dict(SYNTHESIS_DEFAULT_OPTIONS, enable_thickness_reduction=True, objective_progress_policy=None)
+    assert synthesis_options({key: "" for key in SYNTHESIS_DEFAULT_OPTIONS}) == dict(SYNTHESIS_DEFAULT_OPTIONS, enable_thickness_reduction=True, needle_pre_local=True)
     assert synthesis_options({"max_cycles": "12", "minimum_nonzero_thickness_nm": "0.5"})["max_cycles"] == 12
 
 

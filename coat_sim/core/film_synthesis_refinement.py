@@ -15,12 +15,8 @@ from numpy.typing import NDArray
 
 from .film_objective_criteria import (active_constraints, normalized_band_weights,
     reduce_objective_responses, signed_bound_count, validate_objective_criteria)
-from .film_synthesis_progress import (AcceptedProgressMonitor, HybridProgressPolicy,
-    ProgressSample, validate_progress_policy)
 
 
-class _ObjectiveProgressHandoff(Exception):
-    """An accepted-iterate diagnostic requests existing minimax, not convergence."""
 
 
 class _InequalityConstraint(TypedDict):
@@ -260,8 +256,7 @@ def _coordinate_thicknesses_nm(point, scales, lower, upper, initial_point, initi
 
 
 def refine_synthesis_explorer(request, initial, *, evaluate, archive,
-        cancel_check=lambda: None, progress=lambda *args: None, max_iterations=64,
-        progress_policy: HybridProgressPolicy | None = None):
+        cancel_check=lambda: None, progress=lambda *args: None, max_iterations=64):
     """Continue the actual accepted SSE endpoint, never the strict champion.
 
     All old layers, split hosts and new needles have independent variables.
@@ -270,7 +265,6 @@ def refine_synthesis_explorer(request, initial, *, evaluate, archive,
     returns the last accepted solver iterate, not the best line-search sample.
     """
     minimize = import_module('scipy.optimize').minimize
-    validate_progress_policy(progress_policy)
     design = initial['design']
     rows = design['front_layers']
     if not rows:
@@ -292,15 +286,7 @@ def refine_synthesis_explorer(request, initial, *, evaluate, archive,
     iterations = 0
     outcome = None
 
-    progress_monitor = None
 
-    def progress_sample(value, loss, iteration):
-        from .film_synthesis_archive import physical_design_hash
-        score = value['score']
-        return ProgressSample(iteration, float(loss), float(score['max_error']),
-            float(score['weighted_rms_error']), score.get('nominal_pass'),
-            physical_design_hash(value['design']),
-            tuple(float(row['thickness']['value']) for row in value['design']['front_layers']))
 
     def data(x):
         nonlocal cache_x, cache_value, cache_loss, calls
@@ -350,17 +336,6 @@ def refine_synthesis_explorer(request, initial, *, evaluate, archive,
             iterations += 1
         cancel_check()  # Do not suppress caller cancellation or whole limits.
         progress('hybrid_sse_accepted_iterate', accepted, dict(iterations=iterations))
-        if progress_monitor is not None:
-            if cache_x is None or not np.array_equal(point_x, cache_x):
-                progress_monitor.reset_window('incomplete_accepted_evidence')
-                return
-            assert cache_loss is not None
-            decision = progress_monitor.observe(progress_sample(accepted, cache_loss[0], iterations))
-            if decision is not None:
-                # The full trial and accepted endpoint were committed first.
-                # Global cancellation/budget still takes priority over routing.
-                cancel_check()
-                raise _ObjectiveProgressHandoff(decision.reason)
 
     constraints = () if total is None else ({'type': 'ineq',
         'fun': lambda x: total - float(np.asarray(x) @ scales), 'jac': lambda x: -scales},)
@@ -378,11 +353,6 @@ def refine_synthesis_explorer(request, initial, *, evaluate, archive,
         else:
             data(point)
             accepted = cache_value
-        if progress_policy is not None:
-            assert cache_loss is not None
-            progress_monitor = AcceptedProgressMonitor(progress_policy,
-                progress_sample(accepted, cache_loss[0], 0),
-                receiver_minimum_thickness_nm=request.minimum_nonzero_thickness_nm or np.finfo(float).tiny)
         outcome = minimize(objective, point, jac=True, bounds=bounds, method=method,
             constraints=constraints, callback=callback, options=options)
         endpoint = np.asarray(outcome.x, float)
@@ -400,14 +370,8 @@ def refine_synthesis_explorer(request, initial, *, evaluate, archive,
                        'fixed_bounds' if bool(outcome.success) and upper is not None and lower == upper else
                        'converged' if bool(outcome.success) else
                        'iteration_limit' if int(getattr(outcome, 'status', -1)) in (1, 9) else 'solver_failure')
-    except _ObjectiveProgressHandoff:
-        termination = 'objective_progress_handoff'
     except SynthesisStageBudget:
-        # A local slice expiry cannot undo an already committed routing
-        # decision. Global stop/cancel exceptions are deliberately not caught.
-        termination = ('objective_progress_handoff'
-            if progress_monitor is not None and progress_monitor.decision is not None
-            else 'stage_budget')
+        termination = 'stage_budget'
     except SynthesisResourceGuard:
         termination = 'resource_guard'
     terminal_loss = (weighted_sse_loss_gradient(request, accepted, ())[0]
@@ -422,8 +386,6 @@ def refine_synthesis_explorer(request, initial, *, evaluate, archive,
         free_thickness_variables=0 if upper is not None and lower == upper else len(ids),
         all_original_conditions=True, independent_layer_variables=list(ids),
         objective_masses=synthesis_window_masses(request).tolist())
-    if progress_monitor is not None:
-        diagnostics['objective_progress'] = progress_monitor.summary()
     return accepted, diagnostics
 
 

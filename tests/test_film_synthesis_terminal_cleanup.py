@@ -49,6 +49,9 @@ def _problem(tmp_path, *, seed=False, seed_multiple=1., alternate_set=False, bud
         use_current_seed=False, cpu_workers=1)
     if seed:
         starting = deepcopy(design)
+        # The adapter freezes its lossless/unknown-k assumption into the bare
+        # environment. A compatible seed must carry that exact physical mode.
+        starting["assume_lossless"] = request.environment["assume_lossless"]
         starting["front_layers"] = [{
             "id": f"seed-{index}", "material_id": "acceptance-film",
             "optical_set_id": "film-set-alternate" if alternate_set and index else "film-set",

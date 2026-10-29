@@ -106,3 +106,7 @@ AI 工具仅可访问软件数据根或已由项目管理器认证登记的项�
 需要选择或解释算法时先读 algorithm_selection，按目标再读 film_optimization/film_optimization_parameters。先核对当前设计、材料有效域与未知k、可变参数和边界、采样及预算；缺影响结论的条件合并询问。解释适用性、参数单位、代价与验收，按实际目录/校验器开放动作。reference/optimize的CPU限制、通用膜系优化CPU路径与专用相干批量后端资格分别判断；算法说明或研究资料不授予计算/保存/覆盖权限，不自动扩大到昂贵搜索。保留冻结输入、原作业身份、进度/取消、训练与留出验证及显式候选应用合同。
 
 当前工程界面先由project_list取得精确六字段目标，再用project_editor_snapshot按需读取膜系设计/光谱仿真/优化当前状态；分页携带expected_snapshot_id，不把不可用快照替换为保存版。操作/攻关写前仅按实时editor_capabilities并携带instance_id与expected_snapshot_id，当前UI模式/请求代际变化后旧run不得继续写；讨论无写入口。
+
+从零合成先读 `film_synthesis_schema`，明确实际基片及材料数据集、波段/角度/偏振与启用的 mean/pointwise 目标；R/T 上下限是比例，0.004 为0.4%。新建未配置时针插前局部优化和未知k按0默认开启，可显式关闭；已知k保持真实值。当前窗口 `optimization.submission.executor=film_synthesis` 的 request 是同一界面参数包，先原样交 `plan_film_synthesis` 冻结，核对工具的 execution_project_root 与明确项目身份，再经 `estimate_compute_task(kind="film_synthesis", parameters={"payload":request})` 和 `submit_film_synthesis(payload=request)`。不能把它交厚度优化工具，也不能在根不匹配时改用任意文件/路径绕过。
+
+`film_synthesis_job(job_id)` 返回调度/核心状态、同源最佳物理hash与原审计记录，不做新的物理复算。取消仍用 `cancel_calculation_job`，不能把提出取消称为已结束。已结束作业的真实结构续搜用 `plan_film_synthesis_continuation` 准备，保留结构来源游标与随机进度，旧得分、审计和求解器状态不复用；省略 limits 保留原显式预算，null 明确无上限。之后仍走原确认/队列。目标进展交接实验已移除，与真实 checkpoint 不同。查看、准备、提交均不直接应用/保存候选；原生候选审查与来源保护继续适用。

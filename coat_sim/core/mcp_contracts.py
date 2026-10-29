@@ -11,6 +11,7 @@ from typing import Any, Callable, Iterable, Iterator, Protocol, cast
 from mcp.types import ToolAnnotations
 
 from .capabilities import CapabilityError, POLICIES
+from .film_synthesis_defaults import ASSUME_UNKNOWN_K_ZERO, NEEDLE_PRE_LOCAL
 
 # The pinned jsonschema runtime has no bundled typing metadata. Keep its
 # dynamic import behind the exact interface used here, without disabling checks.
@@ -84,26 +85,38 @@ FILM_SYNTHESIS_PLAN_INPUT_SCHEMA: dict[str, Any] = {
         "type": "object", "additionalProperties": False,
         "required": ["schema_version", "kind", "request_id", "request", "physical_structures"],
         "properties": {
-            "schema_version": {"const": 5},
+            "schema_version": {"const": 6},
             "kind": {"const": "coat_sim.film_synthesis_request"},
             "request_id": {"type": "string", "minLength": 1, "maxLength": 128},
             "request": {"type": "object", "additionalProperties": True,
-                "required": ["enable_thickness_reduction", "objective_progress_policy", "warm_start_seed_index"],
+                # Keep MCP validation aligned with film_synthesis_request_from_payload:
+                # default annotations below are documentation only and do not
+                # fill omitted values. The two explicit extensions remain optional.
+                "required": [
+                    "environment", "objectives", "candidate_materials", "design_revision",
+                    "minimum_nonzero_thickness_nm", "max_layer_thickness_nm", "max_total_thickness_nm",
+                    "max_layers", "max_cycles", "max_evaluations", "acceptable_normalized_error",
+                    "position_samples", "growth_quarter_wave_fractions", "needle_seed_fraction",
+                    "relative_improvement_tolerance", "local_step_tolerance", "stagnation_cycles",
+                    "validation_samples_multiplier", "frozen_material_snapshot", "seed_designs",
+                    "cpu_workers", "forward_backend", "forward_device", "structure_search_seed",
+                    "ar_structure_mode", "max_seconds", "search_strategy", "archive_capacity",
+                    "needle_batch_size", "needle_pre_local", "needle_position_refinement_rounds",
+                    "max_working_set_bytes", "resource_guard_resolution", "parallel_batch_size",
+                    "randomize_template_search", "enable_thickness_reduction", "warm_start_seed_index",
+                ],
                 "properties": {
+                    "environment": {"type": "object", "required": ["assume_lossless"], "properties": {
+                        "assume_lossless": {"type": "boolean", "default": ASSUME_UNKNOWN_K_ZERO}}},
+                    "candidate_materials": {"type": "array", "minItems": 1, "items": {
+                        "type": "object", "additionalProperties": False,
+                        "required": ["material_id", "optical_set_id"], "properties": {
+                            "material_id": {"type": "string", "minLength": 1},
+                            "optical_set_id": {"type": "string", "minLength": 1}}}},
+                    "needle_pre_local": {"type": "boolean", "default": NEEDLE_PRE_LOCAL},
                     "warm_start_seed_index": {
                         "type": ["integer", "null"], "minimum": 0, "default": None,
                         "description": "Candidate warm restart only: freshly score this existing seed first inside the new job budget. Null preserves bare-environment startup. Does not restore solver, RNG, scores or audit state."},
-                    "objective_progress_policy": {
-                        "oneOf": [{"type": "null"}, {"type": "object", "additionalProperties": False,
-                            "required": ["accepted_window_steps", "relative_sse_progress_floor",
-                                         "relative_worst_progress_floor", "stagnation_windows"],
-                            "properties": {
-                                "accepted_window_steps": {"type": "integer", "minimum": 1},
-                                "relative_sse_progress_floor": {"type": "number", "minimum": 0},
-                                "relative_worst_progress_floor": {"type": "number", "minimum": 0},
-                                "stagnation_windows": {"type": "integer", "minimum": 1}}}],
-                        "default": None,
-                        "description": "Experimental hybrid joint-needle SSE accepted-iterate handoff to existing full minimax. Null preserves the current search; enabled policy supplies every threshold. No change to nominal goals, ftol/gtol, budgets or acceptance."},
                     "objectives": {"type": "array", "minItems": 1, "items": FILM_BAND_OBJECTIVE_SCHEMA},
                     "enable_thickness_reduction": {
                         "type": "boolean", "default": True,
@@ -129,6 +142,19 @@ FILM_SYNTHESIS_SUBMIT_INPUT_SCHEMA: dict[str, Any] = {
     "required": ["payload"],
     "properties": {"payload": FILM_SYNTHESIS_PLAN_INPUT_SCHEMA["properties"]["payload"],
         "client_request_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 512}},
+}
+
+FILM_SYNTHESIS_CONTINUATION_INPUT_SCHEMA: dict[str, Any] = {
+    "type": "object", "additionalProperties": False, "required": ["job_id", "request_id"],
+    "properties": {
+        "job_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
+        "request_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "limits": {"type": ["object", "null"], "additionalProperties": False,
+            "properties": {"max_cycles": {"type": ["integer", "null"], "minimum": 1},
+                           "max_evaluations": {"type": ["integer", "null"], "minimum": 1},
+                           "max_seconds": {"type": ["number", "null"], "exclusiveMinimum": 0}}},
+        "current_design": {"type": ["object", "null"]},
+    },
 }
 
 def _independent_sensitivity_schema(kind: str, *, table: bool) -> dict[str, Any]:
@@ -242,7 +268,8 @@ film_design_schema source_quadrature convert_gear_geometry sample_substrate_outl
 sample_substrate_surface calculation_history estimate_calculation convert_time_fields
 list_windows read_window project_editor_snapshot inspect_appearance_asset
 wait_calculation_job mask_optimization_groups ito_electrical_calculate
-list_deleted_builtin_materials plan_film_synthesis
+list_deleted_builtin_materials plan_film_synthesis film_synthesis_schema
+film_synthesis_job plan_film_synthesis_continuation
 plan_film_ideal_sensitivity plan_film_thickness_error_table'''.split())
 _WRITE = frozenset('''project_bbs_import_attachment project_bbs_comment project_bbs_write project_open project_research_save project_manage
  developer_report_issue developer_issue_reports developer_access developer_checks

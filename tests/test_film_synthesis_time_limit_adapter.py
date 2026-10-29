@@ -73,9 +73,10 @@ def test_seconds_limit_survives_configuration_request_and_typed_job_roundtrip(ap
     service, fixture_request = setup_problem(materials=("low", "high"))
     service.root = tmp_path
     # The small in-memory synthesis fixture does not expose the GUI catalog
-    # enumerator; provide its two candidate rows without writing a catalog.
+    # enumerator; provide its substrate and two candidate rows without writing
+    # a catalog.
     service.material_options = lambda _purpose: [
-        service.materials.get(name) for name in ("low", "high")]
+        service.materials.get(name) for name in ("glass", "low", "high")]
     for material in service.materials.records.values():
         optical = material["optical_sets"][0]
         if optical["wavelength_min"] > 400.0:

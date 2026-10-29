@@ -25,7 +25,8 @@ def test_seeds_are_disabled_ordinary_rows_and_deletion_is_not_recreated():
     assert {row["preset_id"] for row in rows} == {"zhihu", "openalex", "crossref"}
     assert all(not row["enabled"] and not row["allow_tools"] and not row["allow_project_data"] for row in rows)
     assert all(not row["credential_revision"] and not row["cwd"] for row in rows)
-    assert "-c" not in str(rows) and "--provider" in str(rows)
+    assert all("-c" not in row.get("args", []) for row in rows)
+    assert any("--provider" in row.get("args", []) for row in rows)
     values["assistant_mcp_servers"] = []
     assert normalized_ui_settings(values)["assistant_mcp_servers"] == []
     # Migration preserves a colliding user row, with edits, and remains bounded.

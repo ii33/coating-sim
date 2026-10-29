@@ -1669,267 +1669,63 @@ AppWindow {
                                     Layout.fillWidth: true
                                     Layout.minimumWidth: 0
                                     spacing: window.themeTokens.spaceSm
-                                    Label {
+                                    Label { text: "合成基片材料与光学数据集"; color: window.themeTokens.colorText }
+                                    ThemeControls.ThemeComboBox {
+                                        id: synthesisSubstrateMaterial
+                                        objectName: "filmSynthesisSubstrateMaterialField"
                                         Layout.fillWidth: true
-                                        text: "从 N=0 空栈开始。当前设计只提供物理环境；结果先审计，原设计不自动改变。空预算和空约束表示未指定。"
-                                        color: window.themeTokens.colorTextMuted
-                                        wrapMode: Text.WordWrap
-                                    }
-                                    CheckBox {
-                                        objectName: "filmSynthesisUseCurrentSeedField"
-                                        text: "另将当前真实处方作为显式起点（仍保留 N=0 分支）"
-                                        checked: window.controller.synthesisUseCurrentSeed
-                                        onToggled: window.controller.setSynthesisUseCurrentSeed(checked)
-                                        Accessible.name: text
-                                    }
-                                    CheckBox {
-                                        objectName: "filmSynthesisUnknownKZeroField"
-                                        text: "未知 k 按 0 计算（无损假设）"
-                                        enabled: window.controller.canEditSynthesisAssumption
-                                        checked: window.controller.synthesisAssumeUnknownKZero
-                                        onToggled: {
-                                            if (!window.controller.setSynthesisAssumeUnknownKZero(checked))
-                                                checked = Qt.binding(() => window.controller.synthesisAssumeUnknownKZero)
+                                        Layout.minimumWidth: 0
+                                        model: window.controller.synthesisSubstrate.material_options
+                                        textRole: "name"
+                                        currentIndex: synthesisSubstrateMaterial.model.findIndex(item => item.id === window.controller.synthesisSubstrate.material_id)
+                                        displayText: synthesisSubstrateMaterial.currentIndex < 0 ? "选择基片材料" : synthesisSubstrateMaterial.currentText
+                                        onPressedChanged: {
+                                            if (synthesisSubstrateMaterial.pressed) {
+                                                const revision = window.controller.synthesisMaterialCatalogRevision
+                                                const wasOpen = synthesisSubstrateMaterial.popup.visible
+                                                window.controller.refreshSynthesisMaterials()
+                                                if (!wasOpen && revision !== window.controller.synthesisMaterialCatalogRevision)
+                                                    Qt.callLater(() => synthesisSubstrateMaterial.popup.open())
+                                            }
                                         }
-                                        Accessible.name: text
-                                        Accessible.description: "任务运行中或输入尚有错误时不可更改；请先修正输入或等待任务结束。"
-                                    }
-                                    Label {
-                                        Layout.fillWidth: true
-                                        text: "默认严格检查基片、入射介质和候选膜料。勾选后仅把未知消光系数 k 按 0 计算；已知吸收保留，折射率 n 与有效波段仍须合法。审计结果基于此假设，不代表真实吸收已验证。"
-                                        color: window.themeTokens.colorTextMuted
-                                        wrapMode: Text.WordWrap
+                                        onActivated: {
+                                            const selected = synthesisSubstrateMaterial.model[synthesisSubstrateMaterial.currentIndex]
+                                            if (!selected || !window.controller.setSynthesisSubstrateMaterial(selected.id))
+                                                synthesisSubstrateMaterial.currentIndex = Qt.binding(() => synthesisSubstrateMaterial.model.findIndex(item => item.id === window.controller.synthesisSubstrate.material_id))
+                                        }
+                                        Accessible.name: "合成基片材料"
                                     }
                                     ThemeControls.ThemeComboBox {
-                                        objectName: "filmSynthesisStrategyBox"
+                                        id: synthesisSubstrateOpticalSet
+                                        objectName: "filmSynthesisSubstrateOpticalSetField"
                                         Layout.fillWidth: true
-                                        model: [{id: "hybrid", label: "统一混合：结构族广筛 / 多样档案 / 批量针 / 全约束精修"},
-                                                {id: "legacy", label: "历史独立路由（用于兼容重放）"}]
-                                        textRole: "label"
-                                        currentIndex: (window.controller.synthesisOptions.search_strategy ?? "hybrid") === "hybrid" ? 0 : 1
-                                        onActivated: window.controller.setSynthesisOption("search_strategy", model[currentIndex].id)
-                                    }
-                                    CheckBox {
-                                        objectName: "filmSynthesisThicknessReductionField"
-                                        visible: (window.controller.synthesisOptions.search_strategy ?? "hybrid") === "hybrid"
-                                        text: "达标后缩减总厚度"
-                                        checked: window.controller.synthesisOptions.enable_thickness_reduction
-                                        onToggled: {
-                                            if (!window.controller.setSynthesisOption("enable_thickness_reduction", checked))
-                                                checked = Qt.binding(() => window.controller.synthesisOptions.enable_thickness_reduction)
-                                        }
-                                        Accessible.name: text
-                                        Accessible.description: "默认开启，仅用于统一混合搜索；冻结到当前任务，在原预算内尝试，不放宽任何目标或制造约束。"
-                                    }
-                                    CheckBox {
-                                        objectName: "filmSynthesisProgressPolicyToggle"
-                                        text: "目标进展交接（实验，默认关闭）"
-                                        visible: (window.controller.synthesisOptions.search_strategy ?? "hybrid") === "hybrid"
-                                                 || window.controller.synthesisProgressPolicyEnabled
-                                        checked: window.controller.synthesisProgressPolicyEnabled
-                                        onToggled: {
-                                            if (!window.controller.setSynthesisProgressPolicyEnabled(checked))
-                                                checked = Qt.binding(() => window.controller.synthesisProgressPolicyEnabled)
-                                        }
-                                        Accessible.name: text
-                                    }
-                                    ColumnLayout {
-                                        Layout.fillWidth: true
-                                        visible: (window.controller.synthesisOptions.search_strategy ?? "hybrid") === "hybrid"
-                                                 || window.controller.synthesisProgressPolicyEnabled
-                                        enabled: window.controller.synthesisProgressPolicyEnabled
-                                        Label {
-                                            Layout.fillWidth: true
-                                            text: "仅以已接受步的相对进展决定交接至既有全约束精修，不放宽原目标，也不保证更优或收敛。四项均须明确填写。相对比例不是光谱百分点：0.001 = 0.1%，1 = 100%。"
-                                            color: window.themeTokens.colorTextMuted
-                                            wrapMode: Text.WordWrap
-                                            font.pointSize: window.themeTokens.fontSizeSmall
-                                        }
-                                        Repeater {
-                                            model: [
-                                                {key: "accepted_window_steps", label: "每窗口已接受步数"},
-                                                {key: "relative_sse_progress_floor", label: "SSE 相对进展下限（比例）"},
-                                                {key: "relative_worst_progress_floor", label: "最坏违规相对下限（比例）"},
-                                                {key: "stagnation_windows", label: "连续停滞窗口数"}
-                                            ]
-                                            delegate: ColumnLayout {
-                                                id: progressPolicyRow
-                                                required property var modelData
-                                                Layout.fillWidth: true
-                                                Label {
-                                                    text: progressPolicyRow.modelData.label
-                                                    color: window.themeTokens.colorText
-                                                    Layout.fillWidth: true
-                                                    wrapMode: Text.WordWrap
-                                                }
-                                                ThemeControls.ThemeField {
-                                                    objectName: "filmSynthesisProgress_" + progressPolicyRow.modelData.key
-                                                    Layout.fillWidth: true
-                                                    text: window.controller.synthesisProgressPolicyDrafts[progressPolicyRow.modelData.key]
-                                                    placeholderText: "须明确填写，无默认阈值"
-                                                    accessibleLabel: progressPolicyRow.modelData.label
-                                                    onTextEdited: window.controller.setSynthesisProgressPolicyText(progressPolicyRow.modelData.key, text)
-                                                    onAccepted: window.controller.finishSynthesisProgressPolicyEdit()
-                                                    onEditingFinished: window.controller.finishSynthesisProgressPolicyEdit()
-                                                }
+                                        Layout.minimumWidth: 0
+                                        model: window.controller.synthesisSubstrate.optical_set_options
+                                        textRole: "name"
+                                        currentIndex: synthesisSubstrateOpticalSet.model.findIndex(item => item.id === window.controller.synthesisSubstrate.optical_set_id)
+                                        displayText: synthesisSubstrateOpticalSet.currentIndex < 0 ? "选择基片光学数据集" : synthesisSubstrateOpticalSet.currentText
+                                        onPressedChanged: {
+                                            if (synthesisSubstrateOpticalSet.pressed) {
+                                                const revision = window.controller.synthesisMaterialCatalogRevision
+                                                const wasOpen = synthesisSubstrateOpticalSet.popup.visible
+                                                window.controller.refreshSynthesisMaterials()
+                                                if (!wasOpen && revision !== window.controller.synthesisMaterialCatalogRevision)
+                                                    Qt.callLater(() => synthesisSubstrateOpticalSet.popup.open())
                                             }
                                         }
+                                        onActivated: {
+                                            const selected = synthesisSubstrateOpticalSet.model[synthesisSubstrateOpticalSet.currentIndex]
+                                            if (!selected || !window.controller.setSynthesisSubstrateOpticalSet(selected.id))
+                                                synthesisSubstrateOpticalSet.currentIndex = Qt.binding(() => synthesisSubstrateOpticalSet.model.findIndex(item => item.id === window.controller.synthesisSubstrate.optical_set_id))
+                                        }
+                                        Accessible.name: "合成基片光学数据集"
                                     }
                                     Label {
-                                        objectName: "filmSynthesisProgressPolicyError"
+                                        objectName: "filmSynthesisSubstrateError"
                                         Layout.fillWidth: true
-                                        visible: window.controller.synthesisProgressPolicyError.length > 0
-                                        text: window.controller.synthesisProgressPolicyError
-                                        color: window.themeTokens.colorText
-                                        wrapMode: Text.WordWrap
-                                    }
-                                    CheckBox {
-                                        objectName: "filmSynthesisRandomizeTemplateSearchField"
-                                        text: "随机化模板搜索"
-                                        checked: window.controller.synthesisOptions.randomize_template_search ?? false
-                                        onToggled: {
-                                            if (!window.controller.setSynthesisOption("randomize_template_search", checked))
-                                                checked = Qt.binding(() => window.controller.synthesisOptions.randomize_template_search ?? false)
-                                        }
-                                        Accessible.name: text
-                                    }
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Label { text: "模板搜索种子"; Layout.preferredWidth: 155 }
-                                        ThemeControls.ThemeField {
-                                            objectName: "filmSynthesisStructureSearchSeedField"
-                                            Layout.fillWidth: true
-                                            text: window.controller.synthesisStructureSearchSeedText
-                                            placeholderText: "留空自动"
-                                            enabled: window.controller.synthesisOptions.randomize_template_search ?? false
-                                            accessibleLabel: "模板搜索种子，留空自动"
-                                            accessibleDescription: "十进制整数 0 至 4294967295；关闭随机化时保留输入，正式冻结任务时生成自动种子。"
-                                            inputMethodHints: Qt.ImhDigitsOnly
-                                            onTextEdited: window.controller.setSynthesisStructureSearchSeedText(text)
-                                            onAccepted: window.controller.finishSynthesisStructureSearchSeedEdit()
-                                            onEditingFinished: window.controller.finishSynthesisStructureSearchSeedEdit()
-                                        }
-                                    }
-                                    Label {
-                                        objectName: "filmSynthesisStructureSearchSeedError"
-                                        Layout.fillWidth: true
-                                        visible: window.controller.synthesisStructureSearchSeedError.length > 0
-                                        text: window.controller.synthesisStructureSearchSeedError
-                                        color: window.themeTokens.colorText
-                                        wrapMode: Text.WordWrap
-                                    }
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Label { text: "实际种子"; Layout.preferredWidth: 155 }
-                                        ThemeControls.ThemeField {
-                                            objectName: "filmSynthesisActualStructureSearchSeedField"
-                                            Layout.fillWidth: true
-                                            readOnly: true
-                                            text: window.controller.synthesisActualStructureSearchSeedText
-                                            placeholderText: "任务冻结后显示"
-                                            accessibleLabel: "模板搜索实际种子"
-                                        }
-                                    }
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        visible: (window.controller.synthesisOptions.search_strategy ?? "hybrid") === "hybrid"
-                                        Label { text: "独立候选逻辑批次"; Layout.preferredWidth: 155 }
-                                        ThemeControls.ThemeField {
-                                            objectName: "filmSynthesisParallelBatchSizeField"
-                                            Layout.fillWidth: true
-                                            accessibleLabel: "独立候选逻辑批次，留空自动"
-                                            placeholderText: "自动（冻结时按请求进程和可用CPU）"
-                                            preserveNumericDisplayText: true
-                                            numericDisplayValue: window.controller.synthesisOptions.parallel_batch_size ?? ""
-                                            function commitDraft() {
-                                                if (!numericValueEdited) return
-                                                const value = numericEditText
-                                                numericValueEdited = false
-                                                window.controller.setSynthesisOption("parallel_batch_size", value)
-                                            }
-                                            onAccepted: commitDraft()
-                                            onEditingFinished: commitDraft()
-                                        }
-                                    }
-                                    Label {
-                                        Layout.fillWidth: true
-                                        visible: (window.controller.synthesisOptions.search_strategy ?? "hybrid") === "hybrid"
-                                        text: "逻辑批次不是并发保证。实际进程仍由请求、候选数、原预算与内存准入决定；独立候选和解析针扫可多核，联合厚度精修与采纳保持串行。"
-                                        color: window.themeTokens.colorTextMuted
-                                        wrapMode: Text.WordWrap
-                                    }
-                                    CheckBox {
-                                        objectName: "filmSynthesisNeedlePreLocalField"
-                                        text: "每次针扫描前先局部精修当前工作分支"
-                                        checked: window.controller.synthesisOptions.needle_pre_local ?? false
-                                        onToggled: window.controller.setSynthesisOption("needle_pre_local", checked)
-                                    }
-                                    Repeater {
-                                        model: [{key: "needle_batch_size", label: "一次最大针根数", fallback: 6},
-                                                {key: "needle_position_refinement_rounds", label: "针位置低谷细化轮数", fallback: 1},
-                                                {key: "archive_capacity", label: "共享候选档案容量", fallback: 32}]
-                                        delegate: RowLayout {
-                                            required property var modelData
-                                            Layout.fillWidth: true
-                                            Label { text: parent.modelData.label; color: window.themeTokens.colorText; Layout.preferredWidth: 155 }
-                                            ThemeControls.ThemeField {
-                                                Layout.fillWidth: true
-                                                text: String(window.controller.synthesisOptions[parent.modelData.key] ?? parent.modelData.fallback)
-                                                accessibleLabel: parent.modelData.label
-                                                onEditingFinished: window.controller.setSynthesisOption(parent.modelData.key, text)
-                                            }
-                                        }
-                                    }
-                                    ThemeControls.ThemeComboBox {
-                                        id: synthesisResourceGuardMode
-                                        objectName: "filmSynthesisResourceGuardModeBox"
-                                        Layout.fillWidth: true
-                                        readonly property var requestedBytes: window.controller.synthesisOptions.max_working_set_bytes
-                                        // QVariantMap null is exposed as undefined; key presence
-                                        // distinguishes explicit off from an omitted auto default.
-                                        readonly property bool hasConfiguredBytes: Object.prototype.hasOwnProperty.call(
-                                            window.controller.synthesisOptions, "max_working_set_bytes")
-                                        readonly property var configuredBytes: hasConfiguredBytes ? requestedBytes : 0
-                                        property double lastManualBytes: 1610612736
-                                        model: [{id: "auto", label: "数值护栏：自动，冻结时可用内存的50%"},
-                                                {id: "manual", label: "数值护栏：显式字节限额"},
-                                                {id: "off", label: "数值护栏：关闭估计检查，仍受系统资源限制"}]
-                                        textRole: "label"
-                                        readonly property int configuredModeIndex: hasConfiguredBytes && requestedBytes == null ? 2 : configuredBytes === 0 ? 0 : 1
-                                        currentIndex: configuredModeIndex
-                                        onConfiguredBytesChanged: if (configuredBytes > 0) lastManualBytes = configuredBytes
-                                        onActivated: function(index) {
-                                            window.controller.setSynthesisOption("max_working_set_bytes",
-                                                index === 0 ? 0 : index === 2 ? null : lastManualBytes)
-                                            // A pending edit in another field can refuse this
-                                            // operation. Never display a policy not committed
-                                            // by the controller; restore its live binding.
-                                            currentIndex = Qt.binding(function() {
-                                                return synthesisResourceGuardMode.configuredModeIndex
-                                            })
-                                        }
-                                    }
-                                    RowLayout {
-                                        visible: synthesisResourceGuardMode.currentIndex === 1
-                                        Layout.fillWidth: true
-                                        Label {
-                                            text: "显式工作集限额 bytes"
-                                            color: window.themeTokens.colorText
-                                            Layout.preferredWidth: 155
-                                        }
-                                        ThemeControls.ThemeField {
-                                            objectName: "filmSynthesisResourceGuardBytesField"
-                                            Layout.fillWidth: true
-                                            text: String(synthesisResourceGuardMode.configuredBytes ?? "")
-                                            accessibleLabel: "数值工作集显式限额（字节，0为自动，清空为关闭）"
-                                            inputMethodHints: Qt.ImhDigitsOnly
-                                            onEditingFinished: window.controller.setSynthesisOption("max_working_set_bytes", text)
-                                        }
-                                    }
-                                    Label {
-                                        Layout.fillWidth: true
-                                        text: "严格验收始终使用原始全部约束。护栏默认自动，0=自动、正整数=显式字节限额、关闭保存为null；可用内存未知时透明回退1.5GiB。它是阶段数值估计，不是层数上限或进程硬内存保证；超限会记录未执行阶段，不冒充收敛。冻结请求保存实际限额，重放不重新测量。"
-                                        color: window.themeTokens.colorTextMuted
+                                        visible: window.controller.synthesisSubstrate.error.length > 0
+                                        text: window.controller.synthesisSubstrate.error
+                                        color: window.themeTokens.colorWarning
                                         wrapMode: Text.WordWrap
                                     }
                                     Label { text: "候选膜料与光学数据集"; color: window.themeTokens.colorText }
@@ -2042,6 +1838,207 @@ AppWindow {
                                         text: window.controller.synthesisMaterialError
                                         wrapMode: Text.WordWrap
                                         color: window.themeTokens.colorWarning
+                                    }
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: "从 N=0 空栈开始。当前设计只提供物理环境；结果先审计，候选按来源守卫应用，保持未保存。空预算和空约束表示未指定。"
+                                        color: window.themeTokens.colorTextMuted
+                                        wrapMode: Text.WordWrap
+                                    }
+                                    CheckBox {
+                                        objectName: "filmSynthesisUseCurrentSeedField"
+                                        text: "另将当前真实处方作为显式起点（仍保留 N=0 分支）"
+                                        checked: window.controller.synthesisUseCurrentSeed
+                                        onToggled: window.controller.setSynthesisUseCurrentSeed(checked)
+                                        Accessible.name: text
+                                    }
+                                    CheckBox {
+                                        objectName: "filmSynthesisUnknownKZeroField"
+                                        text: "未知 k 按 0 计算（无损假设）"
+                                        enabled: window.controller.canEditSynthesisAssumption
+                                        checked: window.controller.synthesisAssumeUnknownKZero
+                                        onToggled: {
+                                            if (!window.controller.setSynthesisAssumeUnknownKZero(checked))
+                                                checked = Qt.binding(() => window.controller.synthesisAssumeUnknownKZero)
+                                        }
+                                        Accessible.name: text
+                                        Accessible.description: "任务运行中或输入尚有错误时不可更改；请先修正输入或等待任务结束。"
+                                    }
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: "新建合成默认勾选未知 k 按 0 的显式假设；取消后缺 k 会严格拒绝。该选项不放宽有效折射率 n、数据域或非法 k 检查，已知吸收始终保留。审计结果基于冻结假设，不代表真实吸收已验证。"
+                                        color: window.themeTokens.colorTextMuted
+                                        wrapMode: Text.WordWrap
+                                    }
+                                    ThemeControls.ThemeComboBox {
+                                        objectName: "filmSynthesisStrategyBox"
+                                        Layout.fillWidth: true
+                                        model: [{id: "hybrid", label: "统一混合：结构族广筛 / 多样档案 / 批量针 / 全约束精修"},
+                                                {id: "legacy", label: "历史独立路由（用于兼容重放）"}]
+                                        textRole: "label"
+                                        currentIndex: (window.controller.synthesisOptions.search_strategy ?? "hybrid") === "hybrid" ? 0 : 1
+                                        onActivated: window.controller.setSynthesisOption("search_strategy", model[currentIndex].id)
+                                    }
+                                    CheckBox {
+                                        objectName: "filmSynthesisThicknessReductionField"
+                                        visible: (window.controller.synthesisOptions.search_strategy ?? "hybrid") === "hybrid"
+                                        text: "达标后缩减总厚度"
+                                        checked: window.controller.synthesisOptions.enable_thickness_reduction
+                                        onToggled: {
+                                            if (!window.controller.setSynthesisOption("enable_thickness_reduction", checked))
+                                                checked = Qt.binding(() => window.controller.synthesisOptions.enable_thickness_reduction)
+                                        }
+                                        Accessible.name: text
+                                        Accessible.description: "默认开启，仅用于统一混合搜索；冻结到当前任务，在原预算内尝试，不放宽任何目标或制造约束。"
+                                    }
+                                    CheckBox {
+                                        objectName: "filmSynthesisRandomizeTemplateSearchField"
+                                        text: "随机化模板搜索"
+                                        checked: window.controller.synthesisOptions.randomize_template_search ?? false
+                                        onToggled: {
+                                            if (!window.controller.setSynthesisOption("randomize_template_search", checked))
+                                                checked = Qt.binding(() => window.controller.synthesisOptions.randomize_template_search ?? false)
+                                        }
+                                        Accessible.name: text
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Label { text: "模板搜索种子"; Layout.preferredWidth: 155 }
+                                        ThemeControls.ThemeField {
+                                            objectName: "filmSynthesisStructureSearchSeedField"
+                                            Layout.fillWidth: true
+                                            text: window.controller.synthesisStructureSearchSeedText
+                                            placeholderText: "留空自动"
+                                            enabled: window.controller.synthesisOptions.randomize_template_search ?? false
+                                            accessibleLabel: "模板搜索种子，留空自动"
+                                            accessibleDescription: "十进制整数 0 至 4294967295；关闭随机化时保留输入，正式冻结任务时生成自动种子。"
+                                            inputMethodHints: Qt.ImhDigitsOnly
+                                            onTextEdited: window.controller.setSynthesisStructureSearchSeedText(text)
+                                            onAccepted: window.controller.finishSynthesisStructureSearchSeedEdit()
+                                            onEditingFinished: window.controller.finishSynthesisStructureSearchSeedEdit()
+                                        }
+                                    }
+                                    Label {
+                                        objectName: "filmSynthesisStructureSearchSeedError"
+                                        Layout.fillWidth: true
+                                        visible: window.controller.synthesisStructureSearchSeedError.length > 0
+                                        text: window.controller.synthesisStructureSearchSeedError
+                                        color: window.themeTokens.colorText
+                                        wrapMode: Text.WordWrap
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Label { text: "实际种子"; Layout.preferredWidth: 155 }
+                                        ThemeControls.ThemeField {
+                                            objectName: "filmSynthesisActualStructureSearchSeedField"
+                                            Layout.fillWidth: true
+                                            readOnly: true
+                                            text: window.controller.synthesisActualStructureSearchSeedText
+                                            placeholderText: "任务冻结后显示"
+                                            accessibleLabel: "模板搜索实际种子"
+                                        }
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        visible: (window.controller.synthesisOptions.search_strategy ?? "hybrid") === "hybrid"
+                                        Label { text: "独立候选逻辑批次"; Layout.preferredWidth: 155 }
+                                        ThemeControls.ThemeField {
+                                            objectName: "filmSynthesisParallelBatchSizeField"
+                                            Layout.fillWidth: true
+                                            accessibleLabel: "独立候选逻辑批次，留空自动"
+                                            placeholderText: "自动（冻结时按请求进程和可用CPU）"
+                                            preserveNumericDisplayText: true
+                                            numericDisplayValue: window.controller.synthesisOptions.parallel_batch_size ?? ""
+                                            function commitDraft() {
+                                                if (!numericValueEdited) return
+                                                const value = numericEditText
+                                                numericValueEdited = false
+                                                window.controller.setSynthesisOption("parallel_batch_size", value)
+                                            }
+                                            onAccepted: commitDraft()
+                                            onEditingFinished: commitDraft()
+                                        }
+                                    }
+                                    Label {
+                                        Layout.fillWidth: true
+                                        visible: (window.controller.synthesisOptions.search_strategy ?? "hybrid") === "hybrid"
+                                        text: "逻辑批次不是并发保证。实际进程仍由请求、候选数、原预算与内存准入决定；独立候选和解析针扫可多核，联合厚度精修与采纳保持串行。"
+                                        color: window.themeTokens.colorTextMuted
+                                        wrapMode: Text.WordWrap
+                                    }
+                                    CheckBox {
+                                        objectName: "filmSynthesisNeedlePreLocalField"
+                                        text: "每次针扫描前先局部精修当前工作分支"
+                                        checked: window.controller.synthesisOptions.needle_pre_local ?? true
+                                        onToggled: window.controller.setSynthesisOption("needle_pre_local", checked)
+                                    }
+                                    Repeater {
+                                        model: [{key: "needle_batch_size", label: "一次最大针根数", fallback: 6},
+                                                {key: "needle_position_refinement_rounds", label: "针位置低谷细化轮数", fallback: 1},
+                                                {key: "archive_capacity", label: "共享候选档案容量", fallback: 32}]
+                                        delegate: RowLayout {
+                                            required property var modelData
+                                            Layout.fillWidth: true
+                                            Label { text: parent.modelData.label; color: window.themeTokens.colorText; Layout.preferredWidth: 155 }
+                                            ThemeControls.ThemeField {
+                                                Layout.fillWidth: true
+                                                text: String(window.controller.synthesisOptions[parent.modelData.key] ?? parent.modelData.fallback)
+                                                accessibleLabel: parent.modelData.label
+                                                onEditingFinished: window.controller.setSynthesisOption(parent.modelData.key, text)
+                                            }
+                                        }
+                                    }
+                                    ThemeControls.ThemeComboBox {
+                                        id: synthesisResourceGuardMode
+                                        objectName: "filmSynthesisResourceGuardModeBox"
+                                        Layout.fillWidth: true
+                                        readonly property var requestedBytes: window.controller.synthesisOptions.max_working_set_bytes
+                                        // QVariantMap null is exposed as undefined; key presence
+                                        // distinguishes explicit off from an omitted auto default.
+                                        readonly property bool hasConfiguredBytes: Object.prototype.hasOwnProperty.call(
+                                            window.controller.synthesisOptions, "max_working_set_bytes")
+                                        readonly property var configuredBytes: hasConfiguredBytes ? requestedBytes : 0
+                                        property double lastManualBytes: 1610612736
+                                        model: [{id: "auto", label: "数值护栏：自动，冻结时可用内存的50%"},
+                                                {id: "manual", label: "数值护栏：显式字节限额"},
+                                                {id: "off", label: "数值护栏：关闭估计检查，仍受系统资源限制"}]
+                                        textRole: "label"
+                                        readonly property int configuredModeIndex: hasConfiguredBytes && requestedBytes == null ? 2 : configuredBytes === 0 ? 0 : 1
+                                        currentIndex: configuredModeIndex
+                                        onConfiguredBytesChanged: if (configuredBytes > 0) lastManualBytes = configuredBytes
+                                        onActivated: function(index) {
+                                            window.controller.setSynthesisOption("max_working_set_bytes",
+                                                index === 0 ? 0 : index === 2 ? null : lastManualBytes)
+                                            // A pending edit in another field can refuse this
+                                            // operation. Never display a policy not committed
+                                            // by the controller; restore its live binding.
+                                            currentIndex = Qt.binding(function() {
+                                                return synthesisResourceGuardMode.configuredModeIndex
+                                            })
+                                        }
+                                    }
+                                    RowLayout {
+                                        visible: synthesisResourceGuardMode.currentIndex === 1
+                                        Layout.fillWidth: true
+                                        Label {
+                                            text: "显式工作集限额 bytes"
+                                            color: window.themeTokens.colorText
+                                            Layout.preferredWidth: 155
+                                        }
+                                        ThemeControls.ThemeField {
+                                            objectName: "filmSynthesisResourceGuardBytesField"
+                                            Layout.fillWidth: true
+                                            text: String(synthesisResourceGuardMode.configuredBytes ?? "")
+                                            accessibleLabel: "数值工作集显式限额（字节，0为自动，清空为关闭）"
+                                            inputMethodHints: Qt.ImhDigitsOnly
+                                            onEditingFinished: window.controller.setSynthesisOption("max_working_set_bytes", text)
+                                        }
+                                    }
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: "严格验收始终使用原始全部约束。护栏默认自动，0=自动、正整数=显式字节限额、关闭保存为null；可用内存未知时透明回退1.5GiB。它是阶段数值估计，不是层数上限或进程硬内存保证；超限会记录未执行阶段，不冒充收敛。冻结请求保存实际限额，重放不重新测量。"
+                                        color: window.themeTokens.colorTextMuted
+                                        wrapMode: Text.WordWrap
                                     }
                                     Repeater {
                                         model: [

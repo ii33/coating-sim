@@ -34,6 +34,7 @@ from coat_sim.core.film_optimization import (
 )
 from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint, FilmObjectiveCoverage, validate_objective_criteria
 from coat_sim.core.film_optimization_preview import create_optimization_preview_handoff
+from coat_sim.core.film_synthesis_defaults import ASSUME_UNKNOWN_K_ZERO
 from coat_sim.core.film_optimization_job import CANDIDATE_KIND, RESULT_KIND, CONTRACT_VERSION, deserialize_request
 from coat_sim.scheduler import SchedulerClient, freeze_spec
 from coat_sim.scheduler.desktop import (
@@ -50,7 +51,6 @@ from coat_sim.ui.film_synthesis_quick_adapter import (
 )
 from coat_sim.ui.film_synthesis_forward_probe import FilmSynthesisForwardProbe
 from coat_sim.ui.film_sensitivity_quick_controller import FilmSensitivityQuickController, parse_table_configuration
-from coat_sim.ui.film_objective_progress_editor import ObjectiveProgressDraft, PROGRESS_FIELD_LABELS
 from coat_sim.ui.film_optimization_run_coordinator import (
     FilmOptimizationRunCoordinator,
     FilmOptimizationRunPreparationError,
@@ -1154,9 +1154,6 @@ class FilmOptimizationQuickController(QObject):
         self._synthesis_options.update(randomize_template_search=False, structure_search_seed=None)
         self._synthesis_structure_search_seed_text = ""
         self._synthesis_structure_search_seed_error = ""
-        self._synthesis_progress_draft = ObjectiveProgressDraft()
-        self._synthesis_progress_error = ""
-        self._synthesis_progress_edit_dirty = False
         self._synthesis_actual_structure_search_seed: int | None = None
         self._synthesis_cpu_workers = 0
         self._synthesis_forward_backend = "cpu"
@@ -1165,7 +1162,10 @@ class FilmOptimizationQuickController(QObject):
         self._synthesis_forward_probe.changed.connect(self.changed.emit)
         self._synthesis_forward_probe.finished.connect(self._on_synthesis_forward_probe_finished)
         self._synthesis_use_current_seed = False
-        self._synthesis_assume_unknown_k_zero = False
+        self._synthesis_assume_unknown_k_zero = ASSUME_UNKNOWN_K_ZERO
+        self._synthesis_substrate_reference: dict[str, str] | None = None
+        self._synthesis_substrate_catalog: list[dict] = []
+        self._synthesis_substrate_error = ""
         self._synthesis_material_rows: list[dict[str, str]] = []
         self._synthesis_rows_initialized = False
         self._synthesis_material_catalog_revision = 0
@@ -1658,7 +1658,6 @@ class FilmOptimizationQuickController(QObject):
         """Return JSON-only editor state; commit an angle draft or reject export."""
         if self._search_mode == "synthesis":
             synthesis_structure_search_seed(self._synthesis_structure_search_seed_text)
-        progress_policy = self._synthesis_progress_draft.policy_payload()
         if not self._commit_pending_angle_draft():
             raise ValueError(self._error or "请先完成角度输入")
         if self._pending_edit_error or self._objective_bounds_pending():
@@ -1679,13 +1678,13 @@ class FilmOptimizationQuickController(QObject):
                 "multistart_count": self._multistart_count,
                 "population_size": self._population_size,
             },
-            "synthesis": {"options": {**self._synthesis_options, "objective_progress_policy": progress_policy},
-                          "objective_progress_editor": self._synthesis_progress_draft.to_configuration(),
+            "synthesis": {"options": deepcopy(self._synthesis_options),
                           "cpu_workers": self._synthesis_cpu_workers,
                           "forward_backend": self._synthesis_forward_backend,
                           "forward_device": deepcopy(self._synthesis_forward_device),
                           "use_current_seed": self._synthesis_use_current_seed,
                           "assume_unknown_k_zero": self._synthesis_assume_unknown_k_zero,
+                          "substrate_reference": deepcopy(self._synthesis_substrate_reference),
                           "material_rows": deepcopy(self._synthesis_material_rows),
                           **({'search_reference': deepcopy(self._synthesis_search_reference)}
                              if self._synthesis_search_reference is not None else {})},
@@ -1889,16 +1888,26 @@ class FilmOptimizationQuickController(QObject):
                     ",".join(str(value) for value in structure[name]), name,
                     maximum=1.0e6, allow_fraction=name == "growth_phase_fractions")
             synthesis_config = configuration.get("synthesis", {})
+            if isinstance(synthesis_config, dict):
+                # Retired UI data is not an executable policy. Preserve every
+                # unrelated explicit setting without rewriting the saved source.
+                synthesis_config = deepcopy(synthesis_config)
+                retired = "objective_progress_editor" in synthesis_config
+                synthesis_config.pop("objective_progress_editor", None)
+                saved_options = synthesis_config.get("options")
+                if isinstance(saved_options, dict) and "objective_progress_policy" in saved_options:
+                    retired = True
+                    saved_options.pop("objective_progress_policy")
+                if retired:
+                    restore_notice += "保存配置中的目标进展交接已移除；其余显式设置已恢复。"
             if not isinstance(synthesis_config, dict) or set(synthesis_config) - {
                     "options", "cpu_workers", "forward_backend", "forward_device",
-                    "use_current_seed", "material_rows", "assume_unknown_k_zero", "objective_progress_editor", "search_reference"}:
+                    "use_current_seed", "material_rows", "assume_unknown_k_zero", "search_reference", "substrate_reference"}:
                 raise ValueError("Invalid synthesis configuration")
             incoming_search = deepcopy(synthesis_config.get('search_reference'))
             if incoming_search is not None and not isinstance(incoming_search, dict):
                 raise ValueError('结构搜索进度引用损坏；请从原任务历史恢复。')
             synthesis_values = synthesis_options(synthesis_config.get("options", {}))
-            progress_draft = ObjectiveProgressDraft.from_configuration(
-                synthesis_config.get("objective_progress_editor"), synthesis_values["objective_progress_policy"])
             synthesis_values.setdefault("randomize_template_search", False)
             synthesis_values.setdefault("structure_search_seed", None)
             synthesis_workers = synthesis_cpu_workers(synthesis_config.get("cpu_workers", 0))
@@ -1912,7 +1921,12 @@ class FilmOptimizationQuickController(QObject):
             if synthesis_forward_backend != "cpu" and synthesis_forward_device is None:
                 raise ValueError("Saved GPU forward selection has no verified device binding")
             synthesis_seed = synthesis_config.get("use_current_seed", False)
-            synthesis_assumption = synthesis_config.get("assume_unknown_k_zero", False)
+            synthesis_assumption = synthesis_config.get("assume_unknown_k_zero", ASSUME_UNKNOWN_K_ZERO)
+            synthesis_substrate = synthesis_config.get("substrate_reference")
+            if synthesis_substrate is not None and (not isinstance(synthesis_substrate, dict)
+                    or set(synthesis_substrate) != {"material_id", "optical_set_id"}
+                    or any(not isinstance(value, str) or not value for value in synthesis_substrate.values())):
+                raise ValueError("合成基片须为明确的材料和光学数据集引用")
             if type(synthesis_assumption) is not bool:
                 raise ValueError("未知 k 按 0 假设必须为明确的开关")
             if type(synthesis_seed) is not bool:
@@ -1983,14 +1997,12 @@ class FilmOptimizationQuickController(QObject):
             search_seed = synthesis_values["structure_search_seed"]
             self._synthesis_structure_search_seed_text = "" if search_seed is None else str(search_seed)
             self._synthesis_structure_search_seed_error = ""
-            self._synthesis_progress_draft = progress_draft
-            self._synthesis_progress_error = ""
-            self._synthesis_progress_edit_dirty = False
             self._synthesis_actual_structure_search_seed = None
             self._synthesis_cpu_workers = synthesis_workers
             self._synthesis_forward_backend = synthesis_forward_backend
             self._synthesis_forward_device = deepcopy(synthesis_forward_device)
             self._synthesis_assume_unknown_k_zero = synthesis_assumption
+            self._synthesis_substrate_reference = deepcopy(synthesis_substrate)
             self._synthesis_material_rows = synthesis_rows
             self._synthesis_rows_initialized = True
             current_search = self._synthesis_search_reference
@@ -2432,6 +2444,14 @@ class FilmOptimizationQuickController(QObject):
             rows = []
             self._structure_material_error = f"{type(exc).__name__}: {exc}"
         self._structure_material_options = rows
+        if self._search_mode == "synthesis":
+            try:
+                self._synthesis_substrate_catalog = deepcopy(
+                    cast(_SynthesisMaterialService, self.service).material_options("substrate"))
+                self._synthesis_substrate_error = ""
+            except (OSError, ValueError, TypeError) as exc:
+                self._synthesis_substrate_catalog = []
+                self._synthesis_substrate_error = f"基片目录读取失败：{exc}"
         if not self._synthesis_rows_initialized and any(row.get("selected") for row in rows):
             self._synthesis_material_rows = [{"id": uuid4().hex, "material_id": row["material_id"],
                 "optical_set_id": row["optical_set_id"]} for row in rows if row.get("selected")]
@@ -3359,10 +3379,6 @@ class FilmOptimizationQuickController(QObject):
     def _active_configuration_error(self, *, require_thickness_bounds: bool = True) -> str:
         if self._configuration_load_error:
             return self._configuration_load_error
-        try:
-            self._synthesis_progress_draft.policy_payload()
-        except ValueError as exc:
-            return str(exc)
         if any(row.get("angle_sampling_mode") != "range" for row in self._objectives):
             return "目标含显式角度配置；请逐个重新确认角度范围与精度，原角度未自动更改。"
         for row in self._objectives:
@@ -4361,6 +4377,57 @@ class FilmOptimizationQuickController(QObject):
             seen.add(pair)
         return ""
 
+    def _synthesis_substrate(self) -> dict:
+        catalog = self._synthesis_substrate_catalog
+        reference = self._synthesis_substrate_reference or {
+            key: self._design.get("substrate", {}).get(key, "")
+            for key in ("material_id", "optical_set_id")}
+        material = next((row for row in catalog if row["id"] == reference["material_id"]), None)
+        optical = [] if material is None else material["optical_sets"]
+        available = any(row["id"] == reference["optical_set_id"] for row in optical)
+        return {**reference, "material_options": [{"id": row["id"], "name": row["name"]} for row in catalog],
+                "optical_set_options": deepcopy(optical),
+                "error": self._synthesis_substrate_error or ("" if available else "请选择可用的合成基片材料与光学数据集")}
+
+    @Property(dict, notify=changed)
+    def synthesisSubstrate(self) -> dict:
+        return self._synthesis_substrate()
+
+    @Slot(str, result=bool)
+    def setSynthesisSubstrateMaterial(self, material_id: str) -> bool:
+        if self.busy or self._shutting_down or self._source_closed or self._pending_edit_error:
+            return False
+        material = next((row for row in self._synthesis_substrate_catalog if row["id"] == material_id), None)
+        if material is None or not material["optical_sets"]:
+            return False
+        self._synthesis_substrate_reference = {
+            "material_id": material_id, "optical_set_id": material["optical_sets"][0]["id"]}
+        self._invalidate_result()
+        return True
+
+    @Slot(str, result=bool)
+    def setSynthesisSubstrateOpticalSet(self, optical_set_id: str) -> bool:
+        if self.busy or self._shutting_down or self._source_closed or self._pending_edit_error:
+            return False
+        current = self._synthesis_substrate()
+        if not any(row["id"] == optical_set_id for row in current["optical_set_options"]):
+            return False
+        self._synthesis_substrate_reference = {
+            "material_id": current["material_id"], "optical_set_id": optical_set_id}
+        self._invalidate_result()
+        return True
+
+    @Slot(str, str, result=bool)
+    def setSynthesisSubstrateReference(self, material_id: str, optical_set_id: str) -> bool:
+        if self.busy or self._shutting_down or self._source_closed or self._pending_edit_error:
+            return False
+        if not any(row["id"] == material_id and any(optical["id"] == optical_set_id
+                   for optical in row["optical_sets"]) for row in self._synthesis_substrate_catalog):
+            return False
+        self._synthesis_substrate_reference = {"material_id": material_id, "optical_set_id": optical_set_id}
+        self._invalidate_result()
+        return True
+
     @Property(list, notify=changed)
     def synthesisMaterialRows(self):
         materials = self._synthesis_material_catalog()
@@ -4433,6 +4500,18 @@ class FilmOptimizationQuickController(QObject):
         self._synthesis_rows_changed()
         return True
 
+    @Slot(str, str, str, result=bool)
+    def setSynthesisRowReference(self, row_id: str, material_id: str, optical_set_id: str) -> bool:
+        if self.busy or self._shutting_down or self._source_closed or self._pending_edit_error:
+            return False
+        row = next((item for item in self._synthesis_material_rows if item["id"] == row_id), None)
+        if row is None or not any(item["material_id"] == material_id and item["optical_set_id"] == optical_set_id
+                                  for item in self._structure_material_options):
+            return False
+        row.update(material_id=material_id, optical_set_id=optical_set_id)
+        self._synthesis_rows_changed()
+        return True
+
     @Slot(str, str, result=bool)
     def setSynthesisRowOpticalSet(self, row_id: str, optical_set_id: str) -> bool:
         if self._busy or self._shutting_down or self._pending_edit_error:
@@ -4451,9 +4530,10 @@ class FilmOptimizationQuickController(QObject):
 
     @Slot(result=bool)
     def refreshSynthesisMaterials(self) -> bool:
-        if self._busy or self._shutting_down or self._search_mode != "synthesis" or not self._project_current():
+        if self.busy or self._shutting_down or self._source_closed or self._search_mode != "synthesis":
             return False
-        before, error = deepcopy(self._structure_material_options), self._structure_material_error
+        before = (deepcopy(self._structure_material_options), self._structure_material_error,
+                  deepcopy(self._synthesis_substrate_catalog), self._synthesis_substrate_error)
         refresher = getattr(self.service, "refresh_materials", None)
         try:
             if callable(refresher):
@@ -4461,24 +4541,30 @@ class FilmOptimizationQuickController(QObject):
             self._refresh_structure_material_options(preserve_selection=True)
         except (ValueError, OSError) as exc:
             self._structure_material_error = str(exc)
-        if before != self._structure_material_options or error != self._structure_material_error:
+        if before != (self._structure_material_options, self._structure_material_error,
+                      self._synthesis_substrate_catalog, self._synthesis_substrate_error):
             self._synthesis_material_catalog_revision += 1
             self.changed.emit()
-        return not self._structure_material_error
+        return not (self._structure_material_error or self._synthesis_substrate_error)
 
     def _build_synthesis_request(self, *, prepared_angles=None):
         synthesis_structure_search_seed(self._synthesis_structure_search_seed_text)
-        progress_policy = self._synthesis_progress_draft.policy_payload()
         from coat_sim.core.film_optimization_needle import FilmNeedleMaterialReference
         base = self._build_request(require_variables=False, fixed_topology=False,
                                    prepared_angles=prepared_angles)
+        substrate = self._synthesis_substrate()
+        if substrate["error"]:
+            raise ValueError(substrate["error"])
+        design = deepcopy(dict(base.design_snapshot))
+        design["substrate"].update({key: substrate[key] for key in ("material_id", "optical_set_id")})
+        base = replace(base, design_snapshot=design)
         error = self._synthesis_material_rows_error()
         if error:
             raise ValueError(error)
         refs = tuple(FilmNeedleMaterialReference(r["material_id"], r["optical_set_id"])
                      for r in self._synthesis_material_rows)
         return build_synthesis_request(base, refs,
-                                       {**self._synthesis_options, "objective_progress_policy": progress_policy},
+                                       self._synthesis_options,
                                        self._synthesis_use_current_seed,
                                        self._synthesis_assume_unknown_k_zero,
                                        cpu_workers=self._synthesis_cpu_workers,
@@ -4486,13 +4572,6 @@ class FilmOptimizationQuickController(QObject):
                                        forward_device=self._synthesis_forward_device)
 
     def _synthesis_configuration_error(self):
-        try:
-            self._synthesis_progress_draft.policy_payload()
-        except ValueError as exc:
-            return str(exc)
-        if (self._synthesis_progress_draft.enabled
-                and self._synthesis_options.get("search_strategy", "hybrid") != "hybrid"):
-            return "目标进展交接仅支持统一混合搜索；请关闭该实验开关或切回统一混合。"
         if self._synthesis_structure_search_seed_error:
             return self._synthesis_structure_search_seed_error
         if self._pending_edit_error:
@@ -4502,6 +4581,8 @@ class FilmOptimizationQuickController(QObject):
         material_error = self._synthesis_material_rows_error()
         if material_error:
             return material_error
+        if self._synthesis_substrate()["error"]:
+            return self._synthesis_substrate()["error"]
         if self._design.get("substrate", {}).get("sides") != "single" or self._design.get("first_surface") != "front":
             return "从零合成目前仅支持单面、前表面入射"
         if not self._design.get("use_k"):
@@ -4529,83 +4610,6 @@ class FilmOptimizationQuickController(QObject):
     @Property(dict, notify=changed)
     def synthesisOptions(self):
         return dict(self._synthesis_options)
-
-    @Property(bool, notify=changed)
-    def synthesisProgressPolicyEnabled(self) -> bool:
-        return self._synthesis_progress_draft.enabled
-
-    @Property(dict, notify=changed)
-    def synthesisProgressPolicyDrafts(self) -> dict:
-        return dict(self._synthesis_progress_draft.texts)
-
-    @Property(str, notify=changed)
-    def synthesisProgressPolicyError(self) -> str:
-        return self._synthesis_progress_error
-
-    def _invalidate_progress_draft(self, *, persist: bool) -> None:
-        # Keystrokes invalidate a previous attempt but do not run validation or
-        # try to persist an unfinished enabled policy as its last valid values.
-        loading = self._configuration_loading
-        if not loading:
-            self._configuration_load_error = ""
-        self._configuration_loading = loading or not persist
-        try:
-            self._invalidate_result()
-        finally:
-            self._configuration_loading = loading
-
-    @Slot(bool, result=bool)
-    def setSynthesisProgressPolicyEnabled(self, enabled: bool) -> bool:
-        if self.busy or self._shutting_down or type(enabled) is not bool:
-            return False
-        self._synthesis_progress_draft.enabled = enabled
-        self._synthesis_progress_edit_dirty = True
-        if self._error == self._synthesis_progress_error:
-            self._error = ""
-        self._synthesis_progress_error = ""
-        # Enabling never inserts a threshold. Blank fields keep start disabled.
-        try:
-            self._synthesis_options["objective_progress_policy"] = self._synthesis_progress_draft.policy_payload()
-            valid = True
-        except ValueError:
-            self._synthesis_options["objective_progress_policy"] = None
-            valid = False
-        self._invalidate_progress_draft(persist=valid)
-        if valid:
-            self._synthesis_progress_edit_dirty = False
-        return True
-
-    @Slot(str, str, result=bool)
-    def setSynthesisProgressPolicyText(self, name: str, text: str) -> bool:
-        if (self.busy or self._shutting_down or not self._synthesis_progress_draft.enabled
-                or name not in PROGRESS_FIELD_LABELS):
-            return False
-        self._synthesis_progress_draft.texts[name] = text
-        self._synthesis_progress_edit_dirty = True
-        self._synthesis_options["objective_progress_policy"] = None
-        self._invalidate_progress_draft(persist=False)
-        return True
-
-    @Slot(result=bool)
-    def finishSynthesisProgressPolicyEdit(self) -> bool:
-        if self.busy or self._shutting_down:
-            return False
-        if not self._synthesis_progress_edit_dirty and not self._synthesis_progress_error:
-            return True
-        try:
-            policy = self._synthesis_progress_draft.policy_payload()
-        except ValueError as exc:
-            self._synthesis_progress_error = str(exc)
-            self._error = str(exc)
-            self.changed.emit()
-            return False
-        self._synthesis_options["objective_progress_policy"] = policy
-        self._synthesis_progress_error = self._error = ""
-        self._synthesis_progress_edit_dirty = False
-        self._configuration_load_error = ""
-        self._persist_configuration()
-        self.changed.emit()
-        return True
 
     @Property(str, notify=changed)
     def synthesisStructureSearchSeedText(self) -> str:
@@ -4810,10 +4814,6 @@ class FilmOptimizationQuickController(QObject):
             return False
         self._clear_pending_edit_error("synthesis:" + name)
         self._synthesis_options = values
-        if name == "objective_progress_policy":
-            self._synthesis_progress_draft = ObjectiveProgressDraft.from_configuration(None, values[name])
-            self._synthesis_progress_error = ""
-            self._synthesis_progress_edit_dirty = False
         if name == "structure_search_seed":
             seed = values[name]
             self._synthesis_structure_search_seed_text = "" if seed is None else str(seed)
@@ -7108,8 +7108,6 @@ class FilmOptimizationQuickController(QObject):
     def requestClose(self) -> None:
         if self._manufacturing_controller is not None and self._manufacturing_controller.busy:
             self._manufacturing_controller.requestClose()
-        if not self.busy and not self.finishSynthesisProgressPolicyEdit():
-            return
         if (not self._busy and self._search_mode == "synthesis"
                 and self._synthesis_structure_search_seed_error):
             self.finishSynthesisStructureSearchSeedEdit()

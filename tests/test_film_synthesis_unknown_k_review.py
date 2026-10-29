@@ -232,6 +232,8 @@ def unknown_k_gui(tmp_path):
 def test_native_unknown_k_checkbox_starts_real_ZnS_and_off_restores_strict(unknown_k_gui, tmp_path):
     gui, library, original_record = unknown_k_gui
     service, source, controller, scene = _open_optimizer(gui)
+    assert controller.synthesisAssumeUnknownKZero is True
+    assert controller.setSynthesisAssumeUnknownKZero(False)  # Explicit strict start; new default is covered separately.
     scene.click(scene.item("filmOptimizationTargetsTab"))
     for name, value in (("WavelengthMax", "900"), ("WavelengthMin", "600"),
                         ("WavelengthStep", "100"), ("UpperBound", "100"), ("Tolerance", "0.1")):

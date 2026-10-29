@@ -542,6 +542,9 @@ def test_qml_n0_grows_real_single_layer_and_freezes_current_targets_and_material
 
 def test_qml_real_queue_heartbeat_then_cancel_retains_audited_candidate_facts(gui, monkeypatch):
     service, source, controller, scene = _optimizer(gui)
+    # This case is about cancel ownership, not unknown-k policy; its materials
+    # have known k, so keep the source's strict assumption unchanged.
+    assert controller.setSynthesisAssumeUnknownKZero(False)
     # A synthesis candidate carries a blanked physics expression, but applying
     # it must not discard expression-symbol definitions owned by the source.
     symbol_id = source._symbol_stable_ids['H']
@@ -857,6 +860,9 @@ def test_project_qml_synthesis_new_material_closure_survives_save_or_drift_undo(
 def test_project_close_reopen_rejects_old_synthesis_and_physical_preview(project_gui):
     harness, host, workspace, store, _library, saved = project_gui
     _service, source, controller, scene = _optimizer(harness)
+    # The optical fixture has known k. Exercise project-generation fencing
+    # without the new unknown-k=0 policy blocking the physical preview setup.
+    assert controller.setSynthesisAssumeUnknownKZero(False)
     scene.click(scene.item("filmOptimizationStartButton"))
     _wait(lambda: bool(controller.queueJobId))
     _wait(lambda: not controller.busy, seconds=30.)

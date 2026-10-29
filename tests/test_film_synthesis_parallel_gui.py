@@ -93,7 +93,7 @@ def test_json_and_typed_job_roundtrip_preserve_inner_worker_request(app, tmp_pat
         assert controller.setSynthesisCpuWorkers("2")
         request = freeze_film_synthesis_request(service, controller._build_synthesis_request())
         payload = film_synthesis_request_to_payload("parallel-roundtrip", request)
-        assert payload["schema_version"] == 5
+        assert payload["schema_version"] == 6
         _, parsed, _ = film_synthesis_request_from_payload(payload)
         assert parsed.cpu_workers == 2
         assert parsed == request
@@ -169,36 +169,3 @@ def test_checkpoint_performance_is_historical_and_missing_counters_stay_unknown(
     assert legacy["active_worker_pids"] == []
     assert legacy["submitted_tasks"] is None
     assert "submitted_tasks" in legacy["unknown_fields"]
-
-
-def test_objective_progress_policy_persists_as_json_then_freezes_typed(app, tmp_path):
-    import json
-    from dataclasses import asdict
-    from coat_sim.core.film_synthesis_progress import HybridProgressPolicy
-    service, _library, design = fixture(tmp_path)
-    design['front_layers'] = []
-    with optimizer(service, design) as (controller, _source, _session):
-        assert controller.setSearchMode('synthesis')
-        _select_material(controller)
-        original = controller.exportOptimizationConfiguration()
-        assert original['synthesis']['options']['objective_progress_policy'] is None
-        policy = HybridProgressPolicy(16, .001, .001, 2)
-        configured = deepcopy(original)
-        configured['synthesis']['options']['objective_progress_policy'] = asdict(policy)
-        # The explicit editor is authoritative too: changing the frozen policy
-        # alone must not silently override a saved disabled switch or its drafts.
-        assert not controller.loadOptimizationConfiguration(configured)
-        assert controller.exportOptimizationConfiguration() == original
-        configured['synthesis']['objective_progress_editor'] = {
-            'enabled': True,
-            'fields': {name: str(value) for name, value in asdict(policy).items()},
-        }
-        assert controller.loadOptimizationConfiguration(configured), controller.error
-        saved = json.loads(json.dumps(controller.exportOptimizationConfiguration()))
-        assert saved['synthesis']['options']['objective_progress_policy'] == asdict(policy)
-        assert saved['synthesis']['objective_progress_editor'] == configured['synthesis']['objective_progress_editor']
-        assert controller.loadOptimizationConfiguration(saved), controller.error
-        assert controller._build_synthesis_request().objective_progress_policy == policy
-        assert controller.loadOptimizationConfiguration(original)
-        assert controller.exportOptimizationConfiguration() == original
-        assert controller._build_synthesis_request().objective_progress_policy is None

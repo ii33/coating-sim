@@ -46,6 +46,42 @@ def optimizer(live):
     return value
 
 
+def test_synthesis_substrate_change_invalidates_registered_snapshot_without_editing_source(live):
+    from tests.test_project_film_service import bound_design, material
+
+    design = bound_design()
+    design.pop("workflow_settings")
+    design["front_layers"] = [{"id": "film-current", "material_id": "shared", "optical_set_id": "visible",
+        "thickness": {"value": 100.0, "unit": "nm"}}]
+    record = material()
+    alternate = deepcopy(record["optical_sets"][0])
+    alternate.update(id="alternate-substrate", name="Alternate synthetic substrate", n=[1.8, 1.8])
+    record["optical_sets"].append(alternate)
+    saved = live.workspace.service.create_film(design, materials={"shared": record})
+    assert live.editor.request_load_saved_design(saved.document_id)
+    value = optimizer(live)
+    assert value.setSearchMode("synthesis")
+    source = deepcopy(live.editor.snapshot().design["substrate"])
+    before = snapshot(live, "film_optimization")
+    operation, stale = request(live, module="film_optimization", action="set_synthesis_option",
+        arguments={"name": "needle_pre_local", "value": False})
+
+    assert run(live, module="film_optimization", action="set_synthesis_substrate",
+        arguments={"material_id": "shared", "optical_set_id": "alternate-substrate"})["accepted"]
+    after = snapshot(live, "film_optimization")
+    assert after["snapshot_id"] != before["snapshot_id"]
+    submission = after["optimization"]["submission"]
+    assert submission["available"] and submission["executor"] == "film_synthesis"
+    assert submission["request"]["request"]["environment"]["substrate"]["optical_set_id"] == "alternate-substrate"
+    assert live.editor.snapshot().design["substrate"] == source
+    configuration = value.exportOptimizationConfiguration()
+    with pytest.raises(UiControlError) as error:
+        project_editor_operation(live.owner, live.session, "film_optimization", operation, stale,
+            client_generation=live.client.generation, bridge=live.bridge)
+    assert error.value.code == "stale_snapshot"
+    assert value.exportOptimizationConfiguration() == configuration
+
+
 def test_real_metadata_and_save_current_preserve_managed_owner(live, monkeypatch):
     monkeypatch.setattr(live.source, "requestNewDesign", lambda: pytest.fail("new"))
     monkeypatch.setattr(live.source, "requestOpenFile", lambda *_args: pytest.fail("replace"))

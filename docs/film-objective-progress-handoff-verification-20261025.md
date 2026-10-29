@@ -1,3 +1,5 @@
+> 历史验证记录：目标进展交接现已移除；下列命令/文件名仅记录当时证据，不是当前可执行功能。
+
 # Objective-progress handoff: isolated verification milestone
 
 Date: 2026-10-25. Exact implementation base:

@@ -565,13 +565,19 @@ class FilmDesignWindow(_FilmWindow):
         for side, label in (("front", "正面膜堆"), ("back", "背面膜堆")):
             table = QTableWidget(0, 7); table.setObjectName(side + "_layers_table")
             table.setHorizontalHeaderLabels(["材料", "光学常数组", "厚度", "单位", "层 ID", "QW", "物理厚度（nm）"])
+            # Keep the exact header wrapper created for this table instead of
+            # reacquiring it through QTableWidget.horizontalHeader() repeatedly.
+            # The table owns the header as a QObject child; the local wrapper
+            # remains strongly referenced for the full configuration below.
+            header = QHeaderView(Qt.Orientation.Horizontal, table)
+            table.setHorizontalHeader(header)
             for derived in (5, 6):
-                table.horizontalHeader().setSectionResizeMode(derived, QHeaderView.ResizeToContents)
+                header.setSectionResizeMode(derived, QHeaderView.ResizeMode.ResizeToContents)
             table.hideColumn(4)
-            table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-            table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-            table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-            table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
             for column, width in ((0, 130), (1, 170), (2, 100), (3, 64)): table.setColumnWidth(column, width)
             table.itemChanged.connect(self._changed)
             self.tables[side] = table; self.layer_tabs.addTab(table, label)
@@ -596,7 +602,9 @@ class FilmDesignWindow(_FilmWindow):
         body_layout.addLayout(row)
         self.symbols_table = QTableWidget(0, 5); self.symbols_table.setObjectName("expression_symbols")
         self.symbols_table.setHorizontalHeaderLabels(["符号 A–Z", "材料", "光学常数组", "厚度", "单位"])
-        self.symbols_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        symbols_header = QHeaderView(Qt.Orientation.Horizontal, self.symbols_table)
+        self.symbols_table.setHorizontalHeader(symbols_header)
+        symbols_header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.symbols_table.setMaximumHeight(135); self.symbols_table.itemChanged.connect(self._expression_changed)
         body_layout.addWidget(self.symbols_table)
         row = QHBoxLayout(); add_symbol = QPushButton("添加符号"); add_symbol.clicked.connect(self.add_symbol)

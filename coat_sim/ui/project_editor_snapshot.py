@@ -6,6 +6,7 @@ Native field buffers are not submitted: while they exist the read is unavailable
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import asdict
 from hashlib import sha256
 import json
 import math
@@ -140,6 +141,10 @@ def _material_refs(design: Mapping, configuration: Mapping | None) -> list[tuple
     rows.extend(design.get("expression", {}).get("symbols", {}).values())
     if configuration is not None:
         rows.extend(configuration.get("structure_materials", []))
+        synthesis = configuration.get("synthesis", {})
+        rows.extend(synthesis.get("material_rows", []))
+        if synthesis.get("substrate_reference") is not None:
+            rows.append(synthesis["substrate_reference"])
     return sorted({(str(row.get("material_id", "")), str(row.get("optical_set_id", "")))
                    for row in rows if isinstance(row, Mapping) and row.get("material_id")})
 
@@ -214,20 +219,30 @@ def _optimizer_state(controller: Any, editor: Any, snapshot: Any,
 
 
 def _optimization_submission(controller: Any) -> dict:
-    """Serialize the loaded window's exact fixed-topology request without editing it."""
-    if getattr(controller, "_search_mode", None) != "fixed_topology":
+    """Serialize current parameters without material I/O, computation or mutation."""
+    mode = getattr(controller, "_search_mode", None)
+    if mode not in {"fixed_topology", "synthesis"}:
         return {"available": False, "reason": "structure_mode_not_supported_by_film_tool"}
     if controller._requires_async_angle_preparation():
         return {"available": False, "reason": "angle_preparation_required"}
     try:
-        from coat_sim.core.film_optimization_job import serialize_request
-        request = serialize_request(controller._build_request())
+        if mode == "synthesis":
+            from coat_sim.core.film_synthesis_io import REQUEST_KIND, SCHEMA_VERSION
+            raw = asdict(controller._build_synthesis_request())
+            request = {"schema_version": SCHEMA_VERSION, "kind": REQUEST_KIND,
+                       "request_id": "current-window-" + sha256(_json(raw)).hexdigest()[:32],
+                       "request": raw, "physical_structures": []}
+        else:
+            from coat_sim.core.film_optimization_job import serialize_request
+            request = serialize_request(controller._build_request())
     except (TypeError, ValueError, OverflowError, KeyError) as exc:
         return {"available": False, "reason": "window_configuration_invalid",
                 "message": str(exc)[:MAX_TEXT]}
     if len(_json(request)) > MAX_RESPONSE_BYTES - 32 * 1024:
         return {"available": False, "reason": "request_response_budget_exceeded"}
-    return {"available": True, "source": "current_window", "request": request}
+    return {"available": True, "source": "current_window", "request": request,
+            "executor": "film_synthesis" if mode == "synthesis" else "film_optimization",
+            "requires_plan_freeze": mode == "synthesis"}
 
 
 def _simulation_state(controller: Any, editor: Any, snapshot: Any) -> tuple[dict | None, str | None]:
@@ -568,7 +583,7 @@ def project_editor_snapshot(launcher: Any, session: Any, module: str, arguments:
                 variable_count=len(configuration.get("variables", [])),
                 enabled_variable_count=sum(row.get("enabled") is True for row in configuration.get("variables", [])))
             result["optimization"]["settings"] = project.value({key: configuration.get(key) for key in
-                ("version", "solver", "search_mode", "structure_mode", "structure_options")})
+                ("version", "solver", "search_mode", "structure_mode", "structure_options", "synthesis")})
             result["optimization"]["structure_materials"] = project.page(configuration.get("structure_materials", []), offset, limit)
         result["simulation"] = {"available": simulation_reason is None,
                                  "source": "current_controller" if simulation_reason is None else None,

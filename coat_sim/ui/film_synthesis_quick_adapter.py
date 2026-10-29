@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import asdict, dataclass, replace
+from dataclasses import dataclass, replace
 import hashlib
 import json
 import math
@@ -15,7 +15,7 @@ from coat_sim.core.film_objective_criteria import FilmObjectiveCoverage
 from coat_sim.core.film_synthesis_io import film_synthesis_request_to_payload
 from coat_sim.core.film_synthesis_jobs import is_synthesis_result
 from coat_sim.core.film_synthesis_forward import validate_forward_device
-from coat_sim.core.film_synthesis_progress import progress_policy_from_payload
+from coat_sim.core.film_synthesis_defaults import NEEDLE_PRE_LOCAL, ASSUME_UNKNOWN_K_ZERO
 
 SYNTHESIS_DEFAULT_OPTIONS = dict.fromkeys(("max_cycles", "max_evaluations", "max_layers",
     "max_seconds", "minimum_nonzero_thickness_nm", "max_layer_thickness_nm",
@@ -25,9 +25,8 @@ SYNTHESIS_DEFAULT_OPTIONS = dict.fromkeys(("max_cycles", "max_evaluations", "max
 SYNTHESIS_SEARCH_DEFAULTS = {
     "search_strategy": "hybrid",
     "enable_thickness_reduction": True,
-    "objective_progress_policy": None,
     "archive_capacity": 32, "needle_batch_size": 6,
-    "needle_pre_local": False, "needle_position_refinement_rounds": 1,
+    "needle_pre_local": NEEDLE_PRE_LOCAL, "needle_position_refinement_rounds": 1,
     "max_working_set_bytes": 0,
     "parallel_batch_size": None,
     "randomize_template_search": False,
@@ -59,12 +58,8 @@ def synthesis_options(values: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("Unknown synthesis constraint")
     result = dict(SYNTHESIS_DEFAULT_OPTIONS,
                   enable_thickness_reduction=SYNTHESIS_SEARCH_DEFAULTS["enable_thickness_reduction"],
-                  objective_progress_policy=None)
+                  needle_pre_local=NEEDLE_PRE_LOCAL)
     for name, raw in values.items():
-        if name == "objective_progress_policy":
-            policy = progress_policy_from_payload(raw)
-            result[name] = None if policy is None else asdict(policy)
-            continue
         if name == "structure_search_seed":
             result[name] = synthesis_structure_search_seed(raw)
             continue
@@ -134,7 +129,7 @@ def synthesis_cpu_workers(value: Any) -> int:
 
 def build_synthesis_request(base: FilmOptimizationRequest, references, options,
                             use_current_seed: bool = False,
-                            assume_unknown_k_zero: bool = False,
+                            assume_unknown_k_zero: bool = ASSUME_UNKNOWN_K_ZERO,
                             cpu_workers: int = 1,
                             forward_backend: str = "cpu",
                             forward_device: Mapping[str, Any] | None = None) -> FilmSynthesisRequest:
@@ -148,7 +143,6 @@ def build_synthesis_request(base: FilmOptimizationRequest, references, options,
     # Preserve the actual physical environment; unsupported incidence/loss is
     # rejected by the core validator, never silently converted by the UI.
     parsed_options = synthesis_options(options)
-    parsed_options["objective_progress_policy"] = progress_policy_from_payload(parsed_options["objective_progress_policy"])
     if not parsed_options.get("randomize_template_search", False) and parsed_options.get("structure_search_seed") is None:
         parsed_options["structure_search_seed"] = 0
     return _validated(FilmSynthesisRequest(environment, base.objectives, tuple(references),

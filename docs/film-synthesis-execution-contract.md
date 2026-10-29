@@ -8,7 +8,7 @@ Updated: 2026-10-25
 
 This contract defines the GUI-independent execution boundary for producing candidate multilayer coating designs from a bare environment and from explicitly supplied physical-structure seed designs. It covers the frozen JSON request/result exchange used by the CLI and the existing persistent compute-job system. It does not apply a result to an open project or change a user design.
 
-The wire format is versioned JSON (`schema_version: 5`). Request parsing and validation are centralized in `coat_sim/core/film_synthesis_io.py`; the CLI in `coat_sim/film_synthesis_cli.py` is a transport adapter. The synthesis core remains the sole owner of algorithm state, incumbent score, stopping conditions, and final candidate. The execution adapter owns process signals, heartbeat timestamps, progress transport, and output file creation only.
+The current wire format is versioned JSON (`schema_version: 6`). Request parsing and validation are centralized in `coat_sim/core/film_synthesis_io.py`; the CLI in `coat_sim/film_synthesis_cli.py` is a transport adapter. The synthesis core remains the sole owner of algorithm state, incumbent score, stopping conditions, and final candidate. The execution adapter owns process signals, heartbeat timestamps, progress transport, and output file creation only.
 
 ## Request
 
@@ -82,9 +82,10 @@ preserves the boolean; formal freeze copies it into the immutable request.
 Changes after a run cannot mutate that run. CLI, MCP plan/submit, durable queue,
 result export/replay, and cloud-bundle execution preserve the same value.
 
-Synthesis request/result/job/checkpoint envelopes are now schema 5. Every frozen
-request field, including this boolean, is required. Schema 3 and earlier are
-rejected, not decoded, migrated, or silently upgraded. Existing unrelated
+Historical note (2026-10-24): at that update, synthesis request/result/job/checkpoint
+envelopes were schema 5. The current protocol is schema 6; every non-extension
+frozen request field is required, and non-current requests are rejected, not
+decoded, migrated, or silently upgraded. Existing unrelated
 optimization and editor configuration versions are unchanged. Archived research
 artifacts remain byte-for-byte historical evidence and cannot be replayed as
 current requests. Current tools must export a newly frozen request instead.
@@ -137,7 +138,7 @@ Completed current candidates require explicit session confirmation to apply. An 
 
 ## Explicit unknown-k approximation (2026-10-20)
 
-The existing typed design boolean `request.environment.assume_lossless` is the sole numerical policy. Its default remains false; `use_k` must remain true. True permits zero only when the original selected source has no k data; known nonzero k and its domain remain strict. Seed copies, frozen snapshot design, worker, independent audit, checkpoints, result and saved candidate preserve this same policy. Original material source records retain unknown k. Result `absorption_assumption` distinguishes the frozen pool/seed/environment affected references from `used_affected_materials` in the actual candidate, and labels acceptance as conditional on the assumption, never as measured absorption validation. The design schema/wire version is unchanged; malformed/non-boolean policy values fail. Details and lifecycle are in [the policy contract](film-synthesis-unknown-k-contract.md) and offline algorithms14v.
+Historical note (2026-10-20): the initial unknown-k policy default was false. Current from-zero synthesis UI/request templates default `environment.assume_lossless` to true and can be switched off; the typed boolean remains the sole numerical policy, and `use_k` must remain true. True permits zero only when the original selected source has no k data; known nonzero k and its domain remain strict. Seed copies, frozen snapshot design, worker, independent audit, checkpoints, result and saved candidate preserve this same policy. Original material source records retain unknown k. Result `absorption_assumption` distinguishes the frozen pool/seed/environment affected references from `used_affected_materials` in the actual candidate, and labels acceptance as conditional on the assumption, never as measured absorption validation. The design schema/wire version is unchanged; malformed/non-boolean policy values fail. Details and lifecycle are in [the policy contract](film-synthesis-unknown-k-contract.md) and offline algorithms14v.
 
 ## Audited checkpoint cost recovery (2026-10-20)
 
@@ -246,78 +247,16 @@ A live lazy structural iterator may pause between search slices. On every normal
 An initial completed candidate can beat every thickness-coordinate roundtrip by one ULP. Its original score, identity and exact-tie ranking remain unchanged. The internal minimax sentinel must not be exported as an observed `max_signed_violation`: use the retained candidate's existing complete responses, or `null` with `max_signed_violation_source` identifying unavailable responses without additional physical evaluation. Response-only statistics keep original objective/angle/grid/duplicate/finite-value checks; gradient optimization still requires all optimized layer Jacobians. Malformed nonempty responses fail validation rather than becoming unavailable. Strict JSON and the audited-checkpoint callback are unchanged. The real CLI heartbeat/cancel/checkpoint test retains all assertions and exercises the repaired serialization path.
 
 
-## Opt-in objective-progress handoff (2026-10-25, current schema 5)
+## 目标进展交接已移除（2026-10-28）
 
-Every current frozen request explicitly carries `objective_progress_policy`: `null`
-(default, unchanged scheduling) or an exact object with `accepted_window_steps`,
-`relative_sse_progress_floor`, `relative_worst_progress_floor`, and
-`stagnation_windows`. Step/window counts are positive integers; progress floors are
-finite nonnegative numbers. There are no implicit threshold defaults. This option
-is valid only for hybrid search. Version 4 and earlier envelopes are rejected with
-a version error, not migrated. GUI option persistence remains JSON data; the core
-owns the validated frozen `HybridProgressPolicy`. CLI, MCP, queue and checkpoint
-paths use this same current request contract. Historical benchmark inputs remain
-historical; a new experimental registration must name its source and explicit policy.
+当前请求 schema 6 不再包含该实验策略。旧冻结输入明确拒绝重建，不迁移历史文件。结构搜索 checkpoint、普通进度和继续搜索保持独立。
 
-This first slice observes only accepted iterates inside the main
-`joint_needle_sse_growth` refinement, not prior screening/pre-local refinement,
-line-search trials, deletion, or independent audit. A compact monitor stores
-canonical SSE, original maximum normalized violation, weighted RMS, the explicit
-original `nominal_pass`, physical identity and nm coordinates. It introduces no
-second score or optical evaluation. Non-overlapping windows use signed relative
-improvement `(old-new)/max(old,new)`, with an all-zero pair defined as zero. A
-window requests handoff when SSE improves beyond its declared floor but original
-worst violation does not; alternatively, neither improves for the declared number
-of windows. These are project scheduling conventions, not proofs of a stationary
-point, local minimum, infeasibility, or cross-target benefit. Solver `ftol`/`gtol`
-and original mean/pointwise goals remain unchanged; zero violation alone does not
-establish a strict nominal pass.
-
-Observed `accepted_samples` is not the optimizer's accepted-iteration count.
-The existing callback commits a matching complete endpoint before checking its
-slice. If that last admitted call already exhausts the local slice, the endpoint
-remains usable but is not observed by the monitor; no latent decision is inferred.
-A window with that missing final observation is inconclusive, not evidence of no
-stagnation. Conversely, once a decision is recorded, later local-slice expiry
-cannot undo it. Global cancellation, deadline, evaluation limit and observer
-exceptions still take priority.
-
-The refinement commits the complete trial through the existing archive and emits
-its accepted-iterate event before the decision. The parent verifies exact physical
-identity, then emits `objective_progress_handoff` with reason, baseline, trigger and
-window metrics. It skips further SSE, deletion and physical cleanup in that cycle,
-including normal-exit cleanup, and passes that exact accepted design to the existing
-full-original minimax only if shared admission permits. Candidate/evaluation counts,
-resource guard, final original audit, current/best displays and incumbent selection
-retain their existing owners. Cancellation/deadline wins; no new optics or return
-materialization is admitted after cancellation. A denied minimax admission retains
-already completed evidence, never claims a successful handoff optimization or a
-new audited result. Original strict champion and audited incumbent are not replaced
-by the SSE endpoint solely because it triggered routing.
-
-Exactly-zero thickness is legal in SSE probes but outside the native positive-bound
-minimax receiver. An accepted zero or incomplete accepted evidence resets the
-eligible window and stagnation streak. The next complete positive point becomes a
-new baseline; positive values within the native bound remain eligible without a manufacturing floor.
-Without a user lower bound, the native lower bound is float64 tiny (about
-2.225e-308 nm); smaller positive subnormals also reset the window.
-Mean and pointwise criteria stay independently enabled. Layer count is neither fixed
-nor minimized by this policy. Optional manufacturing repair is not implemented here.
-
-The acceptance harness compares policy-null and explicitly configured runs in the
-same source checkout, original material/optical grids and separate F/FJ ledgers.
-Its declared finite work/wall caps and any derived BOTH-goal fixtures are experimental
-protocol choices, not product defaults or a universal F/FJ equivalence. An untriggered
-or negative comparison must be reported as such before considering a default change.
-
-
-## Cancelled-candidate warm restart (2026-10-25, current schema 5)
+## Cancelled-candidate warm restart (2026-10-25; current schema 6)
 
 Every current frozen request explicitly includes `warm_start_seed_index`: `null`
 for unchanged bare-environment startup, or a non-boolean integer referencing an
 existing validated seed. The indicated geometry is the first freshly evaluated
 candidate, counted inside the new independent budget. No saved score, audit,
-solver population, Hessian or RNG state is restored. Version 4 and earlier
-envelopes are rejected, not migrated. Original frozen targets, materials and
+solver population, Hessian or RNG state is restored. Non-current envelopes (schema versions 1–5) are rejected, not migrated. Original frozen targets, materials and
 constraints remain exact. See [the continuation contract](film-optimization-continue-contract.md)
 and [algorithm 14ay](algorithms.html#film-cancel-warm-restart-20261025).

@@ -48,6 +48,7 @@ from coat_sim.core.appearance_compute import (APPEARANCE_TOOL_ARGUMENTS,
 from coat_sim.core.compute_tasks import ComputeTaskStore
 from coat_sim.core.mcp_contracts import (FILM_SYNTHESIS_ESTIMATE_INPUT_SCHEMA,
                                           FILM_SYNTHESIS_PLAN_INPUT_SCHEMA, FILM_SYNTHESIS_SUBMIT_INPUT_SCHEMA,
+                                          FILM_SYNTHESIS_CONTINUATION_INPUT_SCHEMA,
                                           FILM_IDEAL_SENSITIVITY_PLAN_INPUT_SCHEMA, FILM_IDEAL_SENSITIVITY_SUBMIT_INPUT_SCHEMA,
                                           FILM_ERROR_TABLE_PLAN_INPUT_SCHEMA, FILM_ERROR_TABLE_SUBMIT_INPUT_SCHEMA,
                                           ITO_ELECTRICAL_INPUT_SCHEMA,
@@ -120,6 +121,7 @@ class CapabilityMCPServer(MCPServer):
         schemas["estimate_compute_task"] = FILM_SYNTHESIS_ESTIMATE_INPUT_SCHEMA
         schemas["plan_film_synthesis"] = FILM_SYNTHESIS_PLAN_INPUT_SCHEMA
         schemas["submit_film_synthesis"] = FILM_SYNTHESIS_SUBMIT_INPUT_SCHEMA
+        schemas["plan_film_synthesis_continuation"] = FILM_SYNTHESIS_CONTINUATION_INPUT_SCHEMA
         schemas["plan_film_ideal_sensitivity"] = FILM_IDEAL_SENSITIVITY_PLAN_INPUT_SCHEMA
         schemas["submit_film_ideal_sensitivity"] = FILM_IDEAL_SENSITIVITY_SUBMIT_INPUT_SCHEMA
         schemas["plan_film_thickness_error_table"] = FILM_ERROR_TABLE_PLAN_INPUT_SCHEMA
@@ -1190,8 +1192,57 @@ def input_schema(kind: DesignKind | Literal["settings", "mask_optimization", "fi
 
 
 @mcp.tool()
+def film_synthesis_schema() -> dict[str, Any]:
+    """Read the current from-zero request template, units and execution boundary.
+
+    Fill the actual environment, objective bands and candidate material/dataset
+    IDs, then pass this envelope to plan_film_synthesis. No job is started.
+    """
+    from .film_synthesis_tools import request_template
+    from coat_sim.core.film_synthesis_defaults import ASSUME_UNKNOWN_K_ZERO
+    return {"template": request_template(), "input_schema": deepcopy(FILM_SYNTHESIS_PLAN_INPUT_SCHEMA),
+            "execution_project_root": str(service.root),
+            "required_inputs": ["request.environment", "request.objectives", "request.candidate_materials"],
+            "new_environment_defaults": {"assume_lossless": ASSUME_UNKNOWN_K_ZERO},
+            "units": {"thickness": "nm", "wavelength": "nm", "angle": "degree",
+                      "R_T_and_target_bounds": "fraction (0.004 = 0.4%)"},
+            "execution": "plan_film_synthesis -> estimate_compute_task(kind=film_synthesis) -> submit_film_synthesis; same product worker, original objectives and audit. Null run limits mean unlimited.",
+            "application": "Read/submit tools do not apply or save a design. Use native candidate review with source identity checks."}
+
+
+@mcp.tool()
+def film_synthesis_job(job_id: str) -> dict[str, Any]:
+    """Read exact synthesis progress, recorded best/audit identity and continuation readiness.
+
+    No optics replay, polling loop, implicit submission or candidate application.
+    """
+    from .film_synthesis_tools import read_job
+    try:
+        return read_job(service, job_id)
+    except (ServiceError, OSError, ValueError, TypeError, KeyError) as exc:
+        raise _error(exc) from exc
+
+
+@mcp.tool()
+def plan_film_synthesis_continuation(job_id: str, request_id: str,
+        limits: dict[str, Any] | None = None,
+        current_design: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Prepare a new run from a finished job's real saved structural frontier.
+
+    Omitted limits keep the source request's explicit values; a null limit is
+    unlimited. An optional compatible edited design becomes a freshly scored
+    seed. No saved optical scores/audits or solver iterates are resumed.
+    """
+    from .film_synthesis_tools import plan_continuation
+    try:
+        return plan_continuation(service, job_id, request_id, limits=limits, current_design=current_design)
+    except (ServiceError, OSError, ValueError, TypeError, KeyError) as exc:
+        raise _error(exc) from exc
+
+
+@mcp.tool()
 def plan_film_synthesis(payload: dict[str, Any]) -> dict[str, Any]:
-    """Read-only prepare a frozen synthesis request and physical-structure seeds for the CLI.
+    """Read-only freeze the same from-zero request for assistant queue or CLI.
 
     Returns a canonical CLI-ready request and construction metadata. It creates
     no job, estimate, file, design mutation or search result.
@@ -1200,8 +1251,11 @@ def plan_film_synthesis(payload: dict[str, Any]) -> dict[str, Any]:
     try:
         request, structures = prepare_film_synthesis_payload(service, payload)
         return {"ok": True, "request": request,
+                # Fully frozen synthetic/portable requests can be planned
+                # without a live project service; do not invent a root.
+                "execution_project_root": str(service.root) if service is not None else None,
                 "physical_structure_metadata": list(structures),
-                "execution": "Pass request to coat_sim.film_synthesis_cli; this operation does not run optimization."}
+                "execution": "Read-only plan. Estimate the frozen request with estimate_compute_task(kind=film_synthesis), then submit_film_synthesis through the confirmed queue. The same request also supports the CLI; no optimization was started."}
     except (ValueError, TypeError, KeyError, ArithmeticError) as exc:
         raise ToolError(f"invalid_arguments: {exc}") from exc
 

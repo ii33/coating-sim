@@ -74,7 +74,7 @@ class CurrentRepresentativeSuiteTests(unittest.TestCase):
 
     def test_archived_schema_three_registration_is_rejected_without_modifying_inputs(self):
         before = CURRENT.read_bytes()
-        with self.assertRaisesRegex(ValueError, "current schema 5"):
+        with self.assertRaisesRegex(ValueError, "current schema 6"):
             runner.load_suite(CURRENT)
         self.assertEqual(CURRENT.read_bytes(), before)
 
@@ -85,7 +85,6 @@ class CurrentRepresentativeSuiteTests(unittest.TestCase):
         registered["provenance"] = {"source_sha256": hashlib.sha256(CURRENT.read_bytes()).hexdigest(),
                                     "change": "Explicit null objective-progress policy; other inputs unchanged"}
         for case in registered["cases"]:
-            case["objective_progress_policy"] = None
             case["warm_start_seed_index"] = None
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "explicit-v5-registration.json"
@@ -98,7 +97,7 @@ class CurrentRepresentativeSuiteTests(unittest.TestCase):
             self.assertEqual(request["forward_backend"], "cpu")
             self.assertEqual(request["cpu_workers"], 1)
             self.assertIs(request["enable_thickness_reduction"], False)
-            self.assertIsNone(request["objective_progress_policy"])
+            self.assertNotIn("objective_progress_policy", request)
             self.assertFalse(request["environment"]["front_layers"])
             self.assertFalse(request["seed_designs"])
             pairs.add((request["environment"]["name"], request["structure_search_seed"]))

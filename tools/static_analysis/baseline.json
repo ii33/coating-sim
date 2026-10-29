@@ -219,16 +219,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/ui/film_design.py",
-      "code": "attr-defined",
-      "message": "\"type[QHeaderView]\" has no attribute \"ResizeToContents\"",
-      "scope": "FilmDesignWindow.__init__",
-      "anchor": "table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)",
-      "fingerprint": "00a76b35941a73ac8c4de575bc057b0d87ca81b4ceff257e837a65c1e233a2e3",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/MaterialLibraryDialog.qml",
       "code": "unqualified",
@@ -7416,16 +7406,6 @@
       "scope": "BubbleTests.test_window_list_rows_follow_light_and_dark_theme",
       "anchor": "self.assertEqual(background.property(\"color\"), QColor(expected_light_background))",
       "fingerprint": "1fa87438b7665e562f125f9248cf317f24efd9d9d77f20a2cf2d4ff44c559647",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/film_design.py",
-      "code": "attr-defined",
-      "message": "\"type[QHeaderView]\" has no attribute \"Stretch\"",
-      "scope": "FilmDesignWindow.__init__",
-      "anchor": "self.symbols_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)",
-      "fingerprint": "1fb0e657a94abbbc63f737bfa2e81f05b936b4267fae6ad40655c033eb88235f",
       "count": 1
     },
     {
@@ -14776,16 +14756,6 @@
       "scope": "Scheduler.serve",
       "anchor": "process.terminate(); process.wait(timeout=10)",
       "fingerprint": "3c608cdb410fd18a240b8020bff31b55d4603664fb647b5b85e4325021eb9f75",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/film_design.py",
-      "code": "attr-defined",
-      "message": "\"type[QHeaderView]\" has no attribute \"ResizeToContents\"",
-      "scope": "FilmDesignWindow.__init__",
-      "anchor": "table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)",
-      "fingerprint": "3c9a547ff86413072176435b60b5ce89bfb5d6b3baf5a1c8974df16034d6c03e",
       "count": 1
     },
     {
@@ -22899,16 +22869,6 @@
       "count": 1
     },
     {
-      "tool": "mypy",
-      "path": "coat_sim/ui/film_design.py",
-      "code": "attr-defined",
-      "message": "\"type[QHeaderView]\" has no attribute \"ResizeToContents\"",
-      "scope": "FilmDesignWindow.__init__",
-      "anchor": "table.horizontalHeader().setSectionResizeMode(derived, QHeaderView.ResizeToContents)",
-      "fingerprint": "5fed78134d5c64b70e9b420009a34cd65d3b6d2e77ed22cfa855632eee46e2e6",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/WindowChrome.qml",
       "code": "unqualified",
@@ -23606,16 +23566,6 @@
       "scope": "test_one_million_context_uses_eighty_percent_auto_threshold_on_init_and_reset",
       "anchor": "assert bridge.assistantContextBudget[\"limits\"][\"compaction_threshold_percent\"] == 80",
       "fingerprint": "6349fec26203d20fea0bc84573786c21c81762591829212e019467c56b18dba4",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/film_design.py",
-      "code": "attr-defined",
-      "message": "\"type[QHeaderView]\" has no attribute \"Stretch\"",
-      "scope": "FilmDesignWindow.__init__",
-      "anchor": "table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)",
-      "fingerprint": "634dac467aac3ca1c24c1c9f3ba2054957d12fe5084d248f977f4891be65a9ca",
       "count": 1
     },
     {
@@ -30106,16 +30056,6 @@
       "scope": "test_circle_partial_corner_mean_uses_captured_samples_only",
       "anchor": "for iy, ix in zip(*np.nonzero(grid[\"active_cell_mask\"])):",
       "fingerprint": "7e2784e301d5ed2ca3ba2d8ca130d672009e9682bacd5c87c52b0afe56134df6",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "coat_sim/ui/film_design.py",
-      "code": "attr-defined",
-      "message": "\"type[QHeaderView]\" has no attribute \"ResizeToContents\"",
-      "scope": "FilmDesignWindow.__init__",
-      "anchor": "table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)",
-      "fingerprint": "7e303598687dc356295353bb614dfeb7a7e9dde2090e1ace68915ace6df18697",
       "count": 1
     },
     {
@@ -61279,6 +61219,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "Reviewed QML display qualification fix: remove only obsolete a092e45af45605b772d024e29ef891a4a180b06e192be563cb54096f174dc92c count 2",
+  "last_prune_reason": "Remove six resolved mypy attr-defined QHeaderView enum diagnostics after using ResizeMode enums and table-owned header objects in film_design.py:567-607; add no baseline entries.",
   "configuration_review_reason": "2026-10-17: add only BSD-3-Clause pypdf 6.21.0 for isolated research PDF extraction; all previous dependency/tool versions, analyzer rules and diagnostic entries remain unchanged. The lock-file digest changes only for this reviewed runtime dependency."
 }

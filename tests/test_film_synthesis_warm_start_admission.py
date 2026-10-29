@@ -66,14 +66,14 @@ def test_selector_requires_real_in_range_integer(index):
 def test_current_wire_requires_explicit_selector_no_v4_migration():
     request = replace(_request(), warm_start_seed_index=0)
     payload = json.loads(json.dumps(film_synthesis_request_to_payload("warm", request)))
-    assert SCHEMA_VERSION == payload["schema_version"] == 5
+    assert SCHEMA_VERSION == payload["schema_version"] == 6
     assert payload["request"]["warm_start_seed_index"] == 0
     assert film_synthesis_request_from_payload(payload)[1] == request
     job = build_job_payload({"payload": payload, "physical_structure_metadata": []})
     assert deserialize_job_payload(job)[1] == request
     old = deepcopy(payload)
     old["schema_version"] = 4
-    with pytest.raises(ValueError, match="current schema 5.*no migration"):
+    with pytest.raises(ValueError, match="current schema 6.*no migration"):
         film_synthesis_request_from_payload(old)
     del payload["request"]["warm_start_seed_index"]
     with pytest.raises(ValueError, match="every field"):

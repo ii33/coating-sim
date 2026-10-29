@@ -151,7 +151,6 @@ def build_case_request(case, defaults, rows, seed, workers):
         validation_samples_multiplier=defaults.get("validation_samples_multiplier", 5))
     references = tuple(FilmNeedleMaterialReference(**item) for item in case["materials"])
     options = {"enable_thickness_reduction": case["enable_thickness_reduction"],
-        "objective_progress_policy": case["objective_progress_policy"],
         "max_layers": case.get("max_layers"), "max_cycles": case.get("max_cycles"),
         "max_evaluations": case.get("max_evaluations"),
         "minimum_nonzero_thickness_nm": case.get("min_thickness_nm"),

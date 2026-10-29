@@ -89,7 +89,10 @@ def _cancel_payload():
         objectives=(FilmOptimizationObjective(500., 600., 2, pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=None, upper_bound=0.06)),),
         candidate_materials=(FilmNeedleMaterialReference("low", "nk"),),
         max_cycles=None, max_evaluations=None, position_samples=1,
-        stagnation_cycles=100000)
+        # This real transport test needs an ongoing task through the first
+        # heartbeat. Hybrid local sessions may now finish unmet before1s;
+        # their audited cancel result is covered separately.
+        search_strategy="legacy", stagnation_cycles=100000)
     frozen = freeze_film_synthesis_request(_FreezeService(records), request)
     return film_synthesis_request_to_payload("scheduler-synthesis-unsolved", frozen)
 

@@ -77,4 +77,4 @@ CLI：`--checkpoint best.json` 同时写 `best.search-state.json`；`--continue-
 
 局部收敛、迭代保护、数值失败、资源保护、评价限制、时间截止与取消分别报告。达标后余量阶段未收敛不继续减薄。未达标分支仅在完整局部终态及对应独审成立后，尝试不恶化当前最佳指标的减薄；无可接受减薄候选时保留局部结果并结束，不等待目标达标或继续扩结构。资源拒绝或没有有效工作时结束当前片/会话，不能声称全局无解。取消/截止不开始额外验证，只有匹配实际返回候选的完整审计可以附加。新局部结果达不到原目标时可返回已审计历史冠军；本次终止为 `continuation_local_session_complete`，不声称新结构达标或优于历史结果。
 
-请求协议仍为 v5；`search_checkpoint` 和 `enable_local_margin_refinement` 是可省略的增量字段，旧 v5 请求读入时分别为 `None/True`。旧候选 warm restart 仍是独立操作，不能显示为结构进度恢复。
+当前请求协议为 v6；`search_checkpoint` 和 `enable_local_margin_refinement` 仍为可省略字段，省略时分别为 `None/True`。目标进展交接已移除，v5及更早冻结执行输入须明确重建，磁盘历史不自动迁移。候选 warm restart 仍是独立操作，不能显示为结构进度恢复。

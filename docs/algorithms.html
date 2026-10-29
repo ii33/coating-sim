@@ -15,7 +15,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <p class="source">算法更新：2026-10-28；<a href="#film-sensitivity-missing-k-20261028">敏感度缺失 k 规则</a>与普通光谱一致：无来源 k 仅计算时取 0，已有 k 保留真实值并严格检查完整原波段。</p>
 <p class="source">算法更新：2026-10-27；新增<a href="#film-automatic-repair-20261027">14bc 三参数自动薄层修复</a>：单层厚度下限、允许增删合并，以及相对固定原曲线的逐点最大变化；原光学目标独立核验。</p>
 <p class="source">算法更新：2026-10-26；新增<a href="#film-numeric-zero-20261026">14ba 候选发布前的数值零清理与同冠军详情</a>，保留原始求解精度、目标、预算和独立审计。</p>
-<p class="source">算法更新：2026-10-25；新增<a href="#film-audited-feasibility-repair">14ay 审计边界可行性修复</a>，固定拓扑、保留原始验收与积分分母；<a href="#film-manufacturing-pair-20261025">14ax 独立可选制造修复算子</a>；<a href="#film-objective-progress-handoff-20261025">14aw 可选原目标进展诊断与极小极大交接</a>仍默认关闭。</p>
+<p class="source">算法更新：2026-10-28；新增<a href="#film-audited-feasibility-repair">14ay 审计边界可行性修复</a>，固定拓扑、保留原始验收与积分分母；<a href="#film-manufacturing-pair-20261025">14ax 独立可选制造修复算子</a>；<a href="#film-objective-progress-handoff-20261025">14aw 目标进展交接已移除</a>已移除。</p>
 <p class="source">算法更新：2026-10-24；<a href="#film-band-criteria-20261024">14at 波段平均值/逐点独立约束</a>，统一积分质量、判定、审计与冻结重放。</p>
 <p class="source">算法补充日期：2026-10-24；新增 <a href="#film-template-randomization-20261024">14as 可选模板随机厚度起点</a>，默认关闭，实际 seed 随请求冻结。</p>
 <p class="source">实时光谱与展示评分补充：2026-10-23，见<a href="#candidate-display-score">14ar</a>；仅复用已算结果，默认关闭谱预览，展示分不改变优化目标。</p>
@@ -37,7 +37,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <div class="meta"><span class="pill">版本：机器 v5 · 工艺 v7 · 源 v2；材料交换包 v1、安全导入冲突预览与原子回滚)</span><span class="pill">更新：2026-10-26（自动合成局部余量、原目标减薄和结构续接；固定初始光谱受控退化理想优化v2、旧strict版本兼容；真实混合多核、原门限与容差分离、冠军物理压缩与拒绝统计；周期0显式时间/评价/取消统一预算；高反自动结构/全局搜索、材料谱向量复用与同预算验收、显式严格下界与跨类别冻结基准；活动光路材料校验与从零合成审计；优化目标上下限统一与角度范围显式确认；厚度编辑精度、零厚层与优化边界；冻结服务边界与单点归一化；研究证据与单层光谱反演；修正板不设数量上限、完整依赖快照与逐板遮挡；工程文件格式契约说明；优化多角网格与计算量人工顶值移除；TFCalc明文层表导入；外观逐光线精确 TMM 与独立波长 CPU 进程并行；Qt Quick 显式峰谷统计波段、波长通带与场景图曲线预览；多孔厚盖、独立源采样、无固定最大网格与计算隔离；工艺环境、工作气体及零碰撞直达束；材料库、已设计源工艺选择、盖孔射线与快扫描空间分布；桌面仿真共享队列、逐批进度、无固定步数上限、100%快算默认与Å/s界面；五项上下文预算、硬限与安全压缩、后台流合并与固定设计绘图；平滑轮廓、全膜系目标选优与评分进度；凭据反馈与有界模型候选兼容探测；待决选项、模式放行、诊断未读摘要、结果队列身份修复、紧凑产物；计算量估算、后台串行队列、源板分组优化与跨段选区；完整设备回退、成功设备记忆、临时仿真资产包、可选 PDF、历史闭合与滚动高度缓存；批量膜系、物理层表导入、固定图表、工具原文归档与任务成本、视口文本增量渲染；批量工具契约、演示工作流、逐回合展示与复制、撤回确认、本地助手调试、实际生效参数快照、LPAC启动修复；容量自适应上下文、轮次关闭、插话与排队、剪贴板图片、系统语言与语气、开发访问；逐层修正板、轮廓优化、工艺快算、估时、上下文用量、请求续约、原生档位缓存、滚动跟随、二维 CAD 与加工图、模型 Token 上限、缓存命中统计、富文本与开发门禁；修正板视口设备路由、反向滚动与可选输入诊断）</span><span class="pill">单位：mm · s · rpm · nm · px；助手 Token / 字符 / 附件字节</span><span class="pill">离线单文件 HTML</span></div>
 <p class="source">补充更新：2026-10-05——通过服务接口执行的非 CPU 沉积仿真使用一次任务一个短生命周期计算进程；Windows 子进程关闭管道时把 WinError 109 视作 EOF，避免计算完成后误记失败。</p>
 <p class="source">cub 接口补齐更新：2026-10-05。三路径提交、材料业务工具、机器工程检查和 AI 资产导出契约；未覆盖在线模型及实机校准。</p>
-<p class="source">GUI接线更新：2026-10-20。14t从零合成与14u物理结构已进入现有优化页/参数侧栏；入口与状态边界见<a href="film-synthesis-gui-guide.md">使用指南</a>、<a href="film-synthesis-gui-stage-report-20261020.md">同源GUI验收</a>。原GUI接线无数值公式变更；后续显式未知k近似策略见<a href="#film-synthesis-unknown-k-20261020">14v</a>，默认严格且不会静默回退。</p>
+<p class="source">GUI接线更新：2026-10-20。14t从零合成与14u物理结构已进入现有优化页/参数侧栏；入口与状态边界见<a href="film-synthesis-gui-guide.md">使用指南</a>、<a href="film-synthesis-gui-stage-report-20261020.md">同源GUI验收</a>。原GUI接线无数值公式变更；14v显式未知k近似当前默认启用且可关闭，不会将已知吸收或非法数据静默回退；详见<a href="#film-synthesis-unknown-k-20261020">策略说明</a>。</p>
 <p class="source">膜系设计更新：2026-10-19；schema v1、严格TFCalc子集、复n光谱与自动单/双面有限基底；RII 1–9、独立 k 数据域、含显式单点的离散采样、稀疏线性插值、n 显式端点保持及仿真 k 缺失/域外取零。</p>
 <p class="source">公开光学数据追加更新：2026-10-06；固定源SHA256、跨批去重、Siefke保守域与仅光学材料，见14b。</p>
 <p class="source">膜系本批更新：2026-10-06——自动基底含吸收、相位采样诊断、单次数据准备与缓存、QW/nm双列、百分比显示与折叠说明。</p>
@@ -76,7 +76,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#film-numeric-zero-20261026">14ba 数值零清理与实时详情（2026-10-26）</a>
 <a href="#film-reduction-20261025">14az 独立减层 / 减厚后优化（2026-10-25）</a>
 <a href="#film-cancel-warm-restart-20261025">14ay 取消后从保留候选重新启动求解器（2026-10-25）</a>
-<a href="#film-objective-progress-handoff-20261025">14aw 可选原目标进展诊断与极小极大交接（2026-10-25）</a>
+<a href="#film-objective-progress-handoff-20261025">14aw 目标进展交接已移除（2026-10-25）</a>
 <a href="#film-manufacturing-pair-20261025">14ax 显式缺陷选层的成对制造修复（2026-10-25）</a>
 <a href="#film-audited-feasibility-repair">14ay 审计边界可行性修复与正式减量交接（2026-10-25）</a>
 <a href="#film-manufacturing-admission-20261025">14ax-2 本地 CPU 整次审计准入</a>
@@ -402,37 +402,13 @@ never import old scores, audit summaries, local Hessians, populations or RNG sta
 <rect x="582" y="42" width="302" height="92" rx="10" fill="#deefe7" stroke="#39755a"/><text x="733" y="75" text-anchor="middle">新作业首个完整评分：保留最好几何</text><text x="733" y="102" text-anchor="middle">重新评分 / 搜索 / 独立审计</text>
 <text x="450" y="166" text-anchor="middle">箭头只传递几何和冻结输入，不把旧分数或旧审计冒充新证据</text></svg>
 <figcaption>原记录不被重写。新候选完整评分前，旧结果只能作为明确的上次结果显示；取消前无新完整评分时，不伪造新任务候选或再次自动应用旧结果。</figcaption></figure>
-<p><strong>默认参数与适用域：</strong>合成请求/结果/任务/检查点当前 schema=5，warm_start_seed_index 必须显式为 null 或真实种子索引；null 完全保持原裸环境起步。继续入口设为 0，使新预算很小时也先评估保留最好几何。档案容量沿用原 archive_capacity，只保存真实有界几何，摘要分数和 audit_status 不可复用为新评分。固定随机种子重新启动的是同一随机流，不保证产生新探索或改善；原容差若已满足，求解器仍可能立即停止。默认 hybrid 内部针插入/增长仍可继续运行，但不宣称与原未中断轨迹相同。</p>
+<p><strong>默认参数与适用域：</strong>合成请求/结果/任务/检查点当前 schema=6，warm_start_seed_index 必须显式为 null 或真实种子索引；null 完全保持原裸环境起步。继续入口设为 0，使新预算很小时也先评估保留最好几何。档案容量沿用原 archive_capacity，只保存真实有界几何，摘要分数和 audit_status 不可复用为新评分。固定随机种子重新启动的是同一随机流，不保证产生新探索或改善；原容差若已满足，求解器仍可能立即停止。默认 hybrid 内部针插入/增长仍可继续运行，但不宣称与原未中断轨迹相同。</p>
 <p><strong>持久化与边界：</strong>版本化膜系来源和材料闭包增量写入既有不可变 JobSpec.inputs 并受 spec/input 指纹绑定。增量仅为完整可编辑闭包补充，已在数值快照中的相同 n/k 数组使用引用，绝不从后来活跃材料库静默补齐。原已耗计量与新预算分列。活动取消原单次应用事务、撤销和光谱刷新不变；继续状态检查或构造不启动 TMM。工程/资源/源版本/未提交字段/材料变化禁用继续并解释原因；当前协议但来源缺失或匿名的历史保持只读；旧协议显式拒绝，不做兼容迁移。</p>
 <p><strong>实现：</strong>coat_sim/core/film_optimization_continuation.py、film_continuation_editable_snapshot.py、film_auto_synthesis.py、film_synthesis_io.py，GUI 与来源守卫为 coat_sim/ui/film_optimization_quick_controller.py、film_optimization_continue_source.py及 FilmOptimizationWindow.qml。契约见 <a href="film-optimization-continue-contract.md">取消后继续契约</a>。</p>
 <p class="source"><strong>依据与限制：</strong>上述热启动、档案准入、来源绑定及计量规则均为本项目约定。未找到外部依据，仅为本项目实现。不是收敛证明、L-BFGS/SLSQP 状态恢复、DE 群体恢复、连续光谱证书或性能保证。验证为助手主机 CPU/Qt 离屏测试，未替代用户设备、Windows 原生和 GPU 验收。</p>
 </section>
 
-<section id="film-objective-progress-handoff-20261025">
-<h2>14aw 可选原目标进展诊断与极小极大交接</h2>
-<p><strong>用途与输入输出。</strong>这是现有混合搜索的可选调度切片，不是新的光学模型、评分公式或极小极大求解器。输入为冻结的原始 mean/pointwise 目标、显式策略及完整已接受的 SSE 迭代证据；输出为继续 SSE 或带精确设计身份的交接决定。默认 <code>objective_progress_policy=null</code>，禁用时保留原调度。当前合成请求/结果/队列协议为 v5，旧 v4 及更早版本拒绝、不迁移；其他协议版本不变。</p>
-<h3>量与判据</h3>
-<p>厚度坐标为物理 nm；S 为现有 canonical 加权 SSE，E 为原全部启用条件的最大归一化违规量。它们无量纲，不互相替代。窗口只计完整的已接受步，不计线搜索试探。保存加权 RMS 及原始 <code>nominal_pass</code> 以解释结果，但不引入新评分。严格边界可能 E=0 仍不通过，不能由 E 或优化器 t 推断合格。</p>
-<div class="formula">g(a,b) = (a − b) / max(a,b)，a,b ≥ 0；g(0,0)=0。<br>非重叠窗口：g(S旧,S新) &gt; εS 且 g(E旧,E新) ≤ εE → sse_worst_tradeoff。<br>两者均未超过声明阈值，连续 K 窗 → declared_stagnation。原 nominal_pass 为真时不触发。</div>
-<p>没有暗中 epsilon 分母、指标余量、门限放宽或 ftol=0。零域/不完整证据打断窗口，下一完整正厚点重建基线；正的极小厚度仍按现有域接收；无用户下限时，该既有域下界为 float64 最小正规正数约 2.225×10⁻³⁰⁸ nm，低于它的正次正规数同样重置窗口。其理由是 SSE 允许数学零厚试探，而既有 minimax 接收正厚。它不是新增制造下限。</p>
-<div class="figure"><svg viewBox="0 0 920 220" role="img" aria-label="已接受证据先提交，再诊断和有预算地交接">
-<defs><marker id="progress-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#237a72"/></marker></defs>
-<g fill="#eff8f3" stroke="#237a72"><rect x="10" y="30" width="190" height="85" rx="10"/><rect x="235" y="30" width="190" height="85" rx="10"/><rect x="460" y="30" width="190" height="85" rx="10"/><rect x="685" y="30" width="225" height="85" rx="10"/></g>
-<g class="svgtext" text-anchor="middle"><text x="105" y="62">完整试探入档</text><text x="105" y="88">提交已接受点 / 展示</text><text x="330" y="62">非重叠窗口诊断</text><text x="330" y="88">SSE 与原最坏违规</text><text x="555" y="62">精确身份交接</text><text x="555" y="88">取消 / 时间 / 额度 / 内存</text><text x="797" y="62">已有全原条件 minimax</text><text x="797" y="88">独立原目标审计仍是门</text></g>
-<g stroke="#237a72" stroke-width="2" marker-end="url(#progress-arrow)"><path d="M200 72 H233"/><path d="M425 72 H458"/><path d="M650 72 H683"/></g>
-<text x="460" y="160" text-anchor="middle" class="svgtext">未触发：原流程继续；触发：本周期不再 SSE、删除或清理拓扑</text>
-<text x="460" y="192" text-anchor="middle" class="svgsmall">若未准入或已取消，仅保留已有完整候选；不追加光学计算，不覆盖较好的已审计冠军。</text>
-</svg><figcaption>先提交完整证据，再改变调度；试探点评分和已接受点进展是不同事件。</figcaption></div>
-<h3>参数、实现与边界</h3>
-<ul><li>GUI 位于既有合成算法页，默认关闭，四项初始留空。相对进展下限是无量纲比例：0.001 = 0.1%，不是光谱百分点；启用必须明确填写，关闭保留草稿而冻结为 null。<a href="film-algorithm-gui-contract-20261025.md">GUI 契约</a>说明配置和输入边界。</li>
-<li>策略对象四项必填：<code>accepted_window_steps</code> 与 <code>stagnation_windows</code> 为正整数；<code>relative_sse_progress_floor</code> 与 <code>relative_worst_progress_floor</code> 为有限非负数。无隐式启用阈值，null 为唯一默认。</li>
-<li>第一切片只作用于主 <code>joint_needle_sse_growth</code> 中的局部精修；不监测先验筛选、前置局部精修、未接受线搜索或审计。触发点原设计直接交给已有 <code>refine_synthesis_full_minimax</code>，不先删除、合并或夹紧。全局取消优先，原时间/评价/内存准入仍生效。</li>
-<li>监视器只保留标量、哈希及厚度元组，不保留额外光谱/Jacobian，不增加光学调用；完整 trial 仍经原档案/显示路径提交。优化器已接受步数与监视器 observed accepted_samples 分开记录：若最后一次已接受点在原 slice 检查处到期，保留该完整端点但不观察、不推断潜在决定；不能据此宣称没有停滞。已记录的决定不被随后局部 slice 到期撤销，外部取消/全局上限/观察器异常仍优先。原 strict champion 与独立审计 incumbent 的选择规则不变。</li>
-<li>实现：<code>film_synthesis_progress.py</code>（纯诊断），<code>film_synthesis_refinement.py</code>（接受回调），<code>film_auto_synthesis.py</code>（交接与预算），<code>film_synthesis_io.py</code>、MCP/GUI/队列（当前协议）。详见<a href="film-synthesis-execution-contract.md">执行契约</a>。</li>
-<li>层数不是固定约束或减少目标；用户波长/角度/偏振网格和 mean/pointwise 独立开关保持不变。1 nm 只是某次用户输入，不是通用物理精度。制造缺陷成对修复尚不在此切片中。</li></ul>
-<p><strong>证据与限制。</strong>SSE 聚合与最坏违规是不同目标，某一项变好不能保证另一项变好；本策略尚无跨膜系收益结论。本节的窗口、阈值与路由是<strong>本项目约定，未找到外部依据，仅为本项目实现</strong>。停滞触发不证明局部最优、不可行或全局收敛。同源开/关对照须分别记录 F/FJ 调用、波长点×层工作、墙时、原均值/逐点指标和严格审计，不把无触发或负结果写成成功。代表性 AR/HR/带通/混合目标与多 seed 同预算验证前，不启用默认策略。</p>
-<p class="source">参考：<a href="https://docs.scipy.org/doc/scipy/reference/optimize.minimize-lbfgsb.html">SciPy L-BFGS-B 官方终止条件</a>，<a href="https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html">SciPy SLSQP 官方接口</a>；仅支持既有求解器含义，不为本项目路由阈值背书。新增策略不修改原 ftol/gtol。规范日期：2026-10-25。</p>
-</section>
+<section id="film-objective-progress-handoff-20261025"><h2>14aw 目标进展交接已移除</h2><p>2026-10-28：删除该实验调度、输入字段、界面及专用代码。当前合成协议为 schema 6；旧执行请求须明确重建，不改写历史文件。普通任务进度、真实结构 checkpoint 与续搜不变。新建或未配置的从零合成默认针插前局部优化、未知 k 按 0；显式已保存选择优先。已有有限 k 和非法数据仍按原材料真实性规则处理，不是将所有 k 清零。本节为产品接线与默认值变更，无新物理算法或性能证明。</p></section>
 
 <section id="film-total-thickness-reduction-20261024">
 <h2>14av 固定层序、原指标下的总厚度缩减</h2>
@@ -3231,8 +3207,8 @@ return the best complete candidate with matching audit; report remaining gap</pr
 
 <section id="film-synthesis-unknown-k-20261020">
 <h2>14v 显式未知 k 无损近似</h2>
-<p class="source">2026-10-20用户确认后的输入假设变更。用途是让仅提供n的材料在明确接受无损近似时参与从零合成；不改材料源、不推断真实吸收。接口与生命周期见<a href="film-synthesis-unknown-k-contract.md">未知k策略契约</a>。该策略为<strong>本项目约定</strong>，未找到外部依据，仅为本项目实现。</p>
-<p><strong>输入与输出：</strong>输入为现有膜系设计布尔字段<code>environment.assume_lossless</code>、已冻结材料/集合、目标和候选池；默认false。GUI独立复选项“未知 k 按 0 计算”映射为此值，<code>use_k</code>仍须true。输出是相同策略下的候选、目标分数和吸收假设元数据，记录受影响material_id/optical_set_id，并区分候选池与实际候选光路。材料源仍保留k未知的事实，假设值不写回库。</p>
+<p class="source">历史记录：2026-10-20引入的输入假设。当前从零合成默认启用该假设且可关闭；用途是让仅提供n的材料参与合成，不改材料源、不推断真实吸收。接口与生命周期见<a href="film-synthesis-unknown-k-contract.md">未知k策略契约</a>。该策略为<strong>本项目约定</strong>，未找到外部依据，仅为本项目实现。</p>
+<p><strong>输入与输出：</strong>输入为现有膜系设计布尔字段<code>environment.assume_lossless</code>、已冻结材料/集合、目标和候选池；当前合成GUI/模板默认true且可关闭。GUI独立复选项“未知 k 按 0 计算”映射为此值，<code>use_k</code>仍须true。输出是相同策略下的候选、目标分数和吸收假设元数据，记录受影响material_id/optical_set_id，并区分候选池与实际候选光路。材料源仍保留k未知的事实，假设值不写回库。</p>
 <p><strong>坐标和单位：</strong>继承14t的基片→入射侧层序，真空波长和物理厚度为nm，入射角为°；n、k和R/T均无量纲，复折射率约定n+ik。本项不改变几何、采样坐标或物理步长。</p>
 <pre>n, k, source = sample_original_source(lambda, extrapolation="error")
 require finite(n) and n &gt; 0
@@ -3245,10 +3221,10 @@ elif environment.assume_lossless is True:
 else:
     reject("unknown k; explicit assumption required")
 use the same frozen policy in TMM, every audit point, result and save</pre>
-<figure><svg viewBox="0 0 1040 290" role="img" aria-labelledby="unknown-k-policy-title" style="width:100%;height:auto"><title id="unknown-k-policy-title">显式未知k近似与来源保留</title><g stroke="#087f78" stroke-width="2" fill="#e9f4f1"><rect x="15" y="90" width="180" height="85" rx="8"/><rect x="245" y="15" width="300" height="70" rx="8"/><rect x="780" y="90" width="245" height="85" rx="8"/></g><rect x="245" y="110" width="300" height="80" rx="8" fill="#fff2dd" stroke="#b65e1d" stroke-width="2"/><rect x="245" y="220" width="300" height="55" rx="8" fill="#fbe9e7" stroke="#a43e36" stroke-width="2"/><g fill="none" stroke="#50616a" stroke-width="2"><path d="M195 132H220V50H245 M220 132H245 M220 132V247H245 M545 50H650V115H780 M545 150H780"/></g><g fill="#18303a" font-size="17" text-anchor="middle"><text x="105" y="123">原材料与源采样</text><text x="105" y="151">先检查n及有效域</text><text x="395" y="43">有来源k：保留原值</text><text x="395" y="68">包括已知非零k</text><text x="395" y="140">无k来源＋明确勾选</text><text x="395" y="167">计算取0；记录无损假设</text><text x="395" y="254">默认未勾选：拒绝缺k</text><text x="903" y="119">同一冻结策略</text><text x="903" y="148">计算／审计／保存／重开</text><text x="691" y="250">任何域外或无效n仍拒绝</text></g></svg><figcaption>图14v-1：源记录保持不变。无k来源的橙色分支需要显式选择；已有k表的域外查询不会转入橙色分支。已知吸收一直保留。</figcaption></figure>
-<p><strong>实现与默认：</strong><code>film_synthesis_absorption.py</code>严格源采样与假设标注、<code>film_auto_synthesis.py</code>冻结/评分代理及物理步长、<code>film_synthesis_audit.py</code>逐审计点校验、<code>film_synthesis_io.py</code>请求/结果边界，以及GUI适配和配置；具体函数以当前类型/测试为真值。复用现有设计bool和schema版本，不新增小额预算；默认false，既有训练/密网格/错位点/局部极值参数不变。开关变化使旧候选失效，运行后不读取后来修改的开关；取消和无响应诊断不自动批准近似。</p>
+<figure><svg viewBox="0 0 1040 290" role="img" aria-labelledby="unknown-k-policy-title" style="width:100%;height:auto"><title id="unknown-k-policy-title">显式未知k近似与来源保留</title><g stroke="#087f78" stroke-width="2" fill="#e9f4f1"><rect x="15" y="90" width="180" height="85" rx="8"/><rect x="245" y="15" width="300" height="70" rx="8"/><rect x="780" y="90" width="245" height="85" rx="8"/></g><rect x="245" y="110" width="300" height="80" rx="8" fill="#fff2dd" stroke="#b65e1d" stroke-width="2"/><rect x="245" y="220" width="300" height="55" rx="8" fill="#fbe9e7" stroke="#a43e36" stroke-width="2"/><g fill="none" stroke="#50616a" stroke-width="2"><path d="M195 132H220V50H245 M220 132H245 M220 132V247H245 M545 50H650V115H780 M545 150H780"/></g><g fill="#18303a" font-size="17" text-anchor="middle"><text x="105" y="123">原材料与源采样</text><text x="105" y="151">先检查n及有效域</text><text x="395" y="43">有来源k：保留原值</text><text x="395" y="68">包括已知非零k</text><text x="395" y="140">无k来源＋冻结值为true</text><text x="395" y="167">计算取0；记录无损假设</text><text x="395" y="254">关闭选项：拒绝缺k</text><text x="903" y="119">同一冻结策略</text><text x="903" y="148">计算／审计／保存／重开</text><text x="691" y="250">任何域外或无效n仍拒绝</text></g></svg><figcaption>图14v-1：源记录保持不变。无k来源的橙色分支仅在冻结策略为true时使用；已有k表的域外查询不会转入橙色分支。已知吸收一直保留。</figcaption></figure>
+<p><strong>实现与默认：</strong><code>film_synthesis_absorption.py</code>严格源采样与假设标注、<code>film_auto_synthesis.py</code>冻结/评分代理及物理步长、<code>film_synthesis_audit.py</code>逐审计点校验、<code>film_synthesis_io.py</code>请求/结果边界，以及GUI适配和配置；具体函数以当前类型/测试为真值。复用现有设计bool和schema版本，不新增小额预算；当前从零合成默认true且可关闭，既有训练/密网格/错位点/局部极值参数不变。开关变化使旧候选失效，运行后不读取后来修改的开关；取消和无响应诊断不自动批准近似。</p>
 <p><strong>候选与输入池的说明边界：</strong><code>affected_materials</code>保留冻结输入池/seed/环境的缺k引用；候选级<code>used_affected_materials</code>、<code>conditional_on_assumption</code>和<code>claim</code>只跟随实际候选光路。若缺k材料只在未使用候选池里，则候选没有使用该近似，不把池的条件性声明复制成候选证据。物理步长与审计显式使用<code>k_sampling_policy="source"</code>；当前采样器默认也是source。未支持的k字段仍按源schema拒绝，不凭字段名猜测新数据模型。</p>
-<p><strong>适用、已知近似和验收：</strong>仅用于用户愿意忽略未知吸收的假设计算，不能据此证明真实材料透明或真实吸收达标。有效n、已知k及其各自波长域仍严格；未知k、损坏数据、已知数据域外三者必须区分。单面front边界不变，合成IO/typedjob展开结构seed时显式向构造器传入同一策略；独立物理参数GUI和其他搜索路线不因本开关自动放宽。有限审计仍<code>continuous_certificate=false</code>，也不证明连续角域。定向验收比较默认拒绝与明确勾选启动，验证已知非零k实际进入TMM、波长域错误不豁免、原始材料SHA不变及请求/审计/保存往返一致；示例目标若仅验证通路，应明确其宽松范围，不能冒充原AR指标达成。</p>
+<p><strong>适用、已知近似和验收：</strong>仅用于用户愿意忽略未知吸收的假设计算，不能据此证明真实材料透明或真实吸收达标。有效n、已知k及其各自波长域仍严格；未知k、损坏数据、已知数据域外三者必须区分。单面front边界不变，合成IO/typedjob展开结构seed时显式向构造器传入同一策略；独立物理参数GUI和其他搜索路线不因本开关自动放宽。有限审计仍<code>continuous_certificate=false</code>，也不证明连续角域。定向验收比较关闭时拒绝缺k与启用时通过，验证已知非零k实际进入TMM、波长域错误不豁免、原始材料SHA不变及请求/审计/保存往返一致；示例目标若仅验证通路，应明确其宽松范围，不能冒充原AR指标达成。</p>
 <p class="source"><strong>参考来源：</strong>该选择策略和标注规则未找到外部依据，仅为本项目实现。光学复折射率、TMM与有限审计基础沿用14及14t已列来源；这些来源不构成本项目将未知k置零的精度或实物验证。此处的0是显式模型假设，与来源测得k=0保持不同身份。</p>
 </section>
 
@@ -3347,7 +3323,7 @@ close/shutdown/history/late old operation: do not trigger automatic apply</pre>
 <div class="formula">默认探索 SSE = Σ窗口 wₖ/(Σw) · mean原条件[(违规/scaleₖ)²]。point_count 可显式改为按原点数加权。严格验收始终 max原全部条件[违规/scale]。</div>
 <p>默认 equal_window 避免IR窗口只因采样点更多主导探索，同时保留用户目标权重。整个原波长×角度×偏振网格始终存在，不用稀疏活动集 t 判通过。解析SSE局部阶段返回求解器实际终态；调度片中断时保留最后已接受点而非最后线搜索试点。严格冠军不会被变差的探索终态覆盖，下轮也不会被强制重置到旧 max-best 而丢掉盆地。</p>
 <p><strong>真实冠军优先压缩（2026-10-23）：</strong>阶段预算恰好到期时，有限生长可能已将新候选归档，而真实探索终态仍停在旧候选。压缩阶段先检查严格冠军，再处理探索终态；不将两者强行同一化。终审前对后续新冠军再做有界检查，仅有合法拓扑变化才准入，最多2次真实评价，保留独审槽并遵守总/阶段预算、取消、时限和内存护栏。伪代码：C=cleanup(best.design)；若C改变且满足用户制造界限，则完整原谱重算→与真实父谱核查等价→按原严格排名归档→为选定设计独审；否则保留真实旧候选并单列未完成原因。不能将旧分数或旧独审贴到新层表，不能把未清理称作无可合并；合并后超显式单层厚限时不合并。坐标、nm单位、数学零与bulk边界见14ai；当前两同源层的真实通过不因缺少尚未生成的合并候选而失效。调度和等价容差是本项目约定，未找到外部依据，仅为本项目实现；详见<a href="film-synthesis-champion-cleanup-contract.md">冠军清理合同</a>。</p>
-<p>全局厚度探索采用6成员DE、最多8个常数/余弦log厚度坐标、系数盒±.35、每轮2代；这些均为可反复调度的本项目搜索设置，不是总预算或商业算法复制。批针由当前等窗/用户权重解析 guide 筛选，默认每批最多6针，低谷细化1轮，pre-local默认false。有限针插后联合优化全部真实层厚，清理只合并同 material_id+optical_set_id，相邻清理前后用全部原谱 allclose(atol=2e−11,rtol=2e−10)核查，正厚删层永远完整重算并将真实设计归档。</p>
+<p>全局厚度探索采用6成员DE、最多8个常数/余弦log厚度坐标、系数盒±.35、每轮2代；这些均为可反复调度的本项目搜索设置，不是总预算或商业算法复制。批针由当前等窗/用户权重解析 guide 筛选，默认每批最多6针，低谷细化1轮，pre-local默认开启（可显式关闭）。有限针插后联合优化全部真实层厚，清理只合并同 material_id+optical_set_id，相邻清理前后用全部原谱 allclose(atol=2e−11,rtol=2e−10)核查，正厚删层永远完整重算并将真实设计归档。</p>
 <p>共享档案默认容量32，存实际设计、窗口最坏违规、响应均值/极值签名、层数/总厚、父代与操作；保护训练严格冠军和精确设计绑定的已审计冠军。Pareto/结构族/响应多样性只用于保留与选父，不冒充验收。档案是一次冻结问题的运行私有对象，不跨材料/目标/网格复用评分；构造锚点和前向缓存各自还需实际内容及layer ID绑定。</p>
 <p>终末精修采用所有原有符号不等式的SLSQP上图：min t，qⱼ(d)≤t，并保留用户厚度和总厚约束。解析Jacobian覆盖原条件，返回候选按真实 max 和RMS独立保存；单独报告实际终点 max、optimizer_t、max−t可行性、solver success / iteration_limit / failure / stage_budget，求解器收敛不等于目标通过。不是存在漏谷问题的稀疏活动集大步法。</p>
 <p>调度量筛选32/global24/针扫描256/联合96/压缩16/minimax256是每轮片额，耗尽后仍能续下一轮，不是隐藏终生评价预算。每片分别不超过剩余预算/时间的25%/15%/25%/45%/15%/85%，最终独审留槽，避免旧全局前缀吃完预算令针从不执行。单次不可分光学调用仍可超过片额墙钟；记录中断、已完成探针和未执行阶段，不谎称needle已完成。用户max_cycles/max_evaluations/max_seconds为真正停止条件，均可None。</p>

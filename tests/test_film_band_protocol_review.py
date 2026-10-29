@@ -66,7 +66,7 @@ def completed_cancel_payload():
 @pytest.mark.parametrize("missing", ["structure_search_seed", "randomize_template_search"])
 def test_current_frozen_request_requires_explicit_seed_and_toggle(completed_cancel_payload, missing):
     result = completed_cancel_payload["result"]
-    payload = dict(schema_version=5, kind="coat_sim.film_synthesis_request",
+    payload = dict(schema_version=6, kind="coat_sim.film_synthesis_request",
         request_id="band-protocol-seed", request=deepcopy(result["frozen_request"]), physical_structures=[])
     payload["request"]["randomize_template_search"] = True
     del payload["request"][missing]
@@ -76,7 +76,7 @@ def test_current_frozen_request_requires_explicit_seed_and_toggle(completed_canc
 
 def test_explicit_zero_seed_survives_current_request_roundtrip(completed_cancel_payload):
     result = completed_cancel_payload["result"]
-    payload = dict(schema_version=5, kind="coat_sim.film_synthesis_request",
+    payload = dict(schema_version=6, kind="coat_sim.film_synthesis_request",
         request_id="band-protocol-seed-zero", request=deepcopy(result["frozen_request"]), physical_structures=[])
     payload["request"].update(randomize_template_search=True, structure_search_seed=0)
     request_id, request, _ = film_synthesis_request_from_payload(payload)
@@ -111,7 +111,7 @@ def test_current_wire_rejects_ambiguous_or_incomplete_physical_band(field, value
 
 
 def test_current_request_serialization_uses_json_native_arrays(completed_cancel_payload):
-    source = dict(schema_version=5, kind="coat_sim.film_synthesis_request",
+    source = dict(schema_version=6, kind="coat_sim.film_synthesis_request",
         request_id="json-native", request=completed_cancel_payload["result"]["frozen_request"],
         physical_structures=[])
     request_id, request, _ = film_synthesis_request_from_payload(source)

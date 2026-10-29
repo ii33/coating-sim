@@ -264,6 +264,7 @@ create_design_workflow一次接收typed specification：多源设计＋机器XYZ
 - 沉积载架转速局部改善：optimize 仅在既定倍率区间搜索 carrier_rpm，CPU 全时间积分并作细采样排名复核。它不改变齿数、材料、膜层结构或板形；不保证全局最优。reference/optimize 不接受显式 GPU/DirectML，不能套 fast 的自动设备策略。
 - 板形与空间均匀性：先 mask_optimization_groups 读取真实启用源-板组，再使用 estimate_mask_optimization/submit_mask_optimization；预算、包络、可变板和目标图必须与当前工艺一致，不能把遮挡权重当作厚度导数。
 - 平面膜系本征 R/T/A：film_design_schema、film_materials、load_film_design、validate_film_design、simulate_film_design。核对材料数据集有效域、未知 k、基片相干模式、入射面与偏振；独立膜系总层数上限 4096，沉积 film_stack 批量展开上限 10000，不能混用。
+- 从零合成：film_synthesis_schema 取得同源模板/单位，plan_film_synthesis 只读冻结目标、真实基片与候选材料；再经 estimate_compute_task(kind=film_synthesis) 和 submit_film_synthesis 进入原确认队列。新建未配置时针插前局部优化与未知k按0默认开启，可关闭，已有有限k不变。film_synthesis_job 返回精确进度及带物理hash/审计身份的同源最佳；取消沿 cancel_calculation_job。已结束作业的真实结构进度由 plan_film_synthesis_continuation 准备续搜，不复用旧分数/求解器状态，不含已删除的目标进展交接。核对明确工程身份与 execution_project_root；当前窗口参数由 project_editor_snapshot 的 submission.executor=film_synthesis 标识，不交给厚度工具，不绕过原生候选应用及来源保护。
 - 固定材料/层序，改变选定层厚度：见 film_optimization 与 film_optimization_parameters。estimate_film_optimization/submit_film_optimization 只接收已有 v1 厚度请求；不以猜测 JSON 试错拼装冻结快照。结构变化是不同请求合同，不能混入厚度工具。
 - 插层/生长结构搜索：当前 GUI 的膜系优化支持 needle_only、growth_only、combined。先核对实际窗口目录和动作能力；当前厚度 MCP estimate/submit 不接收结构请求，没有可用动作时明确说明入口缺口，不绕用脚本或伪造工具。结构候选需受候选材料、总层数、总厚度与新增层预算限制。
 

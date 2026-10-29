@@ -54,7 +54,7 @@ def _atomic_json(path: Path, value: Any) -> None:
     temp.replace(path)
 
 
-REQUEST_CONTRACT_VERSION = 5
+REQUEST_CONTRACT_VERSION = 6
 
 
 def _assert_current_request_shape(request: Any) -> None:
@@ -68,31 +68,22 @@ def _assert_current_request_shape(request: Any) -> None:
     }
     if (not isinstance(request, dict) or
             type(request.get("enable_thickness_reduction")) is not bool or
-            "objective_progress_policy" not in request or
+            "objective_progress_policy" in request or
             "warm_start_seed_index" not in request or
             any(name in request for name in ("strict_lower_bound_objective_indices",
                                             "strict_upper_bound_objective_indices")) or
             not isinstance(request.get("objectives"), (tuple, list)) or not request["objectives"]):
-        raise ValueError("Unsupported legacy request format; current schema 5 requires complete nested mean/pointwise criteria and an explicit enable_thickness_reduction boolean and objective_progress_policy object/null and explicit warm_start_seed_index integer/null. Historical frozen suites are not migrated.")
+        raise ValueError("Unsupported legacy request format; current schema 6 requires complete nested mean/pointwise criteria and an explicit enable_thickness_reduction boolean and explicit warm_start_seed_index integer/null. Historical frozen suites are not migrated.")
     warm_index = request["warm_start_seed_index"]
     if warm_index is not None and (type(warm_index) is not int or warm_index < 0
             or not isinstance(request.get("seed_designs"), (tuple, list))
             or warm_index >= len(request["seed_designs"])):
-        raise ValueError("Current schema 5 requires warm_start_seed_index to reference a seed or be null")
-    policy = request["objective_progress_policy"]
-    if policy is not None:
-        steps = ("accepted_window_steps", "stagnation_windows")
-        floors = ("relative_sse_progress_floor", "relative_worst_progress_floor")
-        if (not isinstance(policy, dict) or set(policy) != set(steps + floors)
-                or any(type(policy[name]) is not int or policy[name] < 1 for name in steps)
-                or any(isinstance(policy[name], bool) or not isinstance(policy[name], (int, float))
-                       or not math.isfinite(policy[name]) or policy[name] < 0 for name in floors)):
-            raise ValueError("Current schema 5 requires an exact finite objective_progress_policy object or null")
+        raise ValueError("Current schema 6 requires warm_start_seed_index to reference a seed or be null")
     for objective in request["objectives"]:
         if (not isinstance(objective, dict) or set(objective) != objective_fields or
                 any(not isinstance(objective[name], dict) or set(objective[name]) != constraint_fields
                     for name in ("mean", "pointwise"))):
-            raise ValueError("Unsupported legacy request format; current schema 5 requires complete nested mean/pointwise criteria and an explicit enable_thickness_reduction boolean and objective_progress_policy object/null and explicit warm_start_seed_index integer/null. Historical frozen suites are not migrated.")
+            raise ValueError("Unsupported legacy request format; current schema 6 requires complete nested mean/pointwise criteria and an explicit enable_thickness_reduction boolean and explicit warm_start_seed_index integer/null. Historical frozen suites are not migrated.")
 
 
 def _current_objectives(request: dict[str, Any]):
@@ -559,8 +550,8 @@ def run_one(entry: dict[str, Any], *, mode: str, workers: int, output: Path,
     smoke_override = budget_seconds is not None and wall_budget < frozen_budget
 
     from coat_sim.core.film_auto_synthesis import synthesize_film_design
-    from coat_sim.core.film_synthesis_io import film_synthesis_request_from_payload, film_synthesis_result_to_payload
-    request_payload = {"schema_version": REQUEST_CONTRACT_VERSION, "kind": "coat_sim.film_synthesis_request",
+    from coat_sim.core.film_synthesis_io import SCHEMA_VERSION, film_synthesis_request_from_payload, film_synthesis_result_to_payload
+    request_payload = {"schema_version": SCHEMA_VERSION, "kind": "coat_sim.film_synthesis_request",
         "request_id": entry["request_id"], "request": request_json, "physical_structures": []}
     request_id, request, structures = film_synthesis_request_from_payload(request_payload)
     if request_id != entry["request_id"] or structures:
@@ -780,7 +771,7 @@ def run_bundle(manifest_path: Path, *, case: str | None = None, seed: int | None
     if preflight:
         if str(bundle_root) not in sys.path:
             sys.path.insert(0, str(bundle_root))
-        from coat_sim.core.film_synthesis_io import film_synthesis_request_from_payload
+        from coat_sim.core.film_synthesis_io import SCHEMA_VERSION, film_synthesis_request_from_payload
         rows = []
         for item in entries:
             request = json.loads(json.dumps(item["request"]))
@@ -788,7 +779,7 @@ def run_bundle(manifest_path: Path, *, case: str | None = None, seed: int | None
             request["cpu_workers"] = chosen_workers
             _mode_for_request(request, mode)
             decoded_id, _, structures = film_synthesis_request_from_payload({
-                "schema_version": REQUEST_CONTRACT_VERSION, "kind": "coat_sim.film_synthesis_request",
+                "schema_version": SCHEMA_VERSION, "kind": "coat_sim.film_synthesis_request",
                 "request_id": item["request_id"], "request": request, "physical_structures": []})
             if decoded_id != item["request_id"] or structures:
                 raise ValueError("Production request decoder changed identity or found dynamic structures")
