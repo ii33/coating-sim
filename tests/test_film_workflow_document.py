@@ -197,6 +197,53 @@ class FilmWorkflowDocumentTests(unittest.TestCase):
         self.assertNotIn("interactive_group_id",
                          self.design.currentDesign()["front_layers"][0])
 
+    def test_optimizer_apply_preserves_source_expression_metadata_without_rebuilding_layers(self):
+        self.assertTrue(self.design.addLayer("front"))
+        layer_id = self.design.front_layers.ids()[0]
+        symbol_id = self.design._symbol_stable_ids["H"]
+        self.assertTrue(self.design.setLayerValue(
+            "symbol", symbol_id, "note", "user-defined H placeholder"))
+        session = self.design.session
+        assert session is not None
+        before = session.snapshot()
+        original_expression = deepcopy(before.design["expression"])
+        candidate = deepcopy(dict(before.design))
+        candidate["expression"] = {"text": "", "symbols": {}, "in_sync": False}
+        candidate["front_layers"][0]["thickness"]["value"] = 125.0
+
+        self.assertTrue(session.apply_optimized_design(
+            candidate, before.design_revision))
+        applied = session.snapshot()
+        self.assertEqual(applied.design["expression"], original_expression)
+        self.assertEqual(applied.design["expression"]["symbols"]["H"]["note"],
+                         "user-defined H placeholder")
+        self.assertEqual(applied.design["front_layers"][0]["id"], layer_id)
+        self.assertEqual(applied.design["front_layers"][0]["thickness"]["value"], 125.0)
+        self.assertEqual(applied.design_revision, before.design_revision + 1)
+        self.assertTrue(applied.dirty and session.can_undo_optimized_design(
+            applied.design_revision))
+
+        # A stale candidate cannot restore an older expression over later work.
+        stale = session.snapshot()
+        stale_candidate = deepcopy(candidate)
+        stale_candidate["expression"]["symbols"] = {}
+        self.assertFalse(session.apply_optimized_design(
+            stale_candidate, before.design_revision))
+        self.assertEqual(session.snapshot().design, stale.design)
+        self.assertTrue(session.undo_optimized_design(applied.design_revision))
+        self.assertEqual(session.snapshot().design, before.design)
+
+        # A different design identity is not a source update: its own empty
+        # expression remains untouched rather than borrowing the source's H/L.
+        foreign_base = session.snapshot()
+        foreign_candidate = deepcopy(candidate)
+        foreign_candidate["id"] = "different-source-design"
+        self.assertTrue(session.apply_optimized_design(
+            foreign_candidate, foreign_base.design_revision))
+        self.assertEqual(session.snapshot().design["id"], "different-source-design")
+        self.assertEqual(session.snapshot().design["expression"],
+                         {"text": "", "symbols": {}, "in_sync": False})
+
     def test_configuration_only_edit_keeps_calculation_token_current(self):
         self.sim.startCalculation()
         self.wait_done()

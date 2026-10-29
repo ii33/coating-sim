@@ -25,6 +25,7 @@ def test_sidebar_toggle_controls_at_two_dpi_profiles(tmp_path, scale):
         cwd=ROOT, env=environment, text=True, capture_output=True,
         errors="replace", timeout=90, check=False)
     assert result.returncode == 0, result.stdout + "\n" + result.stderr
+    assert 'Binding loop detected for property "analysis"' not in result.stderr
     report = json.loads(result.stdout.strip().splitlines()[-1])
     assert report["dpr"] == pytest.approx(float(scale), abs=.02)
     assert report["controls"] == ["film_design", "film_simulation", "uniformity",
@@ -179,7 +180,7 @@ def _sidebar_probe():
     def selected_contrast(window, key, mode, width):
         groups = {
             "film_design": ("filmDesignSidebarExpression", "filmDesignSidebarGenerator",
-                            "filmDesignSidebarLibrary"),
+                            "filmDesignSidebarLibrary", "filmDesignSidebarInteractive"),
             "film_simulation": ("filmSimulationStatisticsToggle", "filmSimulationDiagnosticsButton"),
             "uniformity": ("uniformitySidebarButton",),
         }
@@ -319,7 +320,7 @@ def _sidebar_probe():
             design_root, service=design_service,
             geometry_settings=QSettings(str(folder / "design.ini"), QSettings.Format.IniFormat))
         window = load("FilmDesignQuick.qml", design)
-        rail_case(window, "sidebarExpanded", "filmDesignSidebarToggle", "filmDesignSidebarLibrary",
+        rail_case(window, "sidebarExpanded", "filmDesignSidebarToggle", "filmDesignSidebarInteractive",
                   "film_design", ((1320, 820), (720, 560)), bottom=True,
                   selected="activeSidebarSection")
         window.hide()

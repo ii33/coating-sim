@@ -381,7 +381,6 @@ class FilmDesignQuickController(QObject):
     tfcalcImportChanged = Signal()
     tfcalcImportRequested = Signal()
     tfcalcImportApplied = Signal()
-    interactiveAnalysisControllerChanged = Signal()
     interactivePreviewChanged = Signal(object)
 
     _sessionChange = Signal(object)
@@ -1983,12 +1982,17 @@ class FilmDesignQuickController(QObject):
         self._request_optimization_mode("fixed_topology")
         return self._open_optimization_window(start=True)
 
-    @Property(QObject, notify=interactiveAnalysisControllerChanged)
+    @Property(QObject, constant=True)
     def interactiveAnalysisController(self):
         if self._interactive_analysis_controller is None and not self._source_closed:
             from .film_interactive_analysis_controller import FilmInteractiveAnalysisController
             self._interactive_analysis_controller = FilmInteractiveAnalysisController(self, self)
-            self.interactiveAnalysisControllerChanged.emit()
+            # This is a lazy getter used directly by QML property bindings.
+            # Emitting the property's notify signal from inside the first
+            # binding evaluation recursively reevaluates that same binding and
+            # produces a QML binding loop. The value returned here is already
+            # the newly-created controller; no notification is needed until a
+            # future replacement is supported (there is currently none).
         return self._interactive_analysis_controller
 
     @Slot(object)

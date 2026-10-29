@@ -1252,13 +1252,13 @@ Item {
                         objectName: "filmDesignSidebarSpacer"
                         visible: !window.sidebarUsesBottomLayout
                         Layout.column: 0
-                        Layout.row: 4
+                        Layout.row: 5
                         Layout.fillHeight: true
                     }
                     ThemeControls.ThemeDoubleChevron {
                         objectName: "filmDesignSidebarToggle"
                         Layout.column: window.sidebarUsesBottomLayout ? 4 : 0
-                        Layout.row: window.sidebarUsesBottomLayout ? 0 : 5
+                        Layout.row: window.sidebarUsesBottomLayout ? 0 : 4
                         Layout.alignment: Qt.AlignHCenter
                         Layout.preferredWidth: 24
                         Layout.minimumWidth: 24

@@ -342,6 +342,53 @@ class FilmDesignEditSession:
                     layer.pop("interactive_group_id", None)
         return result
 
+    @staticmethod
+    def _expression_stack_signature(design: Mapping[str, Any]) -> tuple[tuple[tuple[Any, ...], ...], ...]:
+        """Describe the physical layer stacks without editor-only annotations."""
+        sides = []
+        for side in ("front", "back"):
+            layers = []
+            for layer in design.get(side + "_layers", []):
+                if not isinstance(layer, Mapping):
+                    continue
+                thickness = layer.get("thickness", {})
+                layers.append((
+                    str(layer.get("material_id", "")),
+                    str(layer.get("optical_set_id", "")),
+                    thickness.get("value") if isinstance(thickness, Mapping) else None,
+                    str(thickness.get("unit", "nm")) if isinstance(thickness, Mapping) else "nm",
+                ))
+            sides.append(tuple(layers))
+        return tuple(sides)
+
+    def _preserve_source_expression(self, candidate: Mapping[str, Any]) -> dict[str, Any]:
+        """Keep source-owned expression metadata without regenerating its stack.
+
+        Synthesis workers intentionally blank expression fields in their numeric
+        candidates. Those fields are editor state, not optimizer output. Restore
+        them from the source draft while retaining the candidate's independently
+        computed front/back layers. If a non-empty, previously synchronized
+        expression no longer describes those layers, mark it out of sync rather
+        than expanding it and replacing the candidate with the old stack.
+        """
+        result = deepcopy(dict(candidate))
+        if result.get("id") != self._design.get("id"):
+            # An imported/frozen candidate with a different identity is not an
+            # update of this source draft; never borrow its expression state.
+            return result
+        source_expression = self._design.get("expression")
+        if not isinstance(source_expression, Mapping):
+            result.pop("expression", None)
+            return result
+
+        expression = deepcopy(dict(source_expression))
+        if (expression.get("text") and expression.get("in_sync") is True
+                and self._expression_stack_signature(result)
+                != self._expression_stack_signature(self._design)):
+            expression["in_sync"] = False
+        result["expression"] = expression
+        return result
+
     def _generation_material_options(self) -> Mapping[str, Any]:
         return self._catalog_options
 
@@ -606,6 +653,7 @@ class FilmDesignEditSession:
                 normalized = self._preserve_workflow_configuration(normalized)
                 normalized = self._preserve_interactive_group_assignments(
                     normalized, candidate_design)
+                normalized = self._preserve_source_expression(normalized)
                 generated_context = self._prepare_optimized_context(
                     normalized, frozen_material_snapshot)
             except Exception as exc:

@@ -1,5 +1,8 @@
 """Rendered theme and input regression coverage for film-layer dataset menus."""
 
+from contextlib import contextmanager
+from dataclasses import dataclass
+from collections.abc import Iterator
 from pathlib import Path
 import pytest
 from PySide6.QtCore import (
@@ -25,7 +28,12 @@ pytestmark = [pytest.mark.qt, pytest.mark.contract]
 def _dispose_qml_scene(app, window, component, engine, *, test_id):
     """Finish this scene's deletion while its wrappers and engine remain held."""
     assert QThread.currentThread() == app.thread()
-    owned = (("window", window), ("component", component), ("engine", engine))
+    owned = []
+    if window is not None:
+        owned.append(("window", window))
+    if component is not None:
+        owned.append(("component", component))
+    owned.append(("engine", engine))
     destroyed = []
 
     def receipt(label):
@@ -36,7 +44,8 @@ def _dispose_qml_scene(app, window, component, engine, *, test_id):
         assert isValid(value), f"{label} was destroyed before fixture cleanup"
         # Capture only the label, never the QObject being destroyed.
         value.destroyed.connect(lambda *_args, label=label: receipt(label))
-    window.close()
+    if isinstance(window, QQuickWindow):
+        window.close()
     for index, (label, value) in enumerate(owned):
         record_qt_disposal(test_id, "delete_begin", label)
         value.deleteLater()
@@ -47,6 +56,36 @@ def _dispose_qml_scene(app, window, component, engine, *, test_id):
         assert destroyed == [name for name, _value in owned[:index + 1]]
         record_qt_disposal(test_id, "delete_end", label)
     app.processEvents()
+
+
+@dataclass
+class _ThemeQmlScene:
+    engine: QQmlEngine
+    component: QQmlComponent
+    theme: ThemeEngineBridge
+    tokens: dict[str, str | float | int]
+    window: QObject | None = None
+
+
+@contextmanager
+def _theme_qml_scene(app, mode: str, *, test_id: str) -> Iterator[_ThemeQmlScene]:
+    """Own every QML resource even if component creation or assertions fail."""
+    engine = QQmlEngine()
+    component = None
+    scene = None
+    try:
+        tokens = build_theme_snapshot(mode)
+        theme = ThemeEngineBridge(
+            tokens, 0, mode, mode, "qa", "QA", {}, parent=engine
+        )
+        engine.rootContext().setContextProperty("Theme", theme)
+        component = QQmlComponent(engine)
+        scene = _ThemeQmlScene(engine, component, theme, tokens)
+        yield scene
+    finally:
+        window = scene.window if scene is not None else None
+        component = scene.component if scene is not None else component
+        _dispose_qml_scene(app, window, component, engine, test_id=test_id)
 
 
 def test_qml_scene_cleanup_finishes_owned_graph_before_global_deferred_drain(request):
@@ -66,6 +105,28 @@ def test_qml_scene_cleanup_finishes_owned_graph_before_global_deferred_drain(req
     finally:
         QCoreApplication.sendPostedEvents(unrelated, QEvent.Type.DeferredDelete)
     assert not isValid(unrelated)
+
+
+def test_qml_scene_creation_failure_still_disposes_theme_and_engine(request):
+    app = QGuiApplication.instance() or QGuiApplication([])
+    destroyed = set()
+    scene = None
+    source = b'''import QtQuick
+Window { required property var missingRequiredValue }
+'''
+    with pytest.raises(AssertionError, match="Required property"):
+        with _theme_qml_scene(app, "light", test_id=request.node.nodeid) as scene:
+            scene.theme.destroyed.connect(lambda *_args: destroyed.add("theme"))
+            scene.component.destroyed.connect(lambda *_args: destroyed.add("component"))
+            scene.engine.destroyed.connect(lambda *_args: destroyed.add("engine"))
+            scene.component.setData(source, QUrl())
+            scene.window = scene.component.create()
+            assert isinstance(scene.window, QQuickWindow), scene.component.errorString()
+    assert scene is not None
+    assert destroyed == {"theme", "component", "engine"}
+    assert not isValid(scene.theme)
+    assert not isValid(scene.component)
+    assert not isValid(scene.engine)
 
 
 def contrast(first, second):
@@ -128,16 +189,16 @@ def _check_pixels(window, row, foreground, background):
 
 @pytest.mark.parametrize("mode", ["light", "dark"])
 @pytest.mark.parametrize("window_width", [360, 760])
+@pytest.mark.parametrize(
+    "interactive_group_id",
+    [None, 3],
+    ids=["ungrouped", "grouped"],
+)
 def test_film_layer_dataset_menu_keeps_state_colors_paired_and_tooltip_transient(
-    mode, window_width, request
+    mode, window_width, interactive_group_id, request
 ):
     app = QGuiApplication.instance() or QGuiApplication([])
-    engine = QQmlEngine()
-    tokens = build_theme_snapshot(mode)
-    theme = ThemeEngineBridge(
-        tokens, 0, mode, mode, "qa", "QA", {}, parent=engine
-    )
-    engine.rootContext().setContextProperty("Theme", theme)
+    group_id_source = "null" if interactive_group_id is None else str(interactive_group_id)
 
     source = f"""import QtQuick
 import QtQuick.Controls
@@ -212,6 +273,7 @@ Window {{
             datasetWidth: Math.max(96, Math.min(220, host.width - 250)),
             qwWidth: 76,
             nmWidth: 76,
+            groupWidth: 50,
             insertWidth: 28,
             deleteWidth: 28
         }})
@@ -220,6 +282,7 @@ Window {{
         symbol: "A"
         materialId: "material-zns"
         opticalSetId: "optical-current"
+        interactiveGroupId: {group_id_source}
         physicalNmValue: 100.0
         physicalNmText: "100"
         qwText: "1"
@@ -228,17 +291,26 @@ Window {{
     }}
 }}
 """
-    component = QQmlComponent(engine)
     base_url = QUrl.fromLocalFile(
         str(ROOT / "coat_sim/ui/qml/FilmDesignQuick.qml")
     )
-    component.setData(source.encode("utf-8"), base_url)
-    window = component.create()
-    assert isinstance(window, QQuickWindow), component.errorString()
-    try:
+    with _theme_qml_scene(app, mode, test_id=request.node.nodeid) as scene:
+        engine = scene.engine
+        tokens = scene.tokens
+        theme = scene.theme
+        component = scene.component
+        component.setData(source.encode("utf-8"), base_url)
+        scene.window = component.create()
+        window = scene.window
+        assert isinstance(window, QQuickWindow), component.errorString()
         window.show()
         window.requestActivate()
         QTest.qWait(40)
+        group_input = window.findChild(QQuickItem, "filmLayerGroup_dropdown-test")
+        assert group_input is not None
+        assert group_input.property("text") == (
+            "" if interactive_group_id is None else str(interactive_group_id)
+        )
         selector = window.findChild(QQuickItem, "filmLayerOpticalSet_dropdown-test")
         assert selector is not None
 
@@ -367,7 +439,3 @@ Window {{
         assert catalog.property("lastValue") == "optical-third"
         assert not qml(engine, selector, "popup.visible")
         assert window.findChild(QObject, "filmOpticalSetTooltip_optical-third") is None
-
-    finally:
-        _dispose_qml_scene(app, window, component, engine, test_id=request.node.nodeid)
-

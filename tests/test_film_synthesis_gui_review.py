@@ -69,6 +69,37 @@ class _VisualItemLookup(QObject):
         self.evidence = evidence
 
 
+def _qt_wrapper_state(value: object) -> tuple[bool, bool | None, str]:
+    """Describe a wrapper using Python metadata only, never Qt-object repr."""
+    value_type = type(value)
+    type_name = f"{value_type.__module__}.{value_type.__qualname__}"
+    is_quick_item = isinstance(value, QQuickItem)
+    try:
+        valid: bool | None = bool(isValid(value))
+        validity = str(valid).lower()
+    except Exception as exc:
+        valid = None
+        validity = f"raised:{type(exc).__name__}"
+    details = (f"python_type={type_name}; is_QQuickItem={str(is_quick_item).lower()}; "
+               f"shiboken_isValid={validity}; wrapper_id=0x{id(value):x}")
+    return is_quick_item, valid, details
+
+
+def _require_live_visual_item(value: object, *, target: str, path: str,
+                               source: str) -> QQuickItem:
+    is_quick_item, valid, details = _qt_wrapper_state(value)
+    context = f"target={target!r}; visual_path={path}; source={source}; {details}"
+    if not is_quick_item:
+        raise AssertionError(
+            f"Non-QQuickItem wrapper encountered during visual lookup; {context}"
+        )
+    if valid is not True:
+        raise AssertionError(
+            f"Invalid QQuickItem wrapper encountered during visual lookup; {context}"
+        )
+    return cast(QQuickItem, value)
+
+
 def find_named_visual_item(root: QQuickWindow | QQuickItem, name: str) -> QQuickItem:
     """Return one live named item from the native Qt Quick visual tree.
 
@@ -76,35 +107,47 @@ def find_named_visual_item(root: QQuickWindow | QQuickItem, name: str) -> QQuick
     Use QQuickItem.childItems() only, retain wrappers during traversal, prefer
     the unique visible match, and otherwise allow one unique hidden match.
     """
-    scope = root.contentItem() if isinstance(root, QQuickWindow) else root
+    if isinstance(root, QQuickWindow):
+        root_path = "window.contentItem"
+        scope = root.contentItem()
+    else:
+        root_path = "root"
+        scope = root
     if not isinstance(scope, QQuickItem) or not isValid(scope):
-        raise AssertionError("QQuickWindow has no live QQuickItem content root")
+        is_item, valid, details = _qt_wrapper_state(scope)
+        raise AssertionError(
+            "QQuickWindow has no live QQuickItem content root; "
+            f"target={name!r}; visual_path={root_path}; "
+            f"is_QQuickItem={str(is_item).lower()}; shiboken_isValid={valid}; {details}"
+        )
 
     matches = []
-    pending = [scope]
+    pending = [(scope, root_path)]
     # Keep strong wrapper references, not just ``id()`` values: Shiboken can
     # release a Python wrapper while its QML-owned C++ item remains live, and
     # CPython may then reuse that id for a different child.
     visited = {}
     while pending:
-        item = pending.pop()
-        if not isinstance(item, QQuickItem) or not isValid(item):
-            raise AssertionError(
-                "QQuickItem.childItems() returned a non-visual or invalid wrapper"
-            )
+        candidate, path = pending.pop()
+        item = _require_live_visual_item(
+            candidate, target=name, path=path, source="pending traversal node"
+        )
         identity = id(item)
         if identity in visited:
             continue
         visited[identity] = item
-        if item.objectName() == name:
+        object_name = item.objectName()
+        node_path = f"{path}<objectName={object_name!r}>"
+        if object_name == name:
             matches.append(item)
         children = item.childItems()
-        for child in children:
-            if not isinstance(child, QQuickItem) or not isValid(child):
-                raise AssertionError(
-                    "QQuickItem.childItems() returned a non-visual or invalid wrapper"
-                )
-        pending.extend(reversed(children))
+        for index, child in enumerate(children):
+            child_path = f"{node_path}/child[{index}]"
+            checked = _require_live_visual_item(
+                child, target=name, path=child_path,
+                source="QQuickItem.childItems() result",
+            )
+            pending.append((checked, child_path))
 
     visible = [item for item in matches if item.isVisible()]
     if len(visible) == 1:
@@ -373,6 +416,127 @@ def _expected_with_synthesis_search_progress(design, controller):
     return expected
 
 
+def test_synthesis_apply_keeps_source_expression_across_cancel_completion_orders(gui, monkeypatch):
+    from coat_sim.core.film_optimization import FilmOptimizationResult
+    from coat_sim.core.film_auto_synthesis import freeze_film_synthesis_request
+    from coat_sim.core.film_physical_generator import freeze_synthesis_editable_snapshot
+    from coat_sim.ui.film_synthesis_quick_adapter import SynthesisQuickResult
+
+    service, source, controller, scene = _optimizer(gui)
+    symbol_id = source._symbol_stable_ids["H"]
+    assert source.setLayerValue("symbol", symbol_id, "note", "user-defined H placeholder")
+    controller._load_source(preserve_variables=True)
+    source_before = source.session.snapshot()
+    source_expression = deepcopy(source_before.design["expression"])
+    request = freeze_film_synthesis_request(service, controller._build_synthesis_request())
+    editable_snapshot = freeze_synthesis_editable_snapshot(
+        service, request.environment, request.frozen_material_snapshot)
+    controller._frozen_request = request
+    controller._synthesis_editable_snapshot = editable_snapshot
+    scene.close()
+    gui[3].remove(scene)
+    monkeypatch.setattr(controller, "_retain_synthesis_search", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(controller, "_retain_cancelled_restart", lambda: None)
+    monkeypatch.setattr(controller, "_cancel_candidate_verified", lambda: True)
+    monkeypatch.setattr(controller, "_cancel_material_references_unchanged", lambda *_args: True)
+    monkeypatch.setattr(controller, "_capture_continuation_postapply", lambda: None)
+    monkeypatch.setattr(source, "openSimulationAndCalculate", lambda: "film_simulation")
+
+    def candidate(thickness):
+        value = deepcopy(dict(source_before.design))
+        value["expression"] = {"text": "", "symbols": {}, "in_sync": False}
+        value["front_layers"] = [{
+            "id": f"generated_{thickness}", "material_id": "acceptance-film",
+            "optical_set_id": "film-set",
+            "thickness": {"value": thickness, "unit": "nm"}, "note": "",
+        }]
+        return service.validate(value)
+
+    def result(state, thickness, revision):
+        design = candidate(thickness)
+        return FilmOptimizationResult(
+            state=state, design_revision=revision, best_design=design,
+            best_thickness_nm={design["front_layers"][0]["id"]: float(thickness)},
+            max_normalized_error=0.5, weighted_max_normalized_error=0.5,
+            weighted_rms_error=0.5, targets_met=False, per_condition_errors=(),
+            iterations=1, evaluations=1, message="deterministic event-order fixture",
+        )
+
+    def start_attempt(operation_id, job_id):
+        current = source.session.snapshot()
+        epoch = int(source.pendingEditEpoch)
+        controller._frozen_request = request
+        controller._synthesis_editable_snapshot = editable_snapshot
+        controller._operation_serial = operation_id
+        controller._attempt_operation_id = operation_id
+        controller._attempt_job_id = job_id
+        controller._attempt_session = controller.session
+        controller._attempt_source_controller = controller._source_controller
+        controller._attempt_source_revision = current.design_revision
+        controller._attempt_edit_epoch = epoch
+        controller._attempt_search_mode = "synthesis"
+        controller._operation_edit_epoch = epoch
+        controller._cancel_intent_consumed = False
+        return current
+
+    # Worker completion can already carry an optimizer candidate while the
+    # later queue envelope says that a cancel marker won. This dispatch must
+    # keep the source expression metadata when applying the completed result.
+    current = start_attempt(101, "cancel-marker-after-worker-result")
+    completed = result("completed", 75.0, current.design_revision)
+    cancel_payload = {
+        "result": {"state": "cancelled", "candidate_design": deepcopy(completed.best_design),
+                   "targets_met": False},
+        "review": {"cancel_snapshot": {
+            "source": "worker_completed_reply", "replay_performed": False}},
+    }
+    controller._on_finished(101, SynthesisQuickResult(cancel_payload, completed), [], None)
+    applied = source.session.snapshot()
+    assert applied.design["expression"] == source_expression
+    assert applied.design["expression"]["symbols"]["H"]["note"] == "user-defined H placeholder"
+    assert applied.design["front_layers"][0]["thickness"]["value"] == 75.0
+    assert applied.design_revision == current.design_revision + 1
+    assert source.canUndoOptimizedDesign
+    assert source.undoOptimizedDesign()
+    assert source.session.snapshot().design == current.design
+
+    # The marker-first path is also deterministic: an accepted cancel applies
+    # only the verified cancel candidate, through the same atomic session API.
+    current = start_attempt(102, "cancel-marker-before-worker-result")
+    cancelled = result("cancelled", 125.0, current.design_revision)
+    cancel_payload = {
+        "result": {"state": "cancelled", "candidate_design": deepcopy(cancelled.best_design),
+                   "targets_met": False},
+        "review": {"cancel_snapshot": {
+            "source": "worker_completed_reply", "replay_performed": False,
+            "candidate_available": True}},
+    }
+    controller._cancel_intent_accepted = False
+    controller._cancel_intent_requested = False
+    controller._on_finished(102, SynthesisQuickResult(cancel_payload, cancelled), [], None)
+    assert controller._result_application_eligible
+    controller._cancel_intent_accepted = True
+    controller._cancel_intent_requested = True
+    controller._cancel_intent_operation_id = 102
+    controller._cancel_intent_job_id = "cancel-marker-before-worker-result"
+    assert controller._accept_cancel_intent(), (
+        controller._error, controller._progress_text,
+        controller._cancel_intent_consumed,
+        controller._attempt_source_revision,
+        controller.session.snapshot().design_revision,
+        controller._attempt_edit_epoch,
+        controller._source_edit_epoch(),
+    )
+    applied = source.session.snapshot()
+    assert applied.design["expression"] == source_expression
+    assert applied.design["expression"]["symbols"]["H"]["note"] == "user-defined H placeholder"
+    assert applied.design["front_layers"][0]["thickness"]["value"] == 125.0
+    assert applied.design_revision == current.design_revision + 1
+    assert source.canUndoOptimizedDesign
+    assert source.undoOptimizedDesign()
+    assert source.session.snapshot().design == current.design
+
+
 def test_scene_keyboard_edit_reactivates_its_window_and_keeps_every_digit(gui):
     _service, _source, controller, scene = _optimizer(gui)
     scene.click(scene.item("filmOptimizationAlgorithmTab"))
@@ -408,6 +572,38 @@ def _preview_sampled_candidate(scene, source, controller):
     assert source.service is service and source.service.materials is provider
     assert source.session.snapshot().design == before.design
     assert source.session.snapshot().design_revision == before.design_revision
+
+
+def test_visual_lookup_diagnostic_distinguishes_wrong_type_from_deleted_qquickitem():
+    wrong_type = QObject()
+    deleted_item = QQuickItem()
+    deleted_item.deleteLater()
+    QCoreApplication.sendPostedEvents(deleted_item, QEvent.Type.DeferredDelete)
+    assert not isValid(deleted_item)
+
+    with pytest.raises(AssertionError, match="Non-QQuickItem wrapper") as wrong:
+        _require_live_visual_item(
+            wrong_type, target="wanted", path="contentItem/child[2]", source="probe"
+        )
+    wrong_message = str(wrong.value)
+    assert "target='wanted'" in wrong_message
+    assert "visual_path=contentItem/child[2]" in wrong_message
+    assert "python_type=PySide6.QtCore.QObject" in wrong_message
+    assert "is_QQuickItem=false" in wrong_message
+    assert "shiboken_isValid=true" in wrong_message
+    assert f"wrapper_id=0x{id(wrong_type):x}" in wrong_message
+
+    with pytest.raises(AssertionError, match="Invalid QQuickItem wrapper") as invalid:
+        _require_live_visual_item(
+            deleted_item, target="wanted", path="contentItem/child[7]", source="probe"
+        )
+    invalid_message = str(invalid.value)
+    assert "target='wanted'" in invalid_message
+    assert "visual_path=contentItem/child[7]" in invalid_message
+    assert "python_type=PySide6.QtQuick.QQuickItem" in invalid_message
+    assert "is_QQuickItem=true" in invalid_message
+    assert "shiboken_isValid=false" in invalid_message
+    assert f"wrapper_id=0x{id(deleted_item):x}" in invalid_message
 
 
 def test_scene_lookup_preserves_visual_ownership_and_strict_item_checks(tmp_path, monkeypatch):
