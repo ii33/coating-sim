@@ -141,8 +141,10 @@ def test_equal_angle_typed_naturally_survives_each_key_and_submission(usable_gui
     assert spec["candidate_materials"] == [{"material_id": "acceptance-film", "optical_set_id": "film-set"}]
     applied = source.session.snapshot()
     expected = deepcopy(controller._synthesis_payload["result"]["candidate_design"])
+    expected["expression"] = deepcopy(original.design["expression"])
     expected["workflow_settings"] = deepcopy(applied.design["workflow_settings"])
     assert applied.design == expected and controller._candidate_applied
+    assert applied.design["expression"] == original.design["expression"]
     assert applied.design_revision == original.design_revision + 1
     assert source.undoOptimizedDesign()
     assert source.currentDesign() == _expected_with_synthesis_search_progress(original.design, controller)
@@ -362,8 +364,10 @@ def test_dynamic_material_rows_delete_middle_reorder_persist_and_submit_exact_op
         assert high["n"] == [2.30, 2.30] and low["n"] == [1.23, 1.23]
         applied = reopened.session.snapshot()
         candidate = deepcopy(payload["result"]["candidate_design"])
+        candidate["expression"] = deepcopy(before_design["expression"])
         candidate["workflow_settings"] = deepcopy(applied.design["workflow_settings"])
         assert applied.design == candidate and restored._candidate_applied
+        assert applied.design["expression"] == before_design["expression"]
         assert applied.design_revision == before_revision + 1
         variables = cast(list[dict[str, object]], restored.property("variables"))
         assert {row["layer_id"] for row in variables} == {

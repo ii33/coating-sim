@@ -93,6 +93,7 @@ Window {
     def test_both_import_names_share_guard_and_default_settings_write_is_temporary(self):
         self.assertIs(qt_test_guard, package_qt_test_guard)
         root = qt_test_guard.QT_TEST_SETTINGS_ROOT.resolve()
+        self.assertEqual(Path(os.environ["XDG_STATE_HOME"]).resolve(), root)
         value = QSettings("coat-isolation-test", "user-profile-write")
         value.setValue("probe", "private")
         value.sync()
@@ -102,6 +103,7 @@ Window {
 
     def test_qt_settings_guard_restores_both_scopes_and_application_identity(self):
         root = qt_test_guard.QT_TEST_SETTINGS_ROOT.resolve()
+        original_state_home = os.environ["XDG_STATE_HOME"]
         with tempfile.TemporaryDirectory(prefix="coat-settings-contamination-") as folder:
             contaminated_root = Path(folder).resolve()
             QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope,
@@ -110,9 +112,11 @@ Window {
                               str(contaminated_root / "system"))
             QCoreApplication.setOrganizationName("contaminated-organization")
             QCoreApplication.setApplicationName("contaminated-application")
+            os.environ["XDG_STATE_HOME"] = str(contaminated_root / "state")
 
             qt_test_guard.restore_qt_test_settings()
 
+        self.assertEqual(os.environ["XDG_STATE_HOME"], original_state_home)
         self.assertEqual(QCoreApplication.organizationName(),
                          qt_test_guard.QT_TEST_ORGANIZATION_NAME)
         self.assertEqual(QCoreApplication.applicationName(),

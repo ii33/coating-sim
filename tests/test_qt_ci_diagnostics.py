@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import unittest
@@ -189,18 +190,27 @@ def test_scene_invalid_visual_root_fails_without_formatting_qt_argument(tmp_path
     events = tmp_path / "scene-events.jsonl"
     probe = tmp_path / "test_scene_lookup_probe.py"
     probe.write_text(
-        "import os\nfrom pathlib import Path\nfrom types import SimpleNamespace\n"
+        "import os\nfrom pathlib import Path\n"
         "from PySide6.QtGui import QGuiApplication\n"
+        "from PySide6.QtQuick import QQuickWindow\n"
         "from tests.test_film_synthesis_gui_review import _Scene\n"
         f"REPRESENTED = Path({str(represented)!r})\n"
         "APP = QGuiApplication.instance() or QGuiApplication([])\n"
         "class OpaqueArgument:\n"
+        "    def __getattribute__(self, name):\n"
+        "        if name in {'__class__', '__repr__'}:\n"
+        "            return object.__getattribute__(self, name)\n"
+        "        REPRESENTED.write_text('attribute accessed: ' + str(name))\n"
+        "        os._exit(84)\n"
         "    def __repr__(self):\n"
         "        REPRESENTED.write_text('lookup assertion touched opaque object')\n"
         "        os._exit(83)\n"
+        "class OpaqueWindow(QQuickWindow):\n"
+        "    def contentItem(self):\n"
+        "        return OpaqueArgument()\n"
         "def test_original_scene_lookup_failure():\n"
         "    scene = _Scene.__new__(_Scene)\n"
-        "    scene.window = SimpleNamespace(contentItem=lambda: OpaqueArgument())\n"
+        "    scene.window = OpaqueWindow()\n"
         "    scene.item('filmOptimizationCancelButton')\n",
         encoding="utf8",
     )
@@ -224,4 +234,16 @@ def test_scene_invalid_visual_root_fails_without_formatting_qt_argument(tmp_path
     failure = next(row for row in rows if row["event"] == "exception_before_pytest_report")
     assert failure["exception_type"] == "AssertionError"
     assert failure["when"] == "call"
-    assert failure["arguments"] == ["QQuickWindow has no live QQuickItem content root"]
+    assert len(failure["arguments"]) == 1
+    message = failure["arguments"][0]
+    assert message.startswith("QQuickWindow has no live QQuickItem content root; ")
+    for field in (
+        "target='filmOptimizationCancelButton'",
+        "visual_path=window.contentItem",
+        "is_QQuickItem=false",
+        "shiboken_isValid=True",
+        "python_type=test_scene_lookup_probe.OpaqueArgument",
+        "shiboken_isValid=true",
+    ):
+        assert field in message
+    assert re.search(r"(?:^|; )wrapper_id=0x[0-9a-f]+$", message)

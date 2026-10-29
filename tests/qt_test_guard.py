@@ -29,6 +29,7 @@ atexit.register(_settings_temp.cleanup)
 # boundary. Keep the helper available to focused regression tests as well.
 def restore_qt_test_settings() -> None:
     """Restore Qt's process-global settings paths and application identity."""
+    os.environ["XDG_STATE_HOME"] = str(QT_TEST_SETTINGS_ROOT)
     QSettings.setDefaultFormat(QSettings.Format.IniFormat)
     QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope,
                       str(QT_TEST_SETTINGS_ROOT))

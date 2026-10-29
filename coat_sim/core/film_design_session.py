@@ -361,7 +361,8 @@ class FilmDesignEditSession:
             sides.append(tuple(layers))
         return tuple(sides)
 
-    def _preserve_source_expression(self, candidate: Mapping[str, Any]) -> dict[str, Any]:
+    def _preserve_source_expression(self, candidate: Mapping[str, Any],
+                                   submitted_candidate: Mapping[str, Any]) -> dict[str, Any]:
         """Keep source-owned expression metadata without regenerating its stack.
 
         Synthesis workers intentionally blank expression fields in their numeric
@@ -369,7 +370,11 @@ class FilmDesignEditSession:
         them from the source draft while retaining the candidate's independently
         computed front/back layers. If a non-empty, previously synchronized
         expression no longer describes those layers, mark it out of sync rather
-        than expanding it and replacing the candidate with the old stack.
+        than expanding it and replacing the candidate with the old stack. Fixed-
+        topology optimizers also explicitly detach the expression before
+        returning physical thickness values. Preserve that detach marker only
+        when its text and symbols still match this source; a blanked or unrelated
+        candidate expression cannot alter source metadata.
         """
         result = deepcopy(dict(candidate))
         if result.get("id") != self._design.get("id"):
@@ -382,9 +387,26 @@ class FilmDesignEditSession:
             return result
 
         expression = deepcopy(dict(source_expression))
-        if (expression.get("text") and expression.get("in_sync") is True
-                and self._expression_stack_signature(result)
-                != self._expression_stack_signature(self._design)):
+        submitted_expression = submitted_candidate.get("expression")
+        explicitly_detached = False
+        if isinstance(submitted_expression, Mapping):
+            submitted_matches_source = (
+                {key: value for key, value in submitted_expression.items()
+                 if key != "in_sync"}
+                == {key: value for key, value in source_expression.items()
+                    if key != "in_sync"}
+            )
+            explicitly_detached = (
+                submitted_matches_source
+                and submitted_expression.get("in_sync") is False
+            )
+        stack_changed = (
+            self._expression_stack_signature(result)
+            != self._expression_stack_signature(self._design)
+        )
+        if explicitly_detached or (
+                expression.get("text") and expression.get("in_sync") is True
+                and stack_changed):
             expression["in_sync"] = False
         result["expression"] = expression
         return result
@@ -653,7 +675,7 @@ class FilmDesignEditSession:
                 normalized = self._preserve_workflow_configuration(normalized)
                 normalized = self._preserve_interactive_group_assignments(
                     normalized, candidate_design)
-                normalized = self._preserve_source_expression(normalized)
+                normalized = self._preserve_source_expression(normalized, candidate_design)
                 generated_context = self._prepare_optimized_context(
                     normalized, frozen_material_snapshot)
             except Exception as exc:

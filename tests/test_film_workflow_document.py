@@ -244,6 +244,46 @@ class FilmWorkflowDocumentTests(unittest.TestCase):
         self.assertEqual(session.snapshot().design["expression"],
                          {"text": "", "symbols": {}, "in_sync": False})
 
+    def test_optimizer_detach_marker_keeps_matching_source_symbols_without_stack_change(self):
+        layer = {"id": "expression-layer", "material_id": "F",
+                 "optical_set_id": "F_set", "thickness": {"value": 100.0, "unit": "nm"},
+                 "note": "candidate stack is unchanged"}
+        symbol = {key: deepcopy(value) for key, value in layer.items() if key != "id"}
+        source = deepcopy(self.design.currentDesign())
+        source["front_layers"] = [layer]
+        source["expression"] = {
+            "text": "A", "symbols": {"A": symbol}, "in_sync": True}
+        session = self.design.session
+        assert session is not None
+        self.assertTrue(session.request_replace_design(source))
+        before = session.snapshot()
+        self.assertEqual(before.design["expression"]["in_sync"], True)
+
+        # The thickness solver deliberately detaches its expression metadata,
+        # even if the selected incumbent is numerically identical to the source.
+        candidate = deepcopy(dict(before.design))
+        candidate_without_sync_marker = deepcopy(candidate)
+        candidate_without_sync_marker["expression"].pop("in_sync")
+        self.assertFalse(session.apply_optimized_design(
+            candidate_without_sync_marker, before.design_revision))
+        rejected = session.snapshot()
+        self.assertEqual(rejected.design, before.design)
+        self.assertEqual(rejected.design_revision, before.design_revision)
+
+        # Only an explicit False from the submitted candidate is a detach
+        # marker; preserve the source-owned expression text/symbol metadata.
+        candidate["expression"]["in_sync"] = False
+        self.assertEqual(candidate["front_layers"], before.design["front_layers"])
+        self.assertTrue(session.apply_optimized_design(candidate, before.design_revision))
+        applied = session.snapshot()
+        expected_expression = deepcopy(before.design["expression"])
+        expected_expression["in_sync"] = False
+        self.assertEqual(applied.design["expression"], expected_expression)
+        self.assertEqual(applied.design["front_layers"], candidate["front_layers"])
+        self.assertEqual(applied.design_revision, before.design_revision + 1)
+        self.assertTrue(session.undo_optimized_design(applied.design_revision))
+        self.assertEqual(session.snapshot().design, before.design)
+
     def test_configuration_only_edit_keeps_calculation_token_current(self):
         self.sim.startCalculation()
         self.wait_done()

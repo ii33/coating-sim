@@ -55,6 +55,11 @@ core-only selection in an environment that has PySide6. Without PySide6,
 configuration leaves core-only subsets usable and GUI tests report their
 normal missing dependency errors.
 
+The same private Qt test root also owns `XDG_STATE_HOME`, including scheduler
+lifecycle registration. The existing autouse setup/finally restores it after
+environment contamination; each process creates its own root. Tests must not
+write scheduler registry metadata into the real user's `~/.local/state`.
+
 Use `tests.qt_test_guard.qml_item_window(item)` for a QML item's input surface.
 On the verified PySide6/Shiboken 6.12.0 Linux build, calling
 `QQuickItem.window()` creates a reciprocal wrapper ownership cycle while the
@@ -86,6 +91,78 @@ The local raw reproduction and controls are retained under
 `artifacts/film_synthesis_20261020/gpu-forward-20261020/delivery-closeout-20261020/publication/ci-followup/closure-r4/`.
 See the [pytest protocol implementation](https://github.com/pytest-dev/pytest/blob/9.1.0/src/_pytest/runner.py)
 and [Python cyclic garbage collection](https://docs.python.org/3/library/gc.html).
+
+### Qt module process boundaries
+
+Case-boundary GC is not a native-wrapper-cache reset. The 2026-10-29 contract
+run still returned live `QMetaObject` wrappers from `QQuickItem.childItems()` in
+two different modules after earlier cases had completed. This does not prove
+which owner/reference caused those particular cache entries, and no upstream
+fix or safe binding-level invalidation has been established. In particular,
+`shiboken6.isValid()` is not proof that the wrapper has the requested Qt type.
+The official [Shiboken ownership documentation](https://doc.qt.io/qtforpython-6/shiboken6/typesystem_ownership.html)
+describes the separate native/wrapper lifetimes. Its
+[6.12.0 binding manager](https://github.com/pyside/pyside-setup/blob/v6.12.0/sources/shiboken6/libshiboken/bindingmanager.cpp)
+contains address-based wrapper lookup (including an untyped overload); that
+is consistent with the hypothesis, not attribution of these CI failures to
+a particular upstream issue.
+
+`run_tests.py` also loads `tools.pytest_qt_modules`. If the selected collection
+contains Qt-marked cases, the controller executes each Qt-marked module in a
+fresh Python interpreter. All selected items from that module use that process,
+including items without an individual Qt marker. Contiguous non-Qt modules can
+share one process. Collection order is retained, so a custom ordering that
+revisits a Qt module creates another fresh process at that boundary. No child
+inherits initialized Qt state through `fork`; each runs `python -m pytest`.
+Fixtures scoped to a session therefore have a session per process, while
+within-module lifecycle and repeated-operation tests remain intact.
+
+The controller first performs ordinary full pytest collection and selection.
+Workers import only their planned test modules (and normal dependencies), apply
+that exact selected node-ID plan, and reject missing membership. They do not
+retry failed cases or apply a failure-specific allowlist. `--collect-only` and
+the existing collection-audit/tier assignment are unchanged. Ordinary test,
+fixture and subtest reports use pytest's public serialization hooks and are
+replayed to the controller's existing terminal, duration and JUnit reporters.
+The transport retains tuples as well as lists, including skip report metadata.
+Skip, xfail, xpass, setup/teardown errors and subtest outcomes remain visible.
+JUnit suite properties and per-case properties/attributes are retained through
+private temporary worker journals. That bridge uses pytest's internal
+`_pytest.junitxml.xml_key` interface, verified with pytest 9.1.1 (the repository
+requires pytest 9.1 or newer). An incompatible internal API is an explicit error,
+not a silently selected compatibility path.
+Workers alone append original exception/disposal diagnostics to the requested
+JSONL path; controller replay does not duplicate those events or overwrite the
+aggregate JUnit/collection files.
+
+`-x` and `--maxfail` use one remaining-failure budget across process boundaries.
+Last-failed/failed-first selection and ordering are decided by the controller's
+canonical collection, not reapplied from a changing cache in each worker.
+`--stepwise` execution is explicitly unsupported and raises a usage error;
+it is not silently downgraded to module-level stopping. These contracts cover
+this repository's supported runner, not arbitrary external pytest plugins.
+Without fail-fast, ordinary assertion failures do not prevent later modules
+from running. Collection errors, internal errors, interrupts and process crashes
+terminate the run with their nonzero status; Unix signals map to `128 + signal`.
+If SIGINT reaches only the controller, it kills and reaps its active worker;
+on POSIX the worker has a dedicated process group, whose other members are
+terminated too. The interrupted batch is recorded as interrupted, never passed.
+No timeout or hidden runtime budget is introduced. A malformed internal worker
+launch fails explicitly rather than disabling isolation through an inherited
+environment flag.
+
+With `--junitxml=DIR/junit.xml`, `DIR/module-processes.json` records the original
+selected node IDs, every batch, child PID, elapsed time, started node IDs and
+exit code. A pending batch after explicit fail-fast/interrupt/crash is visible,
+not reported as passed. Alternatively pass `--module-isolation-report=PATH`
+after the runner's `--` separator. Startup/import work is repeated once per
+process: this is a deliberate finite overhead, not a guarantee about overall
+suite duration. Process isolation prevents cross-module native-state reuse; it
+does not repair PySide itself or excuse unsafe ownership within a test/module.
+Terminal test reports are replayed at each batch's end rather than continuously.
+While a batch is active, its banner and process audit show that it is running;
+the requested exception/disposal JSONL still flushes worker evidence immediately.
+An unchanged terminal test name alone is not evidence that a batch has hung.
 
 Provider, remote-service, and actual-GPU checks must carry the corresponding
 `live_provider`, `live_remote`, or `real_gpu` marker. Such checks are skipped

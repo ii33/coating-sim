@@ -72,6 +72,7 @@ def main(argv: list[str] | None = None) -> int:
         if enabled:
             command.append(option)
     command.extend(["-p", "tools.pytest_qt_lifecycle"])
+    command.extend(["-p", "tools.pytest_qt_modules"])
     command.extend(["-q", "tests"])
     command.extend(pytest_args)
     with tempfile.TemporaryDirectory(prefix="deposition-sim-pytest-") as cache_directory:
