@@ -246,8 +246,7 @@ def test_two_actual_film_materials_with_linked_datasets_generate_preview_apply_a
     layers = source.currentDesign()["front_layers"]
     assert [(row["material_id"], row["optical_set_id"]) for row in layers] == [
         (row["material_id"], row["optical_set_id"]) for row in rows]
-    undo = next(item for item in scene.item("filmDesignGeneratorPanel").findChildren(QQuickItem)
-                if str(item.property("text")) == "撤销应用")
+    undo = scene.item("filmDesignGeneratorUndoButton")
     scene.click(undo)
     _wait(lambda: source.currentDesign()["front_layers"] == [])
     assert source.session.snapshot().design == before.design

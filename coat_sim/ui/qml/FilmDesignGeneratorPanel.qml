@@ -258,6 +258,7 @@ Item {
                 font.weight: Theme.snapshot.fontWeightEmphasis
             }
             ThemeControls.ThemeButton {
+                objectName: "filmDesignGeneratorUndoButton"
                 text: "撤销应用"
                 enabled: panel.controller.canUndoGeneratedDesign
                 Accessible.name: "撤销最近一次参数化设计替换"

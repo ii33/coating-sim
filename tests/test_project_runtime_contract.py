@@ -613,6 +613,32 @@ def test_detached_open_requires_ready_then_exact_owner_activation(monkeypatch, t
         assert kwargs["start_new_session"] is True
 
 
+
+def test_launcher_reports_open_not_foreground_and_clears_notice_on_failure(app, tmp_path):
+    from coat_sim.ui.control import UiControlError
+    store = ProjectStore.create(tmp_path / "project", "P")
+    outcomes = iter((store, UiControlError("ui_unavailable", "Original owner disconnected")))
+    def open_request(_path):
+        result = next(outcomes)
+        if isinstance(result, Exception):
+            raise result
+        return result
+    picker: Any = ProjectLauncherAdapter(recent_projects=history(tmp_path), runtime_opener=open_request)
+    try:
+        assert picker.openProject(str(store.project_file))
+        settle(app, picker)
+        assert picker.projectError == ""
+        assert "工程窗口已打开" in picker.projectFileMessage
+        assert "任务栏" in picker.projectFileMessage
+        assert picker.openProject(str(store.project_file))
+        settle(app, picker)
+        assert picker.projectFileMessage == ""
+        assert "Original owner disconnected" in picker.projectError
+    finally:
+        picker.stop()
+        picker.deleteLater()
+
+
 def test_existing_owner_open_does_not_spawn(monkeypatch, tmp_path):
     import coat_sim.ui.project_runtime_client as module
     store = ProjectStore.create(tmp_path / "project", "P")

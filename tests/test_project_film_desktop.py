@@ -120,6 +120,32 @@ def test_module_route_reuses_per_project_restores_and_reopens_after_close(deskto
     assert reopened != first_id and reopened != second_id
 
 
+
+@pytest.mark.parametrize("initial_state", ["normal", "minimized", "hidden"])
+def test_designer_restore_reuses_window_session_and_unsaved_draft(desktop, initial_state):
+    client, stores = desktop
+    workspace = client.open_project(next(iter(stores)))
+    controller = client.controller_for(workspace, "film_design")
+    route = next(route for route in client.host.routes(workspace.binding.project_id)
+                 if route.module_key == "film_design")
+    window = client.host.window_for(route)
+    assert controller.setDesignValue("name", "Keep unsaved activation draft")
+    if initial_state == "minimized":
+        window.showMinimized()
+    elif initial_state == "hidden":
+        window.hide()
+    events()
+    for _ in range(2):
+        assert client.open_project_module(workspace, "film_design") == route.route_id
+        events()
+        assert client.host.window_for(route) is window
+        assert window.isVisible() and not window.windowState() & Qt.WindowState.WindowMinimized
+        assert client.controller_for(workspace, "film_design") is controller
+        assert controller.currentDesign()["name"] == "Keep unsaved activation draft"
+        assert controller.dirty
+        assert len(client.host.sessions()) == 1
+        assert len(client._views) == 1
+
 def test_two_projects_simulation_sources_and_materials_never_cross(desktop):
     client, stores = desktop
     workspaces = [client.open_project(root) for root in stores]

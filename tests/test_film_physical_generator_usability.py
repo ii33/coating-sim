@@ -4,7 +4,6 @@ from typing import Any, cast
 
 import pytest
 from PySide6.QtCore import QObject, QSettings, Qt
-from PySide6.QtQuick import QQuickItem
 from PySide6.QtTest import QTest
 
 from coat_sim.core.film_design_service import FilmDesignService
@@ -95,8 +94,7 @@ def test_real_two_material_preview_apply_confirmation_and_undo(two_film_scene):
     scene.accept_dialog(dialog)
     _wait(lambda: controller.session.snapshot().design_revision == before.design_revision + 1)
     assert len(controller.currentDesign()['front_layers']) == 4
-    undo = next(item for item in scene.item('filmDesignGeneratorPanel').findChildren(QQuickItem)
-                if str(item.property('text')) == '撤销应用')
+    undo = scene.item('filmDesignGeneratorUndoButton')
     scene.click(undo)
     _wait(lambda: controller.currentDesign()['front_layers'] == before.design['front_layers'])
     assert controller.currentDesign() == before.design

@@ -139,6 +139,7 @@ class ProjectLauncherAdapter(QObject):
             if self._pending_operation == "open":
                 self._request_history("refresh", force=True)
                 self._selected_file = str(result.project_file)
+                self._file_message = "工程窗口已打开；若未切到前台，请从任务栏选择工程窗口。"
             elif self._pending_operation == "plan":
                 self._deletion_plan = result
             elif self._pending_operation == "trash":

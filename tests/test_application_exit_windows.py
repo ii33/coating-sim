@@ -166,16 +166,9 @@ def test_native_global_exit_preserves_cancel_then_closes_exact_owned_processes(
         assert client.request("qa_action", action="open", root=str(store.project_file))["accepted"]
         result = eventually(lambda: client.request("qa_snapshot"), lambda row: not row["busy"],
                             "launcher project open settles")
-        # Windows may reject foreground activation for a newly published
-        # child process. The project can still be open and registered; accept
-        # only that precise native focus response, then prove ownership below.
-        if result["open_error"]:
-            assert "foreground activation" in result["open_error"], result
-            eventually(lambda: assistant.list_clients(),
-                lambda rows: any(item["role"] == "project_host" and any(
-                    session["project_id"] == store.manifest["id"]
-                    for session in item["project_sessions"]) for item in rows),
-                "native foreground-denied project still registers its owner")
+        # Denied foreground permission must not masquerade as an open failure.
+        # The runtime client still requires an exact visible-owner confirmation.
+        assert result["open_error"] == "", result
 
     def process_retired(identity: tuple[int, str]) -> bool:
         current, started = _process_identity(identity[0])

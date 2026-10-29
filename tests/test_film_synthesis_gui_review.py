@@ -50,7 +50,13 @@ def _variant(value):
 
 
 class _VisualItemLookup(QObject):
-    """Keep item transfer typed instead of returning it in an expression QVariant."""
+    """Carry object-valued QML selectors through a typed slot.
+
+    Named scene lookup deliberately does not use this bridge: it walks the
+    native QQuickItem visual tree. This bridge remains for selectors such as
+    Dialog.standardButton() and ListView.itemAtIndex() that return an item
+    rather than identifying one by objectName.
+    """
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -61,6 +67,59 @@ class _VisualItemLookup(QObject):
     def capture(self, item, evidence):
         self.item = item
         self.evidence = evidence
+
+
+def find_named_visual_item(root: QQuickWindow | QQuickItem, name: str) -> QQuickItem:
+    """Return one live named item from the native Qt Quick visual tree.
+
+    QML visual parents and QObject parents are different ownership graphs.
+    Use QQuickItem.childItems() only, retain wrappers during traversal, prefer
+    the unique visible match, and otherwise allow one unique hidden match.
+    """
+    scope = root.contentItem() if isinstance(root, QQuickWindow) else root
+    if not isinstance(scope, QQuickItem) or not isValid(scope):
+        raise AssertionError("QQuickWindow has no live QQuickItem content root")
+
+    matches = []
+    pending = [scope]
+    # Keep strong wrapper references, not just ``id()`` values: Shiboken can
+    # release a Python wrapper while its QML-owned C++ item remains live, and
+    # CPython may then reuse that id for a different child.
+    visited = {}
+    while pending:
+        item = pending.pop()
+        if not isinstance(item, QQuickItem) or not isValid(item):
+            raise AssertionError(
+                "QQuickItem.childItems() returned a non-visual or invalid wrapper"
+            )
+        identity = id(item)
+        if identity in visited:
+            continue
+        visited[identity] = item
+        if item.objectName() == name:
+            matches.append(item)
+        children = item.childItems()
+        for child in children:
+            if not isinstance(child, QQuickItem) or not isValid(child):
+                raise AssertionError(
+                    "QQuickItem.childItems() returned a non-visual or invalid wrapper"
+                )
+        pending.extend(reversed(children))
+
+    visible = [item for item in matches if item.isVisible()]
+    if len(visible) == 1:
+        return visible[0]
+    if len(visible) > 1:
+        raise AssertionError(
+            f"Ambiguous visible QQuickItem {name!r}; matches={len(matches)}"
+        )
+    if len(matches) == 1:
+        # Preserve prior behavior for a uniquely named, intentionally hidden
+        # item; callers can inspect its visibility explicitly.
+        return matches[0]
+    if len(matches) > 1:
+        raise AssertionError(f"Ambiguous hidden QQuickItem {name!r}; matches={len(matches)}")
+    raise AssertionError(f"Missing QQuickItem {name!r}; visible visual matches=0")
 
 
 class _Scene:
@@ -84,29 +143,9 @@ class _Scene:
     def item(self, name):
         QCoreApplication.processEvents()
         QTest.qWait(10)
-        candidates = [item for item in self.window.findChildren(QObject, name) if isinstance(item, QQuickItem)]
-        visible = next((item for item in candidates if item.isVisible()), None)
-        if visible is not None:
-            return visible
-        result = candidates[0] if candidates else None
-        if isinstance(result, QQuickItem):
-            return result
-        # Repeater delegates can have different QObject and visual parents.
-        expression = """(function visit(item) {
-            if (item.objectName === %s) return item;
-            for (let i = 0; i < item.children.length; ++i) {
-                const found = visit(item.children[i]);
-                if (found !== null) return found;
-            }
-            return null;
-        })(contentItem)""" % json.dumps(name)
-        result = self.visual_item(self.window, expression, description=name,
-                                  named_candidates=len(candidates))
-        if result.objectName() != name:
-            raise AssertionError("QML visual lookup returned a different item")
-        return result
+        return find_named_visual_item(self.window, name)
 
-    def visual_item(self, owner, expression, *, description=None, named_candidates=0):
+    def visual_item(self, owner, expression, *, description=None):
         # Every object-valued expression uses the typed slot; expression return
         # values carry primitive diagnostics only.
         self._visual_lookup.item = None
@@ -127,7 +166,6 @@ class _Scene:
             raise AssertionError(
                 f"Missing QQuickItem {description or expression!r}; result_type={type(result).__name__}; "
                 f"expression_result_type={type(expression_result).__name__}; "
-                f"named_visual_candidates={named_candidates}; "
                 f"qml_evidence={self._visual_lookup.evidence}")
         return result
 
@@ -375,65 +413,75 @@ def _preview_sampled_candidate(scene, source, controller):
 def test_scene_lookup_preserves_visual_ownership_and_strict_item_checks(tmp_path, monkeypatch):
     harness = tmp_path / "Lookup.qml"
     harness.write_text(
-        "import QtQuick\nWindow { property var controller; width: 200; height: 150 }\n",
+        "import QtQuick\nimport QtQuick.Controls\n"
+        "Window { property var controller; width: 200; height: 150; visible: true; "
+        "Repeater { model: 2; delegate: Item { objectName: 'repeat_' + index } } "
+        "Popup { objectName: 'popup'; parent: Overlay.overlay; width: 100; height: 70; "
+        "visible: true; contentItem: Item { objectName: 'popup_content'; "
+        "Item { objectName: 'popup_button' } } } "
+        "Item { objectName: 'hidden_unique'; visible: false } }\n",
         encoding="utf8",
     )
     scene = _Scene(None, str(harness))
 
-    class VisualBranch(QQuickItem):
-        def childItems(self):
-            raise AssertionError("Visual lookup must stay inside the QML engine")
-
-    branch = VisualBranch()
+    branch = QQuickItem()
     target = QQuickItem()
     hidden = QQuickItem(scene.window.contentItem())
     shown = QQuickItem(scene.window.contentItem())
     nonvisual = QObject(scene.window)
+    nonvisual.setObjectName("nonvisual")
     try:
         branch.setParentItem(scene.window.contentItem())
         target.setParentItem(branch)
         target.setObjectName('visual_"quoted"\\target')
-        # Visual parenting does not require QObject parenting. The fallback must
-        # return the same live target without wrapping each unrelated child.
+        # Visual parenting does not require QObject parenting. Native traversal
+        # must find this item without crossing the QObject tree or QML→Python.
         assert target.parent() is None
         assert scene.window.findChildren(QObject, target.objectName()) == []
-        assert scene.item(target.objectName()) is target
-        original_evaluate = scene.evaluate
         with monkeypatch.context() as patch:
-            def evaluate_with_unexpected_return(owner, expression):
-                # Run the real QML traversal and typed callback first, then
-                # simulate the unexpected generic return type observed in CI.
-                evidence = original_evaluate(owner, expression)
+            assert scene.item(target.objectName()) is target
+            assert target.parent() is None and target.parentItem() is branch
+            assert isValid(target)
+            patch.setattr(
+                scene,
+                "evaluate",
+                lambda *_args, **_kwargs: pytest.fail(
+                    "named visual lookup must use QQuickItem.childItems()"
+                ),
+            )
+            assert scene.item("repeat_0").objectName() == "repeat_0"
+            assert scene.item("repeat_1").objectName() == "repeat_1"
+            popup_button = scene.item("popup_button")
+            assert popup_button.isVisible()
+            assert popup_button.parentItem().objectName() == "popup_content"
+            assert scene.item("hidden_unique").isVisible() is False
+            # A prior success must never mask an absent or nonvisual QObject.
+            with pytest.raises(AssertionError, match="absent_after_success"):
+                scene.item("absent_after_success")
+            for name in ("nonvisual", "popup"):
+                with pytest.raises(AssertionError, match=name):
+                    scene.item(name)
+        # Expression-based selectors still return typed QQuickItems, even if
+        # QQmlExpression's primitive result is an unexpected QMetaObject.
+        original_evaluate = scene.evaluate
+        expression = "(function visit(item) { if (item.objectName === %s) return item; " \
+                     "for (let i = 0; i < item.children.length; ++i) { " \
+                     "const found = visit(item.children[i]); if (found !== null) return found; } " \
+                     "return null; })(contentItem)" % json.dumps(target.objectName())
+        with monkeypatch.context() as patch:
+            def evaluate_with_unexpected_return(owner, source):
+                evidence = original_evaluate(owner, source)
                 assert isinstance(evidence, str)
                 return nonvisual.metaObject()
 
             patch.setattr(scene, "evaluate", evaluate_with_unexpected_return)
-            assert scene.item(target.objectName()) is target
-            assert target.parent() is None and target.parentItem() is branch
-            assert isValid(target)
-            assert json.loads(scene._visual_lookup.evidence) == {
-                "found": True, "objectName": target.objectName(), "visible": True}
-            # A prior success must never mask an absent item, even when the
-            # generic return is anomalous and cannot be safely inspected.
-            with pytest.raises(AssertionError, match="expression_result_type=QMetaObject") as missing:
-                scene.item("absent_after_success")
-            assert '"found":false' in str(missing.value)
-        with monkeypatch.context() as patch:
-            def evaluate_with_wrong_item(owner, expression):
-                evidence = original_evaluate(owner, expression)
-                scene._visual_lookup.item = shown
-                return evidence
-
-            patch.setattr(scene, "evaluate", evaluate_with_wrong_item)
-            with pytest.raises(AssertionError, match="returned a different item"):
-                scene.item(target.objectName())
+            assert scene.visual_item(scene.window, expression, description=target.objectName()) is target
         for item in (hidden, shown):
             item.setParent(scene.window.contentItem())
             item.setObjectName("duplicate")
         hidden.setVisible(False)
         shown.setVisible(True)
         assert scene.item("duplicate") is shown
-        nonvisual.setObjectName("nonvisual")
         for name in ("absent", "nonvisual"):
             with pytest.raises(AssertionError, match=name):
                 scene.item(name)
@@ -712,8 +760,7 @@ def test_physical_generator_qml_preview_apply_confirmation_and_undo(gui):
         assert layer["thickness"]["unit"] == "nm"
         assert layer["thickness"]["value"] == pytest.approx(row["physical_thickness_nm"])
     assert not source.applyGeneratedDesign(token)
-    undo = next(item for item in scene.item("filmDesignGeneratorPanel").findChildren(QQuickItem)
-                if str(item.property("text")) == "撤销应用")
+    undo = scene.item("filmDesignGeneratorUndoButton")
     assert source.canUndoGeneratedDesign
     scene.click(undo)
     _wait(lambda: source.currentDesign()["front_layers"] == [])

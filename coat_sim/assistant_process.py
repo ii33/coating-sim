@@ -140,9 +140,14 @@ class AssistantProcessClient:
         state, start = _process_identity(owner["pid"])
         if state != "alive" or start is None or start != owner["process_start"]:
             raise UiControlError("process_identity_unknown", "Cannot verify project activation process.")
-        if not _allow_foreground_process(owner["pid"]):
-            raise UiControlError("foreground_denied", "Windows did not grant foreground activation; click the project again.")
-        return True
+        granted = _allow_foreground_process(owner["pid"])
+        if not granted:
+            # Foreground eligibility is not window availability. Still ask the
+            # verified owner to restore its window and confirm that exact view;
+            # Windows may leave focus with the user's current application.
+            self.trace("project_activation_foreground_not_granted", client_pid=owner["pid"],
+                       operation="activate_project", ok=False, reason="foreground_grant_denied")
+        return granted
 
     def ensure_running(self, timeout: float = 20.0) -> dict[str, Any]:
         """Blocking startup for a caller's worker thread; never stops a child."""

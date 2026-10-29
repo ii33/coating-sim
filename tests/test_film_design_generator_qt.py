@@ -16,6 +16,7 @@ from PySide6.QtTest import QSignalSpy, QTest
 from coat_sim.core.film_design_service import FilmDesignService
 from coat_sim.ui.film_quick_controller import FilmDesignQuickController
 from coat_sim.ui.theme_service import ThemeService
+from tests.test_film_synthesis_gui_review import find_named_visual_item
 
 
 ROOT = Path(__file__).parents[1]
@@ -285,9 +286,7 @@ class FilmDesignGeneratorQtTests(unittest.TestCase):
                                    float(model_row["qwText"]), places=3)
 
     def click_generator_undo(self, panel):
-        undo_button = next((candidate for candidate in panel.findChildren(QQuickItem)
-                            if str(candidate.property("text")) == "撤销应用"), None)
-        assert undo_button is not None, "Missing generator undo button"
+        undo_button = find_named_visual_item(panel, "filmDesignGeneratorUndoButton")
         self.assertTrue(undo_button.isVisible())
         self.click(undo_button)
         self.wait_events(100)

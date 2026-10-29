@@ -51,6 +51,9 @@ def activate_shared_project(client: Any, target: dict[str, str]) -> dict[str, An
     try:
         prepare = getattr(client, "prepare_project_activation", None)
         if callable(prepare):
+            # False means Windows declined the focus grant, not that the owner
+            # or window is unavailable. Only its verified IPC reply can confirm
+            # restoration; identity/transport errors still propagate below.
             prepare(target)
         result = client.request("activate_project", **target)
     except UiControlError as exc:

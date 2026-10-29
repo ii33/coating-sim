@@ -175,7 +175,7 @@ coverage must click the real exit menu, check exact foreground HWNDs for normal,
 minimized and covered windows, and exercise sequential distinct client processes
 with real project drafts and cancellation.
 
-## Launcher foreground handoff (2026-10-19)
+## Launcher foreground handoff (updated 2026-10-29)
 
 `activate_shared_project(client, target)` calls the local
 `AssistantProcessClient.prepare_project_activation(target)` before the existing
@@ -187,9 +187,17 @@ foreground eligibility only to that owner's PID with `AllowSetForegroundWindow`.
 The launcher open-request worker runs inside the process receiving the user click;
 the broker does not need to become foreground. Other platforms require no grant.
 
-A stale target, unknown/reused process or denied Windows grant raises the existing
-`UiControlError` path before activation IPC. It never creates another project
-owner, changes system settings or retries by forcing focus. The owner still
+A stale target or unknown/reused process still raises `UiControlError` before
+activation IPC. A denied Windows grant instead returns `False` and records
+`project_activation_foreground_not_granted` in client diagnostics: it must not
+prevent restoring the existing window. Activation then uses the same exact-owner
+IPC and verifies the returned instance/session identity and `open`/`visible`
+state through `read_window`. Missing/invisible windows, stale identities, and
+transport failures remain errors; denial does not bypass any acknowledgement.
+`activated: true` confirms that view restoration, not OS foreground focus.
+The launcher reports that the window is open and advises selecting it from the
+taskbar if it did not come forward. It never creates another project owner,
+changes system settings or retries by forcing focus. The owner still
 restores/raises the exact registered window through the shared Qt activation
 helper. The owner alone holds the window/session, and the adapter owns only its
 existing pending request. Closing the adapter prevents late UI delivery without
@@ -198,7 +206,13 @@ lifetime. A later user gesture can supersede foreground eligibility.
 
 The focused identity/denial tests are in
 `tests/test_project_activation_foreground.py`; native desktop foreground checks
-are distinct from mocked/offscreen tests.
+are distinct from mocked/offscreen tests. Microsoft documents
+[`AllowSetForegroundWindow`](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-allowsetforegroundwindow)
+as permission to set foreground, not a window-restoration result; even a grant
+can be superseded by later user input. Qt's
+[`requestActivate`](https://doc.qt.io/qt-6/qwindow.html#requestActivate) is a request
+whose outcome is platform-dependent. Native Windows focus remains a separate
+acceptance check.
 
 
 ## Local computation and complete exit (2026-10-19)
