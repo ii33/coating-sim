@@ -2320,16 +2320,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_mask_viewport.py",
-      "code": "import-not-found",
-      "message": "Cannot find implementation or library stub for module named \"launcher_test_isolation\"",
-      "scope": "",
-      "anchor": "import launcher_test_isolation as launcher_test_isolation_module",
-      "fingerprint": "0a29cc279702128e27830e33236514a2489210b57ccb67af8df2ef61fe90a725",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/ui/assistant_render.py",
       "code": "call-overload",
       "message": "No overload variant of \"bytes\" matches argument type \"QByteArray\"",
@@ -6939,16 +6929,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "tests/test_film_structure_payload_review.py",
-      "code": "E402",
-      "message": "Module level import not at top of file",
-      "scope": "",
-      "anchor": "from test_film_structure_preview import _fixture",
-      "fingerprint": "1d6619090385a75ca4233cf182a9d771fd33db14ad560df72b47bcb08a362168",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "coat_sim/ui/assistant_stream_render.py",
       "code": "return-value",
@@ -7586,16 +7566,6 @@
       "scope": "validate_film_structure_candidate_topology",
       "anchor": "\"value_nm\": float(value), \"lower_nm\": float(group.lower_nm),",
       "fingerprint": "2039a5bf773caf0b793a6848d32c002ce0dd21ca84cfaa624a2898506287a198",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_film_quick_controller.py",
-      "code": "import-not-found",
-      "message": "Cannot find implementation or library stub for module named \"launcher_test_isolation\"",
-      "scope": "",
-      "anchor": "from launcher_test_isolation import LauncherTestIsolation",
-      "fingerprint": "203ac128c112e6151d29ea1c5a2f199df267c0654acd2457c4a44756568306b0",
       "count": 1
     },
     {
@@ -9046,16 +9016,6 @@
       "scope": "ProcessEnvironmentUiTests.test_legacy_read_edit_other_fields_and_empty_reset_do_not_add_environment",
       "anchor": "self.assertNotIn(\"environment\", self.bridge.document)",
       "fingerprint": "256838f4729d9a98e1c6db2e9bc43aa32625894c9960159365ed36715f8d825f",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "tests/test_pdf_layer_summary.py",
-      "code": "F401",
-      "message": "`unittest.mock.patch` imported but unused",
-      "scope": "",
-      "anchor": "from unittest.mock import patch",
-      "fingerprint": "2576d7643ededaedc8a6b0cbad7bc0508110517d84435e8b9893c75481b8bb9b",
       "count": 1
     },
     {
@@ -14696,16 +14656,6 @@
       "scope": "",
       "anchor": "border.color: Theme.snapshot.colorBorder",
       "fingerprint": "3c193d1df39a47c079d07ae64d2ef6964000a3f5e22de13bfd8994412da2eeed",
-      "count": 1
-    },
-    {
-      "tool": "ruff",
-      "path": "tests/test_film_structure_payload_review.py",
-      "code": "E402",
-      "message": "Module level import not at top of file",
-      "scope": "",
-      "anchor": "from coat_sim.core.film_structure_payload_contract import validate_structure_result_payload_schema",
-      "fingerprint": "3c2838d96b2f7152a338261832021dd1d4f4ec0cd04d993fe2831c0e6509028c",
       "count": 1
     },
     {
@@ -41789,16 +41739,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "tests/test_film_structure_request_review.py",
-      "code": "E402",
-      "message": "Module level import not at top of file",
-      "scope": "",
-      "anchor": "from coat_sim.core.film_optimization_structure import (",
-      "fingerprint": "af07c0974ac8def72d63756d39d71eeabcc6f220016ebd27daad671463f2c7b0",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/SourceWindow.qml",
       "code": "unqualified",
@@ -45906,16 +45846,6 @@
       "scope": "run_counterexample_diagnostics",
       "anchor": "okay, reason = _feasible_design(frozen, finite_design, materials)",
       "fingerprint": "c0bff86c6cffd58d5a831a67aafa0456bb9ec12e3710b68dca7076028f90d770",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_film_structure_request_review.py",
-      "code": "import-not-found",
-      "message": "Cannot find implementation or library stub for module named \"test_film_structure_preview\"",
-      "scope": "",
-      "anchor": "from test_film_structure_preview import _fixture",
-      "fingerprint": "c0d2b7651f5d6a2b0a314ecb5ed35a4f882f8f2cd06ce2692b0556102e9df3b9",
       "count": 1
     },
     {
@@ -54949,16 +54879,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "tests/test_film_structure_payload_review.py",
-      "code": "E402",
-      "message": "Module level import not at top of file",
-      "scope": "",
-      "anchor": "from coat_sim.core.film_optimization_structure import (",
-      "fingerprint": "e69aa637d2572599963cd7c27cc0ac99030e8ad6d06b75e478c95459370fd3b8",
-      "count": 1
-    },
-    {
       "tool": "qmllint",
       "path": "coat_sim/ui/qml/FilmStackDialog.qml",
       "code": "unqualified",
@@ -58229,16 +58149,6 @@
       "count": 1
     },
     {
-      "tool": "ruff",
-      "path": "tests/test_film_structure_request_review.py",
-      "code": "E402",
-      "message": "Module level import not at top of file",
-      "scope": "",
-      "anchor": "from test_film_structure_preview import _fixture",
-      "fingerprint": "f3e057ef2bd4fc68bdc979e2915a1f342b4b46933e34c35e337abd9d43b1266d",
-      "count": 1
-    },
-    {
       "tool": "mypy",
       "path": "tests/test_mask_viewport.py",
       "code": "attr-defined",
@@ -58786,16 +58696,6 @@
       "scope": "OpticalLibraryUiTests.test_use_button_fast_snapshot_is_immutable_under_all_library_edits",
       "anchor": "self.assertTrue(lib.useMaterial())",
       "fingerprint": "f637b8b962c37a04df61ba38042a43cf944af7b9a7d0bd7daa23fe5d2eefbeb9",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
-      "path": "tests/test_film_structure_payload_review.py",
-      "code": "import-not-found",
-      "message": "Cannot find implementation or library stub for module named \"test_film_structure_preview\"",
-      "scope": "",
-      "anchor": "from test_film_structure_preview import _fixture",
-      "fingerprint": "f67d8c263c162470f471ee2fe2255139724a2375b91b63be6bfc7c94daabccdd",
       "count": 1
     },
     {
@@ -61219,6 +61119,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "Remove six resolved mypy attr-defined QHeaderView enum diagnostics after using ResizeMode enums and table-owned header objects in film_design.py:567-607; add no baseline entries.",
+  "last_prune_reason": "Reviewed PDF font regression now uses unittest.mock.patch; prune exactly its resolved F401 imported-but-unused record, preserve every unrelated baseline entry, and add no exemptions",
   "configuration_review_reason": "2026-10-17: add only BSD-3-Clause pypdf 6.21.0 for isolated research PDF extraction; all previous dependency/tool versions, analyzer rules and diagnostic entries remain unchanged. The lock-file digest changes only for this reviewed runtime dependency."
 }

@@ -74,6 +74,10 @@ def main(argv: list[str] | None = None) -> int:
     command.extend(["-p", "tools.pytest_qt_lifecycle"])
     command.extend(["-p", "tools.pytest_qt_modules"])
     command.extend(["-q", "tests"])
+    # Conftest-defined options are not known during pytest's early ini search.
+    # An existing report path must not select another checkout's configuration.
+    # Raw user arguments remain last, preserving explicit -c/--rootdir choices.
+    command.extend(["--rootdir", str(ROOT), "-c", str(ROOT / "pytest.ini")])
     command.extend(pytest_args)
     with tempfile.TemporaryDirectory(prefix="deposition-sim-pytest-") as cache_directory:
         cache_root = Path(cache_directory)

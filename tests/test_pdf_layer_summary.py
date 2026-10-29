@@ -3,6 +3,7 @@ from pathlib import Path
 import re
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 import warnings
 
@@ -10,6 +11,7 @@ import numpy as np
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from coat_sim.core.result_pdf import (suggested_pdf_filename, _process_layer_rows,
     _process_pages, _detail_sections, _font, export_result_pdf)
+from coat_sim.core import result_pdf
 
 
 class PdfLayerSummaryTests(unittest.TestCase):
@@ -49,21 +51,37 @@ class PdfLayerSummaryTests(unittest.TestCase):
             def __init__(self): self.figures=[]
             def savefig(self, fig): self.figures.append(fig)
         output=Collector()
-        next_page = _process_pages(output, process, machine, result, _font(), start_page=2)
-        self.assertGreater(len(output.figures), 1)
-        self.assertEqual(next_page, 2+len(output.figures))
-        numbers=[]
-        for fig in output.figures:
-            texts=[item.get_text() for item in fig.texts]
-            self.assertIn('目标 / nm', texts); self.assertIn('蒸发源', texts)
-            self.assertIn('材料', texts); self.assertIn('时长 / s', texts)
-            numbers += [int(item.get_text()) for item in fig.texts
-                        if abs(item.get_position()[0]-.066)<.0001 and item.get_text().isdigit()]
-            canvas=FigureCanvasAgg(fig)
-            with warnings.catch_warnings(record=True) as captured:
-                warnings.simplefilter('always'); canvas.draw()
-            self.assertFalse([str(w.message) for w in captured if 'missing from font' in str(w.message)])
-        self.assertEqual(numbers,list(range(1,66)))
+        system_fallback_only = [entry for entry in result_pdf.fontManager.ttflist
+                                if entry.name == "DejaVu Sans"]
+        self.assertTrue(system_fallback_only)
+        with patch.object(result_pdf.fontManager, "ttflist", system_fallback_only):
+            font = _font()
+            self.assertEqual(font.get_family()[0], "Noto Sans CJK SC")
+            bundled = result_pdf._BUNDLED_CJK_FONT.resolve()
+            self.assertTrue(any(Path(entry.fname).resolve() == bundled
+                                for entry in result_pdf.fontManager.ttflist))
+            next_page = _process_pages(output, process, machine, result, font, start_page=2)
+            self.assertGreater(len(output.figures), 1)
+            self.assertEqual(next_page, 2+len(output.figures))
+            numbers=[]
+            for fig in output.figures:
+                texts=[item.get_text() for item in fig.texts]
+                self.assertIn('目标 / nm', texts); self.assertIn('蒸发源', texts)
+                self.assertIn('材料', texts); self.assertIn('时长 / s', texts)
+                numbers += [int(item.get_text()) for item in fig.texts
+                            if abs(item.get_position()[0]-.066)<.0001 and item.get_text().isdigit()]
+                canvas=FigureCanvasAgg(fig)
+                with warnings.catch_warnings(record=True) as captured:
+                    warnings.simplefilter('always'); canvas.draw()
+                self.assertFalse([str(w.message) for w in captured if 'missing from font' in str(w.message)])
+            self.assertEqual(numbers,list(range(1,66)))
+
+    def test_pdf_font_keeps_preferred_installed_cjk_families_ahead_of_bundle(self):
+        with patch.object(result_pdf.fontManager, "ttflist",
+                          [SimpleNamespace(name="Noto Sans CJK JP")]):
+            font = _font()
+        self.assertEqual(font.get_family(), ["Noto Sans CJK JP", "DejaVu Sans"])
+        self.assertIsNone(font.get_file())
 
     def test_default_report_stays_one_page_and_process_only_can_export(self):
         process, machine, result=self.fixture(3)

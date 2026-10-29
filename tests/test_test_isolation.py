@@ -1,12 +1,16 @@
 """Fast safety contracts for the Qt and launcher test isolation helpers."""
 from __future__ import annotations
 
+import gc
+import json
+import os
+import shutil
+import subprocess
+import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
-import os
-import gc
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("QT_QUICK_BACKEND", "software")
@@ -34,6 +38,104 @@ APP = QGuiApplication.instance() or QGuiApplication([])
 
 
 class QtTestGuardTests(unittest.TestCase):
+    def test_qt_test_application_registers_bundled_font_before_ui_imports(self):
+        from coat_sim.ui import fonts
+
+        self.assertIs(fonts._registered_application, QGuiApplication.instance())
+        self.assertEqual(fonts._family, "Noto Sans CJK SC")
+
+    def test_process_bootstrap_qa_root_is_private_and_override_is_preserved(self):
+        project_root = Path(__file__).resolve().parents[1]
+        child_script = r'''
+import json
+import os
+import tests.qt_ui_test_bootstrap as bootstrap
+import tests.qt_test_guard as qt_test_guard
+from coat_sim.agent.toolkit_config import default_workspace_root, validate_workspace_root
+
+settings_root = qt_test_guard.QT_TEST_SETTINGS_ROOT.resolve()
+workspace = default_workspace_root().resolve()
+accepted_workspace = validate_workspace_root(str(workspace), allow_missing=True)
+assert accepted_workspace == workspace
+assert settings_root.is_relative_to(bootstrap.TEMP_ROOT.resolve())
+assert workspace.is_relative_to(settings_root)
+print(json.dumps({
+    "qa_root": str(bootstrap.QA_ROOT.resolve()),
+    "temp_root": str(bootstrap.TEMP_ROOT.resolve()),
+    "settings_root": str(settings_root),
+    "workspace": str(workspace),
+    "accepted_workspace": str(accepted_workspace),
+    "override": os.environ.get("COAT_PROCESS_QA_DIR"),
+}))
+'''
+
+        parent_env_names = (
+            "COAT_PROCESS_QA_DIR", "TMP", "TEMP", "TMPDIR",
+            "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME",
+        )
+        parent_env_before = {name: os.environ.get(name) for name in parent_env_names}
+
+        with tempfile.TemporaryDirectory(prefix="coat-bootstrap-isolation-") as temp_dir:
+            temp_root = Path(temp_dir).resolve()
+            self.assertFalse(
+                temp_root == project_root or temp_root in project_root.parents
+                or project_root in temp_root.parents,
+                str(temp_root),
+            )
+            child_env = os.environ.copy()
+            child_env.pop("COAT_PROCESS_QA_DIR", None)
+            for name in ("TMP", "TEMP", "TMPDIR"):
+                child_env[name] = str(temp_root)
+
+            for explicit in (False, True):
+                qa_override = temp_root / "explicit-process-qa" if explicit else None
+                if explicit:
+                    child_env["COAT_PROCESS_QA_DIR"] = str(qa_override)
+                else:
+                    child_env.pop("COAT_PROCESS_QA_DIR", None)
+                result = subprocess.run(
+                    [sys.executable, "-c", child_script], cwd=project_root,
+                    env=child_env, capture_output=True, text=True,
+                )
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                paths = json.loads(result.stdout.strip().splitlines()[-1])
+                qa_root = Path(paths["qa_root"]).resolve()
+                temp_path = Path(paths["temp_root"]).resolve()
+                settings_root = Path(paths["settings_root"]).resolve()
+                workspace = Path(paths["workspace"]).resolve()
+                self.assertTrue(qa_root.is_relative_to(temp_root))
+                self.assertEqual(temp_path, qa_root / "test_temp")
+                self.assertTrue(settings_root.is_relative_to(temp_path))
+                self.assertTrue(workspace.is_relative_to(settings_root))
+                self.assertEqual(Path(paths["accepted_workspace"]).resolve(), workspace)
+                self.assertFalse(
+                    qa_root == project_root or qa_root in project_root.parents
+                    or project_root in qa_root.parents,
+                    str(qa_root),
+                )
+                if qa_override is None:
+                    self.assertIsNone(paths["override"])
+                else:
+                    self.assertEqual(qa_root, qa_override.resolve())
+                    self.assertEqual(paths["override"], str(qa_override))
+                self.assertFalse(
+                    settings_root == project_root or settings_root in project_root.parents
+                    or project_root in settings_root.parents,
+                    str(settings_root),
+                )
+                self.assertFalse(
+                    workspace == project_root or workspace in project_root.parents
+                    or project_root in workspace.parents,
+                    str(workspace),
+                )
+                shutil.rmtree(qa_root)
+                self.assertFalse(qa_root.exists(), str(qa_root))
+
+        self.assertEqual(
+            {name: os.environ.get(name) for name in parent_env_names},
+            parent_env_before,
+        )
+
     def test_qml_window_lookup_preserves_wrapper_ownership_and_popup_input(self):
         engine = QQmlEngine()
         factory = qt_test_guard.NoNetworkAccessManagerFactory()

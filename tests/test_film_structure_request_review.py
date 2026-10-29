@@ -1,14 +1,9 @@
 """Independent malformed-request checks at the frozen queue boundary."""
 from copy import deepcopy
-from pathlib import Path
-import sys
 
 import pytest
 
-TESTS = Path(__file__).resolve().parent
-if str(TESTS) not in sys.path:
-    sys.path.insert(0, str(TESTS))
-from test_film_structure_preview import _fixture
+from tests.test_film_structure_preview import _fixture
 from coat_sim.core.film_optimization_structure import (
     film_structure_request_from_payload, film_structure_request_to_payload,
 )

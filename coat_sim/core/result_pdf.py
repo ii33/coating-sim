@@ -20,6 +20,8 @@ from .atomic_io import replace_with_retry
 
 _FONT_CANDIDATES = ("Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC",
                     "Noto Sans CJK SC", "Noto Sans CJK JP", "WenQuanYi Micro Hei", "SimHei")
+_BUNDLED_CJK_FONT = (Path(__file__).resolve().parents[1] / "ui" / "assets" / "fonts"
+                     / "noto-cjk" / "NotoSansCJKsc-Regular.otf")
 DEFAULT_SECTIONS = ("heatmap", "thickness", "uniformity")
 AVAILABLE_SECTIONS = frozenset((*DEFAULT_SECTIONS, "computation", "settings", "machine", "process", "layers"))
 
@@ -67,9 +69,16 @@ def report_sections(sections=None):
 
 def _font():
     available = {entry.name for entry in fontManager.ttflist}
-    family = next((name for name in _FONT_CANDIDATES if name in available),
-                  "DejaVu Sans")
-    return FontProperties(family=[family, "DejaVu Sans"])
+    family = next((name for name in _FONT_CANDIDATES if name in available), None)
+    if family is not None:
+        return FontProperties(family=[family, "DejaVu Sans"])
+    if _BUNDLED_CJK_FONT.is_file():
+        bundled_family = FontProperties(fname=str(_BUNDLED_CJK_FONT)).get_name()
+        if not any(Path(entry.fname).resolve() == _BUNDLED_CJK_FONT.resolve()
+                   for entry in fontManager.ttflist):
+            fontManager.addfont(str(_BUNDLED_CJK_FONT))
+        return FontProperties(family=[bundled_family, "DejaVu Sans"])
+    return FontProperties(family=["DejaVu Sans"])
 
 
 def _plain(value):

@@ -275,7 +275,7 @@ def test_closing_then_reopening_constructs_clean_workspace(workspace, tmp_path):
         reopened.detach_observers()
 
 
-def test_actual_qml_optical_workspace_layout(tmp_path):
+def test_actual_qml_optical_workspace_layout(tmp_path, capfd):
     """Capture real controls at the process DPR, with a genuine saved asset.
 
     Qt software Quick cannot rasterize custom QSGGeometryNode slab geometry;
@@ -607,3 +607,5 @@ def test_actual_qml_optical_workspace_layout(tmp_path):
         "limits": ["custom QSG slab pixels unsupported by Qt software backend",
                    "local scalar renderer runtime missing", "no physical/GPU render asserted"],
     }, indent=2, ensure_ascii=False) + "\n")
+    stderr = capfd.readouterr().err
+    assert "Context2D: The font families specified are invalid: NotoSansCJKSC" not in stderr

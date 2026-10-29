@@ -252,6 +252,58 @@ def test_external_worker_environment_cannot_silently_disable_isolation(tmp_path)
     assert "is internal; remove it" in result.stderr
 
 
+def test_worker_keeps_parent_configuration_after_external_report_is_created(tmp_path):
+    directory = tmp_path / "suite"
+    external = tmp_path / "unrelated-project"
+    external.mkdir()
+    (external / "pytest.ini").write_text("[pytest]\npython_files = never_test_*.py\n", encoding="utf-8")
+    report = external / "collection.json"
+    _suite(directory, {"test_a.py": """
+        import pytest
+        pytestmark = pytest.mark.qt
+        def test_case(pytestconfig):
+            assert pytestconfig.rootpath.name == 'suite'
+            assert pytestconfig.inipath.name == 'pytest.ini'
+    """}, conftest="""
+        from pathlib import Path
+        def pytest_addoption(parser):
+            parser.addoption('--collection-report-json')
+        def pytest_collection_finish(session):
+            path = session.config.getoption('collection_report_json')
+            if path:
+                Path(path).write_text('{}')
+    """)
+    environment = os.environ.copy()
+    environment['PYTHONPATH'] = str(ROOT)
+    environment['PYTEST_DISABLE_PLUGIN_AUTOLOAD'] = '1'
+    for name in ('PYTEST_ADDOPTS', 'PYTEST_PLUGINS', 'COATING_PYTEST_MODULE_WORKER'):
+        environment.pop(name, None)
+    # No -c/--rootdir here: reproduce the worker's second early discovery only
+    # after the conftest option writes a file beneath another project's ini.
+    result = subprocess.run(
+        [sys.executable, '-m', 'pytest', '--collection-report-json', str(report),
+         '-p', 'tools.pytest_qt_modules', '-q', '.'],
+        cwd=directory, env=environment, capture_output=True, text=True, check=False, timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert '1 passed' in result.stdout
+
+
+def test_worker_honors_explicit_user_root_and_ini_overrides(tmp_path):
+    directory = tmp_path / "suite"
+    _suite(directory, {"test_a.py": """
+        import pytest
+        pytestmark = pytest.mark.qt
+        def test_case(pytestconfig):
+            assert pytestconfig.rootpath.name == 'suite'
+            assert pytestconfig.inipath.name == 'custom.ini'
+    """})
+    custom = directory / "custom.ini"
+    custom.write_text('[pytest]\nmarkers = qt: selected module\n', encoding='utf-8')
+    result = _run(directory, '--rootdir', str(directory), '-c', str(custom))
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_stepwise_execution_is_rejected_instead_of_silently_changing_stop_semantics(tmp_path):
     directory = tmp_path / "suite"
     _suite(directory, {"test_a.py": "import pytest\npytestmark = pytest.mark.qt\ndef test_case(): pass\n"})

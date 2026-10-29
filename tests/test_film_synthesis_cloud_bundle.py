@@ -109,7 +109,10 @@ class FilmSynthesisCloudBundleTests(unittest.TestCase):
         from types import SimpleNamespace
         from unittest.mock import patch
         from tools.run_film_synthesis_cloud import _activate_git_root
+        # Verify the fixture is genuinely foreign: test isolation owns TMPDIR,
+        # and a checkout-local temp path is valid source for this checkout.
         with tempfile.TemporaryDirectory() as foreign:
+            self.assertFalse(Path(foreign).resolve().is_relative_to(ROOT))
             module = SimpleNamespace(__file__=str(Path(foreign) / "solver.py"))
             with patch.dict(sys.modules, {"coat_sim.foreign_algorithm": module}):
                 with self.assertRaisesRegex(ValueError, "Foreign algorithm"):

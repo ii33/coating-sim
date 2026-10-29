@@ -524,6 +524,10 @@ def _ensure_test_qt_application() -> None:
             f"{type(application).__name__} cannot be safely upgraded"
         )
     _TEST_QT_APPLICATION = application or QApplication([])
+    from coat_sim.ui.fonts import bundled_font_family
+
+    if not bundled_font_family():
+        raise pytest.UsageError("Qt tests require the bundled Noto CJK application font")
     from coat_sim.ui.input_focus import install_input_focus_policy
 
     install_input_focus_policy()

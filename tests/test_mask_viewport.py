@@ -29,8 +29,8 @@ from coat_sim.ui import launcher as launcher_module
 from coat_sim.ui.fonts import bundled_font_family
 from coat_sim.ui import window_geometry as window_geometry_module
 from coat_sim.ui.theme_service import ThemeService
-import launcher_test_isolation as launcher_test_isolation_module
-from launcher_test_isolation import LauncherTestIsolation
+from tests import launcher_test_isolation as launcher_test_isolation_module
+from tests.launcher_test_isolation import LauncherTestIsolation
 
 
 class TemporaryOnlyQSettings:

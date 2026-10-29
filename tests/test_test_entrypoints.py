@@ -8,6 +8,7 @@ import os
 import socket
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from uuid import uuid4
 
@@ -110,11 +111,19 @@ def test_network_guard_without_af_unix_preserves_local_tcp_and_blocks_external(
                 getattr(client, method_name)(("203.0.113.10", 443))
 
 
-def test_network_guard_allows_unix_socket(tmp_path) -> None:
+def test_network_guard_allows_unix_socket() -> None:
     test_config._install_default_network_guard()
     if not hasattr(socket, "AF_UNIX"):
         pytest.skip("Unix-domain sockets are not available on this platform")
-    endpoint = str(tmp_path / "local.sock")
+    # tmp_path may be rooted beneath a long QA isolation path, which exceeds
+    # common AF_UNIX sun_path limits before the network guard is exercised.
+    with tempfile.TemporaryDirectory(prefix="unix-") as socket_root:
+        endpoint = str(Path(socket_root) / "s")
+        assert len(os.fsencode(endpoint)) < 100, f"AF_UNIX path too long: {endpoint!r}"
+        _assert_unix_socket_round_trip(endpoint)
+
+
+def _assert_unix_socket_round_trip(endpoint: str) -> None:
     try:
         listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     except PermissionError as exc:
@@ -308,6 +317,7 @@ def test_runner_forwards_pytest_arguments_only_after_separator(monkeypatch) -> N
     monkeypatch.setattr(runner.subprocess, "run", fake_run)
     code = runner.main([
         "quick", "--collection-report", "artifacts/collection.json", "--",
+        "--rootdir", "/explicit/user-root", "-c", "/explicit/user-config.ini",
         "-k", "focused_case", "--junitxml=artifacts/junit.xml",
     ])
 
@@ -319,6 +329,10 @@ def test_runner_forwards_pytest_arguments_only_after_separator(monkeypatch) -> N
     assert captured["env"]["XDG_CACHE_HOME"] != "/inherited/user/xdg"
     assert "tests" in command
     assert command[-3:] == ["-k", "focused_case", "--junitxml=artifacts/junit.xml"]
+    assert [command[index + 1] for index, part in enumerate(command) if part == "--rootdir"] == [
+        str(runner.ROOT), "/explicit/user-root"]
+    assert [command[index + 1] for index, part in enumerate(command) if part == "-c"] == [
+        str(runner.ROOT / "pytest.ini"), "/explicit/user-config.ini"]
     assert Path(command[command.index("--collection-report-json") + 1]) == Path("artifacts/collection.json")
 
 

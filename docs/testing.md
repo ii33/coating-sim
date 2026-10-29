@@ -36,6 +36,13 @@ This forwards selection and report options to pytest. A collection JSON report i
 parameterized-item count, AST test-definition counts, and the
 `load_tests` bridge count.
 
+The runner supplies explicit default `--rootdir` and `-c` paths for this checkout;
+raw user options are appended afterward, so explicit root/config overrides keep
+their normal precedence. Workers inherit the parent's resolved root and ini
+instead of rediscovering configuration after report files have been created.
+An existing absolute report beneath another checkout must not change collection
+membership or select that checkout's ini.
+
 All commands set Qt to the offscreen platform and software Quick/RHI renderers.
 The default network guard blocks Python socket DNS lookup and outbound
 connections during collection and test execution, while allowing loopback TCP
@@ -93,6 +100,15 @@ See the [pytest protocol implementation](https://github.com/pytest-dev/pytest/bl
 and [Python cyclic garbage collection](https://docs.python.org/3/library/gc.html).
 
 ### Qt module process boundaries
+
+Test modules are members of the `tests` package. Import shared helpers as
+`tests.launcher_test_isolation` or `tests.test_film_structure_preview`, never
+by depending on another module to insert `tests/` into `sys.path`. The runner
+does not add that directory to `PYTHONPATH`. Single-module collection and fresh
+workers must work with `PYTHONPATH` absent, including from an external caller's
+working directory through the supported runner. The existing `qt_test_guard`
+alias is a separate explicit same-module identity contract, not a general
+top-level helper search path.
 
 Case-boundary GC is not a native-wrapper-cache reset. The 2026-10-29 contract
 run still returned live `QMetaObject` wrappers from `QQuickItem.childItems()` in

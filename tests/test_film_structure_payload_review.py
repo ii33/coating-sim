@@ -1,15 +1,10 @@
 """Independent result-envelope/replay checks without material file writes."""
 from copy import deepcopy
 from dataclasses import asdict, replace
-from pathlib import Path
-import sys
 
 import pytest
 
-TESTS = Path(__file__).resolve().parent
-if str(TESTS) not in sys.path:
-    sys.path.insert(0, str(TESTS))
-from test_film_structure_preview import _fixture
+from tests.test_film_structure_preview import _fixture
 from coat_sim.core.film_optimization_structure import (
     FilmStructureCounters, FilmStructureTraceEvent, evaluate_frozen_structure_candidate,
     film_structure_checkpoint_to_payload, film_structure_result_from_payload,

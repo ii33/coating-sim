@@ -349,8 +349,14 @@ def pytest_runtestloop(session: pytest.Session) -> bool | None:
             }), encoding="utf-8")
             environment = os.environ.copy()
             environment[_WORKER_ENV] = token
+            # Reuse the parent's parsed configuration, including explicit user
+            # overrides. A report created after parent discovery must not make
+            # the worker rediscover a different root/ini from that output path.
             command = [sys.executable, "-m", "pytest", *config.invocation_params.args,
-                       f"--_qt-module-worker={plan_path}"]
+                       "--rootdir", str(config.rootpath)]
+            if config.inipath is not None:
+                command.extend(["-c", str(config.inipath)])
+            command.append(f"--_qt-module-worker={plan_path}")
             if reporter is not None:
                 reporter.ensure_newline()
                 reporter.write_sep("=", f"fresh test process {index + 1}/{len(batches)}: "

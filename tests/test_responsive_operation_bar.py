@@ -361,6 +361,15 @@ def assert_resource_strip_fits(controls):
         if index:
             previous = shown[index - 1]
             assert child.x() >= previous.x() + previous.width() - 1
+    # The overflow anchor may be reparented to its owning operation bar. Check
+    # its actual parent bounds instead of comparing coordinates from different
+    # parents or omitting it from the childItems() scan.
+    overflow_anchor = controls.findChild(QQuickItem, "projectResourceMoreActionsButton")
+    if overflow_anchor is not None and overflow_anchor.isVisible():
+        container = overflow_anchor.parentItem()
+        origin = overflow_anchor.mapToItem(container, QPointF(0, 0))
+        assert origin.x() >= -1
+        assert origin.x() + overflow_anchor.width() <= container.width() + 1
 
 
 @pytest.mark.parametrize("key", ["source", "substrate", "machine", "mask", "process", "materials"])

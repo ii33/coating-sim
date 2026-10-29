@@ -132,6 +132,11 @@ def test_background_snapshot_revalidates_before_read_without_starting(tmp_path, 
 def test_background_read_disconnect_requires_withdrawn_endpoint_for_offline(
         tmp_path, monkeypatch, withdraw_endpoint, process_state):
     from coat_sim.core import process_identity
+    from coat_sim.scheduler import daemon
+
+    # _call lazily imports daemon, whose module-level from-import would otherwise
+    # capture the temporary iterator below and keep it after monkeypatch teardown.
+    assert daemon._process_identity is process_identity._process_identity
     client = SchedulerClient(tmp_path / 'disconnect')
     client.endpoint.parent.mkdir(parents=True)
     endpoint = {'protocol_version': 1, 'host': '127.0.0.1', 'port': 1,

@@ -31,7 +31,7 @@ from coat_sim.ui import launcher as launcher_module
 from coat_sim.ui.film_quick_controller import FilmDesignQuickController
 from coat_sim.ui.fonts import bundled_font_family
 from coat_sim.ui.theme_service import ThemeService
-from launcher_test_isolation import LauncherTestIsolation
+from tests.launcher_test_isolation import LauncherTestIsolation
 from tests.qt_test_guard import NoNetworkAccessManagerFactory
 
 

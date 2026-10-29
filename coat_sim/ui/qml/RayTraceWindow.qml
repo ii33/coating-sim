@@ -644,7 +644,8 @@ AppWindow {
                         const traces = window.controller.displayPaths
                         if (!traces || traces.length === 0) {
                             ctx.fillStyle = window.themeColors.colorTextMuted.toString()
-                            ctx.font = Math.max(13, window.themeColors.fontSizeBody * 1.33) + "px " + window.themeColors.fontFamily
+                            ctx.font = Math.max(13, window.themeColors.fontSizeBody * 1.33)
+                                        + 'px "' + window.themeColors.fontFamily + '"'
                             ctx.textAlign = "center"
                             ctx.fillText(window.controller.hasResult
                                           ? "结果中没有可显示的光线路径"
@@ -701,7 +702,8 @@ AppWindow {
                             }
                         }
                         ctx.fillStyle = window.themeColors.colorTextMuted.toString()
-                        ctx.font = Math.max(10, window.themeColors.fontSizeSmall * 1.33) + "px " + window.themeColors.fontFamily
+                        ctx.font = Math.max(10, window.themeColors.fontSizeSmall * 1.33)
+                                    + 'px "' + window.themeColors.fontFamily + '"'
                         ctx.textAlign = "center"
                         ctx.fillText("x / mm", px + plotWidth / 2, height - 5)
                         ctx.save()
@@ -814,7 +816,8 @@ AppWindow {
                                 const bins = window.controller.detectorHistogram
                                 if (!window.controller.hasDetector || bins.length === 0) {
                                     ctx.fillStyle = window.themeColors.colorTextMuted.toString()
-                                    ctx.font = Math.max(12, window.themeColors.fontSizeBody * 1.33) + "px " + window.themeColors.fontFamily
+                                    ctx.font = Math.max(12, window.themeColors.fontSizeBody * 1.33)
+                                                + 'px "' + window.themeColors.fontFamily + '"'
                                     ctx.textAlign = "center"
                                     ctx.fillText(window.controller.hasResult
                                                   ? "请求没有探测器或该波长无探测器分箱"
@@ -838,7 +841,8 @@ AppWindow {
                                 }
                                 const edges = window.controller.detectorBinEdges
                                 ctx.fillStyle = window.themeColors.colorTextMuted.toString()
-                                ctx.font = Math.max(10, window.themeColors.fontSizeSmall * 1.33) + "px " + window.themeColors.fontFamily
+                                ctx.font = Math.max(10, window.themeColors.fontSizeSmall * 1.33)
+                                            + 'px "' + window.themeColors.fontFamily + '"'
                                 ctx.textAlign = "left"
                                 if (edges.length > 1) {
                                     ctx.fillText(Number(edges[0]).toPrecision(4) + " mm", margin, height - 4)
