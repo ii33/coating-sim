@@ -266,6 +266,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#film-ideal-scalar-probes-20261023">14aq-1 理想敏感度标量探针</a>
 <a href="#candidate-display-score">14ar 可开关实时光谱与独立候选展示评分</a>
 <a href="#film-synthesis-selected-surfaces-20261030">14bd 选面联合合成与全几何解析导数（2026-10-30）</a>
+<a href="#film-resource-estimation-20261030">14be 膜系资源评估与条件必要界</a>
 </nav>
 <main>
 
@@ -4075,6 +4076,26 @@ R = R前 + T前 T反 R背 S² / D，T = T前 T背 S / D。
 <p>层数/总厚、候选排序、seed、局部精修、全层 SLSQP、减量、DE、删换、批针、有限出生、检查点和 review 使用归一所选行；针以 side 与本面宿主/界面定位，清理只在本面相邻同引用层内合并。材料冻结、前向、审计包含全部真实物理环境。结构模板只提供未评分先验，背面单选模板以背面外部端口定尺度；双面可复制一个模板作起点，但后续每面拓扑/厚度独立，非对称结构不受禁止，总一层预算也允许只一面非空。没有拓扑完备、优化优势或连续域证书。</p>
 <p>schema 6 的 selected_surfaces 为向后兼容可选字段，旧请求默认 front。选择和固定面物理栈进入缓存/续算身份；反序输入归一，旧默认 front 的搜索 fingerprint 保留。固定面行完整一致还在 seed、续算、取消最好候选和应用边界校验。默认仍每层3针内点、batch 6、位置细化1轮、π/4相位限步；新增选面不改共享预算、取消时序与名义通过判据。</p>
 <p class="source"><strong>实现：</strong>film_synthesis_surfaces.py、film_synthesis_physics.py、film_auto_synthesis.py、film_synthesis_batch_needle.py、film_synthesis_audit.py、film_synthesis_continuation.py 及核心 IO/jobs/数值算子。物理来源：<a href="https://arxiv.org/abs/1603.02720">Byrnes, Multilayer optical calculations</a>；既有相干/非相干膜块组合见 film_optics.py。选择归一、模板共享上限、调度与身份是本项目约定，未找到外部依据，仅为本项目实现。有限差分回归不构成实验或连续域证明。</p>
+</section>
+<section id="film-resource-estimation-20261030">
+<h2>14be 膜系资源评估与条件必要界</h2>
+<p>更新：2026-10-30。用途：读取冻结原指标、候选材料 n/k、完整正背面环境与当前膜系，显示必要数值筛查及真实审计的层数—物理厚度联合节点；不是预测器或主优化。输入/状态/取消见<a href="film-resource-estimation-core-contract.md">核心契约</a>。所有厚度与波长为 nm、角为度、R/T为0..1；选面是物理 front/back，不随入射面改名。只统计所选镀膜，基片和固定层另列。</p>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 190" role="img" aria-label="资源评估的数据流，数值必要界与完整候选审计汇入证据结果，不写回设计">
+<rect x="10" y="45" width="190" height="95" fill="#e9f4f1" stroke="#087f78"/><text x="105" y="80" text-anchor="middle" font-size="18">冻结指标 材料 正背面</text><text x="105" y="111" text-anchor="middle" font-size="16">严格 n/k 与原工艺</text>
+<path d="M200 90H255M255 90V35H300M255 90V150H300" fill="none" stroke="#50616a" stroke-width="2"/>
+<rect x="300" y="5" width="250" height="65" fill="#fff2dd" stroke="#b56527"/><text x="425" y="32" text-anchor="middle" font-size="17">适用必要界及固定面数值门</text><text x="425" y="56" text-anchor="middle" font-size="15">不能当作足够预算或认证</text>
+<rect x="300" y="115" width="250" height="65" fill="#e9f4f1" stroke="#087f78"/><text x="425" y="143" text-anchor="middle" font-size="17">当前完整膜系独立 TMM 审计</text><text x="425" y="168" text-anchor="middle" font-size="15">nominal 与 solver 容差分离</text>
+<path d="M550 35H610V90H660M550 150H610V90" fill="none" stroke="#50616a" stroke-width="2"/>
+<rect x="660" y="45" width="250" height="95" fill="#e9f4f1" stroke="#087f78"/><text x="785" y="78" text-anchor="middle" font-size="17">Pareto 实际见证 或 unknown</text><text x="785" y="109" text-anchor="middle" font-size="15">不改处方 不改优化约束</text></svg>
+<p class="caption">图：评估独占工作状态；必要条件与实际见证分栏。总层/总厚搜索帽仅比较，真实单层最薄/最厚工艺保留。没有实测或训练依据时不输出伪90%区间。</p>
+<div class="formula">χ(R)=atanh √R； C<sub>am</sub>=π²(n<sub>m</sub>−a)²/(2a)； B(a)=∫<sub>pointwise HR</sub> ln cosh max(χ(R<sub>min</sub>)−χ<sub>steps</sub>(a),0)dλ<br>max Bᵀy，Cᵀy≤1，y≥0；χ<sub>steps</sub>=½|ln(a/n₀)|+½|ln(a/n<sub>s</sub>)|</div>
+<p>厚度LP仅为无损、无色散、正入射、单面半空间理想模型，常n表只作该理想化诊断。重叠HR取逐点严格门槛的最大值，谱线无正带宽厚度要求。mean HR不能逐点套均值。默认有限背景为外界/候选n及中点；实现先用(n−a)/sqrt(a)构造系数并归一LP，范围错误或结构零行微正B只报numerical_unknown，不把舍入当物理无解；双精度对偶缩放不是区间认证，claim_level 为 model_numerical_screening。</p>
+<div class="formula">p<sub>m</sub>=√(n<sub>m</sub>²−h²)，h=n₀sinθ； Y<sub>s</sub>=p，Y<sub>p</sub>=n²/p；α<sub>ab</sub>=½|lnY<sub>b</sub>−lnY<sub>a</sub>|<br>u₁(m)=α₀m；u<sub>l</sub>(m)=max<sub>a</sub>[u<sub>l−1</sub>(a)+α<sub>am</sub>]；R≤tanh² max(α₀s,max<sub>l≤N,m</sub>[u<sub>l</sub>(m)+α<sub>ms</sub>])</div>
+<p>点频DP可逐波长用色散n，但每点全部允许材料与端口须无损、正实传播导纳；吸收/临界/倏逝条件不能删材料后出排除。近临界门按1e−10相对间隔拒用，浮点pad仅数值约定非证书。不同条件必要层数取最大不相加；s/p混合只加权各自上界，不要求两者分别通过。默认枚举窗口128，UI可调至0或更大，超窗口只报&gt;窗口/未知，不是优化层数上限。复杂度O(QNM²)，不证明同一层序覆盖宽带；MVP双面DP不启用。</p>
+<div class="formula">非相干、无损传播基片且只改一面： T<sub>whole</sub>=T<sub>f</sub>T<sub>b</sub>/(1−R′<sub>f</sub>R<sub>b</sub>) ≤ (1−r)T<sub>b</sub>/(1−rR<sub>b</sub>) ≤ T<sub>b</sub></div>
+<p>固定面对面门只用于整件pointwise T、透明外媒、互易被动膜和自动解析的非相干无损基片。真实固定膜块仍由普通TMM求功率；相干基片可能T=1，不得套.96裸玻璃门。吸收基片、mean-only或两面可改不使用。浮点 conflict 不称生产不可行。</p>
+<p>当前/显式候选复用原密网格、错位点、极值审计；strict/value原名义谓词不被solver容差放宽。合格且真实工艺/允许材料可行者形成Pareto联合节点，不拼“某解最少层+另一解最薄”角点；总搜索帽超出单独标记。未知k=0仅在显式策略下允许，保留已知k并随见证标条件。continuous_certificate恒false。默认不设评估时限；显式时限/取消从冻结阶段开始，保留先前完整见证，未完成不判失败。工作数区分冻结开始与完成单元，推荐节点保留源摘要/条件假设与有限审计等级；后续计源采样、DP实际转移、LP、固定面与审计完成调用，见契约。</p>
+<p class="source">实现：coat_sim/core/film_resource_estimation.py、film_resource_estimation_bounds.py；物理依据：<a href="https://arxiv.org/pdf/2608.26633">Kats 2026 Eq1/Eq10</a>、<a href="https://arxiv.org/abs/1603.02720">Byrnes</a>。多背景LP组织、导纳图放松、窗口/浮点门、源身份、调度与档案是本项目约定，未找到外部依据，仅为本项目实现。当前仅数值筛查与观察见证，没有已训练预算模型、真实材料标定或连续域认证。</p>
 </section>
 </body>
 </html>

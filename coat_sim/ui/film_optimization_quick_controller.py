@@ -1274,6 +1274,7 @@ class FilmOptimizationQuickController(QObject):
         self._plot_objective = 0
         self._plot_angle = 0.0
         self._source_revision = -1
+        self._synthesis_option_reset_revision = 0
         self._source_stale = False
         self._source_document_replaced = False
         self._design = {}
@@ -2093,6 +2094,7 @@ class FilmOptimizationQuickController(QObject):
             self._configuration_load_error = self._error = ""
             self._sensitivity_table_configuration = table_configuration
             self._configuration_restore_notice = restore_notice
+            self._advance_synthesis_option_reset_revision()
             self._invalidate_result()
         finally:
             self._configuration_loading = False
@@ -2389,6 +2391,7 @@ class FilmOptimizationQuickController(QObject):
             self._configuration_restore_notice = "单面基片不能合成背面；已取消背面选择，原背面膜层保留。"
         self._source_revision = int(design_revision)
         self._path = str(path or "")
+        self._advance_synthesis_option_reset_revision()
         self._source_stale = False
         rows_by_side = {}
         for side in ("front", "back"):
@@ -4805,6 +4808,14 @@ class FilmOptimizationQuickController(QObject):
     @Property(dict, notify=changed)
     def synthesisOptions(self):
         return dict(self._synthesis_options)
+
+    def _advance_synthesis_option_reset_revision(self) -> None:
+        self._synthesis_option_reset_revision += 1
+
+    @Property(int, notify=changed)
+    def synthesisOptionResetRevision(self) -> int:
+        """Explicit configuration/source resets invalidate focused input drafts."""
+        return self._synthesis_option_reset_revision
 
     @Property(str, notify=changed)
     def synthesisStructureSearchSeedText(self) -> str:

@@ -26,6 +26,7 @@ _TEST_CACHE_TEMP = tempfile.TemporaryDirectory(prefix="deposition-sim-pytest-")
 _TEST_CACHE_ROOT = Path(_TEST_CACHE_TEMP.name)
 
 QT_MODULES = frozenset({
+    "test_film_resource_estimate_ui.py",
     "test_film_optimization_continue_gui.py",
     "test_film_optimization_continue_qml.py",
     "test_film_synthesis_deepseek_closeout_gui.py",
@@ -148,6 +149,7 @@ QT_MODULES = frozenset({
 })
 
 ALGORITHM_MODULES = frozenset({
+    "test_film_resource_estimation.py",
     "test_film_optimization_continuation.py",
     "test_film_synthesis_warm_start_admission.py",
     "test_film_synthesis_deepseek_closeout.py",

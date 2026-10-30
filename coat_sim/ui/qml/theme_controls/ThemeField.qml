@@ -17,6 +17,13 @@ TextField {
     // Some editors must preserve the exact submitted text, including trailing
     // zeroes, instead of rendering a normalized numeric presentation.
     property bool preserveNumericDisplayText: false
+    // When true, a genuinely changed model value replaces an in-progress
+    // draft. Notifications that leave numericDisplayValue unchanged do not
+    // disturb typing, even if a shared controller notify refreshes bindings.
+    property bool resetNumericDraftOnSourceChange: false
+    // Explicit reloads/source replacements can invalidate a draft even when
+    // the new model value happens to equal the previous one.
+    property var numericDisplayResetKey: undefined
     // Opt-in for editable quantities whose committed precision is bounded.
     // Scientific constants keep their full source value while editing.
     property int numericEditDecimals: -1
@@ -36,6 +43,32 @@ TextField {
             text = preserveNumericDisplayText ? String(numericDisplayValue)
                                               : NumericFormat.format(numericDisplayValue, Qt.locale(),
                                                                      numericDisplayDecimals)
+    }
+
+    function resetNumericDraftToValue(value) {
+        numericValueEdited = false
+        numericEditText = ""
+        text = value === null || value === undefined ? ""
+            : preserveNumericDisplayText ? String(value)
+            : numericEditDecimals >= 0
+              ? NumericFormat.format(value, Qt.locale(), numericEditDecimals)
+              : String(value)
+    }
+
+    function resetNumericDraftToSource() {
+        if (resetNumericDraftOnSourceChange && numericDisplayResetKey !== undefined) {
+            try {
+                const reset = JSON.parse(String(numericDisplayResetKey))
+                if (Array.isArray(reset) && reset.length === 2) {
+                    resetNumericDraftToValue(reset[1])
+                    return
+                }
+            } catch (error) {
+                // Invalid reset metadata must not replace a valid numeric
+                // source; the property itself remains the display fallback.
+            }
+        }
+        resetNumericDraftToValue(numericDisplayValue)
     }
 
     function setNumericSourceValue(value) {
@@ -91,18 +124,25 @@ TextField {
         if (!activeFocus) {
             numericValueEdited = false
             numericEditText = ""
-        }
+        } else if (resetNumericDraftOnSourceChange)
+            resetNumericDraftToValue(numericDisplayValue)
         displayTimer.restart()
+    }
+    onNumericDisplayResetKeyChanged: {
+        if (!resetNumericDraftOnSourceChange || !activeFocus) {
+            displayTimer.restart()
+            return
+        }
+        // The key contains both the reset revision and authoritative source
+        // value, so a same-value reload resets synchronously without reading
+        // an as-yet stale numericDisplayValue binding.
+        resetNumericDraftToSource()
     }
     Component.onCompleted: displayTimer.restart()
     onNumericDisplayDecimalsChanged: displayTimer.restart()
     onActiveFocusChanged: {
         if (activeFocus && numericDisplayValue !== undefined)
-            text = numericDisplayValue === null ? ""
-                : preserveNumericDisplayText ? String(numericDisplayValue)
-                : numericEditDecimals >= 0
-                  ? NumericFormat.format(numericDisplayValue, Qt.locale(), numericEditDecimals)
-                  : String(numericDisplayValue)
+            resetNumericDraftToSource()
         else if (!activeFocus)
             displayTimer.restart()
     }

@@ -2144,10 +2144,16 @@ AppWindow {
                                             ThemeControls.ThemeField {
                                                 objectName: "filmSynthesis_" + synthesisOptionRow.modelData.key + "Field"
                                                 Layout.fillWidth: true
-                                                text: String(window.controller.synthesisOptions[synthesisOptionRow.modelData.key] ?? "")
+                                                numericDisplayValue: window.controller.synthesisOptions[synthesisOptionRow.modelData.key] ?? ""
+                                                preserveNumericDisplayText: true
+                                                resetNumericDraftOnSourceChange: true
+                                                numericDisplayResetKey: JSON.stringify([
+                                                    window.controller.synthesisOptionResetRevision,
+                                                    window.controller.synthesisOptions[synthesisOptionRow.modelData.key] ?? ""])
                                                 placeholderText: "未指定"
                                                 accessibleLabel: synthesisOptionRow.modelData.label
-                                                onEditingFinished: window.controller.setSynthesisOption(synthesisOptionRow.modelData.key, text)
+                                                onEditingFinished: window.controller.setSynthesisOption(
+                                                    synthesisOptionRow.modelData.key, text)
                                             }
                                         }
                                     }

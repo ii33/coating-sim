@@ -30,6 +30,7 @@ import weakref
 
 if TYPE_CHECKING:
     from .film_interactive_analysis_controller import FilmInteractiveAnalysisController
+    from .film_resource_estimate_controller import FilmResourceEstimateController
 
 
 from PySide6.QtCore import (
@@ -428,6 +429,7 @@ class FilmDesignQuickController(QObject):
         self._tfcalc_preview = None
         self._tfcalc_confirmation_epoch = None
         self._tfcalc_state = {"loaded": False, "error": "", "ready": False}
+        self._resource_estimate_controller: FilmResourceEstimateController | None = None
         self._interactive_analysis_controller: FilmInteractiveAnalysisController | None = None
         self._interactive_preview_payload: dict[str, Any] | None = None
         self._geometry_settings = FilmQuickGeometrySettings(geometry_settings, self)
@@ -2023,9 +2025,30 @@ class FilmDesignQuickController(QObject):
             return str(opener("film_simulation", self, start=True) or "")
         return ""
 
+    @Slot(result=str)
+    def openResourceEstimateSettings(self) -> str:
+        # Open the existing editor without selecting a mode or starting optimization.
+        return self._open_optimization_window()
+
+    def _resource_estimator(self) -> FilmResourceEstimateController:
+        if self._resource_estimate_controller is None:
+            from .film_resource_estimate_controller import FilmResourceEstimateController
+            self._resource_estimate_controller = FilmResourceEstimateController(self, self)
+        return self._resource_estimate_controller
+
+    @Property(QObject, constant=True)
+    def resourceEstimateController(self) -> QObject:
+        return self._resource_estimator()
+
+    @Slot(result=bool)
+    def runResourceEstimate(self) -> bool:
+        return self._resource_estimator().start()
+
     @Slot()
     def markSourceClosed(self) -> None:
         self._source_closed = True
+        if self._resource_estimate_controller is not None:
+            self._resource_estimate_controller.close()
         if self._interactive_analysis_controller is not None:
             self._interactive_analysis_controller.markSourceClosed()
         if self._session_unsubscribe is not None:

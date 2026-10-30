@@ -150,3 +150,5 @@ python tools/run_tests.py all
 [从零合成GPU整轮验收报告](docs/film-synthesis-gpu-forward-report-20261020.md)；[实际60层多光谱对照](docs/film-sixty-layer-multispectral-report-20261020.md)；[从零合成GPU前向实施契约](docs/film-synthesis-gpu-forward-contract.md)；离线算法[14y](docs/algorithms.html#film-synthesis-gpu-forward-20261020)。
 
 波段目标支持独立启用平均值与绝对值（逐点），见[当前双约束契约](docs/film-band-criteria-contract.md)及[离线算法 14at](docs/algorithms.html#film-band-criteria-20261024)。新协议明确拒绝旧格式；RMS 权重更新不放宽名义阈值。
+
+膜系设计侧栏的资源评估只读检查当前指标、材料与正背面，显示适用必要数值界、固定面瓶颈和当前完整结构的审计资源节点；未标定时保持未知，不改处方或优化约束。见[核心契约](docs/film-resource-estimation-core-contract.md)与[算法14be](docs/algorithms.html#film-resource-estimation-20261030)。

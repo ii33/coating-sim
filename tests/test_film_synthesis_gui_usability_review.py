@@ -14,6 +14,7 @@ from PySide6.QtQuick import QQuickItem
 from PySide6.QtTest import QTest
 
 from coat_sim.core.film_design_service import FilmDesignService
+from coat_sim.core.film_design_session import FilmDesignEditSession
 from coat_sim.core.material_business import MaterialLibrary
 from coat_sim.core.materials import default_material_profile
 from coat_sim.scheduler.client import SchedulerClient
@@ -148,6 +149,123 @@ def test_equal_angle_typed_naturally_survives_each_key_and_submission(usable_gui
     assert applied.design_revision == original.design_revision + 1
     assert source.undoOptimizedDesign()
     assert source.currentDesign() == _expected_with_synthesis_search_progress(original.design, controller)
+
+
+def test_synthesis_numeric_field_keeps_draft_on_unrelated_refresh_and_resets_on_source_change(usable_gui):
+    service, source, controller, scene = _open_optimizer(usable_gui)
+    scene.click(scene.item("filmOptimizationAlgorithmTab"))
+    field = scene.item("filmSynthesis_max_cyclesField")
+    assert controller.setSynthesisOption("max_cycles", "7")
+    _wait(lambda: str(field.property("text")) == "7")
+    assert str(field.property("text")) == "7"
+
+    scene.click(field)
+    _wait(lambda: bool(field.property("activeFocus")))
+    QTest.keyClick(scene.window, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
+    QCoreApplication.processEvents()
+    assert field.property("activeFocus")
+    assert field.property("selectedText") == "7"
+
+    # Preserve a real in-progress numeric edit across controller-wide updates
+    # that do not change this field's source value.
+    QTest.keyClick(scene.window, ord("3"))
+    QCoreApplication.processEvents()
+    assert field.property("text") == "3"
+    controller.changed.emit()
+    QCoreApplication.processEvents()
+    assert field.property("text") == "3"
+    QTest.keyClick(scene.window, ord("4"))
+    QCoreApplication.processEvents()
+    assert field.property("text") == "34"
+    assert controller.setSynthesisOption("max_evaluations", "13")
+    QCoreApplication.processEvents()
+    assert field.property("text") == "34"
+
+    # An explicit authoritative configuration restore supersedes the draft
+    # even if this field's value is unchanged but another option differs.
+    restored = controller.exportOptimizationConfiguration()
+    restored["synthesis"]["options"]["max_evaluations"] = 14
+    assert controller.loadOptimizationConfiguration(restored), controller.error
+    assert field.property("text") == "7"
+    QTest.keyClick(scene.window, Qt.Key.Key_Return)
+    assert controller.synthesisOptions["max_cycles"] == 7
+    QCoreApplication.processEvents()
+    assert field.property("text") == "7"
+    assert controller.synthesisOptions["max_cycles"] == 7
+
+    # Normal focus acquisition after the reset accepts a fresh edit; there is
+    # no pending fence that can swallow its first character.
+    scene.click(field)
+    _wait(lambda: bool(field.property("activeFocus")))
+    QTest.keyClick(scene.window, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
+    QCoreApplication.processEvents()
+    assert field.property("activeFocus")
+    assert field.property("selectedText") == "7"
+    QTest.keyClick(scene.window, ord("5"))
+    QCoreApplication.processEvents()
+    assert field.property("text") == "5"
+    QTest.keyClick(scene.window, Qt.Key.Key_Return)
+    assert controller.synthesisOptions["max_cycles"] == 5
+    assert controller.setSynthesisOption("max_cycles", "7")
+    _wait(lambda: field.property("text") == "7")
+    assert field.property("text") == "7"
+
+    # Rebind the existing optimizer to another source carrying the same
+    # configuration; source identity itself is an explicit draft reset.
+    other_session = FilmDesignEditSession(service)
+    assert other_session.request_replace_design(source.currentDesign())
+    assert other_session.set_workflow_configuration(
+        "optimization", controller.exportOptimizationConfiguration())
+    other_source = FilmDesignQuickController(service=service, edit_session=other_session)
+    try:
+        scene.click(field)
+        _wait(lambda: bool(field.property("activeFocus")))
+        QTest.keyClick(scene.window, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
+        QCoreApplication.processEvents()
+        assert field.property("selectedText") == "7"
+        QTest.keyClick(scene.window, ord("3"))
+        QCoreApplication.processEvents()
+        QTest.keyClick(scene.window, ord("4"))
+        QCoreApplication.processEvents()
+        assert field.property("text") == "34"
+        assert controller.reuseWindowOpen("", other_source), controller.error
+        assert field.property("text") == "7"
+        QTest.keyClick(scene.window, Qt.Key.Key_Return)
+        assert controller.synthesisOptions["max_cycles"] == 7
+        QCoreApplication.processEvents()
+        assert controller._source_controller is other_source
+        assert field.property("text") == "7"
+        assert controller.reuseWindowOpen("", source), controller.error
+        QCoreApplication.processEvents()
+        assert controller._source_controller is source
+    finally:
+        other_source.markSourceClosed()
+        other_source.deleteLater()
+
+    # A genuine change to this field's source also supersedes the draft while
+    # the editor is still focused.
+    scene.click(field)
+    _wait(lambda: bool(field.property("activeFocus")))
+    QTest.keyClick(scene.window, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
+    QCoreApplication.processEvents()
+    assert field.property("selectedText") == "7"
+    QTest.keyClick(scene.window, ord("3"))
+    QCoreApplication.processEvents()
+    QTest.keyClick(scene.window, ord("4"))
+    QCoreApplication.processEvents()
+    assert field.property("text") == "34"
+    observed_text_changes = []
+    field.textChanged.connect(lambda: observed_text_changes.append(
+        (str(field.property("text")), controller.synthesisOptions["max_cycles"])))
+    updated = controller.exportOptimizationConfiguration()
+    updated["synthesis"]["options"]["max_cycles"] = 9
+    assert controller.loadOptimizationConfiguration(updated), controller.error
+    assert field.property("text") == "9"
+    QTest.keyClick(scene.window, Qt.Key.Key_Return)
+    assert controller.synthesisOptions["max_cycles"] == 9
+    QCoreApplication.processEvents()
+    assert field.property("text") == "9"
+    assert all(text == str(value) for text, value in observed_text_changes), observed_text_changes
 
 
 def _assert_horizontal_click_target(scene: _Scene, item: QQuickItem) -> None:

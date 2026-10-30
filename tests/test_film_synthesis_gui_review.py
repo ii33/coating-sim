@@ -274,16 +274,22 @@ class _Scene:
         self.click(item)
         _wait(lambda: bool(item.property("activeFocus")))
         QTest.keyClick(self.window, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
-        _wait(lambda: item.property("selectedText") == item.property("text"))
+        if str(item.property("text")):
+            _wait(lambda: item.property("selectedText") == item.property("text"))
+            assert item.property("selectedText") == item.property("text")
         QCoreApplication.processEvents()
+        assert item.property("activeFocus"), (item.objectName(), "focus lost after select-all")
         prefix = ""
         for character in str(text):
+            assert item.property("activeFocus"), (item.objectName(), prefix, "focus lost before key")
             # Use QtTest's ASCII overload: the key-enum overload supplies
             # lowercase event text even when Shift is included on QWindow.
             modifiers = (Qt.KeyboardModifier.ShiftModifier if character.isupper()
                          else Qt.KeyboardModifier.NoModifier)
             QTest.keyClick(self.window, ord(character), modifiers)
             prefix += character
+            QCoreApplication.processEvents()
+            assert item.property("activeFocus"), (item.objectName(), prefix, "focus lost after key")
             assert item.property("text") == prefix, (item.objectName(), prefix, item.property("text"))
         QTest.keyClick(self.window, Qt.Key.Key_Return)
         QTest.qWait(20)

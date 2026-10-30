@@ -1126,8 +1126,8 @@ Item {
                 GridLayout {
                     id: sidebarRail
                     objectName: "filmDesignSidebarRail"
-                    columns: window.sidebarUsesBottomLayout ? 5 : 1
-                    rows: window.sidebarUsesBottomLayout ? 1 : 6
+                    columns: window.sidebarUsesBottomLayout ? 6 : 1
+                    rows: window.sidebarUsesBottomLayout ? 1 : 7
                     Layout.column: 0
                     Layout.row: 0
                     Layout.preferredWidth: window.sidebarUsesBottomLayout ? 0 : 64
@@ -1248,17 +1248,43 @@ Item {
                         }
                         onClicked: sidebarRail.choose("interactive")
                     }
+                    ToolButton {
+                        objectName: "filmDesignSidebarResourceEstimate"
+                        Layout.column: window.sidebarUsesBottomLayout ? 4 : 0
+                        Layout.row: window.sidebarUsesBottomLayout ? 0 : 4
+                        Layout.fillWidth: true
+                        Layout.fillHeight: window.sidebarUsesBottomLayout
+                        Layout.preferredHeight: window.sidebarUsesBottomLayout ? 64 : 56
+                        checkable: true
+                        checked: window.activeSidebarSection === "resource"
+                        Accessible.name: "资源评估"
+                        ToolTip.visible: hovered
+                        ToolTip.text: "评估指标与材料所需的膜系资源"
+                        contentItem: Label {
+                            text: "资源评估"
+                            wrapMode: Text.WordWrap
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            color: parent.checked ? Theme.snapshot.colorTextOnAccent : Theme.snapshot.colorText
+                            font.pointSize: Theme.snapshot.fontSizeBody
+                        }
+                        background: Rectangle {
+                            color: parent.checked ? Theme.snapshot.colorAccent : "transparent"
+                            radius: Theme.snapshot.radiusSm
+                        }
+                        onClicked: sidebarRail.choose("resource")
+                    }
                     Item {
                         objectName: "filmDesignSidebarSpacer"
                         visible: !window.sidebarUsesBottomLayout
                         Layout.column: 0
-                        Layout.row: 5
+                        Layout.row: 6
                         Layout.fillHeight: true
                     }
                     ThemeControls.ThemeDoubleChevron {
                         objectName: "filmDesignSidebarToggle"
-                        Layout.column: window.sidebarUsesBottomLayout ? 4 : 0
-                        Layout.row: window.sidebarUsesBottomLayout ? 0 : 4
+                        Layout.column: window.sidebarUsesBottomLayout ? 5 : 0
+                        Layout.row: window.sidebarUsesBottomLayout ? 0 : 5
                         Layout.alignment: Qt.AlignHCenter
                         Layout.preferredWidth: 24
                         Layout.minimumWidth: 24
@@ -1286,7 +1312,8 @@ Item {
                     Layout.minimumWidth: 0
                     property int currentIndex: window.activeSidebarSection === "expression" ? 0
                                                : window.activeSidebarSection === "generator" ? 1
-                                               : window.activeSidebarSection === "library" ? 2 : 3
+                                               : window.activeSidebarSection === "library" ? 2
+                                               : window.activeSidebarSection === "interactive" ? 3 : 4
 
                     Item {
                         objectName: "filmDesignExpressionPage"
@@ -1342,6 +1369,25 @@ Item {
                                 id: interactiveAnalysisPanel
                                 width: Math.max(0, interactiveAnalysisScroll.availableWidth - 18)
                                 analysis: window.controller.interactiveAnalysisController
+                                themeTokens: Theme.snapshot
+                            }
+                        }
+                    }
+                    Item {
+                        objectName: "filmDesignResourceEstimatePage"
+                        anchors.fill: parent
+                        visible: sidebarStack.currentIndex === 4
+                        ScrollView {
+                            id: resourceEstimateScroll
+                            anchors.fill: parent
+                            clip: true
+                            contentWidth: availableWidth
+                            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+                            FilmResourceEstimatePanel {
+                                width: Math.max(0, resourceEstimateScroll.availableWidth - 18)
+                                estimator: window.controller.resourceEstimateController
+                                onStartRequested: window.runDesignShortcut(function() { window.controller.runResourceEstimate() })
+                                sourceController: window.controller
                                 themeTokens: Theme.snapshot
                             }
                         }
