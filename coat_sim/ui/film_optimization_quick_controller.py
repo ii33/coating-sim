@@ -693,6 +693,9 @@ class _FilmOptimizationTask(QRunnable):
         self._observer_disconnected = threading.Event()
         self._display_callback: Any = None
         self._display_bind: Any = None
+        self._reduction_input_digest: str | None = None
+        self._last_reduction_feedback_sequence = -1
+        self._reduction_feedback_unavailable = False
         self.signals = _OptimizationSignals()
         self.setAutoDelete(False)
 
@@ -722,6 +725,41 @@ class _FilmOptimizationTask(QRunnable):
         if value.get("actual_backend") == "gpu" and value.get("gpu_runtime") == "xpu":
             message = "Intel XPU 批量前向 · " + str(value.get("dtype","")) + " · " + message
         try:
+            reduction_snapshot = None
+            reduction_feedback_error = str(value.get("reduction_feedback_error") or "")
+            sequence = value.get("reduction_feedback_sequence")
+            if (type(sequence) is int and sequence >= 0
+                    and sequence > self._last_reduction_feedback_sequence
+                    and not self._reduction_feedback_unavailable):
+                read_live = getattr(self.store, "reduction_live", None)
+                if not callable(read_live):
+                    self._reduction_feedback_unavailable = True
+                    reduction_feedback_error = "实时反馈不可用：当前队列客户端未实现减量快照读取。"
+                else:
+                    try:
+                        if self._reduction_input_digest is None:
+                            status = self.store.status(self.job_id)
+                            digest = status.get("input_digest") if isinstance(status, dict) else None
+                            if isinstance(digest, str) and len(digest) == 64:
+                                self._reduction_input_digest = digest
+                        if self._reduction_input_digest is not None:
+                            reduction_snapshot = read_live(
+                                self.job_id, input_digest=self._reduction_input_digest,
+                                after_sequence=self._last_reduction_feedback_sequence)
+                            if (isinstance(reduction_snapshot, dict)
+                                    and type(reduction_snapshot.get("sequence")) is int
+                                    and reduction_snapshot["sequence"] > self._last_reduction_feedback_sequence):
+                                self._last_reduction_feedback_sequence = reduction_snapshot["sequence"]
+                            else:
+                                reduction_snapshot = None
+                        else:
+                            reduction_feedback_error = "实时反馈不可用：无法验证当前作业的输入摘要。"
+                    except Exception as exc:
+                        # Display observation is optional, but data-loss diagnostics
+                        # are forwarded instead of disappearing silently.
+                        reduction_snapshot = None
+                        reduction_feedback_error = (
+                            f"实时反馈读取失败：{type(exc).__name__}: {exc}")[:320]
             progress = FilmOptimizationProgress(
                 state=state,
                 fraction=max(0.0, min(1.0, float(value.get("fraction", 0.0)))),
@@ -729,6 +767,10 @@ class _FilmOptimizationTask(QRunnable):
                 evaluations=max(0, int(value.get("evaluations", 0))),
                 best_max_normalized_error=error,
                 message=message,
+                reduction_feedback_sequence=(sequence if type(sequence) is int else None),
+                reduction_feedback_terminal=value.get("reduction_feedback_terminal") is True,
+                reduction_feedback_snapshot=reduction_snapshot,
+                reduction_feedback_error=reduction_feedback_error,
             )
         except (TypeError, ValueError, OverflowError):
             return
@@ -942,6 +984,7 @@ class FilmOptimizationQuickController(QObject):
     """Per-window optimization state; the edit session remains the design owner."""
 
     changed = Signal()
+    reductionFeedbackChanged = Signal()
     plotDataChanged = Signal()
     synthesisPreviewRequested = Signal()
     overwriteRequested = Signal(str)
@@ -1147,6 +1190,11 @@ class FilmOptimizationQuickController(QObject):
         self._reduction_mode = "combined"
         self._reduction_limits: dict[str, int | None] = {"max_iterations": None, "max_evaluations": None}
         self._reduction_result: FilmReductionResult | None = None
+        self._reduction_feedback_snapshot: dict[str, Any] | None = None
+        self._reduction_feedback_layers_cache: list[dict[str, Any]] = []
+        self._reduction_feedback_digest = ""
+        self._reduction_feedback_sequence = -1
+        self._reduction_feedback_error = ""
         self._requested_search_mode = getattr(source_controller, "_requested_optimizer_search_mode", "")
         if self._requested_search_mode:
             source_controller._requested_optimizer_search_mode = ""
@@ -1471,6 +1519,11 @@ class FilmOptimizationQuickController(QObject):
             self._manufacturing_controller.changed.connect(self.changed.emit)
         return self._manufacturing_controller
 
+    def _repair_controller(self) -> FilmManufacturingQuickController:
+        """Return the existing lazy repair state owner with a concrete Python type."""
+        from coat_sim.ui.film_manufacturing_quick_controller import FilmManufacturingQuickController
+        return cast(FilmManufacturingQuickController, self.manufacturingController)
+
     def _manufacturing_can_apply(self, payload: Mapping[str, Any],
                                  context: Mapping[str, Any] | None, snapshot: Any, *,
                                  full_validation: bool = False) -> bool:
@@ -1663,7 +1716,7 @@ class FilmOptimizationQuickController(QObject):
         if self._pending_edit_error or self._objective_bounds_pending():
             raise ValueError(self._error or "请先修正尚未提交的优化输入")
         configuration = {
-            "version": 2,
+            "version": 3,
             "objectives": self._export_objective_editor_rows(),
             "variables": [{key: deepcopy(row[key]) for key in
                            ("side", "layer_id", "enabled", "lower_nm", "upper_nm")}
@@ -1720,8 +1773,9 @@ class FilmOptimizationQuickController(QObject):
             allowed = {"version", "objectives", "variables", "solver", "search_mode",
                        "structure_mode", "reduction_mode", "reduction_limits", "structure_options", "structure_materials", "synthesis",
                        "sensitivity_table"}
-            if (set(configuration) - allowed or type(configuration.get("version")) is not int
-                    or configuration.get("version") != 2):
+            configuration_version = configuration.get("version")
+            if (set(configuration) - allowed or type(configuration_version) is not int
+                    or configuration_version not in {2, 3}):
                 raise ValueError("优化配置版本或字段不受支持")
             table_configuration = deepcopy(configuration.get("sensitivity_table"))
             if table_configuration is not None and not isinstance(table_configuration, dict):
@@ -1861,8 +1915,10 @@ class FilmOptimizationQuickController(QObject):
                                 for name, value in reduction_limits.items()}
             if reduction_mode not in {"layer_count", "thickness", "combined"}:
                 raise ValueError("减层 / 减厚模式无效")
-            if search_mode not in {"fixed_topology", "structure", "synthesis", "reduction"} or structure_mode not in {"combined", "needle_only", "growth_only"}:
+            if search_mode not in {"fixed_topology", "structure", "synthesis", "reduction", "automatic_repair"} or structure_mode not in {"combined", "needle_only", "growth_only"}:
                 raise ValueError("优化或结构模式无效")
+            if search_mode == "automatic_repair" and configuration_version != 3:
+                raise ValueError("自动薄层修复模式要求优化配置版本 3")
             structure = {**defaults["structure_options"], **configuration.get("structure_options", {})}
             if set(structure) != set(defaults["structure_options"]):
                 raise ValueError("结构搜索配置字段无效")
@@ -2030,6 +2086,8 @@ class FilmOptimizationQuickController(QObject):
             self._configuration_loading = False
         if self._synthesis_search_reference is not None:
             self._persist_synthesis_search_reference()
+        if search_mode == "automatic_repair":
+            self._repair_controller().prepare()
         return True
 
     def _persist_configuration(self) -> None:
@@ -2668,6 +2726,7 @@ class FilmOptimizationQuickController(QObject):
         return [
             {"id": "fixed_topology", "label": "固定层序优化"},
             {"id": "reduction", "label": "减层 / 减厚优化"},
+            {"id": "automatic_repair", "label": "自动薄层修复"},
             {"id": "synthesis", "label": "从零自动合成"},
             {"id": "structure", "label": "结构合成"},
         ]
@@ -2760,6 +2819,64 @@ class FilmOptimizationQuickController(QObject):
         else:
             lines.append("候选仅供查看：尚未同时满足完整原目标、独立加密审计与减量条件。")
         return "\n".join(lines)
+
+    @Property(bool, notify=changed)
+    def hasReductionFeedback(self) -> bool:
+        return self._reduction_feedback_snapshot is not None
+
+    @Property(str, notify=changed)
+    def reductionFeedbackSummary(self) -> str:
+        frame = self._reduction_feedback_snapshot
+        stage = str(self._progress_text or "正在准备减量优化")
+        if frame is None:
+            return (stage + "；原设计尚未改变，完整原始网格与独立加密网格核验完成前不显示候选。"
+                    + ("\n" + self._reduction_feedback_error if self._reduction_feedback_error else ""))
+        baseline, candidate = frame["baseline"], frame["candidate"]
+        def nm(value):
+            return format_film_thickness(value) + " nm"
+        def metric(value):
+            return "未知" if value is None else f"{value:.6g}"
+        state = {"running": "搜索中", "completed": "已结束", "cancelled": "已取消",
+                 "failed": "失败"}.get(frame["state"], "状态未知")
+        return (f"{stage}\n{state} · 原设计：{baseline['layer_count']} 层 / "
+                f"{nm(baseline['total_thickness_nm'])}；当前最佳完整候选："
+                f"{candidate['layer_count']} 层 / {nm(candidate['total_thickness_nm'])}\n"
+                f"最佳最大归一化误差：{metric(candidate['max_normalized_error'])}；"
+                f"加权 RMS 误差：{metric(candidate['weighted_rms_error'])}；"
+                f"原目标 {'通过' if candidate['targets_met'] else '未通过'}，"
+                f"独立加密 {'通过' if candidate['validation_targets_met'] else '未通过'}。"
+                f"\n评价 {frame['evaluations']} · 轮次 {frame['iteration']}。"
+                + (f" 终止原因：{frame['termination_reason']}。" if frame["termination_reason"] else "")
+                + ("\n" + self._reduction_feedback_error if self._reduction_feedback_error else ""))
+
+    @Property(list, notify=reductionFeedbackChanged)
+    def reductionFeedbackLayers(self) -> list[dict[str, Any]]:
+        # Scalar progress ticks must not recreate every row delegate. The cache
+        # changes only after accepting a newer audited sidecar frame.
+        return [dict(row) for row in self._reduction_feedback_layers_cache]
+
+    @staticmethod
+    def _make_reduction_feedback_layers(frame: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+        if frame is None:
+            return []
+        rows = frame["layers"]
+        scale = max((max(float(row["original_nm"]), float(row["best_nm"])) for row in rows), default=0.0)
+        result = []
+        for row in rows:
+            original, best, delta = float(row["original_nm"]), float(row["best_nm"]), row["delta_nm"]
+            delta_text = ("已删除" if row["best_deleted"] else
+                          ("+" if delta > 0 else "") + format_film_thickness(delta) + " nm")
+            result.append({
+                "row_id": row["id"], "side": row["side"], "index": row["index"],
+                "label": ("正面" if row["side"] == "front" else "背面")
+                         + f"原第 {row['index'] + 1} 层 · {row['material_id']}",
+                "original": format_film_thickness(original) + " nm",
+                "best": "0 nm（已删除）" if row["best_deleted"] else format_film_thickness(best) + " nm",
+                "delta": delta_text,
+                "best_ratio": (best / scale if scale > 0 else 0.0),
+                "best_deleted": row["best_deleted"],
+            })
+        return result
 
     def _reduction_eligible(self) -> bool:
         value = self._reduction_result
@@ -3030,10 +3147,14 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(str, notify=changed)
     def error(self) -> str:
+        if self._search_mode == "automatic_repair" and self._manufacturing_controller is not None:
+            return cast(str, self._manufacturing_controller.error)
         return self._error
 
     @Property(str, notify=changed)
     def statusText(self) -> str:
+        if self._search_mode == "automatic_repair" and self._manufacturing_controller is not None:
+            return cast(str, self._manufacturing_controller.statusText)
         text: str | None = None
         if self._search_mode == "reduction" or self._reduction_result is not None:
             from .film_reduction_feedback import reduction_status
@@ -3111,6 +3232,13 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(bool, notify=changed)
     def canStart(self) -> bool:
+        common_ready = (not self._initial_loading and not self._initial_load_failed
+                        and not self.busy and not self._source_closed and not self._source_stale
+                        and not self._pending_edit_error)
+        if self._search_mode == "automatic_repair":
+            return bool(common_ready and cast(bool, self._repair_controller().canStartAutomatic))
+        common_ready = bool(common_ready and not self._structure_material_error
+                            and not self._active_configuration_error())
         has_search_inputs = (
             any(row["enabled"] and row["available"] for row in self._variables)
             if self._search_mode in {"fixed_topology", "reduction"}
@@ -3126,6 +3254,11 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(bool, notify=changed)
     def canStartFromShortcut(self) -> bool:
+        if self._search_mode == "automatic_repair":
+            return bool(not self._initial_loading and not self._initial_load_failed
+                        and not self.busy and not self._source_closed and not self._source_stale
+                        and not self._pending_edit_error
+                        and cast(bool, self._repair_controller().canStartAutomatic))
         return (not self._initial_loading and not self._initial_load_failed
                 and not self._structure_material_error
                 and not self.busy and not self._source_closed
@@ -3151,6 +3284,8 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(bool, notify=changed)
     def hasCandidate(self) -> bool:
+        if self._search_mode == "automatic_repair" and self._manufacturing_controller is not None:
+            return cast(bool, self._manufacturing_controller.hasResult)
         return self._result is not None
 
     @Property(bool, notify=changed)
@@ -3168,6 +3303,9 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(bool, notify=changed)
     def canApply(self) -> bool:
+        if self._search_mode == "automatic_repair":
+            return bool(self._manufacturing_controller is not None
+                        and self._manufacturing_controller.canApply)
         return bool(self.session is not None and not self._source_closed and self._result and not self.busy
                     and not self.candidateStale
                     and not self._candidate_applied
@@ -3277,6 +3415,8 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(str, notify=changed)
     def resultValidationSummary(self) -> str:
+        if self._search_mode == "automatic_repair" and self._manufacturing_controller is not None:
+            return cast(str, self._manufacturing_controller.comparisonScopeSummary)
         if self._synthesis_payload is not None:
             return self._synthesis_audit_summary()
         result = self._result
@@ -3488,8 +3628,8 @@ class FilmOptimizationQuickController(QObject):
     def setSearchMode(self, mode: str) -> bool:
         mode = str(mode)
         if (self._busy or self._shutting_down or self._pending_edit_error
-                or mode not in {"fixed_topology", "structure", "synthesis", "reduction"}):
-            if mode not in {"fixed_topology", "structure", "synthesis", "reduction"}:
+                or mode not in {"fixed_topology", "structure", "synthesis", "reduction", "automatic_repair"}):
+            if mode not in {"fixed_topology", "structure", "synthesis", "reduction", "automatic_repair"}:
                 self._error = "未知的优化模式。"
                 self.changed.emit()
             return False
@@ -3508,6 +3648,11 @@ class FilmOptimizationQuickController(QObject):
             self._synthesis_rows_initialized = True
         self._error = ""
         self._invalidate_result()
+        if mode == "automatic_repair":
+            # Invalidate the shared result first: it fences any previously
+            # prepared repair state. Preparing before invalidation would mark
+            # the just-refreshed source stale again.
+            self._repair_controller().prepare()
         return True
 
     @Slot(str, result=bool)
@@ -3728,6 +3873,8 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(str, notify=changed)
     def resultSummary(self) -> str:
+        if self._search_mode == "automatic_repair" and self._manufacturing_controller is not None:
+            return cast(str, self._manufacturing_controller.resultSummary)
         if self._synthesis_payload is not None:
             raw = self._synthesis_payload["result"]
             facts = self._synthesis_payload["best_candidate_audit"]
@@ -3744,6 +3891,8 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(str, notify=changed)
     def resultMessage(self) -> str:
+        if self._search_mode == "automatic_repair" and self._manufacturing_controller is not None:
+            return cast(str, self._manufacturing_controller.liveSummary)
         return "" if self._result is None else str(self._result.message)
 
     @Property("QVariantList", notify=changed)
@@ -5495,6 +5644,8 @@ class FilmOptimizationQuickController(QObject):
 
     @Slot(result=bool)
     def startOptimization(self) -> bool:
+        if self._search_mode == "automatic_repair":
+            return bool(self._repair_controller().startAutomatic())
         return self._start_optimization()
 
     def _requires_async_angle_preparation(self) -> bool:
@@ -5553,6 +5704,10 @@ class FilmOptimizationQuickController(QObject):
                             warm_restart: tuple[Any, dict] | None = None
                             ) -> bool:
         search_mode = warm_restart[1]["mode"] if warm_restart is not None else self._search_mode
+        if search_mode == "automatic_repair":
+            self._error = "自动薄层修复须通过原薄层修复 controller 提交，未启动普通优化任务。"
+            self.changed.emit()
+            return False
         if warm_restart is not None:
             reason = self._continuation_source_reason(warm_restart[1])
             if reason:
@@ -5941,6 +6096,12 @@ class FilmOptimizationQuickController(QObject):
         self._synthesis_payload = None
         self._structure_result = None
         self._reduction_result = None
+        self._reduction_feedback_snapshot = None
+        self._reduction_feedback_layers_cache = []
+        self._reduction_feedback_digest = ""
+        self._reduction_feedback_sequence = -1
+        self._reduction_feedback_error = ""
+        self.reductionFeedbackChanged.emit()
         self._inspection_objectives = None
         self._result_terminal_state = ""
         self._result_application_eligible = False
@@ -6503,6 +6664,25 @@ class FilmOptimizationQuickController(QObject):
         self._progress_evaluations = int(progress.evaluations)
         self._progress_best_error = progress.best_max_normalized_error
         self._progress_text = str(progress.message or progress.state)
+        self._reduction_feedback_error = str(progress.reduction_feedback_error or "")[:320]
+        feedback = progress.reduction_feedback_snapshot
+        if (self._attempt_search_mode == "reduction" and isinstance(feedback, dict)
+                and feedback.get("job_id") == self._attempt_job_id):
+            try:
+                from coat_sim.scheduler.film_reduction_live import validate_live_frame
+                frame = validate_live_frame(feedback, job_id=self._attempt_job_id,
+                    after_sequence=self._reduction_feedback_sequence)
+                if (self._reduction_feedback_digest
+                        and frame["input_digest"] != self._reduction_feedback_digest):
+                    self._reduction_feedback_error = "实时反馈输入摘要变化；拒绝显示旧任务快照。"
+                else:
+                    self._reduction_feedback_snapshot = frame
+                    self._reduction_feedback_layers_cache = self._make_reduction_feedback_layers(frame)
+                    self._reduction_feedback_digest = frame["input_digest"]
+                    self._reduction_feedback_sequence = frame["sequence"]
+                    self.reductionFeedbackChanged.emit()
+            except (ValueError, TypeError, KeyError, OverflowError) as exc:
+                self._reduction_feedback_error = f"实时反馈校验失败：{type(exc).__name__}: {exc}"[:320]
         if self._attempt_search_mode == 'synthesis':
             from coat_sim.ui.film_synthesis_search_state import phase_label
             phase = phase_label(self._progress_text)

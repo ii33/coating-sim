@@ -24,6 +24,7 @@ from tests.film_structure_fixtures import fixture
 from tests.test_film_automatic_repair_live_display import (
     app as app,
     live_gui as live_gui,
+    show_repair_algorithm,
     start_live,
 )
 from tests.test_film_manufacturing_quick_controller import _readable_offscreen_font
@@ -117,6 +118,7 @@ def test_real_qml_zero_trial_cancel_shows_applied_champion_totals_bars_and_undo(
     live_gui, tmp_path, mode, scale, width,
 ):
     h = live_gui
+    assert h.owner.setSearchMode("automatic_repair"), h.owner.error
     before = deepcopy(h.session.snapshot().design)
     revision = h.session.snapshot().design_revision
     applied = QSignalSpy(h.source.optimizationApplied)
@@ -136,7 +138,7 @@ def test_real_qml_zero_trial_cancel_shows_applied_champion_totals_bars_and_undo(
             scene = _Scene(h.owner, "FilmOptimizationWindow.qml")
             scene.window.setWidth(width)
             scene.window.setHeight(950)
-            scene.click(scene.item("filmManufacturingOpenButton"))
+            show_repair_algorithm(scene, h.owner)
             def inspect(frame):
                 current = frame.get("current") if frame.get("stage") == "repair_live" else None
                 if (current is None or current["operator"] != "collapse_thin_layer:thin"
@@ -151,7 +153,6 @@ def test_real_qml_zero_trial_cancel_shows_applied_champion_totals_bars_and_undo(
                 assert rows["thin"]["current_ratio"] == 0.
                 assert "待核验" in rows["thin"]["status"]
                 assert scene is not None
-                scene.click(scene.item("filmRepairLiveTotal"))
                 bar = scene.item("filmRepairLiveBar_thin")
                 assert bar.width() == 0.
                 for key, row in rows.items():
@@ -175,7 +176,7 @@ def test_real_qml_zero_trial_cancel_shows_applied_champion_totals_bars_and_undo(
                 QCoreApplication.processEvents()
                 assert scene.window.grabWindow().save(str(tmp_path / f"zero-live-{mode}-{scale}-{width}.png"))
                 captured.append(current["physical_hash"])
-                scene.click(scene.item("filmManufacturingCancel"))
+                scene.click(scene.item("filmOptimizationCancelButton"))
             h.client.after_frame = inspect
             start_live(h)
             h.pool.run()
@@ -259,10 +260,11 @@ def test_actual_http_zero_champion_cancel_applies_once_and_synchronizes_display(
         assert owner.setObjectiveField("wavelength_max_nm", 580.)
         assert owner.setObjectiveField("pointwise.upper_bound_percent", 100.)
         assert panel.prepare(), panel.error
+        assert owner.setSearchMode("automatic_repair"), owner.error
         before = deepcopy(session.snapshot().design)
         revision = session.snapshot().design_revision
         applied = QSignalSpy(source.optimizationApplied)
-        scene.click(scene.item("filmManufacturingOpenButton"))
+        show_repair_algorithm(scene, owner)
         def inspect():
             frame = panel._live_frame
             if frame is None or frame.get("champion") is None:
@@ -275,7 +277,7 @@ def test_actual_http_zero_champion_cancel_applies_once_and_synchronizes_display(
                 assert displayed["best_nm"] == 0.
                 assert displayed["best_hash"] == best["physical_hash"]
                 cancelled.append(best["physical_hash"])
-                scene.click(scene.item("filmManufacturingCancel"))
+                scene.click(scene.item("filmOptimizationCancelButton"))
         panel.changed.connect(inspect)
         start_live(SimpleNamespace(panel=panel))
         _wait(lambda: not panel.busy, seconds=45.)

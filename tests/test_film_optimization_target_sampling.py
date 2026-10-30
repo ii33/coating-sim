@@ -170,7 +170,7 @@ def test_new_targets_use_one_nm_step_and_saved_point_count_stays_intact(tmp_path
         legacy["objectives"][0].pop("wavelength_step_nm")
         assert not controller.loadOptimizationConfiguration(legacy)
         saved["objectives"][0].update(wavelength_samples=31, sampling_basis="samples")
-        assert saved["version"] == 2
+        assert saved["version"] == 3
         assert controller.loadOptimizationConfiguration(saved)
         restored = controller._objectives[0]
         assert restored["sampling_basis"] == "samples"
@@ -397,7 +397,7 @@ def test_angle_range_zero_width_and_old_nonuniform_points_round_trip(tmp_path):
         assert not controller.loadOptimizationConfiguration(legacy)
         current = deepcopy(old)
         current["objectives"][0].update(angle_sampling_mode="points", angles_text="0, 13.5, 47")
-        assert current["version"] == 2
+        assert current["version"] == 3
         assert controller.loadOptimizationConfiguration(current)
         assert controller._objectives[0]["angle_sampling_mode"] == "points"
         assert controller.exportOptimizationConfiguration()["objectives"][0]["angles_text"] == "0, 13.5, 47"

@@ -221,8 +221,19 @@ def _optimizer_state(controller: Any, editor: Any, snapshot: Any,
 def _optimization_submission(controller: Any) -> dict:
     """Serialize current parameters without material I/O, computation or mutation."""
     mode = getattr(controller, "_search_mode", None)
+    if mode == "automatic_repair":
+        # Repair is not a normal film_optimization request: it is owned by the
+        # existing manufacturing controller and admitted through its frozen
+        # repair executor. This read-only project API deliberately has no
+        # compute-start action, so describe the correct route without claiming
+        # that this summary is a queue-ready request.
+        return {"available": False, "reason": "requires_existing_manufacturing_controller",
+                "executor": "film_manufacturing_repair",
+                "route": "FilmManufacturingQuickController.startAutomatic",
+                "compute_start": "existing_window_controller_only"}
     if mode not in {"fixed_topology", "synthesis"}:
-        return {"available": False, "reason": "structure_mode_not_supported_by_film_tool"}
+        return {"available": False, "reason": "mode_requires_existing_window_controller",
+                "executor": "film_optimization" if mode in {"structure", "reduction"} else None}
     if controller._requires_async_angle_preparation():
         return {"available": False, "reason": "angle_preparation_required"}
     try:

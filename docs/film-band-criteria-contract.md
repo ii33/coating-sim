@@ -18,7 +18,7 @@
 
 ## 冻结、接口与取消
 
-当前 synthesis request/result/job/checkpoint 协议为 3（冻结的 `enable_thickness_reduction` 布尔选项）；ordinary / structure / classic request/result/job 协议为 2；ideal sensitivity request/result 为 3，error table 为 2；独立 sensitivity job/checkpoint 外壳仍为 1，内层身份严格绑定新版本；优化编辑配置为 2。旧 flat mode/target/bounds 与请求级 strict_*_objective_indices 均拒绝，无迁移或 fallback。CLI / MCP / GUI / scheduler 使用同一嵌套输入与接收证据，不修改旧科学处方或冻结研究文件。
+当前 synthesis request/result/job/checkpoint 协议为 3（冻结的 `enable_thickness_reduction` 布尔选项）；ordinary / structure / classic request/result/job 协议为 2；ideal sensitivity request/result 为 3，error table 为 2；独立 sensitivity job/checkpoint 外壳仍为 1，内层身份严格绑定新版本；膜系优化编辑配置为 3，以持久化 `automatic_repair` 算法选择及其既有 executor 路由。编辑器仍接受既有版本 2 配置，但自动修复选择必须使用版本 3。旧 flat mode/target/bounds 与请求级 strict_*_objective_indices 均拒绝，无迁移或 fallback。CLI / MCP / GUI / scheduler 使用同一嵌套输入与接收证据，不修改旧科学处方或冻结研究文件。
 
 取消、时间和物理评估预算仍覆盖原计算阶段。未独审的取消最佳解只能显示已完成 training 事实，不能宣称独审通过。开关实时预览不新增物理 forward/J，关闭组不恢复已禁用约束。既有可选模板随机化与 seed 冻结保持原义。
 

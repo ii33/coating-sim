@@ -22,6 +22,13 @@ DESIGN_FIELDS = frozenset({"name", "summary", "note", "reference_wavelength_nm",
                            "assume_lossless", "use_k", "first_surface"})
 OPTIMIZATION_FIELDS = frozenset({"search_mode", "structure_mode", "solver",
                                  "acceptable_error_percent"})
+SEARCH_MODE_OPTIONS = (
+    {"id": "fixed_topology", "label": "固定层序优化", "executor": "film_optimization"},
+    {"id": "reduction", "label": "减层 / 减厚优化", "executor": "film_optimization"},
+    {"id": "synthesis", "label": "从零自动合成", "executor": "film_synthesis"},
+    {"id": "structure", "label": "结构合成", "executor": "film_optimization"},
+    {"id": "automatic_repair", "label": "自动薄层修复", "executor": "film_manufacturing_repair"},
+)
 SIMULATION_FIELDS = frozenset({"wavelength_min_nm", "wavelength_max_nm", "samples", "step_nm",
     "angle_deg", "polarization", "first_surface", "extrapolation_policy"})
 LAYER_FIELDS = frozenset({"thickness.value", "thickness.unit", "note"})
@@ -96,6 +103,8 @@ def project_editor_capabilities(module: str) -> dict[str, Any]:
             "action_arguments": {key: sorted(value) for key, value in actions.items()},
             "layer_fields": sorted(LAYER_FIELDS) if module == "film_design" else [],
             "solver_options": sorted(SOLVER_OPTIONS) if module == "film_optimization" else [],
+            "search_mode_options": [dict(row) for row in SEARCH_MODE_OPTIONS]
+                if module == "film_optimization" else [],
             "structure_options": sorted(STRUCTURE_OPTIONS) if module == "film_optimization" else [],
             "objective_record_fields": sorted(OBJECTIVE_FIELDS) if module == "film_optimization" else [],
             "variable_record_fields": ["side", "layer_id", "enabled", "lower_nm", "upper_nm"]
@@ -162,7 +171,7 @@ def _optimization_update(controller: Any, fields: dict) -> None:
     if key not in OPTIMIZATION_FIELDS:
         raise UiControlError("invalid_field", "字段不在当前工程优化编辑白名单内。")
     if key == "search_mode":
-        if not isinstance(value, str) or value not in {"fixed_topology", "structure", "synthesis"}:
+        if not isinstance(value, str) or value not in {row["id"] for row in SEARCH_MODE_OPTIONS}:
             _invalid("未知优化模式。")
         accepted = controller.setSearchMode(value)
     elif key == "structure_mode":

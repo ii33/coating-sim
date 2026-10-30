@@ -614,9 +614,24 @@ def test_symbol_only_and_structure_candidate_only_film_materials_are_portable(tm
     assert copied["materials"] == graph["materials"]
 
 
+def test_project_film_preserves_version3_automatic_repair_selection(tmp_path):
+    design = new_design("Automatic repair mode")
+    design["workflow_settings"] = {"optimization": {
+        "version": 3, "search_mode": "automatic_repair"}}
+    design = validate_design(design)
+    source = tmp_path / "repair.cfilm"
+    write_json(source, design)
+    store = ProjectStore.create(tmp_path / "project", "P")
+    identity = store.import_document(source)
+    resolved = ProjectStore.open(store.project_file).resolve_document(identity)
+    assert by_kind(resolved, "film")["data"] == design
+    assert by_kind(resolved, "film")["data"]["workflow_settings"]["optimization"]["search_mode"] == "automatic_repair"
+
+
 @pytest.mark.parametrize("configuration,code", [
-    ({"version": 3, "structure_materials": []}, "unsupported_version"),
+    ({"version": 4, "structure_materials": []}, "unsupported_version"),
     ({"structure_materials": []}, "unsupported_version"),
+    ({"version": 2, "search_mode": "automatic_repair"}, "unsupported_version"),
     ({"version": 2, "structure_materials": "global-catalog"}, "invalid_document"),
     ({"version": 2, "structure_materials": [{"material_id": "candidate", "file": "/global"}]}, "invalid_document"),
     ({"version": 2, "structure_materials": [{"material_id": "candidate", "optical_set_id": "set"}] * 2}, "dependency_conflict"),

@@ -10,7 +10,7 @@ from dataclasses import dataclass, replace
 import hashlib
 import json
 import math
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Literal, Mapping, cast
 
 from .film_design import validate_design
 from .film_objective_payload import condition_from_payload, coverage_from_payload
@@ -301,7 +301,8 @@ def _cancelled(event):
     return event is not None and event.is_set()
 
 
-def _evaluate(service, request, design, event=None, evaluation_started=None):
+def _evaluate(service, request, design, event=None, evaluation_started=None,
+              progress_callback=None, *, label="候选"):
     from .film_optimization_job import _replay_candidate_scores, _validation_objectives
     class Interruptible:
         def simulate(self, candidate, settings):
@@ -320,17 +321,22 @@ def _evaluate(service, request, design, event=None, evaluation_started=None):
     base = request.base_request
     if evaluation_started is not None:
         evaluation_started(False)
+    if progress_callback is not None:
+        progress_callback(f"正在核验{label}的原始目标网格")
     train = _replay_candidate_scores(proxy, design, base.objectives,
                                      tolerance=base.acceptable_normalized_error)
     if evaluation_started is not None:
         evaluation_started(True)
+    if progress_callback is not None:
+        progress_callback(f"正在独立加密核验{label}")
     validation = _replay_candidate_scores(proxy, design, _validation_objectives(base),
                                           tolerance=base.acceptable_normalized_error)
     return _metric(request, design, train, validation)
 
 
 def _repair_candidate(service, request, design, event, evaluation_started,
-                      iteration_advanced, evaluation_budget, iteration_budget):
+                      iteration_advanced, evaluation_budget, iteration_budget,
+                      progress_callback=None):
     """Reuse the existing bounded thickness solver before topology acceptance.
 
     The service wrapper counts complete declared-grid starts, not individual
@@ -346,7 +352,8 @@ def _repair_candidate(service, request, design, event, evaluation_started,
     if (not variables or (iteration_budget is not None and iteration_budget < 1) or
             (evaluation_budget is not None and evaluation_budget < 3)):
         limited = (None if not variables else "iteration_limit" if iteration_budget == 0 else "evaluation_budget")
-        return deepcopy(design), _evaluate(service, request, design, event, evaluation_started), limited
+        return deepcopy(design), _evaluate(service, request, design, event, evaluation_started,
+            progress_callback, label="删层候选"), limited
     # Reserve one complete independent grid only when the user chose a cap.
     # No per-topology iteration/evaluation quota truncates numerical repair.
     training_budget = None if evaluation_budget is None else evaluation_budget - 1
@@ -370,6 +377,10 @@ def _repair_candidate(service, request, design, event, evaluation_started,
         # protocol regressions cover both this phase marker and chunk counts.
         if value.state == "running" and value.fraction == 0.93:
             phase["validation"], phase["frame"] = True, 0
+        if progress_callback is not None:
+            label = ("正在独立加密核验联动修复候选" if phase["validation"] else
+                     "正在联动优化删层候选的保留层厚度")
+            progress_callback(label)
     def simulate(candidate, settings):
         if _cancelled(event):
             raise _Cancelled()
@@ -470,7 +481,7 @@ def _proposals(request, design, step_fraction):
 
 def reduce_film_design(service, request: FilmReductionRequest, *, cancel_event=None,
         progress_callback: Callable | None = None, checkpoint_callback: Callable | None = None,
-        candidate_observer=None) -> FilmReductionResult:
+        candidate_observer=None, feedback_observer=None) -> FilmReductionResult:
     """Serial reduction until natural termination, cancellation or optional user limits."""
     from .film_optimization_job import _service_with_frozen_materials
     request = freeze_film_reduction_request(service, request)
@@ -491,6 +502,9 @@ def reduce_film_design(service, request: FilmReductionRequest, *, cancel_event=N
         evaluations += 1
         validation_evaluations += int(validation)
     try:
+        if progress_callback is not None:
+            progress_callback(FilmOptimizationProgress("running", 0.0, 0, 0, None,
+                "正在核验原设计：原始目标网格与独立加密网格"))
         baseline = _evaluate(service, request, best, cancel_event, evaluation_started)
     except _Cancelled as exc:
         raise InterruptedError("cancelled before a complete audited source") from exc
@@ -507,13 +521,57 @@ def reduce_film_design(service, request: FilmReductionRequest, *, cancel_event=N
             {"baseline": deepcopy(baseline), "candidate": deepcopy(metric)},
             _summary(request, baseline, metric),
             validate_film_reduction_candidate_topology(request, best), digest, True, final)
-    def publish():
+    feedback_sequence: int | None = None
+    feedback_error = ""
+    phase = "原设计已通过完整网格核验；正在生成减量提案"
+    def current_feedback_error():
+        diagnostic = getattr(feedback_observer, "diagnostic", "") if feedback_observer is not None else ""
+        if diagnostic:
+            return f"实时反馈不可用：{diagnostic}"[:320]
+        return feedback_error
+
+    def report_candidate_stage(message):
+        if progress_callback is None:
+            return
+        fraction = max(iterations / request.max_iterations if request.max_iterations else 0.0,
+                       evaluations / request.max_evaluations if request.max_evaluations else 0.0)
+        progress_callback(FilmOptimizationProgress("running", fraction,
+            iterations, evaluations, metric["max_normalized_error"], str(message),
+            feedback_sequence, reduction_feedback_error=current_feedback_error()))
+
+    def publish(*, terminal=False, terminal_state="running", terminal_message=""):
+        nonlocal feedback_sequence, feedback_error
         if checkpoint_callback is not None:
             checkpoint_callback(result("completed", "Complete audited incumbent", False))
         if candidate_observer is not None:
             observe = getattr(candidate_observer, "observe", None)
             if callable(observe):
                 observe(deepcopy(best))
+        if feedback_observer is not None:
+            offer = getattr(feedback_observer, "offer", None)
+            value = -1
+            if callable(offer):
+                try:
+                    value = offer(source_design=base.design_snapshot, best_design=best,
+                        baseline_metrics=baseline, candidate_metrics=metric,
+                        stage=phase, iteration=iterations, evaluations=evaluations,
+                        state=terminal_state if terminal else "running",
+                        message=terminal_message)
+                    if type(value) is int and value >= 0:
+                        feedback_sequence = value
+                except Exception as exc:
+                    # Observation failures never alter reduction or its audited incumbent.
+                    feedback_error = f"实时反馈不可用：{type(exc).__name__}: {exc}"[:320]
+            diagnostic = getattr(feedback_observer, "diagnostic", "")
+            if diagnostic:
+                feedback_error = f"实时反馈不可用：{diagnostic}"[:320]
+        if progress_callback is not None and terminal:
+            progress_callback(FilmOptimizationProgress(terminal_state,
+                max(iterations / request.max_iterations if request.max_iterations else 0.0,
+                    evaluations / request.max_evaluations if request.max_evaluations else 0.0),
+                iterations, evaluations, metric["max_normalized_error"],
+                terminal_message or phase,
+                feedback_sequence, True, None, feedback_error))
     publish()
     step = base.initial_step_fraction
     tested_topologies = set()
@@ -529,6 +587,13 @@ def reduce_film_design(service, request: FilmReductionRequest, *, cancel_event=N
         while True:
             check_limits()
             iterations += 1
+            phase = f"第 {iterations} 轮：正在生成合法减量提案"
+            if progress_callback is not None:
+                progress_callback(FilmOptimizationProgress("running",
+                    max(iterations / request.max_iterations if request.max_iterations else 0.0,
+                        evaluations / request.max_evaluations if request.max_evaluations else 0.0),
+                    iterations, evaluations, metric["max_normalized_error"], phase,
+                    feedback_sequence, reduction_feedback_error=current_feedback_error()))
             improved = False
             seen = set()
             for candidate in _proposals(request, best, step):
@@ -549,18 +614,24 @@ def reduce_film_design(service, request: FilmReductionRequest, *, cancel_event=N
                     if fingerprint in tested_topologies:
                         continue
                     tested_topologies.add(fingerprint)
+                    phase = "正在联动修复删层候选：调整保留层厚度"
                     candidate, candidate_metric, repair_stop = _repair_candidate(service, request, candidate, cancel_event,
                         evaluation_started, iteration_advanced,
                         None if request.max_evaluations is None else request.max_evaluations - evaluations,
-                        None if request.max_iterations is None else request.max_iterations - iterations)
+                        None if request.max_iterations is None else request.max_iterations - iterations,
+                        report_candidate_stage if progress_callback is not None else None)
                 else:
-                    candidate_metric = _evaluate(service, request, candidate, cancel_event, evaluation_started)
+                    phase = "正在核验减厚候选：原始目标网格与独立加密网格"
+                    candidate_metric = _evaluate(service, request, candidate, cancel_event,
+                        evaluation_started, report_candidate_stage if progress_callback is not None else None,
+                        label="减厚候选")
                 if _qualifies(request, baseline, candidate_metric) and (
                         not _feasible(metric) or _key(request, candidate_metric) < _key(request, metric)):
                     validate_film_reduction_candidate_topology(request, candidate)
                     best, metric = candidate, candidate_metric
                     tested_topologies.clear()
                     improved = True
+                    phase = "发现新的完整审计改善候选"
                     publish()
                     if repair_stop:
                         raise _BudgetReached(repair_stop)
@@ -569,11 +640,15 @@ def reduce_film_design(service, request: FilmReductionRequest, *, cancel_event=N
                     raise _BudgetReached(repair_stop)
                 if request.max_iterations is not None and iterations >= request.max_iterations:
                     raise _BudgetReached("iteration_limit")
+            phase = (f"第 {iterations} 轮结束：已更新最佳候选" if improved else
+                     f"第 {iterations} 轮结束：没有合格改善，继续缩小减厚步长" if request.mode != "layer_count" else
+                     f"第 {iterations} 轮结束：当前删除 / 合并提案无合格改善")
             if progress_callback is not None:
                 progress_callback(FilmOptimizationProgress("running",
                     max(iterations / request.max_iterations if request.max_iterations else 0.0,
                         evaluations / request.max_evaluations if request.max_evaluations else 0.0),
-                    iterations, evaluations, metric["max_normalized_error"], "Conservative film reduction"))
+                    iterations, evaluations, metric["max_normalized_error"], phase,
+                    feedback_sequence, reduction_feedback_error=current_feedback_error()))
             if not improved:
                 if not seen or request.mode == "layer_count":
                     reason, message = "proposal_exhausted", "All current legal topology proposals exhausted without improvement"
@@ -594,7 +669,36 @@ def reduce_film_design(service, request: FilmReductionRequest, *, cancel_event=N
         reason, state, message = "failed", "failed", f"Reduction failed; last complete audited candidate retained: {exc}"
     if not _feasible(baseline):
         message += "; source is infeasible on original/independent grids; original unmet status preserved"
-    return result(state, message)
+    final_result = result(state, message)
+    terminal_message = {
+        "completed": f"减量搜索正常结束：{reason}。{message}",
+        "cancelled": f"减量搜索已取消：保留最后完整审计的最佳候选。{message}",
+        "failed": f"减量搜索失败：{message}",
+    }[state]
+    phase = terminal_message
+    if feedback_observer is not None:
+        finish = getattr(feedback_observer, "finish", None)
+        if callable(finish):
+            try:
+                value = finish(source_design=base.design_snapshot, best_design=best,
+                    baseline_metrics=baseline, candidate_metrics=metric,
+                    stage=phase, iteration=iterations, evaluations=evaluations,
+                    state=state, termination_reason=reason, message=terminal_message)
+                if type(value) is int and value >= 0:
+                    feedback_sequence = value
+            except Exception as exc:
+                feedback_error = f"实时反馈终态写入失败：{type(exc).__name__}: {exc}"[:320]
+            diagnostic = getattr(feedback_observer, "diagnostic", "")
+            if diagnostic:
+                feedback_error = f"实时反馈终态写入失败：{diagnostic}"[:320]
+    if progress_callback is not None:
+        progress_callback(FilmOptimizationProgress(
+            cast(Literal["completed", "cancelled", "failed"], state),
+            max(iterations / request.max_iterations if request.max_iterations else 0.0,
+                evaluations / request.max_evaluations if request.max_evaluations else 0.0),
+            iterations, evaluations, metric["max_normalized_error"], terminal_message,
+            feedback_sequence, True, None, current_feedback_error()))
+    return final_result
 
 
 def film_reduction_result_to_payload(request: FilmReductionRequest,

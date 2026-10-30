@@ -871,6 +871,7 @@ def execute_film_optimization_job(
     performance_options: Any = None,
     candidate_observer: Any = None,
     candidate_observer_factory: Any = None,
+    reduction_feedback_observer_factory: Any = None,
 ) -> dict[str, Any]:
     """Run the queue-side task against its frozen materials only.
 
@@ -895,12 +896,20 @@ def execute_film_optimization_job(
         reduction_request = film_reduction_request_from_payload(request_payload)
         if reduction_request.base_request.frozen_material_snapshot is None:
             raise ValueError("queued reduction requires a frozen material snapshot")
+        reduction_observer = (reduction_feedback_observer_factory(reduction_request)
+                              if reduction_feedback_observer_factory is not None else None)
         def save_reduction(checkpoint):
             if checkpoint_callback is not None:
                 checkpoint_callback(film_reduction_result_to_payload(reduction_request, checkpoint))
-        reduction_result = reduce_film_design(service, reduction_request, cancel_event=cancel_event,
-            progress_callback=progress_callback,
-            checkpoint_callback=save_reduction if checkpoint_callback is not None else None)
+        try:
+            reduction_result = reduce_film_design(service, reduction_request, cancel_event=cancel_event,
+                progress_callback=progress_callback,
+                checkpoint_callback=save_reduction if checkpoint_callback is not None else None,
+                feedback_observer=reduction_observer)
+        finally:
+            close_observer = getattr(reduction_observer, "close", None)
+            if callable(close_observer):
+                close_observer()
         # The core archives only complete original+independent grid evaluations.
         # A terminal replay would add optical work after cancel or failure.
         return film_reduction_result_to_payload(reduction_request, reduction_result)

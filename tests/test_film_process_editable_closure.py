@@ -376,7 +376,7 @@ def test_freeze_rejects_malformed_typed_candidate_configuration_without_mutation
     changed = deepcopy(design)
     optimization = changed["workflow_settings"]["optimization"]
     if malformation == "unsupported_version":
-        optimization["version"] = 3
+        optimization["version"] = 4
     else:
         optimization["structure_materials"].append(
             deepcopy(optimization["structure_materials"][0]))

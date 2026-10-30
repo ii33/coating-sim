@@ -545,21 +545,32 @@ class RemoteComputeService:
                    'page': {'bucket', 'before', 'limit'}, 'artifact': {'artifact_id'},
                    'run_result': {'run_id'}, 'find_request': {'client_request_id'},
                    'refresh_estimates': set(),
+                   'reduction_live': {'job_id', 'input_digest', 'after_sequence'},
                    'film_display_control': {'job_id', 'input_digest', 'generation', 'enabled',
                                             'selection', 'expected_sequence'}}
         if not isinstance(action, str) or action not in schemas or set(args) - schemas[action]:
             raise ServiceError('unsupported_action')
         required = {'status': 'job_id', 'cancel': 'job_id', 'result': 'job_id', 'artifact': 'artifact_id',
-                    'run_result': 'run_id', 'find_request': 'client_request_id', 'page': 'bucket'}
+                    'run_result': 'run_id', 'find_request': 'client_request_id', 'page': 'bucket',
+                    'reduction_live': 'job_id'}
         if action in required and required[action] not in args:
             raise ServiceError('missing_argument')
         if action == 'film_display_control' and set(args) != schemas[action]:
             raise ServiceError('missing_argument')
+        if action == 'reduction_live' and not {'job_id', 'input_digest'} <= set(args):
+            raise ServiceError('missing_argument')
         for key in ('job_id', 'run_id', 'client_request_id'):
             if key in args and (not isinstance(args[key], str) or not _JOB.fullmatch(args[key])):
                 raise ServiceError('invalid_identifier')
+        if action == 'reduction_live':
+            digest = args.get('input_digest')
+            if not isinstance(digest, str) or _DIGEST.fullmatch(digest) is None:
+                raise ServiceError('invalid_digest')
+            cursor = args.get('after_sequence', -1)
+            if isinstance(cursor, bool) or not isinstance(cursor, int) or cursor < -1:
+                raise ServiceError('invalid_cursor')
         for key in ('after_event', 'after_sequence'):
-            if key in args:
+            if key in args and not (action == 'reduction_live' and key == 'after_sequence'):
                 _integer(args[key], 'invalid_cursor')
         if 'limit' in args:
             _integer(args['limit'], 'invalid_limit', 1, 1000)

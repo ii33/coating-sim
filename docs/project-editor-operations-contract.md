@@ -44,7 +44,12 @@ per-module capability matrix. Clients must refresh the snapshot after an edit.
   derived sample fields are not writable. Variables require exact side/layer
   ID plus enabled/lower_nm/upper_nm together, avoiding invalid intermediate
   bounds. The public editor workflow setter preserves dirty/save ownership.
-  The current optimization configuration is version 2. Shared band, angle,
+  The current optimization configuration is version 3; legacy version 2
+  remains readable, while `automatic_repair` is valid only in version 3 and
+  routes start/continue/apply through the existing `FilmManufacturingQuickController`
+  and `film_manufacturing_repair` executor. This project API has no compute-start
+  action; its read-only submission summary names this route rather than
+  fabricating an ordinary film_optimization request. Shared band, angle,
   polarization, metric and weight patches preserve both existing constraint
   groups. `mean` and `pointwise` are independent nested records; when a patch
   includes either group, it replaces that entire group. Each supplied group

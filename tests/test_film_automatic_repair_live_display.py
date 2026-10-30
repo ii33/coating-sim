@@ -144,10 +144,16 @@ def live_gui(app, tmp_path, monkeypatch):
 
 
 def start_live(h):
-    for key, value in (("reference_nm", "10"), ("thickness_tolerance_nm", "2"),
+    for key, value in (("lower_limit_nm", "8"),
                        ("optical_tolerance_percentage_points", "1")):
         assert h.panel.setAutomaticOption(key, value)
     assert h.panel.startAutomatic(), h.panel.error
+
+
+def show_repair_algorithm(scene, owner):
+    if owner.searchMode != "automatic_repair":
+        assert owner.setSearchMode("automatic_repair"), owner.error
+    scene.click(scene.item("filmOptimizationAlgorithmTab"))
 
 
 def thin_value(design):
@@ -170,6 +176,7 @@ def test_real_qml_user_cancel_applies_latest_complete_partial_once_and_undo_rest
         variables=tuple(FilmThicknessVariable("front", row["id"], 0., None)
                         for row in h.session.snapshot().design["front_layers"]),
         max_iterations=1, max_evaluations=8))
+    assert h.owner.setSearchMode("automatic_repair"), h.owner.error
     if old_applied_main_result:
         h.owner._result = old_result
         h.owner._candidate_applied = h.owner._candidate_saved = True
@@ -181,7 +188,7 @@ def test_real_qml_user_cancel_applies_latest_complete_partial_once_and_undo_rest
     observed = []
     scene = _Scene(h.owner, "FilmOptimizationWindow.qml")
     try:
-        scene.click(scene.item("filmManufacturingOpenButton"))
+        show_repair_algorithm(scene, h.owner)
 
         def after_frame(frame):
             if frame.get("stage") != "repair_live":
@@ -194,7 +201,7 @@ def test_real_qml_user_cancel_applies_latest_complete_partial_once_and_undo_rest
                 assert thin_value(frame["champion"]["design"]) == 7.9
                 assert h.session.snapshot().design == before
                 cancelled.append(frame["work"]["physical_calls"])
-                scene.click(scene.item("filmManufacturingCancel"))
+                scene.click(scene.item("filmOptimizationCancelButton"))
 
         h.client.after_frame = after_frame
         start_live(h)
@@ -493,19 +500,20 @@ def test_actual_http_daemon_worker_qt_cancel_applies_audited_candidate_once(app,
         assert owner.setObjectiveField("wavelength_max_nm", 600.)
         assert owner.setObjectiveField("pointwise.upper_bound_percent", 100.)
         assert panel.prepare(), panel.error
+        assert owner.setSearchMode("automatic_repair"), owner.error
         before = deepcopy(session.snapshot().design)
         revision = session.snapshot().design_revision
         applied = QSignalSpy(source.optimizationApplied)
-        scene.click(scene.item("filmManufacturingOpenButton"))
+        show_repair_algorithm(scene, owner)
 
         def on_progress():
             frame = panel._live_frame
             if panel.busy and frame is not None and frame.get("champion") is not None and not cancelled:
                 cancelled.append(frame["seq"])
-                scene.click(scene.item("filmManufacturingCancel"))
+                scene.click(scene.item("filmOptimizationCancelButton"))
 
         panel.changed.connect(on_progress)
-        for key, value in (("reference_nm", "110"), ("thickness_tolerance_nm", "1"),
+        for key, value in (("lower_limit_nm", "109"),
                            ("optical_tolerance_percentage_points", "1")):
             assert panel.setAutomaticOption(key, value)
         assert panel.startAutomatic(), panel.error

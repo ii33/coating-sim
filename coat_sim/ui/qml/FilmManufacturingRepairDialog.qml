@@ -29,7 +29,7 @@ ThemeControls.ThemeDialogBase {
             spacing: dialog.themeTokens.spaceMd
             ThemeControls.ThemeLabel {
                 Layout.fillWidth: true
-                text: "自动处理低于“单层目标厚度−厚度容差”的薄层，无需勾选。允许厚度降到 0 并消层，也可联动调整和增删合并；非零保留层继续核验厚度下限。完整核验的阶段改进即可应用，不必等全部厚度修好或求解收敛；用户取消时自动应用当前最佳改进，无改进则保持原设计。"
+                text: "自动识别低于明确厚度下限的前层，无需勾选。允许厚度降到 0 并消层，也可联动调整和增删合并；非零保留层继续核验厚度下限。完整核验的阶段改进即可应用，不必等全部厚度修好或求解收敛；用户取消时沿用原契约应用当前最佳改进，无改进则保持原设计。"
                 wrapMode: Text.Wrap
             }
             ThemeControls.ThemeLabel {
@@ -66,14 +66,13 @@ ThemeControls.ThemeDialogBase {
             }
             GridLayout {
                 Layout.fillWidth: true
-                columns: dialog.width > 720 ? 3 : 1
+                columns: dialog.width > 720 ? 2 : 1
                 columnSpacing: dialog.themeTokens.spaceMd
                 rowSpacing: dialog.themeTokens.spaceSm
                 Repeater {
                     model: [
-                        {key: "reference_nm", label: "单层目标厚度（nm）", help: "针对一层，不是膜系总厚度；待修复薄层从这个厚度附近开始调整。"},
-                        {key: "thickness_tolerance_nm", label: "厚度容差（nm）", help: "允许比单层目标薄多少。例如目标 10、容差 1，保留层须不薄于 9 nm；较厚层没有 11 nm 上限。可填 0。"},
-                        {key: "optical_tolerance_percentage_points", label: "光学指标容差（百分点）", help: "相对原曲线的最大绝对变化。例如 R 从 50% 变为 51%，变化为 1 个百分点，不是相对变化 1%。可填 0。"}
+                        {key: "lower_limit_nm", label: "单层厚度下限（nm）", help: "低于此物理厚度的前层会自动识别；可填正数。"},
+                        {key: "optical_tolerance_percentage_points", label: "相对原曲线最大变化（百分点）", help: "训练与独立审计逐点核验；1 表示 R/T 的最大绝对差不超过 1 个百分点，不是相对百分比。可填 0。"}
                     ]
                     delegate: ColumnLayout {
                         id: optionCell
@@ -95,7 +94,7 @@ ThemeControls.ThemeDialogBase {
                             accessibleDescription: optionCell.modelData.help
                             enabled: !dialog.controller.busy
                             text: dialog.controller.automaticOptions[optionCell.modelData.key]
-                            placeholderText: optionCell.modelData.key === "reference_nm" ? "填写正数" : "填写非负数"
+                            placeholderText: optionCell.modelData.key === "lower_limit_nm" ? "填写正数" : "填写非负数"
                             onTextEdited: dialog.controller.setAutomaticOption(optionCell.modelData.key, text)
                             onEditingFinished: dialog.controller.finishAutomaticOptionEdit(optionCell.modelData.key)
                         }

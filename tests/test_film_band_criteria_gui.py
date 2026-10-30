@@ -39,7 +39,7 @@ def test_current_nested_configuration_defaults_validation_and_exact_value(tmp_pa
     service, _library, design = fixture(tmp_path)
     with optimizer(service, design) as (controller, _source, _session):
         configuration = controller.exportOptimizationConfiguration()
-        assert configuration["version"] == 2
+        assert configuration["version"] == 3
         band = configuration["objectives"][0]
         assert band["pointwise"]["enabled"] is True
         assert band["pointwise"]["lower_bound_percent"] == 0

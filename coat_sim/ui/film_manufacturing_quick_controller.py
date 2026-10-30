@@ -240,8 +240,43 @@ class FilmManufacturingQuickController(QObject):
 
     @Property(dict, notify=changed)
     def automaticOptions(self):
-        """The three-field UI never reads the legacy quota/selection drafts."""
-        return dict(self._options)
+        """Parameters exposed by the shared optimization algorithm selector.
+
+        The worker request historically encoded its floor as target minus
+        tolerance. This selector intentionally exposes the actual accepted
+        lower bound; the setter stores it losslessly as target with zero
+        tolerance so the existing repair executor receives the same floor.
+        """
+        reference = self._options.get("reference_nm", "")
+        tolerance = self._options.get("thickness_tolerance_nm", "")
+        floor = reference
+        if reference.strip() and tolerance.strip():
+            try:
+                target, delta = float(reference), float(tolerance)
+                if math.isfinite(target) and math.isfinite(delta):
+                    floor = reference if delta == 0 else format_film_thickness(max(0.0, target - delta))
+            except (TypeError, ValueError, OverflowError):
+                pass  # Preserve invalid in-progress text instead of replacing it.
+        return {"lower_limit_nm": floor,
+                "optical_tolerance_percentage_points": self._options.get(
+                    "optical_tolerance_percentage_points", "")}
+
+    @Property(bool, notify=changed)
+    def canStartAutomatic(self):
+        if (self.busy or self._closed or self._unknown_submission or self.owner.busy
+                or self.owner._shutting_down or self.owner._source_closed or self.owner._source_stale
+                or self._stale or self._prepared_signature is None or not self._rows):
+            return False
+        # This event fences the previous report/attempt after a source change.
+        # A successful idle prepare has already refreshed the current signature;
+        # keeping the old event in this readiness gate would permanently disable
+        # a reused controller. start() installs a fresh event before submission,
+        # while the old event remains set for any prior result/context.
+        try:
+            self._validated_options()
+            return True
+        except (ValueError, TypeError, OverflowError):
+            return False
 
     @Property(str, notify=changed)
     def comparisonScopeSummary(self):
@@ -318,8 +353,19 @@ class FilmManufacturingQuickController(QObject):
 
     @Property(dict, notify=changed)
     def liveTotals(self):
-        _source, current, best, mode, sequence = self._live_display_snapshots()
+        source, current, best, mode, sequence = self._live_display_snapshots()
+        source_nm = layer_total_nm(source)
         current_nm, best_nm = layer_total_nm(current), layer_total_nm(best)
+        def layer_count(snapshot):
+            if not isinstance(snapshot, Mapping):
+                return None
+            layers = snapshot.get("layers")
+            if isinstance(layers, list):
+                return len(layers)
+            design = snapshot.get("design")
+            if isinstance(design, Mapping):
+                return sum(len(design.get(side + "_layers", ())) for side in ("front", "back"))
+            return None
         def show(value):
             return "未知" if value is None else format_film_thickness(value) + " nm"
         def identity(snapshot):
@@ -328,7 +374,10 @@ class FilmManufacturingQuickController(QObject):
                          "source_unchanged": "原设计总厚度", "frozen_preview": "冻结试探总厚度（非当前编辑）"}.get(mode, "当前试探总厚度")
         if mode in {"terminal_best", "source_unchanged"} and (self._stale or self._source_invalidated.is_set()):
             current_label += "（冻结回看，非当前编辑）"
-        return dict(current_nm=current_nm, best_nm=best_nm, current=show(current_nm), best=show(best_nm),
+        return dict(original_nm=source_nm, current_nm=current_nm, best_nm=best_nm,
+            original=show(source_nm), current=show(current_nm), best=show(best_nm),
+            original_layers=layer_count(source), current_layers=layer_count(current),
+            best_layers=layer_count(best),
             current_hash=identity(current), best_hash=identity(best), seq=sequence, mode=mode,
             current_label=current_label,
             scale=format_film_thickness(self._live_bar_scale_nm) + " nm")
@@ -347,6 +396,26 @@ class FilmManufacturingQuickController(QObject):
         if assessment.get("original_nominal_pass") is False:
             completion += "原光学目标仍未通过，真实违规另列；当前只通过光学不恶化保护。"
         return ("已应用的改进保留供回看。" if self._applied else "最佳改进已完成光学核验，无需等待求解收敛。") + completion
+
+    @Property(str, notify=changed)
+    def liveOpticalSummary(self):
+        snapshot = self._selected_snapshot()
+        if not isinstance(snapshot, Mapping):
+            return "最佳光学误差：尚无完整独立核验的改进候选。"
+        training, audit = snapshot.get("training_score"), snapshot.get("audit_score")
+        guard = snapshot.get("optical_guard")
+        if not isinstance(training, Mapping) or not isinstance(audit, Mapping):
+            return "最佳光学误差：证据不完整，候选不可应用。"
+        training_error, audit_error = training.get("max_error"), audit.get("max_error")
+        def number(value):
+            return ("未知" if not isinstance(value, (int, float)) or isinstance(value, bool)
+                    or not math.isfinite(value) else f"{value:.6g}")
+        change = (guard.get("maximum_absolute_change")
+                  if isinstance(guard, Mapping) else None)
+        change_text = "未知" if not isinstance(change, (int, float)) else f"{change * 100:.6g} 个百分点"
+        passed = guard.get("passed") is True if isinstance(guard, Mapping) else False
+        return (f"最佳最大归一化误差：训练 {number(training_error)} · 独立审计 {number(audit_error)}；"
+                f"相对原曲线最大变化 {change_text} · 光学保护{'通过' if passed else '未通过/未知'}。")
 
     @Property(dict, notify=changed)
     def appliedPlotData(self):
@@ -708,10 +777,26 @@ class FilmManufacturingQuickController(QObject):
 
     @Slot(str, str, result=bool)
     def setAutomaticOption(self, name, text):
-        if self.busy or self._closed or name not in _OPTION_LABELS or not isinstance(text, str):
+        if (self.busy or self._closed or name not in (set(_OPTION_LABELS) | {
+                "lower_limit_nm"}) or not isinstance(text, str)):
             return False
+        switched_from_legacy = self._legacy_mode
         self._legacy_mode = False
-        return self.setOption(name, text)
+        if name == "lower_limit_nm":
+            # Preserve the user's exact draft while compiling the physical
+            # lower bound into the legacy target-minus-tolerance request.
+            self._options["reference_nm"] = text
+            self._options["thickness_tolerance_nm"] = "0"
+            self._edited()
+        else:
+            self._options[name] = text
+            self._edited()
+        if switched_from_legacy:
+            # A prepared v1 A/B request does not contain the automatic mode's
+            # comparison scope. Re-capture it once on the explicit UI-mode
+            # transition, after preserving the first typed value.
+            self.prepare()
+        return True
 
     @Slot(str, result=bool)
     def setSelectedRoute(self, route):
@@ -764,10 +849,12 @@ class FilmManufacturingQuickController(QObject):
 
     @Slot(str, result=bool)
     def finishAutomaticOptionEdit(self, name):
-        if self.busy or self._closed or name not in _OPTION_LABELS:
+        if self.busy or self._closed or name not in (set(_OPTION_LABELS) | {
+                "lower_limit_nm"}):
             return False
         self._legacy_mode = False
-        return self.finishOptionEdit(name)
+        return self.finishOptionEdit(
+            "reference_nm" if name == "lower_limit_nm" else name)
 
     def _validated_options(self):
         return {name: self._parse_option(name) for name in (_LEGACY_LABELS if self._legacy_mode else _OPTION_LABELS)}

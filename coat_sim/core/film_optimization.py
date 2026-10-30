@@ -88,6 +88,12 @@ class FilmOptimizationProgress:
     evaluations: int
     best_max_normalized_error: float | None
     message: str = ""
+    # Reduction-only queue display channel. The queue persists only this scalar
+    # sequence; the bounded layer snapshot lives in the job-local sidecar.
+    reduction_feedback_sequence: int | None = None
+    reduction_feedback_terminal: bool = False
+    reduction_feedback_snapshot: Mapping[str, Any] | None = None
+    reduction_feedback_error: str = ""
 
 
 @dataclass(frozen=True)

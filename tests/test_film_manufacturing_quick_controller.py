@@ -17,7 +17,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("QT_QUICK_BACKEND", "software")
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QMetaObject, QPointF, QThreadPool, Qt
+from PySide6.QtCore import QCoreApplication, QPointF, QThreadPool, Qt
 from PySide6.QtGui import QFontDatabase, QGuiApplication
 from PySide6.QtTest import QTest
 
@@ -268,9 +268,13 @@ def test_cancel_before_admission_and_source_change_late_result(harness):
     assert h.panel.prepare()
     assert h.panel.start(), h.panel.error
     h.panel.sourceChanged()
+    assert not h.panel.prepare()  # Busy old attempts cannot be refreshed into applicability.
     h.pool.run()
     assert not h.panel.busy and not h.panel.canApply
     assert not h.client.submissions
+    assert not h.panel.hasResult
+    assert h.panel.prepare(), h.panel.error
+    assert h.panel.canStartAutomatic
 
 
 def test_tamper_error_unknown_submission_and_detach_fences(harness):
@@ -323,69 +327,78 @@ def test_real_qml_inputs_blank_preservation_run_cancel_and_responsive_geometry(
     harness, app, mode, scale
 ):
     h = harness
-    qml = """import QtQuick
-import QtQuick.Controls
-import "."
-AppWindow {
-    id: window
-    required property var controller
-    width: 1100; height: 760
-    FilmManufacturingRepairDialog { id: repair; controller: window.controller }
-    Component.onCompleted: repair.open()
-}"""
-    with window_runtime(app, h.panel, source=qml) as (window, warnings):
+    assert h.owner.setSearchMode("automatic_repair")
+    with window_runtime(app, h.owner) as (window, warnings):
         from coat_sim.ui.theme_service import ThemeService
 
+        window.resize(1100, 1100)
         ThemeService.instance().configure(mode=mode, font_scale=scale, density_scale=scale)
+        tabs = window.findChild(object, "filmOptimizationSetupTabs")
+        assert tabs is not None and tabs.setProperty("currentIndex", 2)
         QTest.qWait(20)
-        root = window.findChild(object, "filmManufacturingRepairDialog")
-        assert root is not None
-        field = _visual(window.contentItem(), "filmManufacturing_reference_nm")
+        root = window.findChild(object, "filmManufacturingAlgorithmOptions")
+        assert root is not None and root.property("visible")
+        assert window.findChild(object, "filmManufacturingRepairDialog") is None
+        field = _visual(window.contentItem(), "filmManufacturing_lower_limit_nm")
         assert field is not None and field.property("text") == ""
-        assert window.grabWindow().save(str(h.tmp_path / "manufacturing-three-inputs.png"))
+        assert window.grabWindow().save(str(h.tmp_path / "manufacturing-inline-two-inputs.png"))
         _click(window, field)
-        _type(window, "110")
-        assert h.panel.options["reference_nm"] == "110"
-        QTest.keyClick(window, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
         _type(window, "nan")
+        assert h.panel.automaticOptions["lower_limit_nm"] == "nan"
         QTest.keyClick(window, Qt.Key.Key_Tab)
-        assert h.panel.options["reference_nm"] == "nan"
+        assert h.panel.automaticOptions["lower_limit_nm"] == "nan"
         assert field.property("text") == "nan"
-        _click(window, _visual(window.contentItem(), "filmManufacturingRun"))
-        assert not h.panel.busy and "有限正数" in h.panel.error
-        window.resize(530, 580)
+        assert not h.panel.finishAutomaticOptionEdit("lower_limit_nm")
+        start = _visual(window.contentItem(), "filmOptimizationStartButton")
+        assert start is not None and not start.isEnabled()
+        assert "有限正数" in h.panel.error
+        window.resize(720, 580)
         QTest.qWait(30)
-        assert root.property("width") <= 530
-        for name in ("Run", "Cancel", "Close", "Save"):
-            button = _visual(window.contentItem(), "filmManufacturing" + name)
+        assert root.property("width") <= window.width()
+        for name in ("filmOptimizationStartButton", "filmOptimizationCancelButton"):
+            button = _visual(window.contentItem(), name)
+            assert button is not None
             right = button.mapToScene(QPointF(button.width(), 0)).x()
             assert 0 <= right <= window.width(), (name, right)
-        window.resize(1100, 760)
+        window.resize(1100, 1100)
         QTest.qWait(30)
-        assert root.property("width") > 900
-        for name, value in (
-            ("reference_nm", "110"),
-            ("thickness_tolerance_nm", "1"),
-            ("optical_tolerance_percentage_points", "0.1"),
-        ):
+        assert root.property("width") > 250
+        for name, value in (("lower_limit_nm", "109"),
+                            ("optical_tolerance_percentage_points", "0.1")):
             editor = _visual(window.contentItem(), "filmManufacturing_" + name)
             _click(window, editor)
             QTest.keyClick(window, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
             _type(window, value)
             QTest.keyClick(window, Qt.Key.Key_Tab)
-            assert h.panel.options[name] == value
-        _click(window, _visual(window.contentItem(), "filmManufacturingRun"))
-        assert h.panel.busy
-        assert not _visual(window.contentItem(), "filmManufacturingRun").isEnabled()
-        _click(window, _visual(window.contentItem(), "filmManufacturingCancel"))
+            assert h.panel.automaticOptions[name] == value
+        _click(window, _visual(window.contentItem(), "filmOptimizationStartButton"))
+        assert h.panel.busy, repr({
+            "can_start": h.owner.canStart,
+            "can_start_auto": h.panel.canStartAutomatic,
+            "panel_error": h.panel.error,
+            "owner_error": h.owner.error,
+            "options": h.panel._options,
+            "legacy": h.panel._legacy_mode,
+            "prepared": h.panel._prepared_signature is not None,
+            "stale": h.panel._stale,
+            "panel_flags": (h.panel.busy, h.panel._closed, h.panel._unknown_submission,
+                            h.panel.owner.busy, h.panel.owner._shutting_down,
+                            h.panel.owner._source_closed, h.panel.owner._source_stale,
+                            h.panel._source_invalidated.is_set(), bool(h.panel._rows)),
+            "validated": h.panel._validated_options(),
+        })
+        assert not _visual(window.contentItem(), "filmOptimizationStartButton").isEnabled()
+        _click(window, _visual(window.contentItem(), "filmOptimizationCancelButton"))
         assert h.panel.busy  # only a request, not a pretend terminal state
         h.pool.run()
         assert not h.panel.busy and not h.client.submissions
-        _click(window, _visual(window.contentItem(), "filmManufacturingClose"))
-        assert not root.property("visible")
-        QMetaObject.invokeMethod(root, "open")
+        assert h.owner.setSearchMode("fixed_topology")
         QTest.qWait(20)
-        assert root.property("visible") and h.panel.options["reference_nm"] == "110"
+        assert not root.property("visible")
+        assert h.owner.setSearchMode("automatic_repair")
+        QTest.qWait(20)
+        assert root.property("visible")
+        assert h.panel.automaticOptions["lower_limit_nm"] == "109"
         assert not warnings, warnings
 
 
@@ -412,7 +425,7 @@ def _readable_offscreen_font():
 
 @pytest.mark.parametrize("scale", [1.0, 1.4])
 @pytest.mark.parametrize("legacy_drafts", [False, True])
-def test_three_user_inputs_real_qml_mapping_readability_and_audited_result(
+def test_two_algorithm_inputs_real_qml_mapping_readability_and_audited_result(
     harness, app, scale, legacy_drafts
 ):
     h = harness
@@ -420,30 +433,25 @@ def test_three_user_inputs_real_qml_mapping_readability_and_audited_result(
         assert h.panel.setLayerSelected(h.panel.layerRows[0]["layer_id"], True)
         assert h.panel.setOption("refinement_evaluations_per_route", "2")
         assert h.panel._legacy_mode
-    qml = """import QtQuick
-import QtQuick.Controls
-import "."
-AppWindow {
-    id: window
-    required property var controller
-    width: 1100; height: 760
-    FilmManufacturingRepairDialog { id: repair; controller: window.controller }
-    Component.onCompleted: repair.open()
-}"""
-    with _readable_offscreen_font(), window_runtime(app, h.panel, source=qml) as (window, warnings):
+    assert h.owner.setSearchMode("automatic_repair")
+    with _readable_offscreen_font(), window_runtime(app, h.owner) as (window, warnings):
         from coat_sim.ui.theme_service import ThemeService
 
+        window.resize(1100, 1200)
         ThemeService.instance().configure(mode="light", font_scale=scale, density_scale=1.0)
+        tabs = window.findChild(object, "filmOptimizationSetupTabs")
+        assert tabs is not None and tabs.setProperty("currentIndex", 2)
         QTest.qWait(30)
         assert set(h.panel.automaticOptions) == {
-            "reference_nm",
-            "thickness_tolerance_nm",
+            "lower_limit_nm",
             "optical_tolerance_percentage_points",
         }
+        panel = window.findChild(object, "filmManufacturingAlgorithmOptions")
+        assert panel is not None and panel.property("visible")
+        assert window.findChild(object, "filmManufacturingRepairDialog") is None
         original = deepcopy(h.session.snapshot().design)
         for name, literal in (
-            ("reference_nm", "110"),
-            ("thickness_tolerance_nm", "1"),
+            ("lower_limit_nm", "109"),
             ("optical_tolerance_percentage_points", "1"),
         ):
             field = _visual(window.contentItem(), "filmManufacturing_" + name)
@@ -456,15 +464,26 @@ AppWindow {
             _type(window, literal)
             QTest.keyClick(window, Qt.Key.Key_Tab)
         for name in (
+            "filmManufacturing_reference_nm",
+            "filmManufacturing_thickness_tolerance_nm",
             "refinement_evaluations_per_route",
             "max_iterations_per_route",
             "seconds_per_route",
         ):
-            assert _visual(window.contentItem(), "filmManufacturing_" + name) is None
+            assert _visual(window.contentItem(), name) is None
         assert not h.panel._legacy_mode
-        assert window.grabWindow().save(str(h.tmp_path / f"auto-repair-readable-{scale}.png"))
-        _click(window, _visual(window.contentItem(), "filmManufacturingRun"))
-        assert h.panel.busy
+        assert window.grabWindow().save(str(h.tmp_path / f"auto-repair-inline-readable-{scale}.png"))
+        _click(window, _visual(window.contentItem(), "filmOptimizationStartButton"))
+        assert h.panel.busy, repr({
+            "can_start": h.owner.canStart,
+            "can_start_auto": h.panel.canStartAutomatic,
+            "panel_error": h.panel.error,
+            "owner_error": h.owner.error,
+            "options": h.panel._options,
+            "legacy": h.panel._legacy_mode,
+            "prepared": h.panel._prepared_signature is not None,
+            "stale": h.panel._stale,
+        })
         h.pool.run()
         QCoreApplication.processEvents()
         assert h.panel.hasResult and not h.panel.busy, h.panel.error
@@ -475,7 +494,7 @@ AppWindow {
             request["reference_nm"],
             request["thickness_tolerance_nm"],
             request["optical_tolerance_percentage_points"],
-        ) == (110.0, 1.0, 1.0)
+        ) == (109.0, 0.0, 1.0)
         assert "defect_layer_ids" not in request and "seconds_per_route" not in request
         best = payload["result"]["best"]
         assert best is not None and best["optical_guard"]["passed"]

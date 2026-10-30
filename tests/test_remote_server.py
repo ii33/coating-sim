@@ -469,7 +469,14 @@ def test_verified_cancelled_film_candidate_retains_remote_result_after_restart(t
     from coat_sim.scheduler import result_capability
     payload = frozen_film(tmp_path / 'synthetic')['parameters']['payload']
     cancel = Event()
-    def after_candidate(progress):
+    progress_reports = []
+    def after_candidate(progress, *, force=False):
+        # Match the production worker's report(value, *, force=False) contract.
+        # Terminal reduction feedback must bypass report coalescing; ordinary
+        # optimization progress remains throttleable.
+        progress_reports.append((progress, force))
+        assert force is (isinstance(progress, dict)
+                         and progress.get('reduction_feedback_terminal') is True)
         if progress.get('status') == 'running' and progress.get('evaluations') == 1:
             cancel.set()
     service = RemoteComputeService(tmp_path / 'server', insecure_loopback=True)
@@ -482,6 +489,7 @@ def test_verified_cancelled_film_candidate_retains_remote_result_after_restart(t
         result = _film_optimization(FilmDesignService(tmp_path / 'worker'), {'payload': payload},
             cancel, after_candidate, checkpoint)
         assert result['state'] == 'cancelled'
+        assert progress_reports
         assert result['partial_result']['candidate_verified'] is True
         checkpoint_bytes = checkpoint.read_bytes()
         persisted = json.loads(checkpoint_bytes)['result']

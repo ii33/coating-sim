@@ -39,6 +39,20 @@ def _repair_live_json(path, *, serialized=False):
     return text if serialized else json.loads(text)
 
 
+def _reduction_live_json(path):
+    """Parse only a bounded reduction-display sidecar before validation."""
+    from .film_reduction_live import MAX_BYTES
+
+    path = Path(path)
+    if path.is_symlink():
+        raise ValueError("reduction_live_symlink_not_owned")
+    with path.open("rb") as stream:
+        raw = stream.read(MAX_BYTES + 1)
+    if len(raw) > MAX_BYTES:
+        raise ValueError("reduction_live_packet_too_large")
+    return json.loads(raw.decode("utf-8"))
+
+
 def _appearance_gpu_python(root: Path) -> str:
     """Select only the project's dedicated Mitsuba environment for CUDA jobs."""
     if is_frozen():
@@ -645,6 +659,8 @@ class Scheduler:
             return self.memory_status(**arguments)
         if action == 'repair_live':
             return self.repair_live(**arguments)
+        if action == 'reduction_live':
+            return self.reduction_live(**arguments)
         if action == 'film_display_control':
             with self.condition:
                 self._expire_exit()
@@ -798,6 +814,56 @@ class Scheduler:
         if sequence <= after_sequence:
             return None
         return validate_live_progress(frame, expected_request, after_seq=after_sequence)
+
+    def reduction_live(self, job_id, *, input_digest, after_sequence=-1):
+        """Read a bounded display-only incumbent frame from this exact reduction job."""
+        import re
+        from .jobs import JobSpec
+        from .film_reduction_live import LIVE_FILE, validate_live_frame
+
+        if (not isinstance(job_id, str) or re.fullmatch(r'[A-Za-z0-9_-]{1,128}', job_id) is None
+                or not isinstance(input_digest, str) or re.fullmatch(r'[0-9a-f]{64}', input_digest) is None
+                or type(after_sequence) is not int or after_sequence < -1):
+            raise ValueError('invalid_reduction_live_identity')
+        row = self.memory_status(job_id)
+        if row.get('kind') != 'film_optimization' or row.get('input_digest') != input_digest:
+            raise ValueError('reduction_live_job_identity_mismatch')
+        jobs_path = self.runtime / 'jobs'
+        directory_path = jobs_path / job_id
+        if (jobs_path.is_symlink() or jobs_path.is_junction()
+                or directory_path.is_symlink() or directory_path.is_junction()):
+            raise ValueError('reduction_live_job_directory_not_owned')
+        jobs, directory = jobs_path.resolve(), directory_path.resolve()
+        if not jobs.is_relative_to(self.root) or not directory.is_relative_to(jobs):
+            raise ValueError('reduction_live_job_directory_not_owned')
+        spec_path, live_path = directory / 'spec.json', directory / LIVE_FILE
+        if (not spec_path.resolve().is_relative_to(directory)
+                or not live_path.resolve().is_relative_to(directory)):
+            raise ValueError('reduction_live_pointer_not_owned')
+        try:
+            spec = JobSpec.parse_frozen_json(_repair_live_json(spec_path, serialized=True))
+        except FileNotFoundError:
+            return None
+        if spec.executor != 'film_optimization' or spec.fingerprint != input_digest:
+            raise ValueError('reduction_live_frozen_job_mismatch')
+        payload = spec.parameters.get('payload')
+        request = payload.get('request') if isinstance(payload, dict) else None
+        if (not isinstance(request, dict)
+                or request.get('kind') != 'coat_sim.film_reduction_request'):
+            raise ValueError('reduction_live_requires_reduction_job')
+        try:
+            raw = _reduction_live_json(live_path)
+        except FileNotFoundError:
+            return None
+        if not isinstance(raw, dict):
+            raise ValueError('invalid_reduction_live_frame')
+        sequence = raw.get('sequence')
+        if type(sequence) is not int or sequence < 0:
+            raise ValueError('invalid_reduction_live_sequence')
+        if sequence <= after_sequence:
+            return None
+        return validate_live_frame(raw, job_id=job_id, input_digest=input_digest,
+                                   after_sequence=after_sequence)
 
     def start_job(self, value, spec):
         job_id = value['job_id']

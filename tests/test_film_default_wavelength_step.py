@@ -107,7 +107,7 @@ def test_saved_optimization_step_or_count_overrides_new_defaults(tmp_path, monke
         if basis != "step":
             assert controller.setObjectiveField("wavelength_samples", 31)
         saved = controller.exportOptimizationConfiguration()
-        assert saved["version"] == 2
+        assert saved["version"] == 3
         saved_row = saved["objectives"][0]
         assert {"pointwise", "mean"} <= set(saved_row)
         objective_id = saved_row["id"]
@@ -182,7 +182,7 @@ def test_saved_simulation_explicit_grid_and_range_only_legacy_fallback_stay_inta
 def test_legacy_optimization_rejects_atomically_and_current_defaults_restore(tmp_path, monkeypatch):
     with optimizer(tmp_path / "optimization", monkeypatch) as (_service, controller):
         defaults = json.loads(json.dumps(controller.exportOptimizationConfiguration()))
-        assert defaults["version"] == 2
+        assert defaults["version"] == 3
         assert controller.setObjectiveField("wavelength_step_nm", 5.)
         edited = deepcopy(controller.exportOptimizationConfiguration())
         assert not controller.loadOptimizationConfiguration({"version": 1})

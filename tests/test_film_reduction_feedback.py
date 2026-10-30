@@ -8,6 +8,7 @@ from PySide6.QtCore import QObject
 from coat_sim.core.film_reduction import (
     FilmReductionRequest, freeze_film_reduction_request, reduce_film_design,
 )
+from coat_sim.core.film_optimization import FilmOptimizationProgress
 from tests.test_film_reduction_ui import audited, finish
 from tests.test_film_optimization_cancel_apply_review import app as app, review as review
 from tests.test_film_optimization_restore_layout import window_runtime
@@ -154,6 +155,93 @@ def test_sidebar_real_qml_shows_no_improvement_and_failure(review, app):
         c.changed.emit()
         assert 'controlled visible failure' in label.property('text')
         assert not [line for line in warnings if 'ReferenceError' in line or 'TypeError' in line]
+
+
+def test_live_feedback_panel_shows_only_new_audited_frame_and_does_not_rebuild_on_stage_ticks(review, app):
+    from PySide6.QtCore import QObject
+    from PySide6.QtTest import QSignalSpy
+    from coat_sim.scheduler.film_reduction_live import build_live_frame
+
+    request, result = audited(review)
+    h = review
+    controller = h.controller
+    assert controller.setSearchMode('reduction')
+    frame = build_live_frame(job_id='reduction-feedback-test', input_digest='a' * 64,
+        sequence=2, request=request, source_design=request.base_request.design_snapshot,
+        best_design=result.best_design, baseline_metrics=result.metrics['baseline'],
+        candidate_metrics=result.metrics['candidate'], stage='正在独立加密核验减厚候选',
+        state='running', iteration=3, evaluations=7)
+    controller._reduction_feedback_snapshot = frame
+    controller._reduction_feedback_layers_cache = controller._make_reduction_feedback_layers(frame)
+    controller._reduction_feedback_digest = frame['input_digest']
+    controller._reduction_feedback_sequence = frame['sequence']
+    controller._progress_text = frame['stage']
+    controller.changed.emit()
+    controller.reductionFeedbackChanged.emit()
+
+    rows = controller.reductionFeedbackLayers
+    assert len(rows) == frame['baseline']['layer_count']
+    signal = QSignalSpy(controller.reductionFeedbackChanged)
+    controller._progress_text = '仍在核验当前候选，不表示百分比收敛。'
+    controller.changed.emit()
+    assert signal.count() == 0
+    assert controller.reductionFeedbackLayers == rows
+
+    with window_runtime(app, controller) as (window, warnings):
+        tabs = window.findChild(QObject, 'filmOptimizationSetupTabs')
+        assert tabs is not None and tabs.setProperty('currentIndex', 2)
+        panel = window.findChild(QObject, 'filmReductionLiveFeedback')
+        summary = window.findChild(QObject, 'filmReductionLiveSummary')
+        assert panel is not None and panel.property('visible')
+        assert summary is not None
+        text = summary.property('text')
+        assert '仍在核验当前候选' in text and '原设计：' in text and '最佳完整候选' in text
+        assert '最大归一化误差' in text and '独立加密' in text
+        assert not [line for line in warnings if 'ReferenceError' in line or 'TypeError' in line]
+
+
+def test_feedback_writer_failure_is_reported_during_search_and_at_terminal(review):
+    request, _ = audited(review)
+    progress: list[FilmOptimizationProgress] = []
+
+    class BrokenObserver:
+        @property
+        def diagnostic(self):
+            return ""
+
+        def offer(self, **_kwargs):
+            raise OSError("controlled live writer failure")
+
+        def finish(self, **_kwargs):
+            raise OSError("controlled live terminal failure")
+
+    result = reduce_film_design(review.service, request, progress_callback=progress.append,
+                                feedback_observer=BrokenObserver())
+    assert result.state == "completed"
+    assert any(not item.reduction_feedback_terminal
+               and "controlled live writer failure" in item.reduction_feedback_error
+               for item in progress), [(item.reduction_feedback_terminal,
+                    item.reduction_feedback_error, item.message) for item in progress]
+    assert progress[-1].reduction_feedback_terminal
+    assert "controlled live terminal failure" in progress[-1].reduction_feedback_error
+
+
+def test_terminal_feedback_flush_reports_written_bytes(review, tmp_path):
+    from coat_sim.scheduler.film_reduction_live import ReductionLivePublisher
+
+    request, result = audited(review)
+    publisher = ReductionLivePublisher(tmp_path, "reduction-feedback-bytes", "b" * 64,
+                                       request, interval_s=0)
+    try:
+        sequence = publisher.finish(source_design=request.base_request.design_snapshot,
+            best_design=result.best_design, baseline_metrics=result.metrics["baseline"],
+            candidate_metrics=result.metrics["candidate"], stage="complete", iteration=1,
+            evaluations=result.base_result.evaluations, state="completed",
+            termination_reason="proposal_exhausted", message="done")
+        assert sequence >= 0 and publisher.write_count == 1
+        assert publisher.bytes_written == publisher.path.stat().st_size
+    finally:
+        publisher.close()
 
 
 def test_start_failure_and_duplicate_submission_are_visible(attempt_harness, monkeypatch):

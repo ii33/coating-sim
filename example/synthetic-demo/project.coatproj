@@ -17,26 +17,6 @@
     },
     {
       "dependencies": [
-        "6fd77b281187456280815ed3709f09e3",
-        "d090457e81624e109081ba9fee79bde0"
-      ],
-      "id": "e448c679fc984f24b08a145d329049ff",
-      "kind": "film",
-      "path": "data/films/r00000005/Synthetic single-layer coating.cfilm",
-      "sha256": "b06007ea2e084d99a8f1c94d46b428d1a8fbc59c26bea985fe0cc6b6a362d5a4"
-    },
-    {
-      "dependencies": [
-        "794d34dc0b0b44a9843d89031e73bb00",
-        "faecdff32f2b4531916e47957029fe77"
-      ],
-      "id": "c6cd824b004c40f89a1a79e11092e95c",
-      "kind": "process",
-      "path": "data/processes/r00000005/Synthetic masked single-layer process.cproc",
-      "sha256": "e0a2d66684dc3c358280560718e4dafb4f826243ec3b187d99ad2d14c6666098"
-    },
-    {
-      "dependencies": [
         "340ccf6a3bb24619a197452db5429695",
         "d6a090ad52c8471a87f2327a64c64ea3"
       ],
@@ -74,13 +54,33 @@
       "kind": "deposition_configuration",
       "path": "data/configurations/r00000005/Small CPU demo (21 × 21, 12 time samples).cdep",
       "sha256": "a7dcdc2745208fa43666c25d8b7191d11f97e2d6de722b795cadcf65093884fe"
+    },
+    {
+      "dependencies": [
+        "794d34dc0b0b44a9843d89031e73bb00",
+        "faecdff32f2b4531916e47957029fe77"
+      ],
+      "id": "c6cd824b004c40f89a1a79e11092e95c",
+      "kind": "process",
+      "path": "data/processes/r00000006/Synthetic masked single-layer process.cproc",
+      "sha256": "4645af08195e6646be54bf841393914859687caa7b4b97994a5f4569963ebdc3"
+    },
+    {
+      "dependencies": [
+        "6fd77b281187456280815ed3709f09e3",
+        "d090457e81624e109081ba9fee79bde0"
+      ],
+      "id": "e448c679fc984f24b08a145d329049ff",
+      "kind": "film",
+      "path": "data/films/r00000006/Synthetic single-layer coating.cfilm",
+      "sha256": "ea523f1aba98349e5834ef0144b9f099ce89a6b9d4b38b9327e9d8a46ab83fea"
     }
   ],
   "id": "9c53c4e2285f4eb5b20704a5bac2e2e3",
   "kind": "coat_sim.project",
   "name": "Synthetic CPU coating demo",
   "notes": "Original synthetic inputs, MIT license. Not measured, calibrated or production-qualified.",
-  "revision": 5,
+  "revision": 6,
   "summary": "Self-contained ideal single-layer film and masked deposition demo",
   "version": 1
 }

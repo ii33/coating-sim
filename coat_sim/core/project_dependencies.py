@@ -267,8 +267,13 @@ def film_references(data: dict) -> list[tuple[str, str]]:
             *data["expression"]["symbols"].values()]
     rows.extend(data[key] for key in ("incident_medium", "exit_medium") if data[key]["kind"] == "material")
     optimization = data.get("workflow_settings", {}).get("optimization", {})
+    if (isinstance(optimization, dict)
+            and optimization.get("search_mode") == "automatic_repair"
+            and (type(optimization.get("version")) is not int
+                 or optimization.get("version") != 3)):
+        raise ProjectError("unsupported_version", "Automatic film repair mode requires optimization configuration version 3")
     if "structure_materials" in optimization:
-        if type(optimization.get("version")) is not int or optimization["version"] != 2:
+        if type(optimization.get("version")) is not int or optimization["version"] not in {2, 3}:
             raise ProjectError("unsupported_version", "Unsupported film optimization material-reference configuration version")
         candidates = optimization["structure_materials"]
         if not isinstance(candidates, list) or len(candidates) > 64:

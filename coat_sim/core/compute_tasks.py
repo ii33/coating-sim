@@ -89,6 +89,13 @@ def _compact_progress(value):
     if type(sequence) is int and sequence >= 0:
         # Geometry and optical arrays stay in the job-local bounded snapshot.
         result["repair_live_sequence"] = sequence
+    sequence = value.get("reduction_feedback_sequence")
+    if type(sequence) is int and sequence >= 0:
+        result["reduction_feedback_sequence"] = sequence
+    if type(value.get("reduction_feedback_terminal")) is bool:
+        result["reduction_feedback_terminal"] = value["reduction_feedback_terminal"]
+    if isinstance(value.get("reduction_feedback_error"), str):
+        result["reduction_feedback_error"] = value["reduction_feedback_error"][:320]
     if type(value.get("accepted")) is bool:
         result["accepted"] = value["accepted"]
     for key in ("stalled", "unresponsive"):

@@ -148,8 +148,26 @@ def test_optimization_summary_exports_exact_window_request_without_editing(live,
     optimization._search_mode = "structure"
     changed = read(live, module_key="film_optimization")
     assert changed["optimization"]["submission"] == {
-        "available": False, "reason": "structure_mode_not_supported_by_film_tool"}
+        "available": False, "reason": "mode_requires_existing_window_controller",
+        "executor": "film_optimization"}
     assert changed["snapshot_id"] != state["snapshot_id"]
+
+
+def test_repair_mode_snapshot_names_existing_executor_without_ordinary_request(live, monkeypatch):
+    optimization = FilmOptimizationQuickController(live.source, project_context=live.workspace)
+    live.mount("film_optimization", optimization)
+    optimization._search_mode = "automatic_repair"
+    monkeypatch.setattr(optimization, "_build_request",
+                        lambda *args, **kwargs: pytest.fail("repair must not serialize ordinary optimization"))
+
+    submission = read(live, module_key="film_optimization")["optimization"]["submission"]
+    assert submission == {
+        "available": False,
+        "reason": "requires_existing_manufacturing_controller",
+        "executor": "film_manufacturing_repair",
+        "route": "FilmManufacturingQuickController.startAutomatic",
+        "compute_start": "existing_window_controller_only",
+    }
 
 
 def test_layer_material_projection_uses_captured_not_new_picker_and_bounds_all_pages(live):

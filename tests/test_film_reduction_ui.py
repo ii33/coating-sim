@@ -127,6 +127,64 @@ def test_reduction_modes_config_qml_and_frozen_request(app, tmp_path):
         assert decoded.metrics == result.metrics
 
 
+def test_automatic_repair_is_inline_algorithm_mode_and_routes_existing_worker(app, tmp_path, monkeypatch):
+    from PySide6.QtCore import QObject
+    service, _, design = fixture(tmp_path)
+    with optimizer(service, design) as (controller, _source, _session):
+        session = controller.session
+        original_workflow_configuration = session.workflow_configuration
+        monkeypatch.setattr(session, 'workflow_configuration',
+            lambda scope: {} if scope == 'simulation' else original_workflow_configuration(scope))
+        assert any(row['id'] == 'automatic_repair' for row in controller.searchModeOptions)
+        assert controller.setSearchMode('automatic_repair')
+        repair = controller.manufacturingController
+        assert repair._prepared_signature is not None
+        assert set(repair.automaticOptions) == {
+            'lower_limit_nm', 'optical_tolerance_percentage_points'}
+        assert repair.setAutomaticOption('lower_limit_nm', '12')
+        assert repair.setAutomaticOption('optical_tolerance_percentage_points', '1')
+        assert repair.canStartAutomatic, repr({
+            'busy': repair.busy, 'closed': repair._closed,
+            'unknown_submission': repair._unknown_submission,
+            'owner_busy': controller.busy, 'owner_shutting_down': controller._shutting_down,
+            'source_closed': controller._source_closed, 'source_stale': controller._source_stale,
+            'repair_stale': repair._stale, 'invalidated': repair._source_invalidated.is_set(),
+            'prepared': repair._prepared_signature is not None, 'rows': len(repair._rows),
+            'options': repair.options, 'validated_options': repair._validated_options(),
+            'error': repair.error,
+        })
+        configuration = controller.exportOptimizationConfiguration()
+        assert configuration['search_mode'] == 'automatic_repair'
+        assert configuration['version'] == 3
+        legacy_auto = deepcopy(configuration)
+        legacy_auto['version'] = 2
+        assert not controller.loadOptimizationConfiguration(legacy_auto)
+        assert controller.exportOptimizationConfiguration() == configuration
+
+        started = []
+        def start_repair():
+            started.append('repair')
+            return True
+        monkeypatch.setattr(repair, 'startAutomatic', start_repair)
+        monkeypatch.setattr(controller, '_start_optimization',
+                            lambda **_kwargs: pytest.fail('repair must not enter normal optimizer'))
+        assert controller.startOptimization()
+        assert started == ['repair']
+
+        with window_runtime(app, controller) as (window, warnings):
+            tabs = window.findChild(QObject, 'filmOptimizationSetupTabs')
+            assert tabs is not None and tabs.setProperty('currentIndex', 2)
+            panel = window.findChild(QObject, 'filmManufacturingAlgorithmOptions')
+            assert panel is not None and panel.property('visible')
+            object_names = [str(item.objectName()) for item in window.findChildren(QObject)]
+            repair_names = [n for n in object_names if 'filmManufacturing' in n]
+            assert 'filmManufacturingStatus' in object_names, repair_names
+            repeater = window.findChild(QObject, 'filmManufacturingParameterRepeater')
+            assert repeater is not None and repeater.property('count') == 2, repair_names
+            assert window.findChild(QObject, 'filmManufacturingOpenButton') is None
+            assert not [warning for warning in warnings if 'Error' in warning or 'TypeError' in warning]
+
+
 def test_reduction_large_angle_preparation_keeps_envelope(app, tmp_path):
     service, _, design = fixture(tmp_path)
     with optimizer(service, design) as (c, _, __):

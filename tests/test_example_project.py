@@ -54,7 +54,7 @@ def test_example_has_only_current_inputs_and_complete_default(example):
     film_snapshot = plan.film_design_snapshot
     assert film_snapshot is not None
     configuration = film_snapshot["design"]["workflow_settings"]["optimization"]
-    assert configuration["version"] == 2
+    assert configuration["version"] == 3
     objective = configuration["objectives"][0]
     assert objective["pointwise"]["enabled"] and not objective["mean"]["enabled"]
     assert (objective["pointwise"]["lower_bound_percent"],
@@ -182,7 +182,7 @@ def test_example_builder_uses_current_optimization_configuration(tmp_path):
     film_snapshot = plan.film_design_snapshot
     assert film_snapshot is not None
     configuration = film_snapshot["design"]["workflow_settings"]["optimization"]
-    assert configuration["version"] == 2
+    assert configuration["version"] == 3
     objective = configuration["objectives"][0]
     assert objective["pointwise"]["enabled"] and not objective["mean"]["enabled"]
     assert objective["pointwise"]["lower_bound_percent"] == 0.

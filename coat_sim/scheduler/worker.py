@@ -244,7 +244,7 @@ def _film_progress_payload(value):
 
     if not isinstance(value, FilmOptimizationProgress):
         return value
-    return {
+    result = {
         'stage': 'film_optimization',
         'fraction': value.fraction,
         'evaluations': value.evaluations,
@@ -252,9 +252,17 @@ def _film_progress_payload(value):
         'step_index': value.iteration,
         'status': value.message or value.state,
     }
+    if type(value.reduction_feedback_sequence) is int and value.reduction_feedback_sequence >= 0:
+        result['reduction_feedback_sequence'] = value.reduction_feedback_sequence
+    if value.reduction_feedback_terminal:
+        result['reduction_feedback_terminal'] = True
+    if value.reduction_feedback_error:
+        result['reduction_feedback_error'] = str(value.reduction_feedback_error)[:320]
+    return result
 
 
-def _film_optimization(service, parameters, cancel, report, checkpoint_path, *, candidate_observer_factory=None):
+def _film_optimization(service, parameters, cancel, report, checkpoint_path, *,
+                       candidate_observer_factory=None, job_id=None, input_digest=None):
     """Execute a typed film job and persist only replay-verified incumbents."""
     from coat_sim.core.film_optimization_job import execute_film_optimization_job
     from .result_capability import (
@@ -282,7 +290,8 @@ def _film_optimization(service, parameters, cancel, report, checkpoint_path, *, 
                     'forward_seconds', 'prepare_seconds'):
                 if key in latest:
                     progress[key] = latest[key]
-        report(progress)
+        report(progress, force=isinstance(progress, dict)
+               and progress.get('reduction_feedback_terminal') is True)
 
     def save_candidate(candidate):
         # Validate before replacing the last good checkpoint. A bad/new candidate
@@ -348,6 +357,23 @@ def _film_optimization(service, parameters, cancel, report, checkpoint_path, *, 
             print(f'film_performance_progress_warning: {exc}', flush=True)
         persist_performance()
 
+    reduction_observers: list[Any] = []
+    def reduction_feedback_observer_factory(request):
+        if not isinstance(job_id, str) or not isinstance(input_digest, str):
+            return None
+        try:
+            from .film_reduction_live import ReductionLivePublisher
+            observer: Any = ReductionLivePublisher(checkpoint_path.parent, job_id,
+                                               input_digest, request)
+            reduction_observers.append(observer)
+            return observer
+        except Exception as exc:
+            print(f'film_reduction_feedback_warning: {type(exc).__name__}: {exc}', flush=True)
+            from .film_reduction_live import UnavailableReductionLivePublisher
+            observer = UnavailableReductionLivePublisher(exc)
+            reduction_observers.append(observer)
+            return observer
+
     try:
         result = execute_film_optimization_job(
             film_service, payload, cancel_event=cancel, progress_callback=publish_progress,
@@ -356,8 +382,11 @@ def _film_optimization(service, parameters, cancel, report, checkpoint_path, *, 
             performance_callback=(publish_performance if performance_enabled else None),
             performance_options=performance_options,
             candidate_observer_factory=candidate_observer_factory,
+            reduction_feedback_observer_factory=reduction_feedback_observer_factory,
         )
     finally:
+        for observer in reduction_observers:
+            observer.close()
         persist_performance(force=True)
         if performance_enabled and isinstance(latest_performance[0], dict):
             publish_performance(latest_performance[0], force_report=True)
@@ -601,7 +630,8 @@ def run(root, job_id, owner_pid, owner_instance):
             if spec.executor == 'film_optimization':
                 reply = _film_optimization(
                     service, parameters, cancel, report,
-                    directory / 'best-candidate.json', **display_options)
+                    directory / 'best-candidate.json', job_id=job_id,
+                    input_digest=frozen.fingerprint, **display_options)
             elif spec.executor == 'geometric_raytrace':
                 reply = _geometric_raytrace(root, spec, directory, cancel, report)
             elif spec.executor in ('process', 'process_recipe', 'single_source', 'mask_optimization'):

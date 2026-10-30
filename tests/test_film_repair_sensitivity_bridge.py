@@ -19,6 +19,7 @@ from tests.film_structure_fixtures import fixture
 from tests.test_film_automatic_repair_live_display import (
     app as app,
     live_gui as live_gui,
+    show_repair_algorithm,
     start_live,
     thin_value,
 )
@@ -197,10 +198,10 @@ def test_busy_repair_footer_preserves_full_button_text_and_window_bounds(live_gu
         with _readable_offscreen_font():
             theme.configure(mode="light", font_scale=scale, density_scale=1.0)
             scene = _Scene(h.owner, "FilmOptimizationWindow.qml")
-            scene.click(scene.item("filmManufacturingOpenButton"))
+            show_repair_algorithm(scene, h.owner)
             start_live(h)
-            for name in ("filmManufacturingSave", "filmManufacturingRun",
-                         "filmManufacturingCancel", "filmManufacturingClose"):
+            for name in ("filmOptimizationStartButton", "filmOptimizationCancelButton",
+                         "filmManufacturingApply"):
                 button = scene.item(name)
                 geometry = json.loads(scene.evaluate(button, """JSON.stringify({
                     width: width, implicitWidth: implicitWidth,

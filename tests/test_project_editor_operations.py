@@ -203,9 +203,19 @@ def test_writes_recheck_fences_after_snapshot(live, change):
 def test_optimization_fields_options_material_and_save_use_real_controller(live, monkeypatch):
     value = optimizer(live)
     monkeypatch.setattr(value, "startOptimization", lambda: pytest.fail("compute start"))
-    for field, new in (("search_mode", "structure"), ("structure_mode", "growth_only"),
+    for field, new in (("search_mode", "structure"), ("search_mode", "automatic_repair"),
+                       ("structure_mode", "growth_only"),
                        ("solver", "baseline"), ("acceptable_error_percent", 2.5)):
         assert run(live, module="film_optimization", fields={field: new})["accepted"]
+        if field == "search_mode" and new == "automatic_repair":
+            current = value.exportOptimizationConfiguration()
+            assert current["search_mode"] == "automatic_repair"
+            assert live.editor.snapshot().design["workflow_settings"]["optimization"]["search_mode"] == "automatic_repair"
+            capabilities = project_editor_capabilities("film_optimization")
+            repair = next(row for row in capabilities["search_mode_options"]
+                          if row["id"] == "automatic_repair")
+            assert repair["executor"] == "film_manufacturing_repair"
+            assert "start_optimization" in capabilities["unsupported_actions"]
     for option, new in (("max_iterations", 17), ("max_evaluations", 31), ("seed", 8),
                         ("validation_samples_multiplier", 2), ("multistart_count", 3), ("population_size", 7)):
         run(live, module="film_optimization", action="set_solver_option", arguments={"name": option, "value": new})
@@ -374,7 +384,7 @@ def test_mcp_registry_owner_helper_round_trip_never_uses_global_fallback(live, m
 def test_objective_records_update_band_angles_targets_atomically_and_manage_ids(live):
     value = optimizer(live)
     configuration = value.exportOptimizationConfiguration()
-    assert configuration["version"] == 2
+    assert configuration["version"] == 3
     original = configuration["objectives"][0]
     identity = original["id"]
     pointwise = deepcopy(original["pointwise"])

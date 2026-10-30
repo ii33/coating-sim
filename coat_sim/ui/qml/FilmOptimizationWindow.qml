@@ -20,14 +20,18 @@ AppWindow {
     property var projectResources: null
     readonly property var themeTokens: window.themeColors
     required property var controller
-    titleBase: window.controller.searchMode === "synthesis" ? "膜系自动合成" : (window.controller.searchMode === "reduction" ? "减层 / 减厚优化" : "膜系厚度优化")
+    titleBase: window.controller.searchMode === "automatic_repair" ? "自动薄层修复"
+        : window.controller.searchMode === "synthesis" ? "膜系自动合成"
+        : window.controller.searchMode === "reduction" ? "减层 / 减厚优化" : "膜系厚度优化"
     captionBase: titleBase
     projectNameForTitle: projectNavigation ? projectNavigation.projectName : ""
     statusText: controller.statusText
     statusSeverity: controller.loading || controller.busy ? "busy"
                      : controller.error.length > 0 ? "error"
                      : controller.hasCandidate
-                       ? (controller.targetsMet ? "success" : "warning")
+                       ? (controller.searchMode === "automatic_repair"
+                          ? (controller.canApply ? "success" : "warning")
+                          : controller.targetsMet ? "success" : "warning")
                      : controller.configurationRestoreNotice.length > 0 ? "warning" : "info"
     statusDetail: controller.statusText
                   + (controller.error.length > 0 && controller.statusText.indexOf(controller.error) < 0
@@ -490,7 +494,8 @@ AppWindow {
         objectName: "filmOptimizationStartShortcut"
         sequence: "F6"
         context: Qt.WindowShortcut
-        enabled: window.controller.canStartFromShortcut && window.controller.computeTarget.canSubmit
+        enabled: window.controller.canStartFromShortcut
+                 && (window.controller.searchMode === "automatic_repair" || window.controller.computeTarget.canSubmit)
         onActivated: window.startFromShortcut()
     }
 
@@ -559,13 +564,24 @@ AppWindow {
         onAccepted: window.controller.confirmApplyCandidate()
     }
 
-    FilmManufacturingRepairDialog {
-        id: manufacturingDialog
-        controller: window.controller.manufacturingController
-        onClosed: {
-            if (manufacturingOpenButton.visible && manufacturingOpenButton.enabled)
-                manufacturingOpenButton.forceActiveFocus()
+    ThemeControls.ThemeDialogBase {
+        id: manufacturingApplyDialog
+        objectName: "filmManufacturingApplyConfirm"
+        property string candidateHash: ""
+        title: "确认应用已核验薄层修复"
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(580, window.width - window.themeTokens.spaceXl * 2)
+        standardButtons: Dialog.Yes | Dialog.No
+        contentItem: Label {
+            text: window.controller.manufacturingController.selectedRouteWarning
+                + "\n确认后只应用已固定的完整核验候选；来源、目标、材料或项目变化会拒绝整个应用。"
+            color: window.themeTokens.colorText
+            wrapMode: Text.WordWrap
+            padding: window.themeTokens.spaceMd
         }
+        onAccepted: window.controller.manufacturingController.applyPreparedCandidate(candidateHash)
+        onRejected: window.controller.manufacturingController.discardPreparedApplication()
     }
 
     ThemeControls.ThemeDialogBase {
@@ -680,6 +696,7 @@ AppWindow {
                 }
                 ComputeTargetSelector {
                     objectName: "filmOptimizationComputeTarget"
+                    visible: window.controller.searchMode !== "automatic_repair"
                     width: Math.min(170, Math.max(130, window.width * 0.2))
                     compact: true
                     target: window.controller.computeTarget
@@ -688,8 +705,9 @@ AppWindow {
                 ThemeControls.ThemeButton {
                     id: optimizationStartButton
                     objectName: "filmOptimizationStartButton"
-                    text: "开始优化"
-                    enabled: window.controller.canStart && window.controller.computeTarget.canSubmit
+                    text: window.controller.searchMode === "automatic_repair" ? "开始薄层修复" : "开始优化"
+                    enabled: window.controller.canStart
+                        && (window.controller.searchMode === "automatic_repair" || window.controller.computeTarget.canSubmit)
                     primary: true
                     onClicked: window.startFromButton()
                 }
@@ -698,13 +716,13 @@ AppWindow {
                     objectName: "filmOptimizationContinueButton"
                     text: "从保留结果继续（重新启动求解器）"
                     enabled: window.controller.canContinueOptimization
-                    visible: !window.controller.hasSynthesisSearchProgress
+                    visible: window.controller.searchMode !== "automatic_repair" && !window.controller.hasSynthesisSearchProgress
                     onClicked: window.continueFromButton()
                 }
                 ThemeControls.ThemeButton {
                     objectName: "filmSynthesisContinueSearchButton"
                     text: "继续搜索"
-                    visible: window.controller.hasSynthesisSearchProgress
+                    visible: window.controller.searchMode !== "automatic_repair" && window.controller.hasSynthesisSearchProgress
                     enabled: window.controller.canContinueSynthesisSearch
                     onClicked: {
                         window.commitActiveEditor()
@@ -722,19 +740,8 @@ AppWindow {
                     }
                 }
                 ThemeControls.ThemeButton {
-                    id: manufacturingOpenButton
-                    objectName: "filmManufacturingOpenButton"
-                    text: "工艺薄层修复…"
-                    enabled: !window.controller.busy && !window.controller.loading && !window.controller.sourceStale
-                    onClicked: {
-                        window.commitActiveEditor()
-                        window.controller.manufacturingController.prepare()
-                        manufacturingDialog.open()
-                    }
-                }
-                ThemeControls.ThemeButton {
                     objectName: "filmOptimizationCancelButton"
-                    text: "取消"
+                    text: window.controller.searchMode === "automatic_repair" ? "取消并应用当前改进" : "取消"
                     enabled: window.controller.canCancel
                     onClicked: window.controller.cancelOptimization()
                 }
@@ -747,12 +754,26 @@ AppWindow {
                 }
                 ThemeControls.ThemeButton {
                     objectName: "filmOptimizationApplyButton"
+                    visible: window.controller.searchMode !== "automatic_repair"
                     text: window.controller.searchMode === "reduction" ? "显式应用减量候选" : "应用"
                     enabled: window.controller.canApply
                     onClicked: window.controller.applyCandidate()
                 }
                 ThemeControls.ThemeButton {
-                    visible: !window.projectResources
+                    objectName: "filmManufacturingApply"
+                    visible: window.controller.searchMode === "automatic_repair"
+                    text: "应用当前核验改进"
+                    enabled: window.controller.canApply
+                    onClicked: {
+                        const repair = window.controller.manufacturingController
+                        if (repair.prepareApplication()) {
+                            manufacturingApplyDialog.candidateHash = repair.pendingApplicationHash
+                            manufacturingApplyDialog.open()
+                        }
+                    }
+                }
+                ThemeControls.ThemeButton {
+                    visible: !window.projectResources && window.controller.searchMode !== "automatic_repair"
                     objectName: "filmOptimizationSaveButton"
                     text: window.controller.projectMode ? "保存项目候选" : "另存候选"
                     enabled: window.controller.canSave
@@ -826,6 +847,7 @@ AppWindow {
 
                     TabBar {
                         id: setupTabs
+                        objectName: "filmOptimizationSetupTabs"
                         Layout.fillWidth: true
                         TabButton { text: "目标"; objectName: "filmOptimizationTargetsTab" }
                         TabButton { text: "约束"; objectName: "filmOptimizationConstraintsTab" }
@@ -1231,15 +1253,6 @@ AppWindow {
                                 color: window.themeTokens.colorInfo
                                 wrapMode: Text.WordWrap
                             }
-                            Label {
-                                objectName: "filmReductionComparisonLabel"
-                                visible: window.controller.searchMode === "reduction" || window.controller.hasReductionResult
-                                Layout.fillWidth: true
-                                text: window.controller.reductionComparison
-                                color: window.themeTokens.colorInfo
-                                wrapMode: Text.WordWrap
-                                font.pointSize: window.themeTokens.fontSizeSmall
-                            }
                             FilmThicknessBoundsBatchPanel {
                                 Layout.fillWidth: true
                                 Layout.maximumWidth: setupTabs.width
@@ -1418,6 +1431,37 @@ AppWindow {
                                         color: window.themeTokens.colorInfo
                                         wrapMode: Text.WordWrap
                                     }
+                                }
+                                ColumnLayout {
+                                    visible: window.controller.searchMode === "automatic_repair"
+                                    Layout.fillWidth: true
+                                    FilmManufacturingRepairOptions {
+                                        Layout.fillWidth: true
+                                        controller: window.controller.manufacturingController
+                                        optimizationController: window.controller
+                                        themeTokens: window.themeTokens
+                                    }
+                                }
+                                Label {
+                                    objectName: "filmReductionComparisonLabel"
+                                    visible: window.controller.searchMode === "reduction" || window.controller.hasReductionResult
+                                    Layout.fillWidth: true
+                                    text: window.controller.reductionComparison
+                                    color: window.themeTokens.colorInfo
+                                    wrapMode: Text.WordWrap
+                                    font.pointSize: window.themeTokens.fontSizeSmall
+                                }
+                                FilmReductionLiveFeedback {
+                                    Layout.fillWidth: true
+                                    controller: window.controller
+                                    themeTokens: window.themeTokens
+                                }
+                                Label {
+                                    visible: window.controller.searchMode === "automatic_repair"
+                                    Layout.fillWidth: true
+                                    text: "自动薄层修复使用现有本机 CPU 修复执行器；计算目标选择器不参与此算法。"
+                                    color: window.themeTokens.colorInfo
+                                    wrapMode: Text.WordWrap
                                 }
                                 Label {
                                     visible: window.controller.searchMode === "fixed_topology"

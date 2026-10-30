@@ -88,7 +88,7 @@ class RemoteTransport:
 
     _RPC_ACTIONS = frozenset({
         "status", "snapshot", "events", "page", "cancel", "result", "artifact",
-        "run_result", "find_request", "refresh_estimates", "film_display_control",
+        "run_result", "find_request", "refresh_estimates", "film_display_control", "reduction_live",
     })
 
     def __init__(self, base_url: str, *, token: str | None = None,

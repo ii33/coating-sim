@@ -129,6 +129,74 @@ def test_real_source_apply_once_undo_and_stale_material_guard(tmp_path, monkeypa
         shiboken6.delete(source)
 
 
+def test_fresh_prepare_keeps_old_result_readonly_and_allows_new_apply(tmp_path, monkeypatch):
+    service, _library, design = fixture(tmp_path)
+    session = FilmDesignEditSession(service)
+    assert session.request_replace_design(design)
+    source = FilmDesignQuickController(service=service, edit_session=session)
+    owner = FilmOptimizationQuickController(source)
+    pool, client = HeldPool(), PhysicsClient(tmp_path)
+    monkeypatch.setattr(QThreadPool, "globalInstance", lambda: pool)
+    try:
+        assert owner.setObjectiveField("wavelength_min_nm", 550.)
+        assert owner.setObjectiveField("wavelength_max_nm", 550.)
+        # Construct the controller before selecting its algorithm, as the
+        # real optimization page may eagerly instantiate hidden option panels.
+        panel = cast(FilmManufacturingQuickController, owner.manufacturingController)
+        panel.client_factory = lambda _root: client
+        assert panel.prepare(), panel.error
+        assert owner.setSearchMode("automatic_repair")
+        for name, value in (("lower_limit_nm", "109"),
+                            ("optical_tolerance_percentage_points", "1")):
+            assert panel.setAutomaticOption(name, value)
+
+        def run_current():
+            assert panel.canStartAutomatic, panel.error
+            assert panel.startAutomatic(), panel.error
+            assert panel.busy
+            pool.run()
+            QCoreApplication.processEvents()
+            assert panel.hasResult and not panel.busy, panel.error
+
+        run_current()
+        old_payload = panel._payload
+        assert old_payload is not None and panel.canApply, panel.error
+
+        # A non-optical edit still changes the source revision and must fence
+        # the old result. Refresh prepares a new input snapshot but does not
+        # erase its old report-invalidation event.
+        assert session.set_design_value("name", "Renamed after the first repair report")
+        assert panel._source_invalidated.is_set()
+        assert not panel.canApply
+        owner.refreshDesign()
+        assert not owner._source_stale
+        assert panel.prepare(), panel.error
+        assert panel._source_invalidated.is_set()
+        assert panel._payload is old_payload
+        assert not panel.canApply
+        assert panel.canStartAutomatic, panel.error
+
+        # Admission replaces only the old attempt event after its newly
+        # captured source/target signature matches; the stale payload is
+        # discarded, and the new audited result remains explicitly applicable.
+        run_current()
+        assert panel._payload is not old_payload
+        assert not panel._source_invalidated.is_set()
+        assert panel.canApply, panel.error
+        before_apply = deepcopy(session.snapshot().design)
+        assert panel.applySelectedRoute(), panel.error
+        assert session.snapshot().design != before_apply
+        assert source.canUndoOptimizedDesign
+        assert source.undoOptimizedDesign()
+        assert session.snapshot().design == before_apply
+    finally:
+        owner.shutdown(1000)
+        source.markSourceClosed()
+        cast(ComputeTarget, owner.computeTarget)._executor.shutdown(wait=True, cancel_futures=True)
+        shiboken6.delete(owner)
+        shiboken6.delete(source)
+
+
 def test_automatic_topology_apply_undo_and_source_reuse_keep_full_variable_model(tmp_path, monkeypatch):
     from coat_sim.core import film_automatic_repair as automatic
 
@@ -213,7 +281,7 @@ def test_automatic_topology_apply_undo_and_source_reuse_keep_full_variable_model
         shiboken6.delete(source)
 
 
-def test_optimizer_toolbar_opens_repair_and_preserves_editor_drafts(tmp_path, monkeypatch):
+def test_algorithm_selector_hosts_repair_inline_and_preserves_its_drafts(tmp_path, monkeypatch):
     service, _library, design = fixture(tmp_path)
     with optimizer(service, design) as (owner, _source, _session):
         configuration = _session.workflow_configuration
@@ -225,20 +293,37 @@ def test_optimizer_toolbar_opens_repair_and_preserves_editor_drafts(tmp_path, mo
         try:
             scene.window.setWidth(1500)
             QCoreApplication.processEvents()
-            opener = scene.item("filmManufacturingOpenButton")
-            scene.click(opener)
-            dialog = scene.window.findChild(QObject, "filmManufacturingRepairDialog")
-            assert dialog is not None and dialog.property("visible")
-            assert owner.manufacturingController.options["reference_nm"] == ""
-            assert owner.manufacturingController.setOption("reference_nm", "123")
-            from PySide6.QtCore import QMetaObject
-            assert QMetaObject.invokeMethod(dialog, "close")
+            from PySide6.QtCore import Q_ARG, QMetaObject, Qt
+            mode = scene.item("filmOptimizationSearchModeBox")
+            index = next(i for i, row in enumerate(owner.searchModeOptions)
+                         if row["id"] == "automatic_repair")
+            mode.setProperty("currentIndex", index)
+            assert QMetaObject.invokeMethod(mode, "activated", Qt.ConnectionType.DirectConnection,
+                                            Q_ARG(int, index))
             QCoreApplication.processEvents()
-            assert not dialog.property("visible")
-            scene.click(opener)
-            assert dialog.property("visible")
-            assert owner.manufacturingController.options["reference_nm"] == "123"
-            assert not owner.manufacturingController.hasResult
+            assert owner.searchMode == "automatic_repair"
+            scene.click(scene.item("filmOptimizationAlgorithmTab"))
+            repair = owner.manufacturingController
+            assert scene.item("filmManufacturingAlgorithmOptions").isVisible()
+            assert set(repair.automaticOptions) == {
+                "lower_limit_nm", "optical_tolerance_percentage_points"}
+            assert repair.automaticOptions["lower_limit_nm"] == ""
+            assert repair.setAutomaticOption("lower_limit_nm", "123")
+            assert repair.setAutomaticOption("optical_tolerance_percentage_points", "1")
+            mode.setProperty("currentIndex", next(i for i, row in enumerate(owner.searchModeOptions)
+                                                   if row["id"] == "fixed_topology"))
+            normal_index = mode.property("currentIndex")
+            assert QMetaObject.invokeMethod(mode, "activated", Qt.ConnectionType.DirectConnection,
+                                            Q_ARG(int, normal_index))
+            assert owner.searchMode == "fixed_topology"
+            mode.setProperty("currentIndex", index)
+            assert QMetaObject.invokeMethod(mode, "activated", Qt.ConnectionType.DirectConnection,
+                                            Q_ARG(int, index))
+            assert owner.searchMode == "automatic_repair"
+            assert repair.automaticOptions["lower_limit_nm"] == "123"
+            assert scene.window.findChild(QObject, "filmManufacturingRepairDialog") is None
+            assert scene.window.findChild(QObject, "filmManufacturingOpenButton") is None
+            assert not repair.hasResult
         finally:
             scene.close()
 
