@@ -8,6 +8,8 @@ Value/zero-width conditions remain hard original constraints, never margins.
 """
 from __future__ import annotations
 
+from .film_synthesis_surfaces import selected_rows
+
 from copy import deepcopy
 from importlib import import_module
 
@@ -63,7 +65,7 @@ def refine_worst_margin(request, initial, *, evaluate, archive,
     """
     cancel_check()
     design = initial['design']
-    rows = design['front_layers']
+    rows = selected_rows(request, design)
     initial_margin = worst_signed_margin(request, initial)
     details = dict(method='SLSQP_signed_worst_margin', termination='not_started',
         success=False, initial_signed_margin=initial_margin, final_signed_margin=initial_margin,
@@ -104,7 +106,7 @@ def refine_worst_margin(request, initial, *, evaluate, archive,
             return (np.full(len(cache_q), penalty),
                     np.tile(2 * (below + above + excess) * scales, (len(cache_q), 1)), cache_mask)
         trial = deepcopy(design)
-        for row, thickness in zip(trial['front_layers'], d, strict=True):
+        for row, thickness in zip(selected_rows(request, trial), d, strict=True):
             row['thickness'] = dict(value=float(thickness), unit='nm')
         resource_check(trial, jacobian=True, epigraph=True)
         value = evaluate(trial, jacobian=True)

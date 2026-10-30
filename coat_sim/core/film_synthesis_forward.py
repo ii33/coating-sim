@@ -21,6 +21,7 @@ from typing import Any, Mapping
 import numpy as np
 
 from .film_design_service import active_material_references
+from .film_synthesis_surfaces import selected_rows
 from .film_optimization_structure import _StructureCancelled, evaluate_frozen_structure_candidate
 from .film_performance import FrozenFilmEvaluator, PerformanceOptions
 from .film_synthesis_absorption import assumes_unknown_k_zero, sample_synthesis_optical
@@ -193,7 +194,7 @@ class SynthesisForward:
                 self.errors.append(str(exc))
                 raise ValueError(f"Explicit synthesis {self.request.forward_backend} forward unavailable: {exc}") from exc
         signature = deepcopy(dict(design))
-        for layer in signature["front_layers"]:
+        for layer in selected_rows(self.request, signature):
             layer["thickness"] = {"unit": "nm", "value": 1.0}
         key = json.dumps([signature, dict(settings)], sort_keys=True, ensure_ascii=False, allow_nan=False)
         evaluator = self.cache.pop(key, None)
@@ -229,8 +230,8 @@ class SynthesisForward:
     def _spectra(self, tasks: list[Any]) -> list[dict[str, Any]]:
         self.check()
         design = tasks[0].design
-        ids = tuple(layer["id"] for layer in design["front_layers"])
-        thickness = np.asarray([[layer["thickness"]["value"] for layer in task.design["front_layers"]]
+        ids = tuple(layer["id"] for layer in selected_rows(self.request, design))
+        thickness = np.asarray([[layer["thickness"]["value"] for layer in selected_rows(self.request, task.design)]
                                 for task in tasks], dtype=float).reshape(len(tasks), len(ids))
         responses = []
         self.submitted += len(tasks)
@@ -243,7 +244,7 @@ class SynthesisForward:
                     self.check()
                     settings = dict(wavelength_min_nm=objective.wavelength_min_nm,
                         wavelength_max_nm=objective.wavelength_max_nm, samples=objective.wavelength_samples,
-                        angle_deg=angle, polarization=objective.polarization, first_surface="front")
+                        angle_deg=angle, polarization=objective.polarization, first_surface=design["first_surface"])
                     evaluator = self._evaluator(design, settings)
                     try:
                         response = evaluator.evaluate_thickness_batch(ids, thickness, cancel=self.cancel)
@@ -300,10 +301,9 @@ class SynthesisForward:
         response = self._spectra([task])
         return self.take(ForwardOutcome(task.design, response, 0))
 
-    @staticmethod
-    def _group_key(task: Any) -> tuple[Any, ...]:
+    def _group_key(self, task: Any) -> tuple[Any, ...]:
         # IDs/sequence/material are parent-created and preserved. No worker ID allocation.
-        return tuple((r["id"], r["material_id"], r["optical_set_id"]) for r in task.design["front_layers"])
+        return tuple((side, tuple((r["id"], r["material_id"], r["optical_set_id"]) for r in task.design[side])) for side in ("front_layers", "back_layers"))
 
     @contextmanager
     def batch(self, tasks: Any, *, admit: Any = None):
@@ -352,7 +352,7 @@ class SynthesisForward:
     def record_refresh(self, value: Mapping[str, Any]) -> None:
         self.refreshes += 1
         rows = value.get("responses", ())
-        limit = min(10001, 1_000_000 // (len(value["design"]["front_layers"]) + 3))
+        limit = min(10001, 1_000_000 // (len(value["design"]["front_layers"]) + len(value["design"]["back_layers"]) + 3))
         self.refresh_calls += sum(math.ceil(len(row["wavelength_nm"]) / limit) for row in rows)
         self.refresh_points += sum(len(row["wavelength_nm"]) for row in rows)
 

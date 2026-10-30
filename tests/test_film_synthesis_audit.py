@@ -120,13 +120,13 @@ def test_active_reference_matrix_matches_forward_ports_and_audit_domain(incident
     else:
         direct = simulate_frozen(".", payload)
         np.testing.assert_allclose(np.array(direct["R"]) + direct["T"] + direct["A"], 1., atol=1e-12)
-    if sides == "single" and first_surface == "front":
+    if sides == "double" or first_surface == "front":
         audited = audit_frozen_synthesis_candidate(public_request, design)
         assert audited["score"]["errors"][0].actual == pytest.approx(direct["R"][0], abs=1e-13)
         print(dict(case="supported_audit_port_matrix", incident=incident_kind, exit=exit_kind,
                    R=direct["R"][0], physical_evaluations=audited["audit"]["physical_evaluations"]))
     else:
-        with pytest.raises(ValueError, match="single-sided front incidence only"):
+        with pytest.raises(ValueError, match="back-surface incidence"):
             audit_frozen_synthesis_candidate(public_request, design)
         print(dict(case="unsupported_audit_port_matrix", sides=sides, first_surface=first_surface,
                    incident=incident_kind, exit=exit_kind, explicit_domain_rejection=True))

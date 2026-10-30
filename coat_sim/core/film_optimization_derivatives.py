@@ -155,6 +155,10 @@ class _PreparedMaterialData:
         self.__series_bytes = 0
         self.__lock = RLock()
 
+    def _material_record(self, identifier):
+        """Detached frozen row for canonical service forward evaluation."""
+        return deepcopy(self.__rows[identifier])
+
     def _sampler(self, reference):
         key = (reference["material_id"], reference["optical_set_id"])
         with self.__lock:
@@ -189,7 +193,7 @@ class _PreparedMaterialData:
 
 
 def _analytic_one_polarization(waves, indices, thickness_nm, layer_ids,
-                               variable_columns, angle_deg, polarization):
+                               variable_columns, angle_deg, polarization, *, beta=None):
     """Differentiate the same scalar recurrence with two linear layer sweeps.
 
     For p=exp(alpha*d), z=p*p, alpha=2*pi*i*q/lambda and D=1+ri*r*z,
@@ -203,7 +207,10 @@ def _analytic_one_polarization(waves, indices, thickness_nm, layer_ids,
     """
     wavelength_count = waves.size
     variable_count = len(variable_columns)
-    beta = _beta(None, indices[:, 0], angle_deg)
+    # Explicit beta is a prevalidated common transverse wavevector for an
+    # internal incoherent plate block, whose incident substrate may absorb.
+    beta = (_beta(None, indices[:, 0], angle_deg) if beta is None
+            else np.asarray(beta, dtype=float))
     q = _longitudinal_many(indices, beta)
 
     # Preserve the original critical-layer domain: the value solver's separate

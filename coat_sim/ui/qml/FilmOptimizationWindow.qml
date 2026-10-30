@@ -1713,6 +1713,48 @@ AppWindow {
                                     Layout.fillWidth: true
                                     Layout.minimumWidth: 0
                                     spacing: window.themeTokens.spaceSm
+                                    Label { text: "合成物理表面"; color: window.themeTokens.colorText }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        CheckBox {
+                                            objectName: "filmSynthesisFrontSurfaceCheck"
+                                            text: "正面"
+                                            checked: window.controller.synthesisSelectedSurfaces.indexOf("front") >= 0
+                                            onClicked: {
+                                                if (!window.controller.setSynthesisSurfaceSelected("front", checked))
+                                                    checked = Qt.binding(() => window.controller.synthesisSelectedSurfaces.indexOf("front") >= 0)
+                                            }
+                                            Accessible.name: "合成正面"
+                                        }
+                                        CheckBox {
+                                            objectName: "filmSynthesisBackSurfaceCheck"
+                                            text: "背面"
+                                            enabled: window.controller.synthesisBackAvailable
+                                            checked: window.controller.synthesisSelectedSurfaces.indexOf("back") >= 0
+                                            onClicked: {
+                                                if (!window.controller.setSynthesisSurfaceSelected("back", checked))
+                                                    checked = Qt.binding(() => window.controller.synthesisSelectedSurfaces.indexOf("back") >= 0)
+                                            }
+                                            Accessible.name: "合成背面"
+                                        }
+                                    }
+                                    Label {
+                                        objectName: "filmSynthesisSurfaceHint"
+                                        Layout.fillWidth: true
+                                        text: window.controller.synthesisBackAvailable
+                                            ? "所选物理表面从零重建；未选表面的膜层保持不变。双面同时选择时使用一个完整膜系任务。"
+                                            : "单面基片不可选择背面；原有背面膜层保留。"
+                                        color: window.themeTokens.colorTextMuted
+                                        wrapMode: Text.WordWrap
+                                    }
+                                    Label {
+                                        objectName: "filmSynthesisSurfaceError"
+                                        Layout.fillWidth: true
+                                        visible: window.controller.synthesisSelectedSurfaces.length === 0
+                                        text: "请选择至少一个合成表面（正面或背面）"
+                                        color: window.themeTokens.colorWarning
+                                        wrapMode: Text.WordWrap
+                                    }
                                     Label { text: "合成基片材料与光学数据集"; color: window.themeTokens.colorText }
                                     ThemeControls.ThemeComboBox {
                                         id: synthesisSubstrateMaterial
@@ -1885,7 +1927,7 @@ AppWindow {
                                     }
                                     Label {
                                         Layout.fillWidth: true
-                                        text: "从 N=0 空栈开始。当前设计只提供物理环境；结果先审计，候选按来源守卫应用，保持未保存。空预算和空约束表示未指定。"
+                                        text: "所选表面从 N=0 空栈开始；未选表面作为固定环境。结果先审计，候选按来源守卫应用，保持未保存。层数和总厚度约束合计用于所选表面；空预算和空约束表示未指定。"
                                         color: window.themeTokens.colorTextMuted
                                         wrapMode: Text.WordWrap
                                     }

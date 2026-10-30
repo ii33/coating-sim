@@ -95,8 +95,12 @@ def test_default_hybrid_gui_typed_job_runs_two_real_workers_then_cancels(
         assert request_id == "default-hybrid-gui-real" and metadata == []
         assert film_synthesis_request_to_payload(request_id, queued) == envelope
         assert queued.cpu_workers == 2 and queued.parallel_batch_size == 4
+        assert queued.selected_surfaces == ("front",)
+        # Worker-pool identity includes its canonical physical-side selection;
+        # that internal binding is distinct from the frozen external job identity above.
         expected_identity = hashlib.sha256(
-            pickle.dumps(_proxy(queued), protocol=pickle.HIGHEST_PROTOCOL)).hexdigest()
+            pickle.dumps((_proxy(queued), queued.selected_surfaces),
+                         protocol=pickle.HIGHEST_PROTOCOL)).hexdigest()
         cancellation = threading.Event()
         reports = []
 

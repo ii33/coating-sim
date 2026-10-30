@@ -157,8 +157,8 @@ def test_route_selection(mutation):
     else:
         env['layer_order'] = 'incident_outward'
         request = replace(request, environment=env)
-    assert not priors.multispectral_prior_eligible(request)
-    assert proposals(request) == []
+    assert priors.multispectral_prior_eligible(request) is (mutation == "double")
+    assert bool(proposals(request)) is (mutation == "double")
 
 
 @pytest.mark.parametrize('constraint,value', [('max_layers', 2), ('minimum_nonzero_thickness_nm', 1000.),

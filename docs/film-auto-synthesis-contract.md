@@ -1,12 +1,12 @@
 # 自动膜系合成核心契约
 
-日期：2026-10-21。当前真值为 `coat_sim/core/film_auto_synthesis.py` 类型与签名。图解、公式、默认与来源见 [14t](algorithms.html#film-synthesis-audit-20261020)；独审见[审计契约](film-synthesis-audit-contract.md)；可组合起点见[物理结构契约](film-physical-structures-contract.md)；统一JSON、CLI与助手准备边界见[执行契约](film-synthesis-execution-contract.md)。2026-10-19报告仅作此前阶段记录，不代替当前文件和测试。
+日期：2026-10-30。当前真值为 `coat_sim/core/film_auto_synthesis.py` 类型与签名。图解、公式、默认与来源见 [14t](algorithms.html#film-synthesis-audit-20261020)；独审见[审计契约](film-synthesis-audit-contract.md)；可组合起点见[物理结构契约](film-physical-structures-contract.md)；统一JSON、CLI与助手准备边界见[执行契约](film-synthesis-execution-contract.md)。2026-10-19报告仅作此前阶段记录，不代替当前文件和测试。
 
 ## 输入、物理边界与唯一状态所有者
 
-`FilmSynthesisRequest.environment` 必须是合法空front/back层的单面、前向裸片；`objectives`为既有R/T值/上下限目标，候选材料显式给出。`seed_designs=()`可选，允许任意真实合法层序而不限五经典模板；起点不称从零发现，裸片工作分支始终保留。起点与环境光学边界、参考及吸收设置一致，nm/µm/QW冻结后转物理nm，材料可独立于允许插入/替换的候选池。来源revision只做回溯，不读写用户session。运行级ID保留集合包含全部起点与已分配提案，删层/丢候选不释放；新层冲突时稳定加后缀，旧层绝不重编号。审计checkpoint中的design可显式加入seed_designs恢复，仍重新冻结和审计；恢复不等于读取旧计算分数直接判合格。
+`FilmSynthesisRequest.selected_surfaces` 为非空、无重复的 front/back 序列，默认 `("front",)`；输入顺序归一为物理 front、back 顺序，反序不改变缓存或续算身份。back 仅允许双面基片。`environment` 的所选面层表必须为空，未选面完整层表是固定物理环境，逐行（含 ID、note）保持不变；`objectives`为既有R/T值/上下限目标，候选材料显式给出。`seed_designs=()`可选，允许任意真实合法层序而不限五经典模板；起点不称从零发现，裸片工作分支始终保留。起点与环境光学边界、参考及吸收设置一致，nm/µm/QW冻结后转物理nm，材料可独立于允许插入/替换的候选池。来源revision只做回溯，不读写用户session。运行级ID保留集合包含全部起点与已分配提案，删层/丢候选不释放；新层冲突时稳定加后缀，旧层绝不重编号。审计checkpoint中的design可显式加入seed_designs恢复，仍重新冻结和审计；恢复不等于读取旧计算分数直接判合格。
 
-坐标z=0在基片侧，层表按基片向入射排列；真空波长与物理厚度nm、角度°、R/T为0–1。支持现有解析相干核与半无限基片的R/T，非一般各向异性/散射模型，不支持phase/GD/GDD目标。前表面R/T不自动等于双面有厚基片整片。
+坐标z=0在基片侧，层表按基片向入射排列；真空波长与物理厚度nm、角度°、R/T为0–1。使用既有整片 R/T 前向：单面半无限基片、双面相干有限基片或按既有自动厚度规则的非相干基片；`first_surface` 始终只控制真实照明方向，不因选择背面而翻转为虚拟前面。非一般各向异性/散射模型，不支持phase/GD/GDD目标。双面同时选择是一个联合候选和整片目标，不是两次独立单面评分。
 
 `freeze_film_synthesis_request(service,request,*,cancel_event=None)`深拷贝、冻结基片/介质/候选与起点材料，重放已有快照时不读live目录。显式采用source k策略，要求每个实际目标、验证波段、尺度与QW参考点有已知k；不把未知或域外k补0，不外推n/k。失败点名material/optical_set、首次缺失波长和目标区间。已知教学k=0与真实来源k保持不同身份；真实工艺适用性不能由公式名称推断。所有结构变更后完整重算。
 
@@ -59,3 +59,14 @@ needle_batch_size=6、needle_position_refinement_rounds=1、needle_pre_local=tru
 每轮调度片及已完成/未完成、实际调用量和预算停止写入performance.search.hybrid；旧全局前缀不再独占预算。max_working_set_bytes默认0=自动，冻结时取主机/cgroup可用内存的50%；未知/无效/异常测量透明回退1.5GiB并记录basis。正整数仍是显式字节限额，None/JSON null仍是关闭，GUI提供三种明确模式，CLI通过--request同一字段配置。派生resource_guard_resolution版本1保存requested/effective/available与依据；冻结重放不重新测量，清空该解析字段可显式重新采样，改变请求限额会清除旧解析。旧正整数/null请求语义不变。performance.search.hybrid含requested/effective限额、解析元数据、resource_limited及每个跳过阶段；时间耗尽且发生资源跳过须同时披露time_limit/resource_limited，未完成独审不能称完整合成验证通过。该估计只约束混合阶段工作准入，不是进程硬内存限额；冻结、初始裸基片评分和保存结果仍有基本开销。超出是透明资源跳过，不是物理不可行。phase1只新增可独立调用基础模块和独立敏感性CLI，phase2才启用此默认路线和正式窗口/作业接线。
 
 混合首版按父调度器顺序评价单个候选/导数探测；保留cpu_workers请求和现有legacy完整候选批并行能力，不把请求的工作进程数冒充已使用数。混合路线的实际后端、有效工作进程与真实调用计数以performance为准，不宣称其针扫描已经多进程并行。生产GUI渲染与普通优化设备选择没有为测试降级。
+
+
+## 选择表面、全几何导数与续算（2026-10-30）
+
+所有局部厚度向量、层数/总厚约束、增长、批针、换材、删层、减量与结果 review 只包含所选行；未选面仍参与每次整片前向和独审。每面坐标都从本面基片界面向外、单位 nm；针的 side+本面界面/宿主 ID 定位，不能越过基片合并。返回/取消最好候选与应用门保留完整真实双面设计，检查固定面未变；只适用于既有 R/T 指标、材料源及物理域，不增加连续谱或制造保证。
+
+`film_synthesis_physics.py` 在双面路径使用生产 `FilmDesignService._simulate_chunk` 作为唯一 R/T 前向真值；解析列使用既有相干振幅递推，非相干路径按同一偏振内前向/反向膜块强度的乘积/商法则求导，再平均 s/p。吸收基片内部反向膜块共用真实横向波矢 β，不把吸收内部端口误作外部入射端口。精确内部 q=0 仍明确拒绝（已有解析域限制），不伪造数值证据。旧单面前向路径和默认前面续算 fingerprint 保持原义。
+
+结构先验只生成未评分起点：背面单选使用其外部端口计算模板尺度；双面模板共享显式层数/总厚上限，起点可为对称拷贝但不是对称约束。之后每面针插/有限增长/删层以及全部所选厚度变量独立，可产生不同层数、材料与厚度；所有候选仍按实际整片目标评分，不声称穷尽拓扑或普遍收敛。仅一层总预算仍允许一面的一层候选，不要求每个所选面非空。
+
+JSON schema 6 新增可选 `selected_surfaces`，旧缺省请求按 front 解析；新序列化显式输出。续算 fingerprint 包含归一选择与完整固定面物理栈；未选面逐行完整一致还由边界校验保证。材料冻结包含真实两面与两外部端口，所选 seed 物理 nm 转换不触碰固定面原始单位。详见[算法 14bd](algorithms.html#film-synthesis-selected-surfaces-20261030)。

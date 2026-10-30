@@ -95,7 +95,7 @@ def test_mcp_request_schema_requires_every_nonextension_decoder_field():
     from dataclasses import fields
     from coat_sim.core.mcp_contracts import FILM_SYNTHESIS_PLAN_INPUT_SCHEMA
     request_schema = FILM_SYNTHESIS_PLAN_INPUT_SCHEMA['properties']['payload']['properties']['request']
-    optional_extensions = {'search_checkpoint', 'enable_local_margin_refinement'}
+    optional_extensions = {'search_checkpoint', 'enable_local_margin_refinement', 'selected_surfaces'}
     decoder_fields = {item.name for item in fields(FilmSynthesisRequest)}
     assert set(request_schema['required']) == decoder_fields - optional_extensions
 

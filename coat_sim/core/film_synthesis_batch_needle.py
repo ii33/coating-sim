@@ -1,6 +1,7 @@
 """Analytic position scans and simultaneous mathematical needle construction.
 
-All coordinates are physical nm in substrate-outward ``front_layers`` order.
+All coordinates are physical nm in substrate-outward order on each selected
+physical surface. Coordinates restart at the substrate on each surface.
 Interior positions are fractions of the *original* host, not of a remainder
 left by another insertion. A batch is rebuilt once from that original stack.
 The Jacobian variable order is the resulting row order, never proposal order.
@@ -89,18 +90,29 @@ def _count(value: Any, name: str, *, zero: bool = False) -> int:
     return value
 
 
-def _physical_rows(design, frozen):
+def _surfaces(design, selected_surfaces):
+    if (not isinstance(selected_surfaces, (tuple, list)) or not selected_surfaces
+            or any(not isinstance(side, str) or side not in ("front", "back") for side in selected_surfaces)
+            or len(set(selected_surfaces)) != len(selected_surfaces)):
+        raise ValueError("selected_surfaces must be a nonempty unique front/back sequence")
+    if "back" in selected_surfaces and design["substrate"]["sides"] != "double":
+        raise ValueError("back selection requires a double-sided substrate")
+    return tuple(side for side in ("front", "back") if side in selected_surfaces)
+
+
+def _physical_rows(design, frozen, *, side="front"):
     if not isinstance(frozen, Mapping):
         raise ValueError("frozen optical data must be a mapping")
     checked = validate_design(deepcopy(dict(design)))
+    _surfaces(checked, (side,))
     physical = [float(_physical_layer_thickness(row, checked, frozen))
-                for row in checked["front_layers"]]
+                for row in checked[f"{side}_layers"]]
     if any(not math.isfinite(value) or value < 0 for value in physical):
         raise ValueError("batch needle hosts must have finite nonnegative thicknesses")
     return checked, physical
 
 
-def batch_needle_parent_fingerprint(design, frozen) -> str:
+def batch_needle_parent_fingerprint(design, frozen, *, selected_surfaces=("front",)) -> str:
     """Bind construction anchors to IDs, physical geometry and actual optics.
 
     This is not a merit-cache key or snapshot-validation capability. Scans do
@@ -108,8 +120,10 @@ def batch_needle_parent_fingerprint(design, frozen) -> str:
     evaluator's complete target/grid. Frozen content, not a supplied digest,
     is hashed, so stale metadata cannot make changed optical arrays identical.
     """
+    sides = _surfaces(design, selected_surfaces)
     checked, physical = _physical_rows(design, frozen)
     identity = {
+        "selected_surfaces": sides,
         "layers": [(row["id"], row["material_id"], row["optical_set_id"], value)
                    for row, value in zip(checked["front_layers"], physical, strict=True)],
         "substrate": checked["substrate"], "incident_medium": checked["incident_medium"],
@@ -125,8 +139,8 @@ def batch_needle_parent_fingerprint(design, frozen) -> str:
 
 def _anchor_key(site):
     if site["kind"] == "interior":
-        return ("interior", site["host_layer_id"], float(site["fraction"]))
-    return ("interface", int(site["interface"]))
+        return (site.get("side", "front"), "interior", site["host_layer_id"], float(site["fraction"]))
+    return (site.get("side", "front"), "interface", int(site["interface"]))
 
 
 def _canonical_site(site, rows, physical):
@@ -145,7 +159,7 @@ def _canonical_site(site, rows, physical):
         if (("left_layer_id" in site and site["left_layer_id"] != left) or
                 ("right_layer_id" in site and site["right_layer_id"] != right)):
             raise ValueError("needle interface has stale original neighbour IDs")
-        return dict(kind="interface", interface=interface, host_index=None,
+        return dict(side=site.get("side", "front"), kind="interface", interface=interface, host_index=None,
                     host_layer_id="", fraction=None, position_nm=prefix[interface],
                     left_layer_id=left, right_layer_id=right)
     if site.get("kind") != "interior":
@@ -165,15 +179,16 @@ def _canonical_site(site, rows, physical):
         raise ValueError("needle original host thickness changed since the scan")
     if physical[index] == 0:
         raise ValueError("a zero-thickness host has no interior interval")
-    return dict(kind="interior", interface=index, host_index=index,
+    return dict(side=site.get("side", "front"), kind="interior", interface=index, host_index=index,
                 host_layer_id=host, fraction=fraction, host_thickness_nm=physical[index],
                 position_nm=prefix[index] + physical[index] * fraction)
 
 
-def build_batch_needle_design(
+def _build_batch_needle_side(
     design: Mapping[str, Any], frozen: Mapping[str, Any],
     proposals: Sequence[BatchNeedleProposal], *,
     seed_thickness_nm: float | Mapping[str, float] = 0.0,
+    side: str = "front", parent_fingerprint: str | None = None,
 ) -> BatchNeedleBuild:
     """Insert all needles in one reconstruction, conserving every original host.
 
@@ -182,9 +197,9 @@ def build_batch_needle_design(
     in ``anchors``. A mapping seed is keyed by needle ID and must cover the
     proposals exactly. No manufacturing minimum or 70/104-layer rule is used.
     """
-    candidate, physical = _physical_rows(design, frozen)
-    rows = candidate["front_layers"]
-    fingerprint = batch_needle_parent_fingerprint(candidate, frozen)
+    candidate, physical = _physical_rows(design, frozen, side=side)
+    rows = candidate[f"{side}_layers"]
+    fingerprint = parent_fingerprint or batch_needle_parent_fingerprint(candidate, frozen, selected_surfaces=(side,))
     if isinstance(proposals, (str, bytes)) or not isinstance(proposals, Sequence):
         raise ValueError("proposals must be a sequence of BatchNeedleProposal values")
     occupied = {row["id"] for side in ("front_layers", "back_layers")
@@ -267,16 +282,65 @@ def build_batch_needle_design(
             if part < len(insertions):
                 append_needle(insertions[part])
         host_segments[host["id"]] = tuple(segment_ids)
-    candidate["front_layers"] = result_rows
+    candidate[f"{side}_layers"] = result_rows
     if candidate.get("expression", {}).get("text"):
         candidate["expression"]["in_sync"] = False
     candidate = validate_design(candidate)
-    layer_ids = tuple(row["id"] for row in candidate["front_layers"])
+    layer_ids = tuple(row["id"] for row in candidate[f"{side}_layers"])
     return BatchNeedleBuild(candidate, layer_ids,
         tuple(identifier for identifier in layer_ids if identifier in needle_ids),
-        tuple(row["id"] for row in candidate["front_layers"]
+        tuple(row["id"] for row in candidate[f"{side}_layers"]
               if row["thickness"]["unit"] == "nm" and row["thickness"]["value"] == 0),
         anchors, host_segments)
+
+
+
+def build_batch_needle_design(
+    design: Mapping[str, Any], frozen: Mapping[str, Any],
+    proposals: Sequence[BatchNeedleProposal], *,
+    seed_thickness_nm: float | Mapping[str, float] = 0.0,
+    selected_surfaces=("front",),
+) -> BatchNeedleBuild:
+    """Reconstruct selected stacks independently, then return one joint design.
+
+    Sites use substrate-outward physical nm on their own ``side`` (legacy
+    sites without a side mean front). No substrate crossing or stack reversal
+    occurs; the full unchanged opposite stack remains in every evaluation.
+    """
+    sides = _surfaces(design, selected_surfaces)
+    if isinstance(proposals, (str, bytes)) or not isinstance(proposals, Sequence):
+        raise ValueError("proposals must be a sequence of BatchNeedleProposal values")
+    if any(not isinstance(p, BatchNeedleProposal) for p in proposals):
+        raise ValueError("proposals must contain BatchNeedleProposal values")
+    if any(not isinstance(p.site, Mapping) for p in proposals):
+        raise ValueError("needle site must be a mapping")
+    if any(p.site.get("side", "front") not in sides for p in proposals):
+        raise ValueError("needle proposal targets an unselected surface")
+    if isinstance(seed_thickness_nm, Mapping) and set(seed_thickness_nm) != {p.needle_id for p in proposals}:
+        raise ValueError("seed mapping must cover exactly the batch needle IDs")
+    identifiers = [identifier for p in proposals for identifier in (p.needle_id, p.split_id)]
+    if len(set(identifiers)) != len(identifiers):
+        raise ValueError("batch needle and split IDs must be unique")
+    fingerprint = batch_needle_parent_fingerprint(design, frozen, selected_surfaces=sides)
+    candidate = deepcopy(dict(design))
+    layer_ids: list[str] = []
+    needle_ids: list[str] = []
+    zeros: list[str] = []
+    anchors: dict[str, Mapping[str, Any]] = {}
+    segments: dict[str, tuple[str, ...]] = {}
+    for side in sides:
+        selected = tuple(p for p in proposals if p.site.get("side", "front") == side)
+        seed = ({p.needle_id: seed_thickness_nm[p.needle_id] for p in selected}
+                if isinstance(seed_thickness_nm, Mapping) else seed_thickness_nm)
+        built = _build_batch_needle_side(candidate, frozen, selected,
+            seed_thickness_nm=seed, side=side, parent_fingerprint=fingerprint)
+        candidate = dict(built.design)
+        layer_ids.extend(built.layer_ids)
+        needle_ids.extend(built.needle_ids)
+        zeros.extend(built.zero_thickness_layer_ids)
+        anchors.update(built.anchors)
+        segments.update(built.host_segments)
+    return BatchNeedleBuild(candidate, tuple(layer_ids), tuple(needle_ids), tuple(zeros), anchors, segments)
 
 
 def scan_batch_needles(
@@ -291,6 +355,7 @@ def scan_batch_needles(
     stop_check: Callable[[], bool] | None = None,
     evaluate_batch: Callable[..., Sequence[Mapping[str, Any]]] | None = None,
     probe_batch_size: int = 4,
+    selected_surfaces=("front",),
 ) -> BatchNeedleScan:
     """Scan every selected material/interface/interior and refine sampled valleys.
 
@@ -337,12 +402,17 @@ def scan_batch_needles(
         raise ValueError("genuine_only must be a boolean")
     if type(seed) is not int or seed < 0:
         raise ValueError("seed must be a nonnegative integer")
-    parent, physical = _physical_rows(design, frozen)
-    # The requested search limit applies to the front coating. The design
+    sides = _surfaces(design, selected_surfaces)
+    parent = validate_design(deepcopy(dict(design)))
+    physical_by_side = {side: _physical_rows(parent, frozen, side=side)[1] for side in sides}
+    rows_by_side = {side: parent[f"{side}_layers"] for side in sides}
+    selected_count = sum(len(rows) for rows in rows_by_side.values())
+    # The requested search limit applies to selected coatings. The design
     # representation's independent global cap counts preserved back rows too,
     # even for a single-sided design whose back rows are currently inactive.
-    maximum = min(maximum, MAX_LAYERS - len(parent["back_layers"]))
-    if len(parent["front_layers"]) > maximum:
+    fixed_count = sum(len(parent[f"{side}_layers"]) for side in ("front", "back") if side not in sides)
+    maximum = min(maximum, MAX_LAYERS - fixed_count)
+    if selected_count > maximum:
         raise ValueError("original parent exceeds the explicit layer limit")
     if (not isinstance(references, Sequence) or isinstance(references, (str, bytes))
             or not references or any(not isinstance(ref, FilmNeedleMaterialReference) for ref in references)):
@@ -353,7 +423,7 @@ def scan_batch_needles(
         raise ValueError("candidate material and optical-set IDs must be nonempty text")
     if len(set(pairs)) != len(pairs):
         raise ValueError("candidate material optical-set references must be unique")
-    fingerprint = batch_needle_parent_fingerprint(parent, frozen)
+    fingerprint = batch_needle_parent_fingerprint(parent, frozen, selected_surfaces=sides)
     existing = {row["id"] for side in ("front_layers", "back_layers") for row in parent[side]}
     probes: dict[tuple[tuple[Any, ...], str, str], BatchNeedleProposal] = {}
     skipped = set()
@@ -420,10 +490,10 @@ def scan_batch_needles(
         if genuine_only:
             pair = (ref.material_id, ref.optical_set_id)
             if site["kind"] == "interior":
-                neighbours = (parent["front_layers"][site["host_index"]],)
+                neighbours = (rows_by_side[site.get("side", "front")][site["host_index"]],)
             else:
                 interface = site["interface"]
-                neighbours = parent["front_layers"][max(0, interface - 1):interface + 1]
+                neighbours = rows_by_side[site.get("side", "front")][max(0, interface - 1):interface + 1]
             if any((row["material_id"], row["optical_set_id"]) == pair for row in neighbours):
                 equivalent_skipped.add(key)
                 return
@@ -435,10 +505,10 @@ def scan_batch_needles(
         split_id = _stable_identifier("batch-split", ids, existing | {needle_id})
         proposal = BatchNeedleProposal(deepcopy(site), ref, 0.0, needle_id, split_id, level, fingerprint)
         extra_rows = 2 if site["kind"] == "interior" else 1
-        if len(parent["front_layers"]) + extra_rows > maximum:
+        if selected_count + extra_rows > maximum:
             skipped.add(key)
             return
-        build = build_batch_needle_design(parent, frozen, (proposal,))
+        build = build_batch_needle_design(parent, frozen, (proposal,), selected_surfaces=sides)
         if admit is not None and not admit(build.design):
             skipped.add(key)
             return
@@ -447,7 +517,8 @@ def scan_batch_needles(
         if len(pending) >= (1 if evaluate_batch is None else probe_batch_size):
             flush()
 
-    sites = _site_records(parent, frozen, position_samples)
+    sites = [dict(site, side=side) for side in sides
+             for site in _site_records(parent, frozen, position_samples, side=side)]
     task_count = len(sites) * len(references)
     # A scheduling quantum is not an exhaustive scan. Rotate its start using
     # the caller's cycle seed so successive rotations explore new positions.
@@ -473,44 +544,46 @@ def scan_batch_needles(
         if stage_budget_reached:
             break
         new_sites = []
-        by_host_material: dict[tuple[str, tuple[str, str]], list[tuple[float, float]]] = {}
+        by_host_material: dict[tuple[str, str, tuple[str, str]], list[tuple[float, float]]] = {}
         for proposal in probes.values():
             site = proposal.site
             pair = (proposal.reference.material_id, proposal.reference.optical_set_id)
+            side = site.get("side", "front")
             if site["kind"] == "interior":
-                by_host_material.setdefault((site["host_layer_id"], pair), []).append(
+                by_host_material.setdefault((side, site["host_layer_id"], pair), []).append(
                     (float(site["fraction"]), proposal.sensitivity))
             else:
                 interface = site["interface"]
                 for index, fraction in ((interface - 1, 1.0), (interface, 0.0)):
-                    if 0 <= index < len(parent["front_layers"]):
-                        host_id = parent["front_layers"][index]["id"]
-                        by_host_material.setdefault((host_id, pair), []).append(
+                    if 0 <= index < len(rows_by_side[side]):
+                        host_id = rows_by_side[side][index]["id"]
+                        by_host_material.setdefault((side, host_id, pair), []).append(
                             (fraction, proposal.sensitivity))
-        for host_index, host in enumerate(parent["front_layers"]):
-            if physical[host_index] == 0:
-                continue
-            for ref in references:
-                pair = (ref.material_id, ref.optical_set_id)
-                samples = sorted(by_host_material.get((host["id"], pair), ()))
-                if len(samples) < 2:
+        for side in sides:
+            for host_index, host in enumerate(rows_by_side[side]):
+                if physical_by_side[side][host_index] == 0:
                     continue
-                # Freeze each round's samples, so generation order cannot
-                # accidentally turn one half-step into a deeper refinement.
-                for index, (fraction, sensitivity) in enumerate(samples):
-                    left = samples[index - 1][1] if index else math.inf
-                    right = samples[index + 1][1] if index + 1 < len(samples) else math.inf
-                    if sensitivity > left or sensitivity > right:
+                for ref in references:
+                    pair = (ref.material_id, ref.optical_set_id)
+                    samples = sorted(by_host_material.get((side, host["id"], pair), ()))
+                    if len(samples) < 2:
                         continue
-                    if sensitivity == left == right:
-                        continue
-                    for neighbour in (index - 1, index + 1):
-                        if not 0 <= neighbour < len(samples):
+                    # Freeze each round's samples, so generation order cannot
+                    # accidentally turn one half-step into a deeper refinement.
+                    for index, (fraction, sensitivity) in enumerate(samples):
+                        left = samples[index - 1][1] if index else math.inf
+                        right = samples[index + 1][1] if index + 1 < len(samples) else math.inf
+                        if sensitivity > left or sensitivity > right:
                             continue
-                        midpoint = (fraction + samples[neighbour][0]) / 2
-                        site = _canonical_site(dict(kind="interior", host_layer_id=host["id"],
-                                                    fraction=midpoint), parent["front_layers"], physical)
-                        new_sites.append((site, ref))
+                        if sensitivity == left == right:
+                            continue
+                        for neighbour in (index - 1, index + 1):
+                            if not 0 <= neighbour < len(samples):
+                                continue
+                            midpoint = (fraction + samples[neighbour][0]) / 2
+                            site = _canonical_site(dict(side=side, kind="interior", host_layer_id=host["id"],
+                                                        fraction=midpoint), rows_by_side[side], physical_by_side[side])
+                            new_sites.append((site, ref))
         before = len(probes)
         for site, ref in new_sites:
             probe(site, ref, level)
@@ -532,7 +605,7 @@ def scan_batch_needles(
         proposal.reference.optical_set_id, proposal.needle_id)))
     selected: list[BatchNeedleProposal] = []
     occupied_anchors = set()
-    raw_rows = len(parent["front_layers"])
+    raw_rows = selected_count
     skipped_batches = 0
     for proposal in ordered:
         if proposal.sensitivity >= 0 or len(selected) >= max_needles:
@@ -543,7 +616,7 @@ def scan_batch_needles(
         added = 2 if proposal.site["kind"] == "interior" else 1
         if raw_rows + added > maximum:
             continue
-        batch = build_batch_needle_design(parent, frozen, (*selected, proposal))
+        batch = build_batch_needle_design(parent, frozen, (*selected, proposal), selected_surfaces=sides)
         if admit is not None and not admit(batch.design):
             skipped_batches += 1
             continue
@@ -560,8 +633,9 @@ def scan_batch_needles(
                            stop_reason, skipped_batches, len(equivalent_skipped))
 
 
-def cleanup_batch_needle_design(
+def _cleanup_batch_needle_side(
     design: Mapping[str, Any], frozen: Mapping[str, Any], *, near_zero_nm: float = 0.0,
+    side: str = "front",
 ) -> BatchNeedleCleanup:
     """Remove exact zeros and merge only equal material AND optical-set films.
 
@@ -571,10 +645,12 @@ def cleanup_batch_needle_design(
     Manufacturing limits are deliberately absent from this API.
     """
     threshold = _nonnegative(near_zero_nm, "near_zero_nm")
-    candidate, physical = _physical_rows(design, frozen)
-    exact, near, merged = [], [], {}
+    candidate, physical = _physical_rows(design, frozen, side=side)
+    exact: list[str] = []
+    near: list[str] = []
+    merged: dict[str, str] = {}
     retained: list[dict[str, Any]] = []
-    for row, thickness in zip(candidate["front_layers"], physical, strict=True):
+    for row, thickness in zip(candidate[f"{side}_layers"], physical, strict=True):
         if thickness == 0:
             exact.append(row["id"])
             continue
@@ -590,9 +666,28 @@ def cleanup_batch_needle_design(
                 (retained[-1]["thickness"]["value"], thickness))
         else:
             retained.append(current)
-    candidate["front_layers"] = retained
+    candidate[f"{side}_layers"] = retained
     if (exact or near or merged) and candidate.get("expression", {}).get("text"):
         candidate["expression"]["in_sync"] = False
     candidate = validate_design(candidate)
     return BatchNeedleCleanup(candidate, tuple(exact), tuple(near), merged,
                               not near, bool(near))
+
+
+def cleanup_batch_needle_design(
+    design: Mapping[str, Any], frozen: Mapping[str, Any], *, near_zero_nm: float = 0.0,
+    selected_surfaces=("front",),
+) -> BatchNeedleCleanup:
+    """Remove/merge mathematical rows only within each selected physical side."""
+    sides = _surfaces(design, selected_surfaces)
+    candidate = deepcopy(dict(design))
+    exact: list[str] = []
+    near: list[str] = []
+    merged: dict[str, str] = {}
+    for side in sides:
+        cleaned = _cleanup_batch_needle_side(candidate, frozen, near_zero_nm=near_zero_nm, side=side)
+        candidate = dict(cleaned.design)
+        exact.extend(cleaned.removed_exact_zero_ids)
+        near.extend(cleaned.removed_near_zero_ids)
+        merged.update(cleaned.merged_ids)
+    return BatchNeedleCleanup(candidate, tuple(exact), tuple(near), merged, not near, bool(near))

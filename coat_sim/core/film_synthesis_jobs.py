@@ -16,6 +16,8 @@ from .film_auto_synthesis import (FilmSynthesisResult, FilmSynthesisTrace, _feas
 from .film_nominal_acceptance import (ACCEPTANCE_SEMANTICS, complete_original_score,
     nominal_targets_pass, solver_acceptable)
 from .film_optimization_structure import evaluate_frozen_structure_candidate
+from .film_synthesis_surfaces import (selected_rows, selected_sides, selected_layer_count,
+                                      validate_candidate_environment)
 from .film_synthesis_io import (
     RESULT_KIND, SCHEMA_VERSION, film_synthesis_request_from_payload,
     film_synthesis_result_to_payload, film_synthesis_request_to_payload, prepare_film_synthesis_payload,
@@ -62,7 +64,8 @@ def canonical_parameters(service: Any, supplied: Mapping[str, Any]) -> dict[str,
 
 def _validate_physical_structure_metadata(canonical: Mapping[str, Any], metadata: list[Any]) -> None:
     """Bind provenance annotations to reproducible structure-library outputs."""
-    from .film_physical_structures import generate_physical_structure, structure_spec_from_mapping
+    from .film_physical_structures import structure_spec_from_mapping
+    from .film_synthesis_io import _generate_synthesis_physical_structure
 
     _, request, _ = film_synthesis_request_from_payload(canonical)
     snapshot = request.frozen_material_snapshot
@@ -85,8 +88,7 @@ def _validate_physical_structure_metadata(canonical: Mapping[str, Any], metadata
             raise ValueError("physical structure metadata lacks reproducible parameters")
         spec_mapping = details["parameters"]
         spec = structure_spec_from_mapping(spec_mapping)
-        regenerated = generate_physical_structure(request.environment, spec, snapshot,
-            assume_unknown_k_zero=request.environment["assume_lossless"])
+        regenerated = _generate_synthesis_physical_structure(request, spec, snapshot)
         expected = {"index": index, "mechanism": spec.mechanism,
                     "name": spec.name, "metadata": regenerated.metadata}
         if dict(item) != expected:
@@ -193,7 +195,7 @@ def _partial_result(request, request_id, checkpoint, *, terminal_state="cancelle
         evaluations=counters["evaluations"],
         validation_evaluations=counters["validation_evaluations"], failed_evaluations=counters["failed_evaluations"],
         trace=(FilmSynthesisTrace("audit_incumbent", counters["cycles"], counters["evaluations"],
-              len(design.get("front_layers", ())), validation.get("max_error"),
+              selected_layer_count(request, design), validation.get("max_error"),
               message="Recovered independently audited checkpoint"),),
         message="Recovered the best independently audited candidate saved before worker exit.",
         frozen_request=request,
@@ -318,11 +320,8 @@ def validate_checkpoint(value: Mapping[str, Any], *, terminal_state="cancelled")
     from .film_synthesis_audit import audit_frozen_synthesis_candidate
     from .film_design import validate_design
     design = validate_design(deepcopy(value["design"]))
-    physical_keys = ("substrate", "incident_medium", "exit_medium", "first_surface",
-                     "layer_order", "reference_wavelength_nm", "use_k", "assume_lossless")
-    if (any(design.get(key) != request.environment.get(key) for key in physical_keys)
-            or design.get("back_layers")
-            or any(row["thickness"].get("unit") != "nm" for row in design["front_layers"])
+    validate_candidate_environment(request, design)
+    if (any(row["thickness"].get("unit") != "nm" for row in selected_rows(request, design))
             or not _feasible(request, design)):
         raise ValueError("audited synthesis checkpoint violates frozen physical constraints")
     training = evaluate_frozen_structure_candidate(_proxy(request), design,
@@ -389,6 +388,37 @@ def validate_checkpoint(value: Mapping[str, Any], *, terminal_state="cancelled")
     return _partial_result(request, request_id, checked, terminal_state=terminal_state)
 
 
+
+def _validate_layer_review(request, design, review):
+    """Bind selected-row review to physical rows and their actual surface."""
+    sides = selected_sides(request)
+    if review.get("selected_surfaces", ["front"]) != list(sides):
+        raise ValueError("synthesis layer review surface selection differs from its request")
+    layers = review["layers"]
+    if not isinstance(layers, list) or len(layers) != selected_layer_count(request, design):
+        raise ValueError("synthesis layer review count differs from selected stacks")
+    index = 0
+    for side in sides:
+        for surface_index, layer in enumerate(design[side + "_layers"]):
+            reviewed = layers[index]
+            if not isinstance(reviewed, Mapping):
+                raise ValueError("synthesis layer review row must be an object")
+            thickness = reviewed.get("thickness_nm")
+            if (not isinstance(reviewed, Mapping)
+                    or reviewed.get("side", "front") != side
+                    or reviewed.get("index") != index
+                    or reviewed.get("surface_index", surface_index) != surface_index
+                    or reviewed["id"] != layer["id"]
+                    or reviewed["material_id"] != layer["material_id"]
+                    or reviewed["optical_set_id"] != layer["optical_set_id"]
+                    or isinstance(thickness, bool) or not isinstance(thickness, (float, int))
+                    or not math.isfinite(thickness)
+                    or not math.isclose(thickness, layer["thickness"]["value"],
+                                        rel_tol=1e-10, abs_tol=1e-12)):
+                raise ValueError("synthesis layer review differs from selected physical row")
+            index += 1
+
+
 def _validate_completed_cancel_candidate(value: Mapping[str, Any]) -> None:
     _validate_completed_training_candidate(value, time_limited=False)
 
@@ -433,12 +463,10 @@ def _validate_completed_training_candidate(value: Mapping[str, Any], *, time_lim
         raise ValueError("cancel candidate requires frozen material provenance")
     snapshot = _checked_frozen_snapshot(request.frozen_material_snapshot, request.environment)
     design = validate_design(result["candidate_design"])
-    physical_keys = ("substrate", "incident_medium", "exit_medium", "first_surface",
-                     "layer_order", "reference_wavelength_nm", "use_k", "assume_lossless")
+    validate_candidate_environment(request, design)
     if (result["design_revision"] != request.design_revision
-            or any(design[key] != request.environment[key] for key in physical_keys)
-            or design["back_layers"] or not _feasible(request, design)
-            or any(row["thickness"]["unit"] != "nm" for row in design["front_layers"])):
+            or not _feasible(request, design)
+            or any(row["thickness"]["unit"] != "nm" for row in selected_rows(request, design))):
         raise ValueError("cancel candidate violates its frozen physical constraints")
     if (type(result["evaluations"]) is not int
             or result["evaluations"] < provenance["fully_scored_evaluations"]):
@@ -452,8 +480,8 @@ def _validate_completed_training_candidate(value: Mapping[str, Any], *, time_lim
         raise ValueError("completed training candidate counters exceed its frozen budgets")
     allowed = {(ref.material_id, ref.optical_set_id) for ref in request.candidate_materials}
     allowed.update((row["material_id"], row["optical_set_id"])
-        for seed in request.seed_designs for row in seed["front_layers"])
-    if any((row["material_id"], row["optical_set_id"]) not in allowed for row in design["front_layers"]):
+        for seed in request.seed_designs for row in selected_rows(request, seed))
+    if any((row["material_id"], row["optical_set_id"]) not in allowed for row in selected_rows(request, design)):
         raise ValueError("cancel candidate introduces material outside the frozen search inputs")
     materials = {row["id"]: row for row in snapshot["materials"]}
     # The complete frozen request was already source-checked before execution.
@@ -511,12 +539,7 @@ def _validate_completed_training_candidate(value: Mapping[str, Any], *, time_lim
     elif (validation is not None or quality["audit_max_normalized_error"] is not None
             or quality["targets_met"] is not None or quality["continuous_certificate"] is not False):
         raise ValueError("unaudited cancel candidate must not advertise audit evidence")
-    layers = value["review"]["layers"]
-    for layer, reviewed in zip(design["front_layers"], layers, strict=True):
-        if (reviewed["id"] != layer["id"] or reviewed["material_id"] != layer["material_id"]
-                or reviewed["optical_set_id"] != layer["optical_set_id"]
-                or not equal(reviewed["thickness_nm"], layer["thickness"]["value"])):
-            raise ValueError("cancel candidate review layer differs from the frozen candidate")
+    _validate_layer_review(request, design, value["review"])
 
 
 def _validate_result_physical_binding(request, result: Mapping[str, Any]) -> None:
@@ -535,16 +558,14 @@ def _validate_result_physical_binding(request, result: Mapping[str, Any]) -> Non
             raise ValueError("synthesis result has scores without a candidate")
         return
     candidate = validate_design(candidate)
-    physical_keys = ("substrate", "incident_medium", "exit_medium", "first_surface",
-        "layer_order", "reference_wavelength_nm", "use_k", "assume_lossless")
+    validate_candidate_environment(request, candidate)
     allowed = {(ref.material_id, ref.optical_set_id) for ref in request.candidate_materials}
     allowed.update((row["material_id"], row["optical_set_id"])
-        for seed in request.seed_designs for row in seed["front_layers"])
-    if (any(candidate[key] != request.environment[key] for key in physical_keys)
-            or candidate["back_layers"] or not _feasible(request, candidate)
+        for seed in request.seed_designs for row in selected_rows(request, seed))
+    if (not _feasible(request, candidate)
             or any(row["thickness"]["unit"] != "nm"
                 or (row["material_id"], row["optical_set_id"]) not in allowed
-                for row in candidate["front_layers"])):
+                for row in selected_rows(request, candidate))):
         raise ValueError("synthesis candidate violates its frozen physical request")
     def physical_identity(design):
         return {key: item for key, item in validate_design(design).items()
@@ -602,6 +623,8 @@ def is_synthesis_result(value: Any) -> bool:
             "schema_version": SCHEMA_VERSION, "kind": "coat_sim.film_synthesis_request",
             "request_id": value["request_id"], "request": result["frozen_request"], "physical_structures": []})
         _validate_result_physical_binding(acceptance_request, result)
+        if result["candidate_design"] is not None:
+            _validate_layer_review(acceptance_request, result["candidate_design"], review)
         audited = result["candidate_design"] is not None and result["validation_complete"]
         if audited and (not complete_original_score(acceptance_request, result.get("training_score"))
                 or not complete_original_score(acceptance_request, result.get("validation_score"), independent_audit=True)):
@@ -648,7 +671,7 @@ def is_synthesis_result(value: Any) -> bool:
                 and review.get("layers") == [])
     if not (isinstance(candidate, dict) and isinstance(candidate.get("front_layers"), list)
             and isinstance(review.get("layers"), list)
-            and len(review["layers"]) == len(candidate["front_layers"])
+            and len(review["layers"]) == selected_layer_count(acceptance_request, candidate)
             and isinstance(review.get("per_objective"), list)):
         return False
     provenance = result.get("candidate_provenance")

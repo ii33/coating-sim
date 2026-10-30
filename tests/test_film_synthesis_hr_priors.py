@@ -153,8 +153,8 @@ def test_pure_seed_free_single_sided_explicit_boundary_is_required(mutation):
         request = replace(request, candidate_materials=request.candidate_materials[:1])
     else:
         request = replace(request, max_layers=None if mutation == "no_limit" else 3)
-    assert not priors.pure_hr_prior_eligible(request)
-    assert proposals(request) == []
+    assert priors.pure_hr_prior_eligible(request) is (mutation == "double")
+    assert bool(proposals(request)) is (mutation == "double")
 
 
 @pytest.mark.parametrize("constraint", ["minimum_nonzero_thickness_nm", "max_layer_thickness_nm", "max_total_thickness_nm"])

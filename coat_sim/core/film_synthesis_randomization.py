@@ -14,6 +14,7 @@ from typing import Any, Callable, Mapping
 import numpy as np
 
 from .film_synthesis_archive import physical_design_hash
+from .film_synthesis_surfaces import selected_rows, selected_sides
 
 
 ALGORITHM_VERSION = "template-thickness-ar1-v1"
@@ -54,7 +55,7 @@ def randomized_template_start(design: Mapping[str, Any], *, root_seed: int,
         feasible: Callable[[Mapping[str, Any]], bool] = lambda design: True,
         cancel_check: Callable[[], None] = lambda: None,
         seen_hashes: set[str] | None = None,
-        restart_index: int = 0) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+        restart_index: int = 0, selected_surfaces=("front",)) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     """Try at most three draws, retrying only illegal or duplicate geometry.
 
     Positive nm variables follow stationary AR(1) in their stack order. Zero
@@ -63,9 +64,10 @@ def randomized_template_start(design: Mapping[str, Any], *, root_seed: int,
     to physical bounds, objective scoring, merit filtering or entropy occurs.
     """
     cancel_check()
-    rows = design["front_layers"]
+    selection = selected_sides(selected_surfaces)
+    rows = selected_rows(selection, design)
     if optimizable_mask is not None and len(optimizable_mask) != len(rows):
-        raise ValueError("optimizable mask must match front layers")
+        raise ValueError("optimizable mask must match selected layers")
     lower = minimum_nm or 0.
     movable = [index for index, row in enumerate(rows)
         if row["thickness"]["unit"] == "nm"
@@ -78,7 +80,8 @@ def randomized_template_start(design: Mapping[str, Any], *, root_seed: int,
         status="skipped", reason="no_optimizable_positive_thickness_layers")
     if not movable:
         return None, record
-    random = template_random_stream(root_seed, parent_hash, stage=stage, restart_index=restart_index)
+    random_stage = stage if selection == ("front",) else stage + ":surfaces=" + ",".join(selection)
+    random = template_random_stream(root_seed, parent_hash, stage=random_stage, restart_index=restart_index)
     seen = (seen_hashes or set()) | {parent_hash}
     for attempt in range(MAX_DRAW_ATTEMPTS):
         cancel_check()
@@ -92,8 +95,8 @@ def randomized_template_start(design: Mapping[str, Any], *, root_seed: int,
         delta = np.clip(.12 * correlated + .06 * independent, -.35, .35)
         candidate = deepcopy(dict(design))
         for index, shift in zip(movable, delta, strict=True):
-            candidate["front_layers"][index]["thickness"]["value"] *= math.exp(float(shift))
-        thicknesses = [row["thickness"]["value"] for row in candidate["front_layers"]]
+            selected_rows(selection, candidate)[index]["thickness"]["value"] *= math.exp(float(shift))
+        thicknesses = [row["thickness"]["value"] for row in selected_rows(selection, candidate)]
         legal = (all(math.isfinite(value) and value >= 0
                      and (value == 0 or value >= lower)
                      and (maximum_nm is None or value <= maximum_nm) for value in thicknesses)

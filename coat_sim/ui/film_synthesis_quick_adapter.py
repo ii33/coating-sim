@@ -132,20 +132,31 @@ def build_synthesis_request(base: FilmOptimizationRequest, references, options,
                             assume_unknown_k_zero: bool = ASSUME_UNKNOWN_K_ZERO,
                             cpu_workers: int = 1,
                             forward_backend: str = "cpu",
-                            forward_device: Mapping[str, Any] | None = None) -> FilmSynthesisRequest:
+                            forward_device: Mapping[str, Any] | None = None,
+                            selected_surfaces: tuple[str, ...] = ("front",)) -> FilmSynthesisRequest:
+    if (not isinstance(selected_surfaces, tuple) or not selected_surfaces
+            or any(side not in ("front", "back") for side in selected_surfaces)
+            or len(set(selected_surfaces)) != len(selected_surfaces)):
+        raise ValueError("请选择至少一个不重复的合成表面")
+    selected_surfaces = tuple(side for side in ("front", "back") if side in selected_surfaces)
+    if "back" in selected_surfaces and base.design_snapshot.get("substrate", {}).get("sides") != "double":
+        raise ValueError("只有双面基片可以选择合成背面")
     if type(assume_unknown_k_zero) is not bool:
         raise ValueError("Unknown-k assumption must be an explicit boolean")
     original = deepcopy(dict(base.design_snapshot))
     original["assume_lossless"] = assume_unknown_k_zero
     environment = deepcopy(original)
-    environment["front_layers"], environment["back_layers"] = [], []
-    environment["expression"] = {"text": "", "symbols": {}, "in_sync": True}
+    for surface in selected_surfaces:
+        environment[surface + "_layers"] = []
+    # Expression metadata is source-owned; application reconciles it with the
+    # final candidate rather than preemptively detaching it at request build.
     # Preserve the actual physical environment; unsupported incidence/loss is
     # rejected by the core validator, never silently converted by the UI.
     parsed_options = synthesis_options(options)
     if not parsed_options.get("randomize_template_search", False) and parsed_options.get("structure_search_seed") is None:
         parsed_options["structure_search_seed"] = 0
     return _validated(FilmSynthesisRequest(environment, base.objectives, tuple(references),
+        selected_surfaces=selected_surfaces,
         design_revision=base.design_revision,
         acceptable_normalized_error=base.acceptable_normalized_error,
         validation_samples_multiplier=base.validation_samples_multiplier,

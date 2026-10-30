@@ -282,14 +282,17 @@ def test_nested_cleanup_physical_failure_is_counted_once(monkeypatch, error_type
 
 
 @pytest.mark.parametrize('side', ['front_layers', 'back_layers'])
-def test_layered_environment_is_rejected_before_freeze_or_phase_lookup(side, monkeypatch):
+def test_layered_selected_environment_is_rejected_before_freeze_or_phase_lookup(side, monkeypatch):
     service, req = prepared()
     environment = deepcopy(dict(req.environment))
     environment[side] = [deepcopy(req.seed_designs[0]['front_layers'][0])]
-    request = replace(req, environment=environment, seed_designs=(), warm_start_seed_index=None)
+    if side == "back_layers":
+        environment["substrate"]["sides"] = "double"
+    request = replace(req, environment=environment, seed_designs=(), warm_start_seed_index=None,
+                      selected_surfaces=(side.removesuffix("_layers"),))
     def unexpected_phase_lookup(*_args, **_kwargs):
         pytest.fail('invalid environment reached phase lookup')
     monkeypatch.setattr(synthesis, '_phase_step_limits_nm', unexpected_phase_lookup)
     for operation in (synthesis.freeze_film_synthesis_request, synthesis.synthesize_film_design):
-        with pytest.raises(ValueError, match='bare substrate environment'):
+        with pytest.raises(ValueError, match='empty selected surface stacks'):
             operation(service, request)

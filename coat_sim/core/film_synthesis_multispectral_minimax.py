@@ -6,6 +6,8 @@ parent ownership includes budgets, cancellation, archival and independent audit.
 """
 from __future__ import annotations
 
+from .film_synthesis_surfaces import selected_rows
+
 from copy import deepcopy
 from importlib import import_module
 import math
@@ -140,7 +142,7 @@ def refine_multispectral_minimax(request: FilmSynthesisRequest, initial: Value, 
             or not math.isfinite(coordinate_scale_nm) or coordinate_scale_nm <= 0):
         raise ValueError("multispectral minimax coordinate scale must be positive finite nm")
     design = initial["design"]
-    layers = design["front_layers"]
+    layers = selected_rows(request, design)
     if not layers:
         return initial, dict(method="none", reason="empty_topology", physical_candidates=0)
     ids = tuple(row["id"] for row in layers)
@@ -204,7 +206,7 @@ def refine_multispectral_minimax(request: FilmSynthesisRequest, initial: Value, 
             assert cache_data is not None
             return cache_data
         trial = deepcopy(design)
-        for row, thickness in zip(trial["front_layers"], d, strict=True):
+        for row, thickness in zip(selected_rows(request, trial), d, strict=True):
             row["thickness"] = dict(value=float(thickness), unit="nm")
         value = evaluate(trial, jacobian=True)
         if value["design"] != trial:
@@ -223,7 +225,7 @@ def refine_multispectral_minimax(request: FilmSynthesisRequest, initial: Value, 
     minimize = cast(_Minimize, import_module("scipy.optimize").minimize)
 
     def best_point() -> Array:
-        return np.asarray([row["thickness"]["value"] for row in best["design"]["front_layers"]]) / scales
+        return np.asarray([row["thickness"]["value"] for row in selected_rows(request, best["design"])]) / scales
 
     def penalty(x: Array) -> tuple[float, Array]:
         d = x * scales

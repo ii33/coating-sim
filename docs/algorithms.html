@@ -12,6 +12,7 @@
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px solid #c8e0db;border-radius:8px;padding:16px;font-size:.88rem;line-height:1.5}</style>
 </head>
 <body>
+<p class="source">算法更新：2026-10-30；新增<a href="#film-synthesis-selected-surfaces-20261030">14bd 选面联合合成与全几何导数</a>。</p>
 <p class="source">算法更新：2026-10-28；<a href="#film-sensitivity-missing-k-20261028">敏感度缺失 k 规则</a>与普通光谱一致：无来源 k 仅计算时取 0，已有 k 保留真实值并严格检查完整原波段。</p>
 <p class="source">算法更新：2026-10-27；新增<a href="#film-automatic-repair-20261027">14bc 三参数自动薄层修复</a>：单层厚度下限、允许增删合并，以及相对固定原曲线的逐点最大变化；原光学目标独立核验。</p>
 <p class="source">算法更新：2026-10-26；新增<a href="#film-numeric-zero-20261026">14ba 候选发布前的数值零清理与同冠军详情</a>，保留原始求解精度、目标、预算和独立审计。</p>
@@ -34,7 +35,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
   <div class="eyebrow">Optical Coating / Algorithm Atlas</div>
   <h1>光学镀膜<br>算法图解与参考来源</h1>
   <p>从独立基片、蒸发源、修正板、机器与工艺文件，到行星运动、射线通量、膜厚归一化和预计用时。本文依据当前代码写成，可离线阅读；公式描述的是本项目的计算模型。</p>
-<div class="meta"><span class="pill">版本：机器 v5 · 工艺 v7 · 源 v2；材料交换包 v1、安全导入冲突预览与原子回滚)</span><span class="pill">更新：2026-10-26（自动合成局部余量、原目标减薄和结构续接；固定初始光谱受控退化理想优化v2、旧strict版本兼容；真实混合多核、原门限与容差分离、冠军物理压缩与拒绝统计；周期0显式时间/评价/取消统一预算；高反自动结构/全局搜索、材料谱向量复用与同预算验收、显式严格下界与跨类别冻结基准；活动光路材料校验与从零合成审计；优化目标上下限统一与角度范围显式确认；厚度编辑精度、零厚层与优化边界；冻结服务边界与单点归一化；研究证据与单层光谱反演；修正板不设数量上限、完整依赖快照与逐板遮挡；工程文件格式契约说明；优化多角网格与计算量人工顶值移除；TFCalc明文层表导入；外观逐光线精确 TMM 与独立波长 CPU 进程并行；Qt Quick 显式峰谷统计波段、波长通带与场景图曲线预览；多孔厚盖、独立源采样、无固定最大网格与计算隔离；工艺环境、工作气体及零碰撞直达束；材料库、已设计源工艺选择、盖孔射线与快扫描空间分布；桌面仿真共享队列、逐批进度、无固定步数上限、100%快算默认与Å/s界面；五项上下文预算、硬限与安全压缩、后台流合并与固定设计绘图；平滑轮廓、全膜系目标选优与评分进度；凭据反馈与有界模型候选兼容探测；待决选项、模式放行、诊断未读摘要、结果队列身份修复、紧凑产物；计算量估算、后台串行队列、源板分组优化与跨段选区；完整设备回退、成功设备记忆、临时仿真资产包、可选 PDF、历史闭合与滚动高度缓存；批量膜系、物理层表导入、固定图表、工具原文归档与任务成本、视口文本增量渲染；批量工具契约、演示工作流、逐回合展示与复制、撤回确认、本地助手调试、实际生效参数快照、LPAC启动修复；容量自适应上下文、轮次关闭、插话与排队、剪贴板图片、系统语言与语气、开发访问；逐层修正板、轮廓优化、工艺快算、估时、上下文用量、请求续约、原生档位缓存、滚动跟随、二维 CAD 与加工图、模型 Token 上限、缓存命中统计、富文本与开发门禁；修正板视口设备路由、反向滚动与可选输入诊断）</span><span class="pill">单位：mm · s · rpm · nm · px；助手 Token / 字符 / 附件字节</span><span class="pill">离线单文件 HTML</span></div>
+<div class="meta"><span class="pill">版本：机器 v5 · 工艺 v7 · 源 v2；材料交换包 v1、安全导入冲突预览与原子回滚)</span><span class="pill">更新：2026-10-30（选面联合合成与全几何解析导数；自动合成局部余量、原目标减薄和结构续接；固定初始光谱受控退化理想优化v2、旧strict版本兼容；真实混合多核、原门限与容差分离、冠军物理压缩与拒绝统计；周期0显式时间/评价/取消统一预算；高反自动结构/全局搜索、材料谱向量复用与同预算验收、显式严格下界与跨类别冻结基准；活动光路材料校验与从零合成审计；优化目标上下限统一与角度范围显式确认；厚度编辑精度、零厚层与优化边界；冻结服务边界与单点归一化；研究证据与单层光谱反演；修正板不设数量上限、完整依赖快照与逐板遮挡；工程文件格式契约说明；优化多角网格与计算量人工顶值移除；TFCalc明文层表导入；外观逐光线精确 TMM 与独立波长 CPU 进程并行；Qt Quick 显式峰谷统计波段、波长通带与场景图曲线预览；多孔厚盖、独立源采样、无固定最大网格与计算隔离；工艺环境、工作气体及零碰撞直达束；材料库、已设计源工艺选择、盖孔射线与快扫描空间分布；桌面仿真共享队列、逐批进度、无固定步数上限、100%快算默认与Å/s界面；五项上下文预算、硬限与安全压缩、后台流合并与固定设计绘图；平滑轮廓、全膜系目标选优与评分进度；凭据反馈与有界模型候选兼容探测；待决选项、模式放行、诊断未读摘要、结果队列身份修复、紧凑产物；计算量估算、后台串行队列、源板分组优化与跨段选区；完整设备回退、成功设备记忆、临时仿真资产包、可选 PDF、历史闭合与滚动高度缓存；批量膜系、物理层表导入、固定图表、工具原文归档与任务成本、视口文本增量渲染；批量工具契约、演示工作流、逐回合展示与复制、撤回确认、本地助手调试、实际生效参数快照、LPAC启动修复；容量自适应上下文、轮次关闭、插话与排队、剪贴板图片、系统语言与语气、开发访问；逐层修正板、轮廓优化、工艺快算、估时、上下文用量、请求续约、原生档位缓存、滚动跟随、二维 CAD 与加工图、模型 Token 上限、缓存命中统计、富文本与开发门禁；修正板视口设备路由、反向滚动与可选输入诊断）</span><span class="pill">单位：mm · s · rpm · nm · px；助手 Token / 字符 / 附件字节</span><span class="pill">离线单文件 HTML</span></div>
 <p class="source">补充更新：2026-10-05——通过服务接口执行的非 CPU 沉积仿真使用一次任务一个短生命周期计算进程；Windows 子进程关闭管道时把 WinError 109 视作 EOF，避免计算完成后误记失败。</p>
 <p class="source">cub 接口补齐更新：2026-10-05。三路径提交、材料业务工具、机器工程检查和 AI 资产导出契约；未覆盖在线模型及实机校准。</p>
 <p class="source">GUI接线更新：2026-10-20。14t从零合成与14u物理结构已进入现有优化页/参数侧栏；入口与状态边界见<a href="film-synthesis-gui-guide.md">使用指南</a>、<a href="film-synthesis-gui-stage-report-20261020.md">同源GUI验收</a>。原GUI接线无数值公式变更；14v显式未知k近似当前默认启用且可关闭，不会将已知吸收或非法数据静默回退；详见<a href="#film-synthesis-unknown-k-20261020">策略说明</a>。</p>
@@ -264,6 +265,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#film-ideal-controlled-degradation-20261023">14aq 固定初始光谱的受控退化理想优化</a>
 <a href="#film-ideal-scalar-probes-20261023">14aq-1 理想敏感度标量探针</a>
 <a href="#candidate-display-score">14ar 可开关实时光谱与独立候选展示评分</a>
+<a href="#film-synthesis-selected-surfaces-20261030">14bd 选面联合合成与全几何解析导数（2026-10-30）</a>
 </nav>
 <main>
 
@@ -276,7 +278,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <g fill="#132638" stroke="#38bdf8" stroke-width="2"><rect x="10" y="20" width="230" height="105" rx="10"/><rect x="280" y="20" width="230" height="105" rx="10"/><rect x="550" y="20" width="230" height="105" rx="10"/><rect x="820" y="20" width="230" height="105" rx="10"/><rect x="130" y="190" width="800" height="75" rx="10"/></g>
 <g fill="#e2e8f0" text-anchor="middle" font-size="18"><text x="125" y="52">本轮结构筛选</text><text x="125" y="80">局部 / 成长 / 扫描</text><text x="125" y="108">不是任意单次局部退出</text><text x="395" y="52">固定拓扑完整精修</text><text x="395" y="80">数值停止 + 同终态审计</text><text x="395" y="108">未达标仍可完成本轮</text><text x="665" y="52">保护最佳指标减薄</text><text x="665" y="80">只接受不恶化候选</text><text x="665" y="108">无改善即保留局部结果</text><text x="935" y="52">本轮完成 / 交付</text><text x="935" y="80">单列是否达标及差距</text><text x="935" y="108">用户点击才继续搜索</text><text x="530" y="220">结构族游标 · 待评候选 · 实际候选池 · 随机推进 · 审计反馈</text><text x="530" y="249">独立保存；查看 / 保存不清空；兼容编辑重评 seed 后继续</text></g>
 <g stroke="#38bdf8" stroke-width="2" fill="none" marker-end="url(#margin-arrow)"><path d="M240,72 H268"/><path d="M510,72 H538"/><path d="M780,72 H808"/><path d="M125,125 V224 H142"/><path d="M930,224 H988 V137"/></g></svg>
-<figcaption>图14bb-1：数值停止、正式达标、结构进度是不同状态。数值零层 canonical 清理先结束原求解，再对新层 ID 单独求解/核验；不会把另一拓扑或另一候选的收敛声明转移过来。</figcaption></figure>
+<figcaption>图14bd-1：数值停止、正式达标、结构进度是不同状态。数值零层 canonical 清理先结束原求解，再对新层 ID 单独求解/核验；不会把另一拓扑或另一候选的收敛声明转移过来。</figcaption></figure>
 <p><strong>量和归一化：</strong>膜厚 d 为 nm，局部坐标沿用 x=d/100；R/T 为 0–1 fraction。启用目标、角度和 reduction 各自生成有符号条件 q：下界 (L−y)/s，上界 (y−U)/s，s 为用户已有 normalization_scale。跨波段/角度/目标取同一归一化口径的最坏违规；权重不代替最差条件，不添加 mean。只有用户启用 mean 时才沿用完整波段梯形积分。value/有效零宽目标继续使用原约束，不伪造区间余量。</p>
 <pre>未达标可行性精修：min t；q_original(d) ≤ t；t ≥ 0；原制造约束。
 达标后余量精修：min t；q_margin(d) ≤ t；全部 q_original(d) ≤ 0。
@@ -4050,6 +4052,29 @@ L_pair = (π/4) / max_original_target,audit,source_knots,angles |β|
 <p>所选原目标/角度的统计取完整原网格 coverage，均值 μ=Σqᵢyᵢ，q 沿用14at的波长梯形质量；峰值为原样本最大值及其波长。统计绑定真实 <code>best</code> 的物理哈希，不取最后试探、Top10 展示排名或抽样缩略曲线。关闭 mean 时仍只是统计，不生成均值残差。详情同时显示层数、物理总厚、全目标最大归一化违规和原 RMS。</p>
 <p>图形自动上限取实际显示曲线、完整峰值及目标线的最大值，留8%空白后选1/2/2.5/5/10十进制刻度；首次及上升立即适配，连续两帧低于旧上限45%再缩小。自动下限为0，无数据保留范围；手动百分比范围不被曲线覆盖。显示用峰值下限10⁻⁶ fraction仅防零范围；64 ULP 内的1归到100%用于避免刻度抖动，不修改物理数据、目标或通过判据。</p>
 <p class="source"><strong>实现及限制：</strong><code>film_synthesis_numeric_zero.py</code>、<code>film_auto_synthesis.py</code>、<code>film_candidate_display.py</code>、<code>film_candidate_display_controller.py</code>、<code>FilmOptimizationWindow.qml</code>。未找到外部依据，仅为本项目实现；有限采样光谱等价不保证连续域或所有病态高 Q 结构误差。UI 状态归属、自动应用和冲突规则见<a href="film-optimization-terminal-display-20261026.md">终态与展示契约</a>。</p>
+</section>
+
+<section id="film-synthesis-selected-surfaces-20261030">
+<h2>14bd 选面联合合成与全几何解析导数（2026-10-30）</h2>
+<p><strong>用途/输入输出：</strong>FilmSynthesisRequest.selected_surfaces 接受非空、无重复 front/back 序列，统一为 front、back 物理顺序；默认 front，back 仅双面基片。选中面空层表是可变起点，未选面完整行（含 ID、备注）固定保留。输出一个包含真实两面、原基片与外部端口的候选及整片原目标训练/独审，不拆成两个单面目标。first_surface 仅为照明方向。所有所选优化变量以物理 nm 表示，每面层序均基片向外；波长真空 nm，角度 °，R/T 为 fraction，导数为 fraction/nm。</p>
+<figure><svg viewBox="0 0 840 150" role="img" aria-label="两面实际膜系与固定环境">
+<rect x="25" y="45" width="135" height="65" fill="#dde4ed"/><text x="35" y="82">外部 front 端口</text>
+<rect x="175" y="35" width="120" height="85" fill="#b6ded3"/><text x="185" y="80">front 所选变量</text>
+<rect x="310" y="15" width="210" height="125" fill="#efd8b7"/><text x="330" y="78">真实有限/半无限基片</text>
+<rect x="535" y="35" width="115" height="85" fill="#b6ded3"/><text x="545" y="80">back 或固定面</text>
+<rect x="665" y="45" width="150" height="65" fill="#dde4ed"/><text x="675" y="82">外部 back 端口</text>
+</svg><figcaption>图14bd-1：所选变量视图不拼接为虚拟单面栈；固定的另一面始终留在生产 TMM 中。两面可同时或分别选中，照明可从任一真实外部端口进入。</figcaption></figure>
+<h3>前向真值与导数</h3>
+<p>双面 R/T 的唯一返回真值取生产 FilmDesignService._simulate_chunk，沿用 automatic_substrate_handling：单面半无限；有限双面基片厚度不超过 10λmax 为相干，严格超过为非相干平均条纹（原工程近似，不是实际相干性的实验判定）。不改变 n/k、外部透明端口、来源域或既有归约。</p>
+<div class="formula">相干：沿真实入射路径 [n入, front逆序, n基片, back正序, n出] 递推；反向照明先交换真实面和真实外部端口。
+非相干：S = exp(−4π Im(q基片)d基片/λ)，D = 1 − R反 R背 S²；
+R = R前 + T前 T反 R背 S² / D，T = T前 T背 S / D。
+∂(N/D) = (∂N)/D + N·∂(R反 R背 S²)/D²；基片与材料固定，∂S/∂d膜 = 0。</div>
+<p>前、反、背膜块各自复用既有相干振幅解析递推及实际通量定义，共用预先验证的实横向波矢 β；基片吸收时内部反向膜块可有吸收入射介质，不把它当成外部端口。每偏振先做乘积/商链式求导，最后按原模型平均 s/p。精确内部 q=0 仍明确失败，不静默改变模型。默认单面前向解析路径不变。验证以独立生产前向的中心差分为测试 oracle，不在生产用差分评分或改变目标；覆盖两照明、s/p/非偏振、吸收基片、两种厚度模型与固定对面栈。</p>
+<h3>阶段路由与身份</h3>
+<p>层数/总厚、候选排序、seed、局部精修、全层 SLSQP、减量、DE、删换、批针、有限出生、检查点和 review 使用归一所选行；针以 side 与本面宿主/界面定位，清理只在本面相邻同引用层内合并。材料冻结、前向、审计包含全部真实物理环境。结构模板只提供未评分先验，背面单选模板以背面外部端口定尺度；双面可复制一个模板作起点，但后续每面拓扑/厚度独立，非对称结构不受禁止，总一层预算也允许只一面非空。没有拓扑完备、优化优势或连续域证书。</p>
+<p>schema 6 的 selected_surfaces 为向后兼容可选字段，旧请求默认 front。选择和固定面物理栈进入缓存/续算身份；反序输入归一，旧默认 front 的搜索 fingerprint 保留。固定面行完整一致还在 seed、续算、取消最好候选和应用边界校验。默认仍每层3针内点、batch 6、位置细化1轮、π/4相位限步；新增选面不改共享预算、取消时序与名义通过判据。</p>
+<p class="source"><strong>实现：</strong>film_synthesis_surfaces.py、film_synthesis_physics.py、film_auto_synthesis.py、film_synthesis_batch_needle.py、film_synthesis_audit.py、film_synthesis_continuation.py 及核心 IO/jobs/数值算子。物理来源：<a href="https://arxiv.org/abs/1603.02720">Byrnes, Multilayer optical calculations</a>；既有相干/非相干膜块组合见 film_optics.py。选择归一、模板共享上限、调度与身份是本项目约定，未找到外部依据，仅为本项目实现。有限差分回归不构成实验或连续域证明。</p>
 </section>
 </body>
 </html>

@@ -117,7 +117,8 @@ def test_example_page_configurations_restore_without_guessing(example):
         assert optimization.loadOptimizationConfiguration(config)
         restored = optimization.exportOptimizationConfiguration()
         # The current example omits optional synthesis and reduction settings.
-        # Restoring must retain saved criteria and add explicit editor defaults.
+        # Restoring must retain saved criteria and add explicit editor defaults,
+        # including the backward-compatible physical-front synthesis selection.
         assert {key: restored[key] for key in config} == config
         assert set(restored) == set(config) | {"synthesis", "reduction_mode", "reduction_limits"}
         assert restored["reduction_mode"] == "combined"
@@ -131,6 +132,7 @@ def test_example_page_configurations_restore_without_guessing(example):
         assert optimization.exportOptimizationConfiguration() == restored
         synthesis = restored["synthesis"]
         assert synthesis == {
+            "selected_surfaces": ["front"],
             "options": {**{key: None for key in (
                 "max_cycles", "max_evaluations", "max_layers", "max_seconds",
                 "minimum_nonzero_thickness_nm", "max_layer_thickness_nm",

@@ -5,6 +5,8 @@ physical work accounting, budgets, cancellation and independent final audit.
 """
 from __future__ import annotations
 
+from .film_synthesis_surfaces import selected_rows
+
 from copy import deepcopy
 from importlib import import_module
 import math
@@ -109,7 +111,7 @@ def refine_hr_minimax(request: FilmSynthesisRequest, initial: Value, *,
             or not math.isfinite(coordinate_scale_nm) or coordinate_scale_nm <= 0):
         raise ValueError("HR minimax coordinate scale must be positive finite nm")
     design = initial["design"]
-    layers = design["front_layers"]
+    layers = selected_rows(request, design)
     if not layers:
         return initial, dict(method="none", reason="empty_topology", physical_candidates=0)
     ids = tuple(row["id"] for row in layers)
@@ -177,7 +179,7 @@ def refine_hr_minimax(request: FilmSynthesisRequest, initial: Value, *,
             assert cache_data is not None
             return cache_data
         trial = deepcopy(design)
-        for row, thickness in zip(trial["front_layers"], d, strict=True):
+        for row, thickness in zip(selected_rows(request, trial), d, strict=True):
             row["thickness"] = dict(value=float(thickness), unit="nm")
         value = evaluate(trial, jacobian=True)
         if value["design"] != trial:
@@ -237,9 +239,9 @@ def refine_hr_minimax(request: FilmSynthesisRequest, initial: Value, *,
         if endpoint.shape != ds.shape or not np.all(np.isfinite(endpoint)):
             raise ValueError("HR minimax solver returned invalid endpoint")
         point = (endpoint.copy() if feasible(endpoint * scales) else
-                 np.asarray([row["thickness"]["value"] for row in best["design"]["front_layers"]]) / scales)
+                 np.asarray([row["thickness"]["value"] for row in selected_rows(request, best["design"])]) / scales)
 
-    point = np.asarray([row["thickness"]["value"] for row in best["design"]["front_layers"]]) / scales
+    point = np.asarray([row["thickness"]["value"] for row in selected_rows(request, best["design"])]) / scales
     data(point)
     assert cache_data is not None
     start = np.concatenate((point, [float(np.min(cache_data[0]))]))

@@ -33,6 +33,7 @@ from .film_synthesis_absorption import (annotate_synthesis_design, assumes_unkno
 from .film_synthesis_randomization import (validate_template_seed, randomized_template_start,
     template_randomization_metadata)
 from .film_synthesis_defaults import NEEDLE_PRE_LOCAL
+from .film_synthesis_surfaces import (selected_sides, selected_rows, set_selected_rows, validate_candidate_environment, surface_interfaces)
 
 
 if TYPE_CHECKING:
@@ -78,7 +79,7 @@ class _SearchDiagnostics(TypedDict):
 
 @dataclass(frozen=True)
 class FilmSynthesisRequest:
-    """environment is a valid design with no front/back layers; it is copied.
+    """environment has empty selected stacks and unchanged fixed other stacks.
 
     None means no user limit. position_samples and growth fractions control
     numerical exploration, not manufacturing rules or evaluation budgets.
@@ -141,6 +142,7 @@ class FilmSynthesisRequest:
     # Durable hybrid structural frontier, distinct from a candidate warm start.
     search_checkpoint: Mapping[str, Any] | None = None
     enable_local_margin_refinement: bool = True
+    selected_surfaces: tuple[str, ...] = ("front",)
 
 
 @dataclass(frozen=True)
@@ -292,7 +294,10 @@ def _resolve_synthesis_resource_guard(request: FilmSynthesisRequest) -> dict[str
 def _synthesis_working_set_estimate_bytes(request: FilmSynthesisRequest, layer_count: int,
                                         *, jacobian=False, epigraph=False) -> int:
     """Allocation-free estimate shared by actual admission and policy tests."""
-    count = max(1, layer_count)
+    fixed_count = sum(len(request.environment[side + "_layers"])
+                      for side in ("front", "back") if side not in selected_sides(request)
+                      and (side == "front" or request.environment["substrate"]["sides"] == "double"))
+    count = max(1, layer_count + fixed_count)
     points = sum(o.wavelength_samples * len(o.angles_deg) for o in request.objectives)
     estimate = 128 * 1024**2 + points * count * (64 if jacobian else 32)
     if epigraph:
@@ -330,10 +335,13 @@ def _validated(request):
         from .film_synthesis_forward import validate_forward_device
         forward_device = validate_forward_device(request.forward_device, request.forward_backend)
     design = validate_design(deepcopy(request.environment))
-    if design["front_layers"] or design["back_layers"]:
-        raise ValueError("automatic synthesis requires a bare substrate environment")
-    if design["substrate"]["sides"] != "single" or design["first_surface"] != "front":
-        raise ValueError("automatic synthesis supports single-sided front incidence only")
+    surfaces = selected_sides(request)
+    if any(design[side + "_layers"] for side in surfaces):
+        raise ValueError("automatic synthesis requires empty selected surface stacks in its environment")
+    if "back" in surfaces and design["substrate"]["sides"] != "double":
+        raise ValueError("back synthesis requires a double-sided substrate")
+    if design["substrate"]["sides"] == "single" and design["first_surface"] == "back":
+        raise ValueError("back incidence requires a double-sided substrate")
     if not design["use_k"]:
         raise ValueError("automatic synthesis requires use_k=True to retain absorption")
     if type(request.ar_structure_mode) is not str or request.ar_structure_mode not in {"clustered", "v23_matching"}:
@@ -399,19 +407,16 @@ def _validated(request):
             or not 0 <= request.warm_start_seed_index < len(request.seed_designs)):
         raise ValueError("warm_start_seed_index must reference an existing seed or be null")
     seeds = []
-    physical_keys = ("substrate", "incident_medium", "exit_medium", "first_surface",
-                     "layer_order", "reference_wavelength_nm", "use_k", "assume_lossless")
     for raw in request.seed_designs:
         seed = validate_design(deepcopy(raw))
-        if seed["back_layers"] or any(seed[key] != design[key] for key in physical_keys):
-            raise ValueError("seed designs must share the bare environment and have front layers only")
-        for row in seed["front_layers"]:
+        validate_candidate_environment(replace(request, environment=design), seed)
+        for row in selected_rows(request, seed):
             if not row["material_id"] or not row["optical_set_id"] or row["thickness"]["value"] <= 0:
                 raise ValueError("seed layers require explicit materials, optical sets and positive thickness")
-        if len(seed["front_layers"]) > (request.max_layers or MAX_LAYERS):
+        if len(selected_rows(request, seed)) > (request.max_layers or MAX_LAYERS):
             raise ValueError("seed layer count exceeds the explicit request constraint")
         seeds.append(seed)
-    return replace(request, environment=design, objectives=objectives, seed_designs=tuple(seeds), forward_device=forward_device,
+    return replace(request, environment=design, selected_surfaces=surfaces, objectives=objectives, seed_designs=tuple(seeds), forward_device=forward_device,
                    resource_guard_resolution=resource_guard_resolution,
                    candidate_materials=tuple(request.candidate_materials),
                    growth_quarter_wave_fractions=tuple(float(v) for v in request.growth_quarter_wave_fractions),
@@ -466,7 +471,7 @@ def freeze_film_synthesis_request(service: Any, request: FilmSynthesisRequest,
     references = list(request.candidate_materials)
     pairs = {(r.material_id, r.optical_set_id) for r in references}
     for seed in request.seed_designs:
-        for row in seed["front_layers"]:
+        for row in selected_rows(request, seed):
             pair = (row["material_id"], row["optical_set_id"])
             if pair not in pairs:
                 references.append(FilmNeedleMaterialReference(*pair))
@@ -475,9 +480,8 @@ def freeze_film_synthesis_request(service: Any, request: FilmSynthesisRequest,
     result = replace(request, frozen_material_snapshot=frozen)
     # Strict source-domain checks stay active in both policies. The existing
     # environment bool opts into zero only when no k source exists at all.
-    rows = [result.environment["substrate"]]
-    if result.environment["incident_medium"]["kind"] != "constant":
-        rows.append(result.environment["incident_medium"])
+    from .film_design_service import active_material_references
+    rows = list(active_material_references(result.environment))
     rows.extend({"material_id": r.material_id, "optical_set_id": r.optical_set_id}
                 for r in references)
     materials = {r["id"]: r for r in frozen["materials"]}
@@ -485,7 +489,8 @@ def freeze_film_synthesis_request(service: Any, request: FilmSynthesisRequest,
         o.wavelength_min_nm, o.wavelength_max_nm,
         1 if o.wavelength_samples == 1 else (o.wavelength_samples - 1) * request.validation_samples_multiplier + 1)}
     waves.add(_reference_wave(request))
-    if any(r["thickness"]["unit"] == "qw" for seed in request.seed_designs for r in seed["front_layers"]):
+    if (any(r.get("thickness", {}).get("unit") == "qw" for r in rows)
+            or any(r["thickness"]["unit"] == "qw" for seed in request.seed_designs for r in selected_rows(request, seed))):
         waves.add(request.environment["reference_wavelength_nm"])
     for row in rows:
         optical = next(o for o in materials[row["material_id"]]["optical_sets"]
@@ -507,7 +512,7 @@ def freeze_film_synthesis_request(service: Any, request: FilmSynthesisRequest,
     seeds = []
     for original in result.seed_designs:
         seed = deepcopy(original)
-        for row in seed["front_layers"]:
+        for row in selected_rows(request, seed):
             index = 1.0
             if row["thickness"]["unit"] == "qw":
                 optical = next(o for o in materials[row["material_id"]]["optical_sets"]
@@ -538,20 +543,24 @@ def freeze_film_synthesis_request(service: Any, request: FilmSynthesisRequest,
 
 
 def _feasible(request, design):
-    ds = [r["thickness"]["value"] for r in design["front_layers"]]
+    try:
+        validate_candidate_environment(request, design)
+    except ValueError:
+        return False
+    ds = [r["thickness"]["value"] for r in selected_rows(request, design)]
     return (len(ds) <= (request.max_layers if request.max_layers is not None else MAX_LAYERS)
             and all(math.isfinite(d) and d > 0 and d >= (request.minimum_nonzero_thickness_nm or 0)
                     and (request.max_layer_thickness_nm is None or d <= request.max_layer_thickness_nm) for d in ds)
             and (request.max_total_thickness_nm is None or sum(ds) <= request.max_total_thickness_nm))
 
 
-def _synthesis_candidate_rank(candidate, acceptable):
+def _synthesis_candidate_rank(candidate, acceptable, request=("front",)):
     """Project convention: worst violation, fixed-grid RMS, then manufacture.
 
     Once every audited/training condition passes, lower layer count and total
     physical thickness take priority. This does not change legacy solvers.
     """
-    rows = candidate["design"]["front_layers"]
+    rows = selected_rows(request, candidate["design"])
     score = candidate["score"]
     cost = (len(rows), sum(r["thickness"]["value"] for r in rows))
     if score["max_error"] <= acceptable:
@@ -568,10 +577,10 @@ def _phase_step_limits_nm(request, *, cancel_event=None):
     materials = {r["id"]: r for r in request.frozen_material_snapshot["materials"]}
     references = {(r.material_id, r.optical_set_id) for r in request.candidate_materials}
     references.update((r["material_id"], r["optical_set_id"])
-                      for seed in request.seed_designs for r in seed["front_layers"])
+                      for seed in request.seed_designs for r in selected_rows(request, seed))
     def optical(pair):
         return next(o for o in materials[pair[0]]["optical_sets"] if o["id"] == pair[1])
-    incident = request.environment["incident_medium"]
+    incident = request.environment["exit_medium" if request.environment["first_surface"] == "back" else "incident_medium"]
     incident_sample = (None if incident["kind"] == "constant" else
                        prepare_optical_set(optical((incident["material_id"], incident["optical_set_id"])),
                                            k_sampling_policy="source"))
@@ -744,7 +753,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         "layer_distribution": {}, "local_refinement": []}
     from .film_synthesis_archive import SynthesisDesignArchive
     design_archive = SynthesisDesignArchive(len(request.objectives),
-        capacity=request.archive_capacity, rank=lambda value: rank(value))
+        capacity=request.archive_capacity, selected_surfaces=request.selected_surfaces, rank=lambda value: rank(value))
     archive_context: dict[str, Any] = {}
     hybrid_streams: list[Any] = []
     audited_signatures = set()
@@ -887,7 +896,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         now = __import__("time").perf_counter()
         stage_times[last_stage] = stage_times.get(last_stage, 0.0) + now - last_stage_time
         last_stage_time, last_stage = now, stage
-        layers = len(design["front_layers"]) if design is not None else 0
+        layers = len(selected_rows(request, design)) if design is not None else 0
         error = score["max_error"] if score is not None else None
         if design is not None:
             from .film_synthesis_archive import physical_design_hash
@@ -941,7 +950,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             # frozen shared numerical resource guard before any extra draw/F/J.
             limit = _resolve_synthesis_resource_guard(request)["effective_bytes"]
             estimate = _synthesis_working_set_estimate_bytes(request,
-                len(proposal.design["front_layers"]), jacobian=jacobian)
+                len(selected_rows(request, proposal.design)), jacobian=jacobian)
             if limit is not None and estimate > limit:
                 record.update(reason="resource_guard_base_retained", estimated_bytes=estimate,
                               effective_max_working_set_bytes=limit)
@@ -953,7 +962,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             minimum_nm=request.minimum_nonzero_thickness_nm,
             maximum_nm=request.max_layer_thickness_nm,
             total_maximum_nm=request.max_total_thickness_nm, feasible=feasible,
-            cancel_check=check, seen_hashes=randomized_template_hashes)
+            cancel_check=check, seen_hashes=randomized_template_hashes, selected_surfaces=request.selected_surfaces)
         record.update(outcome)
         emit("template_randomization", json.dumps(record, sort_keys=True), proposal.design)
         if randomized is None:
@@ -1010,7 +1019,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             validation_evaluations += 1
         failures_before = failures
         try:
-            ids = tuple(r["id"] for r in design["front_layers"]) if jacobian else ()
+            ids = tuple(r["id"] for r in selected_rows(request, design)) if jacobian else ()
             value: Mapping[str, Any]
             if holdout:
                 from .film_synthesis_audit import audit_frozen_synthesis_candidate
@@ -1073,7 +1082,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             if _commit and not holdout and not zero_ids:
                 from .film_synthesis_numeric_zero import numeric_zero_cleanup
                 cleanup = numeric_zero_cleanup(value["design"], request.frozen_material_snapshot,
-                    phase_limits, max_layer_thickness_nm=request.max_layer_thickness_nm)
+                    phase_limits, max_layer_thickness_nm=request.max_layer_thickness_nm, selected_surfaces=request.selected_surfaces)
                 if cleanup is not None:
                     cleaned, threshold = cleanup
                     from .film_synthesis_archive import physical_design_hash
@@ -1082,8 +1091,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         removed_numeric_zero_ids=list(cleaned.removed_near_zero_ids),
                         removed_exact_zero_ids=list(cleaned.removed_exact_zero_ids),
                         merged_ids=dict(cleaned.merged_ids), independent_audit_performed=False,
-                        source_layer_count=len(value["design"]["front_layers"]),
-                        cleaned_layer_count=len(cleaned.design["front_layers"]),
+                        source_layer_count=len(selected_rows(request, value["design"])),
+                        cleaned_layer_count=len(selected_rows(request, cleaned.design)),
                         source_physical_hash=physical_design_hash(value["design"]),
                         source_rank=list(rank(value)), source_max_error=value["score"]["max_error"],
                         source_weighted_rms_error=value["score"]["weighted_rms_error"])
@@ -1133,7 +1142,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             if _commit and publishable and not holdout and not zero_ids and feasible(committed_value["design"]):
                 fully_scored_evaluations += 1
                 distribution = search_diagnostics["layer_distribution"]
-                layer_key = str(len(committed_value["design"]["front_layers"]))
+                layer_key = str(len(selected_rows(request, committed_value["design"])))
                 distribution[layer_key] = distribution.get(layer_key, 0) + 1
                 if (completed_training_best is None or
                         rank(committed_value) < rank(completed_training_best)):
@@ -1150,7 +1159,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             raise
 
     def rank(candidate):
-        legacy = _synthesis_candidate_rank(candidate, 0.0)
+        legacy = _synthesis_candidate_rank(candidate, 0.0, request)
         strict_active = any(c.strict_lower or c.strict_upper
                             for o in request.objectives for _, c in active_constraints(o))
         passed = nominal_targets_pass(request, candidate["score"])
@@ -1158,7 +1167,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             if not strict_active:
                 return (int(not passed), *legacy)
             score = candidate["score"]
-            rows = candidate["design"]["front_layers"]
+            rows = selected_rows(request, candidate["design"])
             cost = (len(rows), sum(row["thickness"]["value"] for row in rows))
             if passed:
                 return (0, *cost, score["max_error"], score["weighted_rms_error"])
@@ -1216,8 +1225,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         if (first_feasible_work is None and nominal_targets_pass(request, value['score'])
                 and nominal_targets_pass(request, audited['score'], independent_audit=True)):
             first_feasible_work = dict(elapsed_seconds=monotonic() - started, work=phase_work(),
-                physical_hash=physical_design_hash(value['design']), layers=len(value['design']['front_layers']),
-                total_thickness_nm=sum(r['thickness']['value'] for r in value['design']['front_layers']))
+                physical_hash=physical_design_hash(value['design']), layers=len(selected_rows(request, value['design'])),
+                total_thickness_nm=sum(r['thickness']['value'] for r in selected_rows(request, value['design'])))
         if (resumed and physical_design_hash(value['design']) not in resume_blocked
                 and nominal_targets_pass(request, value['score'])
                 and nominal_targets_pass(request, audited['score'], independent_audit=True)):
@@ -1255,7 +1264,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 added=added, points=[asdict(point) for point in snapshot.points]),
                 sort_keys=True), value["design"], audited["score"])
         if (allow_feedback_repair and feedback_registry.snapshot().points
-                and value["design"]["front_layers"]
+                and selected_rows(request, value["design"])
                 and not targets_verified()):
             check_training_admission()
             feedback_work["repair_stages"] += 1
@@ -1306,7 +1315,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
 
     def clean(design):
         result = deepcopy(design)
-        result["front_layers"] = [r for r in result["front_layers"] if r["thickness"]["value"] > 0]
+        set_selected_rows(request, result, [r for r in selected_rows(request, result) if r["thickness"]["value"] > 0])
         return result
 
     def project(ds):
@@ -1320,14 +1329,14 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
 
     def polish(value, protected_id=None, *, max_steps=None):
         """Projected analytic gradient with backtracking to numerical stationarity."""
-        if forward is not None and value["design"]["front_layers"] and value.get("gradient_by_layer_id") is None:
+        if forward is not None and selected_rows(request, value["design"]) and value.get("gradient_by_layer_id") is None:
             # The same already scored candidate gets analytic CPU derivatives;
             # it is not a new logical candidate or a finite-difference step.
             check_training_admission()
             task = EvaluationTask(value["design"], True)
             forward.refresh_attempts += 1
             value = execution.serial(lambda: evaluate_frozen_structure_candidate(_proxy(request), task.design,
-                variable_ids=tuple(r["id"] for r in task.design["front_layers"]),
+                variable_ids=tuple(r["id"] for r in selected_rows(request, task.design)),
                 with_jacobian=True, cancel_event=cancel_event), task)
             forward.record_refresh(value)
             value["score"]["key"] = rank(value)
@@ -1336,9 +1345,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         # the remaining budget cannot pay for any additional refinement.
         archive(value)
         design = clean(value["design"])
-        if not design["front_layers"]:
+        if not selected_rows(request, design):
             return value if design == value["design"] else evaluate(design)
-        ids = {row["id"] for row in design["front_layers"]}
+        ids = {row["id"] for row in selected_rows(request, design)}
         if (design != value["design"] or
                 set(value.get("gradient_by_layer_id") or ()) != ids):
             value = evaluate(design, jacobian=True)
@@ -1352,7 +1361,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 return value
             if value["score"]["max_error"] <= request.acceptable_normalized_error:
                 break
-            rows = design["front_layers"]
+            rows = selected_rows(request, design)
             ds = np.array([r["thickness"]["value"] for r in rows])
             scales = np.array([quarter[(r["material_id"], r["optical_set_id"])] for r in rows])
             gradient = np.array([value["gradient_by_layer_id"][r["id"]] for r in rows]) * scales
@@ -1374,7 +1383,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             if np.max(np.abs(next_ds - ds) / scales) < request.local_step_tolerance:
                 break
             trial = deepcopy(design)
-            for row, thickness in zip(trial["front_layers"], next_ds, strict=True):
+            for row, thickness in zip(selected_rows(request, trial), next_ds, strict=True):
                 row["thickness"] = {"value": float(thickness), "unit": "nm"}
             trial = clean(trial)
             if not feasible(trial):
@@ -1391,7 +1400,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 design, value = trial, candidate
                 emit("refinement", "解析梯度局部精修", design, value["score"])
                 step = min(0.5, step * 1.5)
-                if not design["front_layers"]:
+                if not selected_rows(request, design):
                     break
             else:
                 step *= 0.5
@@ -1399,11 +1408,11 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             return value
         # Explicit deletion trials can remove nonzero layers without a hidden
         # manufacturing threshold. Every deletion receives a full-grid score.
-        for layer in tuple(design["front_layers"]):
+        for layer in tuple(selected_rows(request, design)):
             if layer["id"] == protected_id:
                 continue
             trial = deepcopy(design)
-            trial["front_layers"] = [r for r in trial["front_layers"] if r["id"] != layer["id"]]
+            set_selected_rows(request, trial, [r for r in selected_rows(request, trial) if r["id"] != layer["id"]])
             candidate = evaluate(trial)
             if rank(candidate) <= rank(value):
                 design, value = trial, candidate
@@ -1427,7 +1436,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             proxy = replace(proxy, base_request=replace(proxy.base_request, objectives=objectives))
             task = EvaluationTask(design, True)
             extra = execution.serial(lambda: evaluate_frozen_structure_candidate(
-                proxy, design, variable_ids=tuple(r["id"] for r in design["front_layers"]),
+                proxy, design, variable_ids=tuple(r["id"] for r in selected_rows(request, design)),
                 with_jacobian=True, derived_validation_grid=False,
                 cancel_event=cancel_event), task)
             # Completed physical work remains counted even if cancellation is
@@ -1471,14 +1480,14 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         not exhaustive optimization of every replacement basin.
         """
         current = value
-        for layer in tuple(value["design"]["front_layers"]):
+        for layer in tuple(selected_rows(request, value["design"])):
             for ref in request.candidate_materials:
                 check_training_admission()
                 old_pair = (layer["material_id"], layer["optical_set_id"])
                 new_pair = (ref.material_id, ref.optical_set_id)
                 if old_pair == new_pair:
                     continue
-                original = next((r for r in current["design"]["front_layers"] if r["id"] == layer["id"]), None)
+                original = next((r for r in selected_rows(request, current["design"]) if r["id"] == layer["id"]), None)
                 if original is None:
                     break
                 old_pair = (original["material_id"], original["optical_set_id"])
@@ -1486,7 +1495,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 proposals = dict.fromkeys((thickness, thickness * quarter[new_pair] / quarter[old_pair]))
                 for proposed in proposals:
                     trial = deepcopy(current["design"])
-                    row = next((r for r in trial["front_layers"] if r["id"] == layer["id"]), None)
+                    row = next((r for r in selected_rows(request, trial) if r["id"] == layer["id"]), None)
                     if row is None:
                         break
                     row["material_id"], row["optical_set_id"] = new_pair
@@ -1502,12 +1511,22 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                             current = candidate
         return current
 
+    def insert_selected_homogeneous(design, site, ref, thickness, *ids):
+        trial = deepcopy(design)
+        for side in selected_sides(request):
+            real_ids = _proposal_layer_ids(trial, *(identifier if request.selected_surfaces == ("front",)
+                else identifier + "-" + side for identifier in ids), reserved_ids=reserved_layer_ids)
+            candidate = _insert_at_site(trial, dict(site, side=side), ref, thickness, *real_ids)
+            if feasible(candidate):
+                trial = candidate
+        return trial
+
     def legal_growth_thickness(design, proposed):
         upper = math.inf
         if request.max_layer_thickness_nm is not None:
             upper = min(upper, request.max_layer_thickness_nm)
         if request.max_total_thickness_nm is not None:
-            upper = min(upper, request.max_total_thickness_nm - sum(r["thickness"]["value"] for r in design["front_layers"]))
+            upper = min(upper, request.max_total_thickness_nm - sum(r["thickness"]["value"] for r in selected_rows(request, design)))
         lower = request.minimum_nonzero_thickness_nm or 0.0
         thickness = min(max(lower, proposed), upper)
         return thickness if math.isfinite(thickness) and thickness > 0 and thickness >= lower else None
@@ -1643,10 +1662,10 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             return estimate
 
         def resource_check(design, *, jacobian=False, epigraph=False, additional_points=0, additional_constraints=0):
-            numerical_estimate = _synthesis_working_set_estimate_bytes(request, len(design["front_layers"]),
+            numerical_estimate = _synthesis_working_set_estimate_bytes(request, len(selected_rows(request, design)),
                 jacobian=jacobian, epigraph=epigraph)
-            numerical_estimate += (additional_points * len(design["front_layers"]) * 64
-                                   + 16 * additional_constraints * (len(design["front_layers"]) + 1))
+            numerical_estimate += (additional_points * len(selected_rows(request, design)) * 64
+                                   + 16 * additional_constraints * (len(selected_rows(request, design)) + 1))
             archive_estimate = archive_storage_estimate_bytes()
             estimate = numerical_estimate + archive_estimate
             limit = resource_resolution["effective_bytes"]
@@ -1654,7 +1673,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 details.get("largest_estimated_working_set_bytes", 0))
             if limit is not None and estimate > limit:
                 skip = dict(stage=None if active_slice is None else active_slice[0]["stage"],
-                    layer_count=len(design["front_layers"]), estimated_bytes=estimate, limit_bytes=limit,
+                    layer_count=len(selected_rows(request, design)), estimated_bytes=estimate, limit_bytes=limit,
                     numerical_estimate_bytes=numerical_estimate, retained_archive_estimate_bytes=archive_estimate,
                     requested_limit_bytes=request.max_working_set_bytes,
                     resource_policy=resource_resolution["mode"],
@@ -1751,7 +1770,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             remaining_reserved = len(tasks)
             consumed_before = evaluations
             try:
-                work = sum(points * max(1, len(task["design"]["front_layers"])) for task in tasks)
+                work = sum(points * max(1, len(selected_rows(request, task["design"]))) for task in tasks)
                 prepared_tasks = [EvaluationTask(task["design"], bool(task.get("variable_ids")),
                     tuple(task.get("zero_ids", ())), context=task, retain_responses=True) for task in tasks]
                 with execution.batch(prepared_tasks, count=len(tasks), work=work, budget_allows=True,
@@ -1769,7 +1788,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                                                  outcome=outcome, gpu_forward=use_forward, _reserved=True)
                             else:
                                 value = evaluate_one(task.design, variable_ids=tuple(
-                                    row["id"] for row in task.design["front_layers"]) if task.jacobian else (),
+                                    row["id"] for row in selected_rows(request, task.design)) if task.jacobian else (),
                                     zero_ids=task.zero_ids, outcome=outcome, _reserved=True)
                         finally:
                             # Cleanup may perform an additional unreserved
@@ -1823,14 +1842,14 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             work_before = phase_work()
             details['first_feasible'] = deepcopy(first_feasible_work)
             record.update(initial_physical_hash=physical_design_hash(source['design']),
-                fixed_layer_ids=[r['id'] for r in source['design']['front_layers']],
-                fixed_materials=[[r['material_id'], r['optical_set_id']] for r in source['design']['front_layers']],
-                initial_layer_count=len(source['design']['front_layers']),
-                initial_total_thickness_nm=sum(r['thickness']['value'] for r in source['design']['front_layers']))
+                fixed_layer_ids=[r['id'] for r in selected_rows(request, source['design'])],
+                fixed_materials=[[r['material_id'], r['optical_set_id']] for r in selected_rows(request, source['design'])],
+                initial_layer_count=len(selected_rows(request, source['design'])),
+                initial_total_thickness_nm=sum(r['thickness']['value'] for r in selected_rows(request, source['design'])))
             def margin_resource(design, **kwargs):
                 from .film_synthesis_thickness import thickness_reduction_working_set_bytes
                 from .film_objective_criteria import signed_bound_count
-                n = len(design['front_layers'])
+                n = len(selected_rows(request, design))
                 numerical = thickness_reduction_working_set_bytes(request, n) + 64 * signed_bound_count(request.objectives) * (n + 1)
                 estimate = numerical + archive_storage_estimate_bytes() + (0 if execution.closed else len(execution.children)) * 128 * 1024**2
                 record['estimated_peak_bytes'] = max(estimate, record.get('estimated_peak_bytes', 0))
@@ -1885,7 +1904,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             emit('local_margin', '固定拓扑改善启用指标的最差安全余量；随后按原目标减薄', source['design'], source['score'])
             try:
                 if request.enable_local_margin_refinement:
-                    if worst_signed_margin(request, source) is not None and source['design']['front_layers']:
+                    if worst_signed_margin(request, source) is not None and selected_rows(request, source['design']):
                         margin_resource(source['design'])
                     refined, numerical = margin_chunks(source,
                         progress=lambda stage, value, metadata:
@@ -1898,16 +1917,16 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         # convergence claim for an 8-variable published design.
                         record['canonical_preparation'] = dict(numerical=numerical,
                             elapsed_seconds=monotonic() - started_local, work=phase_delta(work_before),
-                            input_layer_count=len(source['design']['front_layers']),
-                            canonical_layer_count=len(canonical['design']['front_layers']),
+                            input_layer_count=len(selected_rows(request, source['design'])),
+                            canonical_layer_count=len(selected_rows(request, canonical['design'])),
                             canonical_physical_hash=physical_design_hash(canonical['design']),
                             role='completed preliminary local solve followed by equivalent numeric-zero canonicalization; before final fixed-topology solve')
                         source = canonical
                         record.update(initial_physical_hash=physical_design_hash(source['design']),
-                            fixed_layer_ids=[r['id'] for r in source['design']['front_layers']],
-                            fixed_materials=[[r['material_id'], r['optical_set_id']] for r in source['design']['front_layers']],
-                            initial_layer_count=len(source['design']['front_layers']),
-                            initial_total_thickness_nm=sum(r['thickness']['value'] for r in source['design']['front_layers']))
+                            fixed_layer_ids=[r['id'] for r in selected_rows(request, source['design'])],
+                            fixed_materials=[[r['material_id'], r['optical_set_id']] for r in selected_rows(request, source['design'])],
+                            initial_layer_count=len(selected_rows(request, source['design'])),
+                            initial_total_thickness_nm=sum(r['thickness']['value'] for r in selected_rows(request, source['design'])))
                         emit('canonical_margin_ready', json.dumps(record['canonical_preparation'], sort_keys=True),
                              source['design'], source['score'])
                         before, started_local, work_before = evaluations, monotonic(), phase_work()
@@ -1936,8 +1955,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                               total_elapsed_seconds=monotonic() - total_started)
             selected, independent = audited_best
             selected_hash = physical_design_hash(selected['design'])
-            topology_matches = ([r['id'] for r in selected['design']['front_layers']] == record['fixed_layer_ids']
-                and [[r['material_id'],r['optical_set_id']] for r in selected['design']['front_layers']] == record['fixed_materials'])
+            topology_matches = ([r['id'] for r in selected_rows(request, selected['design'])] == record['fixed_layer_ids']
+                and [[r['material_id'],r['optical_set_id']] for r in selected_rows(request, selected['design'])] == record['fixed_materials'])
             numerical = record.get('numerical', {})
             terminal = numerical.get('solver_terminal', {})
             record['solver_terminal'] = deepcopy(terminal) or None
@@ -1986,11 +2005,11 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 record["status"] = "skipped_no_audited_nominal_incumbent"
                 return
             source = audited_best[0]
-            if not source["design"]["front_layers"]:
+            if not selected_rows(request, source["design"]):
                 record["status"] = "skipped_empty_topology"
                 return
             source_hash = physical_design_hash(source["design"])
-            source_total = sum(row["thickness"]["value"] for row in source["design"]["front_layers"])
+            source_total = sum(row["thickness"]["value"] for row in selected_rows(request, source["design"]))
             record.update(initial_physical_hash=source_hash, initial_total_thickness_nm=source_total)
             from .film_synthesis_thickness import (reduce_total_thickness,
                 thickness_reduction_working_set_bytes, preserves_optical_quality)
@@ -2009,7 +2028,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
 
             def admit(design, **_kwargs):
                 check_training_admission()
-                numerical = thickness_reduction_working_set_bytes(request, len(design["front_layers"]))
+                numerical = thickness_reduction_working_set_bytes(request, len(selected_rows(request, design)))
                 retained = archive_storage_estimate_bytes()
                 resident = (0 if execution.closed else len(execution.children)) * 128 * 1024**2
                 estimate = numerical + retained + resident
@@ -2023,7 +2042,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 if limit is not None and estimate > limit:
                     details["resource_limited"] = True
                     details["resource_skips"].append(dict(stage="nominal_thickness_reduction",
-                        estimated_bytes=estimate, limit_bytes=limit, layer_count=len(design["front_layers"]),
+                        estimated_bytes=estimate, limit_bytes=limit, layer_count=len(selected_rows(request, design)),
                         reason="combined_thickness_solver_archive_worker_estimate_exceeds_resource_guard"))
                     raise SynthesisResourceGuard("combined thickness solver/archive/worker estimate exceeds resource guard")
 
@@ -2033,8 +2052,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 return value.get('_numeric_zero_canonical', value)
 
             def proposal_identity(raw, canonical):
-                raw_ids = [r['id'] for r in raw['design']['front_layers']]
-                canonical_ids = None if canonical is None else [r['id'] for r in canonical['design']['front_layers']]
+                raw_ids = [r['id'] for r in selected_rows(request, raw['design'])]
+                canonical_ids = None if canonical is None else [r['id'] for r in selected_rows(request, canonical['design'])]
                 return dict(raw_proposal_hash=physical_design_hash(raw['design']),
                     canonical_proposal_hash=None if canonical is None else physical_design_hash(canonical['design']),
                     raw_layer_ids=raw_ids, canonical_layer_ids=canonical_ids,
@@ -2050,8 +2069,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     return
                 identity = proposal_identity(value, canonical)
                 value = canonical
-                candidate_total = sum(row["thickness"]["value"] for row in value["design"]["front_layers"])
-                reduced_total = sum(row["thickness"]["value"] for row in reduced["design"]["front_layers"])
+                candidate_total = sum(row["thickness"]["value"] for row in selected_rows(request, value["design"]))
+                reduced_total = sum(row["thickness"]["value"] for row in selected_rows(request, reduced["design"]))
                 if preserves_optical_quality(request, source, value) and candidate_total < reduced_total:
                     reduced = value
                     reduced_identity = identity
@@ -2061,7 +2080,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 while True:
                     check_training_admission()
                     source = audited_best[0]
-                    chunk_total = sum(row['thickness']['value'] for row in source['design']['front_layers'])
+                    chunk_total = sum(row['thickness']['value'] for row in selected_rows(request, source['design']))
                     reduced = source
                     reduced_identity = proposal_identity(source, source)
                     admit(source['design'])
@@ -2073,7 +2092,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     raw_identity = proposal_identity(proposal, canonical_candidate(proposal))
                     record['solver_calls'].append(dict(deepcopy(numerical_details), **raw_identity,
                         selected_canonical_hash=physical_design_hash(reduced['design'])))
-                    reduced_total = sum(row['thickness']['value'] for row in reduced['design']['front_layers'])
+                    reduced_total = sum(row['thickness']['value'] for row in selected_rows(request, reduced['design']))
                     record.update(proposed_total_thickness_nm=reduced_total,
                         proposed_physical_hash=physical_design_hash(reduced['design']),
                         raw_proposal_hash=raw_identity['raw_proposal_hash'],
@@ -2139,7 +2158,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 stage_record.update(termination=record['status'], evaluations_used=evaluations - before,
                     elapsed_seconds=record['elapsed_seconds'])
             record.setdefault('audit_outcome', 'not_performed')
-            record['final_total_thickness_nm'] = sum(row['thickness']['value'] for row in audited_best[0]['design']['front_layers'])
+            record['final_total_thickness_nm'] = sum(row['thickness']['value'] for row in selected_rows(request, audited_best[0]['design']))
             emit("thickness_reduction_complete", json.dumps(record, sort_keys=True),
                  audited_best[0]["design"], audited_best[0]["score"])
 
@@ -2159,8 +2178,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             before, local_started, work_before = evaluations, monotonic(), phase_work()
             record: dict[str, Any] = dict(session_complete=False, local_converged=False,
                 status='running', attempts=[], initial_physical_hash=physical_design_hash(source['design']),
-                fixed_layer_ids=[r['id'] for r in source['design']['front_layers']],
-                fixed_materials=[[r['material_id'], r['optical_set_id']] for r in source['design']['front_layers']],
+                fixed_layer_ids=[r['id'] for r in selected_rows(request, source['design'])],
+                fixed_materials=[[r['material_id'], r['optical_set_id']] for r in selected_rows(request, source['design'])],
                 scope='full original training-grid epigraph numerical local session; target attainment and independent audit reported separately',
                 policy='complete search turn before local session; no automatic new topology after local convergence or scaled stagnation')
             details['local_session'] = record
@@ -2174,12 +2193,12 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             numerical: dict[str, Any] = {}
             try:
                 check_training_admission()
-                resource_check(source['design'], jacobian=bool(source['design']['front_layers']),
-                    epigraph=bool(source['design']['front_layers']))
-                if not source['design']['front_layers'] and len(tried_search) < 2:
+                resource_check(source['design'], jacobian=bool(selected_rows(request, source['design'])),
+                    epigraph=bool(selected_rows(request, source['design'])))
+                if not selected_rows(request, source['design']) and len(tried_search) < 2:
                     record['status'] = 'no_effective_search_work'
                     raise _Stopped('no_effective_search_work_resource_or_frontier_limit')
-                while source['design']['front_layers']:
+                while selected_rows(request, source['design']):
                     check_training_admission()
                     resource_check(source['design'], jacobian=True, epigraph=True)
                     previous = quality(source)
@@ -2199,8 +2218,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         source = physical_cleanup(terminal)
                         candidate = terminal = source
                         numerical = {}
-                        record.update(fixed_layer_ids=[r['id'] for r in source['design']['front_layers']],
-                            fixed_materials=[[r['material_id'],r['optical_set_id']] for r in source['design']['front_layers']])
+                        record.update(fixed_layer_ids=[r['id'] for r in selected_rows(request, source['design'])],
+                            fixed_materials=[[r['material_id'],r['optical_set_id']] for r in selected_rows(request, source['design'])])
                         continue
                     improvement = previous - quality(candidate)
                     tolerance = request.relative_improvement_tolerance * max(abs(previous), 1e-12)
@@ -2232,8 +2251,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     return False
                 selected, independent = audited_best
                 selected_hash, terminal_hash = physical_design_hash(selected['design']), physical_design_hash(terminal['design'])
-                fixed = ([r['id'] for r in selected['design']['front_layers']] == record['fixed_layer_ids']
-                    and [[r['material_id'],r['optical_set_id']] for r in selected['design']['front_layers']] == record['fixed_materials'])
+                fixed = ([r['id'] for r in selected_rows(request, selected['design'])] == record['fixed_layer_ids']
+                    and [[r['material_id'],r['optical_set_id']] for r in selected_rows(request, selected['design'])] == record['fixed_materials'])
                 audit_rejected = (nominal_targets_pass(request, terminal['score'])
                     and not nominal_targets_pass(request, terminal_audit['score'], independent_audit=True))
                 record.update(solver_terminal=deepcopy(numerical.get('solver_terminal')),
@@ -2302,12 +2321,12 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             if value.get("_numeric_zero_canonical") is not None:
                 return value["_numeric_zero_canonical"]
             if cleaned is None:
-                cleaned = cleanup_batch_needle_design(value["design"], frozen_snapshot)
+                cleaned = cleanup_batch_needle_design(value["design"], frozen_snapshot, selected_surfaces=request.selected_surfaces)
             if cleaned.design == value["design"] or not feasible(cleaned.design):
                 return value
             current = value
             if not current.get("responses"):
-                zero_ids = tuple(row["id"] for row in current["design"]["front_layers"]
+                zero_ids = tuple(row["id"] for row in selected_rows(request, current["design"])
                                  if row["thickness"]["value"] == 0.)
                 current = hybrid_evaluate(current["design"], zero_ids=zero_ids)
             candidate = hybrid_evaluate(cleaned.design)
@@ -2326,10 +2345,10 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             # without replacing that endpoint with the champion's topology.
             assert best is not None
             value = best
-            cleaned = cleanup_batch_needle_design(value["design"], frozen_snapshot)
+            cleaned = cleanup_batch_needle_design(value["design"], frozen_snapshot, selected_surfaces=request.selected_surfaces)
             record = dict(source_physical_hash=physical_design_hash(value["design"]),
-                source_layer_count=len(value["design"]["front_layers"]),
-                proposed_layer_count=len(cleaned.design["front_layers"]),
+                source_layer_count=len(selected_rows(request, value["design"])),
+                proposed_layer_count=len(selected_rows(request, cleaned.design)),
                 terminal=terminal, independent_audit_performed=False,
                 promoted_to_strict_champion=False, evaluations_used=0)
             if cleaned.design == value["design"]:
@@ -2401,7 +2420,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         continue
                     ids = _proposal_layer_ids(request.environment, f"hybrid-simple-{index}", "unused",
                                                reserved_ids=reserved_layer_ids)
-                    design = _insert_at_site(request.environment, dict(kind="interface", interface=0), ref, thickness, *ids)
+                    design = insert_selected_homogeneous(request.environment, dict(kind="interface", interface=0), ref, thickness, *ids)
                     if feasible(design):
                         yield StructuralProposal(design, dict(family="homogeneous", quarter_fraction=fraction))
 
@@ -2439,7 +2458,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                             continue
                         for amplitude in (.0, .12):
                             design = deepcopy(proposal.design)
-                            rows = design["front_layers"]
+                            rows = selected_rows(request, design)
                             for pair_index in range(len(rows) // 2):
                                 a, b = rows[2 * pair_index:2 * pair_index + 2]
                                 if (a["material_id"], a["optical_set_id"]) == (b["material_id"], b["optical_set_id"]):
@@ -2506,7 +2525,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             if targets_verified() or best is None:
                 return
             source = best
-            if not source["design"]["front_layers"]:
+            if not selected_rows(request, source["design"]):
                 return
             from .film_synthesis_feasibility import (
                 PreparedFeasibilityEvaluator, refine_feasibility_candidate,
@@ -2538,7 +2557,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             record = dict(status="running", rounds=[], fixed_topology=True,
                 trigger_evaluations=evaluations, trigger_cycle=cycle, trigger_boundary=trigger_boundary,
                 initial_physical_hash=physical_design_hash(source["design"]),
-                initial_total_thickness_nm=sum(r["thickness"]["value"] for r in source["design"]["front_layers"]),
+                initial_total_thickness_nm=sum(r["thickness"]["value"] for r in selected_rows(request, source["design"])),
                 margin_semantics="private 2e-4 of common feasible interval; inclusive 0/1/value/empty interiors unchanged",
                 margins=margins, maximum_rounds=MAX_REPAIR_ROUNDS,
                 trigger_scale="per enabled criterion interior displacement / ULP; not solver tolerance",
@@ -2585,8 +2604,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         additional_points=evaluator.additional_points,
                         training_max_error=candidate["score"]["max_error"],
                         audit_max_error=None if next_audit is None else next_audit["score"]["max_error"],
-                        layer_count=len(candidate["design"]["front_layers"]),
-                        total_thickness_nm=sum(r["thickness"]["value"] for r in candidate["design"]["front_layers"]),
+                        layer_count=len(selected_rows(request, candidate["design"])),
+                        total_thickness_nm=sum(r["thickness"]["value"] for r in selected_rows(request, candidate["design"])),
                         shared_evaluations_used=evaluations - before)
                     record["rounds"].append(row)
                     emit("feasibility_repair_round", json.dumps(row, sort_keys=True), candidate["design"], candidate["score"])
@@ -2637,7 +2656,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             lower = request.minimum_nonzero_thickness_nm or np.finfo(float).tiny
             for entry in design_archive.entries.values():
                 design = entry.design
-                rows = design['front_layers']
+                rows = selected_rows(request, design)
                 total = sum(r['thickness']['value'] for r in rows)
                 if rows and (request.max_layer_thickness_nm is None or request.max_layer_thickness_nm > lower):
                     if any(r['thickness']['value'] > lower for r in rows):
@@ -2650,16 +2669,16 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                             quarter[(ref.material_id,ref.optical_set_id)] * fraction)
                             for fraction in request.growth_quarter_wave_fractions}
                         for thickness in thicknesses - {None}:
-                            for interface in range(len(rows) + 1):
+                            for side, interface in surface_interfaces(request, design):
                                 check_training_admission()
                                 ids = _proposal_layer_ids(design, 'continuation-frontier', 'continuation-frontier-split',
                                     reserved_ids=reserved_layer_ids)
-                                trial = _insert_at_site(design, dict(kind='interface', interface=interface), ref, thickness, *ids)
+                                trial = _insert_at_site(design, dict(kind='interface', interface=interface, side=side), ref, thickness, *ids)
                                 if feasible(trial) and physical_design_hash(trial) not in tried_search:
                                     return True
                 for row in rows:
                     deleted = deepcopy(design)
-                    deleted['front_layers'] = [r for r in rows if r['id'] != row['id']]
+                    set_selected_rows(request, deleted, [r for r in rows if r['id'] != row['id']])
                     if feasible(deleted) and physical_design_hash(deleted) not in tried_search:
                         return True
             return False
@@ -2751,7 +2770,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                             raw = values[0]
                             archive(raw, audit_eligible=False, provenance=prior.provenance, operator="engineering_prior")
                             emit("structure_proposal", json.dumps(prior.provenance, sort_keys=True), raw["design"], raw["score"])
-                            if (not explorer["design"]["front_layers"] or score_sse(raw) < score_sse(explorer)):
+                            if (not selected_rows(request, explorer["design"]) or score_sse(raw) < score_sse(explorer)):
                                 explorer = raw
                             screened.append(raw)
                         # Pair slots cannot be consumed by a BASE audit. Once
@@ -2786,7 +2805,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                             else:
                                 details["deferred_prior_audits"] = details.get("deferred_prior_audits", 0) + 1
                         emit("structure_proposal", json.dumps(proposal.provenance, sort_keys=True), raw["design"], raw["score"])
-                        if (not explorer["design"]["front_layers"] or score_sse(raw) < score_sse(explorer)):
+                        if (not selected_rows(request, explorer["design"]) or score_sse(raw) < score_sse(explorer)):
                             explorer = raw
                         if targets_verified():
                             # Eager work is already counted. Do not adopt later
@@ -2852,11 +2871,11 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 parents = design_archive.select_parents(3)
                 for entry in parents:
                     stage_check()
-                    if not entry.design["front_layers"]:
+                    if not selected_rows(request, entry.design):
                         continue
                     archive_context.update(provenance=entry.provenance, parent_hash=entry.physical_hash,
                                            operator="low_dimensional_global")
-                    n = len(entry.design["front_layers"])
+                    n = len(selected_rows(request, entry.design))
                     dimension = min(8, n)
                     coordinates = np.linspace(0., 1., n)
                     basis = np.column_stack([np.ones(n)] + [np.cos(math.pi * k * coordinates)
@@ -2870,7 +2889,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         for index, point in enumerate(evolution.proposals()):
                             stage_check()
                             trial = deepcopy(entry.design)
-                            for row, delta in zip(trial["front_layers"], basis @ point, strict=True):
+                            for row, delta in zip(selected_rows(request, trial), basis @ point, strict=True):
                                 row["thickness"]["value"] *= math.exp(float(delta))
                             if feasible(trial):
                                 try:
@@ -2894,7 +2913,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                                 emit("hybrid_global_trial", "有界低维厚度群体探索，原网格完整评分", trial, value["score"])
                             cursor += len(values)
                         evolution.accept(losses)
-                if request.needle_pre_local and explorer["design"]["front_layers"]:
+                if request.needle_pre_local and selected_rows(request, explorer["design"]):
                     explorer, local = refine_synthesis_explorer(request, explorer,
                         evaluate=hybrid_evaluate, archive=archive, cancel_check=stage_check,
                         progress=local_progress, max_iterations=24)
@@ -2959,7 +2978,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     seed=hybrid_structure_seed + cycle, max_probes=probe_quota, genuine_only=True,
                     gradient=lambda value, ids: weighted_sse_loss_gradient(request, value, ids)[1],
                     on_probe=on_probe, stop_check=scan_stop_requested, admit=resource_admit,
-                    evaluate_batch=probe_evaluate_batch, probe_batch_size=batch_quantum)
+                    evaluate_batch=probe_evaluate_batch, probe_batch_size=batch_quantum, selected_surfaces=request.selected_surfaces)
                 details["needle_scans"].append(dict(cycle=cycle, parent_hash=parent_hash,
                     probes=scan.probe_count, refined_probes=scan.refined_probe_count,
                     selected=len(scan.selected), complete=scan.complete, stop_reason=scan.stop_reason,
@@ -2983,7 +3002,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         for p in proposals))
                     while proposals:
                         build = build_batch_needle_design(explorer["design"], frozen_snapshot, proposals,
-                                                         seed_thickness_nm=thickness)
+                                                         seed_thickness_nm=thickness, selected_surfaces=request.selected_surfaces)
                         if feasible(build.design):
                             break
                         proposals.pop()
@@ -3005,21 +3024,21 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     # optical-thickness starts remain genuine scored branches.
                     design = explorer["design"]
                     grown = None
-                    combinations = [(i, ref, fraction) for i in range(len(design["front_layers"]) + 1)
+                    combinations = [(side, i, ref, fraction) for side, i in surface_interfaces(request, design)
                         for ref in request.candidate_materials for fraction in request.growth_quarter_wave_fractions]
                     if combinations:
                         offset = (cycle - 1) * 12 % len(combinations)
                         combinations = combinations[offset:] + combinations[:offset]
-                    for index, (interface, ref, fraction) in enumerate(combinations[:12]):
+                    for index, (side, interface, ref, fraction) in enumerate(combinations[:12]):
                         stage_check()
-                        if len(design["front_layers"]) >= (request.max_layers if request.max_layers is not None else MAX_LAYERS):
+                        if len(selected_rows(request, design)) >= (request.max_layers if request.max_layers is not None else MAX_LAYERS):
                             break
                         thickness = legal_growth_thickness(design, quarter[(ref.material_id, ref.optical_set_id)] * fraction)
                         if thickness is None:
                             continue
                         ids = _proposal_layer_ids(design, f"hybrid-growth-{cycle}-{index}", "unused",
                                                    reserved_ids=reserved_layer_ids)
-                        trial = _insert_at_site(design, dict(kind="interface", interface=interface), ref, thickness, *ids)
+                        trial = _insert_at_site(design, dict(kind="interface", interface=interface, side=side), ref, thickness, *ids)
                         if not feasible(trial):
                             continue
                         value = hybrid_evaluate(trial)
@@ -3043,7 +3062,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 break
             assert best is not None
             endpoint = dict(cycle=cycle, physical_hash=physical_design_hash(explorer["design"]),
-                design=deepcopy(explorer["design"]), layer_count=len(explorer["design"]["front_layers"]),
+                design=deepcopy(explorer["design"]), layer_count=len(selected_rows(request, explorer["design"])),
                 max_error=explorer["score"]["max_error"], weighted_sse=score_sse(explorer),
                 strict_champion_hash=physical_design_hash(best["design"]),
                 strict_champion_max_error=best["score"]["max_error"])
@@ -3059,7 +3078,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 explorer = physical_cleanup(explorer)
                 parents = design_archive.select_parents(2)
                 for entry in parents:
-                    rows = entry.design["front_layers"]
+                    rows = selected_rows(request, entry.design)
                     if not rows:
                         continue
                     order = sorted(rows, key=lambda row: row["thickness"]["value"])
@@ -3068,7 +3087,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     for row in order[:4]:
                         stage_check()
                         trial = deepcopy(entry.design)
-                        trial["front_layers"] = [r for r in trial["front_layers"] if r["id"] != row["id"]]
+                        set_selected_rows(request, trial, [r for r in selected_rows(request, trial) if r["id"] != row["id"]])
                         value = hybrid_evaluate(trial)
                         archive(value, audit_eligible=False, provenance=dict(entry.provenance,
                             deleted_layer_id=row["id"]), parent_hash=entry.physical_hash, operator="physical_layer_deletion")
@@ -3091,7 +3110,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 resource_check(explorer["design"], jacobian=True, epigraph=True)
                 minimax_start = physical_design_hash(explorer["design"])
                 endpoint.update(physical_hash=minimax_start, design=deepcopy(explorer["design"]),
-                    layer_count=len(explorer["design"]["front_layers"]),
+                    layer_count=len(selected_rows(request, explorer["design"])),
                     max_error=explorer["score"]["max_error"], weighted_sse=score_sse(explorer),
                     phase="actual_post_compression_minimax_input")
                 emit("hybrid_pre_minimax_terminal", json.dumps({k: v for k, v in endpoint.items() if k != "design"}, sort_keys=True), explorer["design"], explorer["score"])
@@ -3132,7 +3151,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 break
             if evaluations == rotation_start_evaluations:
                 raise _Stopped('no_effective_search_work_resource_or_frontier_limit')
-            if not streams and not explorer["design"]["front_layers"] and details["resource_skips"]:
+            if not streams and not selected_rows(request, explorer["design"]) and details["resource_skips"]:
                 raise _Stopped("resource_limit")
 
         # All normal success exits, including the early engineering-prior
@@ -3173,7 +3192,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     replay_scope="same seed/config reconstruct starts; wall-time-limited final output is not bitwise guaranteed")
                 emit("template_randomization_config", json.dumps(metadata, sort_keys=True))
             snapshot = request.frozen_material_snapshot
-            execution.configure(_proxy(request))
+            execution.configure(_proxy(request), selected_surfaces=request.selected_surfaces)
             if snapshot is None:
                 raise ValueError("material freeze did not produce a snapshot")
             if request.search_strategy == 'hybrid':
@@ -3201,7 +3220,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             references = list(request.candidate_materials)
             pairs = {(r.material_id, r.optical_set_id) for r in references}
             for seed_design in request.seed_designs:
-                for row in seed_design["front_layers"]:
+                for row in selected_rows(request, seed_design):
                     pair = (row["material_id"], row["optical_set_id"])
                     if pair not in pairs:
                         references.append(FilmNeedleMaterialReference(*pair))
@@ -3294,7 +3313,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     layer_id, split_id = _proposal_layer_ids(request.environment,
                         f"ar-simple-{material_index}", "ar-simple-unused",
                         reserved_ids=reserved_layer_ids)
-                    trial = _insert_at_site(request.environment,
+                    trial = insert_selected_homogeneous(request.environment,
                         {"kind": "interface", "interface": 0}, ref, thickness,
                         layer_id, split_id)
                     if not feasible(trial):
@@ -3360,8 +3379,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         if targets_verified():
                             break
                         entry: dict[str, object] = dict(metadata,
-                            layer_count=len(raw["design"]["front_layers"]),
-                            total_thickness_nm=sum(r["thickness"]["value"] for r in raw["design"]["front_layers"]),
+                            layer_count=len(selected_rows(request, raw["design"])),
+                            total_thickness_nm=sum(r["thickness"]["value"] for r in selected_rows(request, raw["design"])),
                             initial_max_error=raw["score"]["max_error"], state="refining")
                         runs.append(entry)
                         if (raw["score"]["max_error"] <= request.acceptable_normalized_error
@@ -3402,7 +3421,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 if existing:
                     original, original_metadata = min(existing, key=lambda row: rank(row[0]))
                     control = (original, dict(family=original_metadata["family"], demand_tier="existing"))
-                    original_work = sample_points * max(1, len(original["design"]["front_layers"]))
+                    original_work = sample_points * max(1, len(selected_rows(request, original["design"])))
                     start["source_first"] = original_work >= STRUCTURAL_PREFIX_POINT_LAYER_QUANTUM
                 batch_work: int = 0
                 source = iter_multispectral_hr_proposals(request,
@@ -3410,7 +3429,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 if request.randomize_template_search:
                     source = legacy_template_stream(source, stage="legacy_multispectral_template",
                         extra_admit=lambda proposal: batch_work + sample_points * max(1,
-                            len(proposal.design["front_layers"])) <= STRUCTURAL_PREFIX_POINT_LAYER_QUANTUM)
+                            len(selected_rows(request, proposal.design))) <= STRUCTURAL_PREFIX_POINT_LAYER_QUANTUM)
                 source_exhausted = False
                 pending_source: StructuralProposal | None = None
                 try:
@@ -3428,10 +3447,10 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                                     source_exhausted = True
                                     break
                             signature = tuple((r["material_id"], r["optical_set_id"],
-                                r["thickness"]["value"]) for r in proposal.design["front_layers"])
+                                r["thickness"]["value"]) for r in selected_rows(request, proposal.design))
                             if signature in signatures:
                                 continue
-                            item_work = sample_points * max(1, len(proposal.design["front_layers"]))
+                            item_work = sample_points * max(1, len(selected_rows(request, proposal.design)))
                             if batch_count and batch_work + item_work > STRUCTURAL_PREFIX_POINT_LAYER_QUANTUM:
                                 pending_source = proposal
                                 break
@@ -3447,7 +3466,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                                 keepers[tier] = raw, metadata
                             start["screened"] = len(signatures)
                             emit("multispectral_prior", json.dumps(dict(
-                                tier=tier, layers=len(raw["design"]["front_layers"]),
+                                tier=tier, layers=len(selected_rows(request, raw["design"])),
                                 pair_budget=metadata["candidate_pair_budget"],
                                 estimated_pair_demand=metadata["estimated_pair_demand"]), sort_keys=True),
                                 raw["design"], raw["score"])
@@ -3513,7 +3532,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 for proposal in hr_source:
                     check_training_admission()
                     entry: dict[str, object] = dict(proposal.provenance,
-                        layer_count=len(proposal.design["front_layers"]), state="evaluating_prior")
+                        layer_count=len(selected_rows(request, proposal.design)), state="evaluating_prior")
                     hr_runs.append(entry)
                     raw_hr = evaluate(proposal.design, jacobian=True)
                     entry["initial_training_min_R"] = min(error.actual for error in raw_hr["score"]["errors"])
@@ -3717,9 +3736,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 sample_points = sum(o.wavelength_samples * len(o.angles_deg) for o in request.objectives)
                 if request.randomize_template_search:
                     legacy_template_work_admission[0] = lambda proposal: (work_quantum is None or
-                        stage_work + sample_points * max(1, len(proposal.design["front_layers"])) <= work_quantum)
+                        stage_work + sample_points * max(1, len(selected_rows(request, proposal.design))) <= work_quantum)
                 def commit(proposal, value):
-                    entry = dict(proposal.provenance, layer_count=len(proposal.design["front_layers"]),
+                    entry = dict(proposal.provenance, layer_count=len(selected_rows(request, proposal.design)),
                                  max_error=value["score"]["max_error"], rms=value["score"]["weighted_rms_error"])
                     search_diagnostics["structural_proposals"].append(entry)
                     emit("structure_proposal", json.dumps(entry, sort_keys=True), value["design"], value["score"])
@@ -3753,7 +3772,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                                 except StopIteration:
                                     exhausted = True
                                     break
-                            item_work = sample_points * max(1, len(proposal.design["front_layers"]))
+                            item_work = sample_points * max(1, len(selected_rows(request, proposal.design)))
                             if (work_quantum is not None and (consumed or chunk)
                                     and stage_work + chunk_work + item_work > work_quantum):
                                 pending_structural_proposals[epoch] = proposal
@@ -3774,7 +3793,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                             commit(proposal, evaluate(proposal.design, gpu_forward=True))
                         else:
                             tasks = [EvaluationTask(p.design, False, (), p) for p in chunk]
-                            work = sum(sample_points * max(1, len(p.design["front_layers"])) for p in chunk)
+                            work = sum(sample_points * max(1, len(selected_rows(request, p.design))) for p in chunk)
                             fits = remaining is None or len(tasks) <= remaining
                             with execution.batch(tasks, count=len(tasks), work=work,
                                     budget_allows=fits, phase="structure") as batch:
@@ -3825,7 +3844,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         break
                     for parameterization in ("structure", "thickness"):
                         check_training_admission()
-                        ds = np.array([r["thickness"]["value"] for r in seed_value["design"]["front_layers"]])
+                        ds = np.array([r["thickness"]["value"] for r in selected_rows(request, seed_value["design"])])
                         expansion = 1 + .25 * epoch
                         lower = np.maximum(ds * .35 / expansion, request.minimum_nonzero_thickness_nm or np.finfo(float).tiny)
                         upper = ds * 2.0 * expansion
@@ -3851,9 +3870,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                                 for group in metadata["symmetry_groups"]:
                                     mean = float(np.exp(np.mean(np.log(ds[list(group)]))))
                                     for index in group:
-                                        symmetric_basis["front_layers"][index]["thickness"] = dict(value=mean, unit="nm")
+                                        selected_rows(request, symmetric_basis)[index]["thickness"] = dict(value=mean, unit="nm")
                                 initial, lower, upper = symmetric_thickness_parameters(
-                                    symmetric_basis, metadata["symmetry_groups"], epoch=epoch,
+                                    symmetric_basis, metadata["symmetry_groups"], epoch=epoch, selected_surfaces=request.selected_surfaces,
                                     minimum_nm=request.minimum_nonzero_thickness_nm,
                                     maximum_nm=request.max_layer_thickness_nm)
                                 population_size = max(24, min(64, 4 * len(initial)))
@@ -3896,12 +3915,12 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                                         trial = ar_cluster_design(seed_value["design"], point, metadata)
                                     elif symmetric_basis is not None:
                                         trial = symmetric_thickness_design(symmetric_basis, point,
-                                            symmetry_groups=metadata["symmetry_groups"])
+                                            symmetry_groups=metadata["symmetry_groups"], selected_surfaces=request.selected_surfaces)
                                     else:
-                                        trial = structured_thickness_design(seed_value["design"], point, high_pair=metadata["high"])
+                                        trial = structured_thickness_design(seed_value["design"], point, high_pair=metadata["high"], selected_surfaces=request.selected_surfaces)
                                 else:
                                     trial = deepcopy(seed_value["design"])
-                                    for row, thickness in zip(trial["front_layers"], point, strict=True):
+                                    for row, thickness in zip(selected_rows(request, trial), point, strict=True):
                                         row["thickness"] = dict(value=float(thickness), unit="nm")
                                 if feasible(trial):
                                     tasks.append(EvaluationTask(trial, False, (), index))
@@ -3949,7 +3968,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     refined = interior_refine(min(explored_values, key=rank))
                     archive(refined)
                     # Feed the refined topology back into the next population.
-                    matching = next((i for i, (v, _m) in enumerate(next_selected) if [r["id"] for r in v["design"]["front_layers"]] == [r["id"] for r in refined["design"]["front_layers"]]), None)
+                    matching = next((i for i, (v, _m) in enumerate(next_selected) if [r["id"] for r in selected_rows(request, v["design"])] == [r["id"] for r in selected_rows(request, refined["design"])]), None)
                     if matching is not None:
                         next_selected[matching] = (refined, next_selected[matching][1])
                     assert best is not None  # The baseline was archived before global search.
@@ -4069,17 +4088,17 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 while branch_index in blocked_branches:
                     branch_index = (branch_index + 1) % len(branches)
                 working = branches[branch_index]
-                if working["design"]["front_layers"]:
+                if selected_rows(request, working["design"]):
                     working = replace_materials(working)
                     if targets_verified():
                         break
                 design = working["design"]
                 emit("needle_scan", "扫描界面和层内位置的零厚度解析灵敏度", design, working["score"])
                 probes = []
-                sites = _site_records(design, snapshot, request.position_samples)
+                sites = [site for side in selected_sides(request) for site in _site_records(design, snapshot, request.position_samples, side=side)]
                 maximum_layers = request.max_layers or MAX_LAYERS
                 needle_count = sum(len(request.candidate_materials) for site in sites
-                    if len(design["front_layers"]) + (1 if site["kind"] == "interface" else 2) <= maximum_layers)
+                    if len(selected_rows(request, design)) + (1 if site["kind"] == "interface" else 2) <= maximum_layers)
                 sample_points = sum(o.wavelength_samples * len(o.angles_deg) for o in request.objectives)
                 def needle_tasks(sites=sites, design=design, cycle=cycle, maximum_layers=maximum_layers):
                     for index, site in enumerate(sites):
@@ -4089,12 +4108,12 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                                 f"auto-{cycle}-{index}-{material_index}", f"split-{cycle}-{index}-{material_index}",
                                 reserved_ids=reserved_layer_ids)
                             zero = _insert_at_site(design, site, ref, 0, *ids, zero=True)
-                            if len(zero["front_layers"]) > maximum_layers:
+                            if len(selected_rows(request, zero)) > maximum_layers:
                                 continue
                             yield EvaluationTask(zero, True, (ids[0],), (index, material_index, site, ref, ids))
                 needle_fits = request.max_evaluations is None or needle_count <= request.max_evaluations - evaluations - 1
                 with execution.batch(needle_tasks(), count=needle_count,
-                        work=needle_count * sample_points * max(1, len(design["front_layers"]) + 2),
+                        work=needle_count * sample_points * max(1, len(selected_rows(request, design)) + 2),
                         budget_allows=needle_fits, phase="needle") as batch:
                     for task, outcome in batch:
                         index, material_index, site, ref, ids = task.context
@@ -4127,7 +4146,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     grown_protected_id = None
                     growth_specs = []
                     growth_count = 0
-                    for interface in range(len(design["front_layers"]) + 1):
+                    for side, interface in surface_interfaces(request, design):
                         for material_index, ref in enumerate(request.candidate_materials):
                             thicknesses = []
                             for fraction in request.growth_quarter_wave_fractions:
@@ -4135,32 +4154,32 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                                     quarter[(ref.material_id, ref.optical_set_id)] * fraction)
                                 if thickness is not None and thickness not in thicknesses:
                                     thicknesses.append(thickness)
-                            growth_specs.append((interface, material_index, ref, thicknesses))
-                            if len(design["front_layers"]) < maximum_layers:
+                            growth_specs.append((side, interface, material_index, ref, thicknesses))
+                            if len(selected_rows(request, design)) < maximum_layers:
                                 growth_count += len(thicknesses)
                     def growth_tasks(growth_specs=growth_specs, design=design, cycle=cycle):
-                        for interface, material_index, ref, thicknesses in growth_specs:
+                        for side, interface, material_index, ref, thicknesses in growth_specs:
                             check_training_admission()
                             growth_id, split_id = _proposal_layer_ids(design,
                                 f"growth-{cycle}-{interface}-{material_index}", "unused",
                                 reserved_ids=reserved_layer_ids)
                             for thickness in thicknesses:
-                                trial = _insert_at_site(design, {"kind": "interface", "interface": interface}, ref,
+                                trial = _insert_at_site(design, {"kind": "interface", "interface": interface, "side": side}, ref,
                                                         thickness, growth_id, split_id)
-                                trial["front_layers"][interface]["note"] = "Automatic gradual-evolution thick-layer proposal."
+                                trial[side + "_layers"][interface]["note"] = "Automatic gradual-evolution thick-layer proposal."
                                 if feasible(trial):
                                     yield EvaluationTask(trial, True, (), (interface, ref, growth_id))
                     growth_batch = (forward.batch(growth_tasks(), admit=lambda: request.max_evaluations is None
                         or evaluations < request.max_evaluations - 1) if forward is not None else
                         execution.batch(growth_tasks(), count=growth_count,
-                            work=growth_count * sample_points * max(1, len(design["front_layers"]) + 1),
+                            work=growth_count * sample_points * max(1, len(selected_rows(request, design)) + 1),
                             budget_allows=request.max_evaluations is None or growth_count <= request.max_evaluations - evaluations - 1, phase="growth"))
                     with growth_batch as batch:
                         for task, outcome in batch:
                             interface, ref, growth_id = task.context
                             trial = task.design
                             raw = evaluate(trial, jacobian=True, outcome=outcome)
-                            if not design["front_layers"]:
+                            if not selected_rows(request, design):
                                 emit("zero_layer_trial", "Finite legal positive-thickness trial despite zero bare-interface power derivative", trial, raw["score"], material_id=ref.material_id)
                             emit("growth_trial", "增加厚层的完整评分（允许暂时变差）", trial, raw["score"], material_id=ref.material_id)
                             archive(raw)

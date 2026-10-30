@@ -68,11 +68,11 @@ def test_cancelled_training_candidate_without_audit_is_not_shown_as_passed(app, 
             assert str(footer.property("text")) == text
             plot_title = window.findChild(QObject, "filmOptimizationPlotBaselineTitle")
             assert plot_title is not None
-            assert "N=0 空栈基线" in str(plot_title.property("text"))
+            assert "所选表面 N=0 基线" in str(plot_title.property("text"))
             assert not any("ReferenceError" in row or "TypeError" in row for row in warnings), warnings
             assert controller.targetsMet is False
             plot = controller.plotData
-            assert plot["baseline_label"] == "N=0 空栈基线"
+            assert plot["baseline_label"] == "所选表面 N=0 基线"
     finally:
         controller.shutdown(1000)
         cast(ComputeTarget, controller.computeTarget)._executor.shutdown(wait=True, cancel_futures=True)

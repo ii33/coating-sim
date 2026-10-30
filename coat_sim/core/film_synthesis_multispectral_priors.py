@@ -13,6 +13,7 @@ import math
 from typing import Any
 
 from .film_design import MAX_LAYERS
+from .film_synthesis_surfaces import (surface_template_proposals, surface_template_eligibility)
 from .film_synthesis_absorption import assumes_unknown_k_zero, sample_synthesis_optical
 from .film_synthesis_global import StructuralProposal
 from .optical_constants import prepare_optical_set
@@ -43,6 +44,7 @@ def merged_hr_windows(request):
     return tuple(windows)
 
 
+@surface_template_eligibility
 def multispectral_prior_eligible(request):
     """Bare front-side requests with separated HR windows or mixed constraints."""
     env = request.environment
@@ -73,6 +75,7 @@ def _allocate(need, budget, cancel_check=lambda: None):
     return counts
 
 
+@surface_template_proposals
 def iter_multispectral_hr_proposals(request, *, epoch=0,
         cancel_check=lambda: None, report=lambda event: None):
     """Yield a finite source-derived family, stored substrate outward in nm.

@@ -31,7 +31,8 @@ def settings_bundle(configuration):
         materials=[{k:r[k] for k in ('material_id','optical_set_id')} for r in synthesis['material_rows']],
         constraints={k:options.pop(k, None) for k in ('minimum_nonzero_thickness_nm',
             'max_layer_thickness_nm', 'max_total_thickness_nm', 'max_layers')},
-        search=options, assume_unknown_k_zero=synthesis['assume_unknown_k_zero'],
+        search=options, selected_surfaces=deepcopy(synthesis.get('selected_surfaces', ['front'])),
+        assume_unknown_k_zero=synthesis['assume_unknown_k_zero'],
         acceptance={k:configuration['solver'][k] for k in ('acceptable_error_percent','validation_samples_multiplier')})
 
 
@@ -60,6 +61,8 @@ def settings_reason(reference, current):
         return '目标、角度、采样或验收设置已改变，需重新开始搜索；原进度保留在任务历史。'
     if previous.get('materials') != current['materials'] or previous.get('assume_unknown_k_zero') != current['assume_unknown_k_zero']:
         return '候选材料或吸收假设已改变，需重新开始搜索；原进度保留在任务历史。'
+    if previous.get('selected_surfaces', ['front']) != current['selected_surfaces']:
+        return '合成表面已改变，需重新开始搜索；原进度保留在任务历史。'
     if previous.get('constraints') != current['constraints']:
         return '层数或膜厚制造约束已改变，需重新开始搜索；原进度保留在任务历史。'
     if previous.get('search') != current['search']:
@@ -122,13 +125,14 @@ def build_request(controller, record):
     current = controller.session.snapshot()
     old = record['request']
     environment = deepcopy(current.design)
-    environment['front_layers'], environment['back_layers'] = [], []
-    environment['expression'] = {'text':'', 'symbols':{}, 'in_sync':True}
+    for side in controller._synthesis_selected_surfaces:
+        environment[side + '_layers'] = []
     environment['assume_lossless'] = controller._synthesis_assume_unknown_k_zero
     seed = deepcopy(current.design)
     seed['assume_lossless'] = environment['assume_lossless']
     options = controller._synthesis_options
     candidate = replace(old, environment=environment, design_revision=current.design_revision,
+        selected_surfaces=tuple(controller._synthesis_selected_surfaces),
         seed_designs=(seed, *old.seed_designs), warm_start_seed_index=0,
         frozen_material_snapshot=None, search_checkpoint=None,
         max_cycles=options.get('max_cycles'), max_evaluations=options.get('max_evaluations'),

@@ -1204,6 +1204,7 @@ def film_synthesis_schema() -> dict[str, Any]:
             "execution_project_root": str(service.root),
             "required_inputs": ["request.environment", "request.objectives", "request.candidate_materials"],
             "new_environment_defaults": {"assume_lossless": ASSUME_UNKNOWN_K_ZERO},
+            "selected_surfaces": "Physical front/back, independent of incidence. Omitted means front; back requires a double-sided substrate. Clear only selected stacks in the request environment, preserve unselected stacks. Both selected faces are one joint full-design task; limits are aggregate over selected faces.",
             "units": {"thickness": "nm", "wavelength": "nm", "angle": "degree",
                       "R_T_and_target_bounds": "fraction (0.004 = 0.4%)"},
             "execution": "plan_film_synthesis -> estimate_compute_task(kind=film_synthesis) -> submit_film_synthesis; same product worker, original objectives and audit. Null run limits mean unlimited.",

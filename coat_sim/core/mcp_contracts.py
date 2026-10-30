@@ -113,6 +113,9 @@ FILM_SYNTHESIS_PLAN_INPUT_SCHEMA: dict[str, Any] = {
                         "required": ["material_id", "optical_set_id"], "properties": {
                             "material_id": {"type": "string", "minLength": 1},
                             "optical_set_id": {"type": "string", "minLength": 1}}}},
+                    "selected_surfaces": {"type": "array", "minItems": 1, "uniqueItems": True,
+                        "items": {"enum": ["front", "back"]}, "default": ["front"],
+                        "description": "Physical faces synthesized jointly; back requires a double-sided substrate. Unselected stacks remain fixed. Layer and thickness limits apply to selected faces in aggregate."},
                     "needle_pre_local": {"type": "boolean", "default": NEEDLE_PRE_LOCAL},
                     "warm_start_seed_index": {
                         "type": ["integer", "null"], "minimum": 0, "default": None,

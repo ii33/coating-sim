@@ -105,8 +105,9 @@ def audit_frozen_synthesis_candidate(
     if request.frozen_material_snapshot is None:
         raise ValueError("synthesis audit requires a frozen material snapshot")
     design = validate_design(deepcopy(dict(design)))
-    if design["substrate"]["sides"] != "single" or design["first_surface"] != "front":
-        raise ValueError("synthesis audit supports single-sided front incidence only; double-sided/back incidence is unsupported")
+    from .film_synthesis_surfaces import validate_candidate_environment
+    if design["substrate"]["sides"] == "double":
+        validate_candidate_environment(request, design)
     if not design["use_k"]:
         raise ValueError("synthesis audit requires use_k=True to retain known absorption")
     assumed = assumes_unknown_k_zero(request)

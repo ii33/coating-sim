@@ -10,6 +10,7 @@ from itertools import product
 import numpy as np
 from numpy.typing import NDArray
 from .film_design import MAX_LAYERS
+from .film_synthesis_surfaces import (surface_template_proposals, selected_rows)
 from .optical_constants import prepare_optical_set
 from .film_synthesis_absorption import sample_synthesis_optical, assumes_unknown_k_zero
 
@@ -27,6 +28,7 @@ def reflector_objectives(request):
                       or (o.pointwise.mode == 'value' and o.pointwise.target_value is not None and o.pointwise.target_value > 0)))
 
 
+@surface_template_proposals
 def iter_reflector_proposals(request, *, epoch=0, cancel_check=lambda: None, report=lambda event: None):
     objectives = reflector_objectives(request)
     if not objectives or request.seed_designs:
@@ -190,6 +192,7 @@ def _bandpass_phase_orders(epoch, *, cancel_check=lambda: None):
             yield orders
 
 
+@surface_template_proposals
 def iter_bandpass_proposals(request, *, epoch=0, cancel_check=lambda: None,
                            report=lambda event: None):
     """Lazy symmetric mirror/cavity/mirror seeds, never physical evaluations.
@@ -352,8 +355,8 @@ def iter_bandpass_proposals(request, *, epoch=0, cancel_check=lambda: None,
                             phase_angle_deg=angle, symmetry_groups=groups, search_convention=True))
 
 
-def _symmetry_groups(design, symmetry_groups):
-    rows = design['front_layers']
+def _symmetry_groups(design, symmetry_groups, selected_surfaces=("front",)):
+    rows = selected_rows(selected_surfaces, design)
     groups = tuple(tuple(group) for group in symmetry_groups)
     indices = [index for group in groups for index in group]
     if (not groups or any(not group for group in groups)
@@ -373,7 +376,7 @@ def _symmetry_groups(design, symmetry_groups):
 
 
 def symmetric_thickness_parameters(design, symmetry_groups, *, epoch=0,
-                                   minimum_nm=None, maximum_nm=None):
+                                   minimum_nm=None, maximum_nm=None, selected_surfaces=("front",)):
     """Absolute log(nm) group parameters and a finite exploratory box.
 
     Each group is one independent variable, initially within a factor eight
@@ -384,11 +387,11 @@ def symmetric_thickness_parameters(design, symmetry_groups, *, epoch=0,
     """
     if type(epoch) is not int or epoch < 0:
         raise ValueError('symmetry epoch must be a nonnegative integer')
-    groups = _symmetry_groups(design, symmetry_groups)
+    groups = _symmetry_groups(design, symmetry_groups, selected_surfaces)
     for value in (minimum_nm, maximum_nm):
         if value is not None and (not math.isfinite(value) or value <= 0):
             raise ValueError('physical thickness bounds must be finite and positive')
-    initial = np.log([design['front_layers'][group[0]]['thickness']['value'] for group in groups])
+    initial = np.log([selected_rows(selected_surfaces, design)[group[0]]['thickness']['value'] for group in groups])
     radius = math.log(8.) * (epoch + 1)
     lower = np.maximum(initial - radius, math.log(np.finfo(float).tiny))
     upper = np.minimum(initial + radius, math.log(np.finfo(float).max) - 1)
@@ -401,9 +404,9 @@ def symmetric_thickness_parameters(design, symmetry_groups, *, epoch=0,
     return initial, lower, upper
 
 
-def symmetric_thickness_design(design, parameters, *, symmetry_groups):
+def symmetric_thickness_design(design, parameters, *, symmetry_groups, selected_surfaces=("front",)):
     """Map independent absolute log(nm) thicknesses without changing layer IDs."""
-    groups = _symmetry_groups(design, symmetry_groups)
+    groups = _symmetry_groups(design, symmetry_groups, selected_surfaces)
     parameters = np.asarray(parameters, float)
     if parameters.shape != (len(groups),) or not np.all(np.isfinite(parameters)):
         raise ValueError('one finite log thickness per symmetry group required')
@@ -416,11 +419,11 @@ def symmetric_thickness_design(design, parameters, *, symmetry_groups):
         if not math.isfinite(thickness) or thickness <= 0:
             raise ValueError('symmetry transform produced invalid physical thickness')
         for index in group:
-            trial['front_layers'][index]['thickness'] = dict(value=thickness, unit='nm')
+            selected_rows(selected_surfaces, trial)[index]['thickness'] = dict(value=thickness, unit='nm')
     return trial
 
 
-def structured_thickness_design(design, parameters, *, high_pair=None):
+def structured_thickness_design(design, parameters, *, high_pair=None, selected_surfaces=("front",)):
     """Three log parameters: uniform scale, pair ramp, and H/L ratio.
 
     d_i' = d_i exp(a + b t_pair + c s_i), with t_pair in [-1,1] and
@@ -431,7 +434,7 @@ def structured_thickness_design(design, parameters, *, high_pair=None):
     if parameters.shape != (3,) or not np.all(np.isfinite(parameters)):
         raise ValueError('three finite structure parameters required')
     trial = deepcopy(design)
-    rows = trial['front_layers']
+    rows = selected_rows(selected_surfaces, trial)
     if not rows:
         raise ValueError('structure transform requires at least one layer')
     if high_pair is None:

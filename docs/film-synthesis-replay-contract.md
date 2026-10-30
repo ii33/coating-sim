@@ -56,3 +56,7 @@ These are project-defined trust and UI contracts, not a new optical algorithm or
 continuous-spectrum certificate. The replay uses the existing frozen TMM and
 independent synthesis audit described in `film-synthesis-audit-contract.md` and
 `algorithms.html`; its sampled-domain limitations still apply.
+
+## Selected-surface replay identity (2026-10-30)
+
+The optional schema-6 `selected_surfaces` defaults to front for old payloads and is normalized to front/back physical order before replay. Double-sided continuation fingerprints bind that canonical selection, complete fixed-surface rows and the actual optical environment/material closure. Any changed selection or fixed stack requires an explicit new frontier; changing only input ordering does not. Default historical single-front search fingerprints retain their original meaning. Resumed candidates are freshly evaluated on the full production TMM, never on independent single-face merit or stored scores, and unselected row identity is rechecked before accepting any restored pool, pending proposal, cancelled-best candidate or application.

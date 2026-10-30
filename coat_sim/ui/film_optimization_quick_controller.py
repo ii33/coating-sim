@@ -1209,6 +1209,7 @@ class FilmOptimizationQuickController(QObject):
         self._synthesis_forward_probe = FilmSynthesisForwardProbe(parent=self)
         self._synthesis_forward_probe.changed.connect(self.changed.emit)
         self._synthesis_forward_probe.finished.connect(self._on_synthesis_forward_probe_finished)
+        self._synthesis_selected_surfaces = ["front"]
         self._synthesis_use_current_seed = False
         self._synthesis_assume_unknown_k_zero = ASSUME_UNKNOWN_K_ZERO
         self._synthesis_substrate_reference: dict[str, str] | None = None
@@ -1731,7 +1732,8 @@ class FilmOptimizationQuickController(QObject):
                 "multistart_count": self._multistart_count,
                 "population_size": self._population_size,
             },
-            "synthesis": {"options": deepcopy(self._synthesis_options),
+            "synthesis": {"selected_surfaces": list(self._synthesis_selected_surfaces),
+                          "options": deepcopy(self._synthesis_options),
                           "cpu_workers": self._synthesis_cpu_workers,
                           "forward_backend": self._synthesis_forward_backend,
                           "forward_device": deepcopy(self._synthesis_forward_device),
@@ -1958,8 +1960,17 @@ class FilmOptimizationQuickController(QObject):
                     restore_notice += "保存配置中的目标进展交接已移除；其余显式设置已恢复。"
             if not isinstance(synthesis_config, dict) or set(synthesis_config) - {
                     "options", "cpu_workers", "forward_backend", "forward_device",
-                    "use_current_seed", "material_rows", "assume_unknown_k_zero", "search_reference", "substrate_reference"}:
+                    "use_current_seed", "material_rows", "assume_unknown_k_zero", "search_reference", "substrate_reference", "selected_surfaces"}:
                 raise ValueError("Invalid synthesis configuration")
+            synthesis_surfaces = synthesis_config.get("selected_surfaces", ["front"])
+            if (not isinstance(synthesis_surfaces, list)
+                    or any(side not in ("front", "back") for side in synthesis_surfaces)
+                    or len(set(synthesis_surfaces)) != len(synthesis_surfaces)):
+                raise ValueError("合成表面须为不重复的正面/背面数组")
+            synthesis_surfaces = [side for side in ("front", "back") if side in synthesis_surfaces]
+            if self._design.get("substrate", {}).get("sides") == "single" and "back" in synthesis_surfaces:
+                synthesis_surfaces.remove("back")
+                restore_notice += "单面基片不能合成背面；已取消背面选择，原背面膜层保留。"
             incoming_search = deepcopy(synthesis_config.get('search_reference'))
             if incoming_search is not None and not isinstance(incoming_search, dict):
                 raise ValueError('结构搜索进度引用损坏；请从原任务历史恢复。')
@@ -2049,6 +2060,7 @@ class FilmOptimizationQuickController(QObject):
             self._reduction_mode = reduction_mode
             self._reduction_limits = reduction_limits
             self._compute_target.setTask("film_synthesis" if search_mode == "synthesis" else "film_optimization")
+            self._synthesis_selected_surfaces = synthesis_surfaces
             self._synthesis_options, self._synthesis_use_current_seed = synthesis_values, synthesis_seed
             search_seed = synthesis_values["structure_search_seed"]
             self._synthesis_structure_search_seed_text = "" if search_seed is None else str(search_seed)
@@ -2371,6 +2383,10 @@ class FilmOptimizationQuickController(QObject):
             path = snapshot.path
             source_controller = None
         self._design = deepcopy(design)
+        if (self._design.get("substrate", {}).get("sides") == "single"
+                and "back" in self._synthesis_selected_surfaces):
+            self._synthesis_selected_surfaces.remove("back")
+            self._configuration_restore_notice = "单面基片不能合成背面；已取消背面选择，原背面膜层保留。"
         self._source_revision = int(design_revision)
         self._path = str(path or "")
         self._source_stale = False
@@ -2594,7 +2610,7 @@ class FilmOptimizationQuickController(QObject):
         self.changed.emit()
         self._persist_configuration()
 
-    @Property("QVariantList", notify=changed)
+    @Property(list, notify=changed)
     def objectives(self) -> list[dict]:
         return [dict(row, index=index, selected=index == self._selected_objective,
                      display=self._objective_label(row, index))
@@ -3007,7 +3023,7 @@ class FilmOptimizationQuickController(QObject):
         return {
             "wavelength_nm": list(raw.wavelength_nm),
             "baseline": list(original.get("actual", [])),
-            "baseline_label": "N=0 空栈基线" if self._synthesis_payload is not None else "原设计",
+            "baseline_label": "所选表面 N=0 基线" if self._synthesis_payload is not None else "原设计",
             "candidate": list(raw.actual_values),
             "metric": objective["metric"],
             "mode": criterion["mode"],
@@ -4697,6 +4713,8 @@ class FilmOptimizationQuickController(QObject):
         return not (self._structure_material_error or self._synthesis_substrate_error)
 
     def _build_synthesis_request(self, *, prepared_angles=None):
+        if not self._synthesis_selected_surfaces:
+            raise ValueError("请选择至少一个合成表面（正面或背面）")
         synthesis_structure_search_seed(self._synthesis_structure_search_seed_text)
         from coat_sim.core.film_optimization_needle import FilmNeedleMaterialReference
         base = self._build_request(require_variables=False, fixed_topology=False,
@@ -4718,9 +4736,12 @@ class FilmOptimizationQuickController(QObject):
                                        self._synthesis_assume_unknown_k_zero,
                                        cpu_workers=self._synthesis_cpu_workers,
                                        forward_backend=self._synthesis_forward_backend,
-                                       forward_device=self._synthesis_forward_device)
+                                       forward_device=self._synthesis_forward_device,
+                                       selected_surfaces=tuple(self._synthesis_selected_surfaces))
 
     def _synthesis_configuration_error(self):
+        if not self._synthesis_selected_surfaces:
+            return "请选择至少一个合成表面（正面或背面）"
         if self._synthesis_structure_search_seed_error:
             return self._synthesis_structure_search_seed_error
         if self._pending_edit_error:
@@ -4732,8 +4753,9 @@ class FilmOptimizationQuickController(QObject):
             return material_error
         if self._synthesis_substrate()["error"]:
             return self._synthesis_substrate()["error"]
-        if self._design.get("substrate", {}).get("sides") != "single" or self._design.get("first_surface") != "front":
-            return "从零合成目前仅支持单面、前表面入射"
+        if ("back" in self._synthesis_selected_surfaces
+                and self._design.get("substrate", {}).get("sides") != "double"):
+            return "只有双面基片可以选择合成背面"
         if not self._design.get("use_k"):
             return "从零合成要求保留真实 n/k，不能关闭 k"
         if self._validation_samples_multiplier < 2:
@@ -4755,6 +4777,30 @@ class FilmOptimizationQuickController(QObject):
             if self._synthesis_forward_device not in result.get("devices", []):
                 return "所选 GPU 设备身份与当前解释器的探测结果不一致，请重新选择设备。"
         return ""
+
+    @Property("QVariantList", notify=changed)
+    def synthesisSelectedSurfaces(self):
+        return list(self._synthesis_selected_surfaces)
+
+    @Property(bool, notify=changed)
+    def synthesisBackAvailable(self) -> bool:
+        return self._design.get("substrate", {}).get("sides") == "double"
+
+    @Slot(str, bool, result=bool)
+    def setSynthesisSurfaceSelected(self, surface: str, selected: bool) -> bool:
+        if (self._busy or self._shutting_down or self._pending_edit_error
+                or surface not in ("front", "back")
+                or (surface == "back" and not self.synthesisBackAvailable)):
+            return False
+        surfaces = set(self._synthesis_selected_surfaces)
+        if selected:
+            surfaces.add(surface)
+        else:
+            surfaces.discard(surface)
+        self._synthesis_selected_surfaces = [side for side in ("front", "back") if side in surfaces]
+        self._error = ""
+        self._invalidate_result()
+        return True
 
     @Property(dict, notify=changed)
     def synthesisOptions(self):

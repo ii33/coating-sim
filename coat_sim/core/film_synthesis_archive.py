@@ -15,6 +15,8 @@ from typing import Any, Mapping
 
 import numpy as np
 
+from .film_synthesis_surfaces import selected_rows, selected_sides
+
 
 def physical_design_hash(design: Mapping[str, Any]) -> str:
     """Identity of the optical problem and ordered stack, ignoring editor labels."""
@@ -60,6 +62,7 @@ class SynthesisArchiveEntry:
     insertion_index: int
     rank_key: tuple
     audit: dict[str, Any] | None = None
+    selected_surfaces: tuple[str, ...] = ("front",)
 
     @property
     def design(self):
@@ -67,7 +70,7 @@ class SynthesisArchiveEntry:
 
     @property
     def costs(self):
-        rows = self.design["front_layers"]
+        rows = selected_rows(self, self.design)
         return (float(self.candidate["score"]["max_error"]), len(rows),
                 math.fsum(float(row["thickness"]["value"]) for row in rows),
                 *self.window_errors)
@@ -81,9 +84,11 @@ class SynthesisDesignArchive:
     parent/operator provenance, not merely its score. Response signatures use
     window means/extrema and are never substituted for full-grid acceptance.
     """
-    def __init__(self, objective_count: int, *, capacity: int = 32, rank=None):
+    def __init__(self, objective_count: int, *, capacity: int = 32, rank=None,
+                 selected_surfaces=("front",)):
         if type(capacity) is not int or capacity < 2:
             raise ValueError("archive capacity must be an integer >= 2")
+        self.selected_surfaces = selected_sides(selected_surfaces)
         self.objective_count = objective_count
         self.capacity = capacity
         self.rank = rank or (lambda value: (float(value["score"]["max_error"]),
@@ -99,7 +104,7 @@ class SynthesisDesignArchive:
         maximum = float(value["score"]["max_error"])
         if not math.isfinite(maximum):
             raise ValueError("archive requires a complete finite original score")
-        rows = value["design"]["front_layers"]
+        rows = selected_rows(self, value["design"])
         if any(float(row["thickness"]["value"]) <= 0 for row in rows):
             return None  # Exact-zero probes are directions, not physical designs.
         identity = physical_design_hash(value["design"])
@@ -123,7 +128,8 @@ class SynthesisDesignArchive:
         self.total_admitted += 1
         entry = SynthesisArchiveEntry(identity, candidate, deepcopy(provenance or {}),
             parent_hash, operator, original_window_errors(value, self.objective_count),
-            tuple(signature), self.total_admitted, tuple(self.rank(value)))
+            tuple(signature), self.total_admitted, tuple(self.rank(value)),
+            selected_surfaces=self.selected_surfaces)
         self.entries[identity] = entry
         self._trim()
         return self.entries.get(identity)
@@ -167,7 +173,7 @@ class SynthesisDesignArchive:
         for entry in entries:
             family = entry.provenance.get("family", entry.operator)
             # Geometric scale classes do not prescribe any particular layer count.
-            scale = len(entry.design["front_layers"]).bit_length()
+            scale = len(selected_rows(self, entry.design)).bit_length()
             key = family, scale
             buckets.setdefault(key, entry)
         protected = list(buckets.values()) + self.pareto_entries()
@@ -219,7 +225,7 @@ class SynthesisDesignArchive:
             entries=[dict(physical_hash=entry.physical_hash, design=deepcopy(entry.design),
                 max_error=float(entry.candidate["score"]["max_error"]),
                 weighted_rms_error=float(entry.candidate["score"]["weighted_rms_error"]),
-                window_max_errors=list(entry.window_errors), layer_count=len(entry.design["front_layers"]),
+                window_max_errors=list(entry.window_errors), layer_count=len(selected_rows(self, entry.design)),
                 total_thickness_nm=entry.costs[2], parent_hash=entry.parent_hash,
                 operator=entry.operator, provenance=deepcopy(entry.provenance), pareto=entry.physical_hash in pareto,
                 audit_status="not_audited" if entry.audit is None else "complete", audit=deepcopy(entry.audit))

@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 
 from .film_synthesis_archive import physical_design_hash
+from .film_synthesis_surfaces import selected_rows, selected_sides, validate_candidate_environment
 
 SEARCH_STATE_KIND = 'coat_sim.film_synthesis_search_state'
 SEARCH_STATE_VERSION = 1
@@ -47,13 +48,19 @@ def load_search_state(path):
 def search_fingerprint(request):
     """Frozen physics/search semantics; editor text, seeds and per-run budgets excluded."""
     data = asdict(request)
+    data["selected_surfaces"] = selected_sides(request)
     for name in ('search_checkpoint', 'seed_designs', 'warm_start_seed_index', 'design_revision',
                  'max_cycles', 'max_evaluations', 'max_seconds', 'cpu_workers',
                  'forward_backend', 'forward_device', 'resource_guard_resolution',
                  'max_working_set_bytes', 'enable_thickness_reduction', 'enable_local_margin_refinement'):
         data.pop(name, None)
     data.pop('parallel_batch_size', None)
+    if tuple(data.get('selected_surfaces', ('front',))) == ('front',):
+        data.pop('selected_surfaces', None)
     data['environment'] = physical_design_hash(request.environment)
+    if request.environment['substrate']['sides'] == 'double':
+        data['fixed_surface_stacks'] = {side: deepcopy(request.environment[side + '_layers'])
+            for side in ('front', 'back') if side not in selected_sides(request)}
     snapshot = request.frozen_material_snapshot or {}
     data['frozen_material_snapshot'] = snapshot.get('materials')
     return _digest(data)
@@ -120,18 +127,12 @@ def validate_search_state(request, supplied):
                 or 'design' not in record):
             raise ValueError('invalid checkpoint candidate record')
         design = validate_design(record['design'])
-        if design['back_layers']:
-            raise ValueError('search checkpoint cannot introduce a back-side topology')
         if any((r['material_id'], r['optical_set_id']) not in available
-               or r['thickness']['unit'] != 'nm' for r in design['front_layers']):
+               or r['thickness']['unit'] != 'nm' for r in selected_rows(request, design)):
             raise ValueError('checkpoint candidate is outside frozen material/nm closure')
         if not _feasible(request, design):
             raise ValueError('search checkpoint candidate violates frozen constraints')
-        environment = deepcopy(design)
-        environment['front_layers'] = []
-        environment['back_layers'] = []
-        if physical_design_hash(environment) != physical_design_hash(request.environment):
-            raise ValueError('search checkpoint candidate changed optical environment')
+        validate_candidate_environment(request, design)
     for record in state['pool']:
         if (type(record.get('insertion_index')) is not int or record['insertion_index'] < 1
                 or not isinstance(record.get('operator'), str)

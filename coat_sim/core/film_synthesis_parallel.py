@@ -27,6 +27,7 @@ from typing import Any, Callable, Iterable, Mapping
 
 from . import film_optimization_structure as physical
 from .film_performance import available_cpu_workers
+from .film_synthesis_surfaces import selected_rows, selected_sides
 
 MIN_PARALLEL_WORK = 200_000  # Project cold-start/discovery heuristic, not a work budget.
 STARTUP_TIMEOUT_SECONDS = 20.0
@@ -191,6 +192,7 @@ def _worker_main():
     started = time.perf_counter()
     initial, _, _ = _read_frame(sys.stdin.buffer)
     request, cancel = initial["request"], _CancelFile(initial["cancel_path"])
+    selection = initial.get("selected_surfaces", ("front",))
     prepared = physical._PreparedStructureEvaluator(request)
     _write_frame(sys.stdout.buffer, {"kind": "ready", "pid": os.getpid(),
         "prepared_material_contexts": 1,
@@ -224,7 +226,7 @@ def _worker_main():
             cpu_before = time.process_time()
             try:
                 value = prepared.evaluate(design,
-                    variable_ids=tuple(row["id"] for row in design["front_layers"]) if command["jacobian"] else (),
+                    variable_ids=tuple(row["id"] for row in selected_rows(selection, design)) if command["jacobian"] else (),
                     with_jacobian=command["jacobian"], zero_thickness_layer_ids=command["zero_ids"],
                     derived_validation_grid=False, cancel_event=cancel)
             finally:
@@ -286,6 +288,7 @@ class OrderedEvaluationExecutor:
         self.workers = min(8 if requested_workers == 0 else requested_workers, available)
         self.cancel_event = cancel_event
         self.request = None
+        self.selected_surfaces = ("front",)
         self.frozen_request_identity: str | None = None
         self.children: list[_Child] = []
         self.events: Queue = Queue()
@@ -315,12 +318,13 @@ class OrderedEvaluationExecutor:
         self._last_selection: dict[str, object] = {}
         self._selected_workers = 0
 
-    def configure(self, request):
+    def configure(self, request, *, selected_surfaces=("front",)):
         if self.children or self.submitted:
             raise RuntimeError("cannot reconfigure a started frozen evaluation pool")
         self.request = deepcopy(request)
+        self.selected_surfaces = selected_sides(selected_surfaces)
         self.frozen_request_identity = hashlib.sha256(
-            pickle.dumps(self.request, protocol=pickle.HIGHEST_PROTOCOL)).hexdigest()
+            pickle.dumps((self.request, self.selected_surfaces), protocol=pickle.HIGHEST_PROTOCOL)).hexdigest()
 
     def check_cancel(self):
         if self.cancel_event is not None and self.cancel_event.is_set():
@@ -577,7 +581,8 @@ class OrderedEvaluationExecutor:
                     name=f"synthesis-writer-{process.pid}", daemon=True)
                 reader.start()
                 child.writer.start()
-                self._send(child, {"request": self.request, "cancel_path": str(self.cancel_path),
+                self._send(child, {"request": self.request, "selected_surfaces": self.selected_surfaces,
+                                   "cancel_path": str(self.cancel_path),
                                    "frozen_request_identity": self.frozen_request_identity})
             deadline = started + STARTUP_TIMEOUT_SECONDS
             while not all(child.ready for child in self.children):

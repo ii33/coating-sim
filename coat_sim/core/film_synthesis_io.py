@@ -17,6 +17,7 @@ from .film_physical_structures import structure_spec_from_mapping, structure_spe
 from .film_physical_structures import generate_physical_structure
 from .optical_constants import UNITS_TO_UM
 from .film_synthesis_absorption import annotate_synthesis_design, synthesis_absorption_assumption
+from .film_synthesis_surfaces import selected_sides, selected_row_sites
 
 REQUEST_KIND = "coat_sim.film_synthesis_request"
 RESULT_KIND = "coat_sim.film_synthesis_result"
@@ -54,7 +55,7 @@ def film_synthesis_request_from_payload(payload: Mapping[str, Any], *, require_f
     if not isinstance(raw, Mapping):
         raise FilmSynthesisPayloadError("request must be an object")
     allowed = {item.name for item in fields(FilmSynthesisRequest)}
-    optional_extensions = {'search_checkpoint', 'enable_local_margin_refinement'}
+    optional_extensions = {'search_checkpoint', 'enable_local_margin_refinement', 'selected_surfaces'}
     if set(raw) - allowed or allowed - set(raw) - optional_extensions:
         raise FilmSynthesisPayloadError("current synthesis request requires every field and no unknown fields")
     data = deepcopy(dict(raw))
@@ -71,6 +72,48 @@ def film_synthesis_request_from_payload(payload: Mapping[str, Any], *, require_f
     if require_frozen and request.randomize_template_search and request.structure_search_seed is None:
         raise FilmSynthesisPayloadError("frozen template search requires a resolved structure_search_seed")
     return request_id, request, _normalize_specs(payload["physical_structures"])
+
+
+
+def _generate_synthesis_physical_structure(request, spec, snapshot):
+    """Construct substrate-outward seed rows, then restore actual two-face geometry.
+
+    The single-front template is construction-only: it is never simulated or
+    scored. Every generated candidate is evaluated later with the unchanged
+    real illumination, substrate and inactive stack. Joint selection creates
+    one candidate with distinct per-side layer identities, not two objectives.
+    """
+    sides = selected_sides(request)
+    environment = request.environment
+    if (sides == ("front",) and environment["substrate"]["sides"] == "single"
+            and environment["first_surface"] == "front" and not environment["back_layers"]):
+        return generate_physical_structure(environment, spec, snapshot,
+            assume_unknown_k_zero=environment["assume_lossless"])
+    template = deepcopy(dict(environment))
+    template["front_layers"], template["back_layers"] = [], []
+    template["substrate"]["sides"] = "single"
+    template["first_surface"] = "front"
+    if sides == ("back",):
+        template["incident_medium"], template["exit_medium"] = deepcopy(environment["exit_medium"]), deepcopy(environment["incident_medium"])
+    generated = generate_physical_structure(template, spec, snapshot,
+        assume_unknown_k_zero=environment["assume_lossless"])
+    design = deepcopy(dict(environment))
+    for key in ("id", "name", "note"):
+        design[key] = deepcopy(generated.candidate_design[key])
+    for side in sides:
+        design[side + "_layers"] = deepcopy(generated.candidate_design["front_layers"])
+        for row in design[side + "_layers"]:
+            row["id"] += "-" + side
+    metadata = deepcopy(dict(generated.metadata))
+    metadata["selected_surfaces"] = list(sides)
+    metadata["layers"] = [dict(deepcopy(row), side=side, layer_id=layer["id"])
+        for side in sides for row, layer in zip(generated.metadata["layers"], design[side + "_layers"], strict=True)]
+    metadata["sections"] = [dict(deepcopy(section), side=side)
+        for side in sides for section in generated.metadata["sections"]]
+    metadata["layer_count"] *= len(sides)
+    metadata["total_thickness_nm"] *= len(sides)
+    from .film_design import validate_design
+    return replace(generated, candidate_design=validate_design(design), metadata=metadata)
 
 
 def prepare_film_synthesis_payload(service: Any, payload: Mapping[str, Any], *, progress_callback=None):
@@ -106,8 +149,7 @@ def prepare_film_synthesis_payload(service: Any, payload: Mapping[str, Any], *, 
     metadata = []
     for index, mapping in enumerate(structures):
         spec = structure_spec_from_mapping(mapping)
-        generated = generate_physical_structure(request.environment, spec, frozen_snapshot,
-            assume_unknown_k_zero=request.environment["assume_lossless"])
+        generated = _generate_synthesis_physical_structure(request, spec, frozen_snapshot)
         seeds.append(generated.candidate_design)
         metadata.append({"index": index, "mechanism": spec.mechanism,
                          "name": spec.name, "metadata": generated.metadata})
@@ -156,7 +198,8 @@ def film_synthesis_result_to_payload(request_id: str, result: Any, *, audit: Map
     materials = {item.get("id"): item for item in snapshot.get("materials", ())}
     layers = []
     if result.candidate_design is not None:
-        for index, layer in enumerate(result.candidate_design.get("front_layers", ())):
+        surface_indices = {side: 0 for side in selected_sides(frozen)}
+        for index, (side, layer) in enumerate(selected_row_sites(frozen, result.candidate_design)):
             material = materials.get(layer.get("material_id"), {})
             optical: Mapping[str, Any] = next((row for row in material.get("optical_sets", ())
                             if row.get("id") == layer.get("optical_set_id")), {})
@@ -180,7 +223,7 @@ def film_synthesis_result_to_payload(request_id: str, result: Any, *, audit: Map
                 k_source, k_notes = k_data.get("source"), k_data.get("notes")
             else:
                 k_unit, k_domain, k_source, k_notes = None, None, None, None
-            layers.append({"index": index, "id": layer.get("id"),
+            layers.append({"index": index, "side": side, "surface_index": surface_indices[side], "id": layer.get("id"),
                 "thickness_nm": layer.get("thickness", {}).get("value"),
                 "material_id": layer.get("material_id"), "material_name": material.get("name"),
                 "optical_set_id": layer.get("optical_set_id"), "optical_set_name": optical.get("name"),
@@ -199,6 +242,7 @@ def film_synthesis_result_to_payload(request_id: str, result: Any, *, audit: Map
                     "source_content_sha256": snapshot.get("source_content_sha256"),
                     "snapshot_source_url": snapshot.get("source_url"),
                     "upstream_commit": snapshot.get("upstream_commit")}})
+            surface_indices[side] += 1
     validation = result.validation_score or {}
     training = result.training_score or {}
     audit_metadata = validation.get("audit") or {}
@@ -269,7 +313,8 @@ def film_synthesis_result_to_payload(request_id: str, result: Any, *, audit: Map
                 training_targets_met=status["targets_met"],
                 training_solver_acceptable=status["solver_acceptable"],
                 targets_met=None, solver_acceptable=None)
-    review = {"absorption_assumption": deepcopy(absorption), "termination": {"state": result.state, "reason": result.termination_reason},
+    review = {"selected_surfaces": list(selected_sides(frozen)),
+        "absorption_assumption": deepcopy(absorption), "termination": {"state": result.state, "reason": result.termination_reason},
         "targets_met": body["targets_met"],
         "solver_acceptable": physical_solver_acceptable,
         "per_objective": per_objective,

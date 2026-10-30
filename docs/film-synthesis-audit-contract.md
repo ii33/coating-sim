@@ -1,6 +1,6 @@
 # 自动合成的独立光谱审计契约
 
-当前更新（2026-10-24）：波段 mean/pointwise 两组、版本、raw coverage 与严格判定以[双约束契约](film-band-criteria-contract.md)为准。旧 flat 目标与旧协议不迁移。
+当前更新（2026-10-30）：合成审计支持真实双面/背面入射设计；选面与未选固定面契约见[算法 14bd](algorithms.html#film-synthesis-selected-surfaces-20261030)。波段 mean/pointwise 两组、版本、raw coverage 与严格判定以[双约束契约](film-band-criteria-contract.md)为准。旧 flat 目标与旧协议不迁移。
 
 日期：2026-10-20。实现真值：`coat_sim/core/film_synthesis_audit.py`。算法与离线图解同步见 `algorithms.html` 14t。
 
@@ -22,7 +22,7 @@ score.max_error 和 errors 包含额外审计点；weighted_rms_error 始终取�
 
 The audit uses `film_design_service.active_material_references(design)`, the same reference selector as ordinary frozen forward simulation. For a single-sided substrate, only substrate, front layers and a material incident port are active. Inactive back-layer drafts and exit-medium fields are preserved but never looked up or sampled, including missing, unknown-k and out-of-domain draft references. A double-sided forward path activates both layer stacks and both material ports; front/back incidence exchanges the physical ports in the ordinary forward engine.
 
-The synthesis audit backend remains restricted to a single-sided substrate with front incidence. `freeze_film_synthesis_request` already rejects other environments. The public audit helper now rejects double-sided or back-incidence designs explicitly with `ValueError` before looking up sources; ordinary forward support for those designs does not imply synthesis-audit support. This correction adds no double-sided or back-incidence optimization algorithm.
+As of 2026-10-30, synthesis and its independent audit retain the actual complete optical geometry: a single-sided front-incidence substrate, or a double-sided finite substrate illuminated from either physical side. `selected_surfaces` selects mutable coatings, not separate optical objectives; fixed opposite-side rows and both external ports remain in every double-sided audit. The production `FilmDesignService._simulate_chunk` is the sole forward R/T truth, with unchanged coherent/incoherent substrate handling, exact grids and original objective reduction. A single-sided substrate still rejects back incidence and back selection. Fixed-stack identity is checked at synthesis, continuation, result and apply boundaries; the standalone single-front audit retains its existing inactive-draft source semantics. See [algorithm 14bd](algorithms.html#film-synthesis-selected-surfaces-20261030) and the [core contract](film-auto-synthesis-contract.md).
 
 Every active source must be frozen and provide explicit finite positive n and finite passive known k at each actually audited wavelength. Missing active materials or optical sets, invalid source models, unknown k and coverage failures raise contextual `ValueError` naming material ID, optical-set ID and target intervals; sampled failures also name the wavelength. Compatibility zero defaults are never accepted as source evidence. Audit control flow, fixed-grid RMS measure, dense/offset/extremum sampling, extrema settings and cancellation ownership remain unchanged.
 

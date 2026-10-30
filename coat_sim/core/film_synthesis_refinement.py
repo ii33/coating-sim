@@ -11,6 +11,8 @@ import math
 from typing import Callable, Literal, Mapping, Protocol, Sequence, TypedDict, cast
 
 import numpy as np
+
+from .film_synthesis_surfaces import selected_rows
 from numpy.typing import NDArray
 
 from .film_objective_criteria import (active_constraints, normalized_band_weights,
@@ -124,7 +126,7 @@ def refine_synthesis_candidate(request, initial, *, evaluate, archive, quarter_n
     # Resolve the live module attribute so existing SciPy monkeypatches remain visible.
     minimize = cast(_LocalMinimizer, import_module("scipy.optimize").minimize)
     design = initial['design']
-    rows = design['front_layers']
+    rows = selected_rows(request, design)
     if not rows:
         return initial, dict(method='none', reason='empty_topology', iterations=0)
     ids = tuple(r['id'] for r in rows)
@@ -178,7 +180,7 @@ def refine_synthesis_candidate(request, initial, *, evaluate, archive, quarter_n
             excess = float(sum(thicknesses)) - total_cap
             return 1e6 + excess**2, 2 * excess * scales
         trial = deepcopy(design)
-        for row, thickness in zip(trial['front_layers'], thicknesses, strict=True):
+        for row, thickness in zip(selected_rows(request, trial), thicknesses, strict=True):
             row['thickness'] = dict(value=float(thickness), unit='nm')
         value = evaluate(trial, jacobian=True)
         calls += 1
@@ -266,7 +268,7 @@ def refine_synthesis_explorer(request, initial, *, evaluate, archive,
     """
     minimize = import_module('scipy.optimize').minimize
     design = initial['design']
-    rows = design['front_layers']
+    rows = selected_rows(request, design)
     if not rows:
         return initial, dict(method='none', termination='empty_topology', success=True,
                              physical_candidates=0, iterations=0)
@@ -301,9 +303,9 @@ def refine_synthesis_explorer(request, initial, *, evaluate, archive,
                 or (total is not None and float(sum(thicknesses)) > total)):
             raise ValueError('SSE solver requested infeasible physical thicknesses')
         trial = deepcopy(design)
-        for row, thickness in zip(trial['front_layers'], thicknesses, strict=True):
+        for row, thickness in zip(selected_rows(request, trial), thicknesses, strict=True):
             row['thickness'] = dict(value=float(thickness), unit='nm')
-        zero_ids = tuple(row['id'] for row in trial['front_layers'] if row['thickness']['value'] == 0.)
+        zero_ids = tuple(row['id'] for row in selected_rows(request, trial) if row['thickness']['value'] == 0.)
         value = evaluate(trial, jacobian=True, zero_ids=zero_ids)
         calls += 1
         measured = weighted_sse_loss_gradient(request, value, ids)
@@ -381,7 +383,7 @@ def refine_synthesis_explorer(request, initial, *, evaluate, archive,
         message=str(outcome.message) if outcome is not None else termination,
         iterations=iterations, physical_candidates=calls, weighted_sse=terminal_loss,
         endpoint_role='actual_solver_terminal_or_last_accepted_iterate_not_strict_champion',
-        endpoint_thicknesses_nm=[float(row['thickness']['value']) for row in accepted['design']['front_layers']],
+        endpoint_thicknesses_nm=[float(row['thickness']['value']) for row in selected_rows(request, accepted['design'])],
         fixed_layer_ids=list(ids) if upper is not None and lower == upper else [],
         free_thickness_variables=0 if upper is not None and lower == upper else len(ids),
         all_original_conditions=True, independent_layer_variables=list(ids),
@@ -405,7 +407,7 @@ def refine_synthesis_full_minimax(request, initial, *, evaluate, archive,
     from .film_synthesis_archive import physical_design_hash
     minimize = import_module('scipy.optimize').minimize
     design = initial['design']
-    rows = design['front_layers']
+    rows = selected_rows(request, design)
     if lower_bounds_nm is not None:
         supplied_ids = tuple(row['id'] for row in rows)
         if (not isinstance(lower_bounds_nm, Mapping)
@@ -493,7 +495,7 @@ def refine_synthesis_full_minimax(request, initial, *, evaluate, archive,
             penalty_jac = 2 * (below + above + excess) * scales
             return np.full(condition_count, penalty), np.tile(penalty_jac, (condition_count, 1))
         trial = deepcopy(design)
-        for row, thickness in zip(trial['front_layers'], thicknesses, strict=True):
+        for row, thickness in zip(selected_rows(request, trial), thicknesses, strict=True):
             row['thickness'] = dict(value=float(thickness), unit='nm')
         value = evaluate(trial, jacobian=True)
         q, jac, _ = _signed_bounds(request, value, ids)
@@ -553,7 +555,7 @@ def refine_synthesis_full_minimax(request, initial, *, evaluate, archive,
             and (total is None or (float(sum(endpoint_ds)) if lower_bounds_nm is None
                                   else math.fsum(endpoint_ds)) <= total))
         endpoint_design = deepcopy(design)
-        for row, thickness in zip(endpoint_design['front_layers'], endpoint_ds, strict=True):
+        for row, thickness in zip(selected_rows(request, endpoint_design), endpoint_ds, strict=True):
             row['thickness'] = dict(value=float(thickness), unit='nm')
         endpoint_evidence = dict(
             role='actual_solver_endpoint',

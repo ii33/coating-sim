@@ -12,9 +12,12 @@ from typing import Callable, Mapping, Protocol, Sequence, TypedDict, cast
 
 import numpy as np
 
+from .film_synthesis_surfaces import selected_rows, selected_row_sites
+
 from .film_objective_criteria import FilmConditionError, active_constraints, reduce_objective_responses
 from .film_optimization import FilmOptimizationObjective, _checked_frozen_snapshot
-from .film_optimization_derivatives import _PreparedMaterialData, simulate_with_thickness_jacobian
+from .film_optimization_derivatives import _PreparedMaterialData
+from .film_synthesis_physics import simulate_synthesis_with_thickness_jacobian as simulate_with_thickness_jacobian
 from .film_optimization_scoring import reduction_score
 from .film_optimization_structure import _StructureCancelled
 from .film_synthesis_hr_minimax import Array, _Constraint, _Result
@@ -162,11 +165,11 @@ class PreparedFeasibilityEvaluator:
                 self.additional_conditions += int(key in self.mean_grids)
 
     def evaluate(self, design, *, cancel_event=None):
-        ids = tuple(row['id'] for row in design['front_layers'])
-        variables = [dict(side='front', layer_id=layer, lower_nm=0., upper_nm=np.finfo(float).max)
-                     for layer in ids]
+        ids = tuple(row['id'] for row in selected_rows(self.request, design))
+        variables = [dict(side=side, layer_id=row['id'], lower_nm=0., upper_nm=np.finfo(float).max)
+                     for side, row in selected_row_sites(self.request, design)]
         base_frames, work_frames, extras = [], [], []
-        limit = min(10001, 1_000_000 // (len(ids) + len(design.get('back_layers', ())) + 3))
+        limit = min(10001, 1_000_000 // (len(design["front_layers"]) + len(design["back_layers"]) + 3))
         for index, objective in enumerate(self.objectives):
             for angle in objective.angles_deg:
                 key = index, angle
@@ -179,7 +182,7 @@ class PreparedFeasibilityEvaluator:
                     response = simulate_with_thickness_jacobian(design, self.materials, variables,
                         dict(wavelength_min_nm=float(chunk[0]), wavelength_max_nm=float(chunk[-1]),
                              samples=len(chunk), angle_deg=angle, polarization=objective.polarization,
-                             first_surface='front'), wavelengths_nm=chunk)
+                             first_surface=design['first_surface']), wavelengths_nm=chunk)
                     raw_values.extend(response[objective.metric])
                     raw_matrices.extend(response['jacobian_' + objective.metric])
                 values, matrix = np.asarray(raw_values), np.asarray(raw_matrices)
@@ -231,7 +234,7 @@ def refine_feasibility_candidate(request, initial, *, evaluate, archive,
     """Full original + admitted audit inequalities, with an internal guide only."""
     minimize = cast(_CallbackMinimize, import_module('scipy.optimize').minimize)
     design = initial['design']
-    ds = np.asarray([r['thickness']['value'] for r in design['front_layers']], float)
+    ds = np.asarray([r['thickness']['value'] for r in selected_rows(request, design)], float)
     if not len(ds):
         return initial, dict(termination='empty_topology', physical_candidates=0)
     # Fixed topology; finite phase-local box, never a new manufacturing cap.
@@ -259,7 +262,7 @@ def refine_feasibility_candidate(request, initial, *, evaluate, archive,
         if (not np.all(np.isfinite(thicknesses)) or np.any(thicknesses < lower) or np.any(thicknesses > upper)):
             raise ValueError('feasibility solver requested invalid local thicknesses')
         trial = deepcopy(design)
-        for row, d in zip(trial['front_layers'], thicknesses, strict=True):
+        for row, d in zip(selected_rows(request, trial), thicknesses, strict=True):
             row['thickness'] = dict(value=float(d), unit='nm')
         if request.max_total_thickness_nm is not None and sum(thicknesses) > request.max_total_thickness_nm:
             # Line-search feasibility guard; never evaluated or archived.

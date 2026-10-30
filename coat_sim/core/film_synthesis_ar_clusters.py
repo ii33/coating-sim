@@ -14,6 +14,7 @@ import math
 import numpy as np
 
 from .film_design import MAX_LAYERS
+from .film_synthesis_surfaces import (surface_template_proposals, selected_rows)
 from .film_synthesis_absorption import assumes_unknown_k_zero, sample_synthesis_optical
 from .film_synthesis_global import StructuralProposal
 from .film_synthesis_matching import matching_objectives
@@ -67,7 +68,7 @@ def _iter_pair_counts(maximum, layer_cap, *, uneven=False, third=False,
 
 
 def _model(design, metadata):
-    rows = design['front_layers']
+    rows = selected_rows(metadata, design)
     slots = metadata.get('layer_slots', ())
     clusters = metadata.get('clusters', ())
     edges = tuple(metadata.get('boundary_layer_indices', ()))
@@ -219,18 +220,19 @@ def ar_cluster_design(design, point, metadata):
                     thickness = math.exp(log_d)
                     if not math.isfinite(thickness) or thickness <= 0:
                         raise ValueError('AR cluster map produced unrepresentable physical thickness')
-                    trial['front_layers'][index]['thickness'] = dict(value=thickness, unit='nm')
+                    selected_rows(metadata, trial)[index]['thickness'] = dict(value=thickness, unit='nm')
         for index in edges:
             thickness = math.exp(float(point[position]))
             position += 1
             if not math.isfinite(thickness) or thickness <= 0:
                 raise ValueError('AR boundary map produced unrepresentable physical thickness')
-            trial['front_layers'][index]['thickness'] = dict(value=thickness, unit='nm')
+            selected_rows(metadata, trial)[index]['thickness'] = dict(value=thickness, unit='nm')
     except OverflowError as exc:
         raise ValueError('AR cluster map produced unrepresentable physical thickness') from exc
     return trial
 
 
+@surface_template_proposals
 def iter_ar_cluster_proposals(request, *, epoch=0, cancel_check=lambda: None,
                               report=lambda event: None):
     """Lazy real-material alternating stacks with one/two/three AR clusters.

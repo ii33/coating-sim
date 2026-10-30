@@ -13,6 +13,7 @@ import math
 from typing import TYPE_CHECKING, Any, Callable, Generator
 
 from .film_design import MAX_LAYERS
+from .film_synthesis_surfaces import (surface_template_proposals, surface_template_eligibility)
 from .film_synthesis_absorption import assumes_unknown_k_zero, sample_synthesis_optical
 from .film_synthesis_global import StructuralProposal
 from .optical_constants import prepare_optical_set
@@ -27,6 +28,7 @@ class _InvalidPrior(Exception):
     pass
 
 
+@surface_template_eligibility
 def pure_hr_prior_eligible(request: FilmSynthesisRequest) -> bool:
     """Require a bare, bounded, seed-free, single-sided pure HR request."""
     environment = request.environment
@@ -44,6 +46,7 @@ def pure_hr_prior_eligible(request: FilmSynthesisRequest) -> bool:
                 for o in request.objectives))
 
 
+@surface_template_proposals
 def iter_dual_substack_hr_proposals(request: FilmSynthesisRequest, *, epoch: int = 0,
         cancel_check: Callable[[], None] = lambda: None,
         report: Callable[[dict[str, Any]], None] = lambda event: None) -> Generator[StructuralProposal, None, None]:

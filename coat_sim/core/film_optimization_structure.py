@@ -29,7 +29,8 @@ from .film_optimization import (
     _validate_optimization_controls,
     freeze_film_optimization_request,
 )
-from .film_optimization_derivatives import _PreparedMaterialData, simulate_with_thickness_jacobian
+from .film_optimization_derivatives import _PreparedMaterialData
+from .film_synthesis_physics import simulate_synthesis_with_thickness_jacobian as simulate_with_thickness_jacobian
 from .film_optimization_needle import (
     FilmNeedleMaterialReference,
     _candidate_payload_from_materials,
@@ -605,14 +606,18 @@ def evaluate_frozen_structure_candidate(
     if with_jacobian:
         if not isinstance(variable_ids, (tuple, list)) or len(set(variable_ids)) != len(variable_ids):
             raise ValueError("variable_ids must contain unique layer IDs")
-        layers_by_id = {row["id"]: row for row in candidate.get("front_layers", [])}
+        layers_by_id: dict[str, tuple[Literal["front", "back"], Mapping[str, Any]]] = {}
+        physical_sides: tuple[Literal["front", "back"], ...] = ("front", "back")
+        for side in physical_sides:
+            for row in candidate.get(side + "_layers", []):
+                layers_by_id[row["id"]] = (side, row)
         for identifier in variable_ids:
             if not isinstance(identifier, str) or identifier not in layers_by_id:
-                raise ValueError(f"Jacobian variable is missing from front_layers: {identifier}")
+                raise ValueError(f"Jacobian variable is missing from physical stacks: {identifier}")
             low, high = request.min_thickness_nm, request.max_thickness_nm
             if identifier in zero_ids:
                 low = 0.0
-            variable_rows.append(FilmThicknessVariable("front", identifier, low, high))
+            variable_rows.append(FilmThicknessVariable(layers_by_id[identifier][0], identifier, low, high))
     elif variable_ids:
         raise ValueError("variable_ids require with_jacobian=True")
 
@@ -663,7 +668,7 @@ def evaluate_frozen_structure_candidate(
                     "samples": int(chunk_waves.size),
                     "angle_deg": angle,
                     "polarization": objective.polarization,
-                    "first_surface": "front",
+                    "first_surface": candidate["first_surface"],
                 }
                 if optical_settings is not None:
                     settings["extrapolation_policy"] = optical_settings["extrapolation_policy"]
@@ -774,10 +779,14 @@ def _stable_identifier(prefix: str, values: Sequence[Any], existing: set[str]) -
 
 
 def _site_records(design: Mapping[str, Any], frozen: Mapping[str, Any],
-                  position_samples: int) -> list[dict[str, Any]]:
+                  position_samples: int, *, side: str = "front") -> list[dict[str, Any]]:
     if type(position_samples) is not int or position_samples < 0:
         raise ValueError("position_samples must be a nonnegative integer")
-    layers = design["front_layers"]
+    if side not in ("front", "back"):
+        raise ValueError("needle side must be front or back")
+    if side == "back" and design["substrate"]["sides"] != "double":
+        raise ValueError("back needle sites require a double-sided substrate")
+    layers = design[f"{side}_layers"]
     physical = [_physical_layer_thickness(layer, design, frozen) for layer in layers]
     sites: list[dict[str, Any]] = []
     coordinate = 0.0
@@ -804,6 +813,9 @@ def _site_records(design: Mapping[str, Any], frozen: Mapping[str, Any],
                 "host_thickness_nm": float(thickness),
             })
         coordinate += thickness
+    if side != "front":
+        for site in sites:
+            site["side"] = side
     sites.sort(key=lambda row: (row["position_nm"], 0 if row["kind"] == "interface" else 1,
                                 row["host_layer_id"], row["fraction"] or 0.0))
     return sites
@@ -818,9 +830,15 @@ def _insert_at_site(
     split_id: str,
     *,
     zero: bool = False,
+    side: str | None = None,
 ) -> dict[str, Any]:
+    side = site.get("side", "front") if side is None else side
+    if side not in ("front", "back") or (side == "back" and design["substrate"]["sides"] != "double"):
+        raise ValueError("invalid needle surface for substrate")
+    if "side" in site and site["side"] != side:
+        raise ValueError("needle site surface differs from requested surface")
     candidate = deepcopy(dict(design))
-    layers = candidate["front_layers"]
+    layers = candidate[f"{side}_layers"]
     if site["kind"] == "interface":
         interface = int(site["interface"])
         new_layer = {

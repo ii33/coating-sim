@@ -5,6 +5,8 @@ The caller owns evaluation, archival, budget/cancellation and independent audit.
 """
 from __future__ import annotations
 
+from .film_synthesis_surfaces import selected_rows
+
 from copy import deepcopy
 from importlib import import_module
 import math
@@ -91,7 +93,7 @@ def reduce_total_thickness(request: FilmSynthesisRequest, initial: Value, *,
     if type(max_iterations) is not int or max_iterations < 1:
         raise ValueError('thickness reduction max_iterations must be a positive integer')
     design = initial['design']
-    rows = design['front_layers']
+    rows = selected_rows(request, design)
     ids = tuple(row['id'] for row in rows)
     if len(set(ids)) != len(ids) or any(not isinstance(i, str) or not i for i in ids):
         raise ValueError('thickness reduction requires unique nonempty layer ids')
@@ -181,7 +183,7 @@ def reduce_total_thickness(request: FilmSynthesisRequest, initial: Value, *,
             hits += 1
             return cache_value, cache_reduction
         trial = deepcopy(design)
-        for row, thickness in zip(trial['front_layers'], d, strict=True):
+        for row, thickness in zip(selected_rows(request, trial), d, strict=True):
             row['thickness'] = dict(value=float(thickness), unit='nm')
         resource_check(trial, jacobian=True, epigraph=True)
         cancel_check()
@@ -270,7 +272,7 @@ def reduce_total_thickness(request: FilmSynthesisRequest, initial: Value, *,
             # search a bounded segment toward a known feasible incumbent. No
             # altered goal, epsilon acceptance or undisclosed safety margin.
             if not accepted(terminal_value, terminal_reduction) and float(sum(endpoint)) < best_total:
-                anchor = np.asarray([r['thickness']['value'] for r in best['design']['front_layers']])
+                anchor = np.asarray([r['thickness']['value'] for r in selected_rows(request, best['design'])])
                 near = endpoint.copy()
                 for _ in range(4):
                     cancel_check()
@@ -329,7 +331,7 @@ def reduce_total_thickness(request: FilmSynthesisRequest, initial: Value, *,
         terminal_physically_feasible=terminal_physical,
         terminal_nominal_pass=None if terminal_reduction is None else terminal_reduction.nominal_pass,
         terminal_total_thickness_nm=None if terminal_value is None else float(sum(
-            row['thickness']['value'] for row in terminal_value['design']['front_layers'])),
+            row['thickness']['value'] for row in selected_rows(request, terminal_value['design']))),
         optical_extrema=extrema, estimated_working_set_bytes=estimated_bytes,
         resource_guard_resolution=resolution,
         acceptance_scope=('per-enabled-objective/angle/reduction signed-worst sublevel of the local result; original targets unchanged; independent audit required'

@@ -13,6 +13,7 @@ import math
 import numpy as np
 
 from .film_design import MAX_LAYERS
+from .film_synthesis_surfaces import (surface_template_proposals)
 from .film_synthesis_absorption import assumes_unknown_k_zero, sample_synthesis_optical
 from .film_synthesis_global import StructuralProposal
 from .optical_constants import prepare_optical_set
@@ -27,6 +28,7 @@ def matching_objectives(request):
              or (o.pointwise.mode == 'value' and o.pointwise.target_value is not None and 0 <= o.pointwise.target_value <= .5)))
 
 
+@surface_template_proposals
 def iter_matching_proposals(request, *, epoch=0, cancel_check=lambda: None,
                             report=lambda event: None):
     """Yield substrate-outward (LH)^m L seeds with real physical nm layers.
