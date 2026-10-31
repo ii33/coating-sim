@@ -50,7 +50,7 @@ from coat_sim.ui.film_synthesis_quick_adapter import (
     verify_synthesis_file_references,
 )
 from coat_sim.ui.film_synthesis_forward_probe import FilmSynthesisForwardProbe
-from coat_sim.ui.film_sensitivity_quick_controller import FilmSensitivityQuickController, parse_table_configuration
+from coat_sim.ui.film_sensitivity_quick_controller import FilmSensitivityQuickController, parse_table_configuration, parse_ideal_configuration
 from coat_sim.ui.film_optimization_run_coordinator import (
     FilmOptimizationRunCoordinator,
     FilmOptimizationRunPreparationError,
@@ -1149,6 +1149,7 @@ class FilmOptimizationQuickController(QObject):
         ThemeService.instance().filmThicknessDecimalsChanged.connect(self._on_film_display_precision)
         self._sensitivity_controller: FilmSensitivityQuickController | None = None
         self._sensitivity_table_configuration: dict | None = None
+        self._sensitivity_ideal_configuration: dict | None = None
         self._sensitivity_table_loading = False
         self._manufacturing_controller: FilmManufacturingQuickController | None = None
         self._result_terminal_state = ""
@@ -1476,8 +1477,10 @@ class FilmOptimizationQuickController(QObject):
     def sensitivityController(self):
         if self._sensitivity_controller is None:
             parse_table_configuration(self._sensitivity_table_configuration or {})
+            parse_ideal_configuration(self._sensitivity_ideal_configuration or {})
             self._sensitivity_controller = FilmSensitivityQuickController(self)
-            if not self._restore_sensitivity_table_draft(self._sensitivity_table_configuration):
+            if (not self._restore_sensitivity_table_draft(self._sensitivity_table_configuration)
+                    or not self._restore_sensitivity_ideal_draft(self._sensitivity_ideal_configuration)):
                 self._sensitivity_controller.deleteLater()
                 self._sensitivity_controller = None
                 raise ValueError("敏感性参数表草稿未恢复；原配置保持不变。")
@@ -1485,6 +1488,9 @@ class FilmOptimizationQuickController(QObject):
             table_changed = getattr(self._sensitivity_controller, "tableConfigurationEdited", None)
             if table_changed is not None and hasattr(table_changed, "connect"):
                 table_changed.connect(self._on_sensitivity_table_configuration_changed)
+            ideal_changed = getattr(self._sensitivity_controller, "idealConfigurationEdited", None)
+            if ideal_changed is not None and hasattr(ideal_changed, "connect"):
+                ideal_changed.connect(self._on_sensitivity_table_configuration_changed)
         return self._sensitivity_controller
 
     def _restore_sensitivity_table_draft(self, configuration: dict | None) -> bool:
@@ -1506,6 +1512,24 @@ class FilmOptimizationQuickController(QObject):
             json.dumps(draft, allow_nan=False)
             self._sensitivity_table_configuration = deepcopy(draft)
         return deepcopy(self._sensitivity_table_configuration)
+
+    def _restore_sensitivity_ideal_draft(self, configuration: dict | None) -> bool:
+        loader = getattr(self._sensitivity_controller, "loadIdealConfiguration", None)
+        if not callable(loader):
+            return self._sensitivity_controller is None
+        self._sensitivity_table_loading = True
+        try:
+            return bool(loader(deepcopy(configuration or {})))
+        finally:
+            self._sensitivity_table_loading = False
+
+    def _export_sensitivity_ideal_draft(self):
+        exporter = getattr(self._sensitivity_controller, "exportIdealConfiguration", None)
+        if callable(exporter):
+            draft = exporter()
+            parse_ideal_configuration(draft)
+            self._sensitivity_ideal_configuration = deepcopy(draft)
+        return deepcopy(self._sensitivity_ideal_configuration)
 
     @Slot()
     def _on_sensitivity_table_configuration_changed(self) -> None:
@@ -1607,12 +1631,13 @@ class FilmOptimizationQuickController(QObject):
         candidate = deepcopy(dict(snapshot["design"]))
         current_optimization = session.snapshot().design.get("workflow_settings", {}).get("optimization", {})
         candidate_optimization = candidate.get("workflow_settings", {}).get("optimization")
-        if "sensitivity_table" in current_optimization:
-            if not isinstance(candidate_optimization, dict):
-                candidate_optimization = candidate.setdefault("workflow_settings", {}).setdefault("optimization", {})
-            candidate_optimization["sensitivity_table"] = deepcopy(current_optimization["sensitivity_table"])
-        elif isinstance(candidate_optimization, dict):
-            candidate_optimization.pop("sensitivity_table", None)
+        for key in ("sensitivity_table", "sensitivity_ideal"):
+            if key in current_optimization:
+                if not isinstance(candidate_optimization, dict):
+                    candidate_optimization = candidate.setdefault("workflow_settings", {}).setdefault("optimization", {})
+                candidate_optimization[key] = deepcopy(current_optimization[key])
+            elif isinstance(candidate_optimization, dict):
+                candidate_optimization.pop(key, None)
         accepted = bool(apply(candidate, context["revision"], context["epoch"],
                               deepcopy(context["editable_snapshot"])))
         if accepted:
@@ -1757,6 +1782,9 @@ class FilmOptimizationQuickController(QObject):
         table = self._export_sensitivity_table_draft()
         if table is not None:
             configuration["sensitivity_table"] = table
+        ideal = self._export_sensitivity_ideal_draft()
+        if ideal is not None:
+            configuration["sensitivity_ideal"] = ideal
         return configuration
 
     @Slot("QVariantMap", result=bool)
@@ -1775,7 +1803,7 @@ class FilmOptimizationQuickController(QObject):
             json.dumps(configuration, allow_nan=False)
             allowed = {"version", "objectives", "variables", "solver", "search_mode",
                        "structure_mode", "reduction_mode", "reduction_limits", "structure_options", "structure_materials", "synthesis",
-                       "sensitivity_table"}
+                       "sensitivity_table", "sensitivity_ideal"}
             configuration_version = configuration.get("version")
             if (set(configuration) - allowed or type(configuration_version) is not int
                     or configuration_version not in {2, 3}):
@@ -1784,17 +1812,21 @@ class FilmOptimizationQuickController(QObject):
             if table_configuration is not None and not isinstance(table_configuration, dict):
                 raise ValueError("敏感性参数表配置必须为对象")
             parse_table_configuration(table_configuration or {})
+            ideal_configuration = deepcopy(configuration.get("sensitivity_ideal"))
+            parse_ideal_configuration({} if ideal_configuration is None else ideal_configuration)
             try:
                 existing = self.exportOptimizationConfiguration()
             except (TypeError, ValueError, OverflowError):
                 existing = None
             if (existing is not None
                     and _same_configuration_value(
-                        {key: value for key, value in configuration.items() if key != "sensitivity_table"},
-                        {key: value for key, value in existing.items() if key != "sensitivity_table"})):
-                if not self._restore_sensitivity_table_draft(table_configuration):
+                        {key: value for key, value in configuration.items() if key not in {"sensitivity_table", "sensitivity_ideal"}},
+                        {key: value for key, value in existing.items() if key not in {"sensitivity_table", "sensitivity_ideal"}})):
+                if (not self._restore_sensitivity_table_draft(table_configuration)
+                        or not self._restore_sensitivity_ideal_draft(ideal_configuration)):
                     raise ValueError("敏感性参数表未恢复；请先结束当前计算，原配置保持不变。")
                 self._sensitivity_table_configuration = table_configuration
+                self._sensitivity_ideal_configuration = ideal_configuration
                 self.changed.emit()
                 return True
             defaults = deepcopy(self._configuration_defaults)
@@ -1918,7 +1950,7 @@ class FilmOptimizationQuickController(QObject):
                                 for name, value in reduction_limits.items()}
             if reduction_mode not in {"layer_count", "thickness", "combined"}:
                 raise ValueError("减层 / 减厚模式无效")
-            if search_mode not in {"fixed_topology", "structure", "synthesis", "reduction", "automatic_repair"} or structure_mode not in {"combined", "needle_only", "growth_only"}:
+            if search_mode not in {"fixed_topology", "structure", "synthesis", "reduction", "automatic_repair", "ideal_sensitivity"} or structure_mode not in {"combined", "needle_only", "growth_only"}:
                 raise ValueError("优化或结构模式无效")
             if search_mode == "automatic_repair" and configuration_version != 3:
                 raise ValueError("自动薄层修复模式要求优化配置版本 3")
@@ -2030,7 +2062,8 @@ class FilmOptimizationQuickController(QObject):
                 if key not in available_refs or key in selected_refs:
                     raise ValueError(f"结构候选材料已不可用或重复：{key}")
                 selected_refs.add(key)
-            if not self._restore_sensitivity_table_draft(table_configuration):
+            if (not self._restore_sensitivity_table_draft(table_configuration)
+                        or not self._restore_sensitivity_ideal_draft(ideal_configuration)):
                 raise ValueError("敏感性参数表未恢复；请先结束当前计算，原配置保持不变。")
         except (TypeError, ValueError, OverflowError) as exc:
             self._configuration_load_error = f"未恢复优化配置：{exc}"
@@ -2093,6 +2126,7 @@ class FilmOptimizationQuickController(QObject):
             self._pending_edit_error_key = None
             self._configuration_load_error = self._error = ""
             self._sensitivity_table_configuration = table_configuration
+            self._sensitivity_ideal_configuration = ideal_configuration
             self._configuration_restore_notice = restore_notice
             self._advance_synthesis_option_reset_revision()
             self._invalidate_result()
@@ -2102,6 +2136,9 @@ class FilmOptimizationQuickController(QObject):
             self._persist_synthesis_search_reference()
         if search_mode == "automatic_repair":
             self._repair_controller().prepare()
+        elif search_mode == "ideal_sensitivity":
+            cast(FilmSensitivityQuickController, self.sensitivityController).selectWorkflow(1)
+            cast(FilmSensitivityQuickController, self.sensitivityController).prepare()
         return True
 
     def _persist_configuration(self) -> None:
@@ -2746,6 +2783,7 @@ class FilmOptimizationQuickController(QObject):
             {"id": "fixed_topology", "label": "固定层序优化"},
             {"id": "reduction", "label": "减层 / 减厚优化"},
             {"id": "automatic_repair", "label": "自动薄层修复"},
+            {"id": "ideal_sensitivity", "label": "敏感性优化"},
             {"id": "synthesis", "label": "从零自动合成"},
             {"id": "structure", "label": "结构合成"},
         ]
@@ -3166,12 +3204,16 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(str, notify=changed)
     def error(self) -> str:
+        if self._search_mode == "ideal_sensitivity" and self._sensitivity_controller is not None:
+            return cast(str, self._sensitivity_controller.idealError)
         if self._search_mode == "automatic_repair" and self._manufacturing_controller is not None:
             return cast(str, self._manufacturing_controller.error)
         return self._error
 
     @Property(str, notify=changed)
     def statusText(self) -> str:
+        if self._search_mode == "ideal_sensitivity" and self._sensitivity_controller is not None:
+            return cast(str, self._sensitivity_controller.idealStatus)
         if self._search_mode == "automatic_repair" and self._manufacturing_controller is not None:
             return cast(str, self._manufacturing_controller.statusText)
         text: str | None = None
@@ -3254,6 +3296,8 @@ class FilmOptimizationQuickController(QObject):
         common_ready = (not self._initial_loading and not self._initial_load_failed
                         and not self.busy and not self._source_closed and not self._source_stale
                         and not self._pending_edit_error)
+        if self._search_mode == "ideal_sensitivity":
+            return bool(common_ready and self.session is not None)
         if self._search_mode == "automatic_repair":
             return bool(common_ready and cast(bool, self._repair_controller().canStartAutomatic))
         common_ready = bool(common_ready and not self._structure_material_error
@@ -3273,6 +3317,8 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(bool, notify=changed)
     def canStartFromShortcut(self) -> bool:
+        if self._search_mode == "ideal_sensitivity":
+            return cast(bool, self.canStart)
         if self._search_mode == "automatic_repair":
             return bool(not self._initial_loading and not self._initial_load_failed
                         and not self.busy and not self._source_closed and not self._source_stale
@@ -3303,6 +3349,8 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(bool, notify=changed)
     def hasCandidate(self) -> bool:
+        if self._search_mode == "ideal_sensitivity" and self._sensitivity_controller is not None:
+            return bool(self._sensitivity_controller.idealHasResult)
         if self._search_mode == "automatic_repair" and self._manufacturing_controller is not None:
             return cast(bool, self._manufacturing_controller.hasResult)
         return self._result is not None
@@ -3322,6 +3370,8 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(bool, notify=changed)
     def canApply(self) -> bool:
+        if self._search_mode == "ideal_sensitivity":
+            return bool(self._sensitivity_controller is not None and self._sensitivity_controller.idealCanApply)
         if self._search_mode == "automatic_repair":
             return bool(self._manufacturing_controller is not None
                         and self._manufacturing_controller.canApply)
@@ -3336,7 +3386,8 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(bool, notify=changed)
     def canCancel(self) -> bool:
-        return bool(self._busy or (self._manufacturing_controller is not None and self._manufacturing_controller.busy))
+        return bool(self._busy or (self._manufacturing_controller is not None and self._manufacturing_controller.busy)
+                    or (self._sensitivity_controller is not None and self._sensitivity_controller.busy))
 
     @Property(float, notify=changed)
     def acceptableErrorPercent(self) -> float:
@@ -3646,9 +3697,9 @@ class FilmOptimizationQuickController(QObject):
     @Slot(str, result=bool)
     def setSearchMode(self, mode: str) -> bool:
         mode = str(mode)
-        if (self._busy or self._shutting_down or self._pending_edit_error
-                or mode not in {"fixed_topology", "structure", "synthesis", "reduction", "automatic_repair"}):
-            if mode not in {"fixed_topology", "structure", "synthesis", "reduction", "automatic_repair"}:
+        if (self.busy or self._shutting_down or self._pending_edit_error
+                or mode not in {"fixed_topology", "structure", "synthesis", "reduction", "automatic_repair", "ideal_sensitivity"}):
+            if mode not in {"fixed_topology", "structure", "synthesis", "reduction", "automatic_repair", "ideal_sensitivity"}:
                 self._error = "未知的优化模式。"
                 self.changed.emit()
             return False
@@ -3672,13 +3723,16 @@ class FilmOptimizationQuickController(QObject):
             # prepared repair state. Preparing before invalidation would mark
             # the just-refreshed source stale again.
             self._repair_controller().prepare()
+        elif mode == "ideal_sensitivity":
+            cast(FilmSensitivityQuickController, self.sensitivityController).selectWorkflow(1)
+            cast(FilmSensitivityQuickController, self.sensitivityController).prepare()
         return True
 
     @Slot(str, result=bool)
     def setStructureMode(self, mode: str) -> bool:
         mode = str(mode)
         allowed = {"combined", "needle_only", "growth_only"}
-        if (self._busy or self._shutting_down or self._pending_edit_error
+        if (self.busy or self._shutting_down or self._pending_edit_error
                 or mode not in allowed):
             if mode not in allowed:
                 self._error = "未知的结构合成模式。"
@@ -3892,6 +3946,8 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(str, notify=changed)
     def resultSummary(self) -> str:
+        if self._search_mode == "ideal_sensitivity" and self._sensitivity_controller is not None:
+            return cast(str, self._sensitivity_controller.idealResultSummary)
         if self._search_mode == "automatic_repair" and self._manufacturing_controller is not None:
             return cast(str, self._manufacturing_controller.resultSummary)
         if self._synthesis_payload is not None:
@@ -5701,6 +5757,8 @@ class FilmOptimizationQuickController(QObject):
 
     @Slot(result=bool)
     def startOptimization(self) -> bool:
+        if self._search_mode == "ideal_sensitivity":
+            return bool(self.canStart and cast(FilmSensitivityQuickController, self.sensitivityController).startIdealSensitivityOptimization())
         if self._search_mode == "automatic_repair":
             return bool(self._repair_controller().startAutomatic())
         return self._start_optimization()
@@ -6526,6 +6584,9 @@ class FilmOptimizationQuickController(QObject):
 
     @Slot()
     def cancelOptimization(self) -> None:
+        if self._sensitivity_controller is not None and self._sensitivity_controller.busy:
+            self._sensitivity_controller.cancel()
+            return
         if self._manufacturing_controller is not None and self._manufacturing_controller.busy:
             self._manufacturing_controller.cancel()
             return
@@ -7149,6 +7210,10 @@ class FilmOptimizationQuickController(QObject):
 
     @Slot(result=bool)
     def applyCandidate(self) -> bool:
+        if self._search_mode == "ideal_sensitivity":
+            if self.canApply:
+                self.applyConfirmationRequested.emit(cast(FilmSensitivityQuickController, self.sensitivityController).idealApplyConfirmationSummary)
+            return False
         if self.session is None:
             self._error = "仿真快照没有可应用的编辑会话；请另存优化候选。"
             self.changed.emit()
@@ -7168,6 +7233,10 @@ class FilmOptimizationQuickController(QObject):
 
     @Slot(result=bool)
     def confirmApplyCandidate(self) -> bool:
+        if self._search_mode == "ideal_sensitivity":
+            panel = cast(FilmSensitivityQuickController, self.sensitivityController)
+            panel.selectWorkflow(1)
+            return bool(panel.applySelectedBest())
         if self.session is None:
             self._error = "仿真快照没有可应用的编辑会话；请另存优化候选。"
             self.changed.emit()

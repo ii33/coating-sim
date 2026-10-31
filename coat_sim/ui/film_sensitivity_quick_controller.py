@@ -112,6 +112,29 @@ def parse_table_configuration(configuration: object) -> _TableConfigurationDraft
                                     invalidated, uncorrelated, finite_bias)
 
 
+def parse_ideal_configuration(configuration: object) -> dict[str, Any]:
+    """Validate an editable ideal-sensitivity draft without interpreting its numbers."""
+    if configuration == {}:
+        return {"version": 1, "mode": "", "policy": "bounded_baseline_degradation",
+                "budgets": {}, "layer_ids": None, "selection_explicit": False,
+                "options": {"max_iterations": "", "max_evaluations": ""}}
+    if not isinstance(configuration, dict) or set(configuration) != {
+            "version", "mode", "policy", "budgets", "layer_ids", "selection_explicit", "options"}:
+        raise ValueError("理想敏感度配置字段不受支持。")
+    if type(configuration["version"]) is not int or configuration["version"] != 1:
+        raise ValueError("理想敏感度配置版本不受支持。")
+    if configuration["mode"] not in ("", "absolute", "relative") or configuration["policy"] not in ("strict_nominal", "bounded_baseline_degradation"):
+        raise ValueError("理想敏感度尺度或策略无效。")
+    budgets, ids, explicit, options = (configuration[k] for k in ("budgets", "layer_ids", "selection_explicit", "options"))
+    if (not isinstance(budgets, dict) or any(not isinstance(k, str) or not k or not isinstance(v, str) for k, v in budgets.items())
+            or (ids is not None and (not isinstance(ids, list) or any(not isinstance(k, str) or not k for k in ids) or len(set(ids)) != len(ids)))
+            or type(explicit) is not bool or (explicit and ids is None)
+            or not isinstance(options, dict) or set(options) != {"max_iterations", "max_evaluations"}
+            or any(not isinstance(v, str) for v in options.values())):
+        raise ValueError("理想敏感度草稿无效。")
+    return deepcopy(configuration)
+
+
 class _Signals(QObject):
     progress = Signal(int, object)
     finished = Signal(int, object, str)
@@ -206,6 +229,7 @@ class FilmSensitivityQuickController(QObject):
     tableRowsChanged = Signal()
     idealRowsChanged = Signal()
     tableConfigurationEdited = Signal()
+    idealConfigurationEdited = Signal()
     overwriteRequested = Signal(str)
 
     def __init__(self, owner: Any, *, client_factory=SchedulerClient):
@@ -332,6 +356,37 @@ class FilmSensitivityQuickController(QObject):
         self._table_error = ""
         self._table_status = "参数表草稿已恢复；重新准备来源后使用当前名义厚度。"
         self.tableRowsChanged.emit()
+        self.changed.emit()
+        return True
+
+    @Slot(result="QVariantMap")
+    def exportIdealConfiguration(self) -> dict[str, object]:
+        return {"version": 1, "mode": self._ideal_mode, "policy": self._ideal_policy,
+                "budgets": dict(self._ideal_budget_texts),
+                "layer_ids": None if self._ideal_layer_ids is None else list(self._ideal_layer_ids),
+                "selection_explicit": self._ideal_selection_explicit,
+                "options": dict(self._ideal_options)}
+
+    @Slot("QVariantMap", result=bool)
+    def loadIdealConfiguration(self, configuration: dict[str, object]) -> bool:
+        if self._busy or self._closed:
+            return False
+        try:
+            draft = parse_ideal_configuration(configuration)
+        except (ValueError, TypeError) as exc:
+            self._ideal_error = str(exc)
+            self.changed.emit()
+            return False
+        self._ideal_mode, self._ideal_policy = draft["mode"], draft["policy"]
+        self._ideal_budget_texts = draft["budgets"]
+        self._ideal_layer_ids = draft["layer_ids"]
+        self._ideal_selection_explicit = draft["selection_explicit"]
+        self._ideal_options = draft["options"]
+        self._prepared_source = self._prepared_signature = None
+        self._ideal_objective_rows = []
+        self._ideal_layer_rows = []
+        self._ideal_error = ""
+        self.idealRowsChanged.emit()
         self.changed.emit()
         return True
 
@@ -849,6 +904,7 @@ class FilmSensitivityQuickController(QObject):
             self.tableConfigurationEdited.emit()
         else:
             self._ideal_error = ""
+            self.idealConfigurationEdited.emit()
             self._ideal_status = ("配置已编辑；下方仍保留上次冻结结果，不代表当前草稿。"
                                   if self._ideal_payload is not None else
                                   "默认采用受控基准退化；请选择绝对或相对尺度，并为每个目标填写百分点额度。")

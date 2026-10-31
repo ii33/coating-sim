@@ -21,6 +21,7 @@ AppWindow {
     readonly property var themeTokens: window.themeColors
     required property var controller
     titleBase: window.controller.searchMode === "automatic_repair" ? "自动薄层修复"
+        : window.controller.searchMode === "ideal_sensitivity" ? "理想敏感度优化"
         : window.controller.searchMode === "synthesis" ? "膜系自动合成"
         : window.controller.searchMode === "reduction" ? "减层 / 减厚优化" : "膜系厚度优化"
     captionBase: titleBase
@@ -420,35 +421,22 @@ AppWindow {
     ThemeControls.ThemeDialogBase {
         id: sensitivityDialog
         objectName: "filmSensitivityDialog"
-        title: "膜厚敏感度与预期误差"
+        title: "膜厚参数表预期误差分析"
         modal: true
         anchors.centerIn: parent
         width: Math.min(920, window.width - window.themeTokens.spaceLg * 2)
         height: Math.min(780, window.height - window.themeTokens.spaceLg * 2)
         standardButtons: Dialog.Close
         closePolicy: Popup.CloseOnEscape
-        contentItem: FilmSensitivityWorkflowPanel {
+        onClosed: {
+            if (window.controller.searchMode === "ideal_sensitivity")
+                window.controller.sensitivityController.selectWorkflow(1)
+        }
+        contentItem: FilmThicknessErrorParameterPanel {
             controller: window.controller.sensitivityController
             themeTokens: window.themeTokens
-            onApplyRequested: sensitivityApplyDialog.open()
             onSaveRequested: sensitivityReportDialog.open()
         }
-    }
-    ThemeControls.ThemeDialogBase {
-        id: sensitivityApplyDialog
-        objectName: "filmSensitivityApplyConfirmDialog"
-        title: "应用敏感度优化候选？"
-        modal: true
-        anchors.centerIn: parent
-        width: Math.min(520, window.width - 40)
-        standardButtons: Dialog.Yes | Dialog.No
-        contentItem: Label {
-            objectName: "filmSensitivityApplySummaryLabel"
-            text: window.controller.sensitivityController.idealApplyConfirmationSummary
-            color: window.themeTokens.colorText
-            wrapMode: Text.WordWrap
-        }
-        onAccepted: window.controller.sensitivityController.applySelectedBest()
     }
     FileDialog {
         id: sensitivityReportDialog
@@ -495,7 +483,7 @@ AppWindow {
         sequence: "F6"
         context: Qt.WindowShortcut
         enabled: window.controller.canStartFromShortcut
-                 && (window.controller.searchMode === "automatic_repair" || window.controller.computeTarget.canSubmit)
+                 && (window.controller.searchMode === "automatic_repair" || window.controller.searchMode === "ideal_sensitivity" || window.controller.computeTarget.canSubmit)
         onActivated: window.startFromShortcut()
     }
 
@@ -550,7 +538,8 @@ AppWindow {
         id: applyDialog
         objectName: "filmOptimizationApplyConfirmation"
         property string message: ""
-        title: window.controller.searchMode === "synthesis" ? "应用合成候选？" : "应用未达标候选？"
+        title: window.controller.searchMode === "ideal_sensitivity" ? "应用敏感度优化候选？"
+             : window.controller.searchMode === "synthesis" ? "应用合成候选？" : "应用未达标候选？"
         modal: true
         anchors.centerIn: parent
         width: Math.min(520, window.width - window.themeTokens.spaceXl * 2)
@@ -696,7 +685,7 @@ AppWindow {
                 }
                 ComputeTargetSelector {
                     objectName: "filmOptimizationComputeTarget"
-                    visible: window.controller.searchMode !== "automatic_repair"
+                    visible: window.controller.searchMode !== "automatic_repair" && window.controller.searchMode !== "ideal_sensitivity"
                     width: Math.min(170, Math.max(130, window.width * 0.2))
                     compact: true
                     target: window.controller.computeTarget
@@ -705,9 +694,9 @@ AppWindow {
                 ThemeControls.ThemeButton {
                     id: optimizationStartButton
                     objectName: "filmOptimizationStartButton"
-                    text: window.controller.searchMode === "automatic_repair" ? "开始薄层修复" : "开始优化"
+                    text: window.controller.searchMode === "automatic_repair" ? "开始薄层修复" : window.controller.searchMode === "ideal_sensitivity" ? "开始敏感度优化" : "开始优化"
                     enabled: window.controller.canStart
-                        && (window.controller.searchMode === "automatic_repair" || window.controller.computeTarget.canSubmit)
+                        && (window.controller.searchMode === "automatic_repair" || window.controller.searchMode === "ideal_sensitivity" || window.controller.computeTarget.canSubmit)
                     primary: true
                     onClicked: window.startFromButton()
                 }
@@ -716,13 +705,13 @@ AppWindow {
                     objectName: "filmOptimizationContinueButton"
                     text: "从保留结果继续（重新启动求解器）"
                     enabled: window.controller.canContinueOptimization
-                    visible: window.controller.searchMode !== "automatic_repair" && !window.controller.hasSynthesisSearchProgress
+                    visible: window.controller.searchMode !== "automatic_repair" && window.controller.searchMode !== "ideal_sensitivity" && !window.controller.hasSynthesisSearchProgress
                     onClicked: window.continueFromButton()
                 }
                 ThemeControls.ThemeButton {
                     objectName: "filmSynthesisContinueSearchButton"
                     text: "继续搜索"
-                    visible: window.controller.searchMode !== "automatic_repair" && window.controller.hasSynthesisSearchProgress
+                    visible: window.controller.searchMode !== "automatic_repair" && window.controller.searchMode !== "ideal_sensitivity" && window.controller.hasSynthesisSearchProgress
                     enabled: window.controller.canContinueSynthesisSearch
                     onClicked: {
                         window.commitActiveEditor()
@@ -731,11 +720,12 @@ AppWindow {
                 }
                 ThemeControls.ThemeButton {
                     objectName: "filmSensitivityOpenButton"
-                    text: "敏感性…"
+                    text: "参数表误差分析…"
                     enabled: !window.controller.busy
                     onClicked: {
                         window.commitActiveEditor()
                         window.controller.sensitivityController.prepare()
+                        window.controller.sensitivityController.selectWorkflow(0)
                         sensitivityDialog.open()
                     }
                 }
@@ -754,8 +744,15 @@ AppWindow {
                 }
                 ThemeControls.ThemeButton {
                     objectName: "filmOptimizationApplyButton"
-                    visible: window.controller.searchMode !== "automatic_repair"
+                    visible: window.controller.searchMode !== "automatic_repair" && window.controller.searchMode !== "ideal_sensitivity"
                     text: window.controller.searchMode === "reduction" ? "显式应用减量候选" : "应用"
+                    enabled: window.controller.canApply
+                    onClicked: window.controller.applyCandidate()
+                }
+                ThemeControls.ThemeButton {
+                    objectName: "filmSensitivityCommonApply"
+                    visible: window.controller.searchMode === "ideal_sensitivity"
+                    text: "应用最优候选…"
                     enabled: window.controller.canApply
                     onClicked: window.controller.applyCandidate()
                 }
@@ -773,7 +770,7 @@ AppWindow {
                     }
                 }
                 ThemeControls.ThemeButton {
-                    visible: !window.projectResources && window.controller.searchMode !== "automatic_repair"
+                    visible: !window.projectResources && window.controller.searchMode !== "automatic_repair" && window.controller.searchMode !== "ideal_sensitivity"
                     objectName: "filmOptimizationSaveButton"
                     text: window.controller.projectMode ? "保存项目候选" : "另存候选"
                     enabled: window.controller.canSave
@@ -1441,6 +1438,15 @@ AppWindow {
                                         optimizationController: window.controller
                                         themeTokens: window.themeTokens
                                     }
+                                }
+                                FilmIdealSensitivityPanel {
+                                    objectName: "filmIdealSensitivityAlgorithmOptions"
+                                    visible: window.controller.searchMode === "ideal_sensitivity"
+                                    Layout.fillWidth: true
+                                    embedded: true
+                                    controller: window.controller.sensitivityController
+                                    themeTokens: window.themeTokens
+                                    onSaveRequested: sensitivityReportDialog.open()
                                 }
                                 Label {
                                     objectName: "filmReductionComparisonLabel"

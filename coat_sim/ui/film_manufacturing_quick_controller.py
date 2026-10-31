@@ -493,7 +493,8 @@ class FilmManufacturingQuickController(QObject):
         design = deepcopy(dict(base.design_snapshot))
         optimization = design.get("workflow_settings", {}).get("optimization")
         if isinstance(optimization, dict):
-            optimization.pop("sensitivity_table", None)  # UI-only draft; no physical or goal change.
+            optimization.pop("sensitivity_table", None)  # UI-only drafts; no physical or goal change.
+            optimization.pop("sensitivity_ideal", None)
         return deepcopy((base.design_revision, design, base.objectives,
                          base.acceptable_normalized_error, base.validation_samples_multiplier,
                          None if self._legacy_mode else self._comparison_settings))

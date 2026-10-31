@@ -7,7 +7,8 @@ from dataclasses import asdict
 import hashlib
 import json
 import threading
-from typing import Any
+from typing import Any, cast
+from uuid import uuid4
 
 from PySide6.QtCore import QObject, Property, QRunnable, QThreadPool, Signal, Slot, Qt
 
@@ -20,7 +21,7 @@ def _digest(design: dict) -> str:
     ).hexdigest()
 
 
-def _prepare_request(design: dict, revision: int, limit: int, cancel: threading.Event):
+def _prepare_request(design: dict, revision: int, limit: int, cancel: threading.Event, material_rows):
     """Read the existing editor configuration using the same target conversion helpers."""
     config = design.get("workflow_settings", {}).get("optimization", {})
     if not isinstance(config, dict) or not config:
@@ -72,7 +73,6 @@ def _prepare_request(design: dict, revision: int, limit: int, cancel: threading.
     synthesis = config.get("synthesis")
     if not isinstance(synthesis, dict):
         raise ValueError("尚无候选材料配置；请先在目标与材料设置中配置自动合成。")
-    material_rows = synthesis.get("material_rows")
     if not isinstance(material_rows, list) or not material_rows:
         raise ValueError("尚无候选材料及数据集；请先在目标与材料设置中配置。")
     refs = []
@@ -155,14 +155,15 @@ class _Signals(QObject):
 
 
 class _Task(QRunnable):
-    def __init__(self, service, design, revision, limit, cancel, token, signals):
+    def __init__(self, service, design, revision, limit, cancel, token, signals, material_rows):
         super().__init__()
         self.service, self.design, self.revision, self.limit = service, design, revision, limit
         self.cancel, self.token, self.signals = cancel, token, signals
+        self.material_rows = material_rows
 
     def run(self):
         try:
-            request = _prepare_request(self.design, self.revision, self.limit, self.cancel)
+            request = _prepare_request(self.design, self.revision, self.limit, self.cancel, self.material_rows)
             from coat_sim.core.film_resource_estimation import (
                 estimate_film_resources,
                 freeze_resource_estimate_request,
@@ -220,6 +221,11 @@ class FilmResourceEstimateController(QObject):
     def __init__(self, source, parent=None):
         super().__init__(parent)
         self._source = source
+        self._draft_session = source.session
+        self._material_rows = []
+        self._catalog = []
+        self._catalog_error = ""
+        self.refreshMaterials()
         self._busy = False
         self._stale = False
         self._limit = 128
@@ -237,6 +243,136 @@ class FilmResourceEstimateController(QObject):
         source.changed.connect(self._source_changed)
         source.workflowConfigurationChanged.connect(self._source_changed)
         source.closeConfirmed.connect(self.close)
+
+    def _check_session(self):
+        # Draft belongs to this editor session; never carry it into another design.
+        if self._draft_session is not self._source.session:
+            self._draft_session = self._source.session
+            self._material_rows = []
+            self._digest = ""
+            self._stale = False
+
+    def resetDraft(self):
+        self.cancel()
+        self._material_rows = []
+        if self._digest:
+            self._stale = True
+            self._status = "设计已替换；评估草稿已清空，原结果已过期。"
+        self.changed.emit()
+
+    @Slot()
+    def refreshMaterials(self):
+        self._check_session()
+        try:
+            records = self._source.service.material_options("film")
+            catalog = []
+            for material in records:
+                if not isinstance(material, dict) or material.get("design_ready") is False:
+                    continue
+                mid = material.get("id")
+                if not isinstance(mid, str) or not mid:
+                    continue
+                sets = [{"id": item["id"], "name": str(item.get("name") or item["id"])}
+                        for item in material.get("optical_sets", [])
+                        if isinstance(item, dict) and isinstance(item.get("id"), str) and item["id"]]
+                if sets:
+                    catalog.append({"id": mid, "name": str(material.get("name") or mid), "optical_sets": sets})
+            self._catalog = sorted(catalog, key=lambda row: (row["name"].casefold(), row["id"]))
+            self._catalog_error = ""
+        except Exception as exc:
+            self._catalog = []
+            self._catalog_error = f"材料目录读取失败：{exc}"
+        self.changed.emit()
+
+    @Property(list, notify=changed)
+    def materialRows(self):
+        self._check_session()
+        by_id = {item["id"]: item for item in self._catalog}
+        options = [{"id": item["id"], "name": item["name"]} for item in self._catalog]
+        result = []
+        for row in self._material_rows:
+            optical = by_id.get(row["material_id"], {}).get("optical_sets", [])
+            valid = any(item["id"] == row["optical_set_id"] for item in optical)
+            result.append({**row, "material_options": deepcopy(options), "optical_set_options": deepcopy(optical),
+                           "error": "" if valid else "材料或数据集未选择或已不可用；请重新选择或删除"})
+        return result
+
+    @Property(str, notify=changed)
+    def materialError(self):
+        if self._catalog_error:
+            return self._catalog_error
+        if not self._material_rows:
+            return "请添加至少一行候选材料及数据集"
+        seen = set()
+        for row in cast(list[dict], self.materialRows):
+            pair = (row["material_id"], row["optical_set_id"])
+            if row["error"]:
+                return row["error"]
+            if pair in seen:
+                return "候选材料及数据集重复"
+            seen.add(pair)
+        return ""
+
+    def _materials_changed(self):
+        if self._digest:
+            self._stale = True
+            self._status = "候选材料已变化；原结果已过期，请重新评估。"
+        self.changed.emit()
+
+    @Slot(result=str)
+    def addMaterialRow(self):
+        if self._busy:
+            return ""
+        identity = uuid4().hex
+        self._material_rows.append({"id": identity, "material_id": "", "optical_set_id": ""})
+        self._materials_changed()
+        return identity
+
+    @Slot(str, result=bool)
+    def removeMaterialRow(self, identity):
+        if self._busy:
+            return False
+        row = next((r for r in self._material_rows if r["id"] == identity), None)
+        if row is None:
+            return False
+        self._material_rows.remove(row)
+        self._materials_changed()
+        return True
+
+    @Slot(str, int, result=bool)
+    def moveMaterialRow(self, identity, delta):
+        if self._busy or delta not in (-1, 1):
+            return False
+        index = next((i for i, r in enumerate(self._material_rows) if r["id"] == identity), -1)
+        if index < 0 or not 0 <= index + delta < len(self._material_rows):
+            return False
+        self._material_rows.insert(index + delta, self._material_rows.pop(index))
+        self._materials_changed()
+        return True
+
+    @Slot(str, str, result=bool)
+    def setRowMaterial(self, identity, material_id):
+        if self._busy:
+            return False
+        row = next((r for r in self._material_rows if r["id"] == identity), None)
+        material = next((r for r in self._catalog if r["id"] == material_id), None)
+        if row is None or material is None:
+            return False
+        row.update(material_id=material_id, optical_set_id=material["optical_sets"][0]["id"])
+        self._materials_changed()
+        return True
+
+    @Slot(str, str, result=bool)
+    def setRowOpticalSet(self, identity, optical_id):
+        if self._busy:
+            return False
+        row = next((r for r in self._material_rows if r["id"] == identity), None)
+        material = next((r for r in self._catalog if row and r["id"] == row["material_id"]), None)
+        if row is None or material is None or not any(r["id"] == optical_id for r in material["optical_sets"]):
+            return False
+        row["optical_set_id"] = optical_id
+        self._materials_changed()
+        return True
 
     @Property(bool, notify=changed)
     def busy(self):
@@ -296,6 +432,11 @@ class FilmResourceEstimateController(QObject):
             or self._source._source_closed
         ):
             return False
+        self.refreshMaterials()
+        if self.materialError:
+            self._status = cast(str, self.materialError)
+            self.changed.emit()
+            return False
         snapshot = self._source.session.snapshot()
         design = deepcopy(snapshot.design)
         self._digest = _digest(design)
@@ -310,7 +451,7 @@ class FilmResourceEstimateController(QObject):
         synthesis = config.get("synthesis", {}) if isinstance(config, dict) else {}
         if not isinstance(synthesis, dict):
             synthesis = {}
-        rows = synthesis.get("material_rows", [])
+        rows = deepcopy(self._material_rows)
         sides = synthesis.get("selected_surfaces", ["front"]) if isinstance(synthesis, dict) else []
         objectives = config.get("objectives", []) if isinstance(config, dict) else []
         if not isinstance(rows, list):
@@ -387,6 +528,7 @@ class FilmResourceEstimateController(QObject):
                 self._cancel,
                 self._token,
                 self._signals,
+                deepcopy(self._material_rows),
             )
         )
         return True

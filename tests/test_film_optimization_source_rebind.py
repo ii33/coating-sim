@@ -227,3 +227,30 @@ def test_project_source_rebind_detaches_durable_jobs_without_cancel_rpc_and_new_
         cast(ComputeTarget, owner.computeTarget)._executor.shutdown(wait=True, cancel_futures=True)
         shiboken6.delete(owner)
         shiboken6.delete(replacement)
+
+
+def test_ideal_draft_persists_by_stable_ids_and_reopens(rebind):
+    h = rebind
+    panel = h.panel
+    assert panel.setIdealSensitivityMode("relative")
+    assert panel.setIdealSensitivityPolicy("bounded_baseline_degradation")
+    objective = panel.idealDegradationObjectives[0]["objective_id"]
+    assert panel.setIdealDegradationBudget(objective, "0.42")
+    layer = panel.idealSensitivityLayers[0]["layer_id"]
+    assert panel.setIdealSensitivityLayer(layer, False)
+    assert panel.setIdealOption("max_iterations", "123")
+    draft = h.session.workflow_configuration("optimization")["sensitivity_ideal"]
+    assert draft["mode"] == "relative" and draft["budgets"][objective] == "0.42"
+    assert draft["selection_explicit"] and layer not in draft["layer_ids"]
+    assert draft["options"]["max_iterations"] == "123"
+    # A fresh owner represents closing and reopening the optimizer.
+    reopened = FilmOptimizationQuickController(h.source)
+    try:
+        restored = cast(FilmSensitivityQuickController, reopened.sensitivityController)
+        assert restored.prepare(), restored.error
+        assert restored.exportIdealConfiguration() == draft
+        assert cast(list[dict], restored.idealDegradationObjectives)[0]["budget_text"] == "0.42"
+    finally:
+        reopened.shutdown(1000)
+        cast(ComputeTarget, reopened.computeTarget)._executor.shutdown(wait=True, cancel_futures=True)
+        shiboken6.delete(reopened)

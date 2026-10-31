@@ -1686,6 +1686,8 @@ class FilmDesignQuickController(QObject):
         self._force_model_reset = True
         result = callback()
         self._force_model_reset = False
+        if result and self._resource_estimate_controller is not None:
+            self._resource_estimate_controller.resetDraft()
         return bool(result)
 
     @Slot(str, result=bool)
@@ -1857,6 +1859,8 @@ class FilmDesignQuickController(QObject):
         result = self.session.resolve_pending_action(accepted)
         if replacement:
             self._force_model_reset = False
+            if result and self._resource_estimate_controller is not None:
+                self._resource_estimate_controller.resetDraft()
         if accepted and result and action == "close":
             self.closeConfirmed.emit()
 

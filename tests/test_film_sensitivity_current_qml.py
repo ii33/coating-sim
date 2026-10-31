@@ -104,7 +104,6 @@ def test_real_batch_fields_exceptions_fold_reset_and_request_mapping(
     owner, panel, window, warnings = sensitivity_window
     window.resize(width, height)
     ThemeService.instance().configure(mode=mode)
-    _reveal_click(app, window, _visual(window.contentItem(), "filmSensitivityTableTab"))
     assert all(row["enabled"] and not row["override"] for row in panel.thicknessErrorRows)
     _enter_table_text(app, window, "filmThicknessCommonBias",
                       (Qt.Key.Key_Minus, Qt.Key.Key_2, Qt.Key.Key_Period, Qt.Key.Key_5))
@@ -149,75 +148,38 @@ def test_real_batch_fields_exceptions_fold_reset_and_request_mapping(
     assert not warnings, warnings
 
 
-def test_real_qml_exposes_exactly_two_current_pages_and_default_ideal(sensitivity_window):
-    _owner, controller, window, warnings = sensitivity_window
-    tabs = window.findChild(QObject, "filmSensitivityWorkflowTabs")
-    pages = window.findChild(QQuickItem, "filmSensitivityWorkflowPages")
-    table_tab = _visual(window.contentItem(), "filmSensitivityTableTab")
-    ideal_tab = _visual(window.contentItem(), "filmSensitivityIdealTab")
-
-    assert tabs is not None and tabs.property("count") == 2
-    assert pages is not None and len(pages.childItems()) == 2
-    assert tabs.property("currentIndex") == 1
-    assert controller.activeWorkflow == "ideal"
-    assert table_tab is not None and table_tab.property("text") == "参数表预期误差分析"
-    assert ideal_tab is not None and ideal_tab.property("text") == "理想敏感度优化"
-    assert table_tab.isVisible() and ideal_tab.isVisible()
-    assert _visual(window.contentItem(), "filmIdealSensitivityScroll").isVisible()
+def test_real_qml_table_dialog_and_algorithm_options(sensitivity_window, app):
+    owner, controller, window, warnings = sensitivity_window
+    assert controller.activeWorkflow == "table"
     assert _visual(window.contentItem(), "filmThicknessErrorTableScroll") is not None
-
-    qml_names = {obj.objectName() for obj in window.findChildren(QObject) if obj.objectName()}
-    assert "filmSensitivityLegacyTab" not in qml_names
-    assert "filmSensitivityAnalyzeButton" not in qml_names
-    assert "filmSensitivityConfigurationScroll" not in qml_names
+    assert window.findChild(QObject, "filmSensitivityWorkflowTabs") is None
+    dialog = window.findChild(QObject, "filmSensitivityDialog")
+    dialog.setProperty("visible", False)
+    assert owner.setSearchMode("ideal_sensitivity")
+    click(app, window, _visual(window.contentItem(), "filmOptimizationAlgorithmTab"))
+    assert _visual(window.contentItem(), "filmIdealSensitivityAlgorithmOptions").isVisible()
+    assert controller.activeWorkflow == "ideal"
     assert not warnings, warnings
 
 
-def test_blank_scale_click_is_rejected_and_current_drafts_survive_switch_reopen(
-        sensitivity_window, app):
-    _owner, controller, window, warnings = sensitivity_window
+def test_current_drafts_survive_algorithm_switch_and_table_reopen(sensitivity_window, app):
+    owner, controller, window, warnings = sensitivity_window
     layer_id = controller.thicknessErrorRows[0]["layer_id"]
-    objective_id = controller.idealDegradationObjectives[0]["objective_id"]
     assert controller.setTableDraft(layer_id, "bias", "-1.25")
     assert controller.setTableUnit(layer_id, "bias", "relative_percent")
-    assert controller.idealSensitivityMode == ""
-
-    optimize = window.findChild(QQuickItem, "filmIdealSensitivityOptimizeButton")
-    assert optimize is not None and optimize.isEnabled()
-    click(app, window, optimize)
-    assert "请选择绝对或相对" in controller.idealError
-    assert controller.idealSensitivityMode == ""
-    assert not controller.busy and not controller.idealHasResult
-
-    tabs = window.findChild(QObject, "filmSensitivityWorkflowTabs")
-    table_tab = _visual(window.contentItem(), "filmSensitivityTableTab")
-    ideal_tab = _visual(window.contentItem(), "filmSensitivityIdealTab")
-    click(app, window, table_tab)
-    assert controller.activeWorkflow == "table"
-    bias = _visual(window.contentItem(), "filmThicknessBias_" + layer_id)
-    assert bias is not None and bias.property("text") == "-1.25"
-    click(app, window, ideal_tab)
-    assert controller.activeWorkflow == "ideal"
-    budget = _visual(window.contentItem(), "filmIdealDegradationBudget_" + objective_id)
-    assert budget is not None and budget.property("text") == ""
-    budget.forceActiveFocus()
-    QTest.keyClick(window, Qt.Key.Key_2)
-    app.processEvents()
-    assert controller.idealDegradationObjectives[0]["budget_text"] == "2"
-
     dialog = window.findChild(QObject, "filmSensitivityDialog")
-    open_button = window.findChild(QQuickItem, "filmSensitivityOpenButton")
-    assert dialog is not None and open_button is not None
+    dialog.setProperty("visible", False)
+    assert owner.setSearchMode("ideal_sensitivity")
+    assert controller.setIdealSensitivityMode("absolute")
+    assert owner.setSearchMode("fixed_topology")
+    assert owner.setSearchMode("ideal_sensitivity")
+    assert controller.idealSensitivityMode == "absolute"
+    click_operation_bar_action(app, window, "filmSensitivityOpenButton")
+    assert dialog.property("visible") and controller.activeWorkflow == "table"
+    assert controller.thicknessErrorRows[0]["bias_text"] == "-1.25"
     dialog.setProperty("visible", False)
     app.processEvents()
-    assert not dialog.property("visible")
-    click_operation_bar_action(app, window, "filmSensitivityOpenButton")
-    assert dialog.property("visible")
-    assert tabs.property("currentIndex") == 1
     assert controller.activeWorkflow == "ideal"
-    assert controller.thicknessErrorRows[0]["bias_text"] == "-1.25"
-    assert controller.idealDegradationObjectives[0]["budget_text"] == "2"
-    assert controller.idealSensitivityMode == ""
     assert not warnings, warnings
 
 
@@ -237,5 +199,5 @@ def test_sensitivity_entry_uses_real_visible_action_at_narrow_and_wide_widths(
     assert source is not None and (source.x() < 0) is overflowed
     click_operation_bar_action(app, window, "filmSensitivityOpenButton")
     assert dialog.property("visible")
-    assert controller.activeWorkflow == "ideal"
+    assert controller.activeWorkflow == "table"
     assert not warnings, warnings

@@ -9,6 +9,7 @@ ColumnLayout {
     id: panel
     required property var controller
     required property var themeTokens
+    property bool embedded: false
     signal applyRequested()
     signal saveRequested()
     spacing: themeTokens.spaceSm
@@ -16,11 +17,13 @@ ColumnLayout {
     ScrollView {
         objectName: "filmIdealSensitivityScroll"
         Layout.fillWidth: true
-        Layout.fillHeight: true
+        Layout.fillHeight: !panel.embedded
+        Layout.preferredHeight: panel.embedded ? idealContents.implicitHeight : 130
         Layout.minimumHeight: 130
         contentWidth: availableWidth
         clip: true
         ColumnLayout {
+            id: idealContents
             width: parent.width
             spacing: panel.themeTokens.spaceSm
             Label {
@@ -173,6 +176,7 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true
         ThemeControls.ThemeButton {
+            visible: !panel.embedded
             objectName: "filmIdealSensitivityOptimizeButton"
             text: "优化理想敏感度"
             primary: true
@@ -180,6 +184,7 @@ ColumnLayout {
             onClicked: panel.controller.startIdealSensitivityOptimization()
         }
         ThemeControls.ThemeButton {
+            visible: !panel.embedded
             objectName: "filmIdealSensitivityCancelButton"
             text: "取消"
             enabled: panel.controller.busy
@@ -192,6 +197,7 @@ ColumnLayout {
             onClicked: panel.saveRequested()
         }
         ThemeControls.ThemeButton {
+            visible: !panel.embedded
             objectName: "filmIdealSensitivityApplyButton"
             text: "应用最优候选…"
             enabled: panel.controller.idealCanApply

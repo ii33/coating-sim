@@ -170,41 +170,27 @@ def test_initial_entries_have_no_invented_table_or_ideal_defaults(harness, app):
     assert all(row["selected"] for row in panel.idealSensitivityLayers)
     assert panel.activeWorkflow == "ideal"
     with window_runtime(app, harness.owner) as (window, warnings):
+        assert harness.owner.setSearchMode("ideal_sensitivity")
+        click(app, window, _find_visual_item(window.contentItem(), "filmOptimizationAlgorithmTab"))
+        assert _find_visual_item(window.contentItem(), "filmIdealSensitivityAlgorithmOptions").isVisible()
         click_operation_bar_action(app, window, "filmSensitivityOpenButton")
         assert window.findChild(QObject, "filmSensitivityDialog").property("visible")
-        assert window.findChild(QObject, "filmSensitivityWorkflowTabs").property("currentIndex") == 1
-        root = window.contentItem()
-        assert _find_visual_item(root, "filmSensitivityTableTab") is not None
-        assert _find_visual_item(root, "filmSensitivityIdealTab") is not None
-        assert _find_visual_item(root, "filmSensitivityLegacyTab") is None
+        assert window.findChild(QObject, "filmSensitivityWorkflowTabs") is None
         assert window.findChild(QObject, "filmThicknessErrorTableAnalyzeButton") is not None
-        ideal_optimize = window.findChild(QObject, "filmIdealSensitivityOptimizeButton")
-        assert ideal_optimize is not None and ideal_optimize.isEnabled()
-        assert window.findChild(QObject, "filmSensitivityAnalyzeButton") is None
-        click(app, window, _find_visual_item(root, "filmSensitivityIdealTab"))
-        assert panel.activeWorkflow == "ideal"
-        click(app, window, _find_visual_item(root, "filmSensitivityTableTab"))
         assert panel.activeWorkflow == "table"
         assert not warnings, warnings
 
 
-def test_default_ideal_tab_is_visible_and_blank_scale_click_cannot_submit(harness, app):
+def test_ideal_algorithm_blank_scale_cannot_submit(harness, app):
     panel = harness.panel
     assert panel.idealSensitivityMode == ""
+    assert harness.owner.setSearchMode("ideal_sensitivity")
     with window_runtime(app, harness.owner) as (window, warnings):
-        click_operation_bar_action(app, window, "filmSensitivityOpenButton")
-        root = window.contentItem()
-        tabs = window.findChild(QObject, "filmSensitivityWorkflowTabs")
-        assert tabs.property("currentIndex") == 1
-        assert panel.activeWorkflow == "ideal"
-        ideal_page = _find_visual_item(root, "filmIdealSensitivityScroll")
-        assert ideal_page is not None and ideal_page.isVisible()
-        optimize = window.findChild(QObject, "filmIdealSensitivityOptimizeButton")
-        assert optimize is not None and optimize.isEnabled()
-
-        click(app, window, optimize)
+        click(app, window, _find_visual_item(window.contentItem(), "filmOptimizationAlgorithmTab"))
+        assert _find_visual_item(window.contentItem(), "filmIdealSensitivityAlgorithmOptions").isVisible()
+        click_operation_bar_action(app, window, "filmOptimizationStartButton")
+        QTest.qWait(20)
         assert "请选择绝对或相对" in panel.idealError
-        assert panel.idealSensitivityMode == ""
         assert not panel.busy
         assert not harness.pool.tasks and not harness.client.submissions
         assert not warnings, warnings
@@ -379,7 +365,6 @@ def test_table_and_ideal_drafts_are_isolated_and_focus_survives_typing(harness, 
         ThemeService.instance().configure(font_scale=font_scale)
         app.processEvents()
         click_operation_bar_action(app, window, "filmSensitivityOpenButton")
-        click(app, window, _find_visual_item(window.contentItem(), "filmSensitivityTableTab"))
         assert panel.activeWorkflow == "table"
         section = _find_visual_item(window.contentItem(), "filmThicknessLayerOverridesSection")
         assert section is not None
@@ -427,34 +412,21 @@ def test_tab_switch_and_dialog_reopen_preserve_all_workflow_drafts_and_results(h
         open_button = window.findChild(QQuickItem, "filmSensitivityOpenButton")
         assert open_button is not None
         click_operation_bar_action(app, window, "filmSensitivityOpenButton")
-        root = window.contentItem()
-        tabs = window.findChild(QObject, "filmSensitivityWorkflowTabs")
-        assert tabs.property("currentIndex") == 1
-
-        for index, name in ((0, "table"), (1, "ideal"), (0, "table")):
-            click(app, window, _find_visual_item(root, (
-                "filmSensitivityTableTab", "filmSensitivityIdealTab"
-            )[index]))
-            assert panel.activeWorkflow == name
-            assert panel.tableHasResult and panel.tableJobId == table_job_id
-            assert panel.idealHasResult and panel.idealJobId == ideal_job_id
-            assert panel.jobId == {"table": table_job_id, "ideal": ideal_job_id}[name]
-            assert panel.thicknessErrorRows[0]["bias_text"] == "1"
-            assert panel.idealSensitivityMode == "absolute"
-
-        # The dialog is a persistent child of the optimization window; hiding
-        # and reopening it must retain the explicitly selected tab and state.
+        assert panel.activeWorkflow == "table"
+        assert panel.tableHasResult and panel.idealHasResult
         dialog = window.findChild(QObject, "filmSensitivityDialog")
         QTest.keyClick(window, Qt.Key.Key_Escape)
         app.processEvents()
         assert not dialog.property("visible")
+        assert harness.owner.setSearchMode("ideal_sensitivity")
+        assert panel.activeWorkflow == "ideal"
+        assert harness.owner.setSearchMode("fixed_topology")
+        assert harness.owner.setSearchMode("ideal_sensitivity")
+        assert panel.idealSensitivityMode == "absolute"
         click_operation_bar_action(app, window, "filmSensitivityOpenButton")
-        assert dialog.property("visible")
-        assert tabs.property("currentIndex") == 0
-        assert panel.activeWorkflow == "table"
+        assert dialog.property("visible") and panel.activeWorkflow == "table"
         assert panel.tableHasResult and panel.idealHasResult
         assert panel.tableJobId == table_job_id and panel.idealJobId == ideal_job_id
-        assert panel.jobId == table_job_id
         assert panel.thicknessErrorRows[0]["bias_text"] == "1"
         assert panel.idealSensitivityMode == "absolute"
         assert not warnings, warnings

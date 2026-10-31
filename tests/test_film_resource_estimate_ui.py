@@ -64,6 +64,14 @@ def runtime(tmp_path):
     app.processEvents()
 
 
+def select_film(controller):
+    estimator = controller.resourceEstimateController
+    estimator.refreshMaterials()
+    row = estimator.addMaterialRow()
+    assert estimator.setRowMaterial(row, "acceptance-film"), estimator.materialError
+    return estimator
+
+
 def test_real_qml_sidebar_and_no_configuration(runtime):
     app, controller, window, warnings = runtime
     rail = window.findChild(QObject, "filmDesignSidebarResourceEstimate")
@@ -73,9 +81,8 @@ def test_real_qml_sidebar_and_no_configuration(runtime):
     assert window.findChild(QObject, "filmResourceEstimatePanel").property("visible")
     before = deepcopy(controller.session.snapshot().design)
     # Start via controller to avoid depending on keyboard-focus timing.
-    assert controller.runResourceEstimate()
-    wait_until(app, lambda: not controller.resourceEstimateController.busy)
-    assert "目标" in controller.resourceEstimateController.status
+    assert not controller.runResourceEstimate()
+    assert "候选材料" in controller.resourceEstimateController.status
     assert controller.session.snapshot().design == before
     assert not any("ReferenceError" in w or "TypeError" in w for w in warnings), warnings
 
@@ -103,6 +110,10 @@ def test_cancel_rerun_stale_and_no_writeback(runtime, monkeypatch):
 
     monkeypatch.setattr(module._Task, "run", controlled_run)
     estimator = controller.resourceEstimateController
+    monkeypatch.setattr(controller.service, "material_options", lambda kind: [{"id": "m", "name": "M", "optical_sets": [{"id": "s", "name": "S"}]}])
+    estimator.refreshMaterials()
+    row = estimator.addMaterialRow()
+    assert estimator.setRowMaterial(row, "m")
     before = deepcopy(controller.session.snapshot().design)
     assert estimator.start()
     assert entered.wait(1)
@@ -153,7 +164,7 @@ def test_real_core_request_uses_saved_targets_and_does_not_mutate(runtime, tmp_p
     )
     design["workflow_settings"] = {"optimization": config}
     before = deepcopy(design)
-    request = module._prepare_request(design, 19, 8, threading.Event())
+    request = module._prepare_request(design, 19, 8, threading.Event(), config["synthesis"]["material_rows"])
     assert request.synthesis_request.selected_surfaces == ("front",)
     assert request.synthesis_request.environment["front_layers"] == []
     assert request.candidate_designs[0]["front_layers"] == before["front_layers"]
@@ -189,6 +200,7 @@ def test_real_qml_start_audits_current_design_without_writing(runtime, tmp_path)
     assert QMetaObject.invokeMethod(
         window.findChild(QObject, "filmDesignSidebarResourceEstimate"), "click"
     )
+    select_film(controller)
     assert controller.resourceEstimateController.setLayerLimit("8")
     assert QMetaObject.invokeMethod(window.findChild(QObject, "filmResourceEstimateStart"), "click")
     wait_until(app, lambda: controller.resourceEstimateController.busy, timeout=3000)
@@ -231,7 +243,7 @@ def test_material_source_change_during_run_marks_result_stale(runtime, tmp_path,
         return result
 
     monkeypatch.setattr(core, "estimate_film_resources", mutate_after_freeze)
-    estimator = controller.resourceEstimateController
+    estimator = select_film(controller)
     assert estimator.setLayerLimit("8") and estimator.start()
     wait_until(app, lambda: not estimator.busy, timeout=20000)
     assert estimator.stale and "材料源在评估期间变化" in estimator.status, estimator.status
@@ -274,7 +286,7 @@ def test_joint_faces_and_explicit_k_policy_are_inherited(runtime, tmp_path):
     config["synthesis"]["options"]["max_layer_thickness_nm"] = 180.0
     design["workflow_settings"] = {"optimization": config}
     before = deepcopy(design)
-    request = module._prepare_request(design, 19, 128, threading.Event())
+    request = module._prepare_request(design, 19, 128, threading.Event(), config["synthesis"]["material_rows"])
     synthesis = request.synthesis_request
     assert synthesis.selected_surfaces == ("front", "back")
     assert (
@@ -356,6 +368,7 @@ def test_conditional_recommendation_visible_in_real_qml(runtime, tmp_path):
     assert QMetaObject.invokeMethod(
         window.findChild(QObject, "filmDesignSidebarResourceEstimate"), "click"
     )
+    select_film(controller)
     assert controller.resourceEstimateController.setLayerLimit("8")
     assert QMetaObject.invokeMethod(window.findChild(QObject, "filmResourceEstimateStart"), "click")
     wait_until(app, lambda: controller.resourceEstimateController.busy)
@@ -398,6 +411,7 @@ def test_real_qml_failed_freeze_shows_started_not_completed(runtime, tmp_path):
     assert QMetaObject.invokeMethod(
         window.findChild(QObject, "filmDesignSidebarResourceEstimate"), "click"
     )
+    select_film(controller)
     assert controller.resourceEstimateController.setLayerLimit("8")
     assert QMetaObject.invokeMethod(window.findChild(QObject, "filmResourceEstimateStart"), "click")
     wait_until(app, lambda: controller.resourceEstimateController.busy)
@@ -410,3 +424,74 @@ def test_real_qml_failed_freeze_shows_started_not_completed(runtime, tmp_path):
     assert "条件推荐：依赖" not in text
     assert controller.session.snapshot().design == before
     assert not any("ReferenceError" in w or "TypeError" in w for w in warnings), warnings
+
+
+def test_independent_material_draft_reaches_task_and_rejects_empty_missing(runtime, monkeypatch):
+    app, controller, window, warnings = runtime
+    records = [{"id": "one", "name": "One", "optical_sets": [{"id": "a", "name": "A"}]},
+               {"id": "two", "name": "Two", "optical_sets": [{"id": "b", "name": "B"}]}]
+    monkeypatch.setattr(controller.service, "material_options", lambda kind: deepcopy(records))
+    estimator = controller.resourceEstimateController
+    estimator.refreshMaterials()
+    before = deepcopy(controller.session.snapshot().design)
+    assert not estimator.start() and "至少" in estimator.status
+    row = estimator.addMaterialRow()
+    assert estimator.setRowMaterial(row, "two")
+    captured = []
+    def capture(task):
+        captured.extend(deepcopy(task.material_rows))
+        task.signals.finished.emit(task.token, {"state": "completed", "work": {}}, None)
+    monkeypatch.setattr(module._Task, "run", capture)
+    assert estimator.start()
+    wait_until(app, lambda: not estimator.busy)
+    assert [(r["material_id"], r["optical_set_id"]) for r in captured] == [("two", "b")]
+    assert controller.session.snapshot().design == before
+    assert estimator.materialRows[0]["material_id"] == "two"  # sidebar reopening
+    records.pop()
+    estimator.refreshMaterials()
+    assert not estimator.start() and "不可用" in estimator.status
+    assert estimator.removeMaterialRow(row)
+    assert not estimator.start() and "至少" in estimator.status
+    assert not any("ReferenceError" in w or "TypeError" in w for w in warnings), warnings
+
+
+def test_explicit_material_rows_override_synthesis_config(tmp_path):
+    from tests.film_structure_fixtures import fixture
+    from tests.test_film_optimization_restore_layout import saved_configuration
+    service, _library, design = fixture(tmp_path / "independent")
+    config = saved_configuration(service, design)
+    design["workflow_settings"] = {"optimization": config}
+    before = deepcopy(design)
+    rows = [{"material_id": "different", "optical_set_id": "set"}]
+    request = module._prepare_request(design, 1, 8, threading.Event(), rows)
+    assert [(x.material_id, x.optical_set_id) for x in request.synthesis_request.candidate_materials] == [("different", "set")]
+    assert design == before
+    with pytest.raises(ValueError, match="候选材料"):
+        module._prepare_request(design, 1, 8, threading.Event(), [])
+
+
+def test_core_assessment_reacts_to_independent_material_pool(tmp_path):
+    from tests.film_structure_fixtures import fixture
+    from tests.test_film_optimization_restore_layout import saved_configuration
+    from tests.test_film_optimization_needle import _optical
+    from coat_sim.core.materials import default_material_profile
+    from coat_sim.core.film_resource_estimation import estimate_film_resources
+    service, library, design = fixture(tmp_path / "pool")
+    other = default_material_profile("Other film", id="other-film")
+    other.update(category="film", optical_constants=[_optical("other-set", 2.0)])
+    library.write(other)
+    config = saved_configuration(service, design)
+    config["objectives"][0].update(wavelength_min_nm=500.0, wavelength_max_nm=500.0,
+                                    wavelength_samples=1, wavelength_step_nm=1.0,
+                                    actual_wavelength_step_nm=0.0)
+    design["workflow_settings"] = {"optimization": config}
+    def run(mid, sid):
+        request = module._prepare_request(design, 1, 8, threading.Event(),
+                                          [{"material_id": mid, "optical_set_id": sid}])
+        return estimate_film_resources(service, request)
+    included = run("acceptance-film", "film-set")
+    excluded = run("other-film", "other-set")
+    assert included.state == excluded.state == "completed"
+    assert included.source_digest != excluded.source_digest
+    assert included.candidate_reports[0]["within_material_pool"] is True
+    assert excluded.candidate_reports[0]["within_material_pool"] is False

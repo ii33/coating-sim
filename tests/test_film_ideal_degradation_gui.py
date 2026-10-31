@@ -202,7 +202,8 @@ def test_bounded_default_requires_each_budget_and_keeps_id_associations(harness)
 def test_real_qml_scale_selection_then_blank_budget_cannot_submit(harness, app):
     panel = harness.panel
     with window_runtime(app, harness.owner) as (window, warnings):
-        click_operation_bar_action(app, window, "filmSensitivityOpenButton")
+        assert harness.owner.setSearchMode("ideal_sensitivity")
+        click(app, window, _find_visual_item(window.contentItem(), "filmOptimizationAlgorithmTab"))
         mode = window.findChild(QQuickItem, "filmIdealSensitivityModeBox")
         assert mode is not None and mode.isVisible()
         click(app, window, mode)
@@ -212,9 +213,10 @@ def test_real_qml_scale_selection_then_blank_budget_cannot_submit(harness, app):
         app.processEvents()
         assert panel.idealSensitivityMode == "absolute"
         assert all(row["budget_text"] == "" for row in panel.idealDegradationObjectives)
-        optimize = window.findChild(QQuickItem, "filmIdealSensitivityOptimizeButton")
+        optimize = window.findChild(QQuickItem, "filmOptimizationStartButton")
         assert optimize is not None and optimize.isEnabled()
-        click(app, window, optimize)
+        click_operation_bar_action(app, window, "filmOptimizationStartButton")
+        QTest.qWait(20)
         assert "百分点 pp" in panel.idealError and "空白不会按零" in panel.idealError
         assert not panel.busy and not harness.pool.tasks and not harness.client.submissions
         assert not warnings, warnings
@@ -300,22 +302,22 @@ def test_nominal_false_guard_pass_candidate_requires_explicit_confirm_and_is_one
     harness.source.applyOptimizedDesign = apply_to_session
     harness.source.undoOptimizedDesign = undo_session_once
     with window_runtime(app, harness.owner) as (window, warnings):
-        click_operation_bar_action(app, window, "filmSensitivityOpenButton")
-        apply = window.findChild(QQuickItem, "filmIdealSensitivityApplyButton")
+        assert harness.owner.setSearchMode("ideal_sensitivity")
+        apply = window.findChild(QQuickItem, "filmSensitivityCommonApply")
         assert apply is not None and apply.isEnabled()
-        click(app, window, apply)
-        confirm = window.findChild(QObject, "filmSensitivityApplyConfirmDialog")
-        label = window.findChild(QObject, "filmSensitivityApplySummaryLabel")
+        click_operation_bar_action(app, window, "filmSensitivityCommonApply")
+        confirm = window.findChild(QObject, "filmOptimizationApplyConfirmation")
+        label = confirm
         assert confirm is not None and confirm.property("visible")
-        assert "初态原名义目标：未通过" in label.property("text")
-        assert "最终原名义目标：未通过" in label.property("text")
+        assert "初态原名义目标：未通过" in label.property("message")
+        assert "最终原名义目标：未通过" in label.property("message")
         assert not harness.source.applied
         no_button = _dialog_button(window.contentItem(), "no")
         assert no_button is not None
         click(app, window, no_button)
         assert not confirm.property("visible") and not harness.source.applied
         assert panel.idealCanApply
-        click(app, window, apply)
+        click_operation_bar_action(app, window, "filmSensitivityCommonApply")
         assert confirm.property("visible")
         yes_button = _dialog_button(window.contentItem(), "yes")
         assert yes_button is not None

@@ -544,7 +544,10 @@ def test_real_source_ideal_apply_is_one_unsaved_undo_transaction(app, tmp_path, 
                                configure_bounds=False)
         assert panel.idealCanApply, panel.idealError
         assert payload["best_design"] != before.design
-        assert source.session.snapshot().design == before.design
+        # Editing the ideal draft is persisted, but does not alter the physical design.
+        pending = source.session.snapshot().design
+        assert {k: v for k, v in pending.items() if k != "workflow_settings"} == {
+            k: v for k, v in before.design.items() if k != "workflow_settings"}
         assert panel.applySelectedBest(), panel.idealError
         after = source.session.snapshot()
         assert after.design_revision == before.design_revision + 1
@@ -552,7 +555,7 @@ def test_real_source_ideal_apply_is_one_unsaved_undo_transaction(app, tmp_path, 
         assert source.canUndoOptimizedDesign and path.read_bytes() == original_bytes
         assert not panel.applySelectedBest()
         assert source.undoOptimizedDesign()
-        assert source.session.snapshot().design == before.design
+        assert source.session.snapshot().design == pending
         assert not source.undoOptimizedDesign() and path.read_bytes() == original_bytes
     finally:
         owner.shutdown(1000)

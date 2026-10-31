@@ -2,7 +2,7 @@
 
 当前更新（2026-10-24）：波段 mean/pointwise 两组、版本、raw coverage 与严格判定以[双约束契约](film-band-criteria-contract.md)为准。旧 flat 目标与旧协议不迁移。
 
-Updated 2026-10-23. Only the current ideal schema 2 and parameter-table schema 1
+Updated 2026-10-31. Only the current ideal schema 3 and parameter-table schema 1
 are accepted. Removed process/scenario requests and ideal schema 1 are explicitly
 unsupported; there is no conversion, compatibility page or fallback parser.
 Ordinary optimization targets are unchanged.
@@ -52,14 +52,16 @@ assuming independence. Editing is disabled while a job is running.
 
 ## Two entry points and sole state owner
 
-The existing sensitivity dialog exposes parameter-table analysis and ideal
-sensitivity optimization as exactly two independent pages (table index 0, ideal
-index 1). No process/scenario page remains. The first opening selects
-ideal sensitivity optimization, with no selected absolute/relative scale. Closing
-and reopening the same dialog preserves an explicitly selected page and its
-independent drafts/results. The existing `FilmSensitivityQuickController` owns drafts, pending submission, generations,
-revision/edit-epoch checks, project capture, cancellation and result observation.
-The pages do not create their own executors or a second controller.
+The optimization algorithm page exposes ideal sensitivity optimization as
+`ideal_sensitivity`; the separate parameter-table dialog remains analysis only.
+Both use the existing `FilmSensitivityQuickController` as sole draft, submission,
+generation, revision/edit-epoch, project capture, cancellation and observation
+owner. The shared Start dispatches the existing typed ideal worker, Cancel routes
+to the active sensitivity job, and Apply requires the ideal-specific confirmation
+before the existing guarded single undo transaction. Closing the table restores
+the ideal workflow selection when that algorithm is active. Switching algorithms
+is disabled while any job is busy. The table and ideal drafts remain independent;
+no process/scenario page, new executor or fallback is introduced.
 
 The table does not provide an apply-candidate operation. Its values, uncertainty
 kinds and correlation declarations never populate the ideal objective. Changing
@@ -70,7 +72,7 @@ through a generic simulation fallback; task metadata can still explain rejection
 ## Frozen inputs and physical domain
 
 The new kinds are `coat_sim.film_ideal_sensitivity_request` and
-`coat_sim.film_thickness_error_table_request`. Ideal request/result schema 2
+`coat_sim.film_thickness_error_table_request`. Ideal request/result schema 3
 is the sole ideal format; table request/result schema 1 remains its independent
 current format. Workflow job/checkpoint envelope version 1 is a different protocol
 and is not rejected merely for its version number. Typed parsers reject unknown fields, nonfinite values,
@@ -135,13 +137,13 @@ lower bound, not a process certificate. Unrepresentable arithmetic fails rather
 than clipping. None max_iterations leaves SciPy's default in effect, which is
 recorded with the actual SciPy version, not called unlimited.
 
-## Controlled initial-spectrum degradation: ideal schema 2
+## Controlled initial-spectrum degradation: ideal schema 3
 
 The new ideal GUI defaults to `bounded_baseline_degradation`, not a process-error
 model. The user must still choose absolute/relative derivative scale and provide
 one explicit nonnegative finite allowance for every original target row. Blank is
 not zero. The alternative `strict_nominal` retains the original hard nominal gate;
-its budgets are empty. Ideal schema 1 and removed process requests are rejected,
+its budgets are empty. Ideal schemas 1 and 2 and removed process requests are rejected,
 not upgraded, rehashed or interpreted through a second executor.
 
 Each stable objective ID has a `percentage_point` allowance: 0.1 percentage point
@@ -285,3 +287,14 @@ kernel. There is no `_v2` forwarding module, schema-1 executor, public class ali
 request adapter into the withdrawn format, or dynamic compatibility attribute.
 The parameter table remains independent. Historical research evidence is not an
 accepted product format and is not migrated.
+
+## Embedded ideal draft persistence (2026-10-31)
+
+The same owner exports an optional `sensitivity_ideal` UI-only draft with scale,
+policy, stable objective-ID allowance texts, explicit layer selection and search
+option texts. Loading is atomic and rejects malformed data; incomplete numeric
+texts remain drafts and are validated by the existing typed request builder. The
+draft is separate from `sensitivity_table` and does not alter the frozen physics
+or error model. Reopening and switching algorithms preserve it; current source
+IDs determine which rows can be selected or used. Manufacturing candidate
+application preserves the current draft instead of restoring an older capture.
