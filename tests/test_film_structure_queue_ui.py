@@ -362,8 +362,9 @@ def test_structure_window_offscreen_renders_controls_and_sidebar(tmp_path):
         assert window.findChild(QQuickItem, "filmOptimizationComputeTarget") is None
         assert window.findChild(QQuickItem, "computeTargetButton") is None
         assert window.findChild(QObject, "computeTargetPopup") is None
-        assert controller.computeTarget.hostId == "local"
-        assert controller.computeTarget.deviceId == "cpu:default"
+        compute_target = cast("ComputeTarget", controller.computeTarget)
+        assert compute_target.hostId == "local"
+        assert compute_target.deviceId == "cpu:default"
 
         click_item(constraints_tab)
         assert setup_content.property("currentIndex") == 1
