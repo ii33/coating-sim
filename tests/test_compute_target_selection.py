@@ -206,3 +206,23 @@ def test_optimizer_gpu_enumeration_does_not_imply_gpu_solver_support(
     finally:
         target._executor.shutdown(wait=True, cancel_futures=True)
         shiboken6.delete(target)
+
+
+def test_film_local_cpu_only_ignores_saved_preferences_and_does_not_rewrite_them(
+        app, isolated_preferences, tmp_path, monkeypatch):
+    monkeypatch.setattr("coat_sim.ui.settings.load_ui_settings", lambda: {})
+    isolated_preferences.parent.mkdir(parents=True, exist_ok=True)
+    old = {"film_optimization": {"host_id": "local", "device_id": "xpu:old"},
+           "film_synthesis": {"host_id": "remote:old", "device_id": "cuda:old"},
+           "appearance": {"host_id": "local", "device_id": "cuda:default"}}
+    isolated_preferences.write_text(json.dumps(old), encoding="utf-8")
+    target = module.ComputeTarget(tmp_path, "film_optimization", client_factory=LocalClient,
+                                  local_cpu_only=True)
+    assert (target.hostId, target.deviceId, target.canSubmit) == ("local", "cpu:default", True)
+    target.setDeviceId("xpu:old")
+    target.requestFilmXpuProbe()
+    assert target.execution_binding() == {"kind": "film_cpu_v1"}
+    target.setTask("film_synthesis")
+    assert (target.hostId, target.deviceId, target.canSubmit) == ("local", "cpu:default", True)
+    assert json.loads(isolated_preferences.read_text(encoding="utf-8")) == old
+    target._executor.shutdown(wait=True, cancel_futures=True)

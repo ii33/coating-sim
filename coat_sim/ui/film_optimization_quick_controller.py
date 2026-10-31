@@ -63,6 +63,20 @@ if TYPE_CHECKING:
     from coat_sim.ui.film_manufacturing_quick_controller import FilmManufacturingQuickController
 
 
+
+def _cpu_only_request_reason(request: Any) -> str:
+    """Reject old frozen GPU or unbound batch requests without rewriting them."""
+    base = getattr(request, "base_request", request)
+    binding = getattr(base, "execution_device", None)
+    if (getattr(request, "forward_backend", "cpu") != "cpu"
+            or getattr(request, "forward_device", None) is not None
+            or (binding is not None and (not isinstance(binding, Mapping)
+                                         or binding.get("kind") != "film_cpu_v1"))):
+        return "历史任务绑定 GPU；此窗口仅支持本机 CPU，不能继续该冻结任务。"
+    if getattr(base, "execution_mode", "serial") == "deferred_batch" and binding is None:
+        return "历史批量任务未冻结 CPU 设备，不能保证本机 CPU 执行；请重新开始优化。"
+    return ""
+
 class _SynthesisMaterialService(Protocol):
     """Shared film-purpose picker contract of standalone and project services."""
 
@@ -1123,7 +1137,7 @@ class FilmOptimizationQuickController(QObject):
         # fail merely because a preview never starts an optimization.
         selection_root = getattr(self.service, "root", None) or getattr(source_controller, "root", None) or Path.cwd()
         self._compute_target = ComputeTarget(selection_root, "film_optimization", self,
-                                             client_factory=SchedulerClient)
+                                             client_factory=SchedulerClient, local_cpu_only=True)
 
         self._deferred_batch_enabled = False
         self._film_cpu_workers = 1
@@ -2028,15 +2042,12 @@ class FilmOptimizationQuickController(QObject):
             synthesis_values.setdefault("randomize_template_search", False)
             synthesis_values.setdefault("structure_search_seed", None)
             synthesis_workers = synthesis_cpu_workers(synthesis_config.get("cpu_workers", 0))
-            synthesis_forward_backend = synthesis_config.get("forward_backend", "cpu")
-            synthesis_forward_device = synthesis_config.get("forward_device")
-            from coat_sim.core.film_synthesis_forward import validate_forward_device
-            if not isinstance(synthesis_forward_backend, str):
-                raise ValueError("Synthesis forward backend must be a string")
-            synthesis_forward_device = validate_forward_device(
-                synthesis_forward_device, synthesis_forward_backend)
-            if synthesis_forward_backend != "cpu" and synthesis_forward_device is None:
-                raise ValueError("Saved GPU forward selection has no verified device binding")
+            # Device choice is retired in this window. Ignore old GPU fields,
+            # including obsolete or unavailable bindings, without changing the source.
+            if (synthesis_config.get("forward_backend", "cpu") != "cpu"
+                    or synthesis_config.get("forward_device") is not None):
+                restore_notice += "保存的前向设备选择已改为本机 CPU。"
+            synthesis_forward_backend, synthesis_forward_device = "cpu", None
             synthesis_seed = synthesis_config.get("use_current_seed", False)
             synthesis_assumption = synthesis_config.get("assume_unknown_k_zero", ASSUME_UNKNOWN_K_ZERO)
             synthesis_substrate = synthesis_config.get("substrate_reference")
@@ -2135,8 +2146,6 @@ class FilmOptimizationQuickController(QObject):
             self._structure_options = structure
             if search_mode == "synthesis":
                 self._refresh_structure_material_options(preserve_selection=True)
-                if synthesis_forward_backend != "cpu":
-                    self._synthesis_forward_probe.probe()
             for row in self._structure_material_options:
                 row["selected"] = (row["material_id"], row["optical_set_id"]) in selected_refs
             self._pending_edit_error = False
@@ -3751,8 +3760,6 @@ class FilmOptimizationQuickController(QObject):
         previous_mode = self._search_mode
         self._search_mode = mode
         self._compute_target.setTask("film_synthesis" if mode == "synthesis" else "film_optimization")
-        if mode == "synthesis":
-            self._synthesis_forward_probe.probe()
         if mode == "synthesis" or previous_mode == "synthesis":
             self._refresh_structure_material_options(preserve_selection=True)
         if mode == "synthesis" and not self._synthesis_rows_initialized:
@@ -4839,8 +4846,8 @@ class FilmOptimizationQuickController(QObject):
                                        self._synthesis_use_current_seed,
                                        self._synthesis_assume_unknown_k_zero,
                                        cpu_workers=self._synthesis_cpu_workers,
-                                       forward_backend=self._synthesis_forward_backend,
-                                       forward_device=self._synthesis_forward_device,
+                                       forward_backend="cpu",
+                                       forward_device=None,
                                        selected_surfaces=tuple(self._synthesis_selected_surfaces))
 
     def _synthesis_configuration_error(self):
@@ -5012,29 +5019,15 @@ class FilmOptimizationQuickController(QObject):
 
     @Slot()
     def probeSynthesisForwardDevices(self) -> None:
-        if self._busy or self._shutting_down:
-            return
-        self._synthesis_forward_probe.probe()
+        return
 
     @Slot(str, result=bool)
     def setSynthesisForwardBackend(self, backend: str) -> bool:
+        if str(backend).lower() != "cpu":
+            return False
         if self._busy or self._shutting_down or self._pending_edit_error:
             return False
-        backend = str(backend).lower()
-        if backend not in {"cpu", "cuda", "rocm", "xpu"}:
-            self._error = "未知的膜系合成前向设备。"
-            self.changed.emit()
-            return False
-        binding = None
-        if backend != "cpu":
-            result = self._synthesis_forward_probe.results.get(backend, {})
-            devices = result.get("devices", [])
-            if not result.get("available") or not devices:
-                self._error = f"{backend.upper()} 前向当前不可用：{result.get('reason') or '请先探测设备'}"
-                self.changed.emit()
-                return False
-            current = self._synthesis_forward_device
-            binding = current if current in devices else devices[0]
+        backend, binding = "cpu", None
         if backend == self._synthesis_forward_backend and binding == self._synthesis_forward_device:
             return True
         self._synthesis_forward_backend = backend
@@ -5045,21 +5038,7 @@ class FilmOptimizationQuickController(QObject):
 
     @Slot(int, result=bool)
     def setSynthesisForwardDevice(self, index: int) -> bool:
-        if self._busy or self._shutting_down or self._pending_edit_error:
-            return False
-        result = self._synthesis_forward_probe.results.get(self._synthesis_forward_backend, {})
-        devices = result.get("devices", [])
-        if (isinstance(index, bool) or index < 0 or not isinstance(devices, list)
-                or index >= len(devices)):
-            self._error = "所选 GPU 设备不存在，请重新探测。"
-            self.changed.emit()
-            return False
-        binding = devices[index]
-        if binding != self._synthesis_forward_device:
-            self._synthesis_forward_device = deepcopy(binding)
-            self._error = ""
-            self._invalidate_result()
-        return True
+        return False
 
     @Slot(int, object)
     def _on_synthesis_forward_probe_finished(self, _generation: int, _results: object) -> None:
@@ -5456,6 +5435,9 @@ class FilmOptimizationQuickController(QObject):
                 return reason
             record = self._synthesis_search_record
             if record is not None and record['job_id'] == reference['job_id']:
+                reason = _cpu_only_request_reason(record['request'])
+                if reason:
+                    return reason
                 # Check only the core exploration closure here. A fresh complete
                 # editable closure is captured for the current seed at submit.
                 if not self._continuation_materials_current({**record, 'editable_snapshot':None, 'history':True}):
@@ -5536,6 +5518,9 @@ class FilmOptimizationQuickController(QObject):
             record = self._synthesis_search_record
             if record is None or record['job_id'] != reference['job_id']:
                 record = load_record(self.service, reference, snapshot)
+            reason = _cpu_only_request_reason(record["request"])
+            if reason:
+                raise ValueError(reason)
             request = build_request(self, record)
             record = dict(record, editable_snapshot=freeze_synthesis_editable_snapshot(
                 self.service, snapshot.design, request.frozen_material_snapshot))
@@ -5572,6 +5557,9 @@ class FilmOptimizationQuickController(QObject):
             return self._synthesis_search_reason(admission=admission)
         if record is None:
             return self._continuation_unavailable_reason
+        reason = _cpu_only_request_reason(record.get("request"))
+        if reason:
+            return reason
         if self._result_terminal_state == "提交状态未知":
             return "请先核对上次作业的未知提交状态，不能重复提交。"
         if (not admission and self.busy) or self._shutting_down:
@@ -5937,6 +5925,13 @@ class FilmOptimizationQuickController(QObject):
             self._error = str(exc)
             self.changed.emit()
             return False
+        # Never alter old frozen backend identity or allow an unbound batch
+        # request to consult the scheduler's environment-selected backend.
+        reason = _cpu_only_request_reason(request)
+        if reason:
+            self._error = reason
+            self.changed.emit()
+            return False
         try:
             store, _device = self._compute_target.client_for_submit(
                 client_factory=SchedulerClient)
@@ -5945,7 +5940,7 @@ class FilmOptimizationQuickController(QObject):
                     and getattr(request, "forward_backend", "cpu") != "cpu"):
                 raise _QueueCompatibilityError(
                     "GPU 前向仅支持本机合成；请切回 CPU 前向后再选择远程任务，尚未提交作业。")
-            if getattr(request,"execution_device",None) is not None:
+            if warm_restart is None and getattr(request,"execution_device",None) is not None:
                 if request.execution_device != self._selected_execution_binding():
                     raise _QueueCompatibilityError("准备期间执行设备已改变；请重新开始，未提交任务。")
             verify_admission, target_is_current = self._compute_target.admission_verifier(store, _device)

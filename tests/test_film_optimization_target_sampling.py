@@ -1352,7 +1352,7 @@ def test_optimization_controls_and_tabs_fit_shared_default_minimum_window(tmp_pa
         assert toolbar_end.y() <= window.height() + 1
         assert window.findChild(QQuickItem, "filmOptimizationFooterPanel") is None
         for object_name in (
-                "filmOptimizationComputeTarget", "filmOptimizationProgress",
+                "filmOptimizationProgress",
                 "filmOptimizationStartButton", "filmOptimizationCancelButton",
                 "filmOptimizationApplyButton", "filmOptimizationSaveButton"):
             item = window.findChild(QQuickItem, object_name)

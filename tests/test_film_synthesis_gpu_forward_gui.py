@@ -9,7 +9,6 @@ import threading
 
 import pytest
 
-from coat_sim.core.film_synthesis_io import film_synthesis_request_to_payload
 from coat_sim.core.film_synthesis_forward import validate_forward_device
 from coat_sim.core.film_auto_synthesis import freeze_film_synthesis_request
 from coat_sim.ui.film_synthesis_forward_probe import FilmSynthesisForwardProbe
@@ -133,41 +132,32 @@ def test_probe_cancel_reaps_nested_child_and_fences_completion(app, tmp_path):
     probe.shutdown()
 
 
-def test_controller_freezes_selected_forward_backend_and_legacy_config_defaults_cpu(
-        app, tmp_path, monkeypatch):
+def test_controller_ignores_saved_forward_gpu_and_freezes_cpu(app, tmp_path, monkeypatch):
     service, _library, design = fixture(tmp_path)
     with optimizer(service, design) as (controller, _source, _session):
-        monkeypatch.setattr(controller._synthesis_forward_probe, "probe", lambda: None)
+        monkeypatch.setattr(controller._synthesis_forward_probe, "probe",
+                            lambda: pytest.fail("CPU-only UI must not probe GPUs"))
         assert controller.setSearchMode("synthesis")
         _select_material(controller)
         assert controller.setObjectiveField("wavelength_min_nm", 500.0)
-        controller._synthesis_forward_probe._results["xpu"] = {
-            "backend": "xpu", "available": True, "devices": [_binding()], "reason": ""}
-        assert controller.setSynthesisForwardBackend("xpu")
-        request = freeze_film_synthesis_request(service, controller._build_synthesis_request())
-        assert request.forward_backend == "xpu"
-        assert request.forward_device == _binding()
-        payload = film_synthesis_request_to_payload("ui-xpu-selection", request)
-        assert payload["request"]["forward_backend"] == "xpu"
-        assert payload["request"]["forward_device"] == _binding()
-
         saved = controller.exportOptimizationConfiguration()
-        assert saved["synthesis"]["forward_backend"] == "xpu"
-        assert saved["synthesis"]["forward_device"] == _binding()
-        assert controller.setSynthesisForwardBackend("cpu")
+        saved["synthesis"]["forward_backend"] = "xpu"
+        saved["synthesis"]["forward_device"] = _binding()
+        original = deepcopy(saved)
         assert controller.loadOptimizationConfiguration(saved)
-        assert controller.synthesisForwardBackend == "xpu"
-        assert controller.synthesisForwardDevice == _binding()
-
-        legacy = deepcopy(saved)
-        legacy["synthesis"].pop("forward_backend")
-        legacy["synthesis"].pop("forward_device")
-        assert controller.loadOptimizationConfiguration(legacy)
+        assert saved == original
         assert controller.synthesisForwardBackend == "cpu"
         assert controller.synthesisForwardDevice == {}
+        assert not controller.setSynthesisForwardBackend("xpu")
+        request = freeze_film_synthesis_request(service, controller._build_synthesis_request())
+        assert request.forward_backend == "cpu"
+        assert request.forward_device is None
+        restored = controller.exportOptimizationConfiguration()
+        assert restored["synthesis"]["forward_backend"] == "cpu"
+        assert restored["synthesis"]["forward_device"] is None
 
 
-def test_synthesis_window_exposes_forward_probe_separately_from_host_selector(app, tmp_path, monkeypatch):
+def test_synthesis_window_has_no_device_selectors(app, tmp_path, monkeypatch):
     service, _library, design = fixture(tmp_path)
     with optimizer(service, design) as (controller, _source, _session):
         monkeypatch.setattr(controller._synthesis_forward_probe, "probe", lambda: None)
@@ -175,9 +165,10 @@ def test_synthesis_window_exposes_forward_probe_separately_from_host_selector(ap
         with window_runtime(app, controller) as (window, warnings):
             from PySide6.QtCore import QObject
 
-            assert window.findChild(QObject, "filmSynthesisForwardBackendBox") is not None
-            assert window.findChild(QObject, "filmSynthesisForwardDeviceBox") is not None
-            assert window.findChild(QObject, "filmSynthesisForwardProbeButton") is not None
+            assert window.findChild(QObject, "filmSynthesisForwardBackendBox") is None
+            assert window.findChild(QObject, "filmSynthesisForwardDeviceBox") is None
+            assert window.findChild(QObject, "filmSynthesisForwardProbeButton") is None
+            assert window.findChild(QObject, "filmOptimizationComputeTarget") is None
             assert controller.computeTarget.task == "film_synthesis"
             assert controller.computeTarget.hostId == "local"
             assert not any("ReferenceError" in row or "TypeError" in row for row in warnings), warnings
@@ -344,23 +335,6 @@ def _set_remote_guard_objective(controller):
         assert controller.setObjectiveField(field, value)
 
 
-def test_remote_synthesis_rejects_local_gpu_forward_before_submit(app, tmp_path, monkeypatch):
-    service, _library, design = fixture(tmp_path)
-    with optimizer(service, design) as (controller, _source, _session):
-        monkeypatch.setattr(controller._synthesis_forward_probe, "probe", lambda: None)
-        assert controller.setSearchMode("synthesis")
-        _select_material(controller)
-        _set_remote_guard_objective(controller)
-        controller._synthesis_forward_probe._results["xpu"] = {
-            "backend": "xpu", "available": True, "devices": [_binding()], "reason": ""}
-        assert controller.setSynthesisForwardBackend("xpu")
-        store = _remote_synthesis_target(monkeypatch, controller)
-
-        assert not controller._start_optimization()
-        assert not store.submissions
-        assert not controller.busy
-        assert "本机" in controller.error
-
 
 def test_prepared_angle_remote_synthesis_rejects_local_gpu_forward(app, tmp_path, monkeypatch):
     from dataclasses import replace
@@ -432,3 +406,75 @@ def test_history_summary_labels_actual_forward_backend(app, tmp_path, monkeypatc
         controller._synthesis_payload = {"result": {"performance": {
             "forward": {"requested_backend": "xpu", "actual_backend": actual_backend}}}}
         assert expected_label in controller.synthesisExecutionSummary
+
+
+def test_prepared_fixed_topology_gpu_binding_is_rejected_before_submit(app, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from coat_sim.ui.film_optimization_quick_controller import _PreparedAngleGrid
+
+    service, _library, design = fixture(tmp_path)
+    with optimizer(service, design) as (controller, _source, _session):
+        request = SimpleNamespace(execution_device={"kind": "film_xpu_v1"})
+        monkeypatch.setattr(controller._compute_target, "client_for_submit",
+                            lambda **_kwargs: pytest.fail("GPU request reached submission"))
+        assert not controller._start_optimization(prepared_start=_PreparedAngleGrid(request, {}))
+        assert "GPU" in controller.error
+
+
+def test_gpu_synthesis_search_checkpoint_rejected_before_cpu_rebinding(app, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from coat_sim.ui import film_synthesis_search_state
+
+    service, _library, design = fixture(tmp_path)
+    with optimizer(service, design) as (controller, _source, _session):
+        controller._synthesis_search_reference = {"job_id": "old-gpu"}
+        controller._synthesis_search_record = {
+            "job_id": "old-gpu", "request": SimpleNamespace(forward_backend="xpu", forward_device={})}
+        monkeypatch.setattr(controller, "_synthesis_search_reason", lambda: "")
+        monkeypatch.setattr(film_synthesis_search_state, "build_request",
+                            lambda *_args: pytest.fail("GPU checkpoint was rebound"))
+        assert not controller.continueSynthesisSearch()
+        assert "GPU" in controller.error
+
+
+def test_gpu_warm_restart_rejected_before_submit(app, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    service, _library, design = fixture(tmp_path)
+    with optimizer(service, design) as (controller, _source, _session):
+        plan = SimpleNamespace(request=SimpleNamespace(execution_device={"kind": "film_xpu_v1"}))
+        monkeypatch.setattr(controller, "_continuation_source_reason", lambda *_args: "")
+        monkeypatch.setattr(controller._compute_target, "client_for_submit",
+                            lambda **_kwargs: pytest.fail("GPU restart reached submission"))
+        assert not controller._start_optimization(warm_restart=(plan, {"mode": "fixed_topology"}))
+        assert "GPU" in controller.error
+
+
+def test_unbound_historical_batch_cannot_use_environment_gpu(app, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    service, _library, design = fixture(tmp_path)
+    with optimizer(service, design) as (controller, _source, _session):
+        monkeypatch.setenv("COAT_SIM_FILM_BACKEND", "xpu")
+        plan = SimpleNamespace(request=SimpleNamespace(execution_mode="deferred_batch", execution_device=None))
+        monkeypatch.setattr(controller, "_continuation_source_reason", lambda *_args: "")
+        monkeypatch.setattr(controller._compute_target, "client_for_submit",
+                            lambda **_kwargs: pytest.fail("unbound request reached submission"))
+        assert not controller._start_optimization(warm_restart=(plan, {"mode": "fixed_topology"}))
+        assert "未冻结 CPU" in controller.error
+
+
+def test_cpu_warm_restart_preserves_old_worker_binding(app, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    service, _library, design = fixture(tmp_path)
+    with optimizer(service, design) as (controller, _source, _session):
+        binding = {"kind": "film_cpu_v1"}
+        plan = SimpleNamespace(request=SimpleNamespace(execution_mode="deferred_batch", execution_device=binding))
+        monkeypatch.setattr(controller, "_continuation_source_reason", lambda *_args: "")
+        monkeypatch.setattr(controller._compute_target, "client_for_submit",
+                            lambda **_kwargs: (object(), {"id": "cpu:default", "backend": "CPU"}))
+        def admission(*_args):
+            raise RuntimeError("CPU binding reached admission")
+        monkeypatch.setattr(controller._compute_target, "admission_verifier", admission)
+        assert not controller._start_optimization(warm_restart=(plan, {"mode": "fixed_topology"}))
+        assert "CPU binding reached admission" in controller.error
+        assert plan.request.execution_device == binding

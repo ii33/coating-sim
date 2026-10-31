@@ -150,11 +150,12 @@ class ComputeTarget(QObject):
     appearanceCudaProbeRequested = Signal()
 
     def __init__(self, root: Path, task: str, parent: QObject | None = None,
-                 *, client_factory=None):
+                 *, client_factory=None, local_cpu_only=False):
         super().__init__(parent)
         if task not in TASK_EXECUTORS:
             raise ValueError("unknown_compute_task")
         self.root, self.task = Path(root), task
+        self._local_cpu_only = local_cpu_only
         self._prefs_path = self.root / "config" / PREFS_NAME
         self._algorithm = "fast"
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="compute-host-probe")
@@ -179,7 +180,7 @@ class ComputeTarget(QObject):
         self._devices = []
         self._all_devices = []
         self._ready = False
-        saved = _read_prefs(self._prefs_path).get(task, {})
+        saved = {} if self._local_cpu_only else _read_prefs(self._prefs_path).get(task, {})
         self._host_id = str(saved.get("host_id") or "local") if isinstance(saved, dict) else "local"
         self._device_id = str(saved.get("device_id") or "cpu:default") if isinstance(saved, dict) else "cpu:default"
         self._poll = QTimer(self)
@@ -262,7 +263,7 @@ class ComputeTarget(QObject):
 
     @Slot()
     def requestFilmXpuProbe(self):
-        if self.task != "film_optimization" or self._host_id != "local" or self._film_probe_busy:
+        if self._local_cpu_only or self.task != "film_optimization" or self._host_id != "local" or self._film_probe_busy:
             return
         self._generation += 1
         self._confirmed_xpu_uuid = ""
@@ -338,6 +339,8 @@ class ComputeTarget(QObject):
         """Switch the task policy while retaining its independent host preference."""
         if task not in TASK_EXECUTORS:
             raise ValueError("unknown_compute_task")
+        if self._local_cpu_only and task not in {"film_optimization", "film_synthesis"}:
+            raise ValueError("local_cpu_only_film_task")
         if task == self.task:
             return
         self._generation += 1
@@ -352,7 +355,7 @@ class ComputeTarget(QObject):
         self._all_devices = []
         self._ready = False
         self.task = task
-        preference = _read_prefs(self._prefs_path).get(task, {})
+        preference = {} if self._local_cpu_only else _read_prefs(self._prefs_path).get(task, {})
         self._host_id = (str(preference.get("host_id") or "local")
                          if isinstance(preference, dict) else "local")
         self._device_id = (str(preference.get("device_id") or
@@ -363,7 +366,7 @@ class ComputeTarget(QObject):
 
     @Slot(str)
     def setHostId(self, host_id: str):
-        if host_id not in {row["id"] for row in self._host_rows}:
+        if self._local_cpu_only or host_id not in {row["id"] for row in self._host_rows}:
             return
         self._host_id = host_id
         self._device_id = "cpu:default" if host_id == "local" else ""
@@ -376,7 +379,7 @@ class ComputeTarget(QObject):
 
     @Slot(str)
     def setDeviceId(self, device_id: str):
-        if any(row["id"] == device_id and row["available"] for row in self._devices):
+        if not self._local_cpu_only and any(row["id"] == device_id and row["available"] for row in self._devices):
             if self._device_id != device_id:
                 self._selection_serial += 1
             self._device_id = device_id

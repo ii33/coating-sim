@@ -484,7 +484,6 @@ AppWindow {
         sequence: "F6"
         context: Qt.WindowShortcut
         enabled: window.controller.canStartFromShortcut
-                 && (window.controller.searchMode === "automatic_repair" || window.controller.searchMode === "ideal_sensitivity" || window.controller.searchMode === "resource_assessment" || window.controller.computeTarget.canSubmit)
         onActivated: window.startFromShortcut()
     }
 
@@ -685,20 +684,11 @@ AppWindow {
                     property bool hovered: progressHover.hovered
                     HoverHandler { id: progressHover }
                 }
-                ComputeTargetSelector {
-                    objectName: "filmOptimizationComputeTarget"
-                    visible: window.controller.searchMode !== "automatic_repair" && window.controller.searchMode !== "ideal_sensitivity" && window.controller.searchMode !== "resource_assessment"
-                    width: Math.min(170, Math.max(130, window.width * 0.2))
-                    compact: true
-                    target: window.controller.computeTarget
-                    registerNativeF4Combo: window.registerNativeF4Combo
-                }
                 ThemeControls.ThemeButton {
                     id: optimizationStartButton
                     objectName: "filmOptimizationStartButton"
                     text: window.controller.searchMode === "automatic_repair" ? "开始薄层修复" : window.controller.searchMode === "ideal_sensitivity" ? "开始敏感度优化" : window.controller.searchMode === "resource_assessment" ? "开始评估" : "开始优化"
                     enabled: window.controller.canStart
-                        && (window.controller.searchMode === "automatic_repair" || window.controller.searchMode === "ideal_sensitivity" || window.controller.searchMode === "resource_assessment" || window.controller.computeTarget.canSubmit)
                     primary: true
                     onClicked: window.startFromButton()
                 }
@@ -1478,7 +1468,7 @@ AppWindow {
                                 Label {
                                     visible: window.controller.searchMode === "automatic_repair"
                                     Layout.fillWidth: true
-                                    text: "自动薄层修复使用现有本机 CPU 修复执行器；计算目标选择器不参与此算法。"
+                                    text: "自动薄层修复使用本机 CPU 修复执行器。"
                                     color: window.themeTokens.colorInfo
                                     wrapMode: Text.WordWrap
                                 }
@@ -1555,12 +1545,12 @@ AppWindow {
                                     enabled: !window.controller.busy
                                     onToggled: window.controller.setDeferredBatchEnabled(checked)
                                     ToolTip.visible: hovered
-                                    ToolTip.text: "固定拓扑差分进化专用，轨迹不同于旧串行模式。Intel XPU 还需显式检测并选择设备；评分和独立验证仍使用 CPU。"
+                                    ToolTip.text: "固定拓扑差分进化专用，轨迹不同于旧串行模式；使用本机 CPU。"
                                 }
                                 ColumnLayout {
                                     visible: window.controller.deferredBatchEnabled && window.controller.searchMode === "fixed_topology" && window.controller.showPopulationSize
                                     Layout.fillWidth: true
-                                    enabled: !window.controller.busy && window.controller.computeTarget.deviceId === "cpu:default"
+                                    enabled: !window.controller.busy
                                     Label { text: "CPU 前向线程（默认 1）"; color: window.themeTokens.colorText }
                                     ThemeControls.ThemeSpinBox {
                                         objectName: "filmBatchCpuWorkers"
@@ -1582,7 +1572,7 @@ AppWindow {
                                 Label {
                                     visible: window.controller.deferredBatchEnabled
                                     Layout.fillWidth: true
-                                    text: "线程越多未必越快；自动轴不自动寻找最佳线程数。Intel XPU 不保证加速，CPU 评分与独立验证保持不变。"
+                                    text: "线程越多未必越快；自动轴不自动寻找最佳线程数。"
                                     wrapMode: Text.WordWrap
                                     color: window.themeTokens.colorTextMuted
                                 }
@@ -2178,7 +2168,7 @@ AppWindow {
                                     }
                                     Label {
                                         Layout.fillWidth: true
-                                        text: "CPU 工作进程数：0=自动，1=串行，2+=请求的工作进程数。此项只控制膜系合成内部任务；调度器的 CPU 选择仍独立。"
+                                        text: "CPU 工作进程数：0=自动，1=串行，2+=请求的工作进程数。此项只控制膜系合成内部任务。"
                                         color: window.themeTokens.colorTextMuted
                                         wrapMode: Text.WordWrap
                                         font.pointSize: window.themeTokens.fontSizeSmall
@@ -2198,70 +2188,6 @@ AppWindow {
                                             accessibleLabel: "CPU 工作进程数"
                                             onEditingFinished: window.controller.setSynthesisCpuWorkers(text)
                                         }
-                                    }
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Label {
-                                            text: "前向设备"
-                                            color: window.themeTokens.colorText
-                                            Layout.preferredWidth: 130
-                                        }
-                                        ThemeControls.ThemeComboBox {
-                                            objectName: "filmSynthesisForwardBackendBox"
-                                            Layout.fillWidth: true
-                                            model: window.controller.synthesisForwardBackendOptions
-                                            textRole: "label"
-                                            currentIndex: Math.max(0, model.findIndex(
-                                                item => item.id === window.controller.synthesisForwardBackend))
-                                            enabled: window.controller.canEditSynthesisAssumption
-                                            onActivated: {
-                                                const selected = model[currentIndex]
-                                                if (selected) window.controller.setSynthesisForwardBackend(selected.id)
-                                            }
-                                        }
-                                    }
-                                    RowLayout {
-                                        visible: window.controller.synthesisForwardBackend !== "cpu"
-                                        Layout.fillWidth: true
-                                        Label {
-                                            text: "GPU 设备"
-                                            color: window.themeTokens.colorText
-                                            Layout.preferredWidth: 130
-                                        }
-                                        ThemeControls.ThemeComboBox {
-                                            objectName: "filmSynthesisForwardDeviceBox"
-                                            Layout.fillWidth: true
-                                            model: window.controller.synthesisForwardDeviceOptions
-                                            textRole: "label"
-                                            currentIndex: Math.max(0, model.findIndex(item =>
-                                                item.binding.index === window.controller.synthesisForwardDevice.index
-                                                && item.binding.uuid === window.controller.synthesisForwardDevice.uuid))
-                                            enabled: window.controller.canEditSynthesisAssumption
-                                            onActivated: window.controller.setSynthesisForwardDevice(currentIndex)
-                                        }
-                                    }
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        ThemeControls.ThemeButton {
-                                            objectName: "filmSynthesisForwardProbeButton"
-                                            text: "重新探测 GPU"
-                                            enabled: !window.controller.busy
-                                            onClicked: window.controller.probeSynthesisForwardDevices()
-                                        }
-                                        Label {
-                                            objectName: "filmSynthesisForwardProbeStatus"
-                                            Layout.fillWidth: true
-                                            text: window.controller.synthesisForwardStatus
-                                            color: window.themeTokens.colorTextMuted
-                                            wrapMode: Text.WordWrap
-                                        }
-                                    }
-                                    Label {
-                                        Layout.fillWidth: true
-                                        text: "CPU 为默认前向。GPU 探测在独立子进程中运行；选定设备身份随冻结请求复核。外层任务执行设备设置保持独立。"
-                                        color: window.themeTokens.colorTextMuted
-                                        wrapMode: Text.WordWrap
-                                        font.pointSize: window.themeTokens.fontSizeSmall
                                     }
                                 }
                                 ColumnLayout {
