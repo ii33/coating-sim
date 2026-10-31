@@ -1,7 +1,8 @@
 """Read-only film resource assessment on the ordinary frozen full-design TMM.
 
-MVP-A: necessary numerical screens and audited observed structures only. No
-trained prediction, optimization submission, editor mutation or implicit caps.
+Necessary numerical screens and freshly audited constructive witnesses. Native
+hybrid synthesis explores general objectives without mutating the editor.
+Numerical effort windows are not physical resource bounds or calibrated forecasts.
 """
 from __future__ import annotations
 
@@ -15,17 +16,17 @@ from typing import Any, Callable, Mapping
 
 import numpy as np
 
-from .film_auto_synthesis import FilmSynthesisRequest, freeze_film_synthesis_request
+from .film_auto_synthesis import FilmSynthesisRequest, freeze_film_synthesis_request, synthesize_film_design
 from .film_design import physical_thickness_nm, validate_design
 from .film_design_service import automatic_substrate_handling
-from .film_nominal_acceptance import nominal_targets_pass, solver_acceptable
+from .film_nominal_acceptance import complete_original_score, nominal_targets_pass, solver_acceptable
 from .film_optimization_needle import FilmNeedleMaterialReference
 from .film_optimization_structure import _StructureCancelled
 from .film_optics import _coherent_many, _polarizations
 from .film_resource_estimation_bounds import hr_point_layer_screen, hr_thickness_screen
 from .film_synthesis_absorption import sample_synthesis_optical, synthesis_absorption_assumption
 from .film_synthesis_archive import physical_design_hash
-from .film_synthesis_audit import audit_frozen_synthesis_candidate
+from .film_synthesis_audit import audit_frozen_synthesis_candidate, frozen_synthesis_audit_identity
 from .film_synthesis_surfaces import selected_rows, selected_sides, validate_candidate_environment
 from .optical_constants import prepare_optical_set
 
@@ -38,6 +39,10 @@ class FilmResourceEstimateRequest:
     layer_search_limit: int = 128
     max_seconds: float | None = None
     search_budget_reference: Mapping[str, Any] | None = None
+    # Per-seed logical evaluator window (including independent audits), not a physical-call or resource cap.
+    # 0 explicitly selects prechecks/current-candidate audits only.
+    probe_max_evaluations: int = 256
+    probe_seeds: tuple[int, ...] = (0, 1)
 
 
 @dataclass(frozen=True)
@@ -428,7 +433,9 @@ def estimate_film_resources(service: Any, request: FilmResourceEstimateRequest, 
     started = time.monotonic()
     work: dict[str, Any] = dict(source_freeze_attempts=0, source_freeze_passes=0, source_samples=0, dp_conditions=0, dp_conditions_started=0, dp_transitions=0, lp_solves=0,
                 fixed_face_physical_evaluations=0, audits_started=0, audits_completed=0,
-                physical_evaluations=0, wavelength_points=0, elapsed_seconds=0.)
+                physical_evaluations=0, wavelength_points=0, elapsed_seconds=0.,
+                probe_runs=0, probe_evaluations=0, probe_physical_evaluations=0,
+                probe_wavelength_points=0, probe_outcomes=[], actual_work_complete=True)
     bounds: list[dict[str, Any]] = []
     screens: list[dict[str, Any]] = []
     reports: list[dict[str, Any]] = []
@@ -448,6 +455,7 @@ def estimate_film_resources(service: Any, request: FilmResourceEstimateRequest, 
         recommendation = [dict(
             {k: deepcopy(row[k]) for k in ('candidate_index', 'layer_count', 'total_thickness_nm', 'surfaces',
                 'physical_hash', 'conditional_on_assumption', 'absorption_assumption', 'within_search_budgets')},
+            source=row.get('source', 'candidate'), probe_seed=row.get('probe_seed'),
             source_digest=source_digest, claim_level='sampled_witness', continuous_certificate=False,
             applicability='audited_original_nominal_and_manufacturing',
             scope='selected_coating_surfaces_aggregate') for row in pareto] or None
@@ -466,6 +474,19 @@ def estimate_film_resources(service: Any, request: FilmResourceEstimateRequest, 
         if request.max_seconds is not None and (isinstance(request.max_seconds, bool) or
                 not isinstance(request.max_seconds, (int, float)) or not math.isfinite(request.max_seconds) or request.max_seconds <= 0):
             raise ValueError('max_seconds must be positive finite or None')
+        if type(request.probe_max_evaluations) is not int or request.probe_max_evaluations < 0 or request.probe_max_evaluations == 1:
+            raise ValueError('probe_max_evaluations must be 0 (off) or integer >=2 (baseline plus independent audit)')
+        if (not isinstance(request.probe_seeds, (tuple, list)) or not request.probe_seeds or
+                any(type(seed) is not int or not 0 <= seed <= 0xFFFFFFFF for seed in request.probe_seeds) or
+                len(set(request.probe_seeds)) != len(request.probe_seeds)):
+            raise ValueError('probe_seeds must be distinct uint32 integer seeds [0,4294967295]')
+        work['probe_profile'] = dict(max_evaluations_per_seed=request.probe_max_evaluations,
+            seeds=list(request.probe_seeds), enabled=bool(request.probe_max_evaluations),
+            version='constructive_baseline_then_diverse_v1',
+            branch_policy='first_native_constructive_baseline_then_seeded_template_or_warm_start',
+            effort_role='editable_logical_evaluations_including_audits_not_physical_resource_bound',
+            calibration='not_calibrated', template_randomization=True,
+            start_policy='first_seed_constructive_remaining_current_and_explicit_nonempty_starts')
         control.seconds = request.max_seconds
         control.check()
         emit('freeze', '冻结指标、候选材料和完整正背面环境')
@@ -479,7 +500,8 @@ def estimate_film_resources(service: Any, request: FilmResourceEstimateRequest, 
         reference = dict(request.search_budget_reference or {})
         digest = hashlib.sha256(json.dumps(dict(request=asdict(frozen), candidates=candidates,
             layer_search_limit=request.layer_search_limit, audit_candidates=request.audit_candidates,
-            search_budget_reference=reference),
+            search_budget_reference=reference, probe_max_evaluations=request.probe_max_evaluations,
+            probe_seeds=request.probe_seeds),
             ensure_ascii=False, sort_keys=True, allow_nan=False).encode()).hexdigest()
         input_status = 'ready'
         sources = _Sources(frozen, work, control)
@@ -533,14 +555,177 @@ def estimate_film_resources(service: Any, request: FilmResourceEstimateRequest, 
                     row.update(state='audited', targets_met=nominal_targets_pass(frozen, score, independent_audit=True),
                         solver_acceptable=solver_acceptable(frozen, score, independent_audit=True),
                         max_normalized_error=float(score['max_error']), message='finite_sampled_audit_not_continuous_certificate',
-                        audit=deepcopy(audit['audit']), absorption_assumption=deepcopy(audit['audit']['absorption_assumption']),
+                        audit=deepcopy(audit['audit']), objective_status=deepcopy(audit['audit']['objective_status']), absorption_assumption=deepcopy(audit['audit']['absorption_assumption']),
                         conditional_on_assumption=bool(audit['audit']['absorption_assumption']['conditional_on_assumption']))
                 except (ValueError, ArithmeticError, KeyError) as exc:
                     row.update(state='error', message=str(exc))
+                row['source'] = 'candidate'
+                row['candidate_design'] = deepcopy(design)
                 reports.append(row)
                 emit('candidate_complete', '当前结构审计完成；不修改处方或优化约束')
-        return finish('completed', '资源评估完成；建议仅来自实际通过审计的联合资源节点，未标定预测未知')
+        if request.probe_max_evaluations:
+            _explore_resources(service, request, sources, reference, work, reports, control, emit,
+                               progress_callback)
+        control.check()
+        return finish('completed', '资源评估完成；仅报告实际找到且审计通过的联合资源例子，不是最小值；未找到不代表不可实现')
     except _StructureCancelled:
         return finish(control.state(), '资源评估已取消或到时；已完成审计的见证保留，未完成不判失败')
     except (ValueError, TypeError, KeyError, ArithmeticError) as exc:
         return finish('failed', str(exc))
+
+
+def _explore_resources(service, request, sources, reference, work, reports, control, emit, progress_callback):
+    """Reuse the native full-objective hybrid/local search and fresh audit owner.
+
+    Snapshot callbacks are emitted *after* a new independent original-target
+    audit, never on training scores alone. Their evidence survives cancellation.
+    Work counters are native cumulative counters, delta-accounted per run; audit
+    physical calls and feedback repair calls are accounted separately from logical evaluations.
+    """
+    frozen = request.synthesis_request
+    seen = {r.get('physical_hash') for r in reports if r.get('state') == 'audited'}
+    # Only legal starts may enter native search; invalid audit candidates remain
+    # useful diagnostics but must not poison every constructive branch.
+    starts = list(frozen.seed_designs)
+    for design in request.candidate_designs:
+        try:
+            resources = _resources(frozen, design, sources, reference)
+        except (ValueError, ArithmeticError, KeyError) as exc:
+            # Candidate-specific bad physical thickness is already an error
+            # diagnostic, not a reason to suppress independent constructive starts.
+            work.setdefault('probe_skipped_starts', []).append(dict(
+                physical_hash=physical_design_hash(design), reason=str(exc)))
+            continue
+        if resources['within_constraints']:
+            starts.append(design)
+        else:
+            work.setdefault('probe_skipped_starts', []).append(dict(
+                physical_hash=physical_design_hash(design), reason='outside_process_constraints_or_material_pool'))
+    unique_starts: dict[str, Mapping[str, Any]] = {}
+    for design in starts:
+        # An empty current stack is the native baseline, not an explicit seed:
+        # passing it as seed would disable native constructive HR/AR routes.
+        if selected_rows(frozen, design):
+            unique_starts.setdefault(physical_design_hash(design), design)
+    for branch_index, seed in enumerate(request.probe_seeds):
+        control.check()
+        emit('probe', f'通用结构与厚度探测：种子 {seed}，逻辑评价窗口（含审计） {request.probe_max_evaluations}')
+        work['probe_runs'] += 1
+        outcome = dict(seed=seed, requested_max_evaluations=request.probe_max_evaluations,
+            state='running', termination_reason=None, evaluations=0, physical_evaluations=0,
+            wavelength_points=0, actual_work_complete=True, candidates_retained=0,
+            randomized_template_search=branch_index > 0,
+            audited_candidate_hashes=[], start_mode='constructive' if branch_index == 0 or not unique_starts else 'current_and_explicit_starts')
+        work['probe_outcomes'].append(outcome)
+        charged = dict(evaluations=0, physical_evaluations=0, wavelength_points=0)
+
+        def account(cumulative, performance, charged=charged, outcome=outcome):
+            feedback = performance.get('audit_feedback', {})
+            physical = (int(performance.get('known_training_physical_evaluations', 0)) +
+                int(cumulative.get('audit_physical_evaluations', 0)) +
+                int(feedback.get('physical_evaluations', 0)))
+            points = (int(performance.get('known_training_wavelength_points', 0)) +
+                int(cumulative.get('audit_wavelength_points', 0)) +
+                int(feedback.get('wavelength_points', 0)))
+            totals = dict(evaluations=int(cumulative.get('evaluations', 0)),
+                physical_evaluations=physical, wavelength_points=points)
+            for key, value in totals.items():
+                # Native cumulative ledgers must never regress within one run.
+                if value < charged[key]:
+                    raise ValueError('resource probe work ledger regression')
+                delta = value - charged[key]
+                work['probe_' + key] += delta
+                if key != 'evaluations':
+                    work[key] += delta
+                charged[key] = outcome[key] = value
+            complete = bool(performance.get('actual_work_complete', True))
+            outcome['actual_work_complete'] = complete
+            work['actual_work_complete'] = work['actual_work_complete'] and complete
+
+        def snapshot(design, training, validation, audit, account=account, outcome=outcome, seed=seed):
+            audit = audit if isinstance(audit, Mapping) else {}
+            cumulative, performance = audit.get('synthesis_cumulative_work'), audit.get('synthesis_performance')
+            if isinstance(cumulative, Mapping) and isinstance(performance, Mapping):
+                account(cumulative, performance)
+            signature = physical_design_hash(design)
+            outcome['audited_candidate_hashes'].append(signature)
+            identity = frozen_synthesis_audit_identity(frozen, design)
+            audit_core = {k: v for k, v in audit.items() if not k.startswith('synthesis_')
+                          and k not in ('search_checkpoint', 'local_optimum')}
+            evidence_valid = (all(audit.get(key) == value for key, value in identity.items())
+                and complete_original_score(frozen, training)
+                and complete_original_score(frozen, validation, independent_audit=True)
+                and audit_core == validation.get('audit'))
+            if not evidence_valid:
+                outcome['invalid_audit_snapshots'] = outcome.get('invalid_audit_snapshots', 0) + 1
+                reports.append(dict(candidate_index=len(reports), source='probe', probe_seed=seed,
+                    state='not_audited', physical_hash=signature, targets_met=False, solver_acceptable=None,
+                    **_resources(frozen, design, sources, reference), max_normalized_error=None,
+                    message='incomplete_or_mismatched_original_audit_evidence', audit=None,
+                    conditional_on_assumption=False, absorption_assumption={}))
+                return
+            if signature in seen:
+                return
+            # Re-validate original environment and process/material constraints;
+            # never trust a carried-over score, user target flag or training pass.
+            validate_candidate_environment(frozen, design)
+            row = dict(candidate_index=len(reports), source='probe', probe_seed=seed,
+                state='audited', physical_hash=signature, candidate_design=deepcopy(design),
+                **_resources(frozen, design, sources, reference),
+                targets_met=(nominal_targets_pass(frozen, training) and
+                    nominal_targets_pass(frozen, validation, independent_audit=True)),
+                training_targets_met=nominal_targets_pass(frozen, training),
+                audit_targets_met=nominal_targets_pass(frozen, validation, independent_audit=True),
+                solver_acceptable=solver_acceptable(frozen, validation, independent_audit=True),
+                max_normalized_error=float(validation['max_error']),
+                message='fresh_native_full_original_audit_not_continuous_certificate',
+                audit=deepcopy(audit_core), objective_status=deepcopy(audit_core['objective_status']),
+                absorption_assumption=deepcopy(audit['absorption_assumption']),
+                conditional_on_assumption=bool(audit['absorption_assumption']['conditional_on_assumption']))
+            reports.append(row)
+            seen.add(signature)
+            outcome['candidates_retained'] += 1
+
+        def progress(value, outcome=outcome, seed=seed):
+            # The native owner observes the same cancellation event immediately
+            # after callbacks. Do not throw from an observer and lose its final
+            # exact physical ledger. Report logical progress separately.
+            outcome['logical_evaluations_observed'] = value.evaluations
+            if progress_callback is not None:
+                progress_callback(FilmResourceEstimateProgress('probe_' + value.stage,
+                    f'种子 {seed}：逻辑评价 {value.evaluations}/{request.probe_max_evaluations}；'
+                    f'已完成审计且达标 {sum(r["state"] == "audited" and r["targets_met"] and r["within_constraints"] for r in reports)} 个；{value.message}',
+                    work['dp_conditions'] + work['audits_completed'],
+                    work['physical_evaluations'], work['wavelength_points']))
+
+        probe = replace(frozen, search_strategy='hybrid', ar_structure_mode='clustered',
+            max_layers=None, max_total_thickness_nm=None, max_cycles=None,
+            max_evaluations=request.probe_max_evaluations, max_seconds=None,
+            # Keep a deterministic native constructive reference. Randomizing
+            # every branch can discard useful native priors on difficult AR
+            # targets; later branches add reproducible diversity instead.
+            structure_search_seed=seed, randomize_template_search=branch_index > 0,
+            search_checkpoint=None, warm_start_seed_index=None,
+            # Reserve at least the first branch for independent constructive
+            # search; explicit/current starts must not disable every native prior.
+            seed_designs=() if branch_index == 0 else tuple(unique_starts.values()))
+        result = synthesize_film_design(service, probe, cancel_event=control,
+            progress_callback=progress, snapshot_callback=snapshot)
+        account(dict(evaluations=result.evaluations,
+            audit_physical_evaluations=result.audit_physical_evaluations,
+            audit_wavelength_points=result.audit_wavelength_points), result.performance)
+        outcome.update(state=result.state, termination_reason=result.termination_reason,
+            failed_evaluations=result.failed_evaluations, cycles=result.cycles,
+            validation_evaluations=result.validation_evaluations,
+            evaluation_window_exceeded=result.evaluations > request.probe_max_evaluations)
+        if result.candidate_design is not None:
+            signature = physical_design_hash(result.candidate_design)
+            if signature not in seen:
+                reports.append(dict(candidate_index=len(reports), source='probe', probe_seed=seed,
+                    state='not_audited', targets_met=False, solver_acceptable=None,
+                    physical_hash=signature, **_resources(frozen, result.candidate_design, sources, reference),
+                    max_normalized_error=None if result.training_score is None else float(result.training_score['max_error']),
+                    message='incomplete_candidate_not_a_feasibility_witness', audit=None,
+                    conditional_on_assumption=False, absorption_assumption={}))
+        control.check()
+        emit('probe_complete', f'种子 {seed} 探测结束：{result.termination_reason}；未找到不能判定不可行')

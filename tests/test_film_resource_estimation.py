@@ -9,7 +9,7 @@ import pytest
 from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint as C
 from coat_sim.core.film_optimization import FilmOptimizationObjective as O
 from coat_sim.core.film_resource_estimation import (
-    FilmResourceEstimateRequest as Request, estimate_film_resources,
+    FilmResourceEstimateRequest, estimate_film_resources,
     freeze_resource_estimate_request, resource_estimate_source_digest, observed_resource_pareto,
 )
 from coat_sim.core.film_resource_estimation_bounds import (
@@ -18,6 +18,11 @@ from coat_sim.core.film_resource_estimation_bounds import (
 from tests.test_film_auto_synthesis import setup_problem
 
 pytestmark = pytest.mark.algorithm
+
+
+def Request(*args, **kwargs):
+    return FilmResourceEstimateRequest(*args, probe_max_evaluations=0, **kwargs)
+
 
 
 def hr_request(service, request, *, lower=.999, mean=False, samples=3):

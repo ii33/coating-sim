@@ -6,11 +6,25 @@ from copy import deepcopy
 from dataclasses import asdict
 import hashlib
 import json
+import re
 import threading
 from typing import Any, cast
 from uuid import uuid4
 
 from PySide6.QtCore import QObject, Property, QRunnable, QThreadPool, Signal, Slot, Qt
+
+
+def _friendly_error(error: Any) -> str:
+    message = str(error)
+    lower = message.lower()
+    if "unknown k" in lower or "unknown_k" in lower or "n/k source" in lower:
+        return "材料的消光系数 k 未知或数据无效；请检查光学数据，或在优化设置中明确选择未知 k 按零假设。"
+    if "missing" in lower or "not found" in lower:
+        return "材料或光学数据缺失；请检查选择和数据集是否仍可用。"
+    if (any("\u4e00" <= char <= "\u9fff" for char in message)
+            and not re.search(r"[A-Za-z0-9_/-]{8,}", message)):
+        return message
+    return "输入或材料数据无法完成评估；请检查技术详情及当前设置。"
 
 
 def _digest(design: dict) -> str:
@@ -21,7 +35,7 @@ def _digest(design: dict) -> str:
     ).hexdigest()
 
 
-def _prepare_request(design: dict, revision: int, limit: int, cancel: threading.Event, material_rows):
+def _prepare_request(design: dict, revision: int, limit: int, cancel: threading.Event, material_rows, substrate_reference=None, probe_max_evaluations=256, probe_seeds=(0, 1)):
     """Read the existing editor configuration using the same target conversion helpers."""
     config = design.get("workflow_settings", {}).get("optimization", {})
     if not isinstance(config, dict) or not config:
@@ -92,7 +106,7 @@ def _prepare_request(design: dict, revision: int, limit: int, cancel: threading.
     sides = synthesis.get("selected_surfaces", ["front"])
     if not isinstance(sides, list):
         raise ValueError("所选物理面无效，请在目标与材料设置中检查。")
-    substrate = synthesis.get("substrate_reference")
+    substrate = substrate_reference if substrate_reference is not None else synthesis.get("substrate_reference")
     source = deepcopy(design)
     if substrate is not None:
         if not isinstance(substrate, dict) or not all(
@@ -142,6 +156,8 @@ def _prepare_request(design: dict, revision: int, limit: int, cancel: threading.
     return FilmResourceEstimateRequest(
         synthesis_request,
         candidate_designs=(candidate,),
+        probe_max_evaluations=probe_max_evaluations,
+        probe_seeds=tuple(probe_seeds),
         layer_search_limit=limit,
         search_budget_reference={
             key: budget[key] for key in ("max_layers", "max_total_thickness_nm")
@@ -155,15 +171,18 @@ class _Signals(QObject):
 
 
 class _Task(QRunnable):
-    def __init__(self, service, design, revision, limit, cancel, token, signals, material_rows):
+    def __init__(self, service, design, revision, limit, cancel, token, signals, material_rows, substrate_reference, probe_max_evaluations=256, probe_seeds=(0, 1)):
         super().__init__()
         self.service, self.design, self.revision, self.limit = service, design, revision, limit
         self.cancel, self.token, self.signals = cancel, token, signals
         self.material_rows = material_rows
+        self.substrate_reference = substrate_reference
+        self.probe_max_evaluations = probe_max_evaluations
+        self.probe_seeds = tuple(probe_seeds)
 
     def run(self):
         try:
-            request = _prepare_request(self.design, self.revision, self.limit, self.cancel, self.material_rows)
+            request = _prepare_request(self.design, self.revision, self.limit, self.cancel, self.material_rows, self.substrate_reference, self.probe_max_evaluations, self.probe_seeds)
             from coat_sim.core.film_resource_estimation import (
                 estimate_film_resources,
                 freeze_resource_estimate_request,
@@ -224,14 +243,21 @@ class FilmResourceEstimateController(QObject):
         self._draft_session = source.session
         self._material_rows = []
         self._catalog = []
+        self._substrate_catalog = []
+        self._substrate = None
         self._catalog_error = ""
         self.refreshMaterials()
         self._busy = False
         self._stale = False
         self._limit = 128
         self._limit_valid = True
+        self._probe_max_evaluations = 256
+        self._probe_seeds: tuple[int, ...] = (0, 1)
+        self._probe_budget_error = ""
+        self._probe_seeds_error = ""
         self._status = "尚未开始。请先检查当前目标与材料设置。"
-        self._result = "预测：unknown（无已校准模型）。"
+        self._result = "尚未计算。"
+        self._technical = ""
         self._source_summary = "尚无冻结快照。"
         self._digest = ""
         self._source_revision = None
@@ -249,12 +275,14 @@ class FilmResourceEstimateController(QObject):
         if self._draft_session is not self._source.session:
             self._draft_session = self._source.session
             self._material_rows = []
+            self._substrate = None
             self._digest = ""
             self._stale = False
 
     def resetDraft(self):
         self.cancel()
         self._material_rows = []
+        self._substrate = None
         if self._digest:
             self._stale = True
             self._status = "设计已替换；评估草稿已清空，原结果已过期。"
@@ -265,24 +293,72 @@ class FilmResourceEstimateController(QObject):
         self._check_session()
         try:
             records = self._source.service.material_options("film")
-            catalog = []
-            for material in records:
-                if not isinstance(material, dict) or material.get("design_ready") is False:
-                    continue
-                mid = material.get("id")
-                if not isinstance(mid, str) or not mid:
-                    continue
-                sets = [{"id": item["id"], "name": str(item.get("name") or item["id"])}
-                        for item in material.get("optical_sets", [])
-                        if isinstance(item, dict) and isinstance(item.get("id"), str) and item["id"]]
-                if sets:
-                    catalog.append({"id": mid, "name": str(material.get("name") or mid), "optical_sets": sets})
-            self._catalog = sorted(catalog, key=lambda row: (row["name"].casefold(), row["id"]))
+            substrate_records = self._source.service.material_options("substrate")
+            def catalog_for(records):
+                catalog = []
+                for material in records:
+                    if not isinstance(material, dict) or material.get("design_ready") is False:
+                        continue
+                    mid = material.get("id")
+                    if not isinstance(mid, str) or not mid:
+                        continue
+                    sets = [{"id": item["id"], "name": str(item.get("name") or item["id"])}
+                            for item in material.get("optical_sets", [])
+                            if isinstance(item, dict) and isinstance(item.get("id"), str) and item["id"]]
+                    if sets:
+                        catalog.append({"id": mid, "name": str(material.get("name") or mid), "optical_sets": sets})
+                return sorted(catalog, key=lambda row: (row["name"].casefold(), row["id"]))
+            self._catalog = catalog_for(records)
+            self._substrate_catalog = catalog_for(substrate_records)
+            self._initialize_substrate()
             self._catalog_error = ""
         except Exception as exc:
             self._catalog = []
+            self._substrate_catalog = []
             self._catalog_error = f"材料目录读取失败：{exc}"
         self.changed.emit()
+
+    def _initialize_substrate(self):
+        if self._substrate is not None or self._source.session is None:
+            return
+        design = self._source.session.snapshot().design
+        substrate = design.get("substrate", {})
+        self._substrate = {key: substrate.get(key, "") for key in ("material_id", "optical_set_id")}
+
+    @Property(dict, notify=changed)
+    def substrateSelection(self):
+        self._check_session()
+        self._initialize_substrate()
+        row = self._substrate or {"material_id": "", "optical_set_id": ""}
+        material = next((m for m in self._substrate_catalog if m["id"] == row["material_id"]), None)
+        optical = material["optical_sets"] if material else []
+        valid = any(item["id"] == row["optical_set_id"] for item in optical)
+        return {**row, "material_options": [{"id": m["id"], "name": m["name"]} for m in self._substrate_catalog],
+                "optical_set_options": deepcopy(optical),
+                "error": "" if valid else "基片材料或数据集不可用；请重新选择。"}
+
+    @Slot(str, result=bool)
+    def setSubstrateMaterial(self, material_id):
+        if self._busy:
+            return False
+        material = next((m for m in self._substrate_catalog if m["id"] == material_id), None)
+        if material is None:
+            return False
+        self._substrate = {"material_id": material_id, "optical_set_id": material["optical_sets"][0]["id"]}
+        self._materials_changed()
+        return True
+
+    @Slot(str, result=bool)
+    def setSubstrateOpticalSet(self, optical_id):
+        if self._busy:
+            return False
+        selection = cast(dict, self.substrateSelection)
+        if not any(item["id"] == optical_id for item in selection["optical_set_options"]):
+            return False
+        assert self._substrate is not None
+        self._substrate["optical_set_id"] = optical_id
+        self._materials_changed()
+        return True
 
     @Property(list, notify=changed)
     def materialRows(self):
@@ -316,7 +392,7 @@ class FilmResourceEstimateController(QObject):
     def _materials_changed(self):
         if self._digest:
             self._stale = True
-            self._status = "候选材料已变化；原结果已过期，请重新评估。"
+            self._status = "评估材料或基片已变化；原结果已过期，请重新评估。"
         self.changed.emit()
 
     @Slot(result=str)
@@ -391,6 +467,72 @@ class FilmResourceEstimateController(QObject):
         return self._limit_valid
 
     @Property(str, notify=changed)
+    def probeMaxEvaluations(self):
+        return str(self._probe_max_evaluations)
+
+    @Property(str, notify=changed)
+    def probeSeeds(self):
+        return ",".join(str(seed) for seed in self._probe_seeds)
+
+    @Property(bool, notify=changed)
+    def probeSettingsValid(self):
+        return not self._probe_budget_error and not self._probe_seeds_error
+
+    @Property(str, notify=changed)
+    def probeSettingsError(self):
+        return self._probe_budget_error or self._probe_seeds_error
+
+    @Slot(str, result=bool)
+    def setProbeMaxEvaluations(self, value):
+        if self._busy:
+            return False
+        text = str(value).strip()
+        try:
+            budget = int(text) if text.isascii() and text.isdecimal() else -1
+        except ValueError:
+            budget = -1
+        if budget < 0 or budget == 1:
+            self._probe_budget_error = "每个种子的逻辑评价上限须为 0 或不小于 2 的整数；0 表示不探测。"
+            self.invalidateDraft()
+            self.changed.emit()
+            return False
+        self._probe_budget_error = ""
+        if budget != self._probe_max_evaluations:
+            self._probe_max_evaluations = budget
+            self.invalidateDraft()
+        self.changed.emit()
+        return True
+
+    @Slot(str, result=bool)
+    def setProbeSeeds(self, value):
+        if self._busy:
+            return False
+        parts = [part.strip() for part in str(value).split(",")]
+        if any(not part.isascii() or not part.isdecimal() for part in parts):
+            self._probe_seeds_error = "请输入不同的非负整数种子，以英文逗号分隔。"
+            self.invalidateDraft()
+            self.changed.emit()
+            return False
+        try:
+            seeds = tuple(int(part) for part in parts)
+        except ValueError:
+            self._probe_seeds_error = "种子整数过长，无法解析。"
+            self.invalidateDraft()
+            self.changed.emit()
+            return False
+        if len(set(seeds)) != len(seeds) or any(seed > 4294967295 for seed in seeds):
+            self._probe_seeds_error = "种子不能重复，且须介于 0 和 4294967295 之间。"
+            self.invalidateDraft()
+            self.changed.emit()
+            return False
+        self._probe_seeds_error = ""
+        if seeds != self._probe_seeds:
+            self._probe_seeds = seeds
+            self.invalidateDraft()
+        self.changed.emit()
+        return True
+
+    @Property(str, notify=changed)
     def status(self):
         return self._status
 
@@ -402,6 +544,10 @@ class FilmResourceEstimateController(QObject):
     def resultSummary(self):
         return self._result
 
+    @Property(str, notify=changed)
+    def technicalDetails(self):
+        return self._technical
+
     @Slot(str, result=bool)
     def setLayerLimit(self, value):
         try:
@@ -412,6 +558,7 @@ class FilmResourceEstimateController(QObject):
                 raise ValueError()
         except (ValueError, TypeError):
             self._limit_valid = False
+            self.invalidateDraft()
             self._status = "点频必要界枚举窗口须为 1 到 100000 的整数。"
             self.changed.emit()
             return False
@@ -425,28 +572,37 @@ class FilmResourceEstimateController(QObject):
 
     @Slot(result=bool)
     def start(self):
+        return self.startWithConfiguration(None)
+
+    @Slot(object, result=bool)
+    def startWithConfiguration(self, configuration):
         if (
             self._busy
             or not self._limit_valid
+            or not self.probeSettingsValid
             or self._source.session is None
             or self._source._source_closed
         ):
             return False
         self.refreshMaterials()
-        if self.materialError:
-            self._status = cast(str, self.materialError)
+        substrate_selection = cast(dict, self.substrateSelection)
+        if self.materialError or substrate_selection["error"]:
+            self._status = cast(str, self.materialError) or substrate_selection["error"]
             self.changed.emit()
             return False
         snapshot = self._source.session.snapshot()
         design = deepcopy(snapshot.design)
         self._digest = _digest(design)
+        if configuration is not None:
+            design.setdefault("workflow_settings", {})["optimization"] = deepcopy(configuration)
         self._source_revision = snapshot.design_revision
         self._token += 1
         self._cancel = threading.Event()
         self._busy = True
         self._stale = False
         self._status = "准备冻结快照…"
-        self._result = "预测：unknown（无已校准模型）。"
+        self._result = "正在计算…"
+        self._technical = ""
         config = design.get("workflow_settings", {}).get("optimization", {})
         synthesis = config.get("synthesis", {}) if isinstance(config, dict) else {}
         if not isinstance(synthesis, dict):
@@ -467,8 +623,7 @@ class FilmResourceEstimateController(QObject):
             return "未设置" if value is None or value == "" else f"{value}{unit}"
 
         substrate = design.get("substrate", {})
-        if isinstance(synthesis, dict) and synthesis.get("substrate_reference"):
-            substrate = {**substrate, **synthesis["substrate_reference"]}
+        substrate = {**substrate, **(self._substrate or {})}
 
         def criterion(value):
             if not isinstance(value, dict) or not value.get("enabled"):
@@ -491,32 +646,24 @@ class FilmResourceEstimateController(QObject):
             )
             or "无"
         )
+        def name_pair(row, catalog):
+            material = next((m for m in catalog if m["id"] == row.get("material_id")), None)
+            if not material:
+                return "材料不可用"
+            optical = next((o for o in material["optical_sets"] if o["id"] == row.get("optical_set_id")), None)
+            return material["name"] + " / " + (optical["name"] if optical else "数据集不可用")
+
+        side_names = {"front": "正面", "back": "背面"}
         self._source_summary = (
-            f"来源设计修订 {snapshot.design_revision} · 输入快照 {self._digest[:12]}\n"
-            f"选面：{sides}；未选面作为固定环境。候选材料："
-            + (
-                ", ".join(
-                    f"{r.get('material_id', '?')}/{r.get('optical_set_id', '?')}"
-                    for r in rows
-                    if isinstance(r, dict)
-                )
-                or "无"
-            )
-            + f"\n指标：{target_text}\n基片：{substrate.get('material_id', '?')}/{substrate.get('optical_set_id', '?')}，"
-            f"{substrate.get('sides', '?')} 面 / {substrate.get('mode', '?')}；入射面：{design.get('first_surface', 'front')}；"
-            f"入射介质：{design.get('incident_medium', {})}；出射介质：{design.get('exit_medium', {})}。\n未知 k 策略："
-            + (
-                "明确按零"
-                if synthesis.get("assume_unknown_k_zero") is True
-                else "不按零"
-                if synthesis.get("assume_unknown_k_zero") is False
-                else "未确认"
-            )
-            + f"\n工艺单层最小非零厚度：{setting('minimum_nonzero_thickness_nm', ' nm')}；"
-            f"单层最大厚度：{setting('max_layer_thickness_nm', ' nm')}。"
-            f"\n现有优化搜索总层数帽：{setting('max_layers', ' 层')}；"
-            f"总厚度帽：{setting('max_total_thickness_nm', ' nm')}。"
-            "评估不受当前搜索总预算限制；制造良率未评估。"
+            "冻结条件：" + "、".join(side_names.get(side, str(side)) for side in sides)
+            + "；未选面保持固定。\n候选膜料："
+            + ("；".join(name_pair(row, self._catalog) for row in rows) or "无")
+            + "\n基片：" + name_pair(substrate, self._substrate_catalog)
+            + "\n目标：" + target_text
+            + "\n未知 k：" + ("按零假设" if synthesis.get("assume_unknown_k_zero") is True else "不按零" if synthesis.get("assume_unknown_k_zero") is False else "未确认")
+            + f"；单层最小非零厚度 {setting('minimum_nonzero_thickness_nm', ' nm')}；单层最大厚度 {setting('max_layer_thickness_nm', ' nm')}。"
+            + f"\n有限探测：每种子逻辑评价上限 {self._probe_max_evaluations} 次（含审计）；种子 {self.probeSeeds}。"
+            + "\n评估不受原优化的层数与总厚度预算限制；制造良率未评估。"
         )
         self.changed.emit()
         QThreadPool.globalInstance().start(
@@ -529,9 +676,19 @@ class FilmResourceEstimateController(QObject):
                 self._token,
                 self._signals,
                 deepcopy(self._material_rows),
+                deepcopy(self._substrate),
+                self._probe_max_evaluations,
+                tuple(self._probe_seeds),
             )
         )
         return True
+
+    @Slot()
+    def invalidateDraft(self):
+        if self._digest and not self._stale:
+            self._stale = True
+            self._status = "优化设置已变化；结果已过期，请重新评估。"
+            self.changed.emit()
 
     @Slot()
     def cancel(self):
@@ -569,10 +726,14 @@ class FilmResourceEstimateController(QObject):
             return
         cancel = self._cancel
         if not self._stale and cancel is not None and not cancel.is_set():
-            self._status = (
-                f"{getattr(event, 'stage', '')}：{getattr(event, 'message', '')} · "
-                f"工作单元 {getattr(event, 'completed_units', 0)}，物理评估 {getattr(event, 'physical_evaluations', 0)}，波长点 {getattr(event, 'wavelength_points', 0)}"
-            )
+            self._status = "评估中：" + str(getattr(event, "message", "正在计算"))
+            physical = getattr(event, "physical_evaluations", None)
+            points = getattr(event, "wavelength_points", None)
+            if physical is not None:
+                self._status += f"；物理光谱计算 {physical} 次"
+            if points is not None:
+                self._status += f"；波长点 {points} 个"
+            self._status += "。"
             self.changed.emit()
 
     @Slot(int, object, object)
@@ -583,34 +744,208 @@ class FilmResourceEstimateController(QObject):
         self._busy = False
         if error is not None:
             self._status = (
-                "已取消。" if isinstance(error, InterruptedError) else f"评估未完成：{error}"
+                "已取消。" if isinstance(error, InterruptedError) else "评估未完成：" + _friendly_error(error)
             )
+            self._result = "未取得计算结果。"
+            self._technical = "原始错误：" + str(error)
         else:
-            self._status = (
-                f"评估状态：{result.get('state', 'unknown')} · {result.get('message', '')}"
-            )
+            state = result.get("state")
+            self._status = {"completed": "评估完成。", "cancelled": "评估已取消。", "failed": "评估未完成。"}.get(state, "评估状态未知。")
+            if state != "completed" and result.get("message"):
+                self._status += " " + _friendly_error(result["message"])
+
             source_check = result.get("_source_check", "unavailable")
             if source_check == "changed":
                 self._stale = True
                 self._status += " 材料源在评估期间变化。"
             elif source_check == "unverified":
                 self._stale = True
-                self._status += " 材料源未能复核；结果不可视作当前来源。" + result.get(
-                    "_source_check_message", ""
-                )
+                self._status += " 材料源未能复核；结果不可视作当前来源。请查看技术详情。"
             elif source_check == "current":
                 self._status += " 材料源在完成时已复核；此后外部材料变更请重新评估。"
-            self._result = (
-                "冻结输入摘要："
-                + str(result.get("input_digest") or "unknown")
-                + "\n材料与物理源摘要："
-                + str(result.get("source_digest") or "unknown")
-                + "\n\n"
-                + _format_result(result)
-            )
+            self._result = _format_summary(result)
+            self._technical = ("冻结输入摘要：" + str(result.get("input_digest") or "未知")
+                               + "\n材料与物理源摘要：" + str(result.get("source_digest") or "未知")
+                               + "\n原始状态信息：" + str(result.get("message") or "无")
+                               + "\n来源复核详情：" + str(result.get("_source_check_message") or "无")
+                               + "\n\n" + _format_result(result))
         if self._stale:
             self._status = "来源已变化，本次结果已过期；请重新评估。" + self._status
         self.changed.emit()
+
+
+def _fixed_surface_note(item: dict[str, Any], selected: Any) -> str:
+    if not isinstance(selected, (list, tuple)) or not selected:
+        return "；选面信息未知，固定面未列出"
+    surfaces = item.get("surfaces") or {}
+    fixed = []
+    for side, label in (("front", "正面"), ("back", "背面")):
+        row = surfaces.get(side)
+        if side in selected or not isinstance(row, dict) or row.get("active") is not True:
+            continue
+        count, thickness = row.get("layer_count"), row.get("total_thickness_nm")
+        amount = f"{thickness:.4g} nm" if isinstance(thickness, (int, float)) else "厚度未统计"
+        fixed.append(f"{label} {count if count is not None else '未知'} 层 / {amount}")
+    return "；未选固定面：" + "、".join(fixed) if fixed else ""
+
+
+def _format_summary(result: dict[str, Any]) -> str:
+    state = result.get("state")
+    if state not in (None, "completed"):
+        work = result.get("work") or {}
+        partial = ""
+        if "physical_evaluations" in work:
+            partial = (f"\n已记录物理光谱计算 {work.get('physical_evaluations', '未知')} 次，"
+                       f"波长点 {work.get('wavelength_points', '未知')} 个；中断时工作量可能不完整。")
+        if work.get("actual_work_complete") is False:
+            partial += "\n工作量统计不完整。"
+        for outcome in work.get("probe_outcomes") or []:
+            partial += (f"\n种子 {outcome.get('seed', '未知')}：已记录逻辑评价 "
+                        f"{outcome.get('evaluations', outcome.get('logical_evaluations_observed', '未知'))} / {outcome.get('requested_max_evaluations', '未知')} 次，"
+                        f"物理光谱计算 {outcome.get('physical_evaluations', '未知')} 次；工作量可能不完整。")
+        return "评估未完成，尚无完整结果；请检查状态并重试。" + partial
+    lines = ["评估结果（有限采样，不是连续域证书）",
+             "审计点按指标违约程度选择，不等同全谱极值；若全部通过、违约量相同，显示的可能只是代表点。"]
+    for item in result.get("bounds", []):
+        kind = item.get("kind")
+        label = {"hr_thickness_lp": "厚度必要界", "hr_layer_dp": "层数必要界"}.get(kind, "必要界")
+        value = item.get("value_nm") if kind == "hr_thickness_lp" else item.get("value_layers")
+        unit = "nm" if kind == "hr_thickness_lp" else "层"
+        reason = item.get("reason", "")
+        if value is not None:
+            text = f"{value:.4g} {unit}（条件必要界，非充分条件）"
+        elif item.get("applicability") == "not_applicable":
+            text = "不适用" + ("：此界仅支持逐点高反射目标" if reason == "requires_pointwise_hr" else "：当前物理条件不满足此界的适用条件")
+        else:
+            text = "未算出；不能据此判断不可行"
+        excluded = item.get("excluded_through")
+        if isinstance(excluded, int):
+            text += f"；枚举范围内已排除至 {excluded} 层"
+        if item.get("conditional_on_assumption") is True:
+            text += "；依赖未知 k 按零假设"
+        lines.append(f"• {label}：{text}")
+    if not result.get("bounds"):
+        lines.append("• 当前条件下没有可用的必要界；不能据此判断不可行。")
+    reports = result.get("candidate_reports") or []
+    current = next((report for report in reports if report.get("source", "candidate") == "candidate"), None)
+    if current:
+        item = current
+        layers = item.get("layer_count")
+        thickness = item.get("total_thickness_nm")
+        quantities = (f"{layers} 层 / {thickness:.4g} nm" if layers is not None and isinstance(thickness, (int, float)) else "资源量未知")
+        met = item.get("targets_met")
+        outcome = "目标通过" if met is True else "目标未通过" if met is False else "目标是否通过未确定"
+        if item.get("state") != "audited":
+            outcome = "未取得完整审计" + ("：" + _friendly_error(item["message"]) if item.get("message") else "")
+        assumption_note = "；结果依赖未知 k 按零假设" if item.get("conditional_on_assumption") is True else ""
+        lines.append(f"• 当前结构审计（所选膜面合计）：{quantities}；{outcome}{assumption_note}{_fixed_surface_note(item, result.get("selected_surfaces"))}。")
+        audit = (item.get("audit") or {}) if item.get("state") == "audited" else {}
+        for objective in audit.get("objective_status", []):
+            metric = objective.get("metric", "指标")
+            for kind, label in (("pointwise", "逐点"), ("mean", "均值")):
+                condition = objective.get(kind) or {}
+                if not condition.get("enabled"):
+                    continue
+                actual = condition.get("worst_actual")
+                actual_text = f"{100 * actual:.5g}%" if isinstance(actual, (int, float)) else "未知"
+                if condition.get("mode") == "value":
+                    target = condition.get("target_value")
+                    criterion = f"目标 {100 * target:.5g}%" if isinstance(target, (int, float)) else "目标未知"
+                else:
+                    low, high = condition.get("lower_bound"), condition.get("upper_bound")
+                    pieces = []
+                    if isinstance(low, (int, float)):
+                        pieces.append((">" if condition.get("strict_lower") else "≥") + f"{100 * low:.5g}%")
+                    if isinstance(high, (int, float)):
+                        pieces.append(("<" if condition.get("strict_upper") else "≤") + f"{100 * high:.5g}%")
+                    criterion = "、".join(pieces) or "边界未知"
+                angle, wavelength = condition.get("worst_angle_deg"), condition.get("worst_wavelength_nm")
+                location = f"角度 {angle:g}°" if isinstance(angle, (int, float)) else "角度未知"
+                if kind == "pointwise":
+                    location += f"，波长 {wavelength:g} nm" if isinstance(wavelength, (int, float)) else "，波长未知"
+                passed = condition.get("targets_met")
+                outcome = "达标" if passed is True else "未达标" if passed is False else "达标状态未知"
+                detail = "最不利审计点" if kind == "pointwise" else "固定密网格积分均值（最不利角度）"
+                low_nm, high_nm = objective.get("wavelength_min_nm"), objective.get("wavelength_max_nm")
+                band = f"{low_nm:g}–{high_nm:g} nm" if isinstance(low_nm, (int, float)) and isinstance(high_nm, (int, float)) else "波段未知"
+                lines.append(f"  目标 {objective.get('objective_index', 0) + 1} {metric}（{band}）{label}：{actual_text}；{criterion}；{outcome}。{detail}：{location}。")
+        error = item.get("max_normalized_error") if item.get("state") == "audited" else None
+        if isinstance(error, (int, float)):
+            lines.append(f"  最大归一化违约量：{error:.4g}（不是反射率）。")
+    else:
+        lines.append("• 当前结构：未取得完整审计。")
+    nodes = result.get("recommended_budget") or result.get("pareto_witnesses") or []
+    if nodes:
+        lines.append("• 已找到以下有限采样审计见证（所选膜面合计层数 / 厚度，不是连续域证书）：")
+        for item in nodes:
+            conditional = item.get("conditional_on_assumption")
+            evidence = item.get("absorption_assumption")
+            matching = isinstance(evidence, dict) and evidence.get("conditional_on_assumption") is conditional
+            assumption_note = ("；依赖未知 k 按零假设" if conditional is True and matching
+                         else "；未使用未知 k 按零假设" if conditional is False and matching
+                         else "；吸收假设状态未知")
+            origin = (f"探测种子 {item.get('probe_seed')}" if item.get("source") == "probe" else "当前结构")
+            lines.append(f"  {item.get('layer_count', '?')} 层 / {item.get('total_thickness_nm', '?')} nm（{origin}）{assumption_note}{_fixed_surface_note(item, result.get("selected_surfaces"))}")
+    else:
+        lines.append("• 尚未取得通过审计的可行见证；这不代表不存在可行方案。")
+    near = [row for row in reports if row.get("source") == "probe" and row.get("state") == "audited"
+            and row.get("targets_met") is False and row.get("within_constraints") is True
+            and row.get("within_material_pool") is True
+            and isinstance(row.get("max_normalized_error"), (int, float))]
+    if near:
+        best = min(near, key=lambda row: row["max_normalized_error"])
+        conditional = best.get("conditional_on_assumption")
+        evidence = best.get("absorption_assumption")
+        matching = isinstance(evidence, dict) and evidence.get("conditional_on_assumption") is conditional
+        assumption = ("依赖未知 k 按零假设" if conditional is True and matching
+                      else "未使用未知 k 按零假设" if conditional is False and matching
+                      else "吸收假设状态未知")
+        lines.append(f"• 已审计且符合材料及工艺约束的最接近探测候选（所选膜面合计）：{best.get('layer_count', '未知')} 层 / {best.get('total_thickness_nm', '未知')} nm{_fixed_surface_note(best, result.get("selected_surfaces"))}；最大归一化违约量 {best['max_normalized_error']:.4g}；{assumption}（未达标，不是可行见证）。")
+        for objective in (best.get("audit") or {}).get("objective_status", []):
+            for kind, label in (("pointwise", "逐点"), ("mean", "均值")):
+                condition = objective.get(kind) or {}
+                actual = condition.get("worst_actual")
+                if not condition.get("enabled") or not isinstance(actual, (int, float)):
+                    continue
+                angle, wavelength = condition.get("worst_angle_deg"), condition.get("worst_wavelength_nm")
+                location = f"，角度 {angle:g}°" if isinstance(angle, (int, float)) else ""
+                if kind == "pointwise" and isinstance(wavelength, (int, float)):
+                    location += f"，波长 {wavelength:g} nm"
+                passed = condition.get("targets_met")
+                status = "达标" if passed is True else "未达标" if passed is False else "状态未知"
+                lines.append(f"  目标 {objective.get('objective_index', 0) + 1} {objective.get('metric', '指标')} {label}最不利审计值 {100 * actual:.5g}%{location}；{status}。")
+    work = result.get("work") or {}
+    outcomes = work.get("probe_outcomes") or result.get("probe_outcomes") or []
+    if outcomes:
+        lines.append("• 有限探测工作量（逻辑评价包含审计；不代表搜索穷尽）：")
+        for outcome in outcomes:
+            state = {"completed": "完成", "not_found": "未找到", "cancelled": "取消", "failed": "失败", "deadline": "到时停止"}.get(outcome.get("state"), "未知")
+            reason = str(outcome.get("termination_reason") or "")
+            reason_text = {
+                "validated_targets_met": "审计目标通过", "evaluation_limit": "达到评价上限",
+                "cycle_limit": "达到轮次上限", "time_limit": "达到时间上限",
+                "resource_limit": "达到资源上限", "search_exhausted": "搜索结束",
+                "training_targets_met": "训练目标通过", "validation_targets_not_met": "审计目标未通过",
+                "continuation_local_session_complete": "本次搜索结束", "cancelled": "已取消",
+            }.get(reason, "数值或审计失败" if reason.startswith(("numerical_failure:", "validation_failed:")) else "原因未知")
+            lines.append(f"  种子 {outcome.get('seed', '?')}：{state}；逻辑评价 {outcome.get('evaluations', outcome.get('logical_evaluations_observed', '未知'))} / {outcome.get('requested_max_evaluations', '?')} 次；物理光谱计算 {outcome.get('physical_evaluations', '未知')} 次；其中审计评价 {outcome.get('validation_evaluations', '未知')} 次；保留 {outcome.get('candidates_retained', '未知')} 个候选；停止原因：{reason_text}。")
+            if "evaluations" not in outcome and "logical_evaluations_observed" in outcome:
+                lines.append("  逻辑评价数为运行中已记录值，非最终完整统计。")
+            if outcome.get("evaluation_window_exceeded") is True:
+                lines.append("  实际逻辑评价超出请求窗口；请以记录的实际工作量为准。")
+            if outcome.get("actual_work_complete") is False:
+                lines.append("  该种子的实际工作量记录不完整。")
+        validation = [outcome.get("validation_evaluations") for outcome in outcomes]
+        audit_total = sum(validation) if all(type(value) is int for value in validation) else "未知"
+        lines.append(f"  探测合计：逻辑评价 {work.get('probe_evaluations', '未知')} 次（其中审计评价 {audit_total} 次），物理光谱计算 {work.get('probe_physical_evaluations', '未知')} 次，波长点 {work.get('probe_wavelength_points', '未知')} 个。")
+        if work.get("actual_work_complete") is False:
+            lines.append("  工作量统计不完整，以上仅为已记录部分。")
+    elif work.get("probe_runs") == 0:
+        lines.append("• 未运行探测：仅完成预检查和当前结构审计。")
+    if "physical_evaluations" in work:
+        lines.append(f"• 全部物理光谱计算 {work.get('physical_evaluations', '未知')} 次，波长点 {work.get('wavelength_points', '未知')} 个（含探测）。")
+    lines.append("• 资源预测尚未计算：目前没有经过校准的预测模型。")
+    return "\n".join(lines)
 
 
 def _format_result(result: dict[str, Any]) -> str:

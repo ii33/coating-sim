@@ -1148,6 +1148,7 @@ class FilmOptimizationQuickController(QObject):
         from .theme_service import ThemeService
         ThemeService.instance().filmThicknessDecimalsChanged.connect(self._on_film_display_precision)
         self._sensitivity_controller: FilmSensitivityQuickController | None = None
+        self._resource_estimator_seen = None
         self._sensitivity_table_configuration: dict | None = None
         self._sensitivity_ideal_configuration: dict | None = None
         self._sensitivity_table_loading = False
@@ -1472,6 +1473,21 @@ class FilmOptimizationQuickController(QObject):
     @Property(QObject, constant=True)
     def computeTarget(self):
         return self._compute_target
+
+    @Property(QObject, notify=changed)
+    def resourceEstimateController(self):
+        source = self._source_controller
+        estimator = getattr(source, "resourceEstimateController", None) if source is not None else None
+        if estimator is not self._resource_estimator_seen:
+            if self._resource_estimator_seen is not None:
+                try:
+                    self._resource_estimator_seen.changed.disconnect(self.changed.emit)
+                except (RuntimeError, TypeError):
+                    pass
+            self._resource_estimator_seen = estimator
+            if estimator is not None:
+                estimator.changed.connect(self.changed.emit)
+        return estimator
 
     @Property(QObject, constant=True)
     def sensitivityController(self):
@@ -1950,7 +1966,7 @@ class FilmOptimizationQuickController(QObject):
                                 for name, value in reduction_limits.items()}
             if reduction_mode not in {"layer_count", "thickness", "combined"}:
                 raise ValueError("减层 / 减厚模式无效")
-            if search_mode not in {"fixed_topology", "structure", "synthesis", "reduction", "automatic_repair", "ideal_sensitivity"} or structure_mode not in {"combined", "needle_only", "growth_only"}:
+            if search_mode not in {"fixed_topology", "structure", "synthesis", "reduction", "automatic_repair", "ideal_sensitivity", "resource_assessment"} or structure_mode not in {"combined", "needle_only", "growth_only"}:
                 raise ValueError("优化或结构模式无效")
             if search_mode == "automatic_repair" and configuration_version != 3:
                 raise ValueError("自动薄层修复模式要求优化配置版本 3")
@@ -2618,6 +2634,8 @@ class FilmOptimizationQuickController(QObject):
                 self.changed.emit()
 
     def _invalidate_result(self) -> None:
+        if self._resource_estimator_seen is not None:
+            self._resource_estimator_seen.invalidateDraft()
         if self._manufacturing_controller is not None:
             self._manufacturing_controller.sourceChanged()
         self._synthesis_actual_structure_search_seed = None
@@ -2784,6 +2802,7 @@ class FilmOptimizationQuickController(QObject):
             {"id": "reduction", "label": "减层 / 减厚优化"},
             {"id": "automatic_repair", "label": "自动薄层修复"},
             {"id": "ideal_sensitivity", "label": "敏感性优化"},
+            {"id": "resource_assessment", "label": "资源评估"},
             {"id": "synthesis", "label": "从零自动合成"},
             {"id": "structure", "label": "结构合成"},
         ]
@@ -3178,7 +3197,8 @@ class FilmOptimizationQuickController(QObject):
     def busy(self) -> bool:
         return bool(self._busy or (self._sensitivity_controller is not None
                                    and self._sensitivity_controller.busy)
-                    or (self._manufacturing_controller is not None and self._manufacturing_controller.busy))
+                    or (self._manufacturing_controller is not None and self._manufacturing_controller.busy)
+                    or (self._resource_estimator_seen is not None and self._resource_estimator_seen.busy))
 
     @Property(float, notify=changed)
     def progress(self) -> float:
@@ -3204,6 +3224,8 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(str, notify=changed)
     def error(self) -> str:
+        if self._search_mode == "resource_assessment":
+            return self._error
         if self._search_mode == "ideal_sensitivity" and self._sensitivity_controller is not None:
             return cast(str, self._sensitivity_controller.idealError)
         if self._search_mode == "automatic_repair" and self._manufacturing_controller is not None:
@@ -3212,6 +3234,9 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(str, notify=changed)
     def statusText(self) -> str:
+        if self._search_mode == "resource_assessment":
+            estimator = cast(Any, self.resourceEstimateController)
+            return str(estimator.status) if estimator is not None else "当前来源不支持资源评估。"
         if self._search_mode == "ideal_sensitivity" and self._sensitivity_controller is not None:
             return cast(str, self._sensitivity_controller.idealStatus)
         if self._search_mode == "automatic_repair" and self._manufacturing_controller is not None:
@@ -3296,6 +3321,9 @@ class FilmOptimizationQuickController(QObject):
         common_ready = (not self._initial_loading and not self._initial_load_failed
                         and not self.busy and not self._source_closed and not self._source_stale
                         and not self._pending_edit_error)
+        if self._search_mode == "resource_assessment":
+            estimator = cast(Any, self.resourceEstimateController)
+            return bool(common_ready and estimator is not None and estimator.limitValid and estimator.probeSettingsValid)
         if self._search_mode == "ideal_sensitivity":
             return bool(common_ready and self.session is not None)
         if self._search_mode == "automatic_repair":
@@ -3317,6 +3345,8 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(bool, notify=changed)
     def canStartFromShortcut(self) -> bool:
+        if self._search_mode == "resource_assessment":
+            return bool(self.canStart)
         if self._search_mode == "ideal_sensitivity":
             return cast(bool, self.canStart)
         if self._search_mode == "automatic_repair":
@@ -3349,6 +3379,8 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(bool, notify=changed)
     def hasCandidate(self) -> bool:
+        if self._search_mode == "resource_assessment":
+            return False
         if self._search_mode == "ideal_sensitivity" and self._sensitivity_controller is not None:
             return bool(self._sensitivity_controller.idealHasResult)
         if self._search_mode == "automatic_repair" and self._manufacturing_controller is not None:
@@ -3370,6 +3402,8 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(bool, notify=changed)
     def canApply(self) -> bool:
+        if self._search_mode == "resource_assessment":
+            return False
         if self._search_mode == "ideal_sensitivity":
             return bool(self._sensitivity_controller is not None and self._sensitivity_controller.idealCanApply)
         if self._search_mode == "automatic_repair":
@@ -3382,12 +3416,13 @@ class FilmOptimizationQuickController(QObject):
 
     @Property(bool, notify=changed)
     def canSave(self) -> bool:
-        return self._result is not None and not self._busy
+        return self._search_mode != "resource_assessment" and self._result is not None and not self._busy
 
     @Property(bool, notify=changed)
     def canCancel(self) -> bool:
         return bool(self._busy or (self._manufacturing_controller is not None and self._manufacturing_controller.busy)
-                    or (self._sensitivity_controller is not None and self._sensitivity_controller.busy))
+                    or (self._sensitivity_controller is not None and self._sensitivity_controller.busy)
+                    or (self._resource_estimator_seen is not None and self._resource_estimator_seen.busy))
 
     @Property(float, notify=changed)
     def acceptableErrorPercent(self) -> float:
@@ -3698,8 +3733,8 @@ class FilmOptimizationQuickController(QObject):
     def setSearchMode(self, mode: str) -> bool:
         mode = str(mode)
         if (self.busy or self._shutting_down or self._pending_edit_error
-                or mode not in {"fixed_topology", "structure", "synthesis", "reduction", "automatic_repair", "ideal_sensitivity"}):
-            if mode not in {"fixed_topology", "structure", "synthesis", "reduction", "automatic_repair", "ideal_sensitivity"}:
+                or mode not in {"fixed_topology", "structure", "synthesis", "reduction", "automatic_repair", "ideal_sensitivity", "resource_assessment"}):
+            if mode not in {"fixed_topology", "structure", "synthesis", "reduction", "automatic_repair", "ideal_sensitivity", "resource_assessment"}:
                 self._error = "未知的优化模式。"
                 self.changed.emit()
             return False
@@ -3718,6 +3753,8 @@ class FilmOptimizationQuickController(QObject):
             self._synthesis_rows_initialized = True
         self._error = ""
         self._invalidate_result()
+        if mode == "resource_assessment":
+            _ = self.resourceEstimateController
         if mode == "automatic_repair":
             # Invalidate the shared result first: it fences any previously
             # prepared repair state. Preparing before invalidation would mark
@@ -5757,6 +5794,17 @@ class FilmOptimizationQuickController(QObject):
 
     @Slot(result=bool)
     def startOptimization(self) -> bool:
+        if self._search_mode == "resource_assessment":
+            if not self.canStart:
+                return False
+            try:
+                configuration = self.exportOptimizationConfiguration()
+            except (ValueError, TypeError) as exc:
+                self._error = str(exc)
+                self.changed.emit()
+                return False
+            self._error = ""
+            return bool(cast(Any, self.resourceEstimateController).startWithConfiguration(configuration))
         if self._search_mode == "ideal_sensitivity":
             return bool(self.canStart and cast(FilmSensitivityQuickController, self.sensitivityController).startIdealSensitivityOptimization())
         if self._search_mode == "automatic_repair":
@@ -6584,6 +6632,9 @@ class FilmOptimizationQuickController(QObject):
 
     @Slot()
     def cancelOptimization(self) -> None:
+        if self._resource_estimator_seen is not None and self._resource_estimator_seen.busy:
+            self._resource_estimator_seen.cancel()
+            return
         if self._sensitivity_controller is not None and self._sensitivity_controller.busy:
             self._sensitivity_controller.cancel()
             return
@@ -7210,6 +7261,8 @@ class FilmOptimizationQuickController(QObject):
 
     @Slot(result=bool)
     def applyCandidate(self) -> bool:
+        if self._search_mode == "resource_assessment":
+            return False
         if self._search_mode == "ideal_sensitivity":
             if self.canApply:
                 self.applyConfirmationRequested.emit(cast(FilmSensitivityQuickController, self.sensitivityController).idealApplyConfirmationSummary)
@@ -7233,6 +7286,8 @@ class FilmOptimizationQuickController(QObject):
 
     @Slot(result=bool)
     def confirmApplyCandidate(self) -> bool:
+        if self._search_mode == "resource_assessment":
+            return False
         if self._search_mode == "ideal_sensitivity":
             panel = cast(FilmSensitivityQuickController, self.sensitivityController)
             panel.selectWorkflow(1)
@@ -7343,6 +7398,8 @@ class FilmOptimizationQuickController(QObject):
 
     @Slot(result=bool)
     def saveCandidateToProject(self) -> bool:
+        if self._search_mode == "resource_assessment":
+            return False
         if self.project_context is None or self._result is None or self._busy:
             return False
         try:
@@ -7379,6 +7436,8 @@ class FilmOptimizationQuickController(QObject):
 
     @Slot(str, bool, result=bool)
     def saveCandidatePath(self, path: str, overwrite: bool = False) -> bool:
+        if self._search_mode == "resource_assessment":
+            return False
         if self.project_context is not None:
             return self.saveCandidateToProject()
         if self._result is None or self._busy:
@@ -7412,6 +7471,10 @@ class FilmOptimizationQuickController(QObject):
 
     @Slot()
     def requestClose(self) -> None:
+        if self._resource_estimator_seen is not None and self._resource_estimator_seen.busy:
+            self._resource_estimator_seen.cancel()
+            self.closeConfirmed.emit()
+            return
         if self._manufacturing_controller is not None and self._manufacturing_controller.busy:
             self._manufacturing_controller.requestClose()
         if (not self._busy and self._search_mode == "synthesis"
@@ -7463,6 +7526,8 @@ class FilmOptimizationQuickController(QObject):
     @Slot(int, result=bool)
     def shutdown(self, timeout_ms: int = 5000) -> bool:
         """Cancel and wait for this window's private pool during test/teardown."""
+        if self._resource_estimator_seen is not None:
+            self._resource_estimator_seen.cancel()
         self.detach_observers()
         self._live_display.shutdown()
         sensitivity_done = (self._sensitivity_controller is None

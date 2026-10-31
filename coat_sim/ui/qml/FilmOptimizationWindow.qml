@@ -21,6 +21,7 @@ AppWindow {
     readonly property var themeTokens: window.themeColors
     required property var controller
     titleBase: window.controller.searchMode === "automatic_repair" ? "自动薄层修复"
+        : window.controller.searchMode === "resource_assessment" ? "资源评估"
         : window.controller.searchMode === "ideal_sensitivity" ? "理想敏感度优化"
         : window.controller.searchMode === "synthesis" ? "膜系自动合成"
         : window.controller.searchMode === "reduction" ? "减层 / 减厚优化" : "膜系厚度优化"
@@ -483,7 +484,7 @@ AppWindow {
         sequence: "F6"
         context: Qt.WindowShortcut
         enabled: window.controller.canStartFromShortcut
-                 && (window.controller.searchMode === "automatic_repair" || window.controller.searchMode === "ideal_sensitivity" || window.controller.computeTarget.canSubmit)
+                 && (window.controller.searchMode === "automatic_repair" || window.controller.searchMode === "ideal_sensitivity" || window.controller.searchMode === "resource_assessment" || window.controller.computeTarget.canSubmit)
         onActivated: window.startFromShortcut()
     }
 
@@ -673,6 +674,7 @@ AppWindow {
                 }
                 Label {
                     objectName: "filmOptimizationProgress"
+                    visible: window.controller.searchMode !== "resource_assessment"
                     property bool operationBarFlexible: true
                     text: window.controller.progressStatistics
                     color: window.themeTokens.colorTextMuted
@@ -685,7 +687,7 @@ AppWindow {
                 }
                 ComputeTargetSelector {
                     objectName: "filmOptimizationComputeTarget"
-                    visible: window.controller.searchMode !== "automatic_repair" && window.controller.searchMode !== "ideal_sensitivity"
+                    visible: window.controller.searchMode !== "automatic_repair" && window.controller.searchMode !== "ideal_sensitivity" && window.controller.searchMode !== "resource_assessment"
                     width: Math.min(170, Math.max(130, window.width * 0.2))
                     compact: true
                     target: window.controller.computeTarget
@@ -694,9 +696,9 @@ AppWindow {
                 ThemeControls.ThemeButton {
                     id: optimizationStartButton
                     objectName: "filmOptimizationStartButton"
-                    text: window.controller.searchMode === "automatic_repair" ? "开始薄层修复" : window.controller.searchMode === "ideal_sensitivity" ? "开始敏感度优化" : "开始优化"
+                    text: window.controller.searchMode === "automatic_repair" ? "开始薄层修复" : window.controller.searchMode === "ideal_sensitivity" ? "开始敏感度优化" : window.controller.searchMode === "resource_assessment" ? "开始评估" : "开始优化"
                     enabled: window.controller.canStart
-                        && (window.controller.searchMode === "automatic_repair" || window.controller.searchMode === "ideal_sensitivity" || window.controller.computeTarget.canSubmit)
+                        && (window.controller.searchMode === "automatic_repair" || window.controller.searchMode === "ideal_sensitivity" || window.controller.searchMode === "resource_assessment" || window.controller.computeTarget.canSubmit)
                     primary: true
                     onClicked: window.startFromButton()
                 }
@@ -705,13 +707,13 @@ AppWindow {
                     objectName: "filmOptimizationContinueButton"
                     text: "从保留结果继续（重新启动求解器）"
                     enabled: window.controller.canContinueOptimization
-                    visible: window.controller.searchMode !== "automatic_repair" && window.controller.searchMode !== "ideal_sensitivity" && !window.controller.hasSynthesisSearchProgress
+                    visible: window.controller.searchMode !== "automatic_repair" && window.controller.searchMode !== "ideal_sensitivity" && window.controller.searchMode !== "resource_assessment" && !window.controller.hasSynthesisSearchProgress
                     onClicked: window.continueFromButton()
                 }
                 ThemeControls.ThemeButton {
                     objectName: "filmSynthesisContinueSearchButton"
                     text: "继续搜索"
-                    visible: window.controller.searchMode !== "automatic_repair" && window.controller.searchMode !== "ideal_sensitivity" && window.controller.hasSynthesisSearchProgress
+                    visible: window.controller.searchMode !== "automatic_repair" && window.controller.searchMode !== "ideal_sensitivity" && window.controller.searchMode !== "resource_assessment" && window.controller.hasSynthesisSearchProgress
                     enabled: window.controller.canContinueSynthesisSearch
                     onClicked: {
                         window.commitActiveEditor()
@@ -720,6 +722,7 @@ AppWindow {
                 }
                 ThemeControls.ThemeButton {
                     objectName: "filmSensitivityOpenButton"
+                    visible: window.controller.searchMode !== "resource_assessment"
                     text: "参数表误差分析…"
                     enabled: !window.controller.busy
                     onClicked: {
@@ -744,7 +747,7 @@ AppWindow {
                 }
                 ThemeControls.ThemeButton {
                     objectName: "filmOptimizationApplyButton"
-                    visible: window.controller.searchMode !== "automatic_repair" && window.controller.searchMode !== "ideal_sensitivity"
+                    visible: window.controller.searchMode !== "automatic_repair" && window.controller.searchMode !== "ideal_sensitivity" && window.controller.searchMode !== "resource_assessment"
                     text: window.controller.searchMode === "reduction" ? "显式应用减量候选" : "应用"
                     enabled: window.controller.canApply
                     onClicked: window.controller.applyCandidate()
@@ -770,7 +773,7 @@ AppWindow {
                     }
                 }
                 ThemeControls.ThemeButton {
-                    visible: !window.projectResources && window.controller.searchMode !== "automatic_repair" && window.controller.searchMode !== "ideal_sensitivity"
+                    visible: !window.projectResources && window.controller.searchMode !== "automatic_repair" && window.controller.searchMode !== "ideal_sensitivity" && window.controller.searchMode !== "resource_assessment"
                     objectName: "filmOptimizationSaveButton"
                     text: window.controller.projectMode ? "保存项目候选" : "另存候选"
                     enabled: window.controller.canSave
@@ -788,7 +791,7 @@ AppWindow {
             objectName: "filmOptimizationContinueDisabledReason"
             Layout.fillWidth: true
             text: window.controller.continueDisabledReason
-            visible: !window.controller.hasSynthesisSearchProgress && !window.controller.canContinueOptimization && text.length > 0
+            visible: window.controller.searchMode !== "resource_assessment" && !window.controller.hasSynthesisSearchProgress && !window.controller.canContinueOptimization && text.length > 0
             color: window.themeTokens.colorTextMuted
             wrapMode: Text.WordWrap
             font.pointSize: window.themeTokens.fontSizeSmall
@@ -798,7 +801,7 @@ AppWindow {
             objectName: "filmSynthesisSearchPhase"
             Layout.fillWidth: true
             text: window.controller.synthesisPhase
-            visible: text.length > 0
+            visible: window.controller.searchMode !== "resource_assessment" && text.length > 0
             font.bold: true
             color: window.themeTokens.colorText
         }
@@ -806,7 +809,7 @@ AppWindow {
             objectName: "filmSynthesisSearchDisabledReason"
             Layout.fillWidth: true
             text: window.controller.synthesisSearchDisabledReason
-            visible: window.controller.hasSynthesisSearchProgress && !window.controller.canContinueSynthesisSearch && text.length > 0
+            visible: window.controller.searchMode !== "resource_assessment" && window.controller.hasSynthesisSearchProgress && !window.controller.canContinueSynthesisSearch && text.length > 0
             color: window.themeTokens.colorTextMuted
             wrapMode: Text.WordWrap
         }
@@ -814,7 +817,7 @@ AppWindow {
             objectName: "filmOptimizationContinuePriorRunFallback"
             Layout.fillWidth: true
             text: window.controller.priorRunFallbackText
-            visible: text.length > 0
+            visible: window.controller.searchMode !== "resource_assessment" && text.length > 0
             color: window.themeTokens.colorTextMuted
             wrapMode: Text.WordWrap
             font.pointSize: window.themeTokens.fontSizeSmall
@@ -823,14 +826,15 @@ AppWindow {
         RowLayout {
             id: workArea
             Layout.rightMargin: Math.max(0,
-                (window.detailsDocked ? optimizationSidebar.width : 64)
-                + window.themeTokens.spaceSm * 2 - window.themeTokens.spaceMd)
+                (window.controller.searchMode === "resource_assessment" ? 0 : (window.detailsDocked ? optimizationSidebar.width : 64)
+                + window.themeTokens.spaceSm * 2 - window.themeTokens.spaceMd))
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: window.themeTokens.spaceMd
 
             Rectangle {
-                Layout.preferredWidth: Math.max(350, Math.min(430, workArea.width * 0.40))
+                Layout.preferredWidth: window.controller.searchMode === "resource_assessment" ? workArea.width : Math.max(350, Math.min(430, workArea.width * 0.40))
+                Layout.fillWidth: window.controller.searchMode === "resource_assessment"
                 Layout.minimumWidth: 330
                 Layout.fillHeight: true
                 radius: window.themeTokens.radiusMd
@@ -1436,6 +1440,15 @@ AppWindow {
                                         Layout.fillWidth: true
                                         controller: window.controller.manufacturingController
                                         optimizationController: window.controller
+                                        themeTokens: window.themeTokens
+                                    }
+                                }
+                                Loader {
+                                    objectName: "filmResourceAssessmentAlgorithmOptions"
+                                    Layout.fillWidth: true
+                                    active: window.controller.searchMode === "resource_assessment" && window.controller.resourceEstimateController !== null
+                                    sourceComponent: FilmResourceEstimatePanel {
+                                        estimator: window.controller.resourceEstimateController
                                         themeTokens: window.themeTokens
                                     }
                                 }
@@ -2506,6 +2519,7 @@ AppWindow {
             }
 
             ColumnLayout {
+                visible: window.controller.searchMode !== "resource_assessment"
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 spacing: window.themeTokens.spaceSm
@@ -2826,6 +2840,7 @@ AppWindow {
 
     Item {
         id: optimizationSidebar
+        visible: window.controller.searchMode !== "resource_assessment"
         objectName: "filmOptimizationSidebar"
         width: window.detailsExpanded ? Math.min(404, window.width - window.themeTokens.spaceSm * 2) : 64
         z: 20

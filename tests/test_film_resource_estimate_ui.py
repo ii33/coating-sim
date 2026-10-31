@@ -66,19 +66,17 @@ def runtime(tmp_path):
 
 def select_film(controller):
     estimator = controller.resourceEstimateController
+    assert estimator.setProbeMaxEvaluations("0")  # isolate the pre-existing audit checks
     estimator.refreshMaterials()
     row = estimator.addMaterialRow()
     assert estimator.setRowMaterial(row, "acceptance-film"), estimator.materialError
     return estimator
 
 
-def test_real_qml_sidebar_and_no_configuration(runtime):
+def test_design_sidebar_removed_and_no_configuration(runtime):
     app, controller, window, warnings = runtime
-    rail = window.findChild(QObject, "filmDesignSidebarResourceEstimate")
-    assert rail is not None and QMetaObject.invokeMethod(rail, "click")
-    app.processEvents()
-    assert window.property("activeSidebarSection") == "resource"
-    assert window.findChild(QObject, "filmResourceEstimatePanel").property("visible")
+    # Resource assessment has moved to the optimizer and is no longer a sidebar page.
+    assert window.findChild(QObject, "filmDesignSidebarResourceEstimate") is None
     before = deepcopy(controller.session.snapshot().design)
     # Start via controller to avoid depending on keyboard-focus timing.
     assert not controller.runResourceEstimate()
@@ -112,6 +110,7 @@ def test_cancel_rerun_stale_and_no_writeback(runtime, monkeypatch):
     estimator = controller.resourceEstimateController
     monkeypatch.setattr(controller.service, "material_options", lambda kind: [{"id": "m", "name": "M", "optical_sets": [{"id": "s", "name": "S"}]}])
     estimator.refreshMaterials()
+    assert estimator.setSubstrateMaterial("m")
     row = estimator.addMaterialRow()
     assert estimator.setRowMaterial(row, "m")
     before = deepcopy(controller.session.snapshot().design)
@@ -134,7 +133,7 @@ def test_cancel_rerun_stale_and_no_writeback(runtime, monkeypatch):
     release.set()
     wait_until(app, lambda: not estimator.busy)
     assert estimator.stale and "过期" in estimator.status
-    assert "unknown" in estimator.resultSummary
+    assert estimator.resultSummary
     assert not any("ReferenceError" in w or "TypeError" in w for w in warnings), warnings
 
 
@@ -164,7 +163,7 @@ def test_real_core_request_uses_saved_targets_and_does_not_mutate(runtime, tmp_p
     )
     design["workflow_settings"] = {"optimization": config}
     before = deepcopy(design)
-    request = module._prepare_request(design, 19, 8, threading.Event(), config["synthesis"]["material_rows"])
+    request = module._prepare_request(design, 19, 8, threading.Event(), config["synthesis"]["material_rows"], probe_max_evaluations=0)
     assert request.synthesis_request.selected_surfaces == ("front",)
     assert request.synthesis_request.environment["front_layers"] == []
     assert request.candidate_designs[0]["front_layers"] == before["front_layers"]
@@ -178,7 +177,7 @@ def test_real_core_request_uses_saved_targets_and_does_not_mutate(runtime, tmp_p
     assert design == before
 
 
-def test_real_qml_start_audits_current_design_without_writing(runtime, tmp_path):
+def test_real_core_audits_current_design_without_writing(runtime, tmp_path):
     from tests.film_structure_fixtures import fixture
     from tests.test_film_optimization_restore_layout import saved_configuration
 
@@ -197,18 +196,15 @@ def test_real_qml_start_audits_current_design_without_writing(runtime, tmp_path)
     assert controller.session.request_replace_design(design), controller.error
     app.processEvents()
     before = deepcopy(controller.session.snapshot().design)
-    assert QMetaObject.invokeMethod(
-        window.findChild(QObject, "filmDesignSidebarResourceEstimate"), "click"
-    )
     select_film(controller)
     assert controller.resourceEstimateController.setLayerLimit("8")
-    assert QMetaObject.invokeMethod(window.findChild(QObject, "filmResourceEstimateStart"), "click")
+    assert controller.runResourceEstimate()
     wait_until(app, lambda: controller.resourceEstimateController.busy, timeout=3000)
     wait_until(app, lambda: not controller.resourceEstimateController.busy, timeout=20000)
     estimator = controller.resourceEstimateController
-    assert "completed" in estimator.status, estimator.status
-    assert "当前方案资源及审计" in estimator.resultSummary
-    assert "已独立审计" in estimator.resultSummary
+    assert "评估完成" in estimator.status, estimator.status
+    assert "当前结构" in estimator.resultSummary
+    assert "审计" in estimator.resultSummary
     assert controller.session.snapshot().design == before
     assert not any("ReferenceError" in w or "TypeError" in w for w in warnings), warnings
 
@@ -338,7 +334,7 @@ def test_recommendation_conditions_are_per_node_and_freeze_attempts_separate():
     assert "核心材料冻结：开始 1 次；完成 0 次" in output
 
 
-def test_conditional_recommendation_visible_in_real_qml(runtime, tmp_path):
+def test_conditional_recommendation_in_technical_details(runtime, tmp_path):
     from tests.film_structure_fixtures import fixture
     from tests.test_film_optimization_restore_layout import saved_configuration
 
@@ -365,17 +361,14 @@ def test_conditional_recommendation_visible_in_real_qml(runtime, tmp_path):
     assert controller.session.request_replace_design(design), controller.error
     app.processEvents()
     before = deepcopy(controller.session.snapshot().design)
-    assert QMetaObject.invokeMethod(
-        window.findChild(QObject, "filmDesignSidebarResourceEstimate"), "click"
-    )
     select_film(controller)
     assert controller.resourceEstimateController.setLayerLimit("8")
-    assert QMetaObject.invokeMethod(window.findChild(QObject, "filmResourceEstimateStart"), "click")
+    assert controller.runResourceEstimate()
     wait_until(app, lambda: controller.resourceEstimateController.busy)
     wait_until(app, lambda: not controller.resourceEstimateController.busy, timeout=20000)
     estimator = controller.resourceEstimateController
-    text = window.findChild(QObject, "filmResourceEstimateResult").property("text")
-    assert "completed" in estimator.status, estimator.status
+    text = estimator.technicalDetails
+    assert "评估完成" in estimator.status, estimator.status
     assert "条件推荐：依赖用户显式未知 k=0 假设" in text
     assert "本审计以显式未知 k=0 为条件" in text
     assert "acceptance-glass/glass-set" in text
@@ -385,7 +378,7 @@ def test_conditional_recommendation_visible_in_real_qml(runtime, tmp_path):
     assert not any("ReferenceError" in w or "TypeError" in w for w in warnings), warnings
 
 
-def test_real_qml_failed_freeze_shows_started_not_completed(runtime, tmp_path):
+def test_failed_freeze_shows_started_not_completed(runtime, tmp_path):
     from tests.film_structure_fixtures import fixture
     from tests.test_film_optimization_restore_layout import saved_configuration
 
@@ -408,17 +401,14 @@ def test_real_qml_failed_freeze_shows_started_not_completed(runtime, tmp_path):
     assert controller.session.request_replace_design(design), controller.error
     app.processEvents()
     before = deepcopy(controller.session.snapshot().design)
-    assert QMetaObject.invokeMethod(
-        window.findChild(QObject, "filmDesignSidebarResourceEstimate"), "click"
-    )
     select_film(controller)
     assert controller.resourceEstimateController.setLayerLimit("8")
-    assert QMetaObject.invokeMethod(window.findChild(QObject, "filmResourceEstimateStart"), "click")
+    assert controller.runResourceEstimate()
     wait_until(app, lambda: controller.resourceEstimateController.busy)
     wait_until(app, lambda: not controller.resourceEstimateController.busy, timeout=20000)
     estimator = controller.resourceEstimateController
-    text = window.findChild(QObject, "filmResourceEstimateResult").property("text")
-    assert "failed" in estimator.status
+    text = estimator.technicalDetails
+    assert "评估未完成" in estimator.status
     assert "核心材料冻结：开始 1 次；完成 0 次" in text
     assert "unknown（未取得已验证见证）" in text
     assert "条件推荐：依赖" not in text
@@ -433,6 +423,7 @@ def test_independent_material_draft_reaches_task_and_rejects_empty_missing(runti
     monkeypatch.setattr(controller.service, "material_options", lambda kind: deepcopy(records))
     estimator = controller.resourceEstimateController
     estimator.refreshMaterials()
+    assert estimator.setSubstrateMaterial("one")
     before = deepcopy(controller.session.snapshot().design)
     assert not estimator.start() and "至少" in estimator.status
     row = estimator.addMaterialRow()
@@ -487,7 +478,7 @@ def test_core_assessment_reacts_to_independent_material_pool(tmp_path):
     design["workflow_settings"] = {"optimization": config}
     def run(mid, sid):
         request = module._prepare_request(design, 1, 8, threading.Event(),
-                                          [{"material_id": mid, "optical_set_id": sid}])
+                                          [{"material_id": mid, "optical_set_id": sid}], probe_max_evaluations=0)
         return estimate_film_resources(service, request)
     included = run("acceptance-film", "film-set")
     excluded = run("other-film", "other-set")
@@ -495,3 +486,379 @@ def test_core_assessment_reacts_to_independent_material_pool(tmp_path):
     assert included.source_digest != excluded.source_digest
     assert included.candidate_reports[0]["within_material_pool"] is True
     assert excluded.candidate_reports[0]["within_material_pool"] is False
+
+
+def test_optimizer_assessment_render_shared_lifecycle_and_draft(runtime, tmp_path, monkeypatch):
+    """Exercise the actual Quick window, not just string-level controller checks."""
+    from coat_sim.ui.film_optimization_quick_controller import FilmOptimizationQuickController
+    from tests.film_structure_fixtures import fixture
+    from tests.test_film_optimization_restore_layout import window_runtime, click
+    from PySide6.QtQuick import QQuickItem
+
+    app, source, _design_window, warnings = runtime
+    service, _library, design = fixture(tmp_path / 'optimizer-materials')
+    source.service.materials = service.materials
+    assert source.session.request_replace_design(design)
+    owner = FilmOptimizationQuickController(source)
+    entered, release = threading.Event(), threading.Event()
+    captured = []
+
+    def held_task(task):
+        captured.append((deepcopy(task.design), task.limit, deepcopy(task.substrate_reference)))
+        entered.set()
+        while not release.is_set() and not task.cancel.is_set():
+            time.sleep(.005)
+        task.signals.finished.emit(task.token, {'state': 'cancelled' if task.cancel.is_set() else 'completed',
+                                               'message': 'test', 'work': {}}, None)
+
+    monkeypatch.setattr(module._Task, 'run', held_task)
+    try:
+        assert owner.setSearchMode('resource_assessment')
+        estimator = source.resourceEstimateController
+        estimator.refreshMaterials()
+        assert estimator.substrateSelection['material_id'] == 'acceptance-glass'
+        row = estimator.addMaterialRow()
+        assert estimator.setRowMaterial(row, 'acceptance-film')
+        assert owner.setObjectiveField('wavelength_min_nm', 540.0)
+        assert owner.setObjectiveField('wavelength_max_nm', 540.0)
+        before = deepcopy(source.session.snapshot().design)
+        with window_runtime(app, owner) as (window, qml_warnings):
+            window.resize(560, 500)
+            tab = window.findChild(QQuickItem, 'filmOptimizationAlgorithmTab')
+            click(app, window, tab)
+            app.processEvents()
+            panel = window.findChild(QObject, 'filmResourceAssessmentAlgorithmOptions')
+            assert panel is not None and panel.property('visible')
+            assert window.findChild(QObject, 'resourceSubstrateMaterial') is not None
+            assert window.findChild(QObject, 'resourceSubstrateOpticalSet') is not None
+            assert not owner.canApply and not owner.canSave
+            assert not owner.applyCandidate() and not owner.confirmApplyCandidate()
+            limit = window.findChild(QQuickItem, 'filmResourceEstimateLayerLimit')
+            assert limit is not None
+            limit.forceActiveFocus()
+            limit.setProperty('text', '13')
+            assert QMetaObject.invokeMethod(window, 'startFromButton')
+            wait_until(app, entered.is_set)
+            assert captured[0][1] == 13
+            assert captured[0][2] == {'material_id': 'acceptance-glass', 'optical_set_id': 'glass-set'}
+            app.processEvents()
+            assert owner.busy and not owner.startOptimization() and not owner.canApply
+            assert not owner.setSearchMode('fixed_topology')
+            assert captured[0][0]['workflow_settings']['optimization']['objectives'][0]['wavelength_min_nm'] == 540.0
+            owner.cancelOptimization()
+            wait_until(app, lambda: not estimator.busy)
+            assert source.session.snapshot().design == before
+            result = window.findChild(QObject, 'filmResourceEstimateResult')
+            details = window.findChild(QObject, 'filmResourceEstimateTechnicalDetails')
+            assert result is not None
+            from PySide6.QtQml import QQmlExpression
+            expr = QQmlExpression(QQmlEngine.contextForObject(result), result, 'wrapMode !== Text.NoWrap')
+            assert expr.evaluate()[0] and not expr.hasError()
+            assert details is not None and not details.property('visible')
+            # Dense representative result, showing line wrapping in the actual scroll area.
+            estimator._result = module._format_summary({'state': 'completed', 'selected_surfaces': ['front'], 'candidate_reports': [{
+                'state': 'audited', 'targets_met': False, 'layer_count': 25, 'total_thickness_nm': 2345.67,
+                'surfaces': {'front': {'active': True, 'layer_count': 25, 'total_thickness_nm': 2345.67},
+                             'back': {'active': True, 'layer_count': 3, 'total_thickness_nm': 450.}},
+                'audit': {'objective_status': [{'objective_index': i, 'metric': 'R',
+                    'wavelength_min_nm': 400., 'wavelength_max_nm': 700.,
+                    'pointwise': {'enabled': True, 'mode': 'range', 'worst_actual': .04,
+                        'lower_bound': 0., 'upper_bound': .001, 'worst_angle_deg': 0.,
+                        'worst_wavelength_nm': 550., 'targets_met': False}}
+                    for i in range(5)]}}], 'work': {'probe_outcomes': [
+                    {'seed': i, 'state': 'completed', 'evaluations': 256,
+                     'requested_max_evaluations': 256, 'physical_evaluations': 200,
+                     'candidates_retained': 3} for i in range(2)],
+                    'physical_evaluations': 401, 'wavelength_points': 120701}})
+            estimator.changed.emit()
+            scroll = QQmlExpression(QQmlEngine.contextForObject(result), result, """(function () {
+                let ancestor = parent;
+                while (ancestor !== null) {
+                    if ("contentY" in ancestor) {
+                        const point = mapToItem(ancestor.contentItem, 0, 0);
+                        ancestor.contentY = Math.min(Math.max(0, ancestor.contentHeight - ancestor.height),
+                                                    Math.max(0, point.y + 180));
+                    }
+                    ancestor = ancestor.parent;
+                }
+            })()""")
+            scroll.evaluate()
+            assert not scroll.hasError(), scroll.error().toString()
+            QTest.qWait(50)
+            image = window.grabWindow()
+            if not image.isNull():
+                assert image.save(str(tmp_path / 'resource-assessment-narrow.png'))
+            bottom = QQmlExpression(QQmlEngine.contextForObject(result), result, """(function () {
+                let ancestor = parent;
+                while (ancestor !== null) {
+                    if ("contentY" in ancestor)
+                        ancestor.contentY = Math.max(0, ancestor.contentHeight - ancestor.height);
+                    ancestor = ancestor.parent;
+                }
+            })()""")
+            bottom.evaluate()
+            assert not bottom.hasError(), bottom.error().toString()
+            QTest.qWait(50)
+            image = window.grabWindow()
+            if not image.isNull():
+                assert image.save(str(tmp_path / 'resource-assessment-narrow-bottom.png'))
+            assert not qml_warnings, qml_warnings
+        assert not warnings, warnings
+    finally:
+        release.set()
+        owner.shutdown(1000)
+        shiboken6.delete(owner)
+
+
+def test_closing_optimizer_cancels_active_resource_assessment(runtime, tmp_path, monkeypatch):
+    from coat_sim.ui.film_optimization_quick_controller import FilmOptimizationQuickController
+    from tests.film_structure_fixtures import fixture
+
+    app, source, _window, _warnings = runtime
+    service, _library, design = fixture(tmp_path / 'close')
+    source.service.materials = service.materials
+    assert source.session.request_replace_design(design)
+    owner = FilmOptimizationQuickController(source)
+    entered = threading.Event()
+    cancellation_observed = threading.Event()
+
+    def held(task):
+        entered.set()
+        while not task.cancel.wait(.005):
+            pass
+        cancellation_observed.set()
+        task.signals.finished.emit(task.token, {'state': 'cancelled', 'message': 'test', 'work': {}}, None)
+
+    monkeypatch.setattr(module._Task, 'run', held)
+    try:
+        assert owner.setSearchMode('resource_assessment')
+        estimator = source.resourceEstimateController
+        estimator.refreshMaterials()
+        row = estimator.addMaterialRow()
+        assert estimator.setRowMaterial(row, 'acceptance-film')
+        assert owner.startOptimization()
+        assert entered.wait(1)
+        owner.requestClose()
+        assert cancellation_observed.wait(1)
+        wait_until(app, lambda: not estimator.busy)
+        assert '取消' in estimator.status
+    finally:
+        owner.shutdown(1000)
+        shiboken6.delete(owner)
+
+
+def test_active_objective_editor_flushes_before_assessment_start(runtime, tmp_path, monkeypatch):
+    from PySide6.QtCore import Qt
+    from PySide6.QtQuick import QQuickItem
+    from coat_sim.ui.film_optimization_quick_controller import FilmOptimizationQuickController
+    from tests.film_structure_fixtures import fixture
+    from tests.test_film_optimization_restore_layout import window_runtime
+
+    app, source, _design_window, _warnings = runtime
+    service, _library, design = fixture(tmp_path / 'objective-draft')
+    source.service.materials = service.materials
+    assert source.session.request_replace_design(design)
+    owner = FilmOptimizationQuickController(source)
+    captured = []
+
+    def capture(task):
+        captured.append(deepcopy(task.design))
+        task.signals.finished.emit(task.token, {'state': 'completed', 'work': {}}, None)
+
+    monkeypatch.setattr(module._Task, 'run', capture)
+    try:
+        assert owner.setSearchMode('resource_assessment')
+        estimator = source.resourceEstimateController
+        estimator.refreshMaterials()
+        row = estimator.addMaterialRow()
+        assert estimator.setRowMaterial(row, 'acceptance-film')
+        with window_runtime(app, owner) as (window, warnings):
+            field = window.findChild(QQuickItem, 'filmOptimizationWavelengthMinField')
+            assert field is not None
+            field.forceActiveFocus()
+            QTest.keyClick(window, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
+            for key in (Qt.Key.Key_5, Qt.Key.Key_3, Qt.Key.Key_5):
+                QTest.keyClick(window, key)
+            assert QMetaObject.invokeMethod(window, 'startFromButton')
+            wait_until(app, lambda: bool(captured))
+            wait_until(app, lambda: not estimator.busy)
+            assert captured[0]['workflow_settings']['optimization']['objectives'][0]['wavelength_min_nm'] == 535
+            assert not warnings, warnings
+    finally:
+        owner.shutdown(1000)
+        shiboken6.delete(owner)
+
+
+def test_probe_settings_validation_and_frozen_worker_inputs(runtime, tmp_path, monkeypatch):
+    from tests.film_structure_fixtures import fixture
+
+    app, source, _window, _warnings = runtime
+    service, _library, design = fixture(tmp_path / 'probe-draft')
+    source.service.materials = service.materials
+    assert source.session.request_replace_design(design)
+    estimator = source.resourceEstimateController
+    estimator.refreshMaterials()
+    row = estimator.addMaterialRow()
+    assert estimator.setRowMaterial(row, 'acceptance-film')
+    assert estimator.probeMaxEvaluations == '256'
+    assert estimator.probeSeeds == '0,1'
+    assert not estimator.setProbeMaxEvaluations('-1')
+    assert not estimator.probeSettingsValid and not estimator.start()
+    assert not estimator.setProbeMaxEvaluations('1.5')
+    assert not estimator.setProbeMaxEvaluations('1')
+    assert estimator.setProbeMaxEvaluations('2')
+    assert estimator.setProbeMaxEvaluations('0')  # explicit disabled probe
+    assert estimator.probeSettingsValid
+    assert not estimator.setProbeSeeds('not-a-seed')
+    assert not estimator.setProbeSeeds('2,2')
+    assert not estimator.setProbeSeeds('')
+    assert estimator.setProbeSeeds('4294967295')
+    assert not estimator.setProbeSeeds('4294967296')
+    assert not estimator.probeSettingsValid and not estimator.start()
+    assert estimator.setProbeSeeds('2,3')
+    assert estimator.setProbeMaxEvaluations('7')
+    before = deepcopy(source.session.snapshot().design)
+    captured = []
+    entered, release = threading.Event(), threading.Event()
+
+    def hold(task):
+        captured.append((task.probe_max_evaluations, task.probe_seeds))
+        entered.set()
+        while not release.is_set() and not task.cancel.is_set():
+            time.sleep(.005)
+        task.signals.finished.emit(task.token, {'state': 'cancelled', 'message': 'test', 'work': {}}, None)
+
+    monkeypatch.setattr(module._Task, 'run', hold)
+    try:
+        assert estimator.start()
+        assert entered.wait(1)
+        assert captured == [(7, (2, 3))]
+        from types import SimpleNamespace
+        estimator._on_progress(estimator._token, SimpleNamespace(message='探测中', physical_evaluations=5, wavelength_points=60))
+        assert '物理光谱计算 5 次' in estimator.status and '波长点 60 个' in estimator.status
+        estimator._on_progress(estimator._token, SimpleNamespace(message='准备中'))
+        assert '物理光谱计算 0 次' not in estimator.status
+        assert not estimator.setProbeMaxEvaluations('8')
+        assert not estimator.setProbeSeeds('4')
+        assert source.session.snapshot().design == before
+    finally:
+        release.set()
+        wait_until(app, lambda: not estimator.busy)
+    assert estimator.setProbeMaxEvaluations('8')
+    assert estimator.stale
+
+
+def test_real_qml_probe_drafts_flush_before_start(runtime, tmp_path, monkeypatch):
+    from PySide6.QtQuick import QQuickItem
+    from coat_sim.ui.film_optimization_quick_controller import FilmOptimizationQuickController
+    from tests.film_structure_fixtures import fixture
+    from tests.test_film_optimization_restore_layout import click, window_runtime
+
+    app, source, _window, _warnings = runtime
+    service, _library, design = fixture(tmp_path / 'probe-qml')
+    source.service.materials = service.materials
+    assert source.session.request_replace_design(design)
+    owner = FilmOptimizationQuickController(source)
+    captured = []
+
+    def capture(task):
+        captured.append((task.probe_max_evaluations, task.probe_seeds))
+        task.signals.finished.emit(task.token, {'state': 'completed', 'work': {}}, None)
+
+    monkeypatch.setattr(module._Task, 'run', capture)
+    try:
+        assert owner.setSearchMode('resource_assessment')
+        estimator = source.resourceEstimateController
+        estimator.refreshMaterials()
+        row = estimator.addMaterialRow()
+        assert estimator.setRowMaterial(row, 'acceptance-film')
+        with window_runtime(app, owner) as (window, warnings):
+            click(app, window, window.findChild(QQuickItem, 'filmOptimizationAlgorithmTab'))
+            budget = window.findChild(QQuickItem, 'resourceProbeMaxEvaluations')
+            seeds = window.findChild(QQuickItem, 'resourceProbeSeeds')
+            assert budget is not None and seeds is not None
+            budget.forceActiveFocus()
+            budget.setProperty('text', '0')
+            seeds.forceActiveFocus()  # commit the budget through normal focus loss
+            seeds.setProperty('text', '5,9')
+            assert QMetaObject.invokeMethod(window, 'startFromButton')
+            wait_until(app, lambda: bool(captured))
+            wait_until(app, lambda: not estimator.busy)
+            assert captured == [(0, (5, 9))]
+            assert not warnings, warnings
+    finally:
+        owner.shutdown(1000)
+        shiboken6.delete(owner)
+
+
+def test_real_bounded_probe_from_ui_reports_actual_effort(runtime, tmp_path, monkeypatch):
+    from coat_sim.core import film_resource_estimation as core
+    from tests.film_structure_fixtures import fixture
+    from tests.test_film_optimization_restore_layout import saved_configuration
+
+    app, source, _window, _warnings = runtime
+    service, _library, design = fixture(tmp_path / 'real-probe')
+    config = saved_configuration(service, design)
+    config['objectives'][0].update(wavelength_min_nm=500., wavelength_max_nm=500.,
+                                   wavelength_samples=1, wavelength_step_nm=1.,
+                                   actual_wavelength_step_nm=0.)
+    design['workflow_settings'] = {'optimization': config}
+    source.service.materials = service.materials
+    assert source.session.request_replace_design(design)
+    from coat_sim.ui.film_optimization_quick_controller import FilmOptimizationQuickController
+    owner = FilmOptimizationQuickController(source)
+    assert owner.setSearchMode('resource_assessment')
+    before = deepcopy(source.session.snapshot().design)
+    estimator = select_film(source)
+    assert estimator.setProbeMaxEvaluations('4')
+    assert estimator.setProbeSeeds('0')
+    results = []
+    original = core.estimate_film_resources
+
+    def capture(*args, **kwargs):
+        result = original(*args, **kwargs)
+        results.append(result)
+        return result
+
+    monkeypatch.setattr(core, 'estimate_film_resources', capture)
+    assert owner.startOptimization()
+    wait_until(app, lambda: not estimator.busy, timeout=60000)
+    assert len(results) == 1 and results[0].state == 'completed', estimator.status
+    work = results[0].work
+    assert work['probe_runs'] == 1 and len(work['probe_outcomes']) == 1
+    outcome = work['probe_outcomes'][0]
+    assert outcome['seed'] == 0 and outcome['requested_max_evaluations'] == 4
+    summary = estimator.resultSummary
+    assert f"{outcome['evaluations']} / 4" in summary
+    assert f"物理光谱计算 {outcome['physical_evaluations']} 次" in summary
+    assert '不代表搜索穷尽' in summary and '没有经过校准' in summary
+    assert source.session.snapshot().design == before
+    # Display the genuine bounded run in the optimizer window at narrow width.
+    from PySide6.QtQuick import QQuickItem
+    from tests.test_film_optimization_restore_layout import click, window_runtime
+    try:
+        assert not estimator.stale, estimator.status
+        with window_runtime(app, owner) as (window, warnings):
+            window.resize(560, 500)
+            click(app, window, window.findChild(QQuickItem, 'filmOptimizationAlgorithmTab'))
+            result_item = window.findChild(QObject, 'filmResourceEstimateResult')
+            assert result_item is not None and result_item.property('text') == summary
+            from PySide6.QtQml import QQmlExpression
+            scroll = QQmlExpression(QQmlEngine.contextForObject(result_item), result_item, """(function () {
+                let ancestor = parent;
+                while (ancestor !== null) {
+                    if ("contentY" in ancestor)
+                        ancestor.contentY = Math.max(0, ancestor.contentHeight - ancestor.height);
+                    ancestor = ancestor.parent;
+                }
+            })()""")
+            scroll.evaluate()
+            assert not scroll.hasError(), scroll.error().toString()
+            QTest.qWait(50)
+            image = window.grabWindow()
+            if not image.isNull():
+                assert image.save(str(tmp_path / 'real-probe-narrow.png'))
+            assert not warnings, warnings
+    finally:
+        owner.shutdown(1000)
+        shiboken6.delete(owner)

@@ -6,7 +6,9 @@ Adaptive points affect worst violations, not the fixed-grid RMS measure.
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import replace
+from dataclasses import asdict, replace
+import hashlib
+import json
 from typing import Any, Callable, Mapping
 
 import numpy as np
@@ -78,6 +80,32 @@ def objective_constraint_status(objectives, errors, tolerance):
                                           if status[k]["enabled"])
         result.append(status)
     return result
+
+
+def frozen_synthesis_audit_identity(
+    request: Any, design: Mapping[str, Any], *,
+    optical_settings: Mapping[str, Any] | None = None,
+    response_transformed: bool = False,
+) -> dict[str, str]:
+    """Bind fresh audit evidence to physical design and original frozen sources.
+
+    Numerical search budgets and random seeds do not alter the optical problem.
+    This is an identity check, not a signature or a continuous certificate.
+    """
+    from .film_synthesis_archive import physical_design_hash
+    payload = dict(environment=request.environment,
+        objectives=[asdict(objective) for objective in request.objectives],
+        selected_surfaces=request.selected_surfaces,
+        materials=request.frozen_material_snapshot,
+        candidate_materials=[asdict(ref) for ref in request.candidate_materials],
+        process_constraints={name: getattr(request, name) for name in
+            ('minimum_nonzero_thickness_nm', 'max_layer_thickness_nm')},
+        validation_samples_multiplier=request.validation_samples_multiplier,
+        optical_settings=optical_settings,
+        response_transformed=response_transformed)
+    digest = hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False,
+        allow_nan=False).encode()).hexdigest()
+    return dict(physical_hash=physical_design_hash(design), source_digest=digest)
 
 
 def audit_frozen_synthesis_candidate(
@@ -364,6 +392,9 @@ def audit_frozen_synthesis_candidate(
         mean_measure="fixed_dense_grid_only",
         objective_status=objective_status,
         absorption_assumption=absorption)
+    metadata.update(frozen_synthesis_audit_identity(request, design,
+        optical_settings=optical_settings,
+        response_transformed=response_transform is not None))
     score["audit"] = deepcopy(metadata)
     check()
     return dict(design=deepcopy(dense["design"]), score=score,
