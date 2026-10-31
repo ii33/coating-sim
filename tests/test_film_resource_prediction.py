@@ -274,3 +274,18 @@ def test_back_incidence_cannot_be_silently_treated_as_front(problem):
     result = prediction.predict_film_resources(service, replace(request,
         synthesis_request=replace(request.synthesis_request, environment=env)))
     assert result.estimate_state != 'estimated' and result.prediction is None
+
+
+def test_independent_k_table_cannot_reuse_registered_substrate_identity():
+    service, request = _real_problem()
+    optical = next(o for o in service.materials.records['film_substrate_schott_nbk7']['optical_sets']
+                   if o['id'] == 'schott_nbk7_sellmeier')
+    before = prediction.optical_prediction_fingerprint(optical)
+    optical['k_data'] = dict(wavelength_unit='nm', wavelength_min=400., wavelength_max=700.,
+        wavelengths=[400., 499., 500., 501., 700.], k=[0., 0., .1, 0., 0.],
+        source='synthetic regression perturbation, not source data', notes='narrow peak between feature locations')
+    # Full numerical identity must notice data between the fixed feature points.
+    assert prediction.optical_prediction_fingerprint(optical) != before
+    result = prediction.predict_film_resources(service, request)
+    assert result.estimate_state == 'out_of_domain' and result.prediction is None
+    assert result.work['physical_evaluations'] == 0

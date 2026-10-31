@@ -95,6 +95,15 @@ def optical_prediction_fingerprint(optical):
     fields = ('kind', 'wavelength_unit', 'wavelength_min', 'wavelength_max',
               'wavelengths', 'n', 'k', 'parameters')
     data = {key: optical.get(key) for key in fields}
+    # Independent extinction tables and RII coefficients are also numerical
+    # source data. Hash the entire table, not only feature-sampling locations.
+    for key in ('formula_number', 'coefficients'):
+        if optical.get(key) is not None:
+            data[key] = optical[key]
+    if optical.get('k_data') is not None:
+        kd = optical['k_data']
+        data['k_data'] = {key: kd.get(key) for key in (
+            'wavelength_unit', 'wavelength_min', 'wavelength_max', 'wavelengths', 'k')}
     return hashlib.sha256(json.dumps(data, sort_keys=True, allow_nan=False).encode()).hexdigest()
 
 
