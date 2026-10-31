@@ -357,10 +357,13 @@ def test_structure_window_offscreen_renders_controls_and_sidebar(tmp_path):
         assert setup_content.property("currentIndex") == 0
         objective_list = window.findChild(QQuickItem, "filmOptimizationObjectiveList")
         wavelength = window.findChild(QQuickItem, "filmOptimizationWavelengthMinField")
-        target_button = window.findChild(QQuickItem, "computeTargetButton")
         assert objective_list is not None and objective_list.isVisible()
         assert wavelength is not None and wavelength.isVisible()
-        assert target_button is not None and target_button.isVisible()
+        assert window.findChild(QQuickItem, "filmOptimizationComputeTarget") is None
+        assert window.findChild(QQuickItem, "computeTargetButton") is None
+        assert window.findChild(QObject, "computeTargetPopup") is None
+        assert controller.computeTarget.hostId == "local"
+        assert controller.computeTarget.deviceId == "cpu:default"
 
         click_item(constraints_tab)
         assert setup_content.property("currentIndex") == 1
@@ -398,24 +401,34 @@ def test_structure_window_offscreen_renders_controls_and_sidebar(tmp_path):
         assert abs(options_content.width() + options_content.x() * 2
                    - scroll.property("availableWidth")) < 1.0
         assert horizontal_scrollbar is not None and not horizontal_scrollbar.isVisible()
-        target_popup = window.findChild(QObject, "computeTargetPopup")
-        assert target_button is not None and target_popup is not None
-        assert not target_popup.property("visible")
-        click_item(target_button)
-        app.processEvents()
-        assert target_popup.property("visible")
-        assert window.findChild(QQuickItem, "computeHostSelector") is not None
-        assert window.findChild(QQuickItem, "computeDeviceSelector") is not None
-        QTest.keyClick(window, Qt.Key.Key_Escape)
-        app.processEvents()
-        assert not target_popup.property("visible")
-
         output = ROOT / "tests/artifacts/film-structure-queue-ui/structure-mode.png"
         output.parent.mkdir(parents=True, exist_ok=True)
         image = window.grabWindow()
         assert not image.isNull()
         assert image.save(str(output))
         assert image.width() == 1100 and image.height() == 760
+
+        # Fixed-topology batch controls remain usable without a device selector.
+        assert controller.setSearchMode("fixed_topology")
+        assert controller.setSolver("differential_evolution")
+        assert controller.setVariableBound("front", layer["id"], "upper_nm", 200.0)
+        controller.setVariableEnabled("front", layer["id"], True)
+        assert controller.setDeferredBatchEnabled(True)
+        app.processEvents()
+        workers = window.findChild(QQuickItem, "filmBatchCpuWorkers")
+        axis = window.findChild(QQuickItem, "filmBatchCpuAxis")
+        assert workers is not None and workers.isVisible() and workers.isEnabled()
+        assert axis is not None and axis.isVisible() and axis.isEnabled()
+        assert controller.setFilmCpuWorkers(1)
+        assert controller.setFilmCpuAxis("candidates")
+        app.processEvents()
+        assert workers.property("value") == 1
+        assert axis.property("currentIndex") == 1
+        assert controller._selected_execution_binding() == {
+            "kind": "film_cpu_v1", "cpu_workers": 1, "cpu_parallel_axis": "candidates"}
+        start_button = window.findChild(QQuickItem, "filmOptimizationStartButton")
+        assert start_button is not None and start_button.isVisible()
+        assert controller.canStart and start_button.isEnabled()
 
     finally:
         if window is not None and shiboken6.isValid(window):

@@ -4,7 +4,8 @@ from concurrent.futures import Future
 from copy import deepcopy
 import json
 import os
-from pathlib import Path
+from dataclasses import replace
+from uuid import uuid4
 import time
 from typing import Any, cast
 
@@ -71,7 +72,7 @@ def deliver(target, generation=None):
     target._finish_film_probe()
 
 
-def test_cpu_default_explicit_batch_identity_confirmation_and_context_changes(app, tmp_path):
+def test_cpu_batch_binding_rejects_gpu_selection_across_context_changes(app, tmp_path):
     service, _library, design = fixture(tmp_path)
     with optimizer(service, design) as (controller, _source, _session):
         target = cast(ComputeTarget, controller.computeTarget)
@@ -90,16 +91,15 @@ def test_cpu_default_explicit_batch_identity_confirmation_and_context_changes(ap
                     row["side"], row["layer_id"], "upper_nm", 400.0)
         request = controller._build_request()
         assert request.execution_device["cpu_parallel_axis"] == "wavelengths"
+        # Even if a stale probe delivers a GPU row, the optimizer target cannot
+        # select it and every subsequent request remains explicitly CPU-bound.
         deliver(target)
-        assert target.deviceId == "cpu:default"
         target.setDeviceId("xpu:0")
-        assert target.canSubmit and controller._build_request().execution_device == BINDING
-        controller.setObjectiveField("angle_max_deg", 20.0)
-        assert target.deviceId == "xpu:0" and not target.canSubmit
-        assert not controller.startOptimization()
-        assert "固定角度" in controller.error
-        target.setDeviceId("cpu:default")
-        assert target.canSubmit
+        assert target.canSubmit and target.deviceId == "cpu:default"
+        assert controller._build_request().execution_device == request.execution_device
+        assert controller.setObjectiveField("angle_max_deg", 20.0)
+        assert target.canSubmit and target.deviceId == "cpu:default"
+        assert controller._build_request().execution_device == request.execution_device
 
 
 def test_stale_probe_does_not_restore_device_and_allows_another_probe(app, tmp_path):
@@ -160,24 +160,26 @@ def test_batch_widgets_load_at_narrow_width_and_cpu_settings_remain_explicit(app
             QTest.qWait(40)
             assert window.findChild(QObject, "filmDeferredBatchMode") is not None
             assert window.findChild(QObject, "filmBatchCpuWorkers") is not None
-            assert window.findChild(QObject, "computeFilmXpuProbeButton") is not None
+            assert window.findChild(QObject, "computeFilmXpuProbeButton") is None
+            assert window.findChild(QObject, "filmOptimizationComputeTarget") is None
             assert not warnings
 
 
-@pytest.mark.real_gpu
-@pytest.mark.skipif(
-    os.environ.get("COAT_SIM_TEST_XPU") != "1", reason="explicit native Intel XPU run only"
-)
-@pytest.mark.parametrize("operation", ["complete", "cancel", "edited", "stale_uuid"])
-def test_native_ui_to_queue_xpu_result_and_lifecycle(app, tmp_path, operation):
+@pytest.mark.parametrize("operation", ["complete", "cancel", "edited"])
+def test_cpu_ui_to_queue_result_and_lifecycle(app, tmp_path, monkeypatch, operation):
+    # A GPU-oriented process environment must not override the UI's explicit CPU binding.
+    monkeypatch.setenv("COAT_SIM_FILM_BACKEND", "xpu")
     service, _library, design = fixture(tmp_path)
     client = SchedulerClient(tmp_path)
     assert not client.endpoint.exists(), "test must own a fresh queue root"
     try:
-        with optimizer(service, design) as (controller, source, session):
-            controller.setSolver("differential_evolution")
-            controller.setDeferredBatchEnabled(True)
-            controller.setObjectiveField("wavelength_samples", 101)
+        with optimizer(service, design) as (controller, source, _session):
+            assert controller.setSolver("differential_evolution")
+            assert controller.setDeferredBatchEnabled(True)
+            for row in cast(list[dict[str, Any]], controller.variables):
+                if row["enabled"]:
+                    assert controller.setVariableBound(row["side"], row["layer_id"], "upper_nm", 400.0)
+            assert controller.setObjectiveField("wavelength_samples", 101)
             assert controller.setObjectiveField("pointwise.lower_bound_percent", 0.0)
             assert controller.setObjectiveField("pointwise.upper_bound_percent", 0.0)
             controller.setAcceptableErrorPercent(0.0)
@@ -190,36 +192,22 @@ def test_native_ui_to_queue_xpu_result_and_lifecycle(app, tmp_path, operation):
                 controller.setSolverOption("population_size", 32)
                 controller.setObjectiveField("wavelength_samples", 1001)
             target = cast(ComputeTarget, controller.computeTarget)
-            target.requestFilmXpuProbe()  # Actual bounded native child, actual private queue capabilities.
-            spin(app, lambda: not target.filmXpuProbeBusy, 40)
-            actual = next(
-                row for row in cast(list[dict[str, Any]], target.devices) if row["backend"] == "xpu"
-            )
-            assert actual["available"], actual.get("reason", actual)
-            assert target.deviceId == "cpu:default"
-            if operation == "stale_uuid":
-                changed = "00000000-0000-0000-0000-000000000002"
-                for row in target._all_devices:
-                    if row["backend"] == "xpu":
-                        row["physical_id"] = changed
-                        row["execution_device"]["uuid"] = changed
-                target._devices = target._filter_devices(target._all_devices)
-            target.setDeviceId(actual["id"])
-            assert target.canSubmit
-            progress_text = []
-            controller.changed.connect(lambda: progress_text.append(controller.progressText))
+            target.requestFilmXpuProbe()
+            assert not target.filmXpuProbeBusy
+            target.setDeviceId("xpu:0")
+            assert target.deviceId == "cpu:default" and target.canSubmit
             assert controller.startOptimization(), controller.error
             job_id = controller._queue_job_id
-            assert (
-                job_id
-                and controller._frozen_request.execution_device["uuid"] == actual["physical_id"]
-            )
+            assert job_id and controller._frozen_request.execution_device["kind"] == "film_cpu_v1"
             if operation == "cancel":
-                spin(
-                    app,
-                    lambda: client.status(job_id).get("progress", {}).get("gpu_runtime") == "xpu",
-                    60,
-                )
+                def cpu_forward_started():
+                    try:
+                        return client.status(job_id).get("progress", {}).get("actual_backend") == "cpu"
+                    except ValueError as exc:
+                        if "job_not_found" not in str(exc):
+                            raise
+                        return False  # Admission runs asynchronously.
+                spin(app, cpu_forward_started, 60)
                 controller.cancelOptimization()
             if operation == "edited":
                 source.pendingEditEpoch += 1
@@ -231,53 +219,122 @@ def test_native_ui_to_queue_xpu_result_and_lifecycle(app, tmp_path, operation):
                 assert status["state"] == "cancelled", status
                 assert not source.applied and not controller.canApply
                 return
-            if operation == "stale_uuid":
-                assert status["state"] == "failed", status
-                outcome = json.loads((directory / "outcome.json").read_text(encoding="utf-8"))
-                assert "UUID" in outcome["error"] and "未回退 CPU" in outcome["error"]
-                assert not source.applied and not controller.canApply
-                assert not (directory / "film-performance.json").exists()
-                return
             assert status["state"] == "succeeded", status
             outcome = json.loads((directory / "outcome.json").read_text(encoding="utf-8"))
-            assert not controller.error if operation == "complete" else "编辑" in controller.error
-            performance = json.loads(
-                (directory / "film-performance.json").read_text(encoding="utf-8")
-            )
-            assert performance["actual_backend"] == "gpu" and performance["gpu_runtime"] == "xpu"
-            assert performance["device_uuid"] == actual["physical_id"]
-            assert performance["dtype"] == "float64/complex128" and performance[
-                "output_device"
-            ].startswith("xpu:")
-            assert outcome["result"]["execution"]["cpu_forward_fallback"] is False
+            performance = json.loads((directory / "film-performance.json").read_text(encoding="utf-8"))
+            assert performance["actual_backend"] == "cpu"
+            assert outcome["result"]["execution"]["forward_backend"] == "cpu"
             assert outcome["result"]["candidate"]["evaluations"] > 1
-            assert any("Intel XPU 批量前向" in text for text in progress_text)
+            assert outcome["result"]["solver_validation"]["validation_complete"] is True
+            from coat_sim.scheduler.result_capability import validate_film_optimization_result
+            assert validate_film_optimization_result(service, outcome["result"]) == outcome["result"]
+            assert not controller.error if operation == "complete" else "编辑" in controller.error
             assert bool(source.applied) == (operation == "complete")
             assert controller._result.validation_complete
-            evidence = os.environ.get("COAT_SIM_XPU_EVIDENCE")
-            if evidence and operation == "complete":
-                destination = Path(evidence)
-                destination.mkdir(parents=True, exist_ok=True)
-                (destination / "ui-queue.json").write_text(
-                    json.dumps(
-                        {
-                            "root": str(tmp_path),
-                            "performance": performance,
-                            "execution": outcome["result"]["execution"],
-                            "applied": bool(source.applied),
-                            "progress": progress_text,
-                        },
-                        ensure_ascii=False,
-                        indent=2,
-                    ),
-                    encoding="utf-8",
-                )
-                with window_runtime(app, controller) as (window, warnings):
-                    assert not warnings
-                    assert window.grabWindow().save(str(destination / "native-xpu-result.png"))
     finally:
         if client.endpoint.exists():
             client._call("stop", start=False)  # Only this test's unique, previously absent queue.
+            process = client._processes.get(str(client.root))
+            if process is not None:
+                process.wait(timeout=15)
+
+
+def _native_xpu_spec(service, design, binding, operation):
+    from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
+    from coat_sim.core.film_optimization import FilmOptimizationObjective
+    from coat_sim.scheduler.jobs import freeze_spec
+    from tests.film_structure_fixtures import request as make_request
+
+    objective = FilmOptimizationObjective(
+        wavelength_min_nm=500.0, wavelength_max_nm=700.0,
+        wavelength_samples=1001 if operation == "cancel" else 101,
+        angles_deg=(0.0,), polarization="unpolarized", metric="R",
+        pointwise=FilmObjectiveConstraint(mode="value", target_value=0.0,
+                                         lower_bound=None, upper_bound=None))
+    request = make_request(design, [objective], bounds=(0.0, 400.0),
+                           max_iterations=1000 if operation == "cancel" else 3,
+                           max_evaluations=100000 if operation == "cancel" else 30)
+    request = replace(request, solver="differential_evolution", execution_mode="deferred_batch",
+                      execution_device=binding, population_size=32 if operation == "cancel" else 5,
+                      acceptable_normalized_error=0.0)
+    return freeze_spec(service, "film_optimization", {"request": request})
+
+
+def test_native_xpu_scheduler_spec_is_constructible_without_hardware(tmp_path):
+    service, _library, design = fixture(tmp_path)
+    for operation in ("complete", "cancel", "stale_uuid"):
+        spec = _native_xpu_spec(service, design, BINDING, operation)
+        request = spec["parameters"]["payload"]["request"]
+        assert request["execution_device"] == BINDING
+        assert request["execution_mode"] == "deferred_batch"
+
+
+@pytest.mark.real_gpu
+@pytest.mark.skipif(
+    os.environ.get("COAT_SIM_TEST_XPU") != "1", reason="explicit native Intel XPU run only"
+)
+@pytest.mark.parametrize("operation", ["complete", "cancel", "stale_uuid"])
+def test_native_xpu_direct_scheduler_binding_and_lifecycle(tmp_path, operation):
+    """Exercise real XPU after the optimizer window's selector was retired."""
+    from coat_sim.core.film_xpu_execution import probe_devices
+
+    service, _library, design = fixture(tmp_path)
+    device = probe_devices()[0]["execution_device"]
+    binding = deepcopy(device)
+    if operation == "stale_uuid":
+        binding["uuid"] = ("00000000-0000-0000-0000-000000000002"
+                           if device["uuid"] != "00000000-0000-0000-0000-000000000002"
+                           else "00000000-0000-0000-0000-000000000003")
+    spec = _native_xpu_spec(service, design, binding, operation)
+    client = SchedulerClient(tmp_path)
+    assert not client.endpoint.exists(), "test must own a fresh queue root"
+    job_id = uuid4().hex
+    try:
+        capabilities = client.capabilities()
+        assert capabilities.get("film_xpu_execution") == 1
+        client.submit(spec, job_id=job_id)
+        deadline = time.monotonic() + 120
+        cancelled = False
+        while time.monotonic() < deadline:
+            status = client.status(job_id)
+            if (operation == "cancel" and not cancelled
+                    and status.get("progress", {}).get("gpu_runtime") == "xpu"):
+                client.cancel(job_id)
+                cancelled = True
+            if status["state"] in {"succeeded", "failed", "cancelled"}:
+                break
+            time.sleep(0.05)
+        else:
+            pytest.fail("XPU scheduler job did not reach a terminal state")
+        directory = tmp_path / "artifacts/runtime/scheduler/jobs" / job_id
+        if operation == "cancel":
+            assert cancelled, "XPU forward progress was never observed"
+            assert status["state"] == "cancelled", status
+            return
+        outcome = json.loads((directory / "outcome.json").read_text(encoding="utf-8"))
+        if operation == "stale_uuid":
+            assert status["state"] == "failed", status
+            assert "UUID" in outcome["error"] and "未回退 CPU" in outcome["error"]
+            assert not (directory / "film-performance.json").exists()
+            return
+        assert status["state"] == "succeeded", status
+        performance = json.loads((directory / "film-performance.json").read_text(encoding="utf-8"))
+        assert performance["actual_backend"] == "gpu" and performance["gpu_runtime"] == "xpu"
+        assert performance["device_uuid"] == device["uuid"]
+        assert performance["dtype"] == "float64/complex128"
+        assert performance["output_device"].startswith("xpu:")
+        execution = outcome["result"]["execution"]
+        assert execution["device"] == device and execution["cpu_forward_fallback"] is False
+        assert execution["scoring_backend"] == execution["independent_validation_backend"] == "cpu"
+        assert outcome["result"]["candidate"]["evaluations"] > 1
+        assert outcome["result"]["solver_validation"]["validation_complete"] is True
+        # The validator replays both candidate scores and the denser holdout
+        # on CPU rather than trusting the execution declaration alone.
+        from coat_sim.scheduler.result_capability import validate_film_optimization_result
+        assert validate_film_optimization_result(service, outcome["result"]) == outcome["result"]
+    finally:
+        if client.endpoint.exists():
+            client._call("stop", start=False)
             process = client._processes.get(str(client.root))
             if process is not None:
                 process.wait(timeout=15)
