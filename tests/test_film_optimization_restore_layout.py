@@ -220,7 +220,7 @@ def click_operation_bar_action(app, window, object_name):
     click(app, window, action)
 
 
-def test_sidebar_reuses_content_and_toolbar_has_statistics_without_details_button(app, tmp_path):
+def test_sidebar_reuses_content_and_toolbar_omits_statistics_without_details_button(app, tmp_path):
     service, _library, design = fixture(tmp_path)
     with optimizer(service, design) as (controller, _source, _session):
         with window_runtime(app, controller) as (window, warnings):
@@ -231,7 +231,10 @@ def test_sidebar_reuses_content_and_toolbar_has_statistics_without_details_butto
             assert sidebar is not None and toggle is not None
             assert window.findChild(QObject, "filmOptimizationDetailsButton") is None
             assert window.findChild(QQuickItem, "filmOptimizationApplyButton").property("text") == "应用"
-            assert window.findChild(QQuickItem, "filmOptimizationProgress").property("text") == controller.progressStatistics
+            assert window.findChild(QQuickItem, "filmOptimizationProgress") is None
+            sidebar_progress = window.findChild(QQuickItem, "filmOptimizationSidebarProgress")
+            assert sidebar_progress is not None
+            assert sidebar_progress.property("text").startswith(controller.progressStatistics)
             assert not sidebar.isVisible()
             click(app, window, toggle)
             assert sidebar.isVisible() and window.property("detailsDocked")

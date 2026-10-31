@@ -183,11 +183,11 @@ def test_current_drafts_survive_algorithm_switch_and_table_reopen(sensitivity_wi
     assert not warnings, warnings
 
 
-@pytest.mark.parametrize("width,font_scale,overflowed", (
-    (720, 1.0, False), (720, 1.5, True), (1600, 1.0, False),
+@pytest.mark.parametrize("width,font_scale", (
+    (720, 1.0), (720, 1.5), (1600, 1.0),
 ))
 def test_sensitivity_entry_uses_real_visible_action_at_narrow_and_wide_widths(
-        sensitivity_window, app, width, font_scale, overflowed):
+        sensitivity_window, app, width, font_scale):
     _owner, controller, window, warnings = sensitivity_window
     dialog = window.findChild(QObject, "filmSensitivityDialog")
     assert dialog is not None and dialog.property("visible")
@@ -202,8 +202,12 @@ def test_sensitivity_entry_uses_real_visible_action_at_narrow_and_wide_widths(
     bar = window.findChild(QQuickItem, "filmOptimizationOperationBar")
     assert source is not None and bar is not None
     assert bar.property("clip")
-    if overflowed:
+    assert source.property("text") == "参数表误差分析"
+    if source.x() < 0:
         assert source.x() + source.width() <= 0
+        overflow_action = window.findChild(QQuickItem, "operationBarOverflow_filmSensitivityOpenButton")
+        assert overflow_action is not None
+        assert overflow_action.property("text") == source.property("text")
     else:
         left = source.mapToItem(bar, QPointF(0, 0)).x()
         right = source.mapToItem(bar, QPointF(source.width(), 0)).x()
@@ -211,4 +215,21 @@ def test_sensitivity_entry_uses_real_visible_action_at_narrow_and_wide_widths(
     click_operation_bar_action(app, window, "filmSensitivityOpenButton")
     assert dialog.property("visible")
     assert controller.activeWorkflow == "table"
+    assert not warnings, warnings
+
+
+def test_optimization_action_labels_have_no_ellipsis_suffix(sensitivity_window):
+    owner, _controller, window, warnings = sensitivity_window
+    labels = {
+        "filmSensitivityOpenButton": "参数表误差分析",
+        "filmSensitivityCommonApply": "应用最优候选",
+        "projectResourceExtraAction_save_candidate": "候选结果：保存为工程膜系",
+    }
+    for name, expected in labels.items():
+        action = window.findChild(QQuickItem, name)
+        assert action is not None, name
+        assert action.property("text") == expected
+        assert not expected.endswith(("…", "..."))
+    assert owner.setSearchMode("ideal_sensitivity")
+    assert window.findChild(QQuickItem, "filmSensitivityCommonApply").isVisible()
     assert not warnings, warnings

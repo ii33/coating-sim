@@ -659,7 +659,7 @@ AppWindow {
                         return !window.controller.busy
                     }
                     extraTransferActions: [
-                        {key: "save_candidate", text: "候选结果：保存为工程膜系…", enabled: window.controller.canSave}
+                        {key: "save_candidate", text: "候选结果：保存为工程膜系", enabled: window.controller.canSave}
                     ]
                     onExtraTransferActionRequested: function(key) {
                         if (key === "save_candidate") window.controller.saveCandidateToProject()
@@ -670,19 +670,6 @@ AppWindow {
                     text: "刷新设计"
                     visible: window.controller.sourceStale
                     onClicked: window.controller.refreshDesign()
-                }
-                Label {
-                    objectName: "filmOptimizationProgress"
-                    visible: window.controller.searchMode !== "resource_assessment"
-                    property bool operationBarFlexible: true
-                    text: window.controller.progressStatistics
-                    color: window.themeTokens.colorTextMuted
-                    elide: Text.ElideRight
-                    Accessible.name: text
-                    ToolTip.visible: hovered
-                    ToolTip.text: text + "\n" + window.controller.progressText
-                    property bool hovered: progressHover.hovered
-                    HoverHandler { id: progressHover }
                 }
                 ThemeControls.ThemeButton {
                     id: optimizationStartButton
@@ -713,7 +700,7 @@ AppWindow {
                 ThemeControls.ThemeButton {
                     objectName: "filmSensitivityOpenButton"
                     visible: window.controller.searchMode !== "resource_assessment"
-                    text: "参数表误差分析…"
+                    text: "参数表误差分析"
                     enabled: !window.controller.busy
                     onClicked: {
                         window.commitActiveEditor()
@@ -745,7 +732,7 @@ AppWindow {
                 ThemeControls.ThemeButton {
                     objectName: "filmSensitivityCommonApply"
                     visible: window.controller.searchMode === "ideal_sensitivity"
-                    text: "应用最优候选…"
+                    text: "应用最优候选"
                     enabled: window.controller.canApply
                     onClicked: window.controller.applyCandidate()
                 }

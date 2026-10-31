@@ -305,6 +305,7 @@ def test_nominal_false_guard_pass_candidate_requires_explicit_confirm_and_is_one
         assert harness.owner.setSearchMode("ideal_sensitivity")
         apply = window.findChild(QQuickItem, "filmSensitivityCommonApply")
         assert apply is not None and apply.isEnabled()
+        assert apply.property("text") == "应用最优候选"
         click_operation_bar_action(app, window, "filmSensitivityCommonApply")
         confirm = window.findChild(QObject, "filmOptimizationApplyConfirmation")
         label = confirm
