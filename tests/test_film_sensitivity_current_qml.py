@@ -8,7 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("QT_QUICK_BACKEND", "software")
 
 import pytest
-from PySide6.QtCore import QObject, Qt
+from PySide6.QtCore import QObject, QPointF, Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQuick import QQuickItem
 from PySide6.QtQml import QQmlEngine, QQmlExpression
@@ -183,9 +183,11 @@ def test_current_drafts_survive_algorithm_switch_and_table_reopen(sensitivity_wi
     assert not warnings, warnings
 
 
-@pytest.mark.parametrize("width,overflowed", ((720, True), (1600, False)))
+@pytest.mark.parametrize("width,font_scale,overflowed", (
+    (720, 1.0, False), (720, 1.5, True), (1600, 1.0, False),
+))
 def test_sensitivity_entry_uses_real_visible_action_at_narrow_and_wide_widths(
-        sensitivity_window, app, width, overflowed):
+        sensitivity_window, app, width, font_scale, overflowed):
     _owner, controller, window, warnings = sensitivity_window
     dialog = window.findChild(QObject, "filmSensitivityDialog")
     assert dialog is not None and dialog.property("visible")
@@ -193,10 +195,19 @@ def test_sensitivity_entry_uses_real_visible_action_at_narrow_and_wide_widths(
     app.processEvents()
     assert not dialog.property("visible")
     window.resize(width, 500)
-    QTest.qWait(30)
+    ThemeService.instance().configure(font_scale=font_scale)
+    QTest.qWait(100)
     app.processEvents()
     source = window.findChild(QQuickItem, "filmSensitivityOpenButton")
-    assert source is not None and (source.x() < 0) is overflowed
+    bar = window.findChild(QQuickItem, "filmOptimizationOperationBar")
+    assert source is not None and bar is not None
+    assert bar.property("clip")
+    if overflowed:
+        assert source.x() + source.width() <= 0
+    else:
+        left = source.mapToItem(bar, QPointF(0, 0)).x()
+        right = source.mapToItem(bar, QPointF(source.width(), 0)).x()
+        assert 0 <= left < right <= bar.width()
     click_operation_bar_action(app, window, "filmSensitivityOpenButton")
     assert dialog.property("visible")
     assert controller.activeWorkflow == "table"
