@@ -21,7 +21,10 @@ pytestmark = pytest.mark.algorithm
 
 
 def Request(*args, **kwargs):
-    return FilmResourceEstimateRequest(*args, probe_max_evaluations=0, **kwargs)
+    if "probe_max_evaluations" in kwargs:
+        raise TypeError("probe_max_evaluations supplied twice")
+    kwargs["probe_max_evaluations"] = 0
+    return FilmResourceEstimateRequest(*args, **kwargs)
 
 
 

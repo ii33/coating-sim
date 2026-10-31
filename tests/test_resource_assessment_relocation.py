@@ -1,6 +1,7 @@
 """Contracts for resource assessment's independent, read-only physical draft."""
 from copy import deepcopy
 import threading
+from typing import Any
 
 import pytest
 
@@ -135,7 +136,7 @@ def test_near_best_is_audited_admissible_and_kept_alongside_witness(conditional,
 
 
 def test_selected_face_total_separates_fixed_unselected_surface_with_unknowns():
-    row = {'source': 'probe', 'state': 'audited', 'targets_met': False,
+    row: dict[str, Any] = {'source': 'probe', 'state': 'audited', 'targets_met': False,
            'within_constraints': True, 'within_material_pool': True,
            'max_normalized_error': .1, 'layer_count': 2, 'total_thickness_nm': 120.,
            'surfaces': {'front': {'active': True, 'selected': True, 'layer_count': 2, 'total_thickness_nm': 120.},
