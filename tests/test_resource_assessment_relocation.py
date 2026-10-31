@@ -70,10 +70,11 @@ def test_probe_budget_and_seeds_are_frozen_in_request(tmp_path):
         design, 19, 8, threading.Event(),
         [{'material_id': 'acceptance-film', 'optical_set_id': 'film-set'}],
         {'material_id': 'acceptance-glass', 'optical_set_id': 'glass-set'},
-        probe_max_evaluations=7, probe_seeds=(2, 3),
+        probe_max_evaluations=7, probe_seeds=(2, 3), audit_candidates=True,
     )
     assert request.probe_max_evaluations == 7
     assert request.probe_seeds == (2, 3)
+    assert request.audit_candidates is True
     assert design == before
 
 

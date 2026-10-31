@@ -35,7 +35,7 @@ def _digest(design: dict) -> str:
     ).hexdigest()
 
 
-def _prepare_request(design: dict, revision: int, limit: int, cancel: threading.Event, material_rows, substrate_reference=None, probe_max_evaluations=256, probe_seeds=(0, 1)):
+def _prepare_request(design: dict, revision: int, limit: int, cancel: threading.Event, material_rows, substrate_reference=None, probe_max_evaluations=0, probe_seeds=(0, 1), audit_candidates=False):
     """Read the existing editor configuration using the same target conversion helpers."""
     config = design.get("workflow_settings", {}).get("optimization", {})
     if not isinstance(config, dict) or not config:
@@ -157,6 +157,7 @@ def _prepare_request(design: dict, revision: int, limit: int, cancel: threading.
         synthesis_request,
         candidate_designs=(candidate,),
         probe_max_evaluations=probe_max_evaluations,
+        audit_candidates=audit_candidates,
         probe_seeds=tuple(probe_seeds),
         layer_search_limit=limit,
         search_budget_reference={
@@ -171,7 +172,7 @@ class _Signals(QObject):
 
 
 class _Task(QRunnable):
-    def __init__(self, service, design, revision, limit, cancel, token, signals, material_rows, substrate_reference, probe_max_evaluations=256, probe_seeds=(0, 1)):
+    def __init__(self, service, design, revision, limit, cancel, token, signals, material_rows, substrate_reference, probe_max_evaluations=0, probe_seeds=(0, 1), audit_candidates=False):
         super().__init__()
         self.service, self.design, self.revision, self.limit = service, design, revision, limit
         self.cancel, self.token, self.signals = cancel, token, signals
@@ -179,10 +180,11 @@ class _Task(QRunnable):
         self.substrate_reference = substrate_reference
         self.probe_max_evaluations = probe_max_evaluations
         self.probe_seeds = tuple(probe_seeds)
+        self.audit_candidates = audit_candidates
 
     def run(self):
         try:
-            request = _prepare_request(self.design, self.revision, self.limit, self.cancel, self.material_rows, self.substrate_reference, self.probe_max_evaluations, self.probe_seeds)
+            request = _prepare_request(self.design, self.revision, self.limit, self.cancel, self.material_rows, self.substrate_reference, self.probe_max_evaluations, self.probe_seeds, self.audit_candidates)
             from coat_sim.core.film_resource_estimation import (
                 estimate_film_resources,
                 freeze_resource_estimate_request,
@@ -200,6 +202,7 @@ class _Task(QRunnable):
                 self.service, request, cancel_event=self.cancel, progress_callback=progress
             )
             payload = asdict(result)
+            payload["_audit_candidates"] = self.audit_candidates
             payload["_source_check"] = "unavailable"
             payload["_source_check_extra_freeze_attempts"] = 0
             if result.source_digest:
@@ -251,6 +254,7 @@ class FilmResourceEstimateController(QObject):
         self._stale = False
         self._limit = 128
         self._limit_valid = True
+        self._verification_enabled = False
         self._probe_max_evaluations = 256
         self._probe_seeds: tuple[int, ...] = (0, 1)
         self._probe_budget_error = ""
@@ -466,6 +470,22 @@ class FilmResourceEstimateController(QObject):
     def limitValid(self):
         return self._limit_valid
 
+    @Property(bool, notify=changed)
+    def verificationEnabled(self):
+        return self._verification_enabled
+
+    @Slot(bool, result=bool)
+    def setVerificationEnabled(self, enabled):
+        if self._busy:
+            return False
+        if bool(enabled) != self._verification_enabled:
+            self._verification_enabled = bool(enabled)
+            if self._digest:
+                self._stale = True
+                self._status = "评估模式已变化；原结果已过期，请重新评估。"
+            self.changed.emit()
+        return True
+
     @Property(str, notify=changed)
     def probeMaxEvaluations(self):
         return str(self._probe_max_evaluations)
@@ -550,6 +570,8 @@ class FilmResourceEstimateController(QObject):
 
     @Slot(str, result=bool)
     def setLayerLimit(self, value):
+        if self._busy:
+            return False
         try:
             if not value.isascii() or not value.isdecimal():
                 raise ValueError()
@@ -579,7 +601,7 @@ class FilmResourceEstimateController(QObject):
         if (
             self._busy
             or not self._limit_valid
-            or not self.probeSettingsValid
+            or (self._verification_enabled and not self.probeSettingsValid)
             or self._source.session is None
             or self._source._source_closed
         ):
@@ -662,7 +684,7 @@ class FilmResourceEstimateController(QObject):
             + "\n目标：" + target_text
             + "\n未知 k：" + ("按零假设" if synthesis.get("assume_unknown_k_zero") is True else "不按零" if synthesis.get("assume_unknown_k_zero") is False else "未确认")
             + f"；单层最小非零厚度 {setting('minimum_nonzero_thickness_nm', ' nm')}；单层最大厚度 {setting('max_layer_thickness_nm', ' nm')}。"
-            + f"\n有限探测：每种子逻辑评价上限 {self._probe_max_evaluations} 次（含审计）；种子 {self.probeSeeds}。"
+            + (f"\n进一步验证（合成探测）：每种子逻辑评价上限 {self._probe_max_evaluations} 次（含审计）；种子 {self.probeSeeds}。" if self._verification_enabled else "\n快速评估：不运行合成探测或独立候选审计。")
             + "\n评估不受原优化的层数与总厚度预算限制；制造良率未评估。"
         )
         self.changed.emit()
@@ -677,8 +699,9 @@ class FilmResourceEstimateController(QObject):
                 self._signals,
                 deepcopy(self._material_rows),
                 deepcopy(self._substrate),
-                self._probe_max_evaluations,
+                self._probe_max_evaluations if self._verification_enabled else 0,
                 tuple(self._probe_seeds),
+                self._verification_enabled,
             )
         )
         return True
@@ -804,8 +827,13 @@ def _format_summary(result: dict[str, Any]) -> str:
                         f"{outcome.get('evaluations', outcome.get('logical_evaluations_observed', '未知'))} / {outcome.get('requested_max_evaluations', '未知')} 次，"
                         f"物理光谱计算 {outcome.get('physical_evaluations', '未知')} 次；工作量可能不完整。")
         return "评估未完成，尚无完整结果；请检查状态并重试。" + partial
-    lines = ["评估结果（有限采样，不是连续域证书）",
-             "审计点按指标违约程度选择，不等同全谱极值；若全部通过、违约量相同，显示的可能只是代表点。"]
+    work = result.get("work") or {}
+    mode = work.get("assessment_mode")
+    fast = (mode == "fast_screen" or (mode is None and result.get("_audit_candidates") is False
+                                        and work.get("probe_runs") == 0))
+    lines = ["评估结果（有限采样，不是连续域证书）"]
+    if not fast:
+        lines.append("审计点按指标违约程度选择，不等同全谱极值；若全部通过、违约量相同，显示的可能只是代表点。")
     for item in result.get("bounds", []):
         kind = item.get("kind")
         label = {"hr_thickness_lp": "厚度必要界", "hr_layer_dp": "层数必要界"}.get(kind, "必要界")
@@ -873,7 +901,7 @@ def _format_summary(result: dict[str, Any]) -> str:
         if isinstance(error, (int, float)):
             lines.append(f"  最大归一化违约量：{error:.4g}（不是反射率）。")
     else:
-        lines.append("• 当前结构：未取得完整审计。")
+        lines.append("• 当前结构：未进行独立审计。" if fast else "• 当前结构：未取得完整审计。")
     nodes = result.get("recommended_budget") or result.get("pareto_witnesses") or []
     if nodes:
         lines.append("• 已找到以下有限采样审计见证（所选膜面合计层数 / 厚度，不是连续域证书）：")
@@ -887,7 +915,7 @@ def _format_summary(result: dict[str, Any]) -> str:
             origin = (f"探测种子 {item.get('probe_seed')}" if item.get("source") == "probe" else "当前结构")
             lines.append(f"  {item.get('layer_count', '?')} 层 / {item.get('total_thickness_nm', '?')} nm（{origin}）{assumption_note}{_fixed_surface_note(item, result.get("selected_surfaces"))}")
     else:
-        lines.append("• 尚未取得通过审计的可行见证；这不代表不存在可行方案。")
+        lines.append("• 快速评估未搜索或审计可行见证；是否存在可行方案未知。" if fast else "• 尚未取得通过审计的可行见证；这不代表不存在可行方案。")
     near = [row for row in reports if row.get("source") == "probe" and row.get("state") == "audited"
             and row.get("targets_met") is False and row.get("within_constraints") is True
             and row.get("within_material_pool") is True
@@ -941,10 +969,10 @@ def _format_summary(result: dict[str, Any]) -> str:
         if work.get("actual_work_complete") is False:
             lines.append("  工作量统计不完整，以上仅为已记录部分。")
     elif work.get("probe_runs") == 0:
-        lines.append("• 未运行探测：仅完成预检查和当前结构审计。")
+        lines.append("• 未运行合成探测；未进行独立候选审计。" if fast else "• 未运行探测；当前结构审计状态见上。")
     if "physical_evaluations" in work:
         lines.append(f"• 全部物理光谱计算 {work.get('physical_evaluations', '未知')} 次，波长点 {work.get('wavelength_points', '未知')} 个（含探测）。")
-    lines.append("• 资源预测尚未计算：目前没有经过校准的预测模型。")
+    lines.append("• 通用层数与厚度预测：未知；目前没有经过校准的预测模型。不能将必要界或审计实例当作最小值，审计实例也不是预测。")
     return "\n".join(lines)
 
 

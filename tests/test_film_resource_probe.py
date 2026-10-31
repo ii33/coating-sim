@@ -12,11 +12,18 @@ import pytest
 from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint as C
 from coat_sim.core.film_optimization import FilmOptimizationObjective as O
 from coat_sim.core.film_resource_estimation import (
-    FilmResourceEstimateRequest as Request, estimate_film_resources,
+    FilmResourceEstimateRequest, estimate_film_resources,
 )
 from tests.test_film_auto_synthesis import setup_problem
 
 pytestmark = pytest.mark.algorithm
+
+
+def Request(*args, **kwargs):
+    # These tests explicitly exercise optional synthesis verification.
+    kwargs.setdefault('probe_max_evaluations', 256)
+    kwargs.setdefault('audit_candidates', True)
+    return FilmResourceEstimateRequest(*args, **kwargs)
 
 
 def objective(lo, hi, *, low=None, up=None, metric='R', strict=False):
@@ -35,7 +42,7 @@ FAMILIES = [
 
 
 @pytest.mark.parametrize('family,objectives', FAMILIES, ids=[f[0] for f in FAMILIES])
-def test_default_probe_executes_general_objectives_with_truthful_joint_resources(family, objectives):
+def test_opt_in_probe_executes_general_objectives_with_truthful_joint_resources(family, objectives):
     service, base = setup_problem()
     base = replace(base, objectives=objectives, max_layers=0, max_total_thickness_nm=.01)
     before = deepcopy(asdict(base))

@@ -33,7 +33,7 @@ def test_sidebar_toggle_controls_at_two_dpi_profiles(tmp_path, scale):
     assert report["selected_label_contrast"]
     assert min(report["selected_label_contrast"].values()) >= 4.5
     for mode in ("light", "high-contrast-dark"):
-        assert f"film_design/filmDesignSidebarResourceEstimate/{mode}" in report["selected_label_contrast"]
+        assert f"film_design/filmDesignSidebarInteractive/{mode}" in report["selected_label_contrast"]
 
 
 def _sidebar_probe():
@@ -182,8 +182,7 @@ def _sidebar_probe():
     def selected_contrast(window, key, mode, width):
         groups = {
             "film_design": ("filmDesignSidebarExpression", "filmDesignSidebarGenerator",
-                            "filmDesignSidebarLibrary", "filmDesignSidebarInteractive",
-                            "filmDesignSidebarResourceEstimate"),
+                            "filmDesignSidebarLibrary", "filmDesignSidebarInteractive"),
             "film_simulation": ("filmSimulationStatisticsToggle", "filmSimulationDiagnosticsButton"),
             "uniformity": ("uniformitySidebarButton",),
         }
@@ -231,9 +230,9 @@ def _sidebar_probe():
                 collapsed_direction = "up" if horizontal else "left"
                 adjacent(window, button, label, horizontal)
                 if key == "film_design":
-                    # The resource action is now the last feature before the
-                    # toggle; also assert it follows the previous feature.
-                    adjacent(window, label, find(window, "filmDesignSidebarInteractive"), horizontal)
+                    # Interactive is the last feature before the toggle; it must
+                    # also remain adjacent to the preceding library feature.
+                    adjacent(window, label, find(window, "filmDesignSidebarLibrary"), horizontal)
                 if not horizontal:
                     trailing = [item for item in button.parentItem().childItems()
                                 if item is not button and item.isVisible()
@@ -327,7 +326,8 @@ def _sidebar_probe():
             design_root, service=design_service,
             geometry_settings=QSettings(str(folder / "design.ini"), QSettings.Format.IniFormat))
         window = load("FilmDesignQuick.qml", design)
-        rail_case(window, "sidebarExpanded", "filmDesignSidebarToggle", "filmDesignSidebarResourceEstimate",
+        assert window.findChild(QQuickItem, "filmDesignSidebarResourceEstimate") is None
+        rail_case(window, "sidebarExpanded", "filmDesignSidebarToggle", "filmDesignSidebarInteractive",
                   "film_design", ((1320, 820), (720, 560)), bottom=True,
                   selected="activeSidebarSection")
         window.hide()

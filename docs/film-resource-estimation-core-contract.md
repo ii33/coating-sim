@@ -1,10 +1,10 @@
 # 膜系资源评估核心契约
 
-日期：2026-10-30。实现：`coat_sim/core/film_resource_estimation.py`、`film_resource_estimation_bounds.py`；图解及公式：[`algorithms.html` 14be](algorithms.html#film-resource-estimation-20261030)。这是数值筛查与实际候选审计，不是训练预测器或主优化器。
+日期：2026-10-31。实现：`coat_sim/core/film_resource_estimation.py`、`film_resource_estimation_bounds.py`；图解及公式：[`algorithms.html` 14be](algorithms.html#film-resource-estimation-20261030)。这是数值筛查与实际候选审计，不是训练预测器或主优化器。
 
 ## 输入与唯一所有者
 
-`FilmResourceEstimateRequest` 为冻结 dataclass：`synthesis_request: FilmSynthesisRequest`、`candidate_designs=()`、`audit_candidates=True`、`layer_search_limit=128`、`max_seconds=None`、`search_budget_reference=None`。
+`FilmResourceEstimateRequest` 为冻结 dataclass：`synthesis_request: FilmSynthesisRequest`、`candidate_designs=()`、`audit_candidates=False`、`layer_search_limit=128`、`max_seconds=None`、`search_budget_reference=None`、`probe_max_evaluations=0`、`probe_seeds=(0,1)`。默认快速筛查不合成、不审计候选；显式开启验证可配置每种子逻辑评价窗口（UI 初始256）和候选审计。
 
 选面仍指物理 front/back；环境仅清空所选面，固定对面保留。完整当前膜系放在 candidate_designs；原始指标、材料与工艺由已有请求契约验证。候选池不能为空。显式产品 seed 中的材料可按原产品语义保留；仅供观察/审计的池外材料冻源但不进入允许材料集合，不能成为任务约束内推荐。
 
@@ -12,7 +12,7 @@
 
 评估会在自己的独立请求副本里去掉 `max_layers/max_total_thickness_nm`，仅记录为 `search_budget_reference={max_layers:int|None,max_total_thickness_nm:float|None}`，不改调用者请求。真实工艺 `minimum_nonzero_thickness_nm/max_layer_thickness_nm` 保留；没有工艺输入不补硬限制。总搜索帽仅供比较，超帽结构仍可被本次无总帽评估审计，报告 `within_search_budgets=false`，不能暗示原优化帽内已有解。
 
-核心同步入口 `estimate_film_resources(service, request, cancel_event=None, progress_callback=None)` 拥有本次状态；它不提交、保存或应用膜系，不调用合成搜索。UI应在工作线程调用，不另算一套物理结果。回调在该工作线程同步执行，返回 `FilmResourceEstimateProgress(stage,message,completed_units,physical_evaluations,wavelength_points)`。
+核心同步入口 `estimate_film_resources(service, request, cancel_event=None, progress_callback=None)` 拥有本次状态；它不提交、保存或应用膜系，默认不调用合成搜索；仅 probe_max_evaluations>0 时显式调用原生合成及其独立审计，成本可能接近自动合成，不能称快速预测。UI应在工作线程调用，不另算一套物理结果。回调在该工作线程同步执行，返回 `FilmResourceEstimateProgress(stage,message,completed_units,physical_evaluations,wavelength_points)`。
 
 ## 算法与证据
 
@@ -24,6 +24,8 @@
 6. 所有界都只是忽略部分工艺/厚度/跨波长耦合的必要放松，`claim_level=model_numerical_screening`，不叫certified，不把conflict当生产不可行。
 7. 当前/显式候选经现有 `audit_frozen_synthesis_candidate` 的完整密网格、错位、局部极值审计。只有原始nominal全部通过（不以solver容差替代）、工艺及允许材料符合、完整审计完成的结构进入Pareto。总层/物理nm厚度按所选面合计；固定层/基片不混入新增镀膜成本，inactive single-back草稿不查材料。
 8. 推荐压缩节点也保留candidate_index、source_digest、sampled_witness证据等级、continuous_certificate=false、conditional_on_assumption和完整absorption_assumption及within_search_budgets；UI推荐卡必须显著显示有限审计与未知k假设，不能脱离原报告变成无条件预算。推荐仅为真实Pareto节点列表，不把某解最少层与另一解最薄厚度拼角点。没有见证就unknown和None。未知k假设在每个候选报告中保留 `conditional_on_assumption/absorption_assumption`；名义数值通过不是实测吸收验证。
+
+快速筛查不提供未经标定的通用层数／厚度区间；条件必要下界不等于足够预算。没有可靠估计时保持未知。work.assessment_mode 为 fast_screen（合成和候选审计均关）或 verification；源验证、DP/LP 与固定面筛查仍有输入相关成本。
 
 ## 结果与停止边界
 

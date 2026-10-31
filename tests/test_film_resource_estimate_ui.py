@@ -9,7 +9,7 @@ import threading
 import time
 
 import pytest
-from PySide6.QtCore import QObject, QMetaObject, QSettings, QUrl
+from PySide6.QtCore import QObject, QMetaObject, QSettings, QUrl, Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlComponent, QQmlEngine
 from PySide6.QtQuick import QQuickWindow
@@ -66,6 +66,7 @@ def runtime(tmp_path):
 
 def select_film(controller):
     estimator = controller.resourceEstimateController
+    assert estimator.setVerificationEnabled(True)
     assert estimator.setProbeMaxEvaluations("0")  # isolate the pre-existing audit checks
     estimator.refreshMaterials()
     row = estimator.addMaterialRow()
@@ -163,7 +164,7 @@ def test_real_core_request_uses_saved_targets_and_does_not_mutate(runtime, tmp_p
     )
     design["workflow_settings"] = {"optimization": config}
     before = deepcopy(design)
-    request = module._prepare_request(design, 19, 8, threading.Event(), config["synthesis"]["material_rows"], probe_max_evaluations=0)
+    request = module._prepare_request(design, 19, 8, threading.Event(), config["synthesis"]["material_rows"], probe_max_evaluations=0, audit_candidates=True)
     assert request.synthesis_request.selected_surfaces == ("front",)
     assert request.synthesis_request.environment["front_layers"] == []
     assert request.candidate_designs[0]["front_layers"] == before["front_layers"]
@@ -478,7 +479,7 @@ def test_core_assessment_reacts_to_independent_material_pool(tmp_path):
     design["workflow_settings"] = {"optimization": config}
     def run(mid, sid):
         request = module._prepare_request(design, 1, 8, threading.Event(),
-                                          [{"material_id": mid, "optical_set_id": sid}], probe_max_evaluations=0)
+                                          [{"material_id": mid, "optical_set_id": sid}], probe_max_evaluations=0, audit_candidates=True)
         return estimate_film_resources(service, request)
     included = run("acceptance-film", "film-set")
     excluded = run("other-film", "other-set")
@@ -700,6 +701,8 @@ def test_probe_settings_validation_and_frozen_worker_inputs(runtime, tmp_path, m
     estimator.refreshMaterials()
     row = estimator.addMaterialRow()
     assert estimator.setRowMaterial(row, 'acceptance-film')
+    assert not estimator.verificationEnabled
+    assert estimator.setVerificationEnabled(True)
     assert estimator.probeMaxEvaluations == '256'
     assert estimator.probeSeeds == '0,1'
     assert not estimator.setProbeMaxEvaluations('-1')
@@ -722,7 +725,7 @@ def test_probe_settings_validation_and_frozen_worker_inputs(runtime, tmp_path, m
     entered, release = threading.Event(), threading.Event()
 
     def hold(task):
-        captured.append((task.probe_max_evaluations, task.probe_seeds))
+        captured.append((task.probe_max_evaluations, task.probe_seeds, task.audit_candidates))
         entered.set()
         while not release.is_set() and not task.cancel.is_set():
             time.sleep(.005)
@@ -732,12 +735,14 @@ def test_probe_settings_validation_and_frozen_worker_inputs(runtime, tmp_path, m
     try:
         assert estimator.start()
         assert entered.wait(1)
-        assert captured == [(7, (2, 3))]
+        assert captured == [(7, (2, 3), True)]
         from types import SimpleNamespace
         estimator._on_progress(estimator._token, SimpleNamespace(message='探测中', physical_evaluations=5, wavelength_points=60))
         assert '物理光谱计算 5 次' in estimator.status and '波长点 60 个' in estimator.status
         estimator._on_progress(estimator._token, SimpleNamespace(message='准备中'))
         assert '物理光谱计算 0 次' not in estimator.status
+        assert not estimator.setVerificationEnabled(False)
+        assert not estimator.setLayerLimit('10')
         assert not estimator.setProbeMaxEvaluations('8')
         assert not estimator.setProbeSeeds('4')
         assert source.session.snapshot().design == before
@@ -762,7 +767,7 @@ def test_real_qml_probe_drafts_flush_before_start(runtime, tmp_path, monkeypatch
     captured = []
 
     def capture(task):
-        captured.append((task.probe_max_evaluations, task.probe_seeds))
+        captured.append((task.probe_max_evaluations, task.probe_seeds, task.audit_candidates))
         task.signals.finished.emit(task.token, {'state': 'completed', 'work': {}}, None)
 
     monkeypatch.setattr(module._Task, 'run', capture)
@@ -774,6 +779,12 @@ def test_real_qml_probe_drafts_flush_before_start(runtime, tmp_path, monkeypatch
         assert estimator.setRowMaterial(row, 'acceptance-film')
         with window_runtime(app, owner) as (window, warnings):
             click(app, window, window.findChild(QQuickItem, 'filmOptimizationAlgorithmTab'))
+            toggle = window.findChild(QQuickItem, 'resourceVerificationEnabled')
+            assert toggle is not None and not toggle.property('checked')
+            toggle.forceActiveFocus()
+            QTest.keyClick(window, Qt.Key.Key_Space)
+            app.processEvents()
+            assert estimator.verificationEnabled
             budget = window.findChild(QQuickItem, 'resourceProbeMaxEvaluations')
             seeds = window.findChild(QQuickItem, 'resourceProbeSeeds')
             assert budget is not None and seeds is not None
@@ -784,7 +795,7 @@ def test_real_qml_probe_drafts_flush_before_start(runtime, tmp_path, monkeypatch
             assert QMetaObject.invokeMethod(window, 'startFromButton')
             wait_until(app, lambda: bool(captured))
             wait_until(app, lambda: not estimator.busy)
-            assert captured == [(0, (5, 9))]
+            assert captured == [(0, (5, 9), True)]
             assert not warnings, warnings
     finally:
         owner.shutdown(1000)
@@ -862,3 +873,101 @@ def test_real_bounded_probe_from_ui_reports_actual_effort(runtime, tmp_path, mon
     finally:
         owner.shutdown(1000)
         shiboken6.delete(owner)
+
+
+def test_fast_mode_ignores_invalid_probe_drafts_and_freezes_mode(runtime, tmp_path, monkeypatch):
+    from tests.film_structure_fixtures import fixture
+
+    app, source, _window, _warnings = runtime
+    service, _library, design = fixture(tmp_path / 'fast-mode')
+    source.service.materials = service.materials
+    assert source.session.request_replace_design(design)
+    estimator = source.resourceEstimateController
+    estimator.refreshMaterials()
+    row = estimator.addMaterialRow()
+    assert estimator.setRowMaterial(row, 'acceptance-film')
+    assert not estimator.verificationEnabled
+    assert not estimator.setProbeMaxEvaluations('invalid')
+    assert not estimator.setProbeSeeds('invalid')
+    captured = []
+    entered, release = threading.Event(), threading.Event()
+
+    def hold(task):
+        captured.append((task.probe_max_evaluations, task.audit_candidates))
+        entered.set()
+        while not release.is_set():
+            time.sleep(.005)
+        task.signals.finished.emit(task.token, {'state': 'completed', '_audit_candidates': False,
+                                               'work': {'probe_runs': 0}}, None)
+
+    monkeypatch.setattr(module._Task, 'run', hold)
+    try:
+        assert estimator.start()
+        assert entered.wait(1)
+        assert captured == [(0, False)]
+        assert not estimator.setVerificationEnabled(True)
+        release.set()
+        wait_until(app, lambda: not estimator.busy)
+        assert '未进行独立审计' in estimator.resultSummary
+        assert '预测：未知' in estimator.resultSummary
+        assert estimator.setVerificationEnabled(True)
+        assert estimator.stale and not estimator.start()
+        assert estimator.setVerificationEnabled(False)
+        assert estimator.start()
+        wait_until(app, lambda: not estimator.busy)
+    finally:
+        release.set()
+        wait_until(app, lambda: not estimator.busy)
+
+
+def test_real_fast_request_never_calls_probe_or_candidate_audit(runtime, tmp_path, monkeypatch):
+    from tests.film_structure_fixtures import fixture
+    from tests.test_film_optimization_restore_layout import saved_configuration
+    from coat_sim.core import film_resource_estimation as core
+
+    _app, _source, _window, _warnings = runtime
+    service, _library, design = fixture(tmp_path / 'real-fast')
+    config = saved_configuration(service, design)
+    config['objectives'][0].update(wavelength_min_nm=500., wavelength_max_nm=500.,
+                                   wavelength_samples=1, wavelength_step_nm=1.,
+                                   actual_wavelength_step_nm=0.)
+    design['workflow_settings'] = {'optimization': config}
+    request = module._prepare_request(design, 1, 8, threading.Event(), config['synthesis']['material_rows'])
+    assert request.probe_max_evaluations == 0 and request.audit_candidates is False
+    def forbidden(*_args, **_kwargs):
+        pytest.fail('fast mode called synthesis probing or candidate audit')
+    monkeypatch.setattr(core, '_explore_resources', forbidden)
+    monkeypatch.setattr(core, 'audit_frozen_synthesis_candidate', forbidden)
+    result = core.estimate_film_resources(service, request)
+    assert result.state == 'completed', result.message
+    assert not result.candidate_reports
+    assert result.estimate_state == 'not_calibrated'
+
+
+def test_optimizer_start_gate_ignores_hidden_probe_errors(runtime):
+    from coat_sim.ui.film_optimization_quick_controller import FilmOptimizationQuickController
+    app, source, _window, _warnings = runtime
+    owner = FilmOptimizationQuickController(source)
+    try:
+        wait_until(app, lambda: not owner._initial_loading, timeout=20000)
+        assert owner.setSearchMode('resource_assessment')
+        estimator = source.resourceEstimateController
+        assert not estimator.setProbeMaxEvaluations('bad')
+        assert not estimator.setProbeSeeds('bad')
+        assert owner.canStart
+        assert estimator.setVerificationEnabled(True)
+        assert not owner.canStart
+        assert estimator.setVerificationEnabled(False)
+        assert owner.canStart
+    finally:
+        owner.shutdown(1000)
+        shiboken6.delete(owner)
+
+
+def test_summary_uses_native_assessment_mode_not_candidate_audit_flag():
+    fast = module._format_summary({'state': 'completed', 'work': {'assessment_mode': 'fast_screen', 'probe_runs': 0}})
+    assert '快速评估未搜索或审计' in fast and '预测：未知' in fast
+    verification = module._format_summary({'state': 'completed', '_audit_candidates': False,
+        'work': {'assessment_mode': 'verification', 'probe_runs': 1}})
+    assert '快速评估未搜索' not in verification
+    assert '未运行合成探测' not in verification

@@ -122,15 +122,28 @@ ColumnLayout {
         wrapMode: Text.Wrap
         color: panel.themeTokens.colorTextMuted
     }
-    Label { text: "搜索试探"; color: panel.themeTokens.colorText }
+    CheckBox {
+        objectName: "resourceVerificationEnabled"
+        text: "进一步验证（合成探测）"
+        checked: panel.estimator.verificationEnabled
+        enabled: !panel.estimator.busy
+        onToggled: panel.estimator.setVerificationEnabled(checked)
+    }
+    Label {
+        Layout.fillWidth: true
+        text: "默认快速评估不运行合成探测或独立候选审计；进一步验证可能接近自动合成的计算量。"
+        wrapMode: Text.Wrap
+        color: panel.themeTokens.colorTextMuted
+    }
     RowLayout {
         Layout.fillWidth: true
+        visible: panel.estimator.verificationEnabled
         Label { text: "每种子逻辑评价上限（含审计）"; color: panel.themeTokens.colorText }
         ThemeControls.ThemeField {
             objectName: "resourceProbeMaxEvaluations"
             Accessible.name: "每种子逻辑评价上限（含审计）"
             Layout.fillWidth: true
-            enabled: !panel.estimator.busy
+            enabled: !panel.estimator.busy && panel.estimator.verificationEnabled
             text: String(panel.estimator.probeMaxEvaluations)
             function commitDraft() { return panel.estimator.setProbeMaxEvaluations(text) }
             onEditingFinished: commitDraft()
@@ -138,12 +151,13 @@ ColumnLayout {
     }
     RowLayout {
         Layout.fillWidth: true
+        visible: panel.estimator.verificationEnabled
         Label { text: "随机种子列表"; color: panel.themeTokens.colorText }
         ThemeControls.ThemeField {
             objectName: "resourceProbeSeeds"
             Accessible.name: "随机种子列表，逗号分隔"
             Layout.fillWidth: true
-            enabled: !panel.estimator.busy
+            enabled: !panel.estimator.busy && panel.estimator.verificationEnabled
             text: panel.estimator.probeSeeds
             function commitDraft() { return panel.estimator.setProbeSeeds(text) }
             onEditingFinished: commitDraft()
@@ -151,13 +165,14 @@ ColumnLayout {
     }
     Label {
         Layout.fillWidth: true
+        visible: panel.estimator.verificationEnabled
         text: "每种子各自使用上述逻辑评价上限（含审计）；0 表示只做预检和当前结构审计，不进行搜索；开启搜索至少需 2 次。种子范围 0–4294967295，以逗号分隔；不限制层数或总厚度。"
         wrapMode: Text.Wrap
         color: panel.themeTokens.colorTextMuted
     }
     Label {
         Layout.fillWidth: true
-        visible: !panel.estimator.probeSettingsValid
+        visible: panel.estimator.verificationEnabled && !panel.estimator.probeSettingsValid
         text: panel.estimator.probeSettingsError
         wrapMode: Text.Wrap
         color: panel.themeTokens.colorWarning

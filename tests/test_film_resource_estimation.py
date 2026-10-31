@@ -24,6 +24,7 @@ def Request(*args, **kwargs):
     if "probe_max_evaluations" in kwargs:
         raise TypeError("probe_max_evaluations supplied twice")
     kwargs["probe_max_evaluations"] = 0
+    kwargs.setdefault("audit_candidates", True)
     return FilmResourceEstimateRequest(*args, **kwargs)
 
 

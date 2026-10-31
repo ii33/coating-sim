@@ -35,13 +35,13 @@ from .optical_constants import prepare_optical_set
 class FilmResourceEstimateRequest:
     synthesis_request: FilmSynthesisRequest
     candidate_designs: tuple[Mapping[str, Any], ...] = ()
-    audit_candidates: bool = True
+    audit_candidates: bool = False
     layer_search_limit: int = 128
     max_seconds: float | None = None
     search_budget_reference: Mapping[str, Any] | None = None
     # Per-seed logical evaluator window (including independent audits), not a physical-call or resource cap.
     # 0 explicitly selects prechecks/current-candidate audits only.
-    probe_max_evaluations: int = 256
+    probe_max_evaluations: int = 0
     probe_seeds: tuple[int, ...] = (0, 1)
 
 
@@ -480,6 +480,8 @@ def estimate_film_resources(service: Any, request: FilmResourceEstimateRequest, 
                 any(type(seed) is not int or not 0 <= seed <= 0xFFFFFFFF for seed in request.probe_seeds) or
                 len(set(request.probe_seeds)) != len(request.probe_seeds)):
             raise ValueError('probe_seeds must be distinct uint32 integer seeds [0,4294967295]')
+        work['assessment_mode'] = ('fast_screen' if not request.probe_max_evaluations and not request.audit_candidates
+                                   else 'verification')
         work['probe_profile'] = dict(max_evaluations_per_seed=request.probe_max_evaluations,
             seeds=list(request.probe_seeds), enabled=bool(request.probe_max_evaluations),
             version='constructive_baseline_then_diverse_v1',
@@ -567,7 +569,9 @@ def estimate_film_resources(service: Any, request: FilmResourceEstimateRequest, 
             _explore_resources(service, request, sources, reference, work, reports, control, emit,
                                progress_callback)
         control.check()
-        return finish('completed', '资源评估完成；仅报告实际找到且审计通过的联合资源例子，不是最小值；未找到不代表不可实现')
+        if not request.probe_max_evaluations and not request.audit_candidates:
+            return finish('completed', '快速筛查完成；未运行自动合成或候选密网格审计。仅提供适用的必要下界，不是足够层数／厚度区间；未标定目标的预算保持未知')
+        return finish('completed', '进一步验证完成；仅报告实际找到且审计通过的联合资源例子，不是最小值；未找到不代表不可实现')
     except _StructureCancelled:
         return finish(control.state(), '资源评估已取消或到时；已完成审计的见证保留，未完成不判失败')
     except (ValueError, TypeError, KeyError, ArithmeticError) as exc:

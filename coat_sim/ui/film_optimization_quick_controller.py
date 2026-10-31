@@ -3323,7 +3323,8 @@ class FilmOptimizationQuickController(QObject):
                         and not self._pending_edit_error)
         if self._search_mode == "resource_assessment":
             estimator = cast(Any, self.resourceEstimateController)
-            return bool(common_ready and estimator is not None and estimator.limitValid and estimator.probeSettingsValid)
+            return bool(common_ready and estimator is not None and estimator.limitValid
+                        and (not estimator.verificationEnabled or estimator.probeSettingsValid))
         if self._search_mode == "ideal_sensitivity":
             return bool(common_ready and self.session is not None)
         if self._search_mode == "automatic_repair":

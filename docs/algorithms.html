@@ -4079,17 +4079,19 @@ R = R前 + T前 T反 R背 S² / D，T = T前 T背 S / D。
 <p class="source"><strong>实现：</strong>film_synthesis_surfaces.py、film_synthesis_physics.py、film_auto_synthesis.py、film_synthesis_batch_needle.py、film_synthesis_audit.py、film_synthesis_continuation.py 及核心 IO/jobs/数值算子。物理来源：<a href="https://arxiv.org/abs/1603.02720">Byrnes, Multilayer optical calculations</a>；既有相干/非相干膜块组合见 film_optics.py。选择归一、模板共享上限、调度与身份是本项目约定，未找到外部依据，仅为本项目实现。有限差分回归不构成实验或连续域证明。</p>
 </section>
 <section id="film-resource-estimation-20261030">
-<h2>14be 通用目标资源探测与条件必要界</h2>
-<p>更新：2026-10-31。用途：读取冻结原指标、候选材料 n/k、完整正背面环境与当前膜系，使用真实构造搜索和局部厚度优化寻找资源见证，并显示独立审计的层数—物理厚度联合节点。AR、HR、带通、分束、多光谱等目标均保留原始逐点/均值约束交给同一原生评分与审计；目标类别不构成可达承诺。评估不提交主优化、不改用户处方，也不是已标定预算预测器。输入/状态/取消见<a href="film-resource-estimation-core-contract.md">核心契约</a>。所有厚度与波长为 nm、角为度、R/T为0..1；选面是物理 front/back，不随入射面改名。只统计所选镀膜，基片和固定层另列。</p>
+<h2>14be 快速资源筛查与可选通用目标验证</h2>
+<p>更新：2026-10-31。用途：默认读取冻结原指标、候选材料 n/k、完整正背面环境与当前膜系，仅执行适用条件必要界和固定面筛查。显式开启进一步验证后，才使用真实构造搜索和局部厚度优化寻找资源见证，并显示独立审计的层数—物理厚度联合节点。AR、HR、带通、分束、多光谱等目标均保留原始逐点/均值约束交给同一原生评分与审计；目标类别不构成可达承诺。评估不提交主优化、不改用户处方，也不是已标定预算预测器。输入/状态/取消见<a href="film-resource-estimation-core-contract.md">核心契约</a>。所有厚度与波长为 nm、角为度、R/T为0..1；选面是物理 front/back，不随入射面改名。只统计所选镀膜，基片和固定层另列。</p>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 190" role="img" aria-label="资源评估的数据流，数值必要界与完整候选审计汇入证据结果，不写回设计">
 <rect x="10" y="45" width="190" height="95" fill="#e9f4f1" stroke="#087f78"/><text x="105" y="80" text-anchor="middle" font-size="18">冻结指标 材料 正背面</text><text x="105" y="111" text-anchor="middle" font-size="16">严格 n/k 与原工艺</text>
 <path d="M200 90H255M255 90V35H300M255 90V150H300" fill="none" stroke="#50616a" stroke-width="2"/>
 <rect x="300" y="5" width="250" height="65" fill="#fff2dd" stroke="#b56527"/><text x="425" y="32" text-anchor="middle" font-size="17">适用必要界及固定面数值门</text><text x="425" y="56" text-anchor="middle" font-size="15">不能当作足够预算或认证</text>
-<rect x="300" y="115" width="250" height="65" fill="#e9f4f1" stroke="#087f78"/><text x="425" y="143" text-anchor="middle" font-size="17">当前/构造候选完整 TMM 审计</text><text x="425" y="168" text-anchor="middle" font-size="15">nominal 与 solver 容差分离</text>
+<rect x="300" y="115" width="250" height="65" fill="#e9f4f1" stroke="#087f78"/><text x="425" y="143" text-anchor="middle" font-size="17">可选：构造探测与 TMM 审计</text><text x="425" y="168" text-anchor="middle" font-size="15">nominal 与 solver 容差分离</text>
 <path d="M550 35H610V90H660M550 150H610V90" fill="none" stroke="#50616a" stroke-width="2"/>
 <rect x="660" y="45" width="250" height="95" fill="#e9f4f1" stroke="#087f78"/><text x="785" y="78" text-anchor="middle" font-size="17">Pareto 实际见证 或 unknown</text><text x="785" y="109" text-anchor="middle" font-size="15">不改处方 不改优化约束</text></svg>
-<p class="caption">图14be-1：冻结源后，适用的必要界与原生构造/局部优化候选分别进入不同证据栏；只有完整候选通过原指标审计后才进入实际见证栏。评估独占工作状态。总层/总厚搜索帽仅比较，真实单层最薄/最厚工艺保留。没有实测或训练依据时不输出伪90%区间。</p>
-<h3>通用目标探测：先产生真实处方，再判断资源</h3>
+<p class="caption">图14be-1：冻结源后默认只走必要界筛查；显式开启验证才走下方构造/局部优化候选分支，两类结果分别进入不同证据栏；只有完整候选通过原指标审计后才进入实际见证栏。评估独占工作状态。总层/总厚搜索帽仅比较，真实单层最薄/最厚工艺保留。没有实测或训练依据时不输出伪90%区间。</p>
+<h3>默认快速路径与可选验证</h3>
+<p><span class="tag local">本项目约定</span>默认路径没有通用已标定层数／厚度预测模型：符合条件时显示必要下界，其他目标明确为未知，不为显示数字而把 HR 公式外推为 AR、分束、带通或多光谱预算。必要下界不是足够预算区间。可选路径是昂贵的真实求解验证，不称快速预测。两种路径共享冻结源和原目标；切换模式使旧显示结果过期。</p>
+<h3>可选通用目标探测：先产生真实处方，再判断资源</h3>
 <p><span class="tag local">本项目约定</span>对冻结请求复用 <code>synthesize_film_design</code> 的 hybrid 路线：当前/显式种子、适用的经典结构先验、原生自适应生长与局部厚度优化共享完整物理评价器。先验仅是未评分起点，不以 HR 四分之一波堆栈近似 AR、带通或分束指标；不适用的先验不强行套用。首个种子始终保留无显式起点的独立原生构造分支；后续种子可带非空当前/显式起点，空膜系只作为原生基线，避免显式种子关闭原生高反/匹配先验。不同随机种子给不同的有限搜索分支，不代表随机覆盖率。资源评估只接收本轮原生求解器对冻结全部原始目标重新完成的独立审计冠军，核对处方与来源身份后保留；不重复计费相同审计。终点候选若无匹配的完整审计，仅作未审计诊断，不能沿用训练分数或旧通过标签。</p>
 <pre>freeze(original objectives, n/k sources, environment, fixed surfaces, process constraints)
 collect(current candidates)
@@ -4104,7 +4106,7 @@ return feasible observed Pareto, failed/near-best diagnostics, necessary screens
 <div class="formula">N(x)=Σ<sub>s∈selected</sub> number_of_layers(x,s)，D(x)=Σ<sub>s∈selected,j</sub> d<sub>sj</sub>(x) [nm]<br>W={x：原始名义指标审计通过 ∧ 允许材料及工艺通过}；P={x∈W：不存在 y∈W 满足 N(y)≤N(x), D(y)≤D(x)，且至少一项严格较小}</div>
 <p>这里 <em>P</em> 仅为本次实际找到的可行见证前沿；每个节点均对应同一真实膜系、物理摘要和源摘要。节点是“已找到的资源上界示例”，不是全局最少层数或最薄厚度的证书；不将不同设计分别最小的 N 与 D 拼成虚构节点。不合格/近最好候选单独保留诊断，不能参与可行 Pareto。空 <em>W</em> 只能说明本次数值探索尚未找到完整通过的见证，不能推出原问题不可行。</p>
 <p><strong>三类证据不得混合：</strong>下述必要界仅在各自理想化适用条件内提供数值筛查；<em>P</em> 是实际处方的有限审计见证；未标定预测仍为 <code>not_calibrated</code>，不输出成功概率、统计覆盖率或置信区间。不存在适用必要界时，通用目标探测仍可运行；找到见证也不把条件必要界升级为充分条件。</p>
-<p><strong>默认与可调成本：</strong><code>probe_max_evaluations=256</code> 为每个探测种子的逻辑评价（含审计）窗口，<code>probe_seeds=(0,1)</code> 可确定性重放，首分支保留未随机化的原生构造基准，后续分支启用由种子控制的原生模板厚度随机化，或使用非空当前/显式起点；这个混合策略避免全部随机化丢失已知构造基准，仍不保证改善；种子沿用原生 uint32 范围 [0,4294967295]，列表不另加数量帽。窗口设为0仅审计当前/显式候选。该数值是可编辑计算努力的项目默认，不是新增层数、总厚度或物理可达边界。独立审计物理调用另计，不能把逻辑评价（含审计）窗口冒充总物理调用上限。原优化的总层数/总厚度搜索帽仅作结果对照，不传为必要界或偷偷限制构造探测；单层厚度等真实制造约束仍保留。无种子覆盖或收敛保证，耗尽窗口、资源中止或局部失败均不能称无解。</p>
+<p><strong>默认与可调成本：</strong>默认 <code>probe_max_evaluations=0</code>、<code>audit_candidates=false</code>，不调用自动合成、局部厚度优化或候选密网格审计。快速路径仍做严格源验证、必要界 DP/LP 和适用固定面 TMM，复杂输入仍有随材料、层数枚举窗口及目标采样增长的成本，不承诺固定毫秒耗时。选择“进一步验证（合成探测）”后 UI 初始 <code>probe_max_evaluations=256</code>，为每个探测种子的逻辑评价（含审计）窗口，<code>probe_seeds=(0,1)</code> 可确定性重放，首分支保留未随机化的原生构造基准，后续分支启用由种子控制的原生模板厚度随机化，或使用非空当前/显式起点；这个混合策略避免全部随机化丢失已知构造基准，仍不保证改善；种子沿用原生 uint32 范围 [0,4294967295]，列表不另加数量帽。窗口设为0关闭合成；仅当 <code>audit_candidates=true</code> 时才审计当前/显式候选。该数值是可编辑计算努力的项目默认，不是新增层数、总厚度或物理可达边界。独立审计物理调用另计，不能把逻辑评价（含审计）窗口冒充总物理调用上限。原优化的总层数/总厚度搜索帽仅作结果对照，不传为必要界或偷偷限制构造探测；单层厚度等真实制造约束仍保留。无种子覆盖或收敛保证，耗尽窗口、资源中止或局部失败均不能称无解。</p>
 <div class="formula">χ(R)=atanh √R； C<sub>am</sub>=π²(n<sub>m</sub>−a)²/(2a)； B(a)=∫<sub>pointwise HR</sub> ln cosh max(χ(R<sub>min</sub>)−χ<sub>steps</sub>(a),0)dλ<br>max Bᵀy，Cᵀy≤1，y≥0；χ<sub>steps</sub>=½|ln(a/n₀)|+½|ln(a/n<sub>s</sub>)|</div>
 <p>厚度LP仅为无损、无色散、正入射、单面半空间理想模型，常n表只作该理想化诊断。重叠HR取逐点严格门槛的最大值，谱线无正带宽厚度要求。mean HR不能逐点套均值。默认有限背景为外界/候选n及中点；实现先用(n−a)/sqrt(a)构造系数并归一LP，范围错误或结构零行微正B只报numerical_unknown，不把舍入当物理无解；双精度对偶缩放不是区间认证，claim_level 为 model_numerical_screening。</p>
 <div class="formula">p<sub>m</sub>=√(n<sub>m</sub>²−h²)，h=n₀sinθ； Y<sub>s</sub>=p，Y<sub>p</sub>=n²/p；α<sub>ab</sub>=½|lnY<sub>b</sub>−lnY<sub>a</sub>|<br>u₁(m)=α₀m；u<sub>l</sub>(m)=max<sub>a</sub>[u<sub>l−1</sub>(a)+α<sub>am</sub>]；R≤tanh² max(α₀s,max<sub>l≤N,m</sub>[u<sub>l</sub>(m)+α<sub>ms</sub>])</div>
