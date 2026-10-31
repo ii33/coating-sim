@@ -19,6 +19,7 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 import pytest
 from PySide6.QtCore import QCoreApplication, QObject, QSettings, Signal
 from PySide6.QtGui import QGuiApplication
+from PySide6.QtTest import QSignalSpy
 
 from coat_sim.core.film_objective_criteria import FilmObjectiveConstraint
 from coat_sim.core.film_optimization import (
@@ -293,7 +294,7 @@ def test_old_operation_cannot_apply_or_consume_new_attempt_cancel(review):
     assert review.source.session.snapshot().design_revision == review.base.design_revision + 1
 
 
-def test_same_design_cancel_preserves_dirty_revision_undo_and_refreshes_current_revision_once(review):
+def test_same_design_cancel_preserves_dirty_revision_undo_without_refresh(review):
     arm(review)
     review.controller.cancelOptimization()
     result = cancelled_result(review, same=True)
@@ -304,10 +305,18 @@ def test_same_design_cancel_preserves_dirty_revision_undo_and_refreshes_current_
     assert after.dirty == review.base.dirty
     assert not review.saves
     assert sha256(review.path.read_bytes()).hexdigest() == review.disk_sha256
-    assert review.refreshes == [{'design': dict(after.design), 'revision': after.design_revision}]
+    assert not review.refreshes
     deliver(review, result)
-    assert len(review.refreshes) == 1
+    assert not review.refreshes
     assert not review.source.canUndoOptimizedDesign
+    assert review.controller._candidate_applied and not review.controller._candidate_saved
+    assert review.controller.canSave and not review.controller.canApply
+    assert '原设计相同' in review.controller.statusText
+    assert '未保存' not in review.controller.statusText and '刷新' not in review.controller.statusText
+    confirmation = QSignalSpy(review.controller.closeConfirmationRequested)
+    closed = QSignalSpy(review.controller.closeConfirmed)
+    review.controller.requestClose()
+    assert confirmation.count() == 0 and closed.count() == 1
 
 
 def test_same_design_cancel_preserves_an_existing_single_undo(review):
@@ -326,11 +335,86 @@ def test_same_design_cancel_preserves_an_existing_single_undo(review):
     after = review.source.session.snapshot()
     assert after.design_revision == review.base.design_revision
     assert after.design == review.base.design and after.dirty == review.base.dirty
-    assert len(review.refreshes) == 1
+    assert not review.refreshes
     assert review.source.canUndoOptimizedDesign
     assert review.source.undoOptimizedDesign()
     assert review.source.session.snapshot().design == original.design
     assert not review.source.undoOptimizedDesign()
+
+
+@pytest.mark.parametrize('changed', [False, True])
+def test_cancelled_synthesis_compares_restored_source_metadata(review, monkeypatch, changed):
+    """The raw worker value differs even when its effective draft does not."""
+    from coat_sim.core.film_physical_generator import freeze_synthesis_editable_snapshot
+
+    design = deepcopy(dict(review.base.design))
+    design['expression']['symbols']['H'] = {
+        'material_id': '', 'optical_set_id': '',
+        'thickness': {'value': 1., 'unit': 'qw'}, 'note': 'source-owned symbol',
+    }
+    # Bypass the fixture's save spy only to prepare this private source file.
+    type(review.service).save(review.service, review.path, design, overwrite=True)
+    assert review.source.session.request_open_file(str(review.path))
+    review.base = review.source.session.snapshot()
+    review.disk_sha256 = sha256(review.path.read_bytes()).hexdigest()
+    review.request = freeze_film_optimization_request(review.service, replace(
+        review.request, design_snapshot=review.base.design,
+        design_revision=review.base.design_revision, frozen_material_snapshot=None))
+    assert not review.base.dirty
+    result = cancelled_result(review, same=True)
+    candidate = deepcopy(dict(result.best_design))
+    candidate['expression'] = {'text': '', 'symbols': {}, 'in_sync': False}
+    candidate.pop('workflow_settings', None)
+    if changed:
+        candidate['front_layers'][0]['thickness']['value'] += 10.
+    assert candidate != review.base.design
+    result = replace(result, best_design=candidate)
+    arm(review)
+    controller = review.controller
+    controller._attempt_search_mode = 'synthesis'
+    controller._result = result
+    controller._result_application_eligible = True
+    controller._synthesis_payload = {'result': {'candidate_design': candidate}}
+    controller._synthesis_editable_snapshot = freeze_synthesis_editable_snapshot(
+        review.service, review.base.design, review.request.frozen_material_snapshot)
+    # The scoring/audit envelope is exercised separately; retain the real
+    # material, source identity, revision, edit epoch and closure checks here.
+    monkeypatch.setattr(controller, '_cancel_candidate_verified', lambda: True)
+    assert controller._cancel_material_references_unchanged(candidate)
+    assert controller._apply_cancel_candidate_once(), controller.error
+    after = review.source.session.snapshot()
+    assert after.design['expression'] == review.base.design['expression']
+    assert after.design.get('workflow_settings') == review.base.design.get('workflow_settings')
+    assert after.design_revision == review.base.design_revision + int(changed)
+    assert after.dirty is changed
+    assert review.source.canUndoOptimizedDesign is changed
+    assert len(review.refreshes) == int(changed)
+    if changed:
+        assert after.design['front_layers'][0]['thickness']['value'] == candidate['front_layers'][0]['thickness']['value']
+        assert review.refreshes[0]['design'] == after.design
+    else:
+        assert after.design == review.base.design
+    assert not controller._apply_cancel_candidate_once()
+    assert review.source.session.snapshot().design_revision == after.design_revision
+    assert len(review.refreshes) == int(changed)
+
+
+def test_cancel_noop_still_rejects_invalid_material_closure(review):
+    before = review.source.session.snapshot()
+    accepted, changed = review.source.session.apply_cancelled_optimized_design(
+        deepcopy(dict(before.design)), before.design_revision, frozen_material_snapshot={})
+    assert not accepted and not changed
+    assert_no_write(review, before)
+    assert not review.source.canUndoOptimizedDesign
+
+
+def test_cancel_noop_still_rejects_stale_revision(review):
+    before = review.source.session.snapshot()
+    accepted, changed = review.source.session.apply_cancelled_optimized_design(
+        deepcopy(dict(before.design)), before.design_revision - 1)
+    assert not accepted and not changed
+    assert_no_write(review, before)
+    assert not review.source.canUndoOptimizedDesign
 
 
 def test_normal_optimization_cancel_rejects_replaced_layer_identity(review):

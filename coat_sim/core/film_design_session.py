@@ -662,14 +662,31 @@ class FilmDesignEditSession:
         draft edit and retains the current path so the existing save/overwrite
         flow remains authoritative.
         """
+        accepted, _changed = self._apply_optimized_design(
+            candidate_design, base_design_revision,
+            frozen_material_snapshot=frozen_material_snapshot, skip_unchanged=False)
+        return accepted
+
+    def apply_cancelled_optimized_design(self, candidate_design: Mapping[str, Any],
+                                         base_design_revision: int, *,
+                                         frozen_material_snapshot: Mapping[str, Any] | None = None) -> tuple[bool, bool]:
+        """Validate and atomically report (accepted, changed) for a cancel candidate."""
+        return self._apply_optimized_design(
+            candidate_design, base_design_revision,
+            frozen_material_snapshot=frozen_material_snapshot, skip_unchanged=True)
+
+    def _apply_optimized_design(self, candidate_design: Mapping[str, Any],
+                                base_design_revision: int, *,
+                                frozen_material_snapshot: Mapping[str, Any] | None,
+                                skip_unchanged: bool) -> tuple[bool, bool]:
         with self._lock:
             if (self._pending_confirmation is not None or self._expression_busy
                     or type(base_design_revision) is not int
                     or base_design_revision != self._design_revision):
-                return False
+                return False, False
             if not isinstance(candidate_design, Mapping):
                 self._set_error("optimized candidate must be a design mapping")
-                return False
+                return False, False
             try:
                 normalized = self.service.validate(deepcopy(dict(candidate_design)))
                 normalized = self._preserve_workflow_configuration(normalized)
@@ -680,10 +697,16 @@ class FilmDesignEditSession:
                     normalized, frozen_material_snapshot)
             except Exception as exc:
                 self._set_error(str(exc))
-                return False
+                return False, False
             if not isinstance(normalized, Mapping):
                 self._set_error("optimized candidate validation returned no design")
-                return False
+                return False, False
+
+            # Compare the actual source-owned value only after all validation and
+            # metadata restoration, under the same lock as the revision check.
+            # A no-op must preserve any existing undo and material context.
+            if skip_unchanged and normalized == self._design:
+                return True, False
 
             # Commit one complete validated value while holding the same lock
             # used by every draft mutation and by snapshot().
@@ -703,7 +726,7 @@ class FilmDesignEditSession:
             if expression.get("text"):
                 categories.add("expression")
             self._notify(*categories)
-            return True
+            return True, True
 
     def can_undo_optimized_design(self, expected_revision: int) -> bool:
         with self._lock:

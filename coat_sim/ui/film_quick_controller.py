@@ -1553,6 +1553,28 @@ class FilmDesignQuickController(QObject):
             self.optimizationApplied.emit()
         return accepted
 
+    def applyCancelledOptimizedDesign(self, candidate_design: dict,
+                                      expected_revision: int, expected_edit_epoch: int,
+                                      frozen_material_snapshot: dict | None) -> tuple[bool, bool]:
+        """Apply a verified cancel candidate, distinguishing a validated no-op."""
+        if (self.session is None or self._source_closed
+                or not self._generator_project_current()
+                or expected_edit_epoch != self._pending_edit_epoch):
+            return False, False
+        try:
+            accepted, changed = self.session.apply_cancelled_optimized_design(
+                candidate_design, expected_revision,
+                frozen_material_snapshot=frozen_material_snapshot)
+        except (ValueError, TypeError, OSError):
+            return False, False
+        if accepted and changed:
+            self._optimization_undo_revision = self.session.snapshot().design_revision
+            self._optimization_undo_epoch = self._pending_edit_epoch
+            self.optimizationUndoChanged.emit()
+            self.changed.emit()
+            self.optimizationApplied.emit()
+        return accepted, changed
+
     @Property(bool, notify=optimizationUndoChanged)
     def canUndoOptimizedDesign(self) -> bool:
         return bool(not self._source_closed and self.session is not None

@@ -1188,6 +1188,7 @@ class FilmOptimizationQuickController(QObject):
         self._baseline: dict[tuple[int, float], dict] = {}
         self._candidate_saved = False
         self._candidate_applied = False
+        self._cancel_candidate_noop = False
         self._search_mode = "fixed_topology"
         self._reduction_mode = "combined"
         self._reduction_limits: dict[str, int | None] = {"max_iterations": None, "max_evaluations": None}
@@ -2660,6 +2661,7 @@ class FilmOptimizationQuickController(QObject):
         self._completion_handoff_done = False
         self._candidate_saved = False
         self._candidate_applied = False
+        self._cancel_candidate_noop = False
         self._progress = 0.0
         self._progress_iteration = self._progress_evaluations = 0
         self._progress_best_error = None
@@ -3263,6 +3265,8 @@ class FilmOptimizationQuickController(QObject):
                 if self._result_terminal_state == "已取消" and self._candidate_applied:
                     if self._error:
                         return self._error
+                    if self._cancel_candidate_noop:
+                        return "优化已取消；最佳候选与原设计相同，原设计保持不变。"
                     return "优化已取消；最佳候选已应用到当前膜系，未保存，并已请求刷新光谱。"
                 status = (f"优化{self._result_terminal_state}；已保留队列验证的最佳候选，"
                           "可查看或另存，不能应用。")
@@ -3300,6 +3304,8 @@ class FilmOptimizationQuickController(QObject):
             return "按波段内离散波长和所列角度采样点进行优化。"
         if self._result.state == "cancelled":
             if self._candidate_applied:
+                if self._cancel_candidate_noop:
+                    return "优化已取消；最佳候选与原设计相同，原设计保持不变。"
                 return "优化已取消；最佳候选已应用到当前膜系，未保存，并已请求刷新光谱。"
             return "优化已取消；最佳候选仍可预览或另存。"
         if self._result.targets_met:
@@ -6272,6 +6278,7 @@ class FilmOptimizationQuickController(QObject):
         self._baseline = {}
         self._candidate_saved = False
         self._candidate_applied = False
+        self._cancel_candidate_noop = False
         self._error = ""
         self._progress = 0.0
         self._progress_iteration = self._progress_evaluations = 0
@@ -6573,23 +6580,19 @@ class FilmOptimizationQuickController(QObject):
             self._error = "计算期间源设计或项目版本已变化；候选已保留供查看，未自动应用。"
             self.changed.emit()
             return False
-        try:
-            current = cast(Any, self.service).validate(deepcopy(dict(snapshot.design)))
-            candidate = cast(Any, self.service).validate(deepcopy(dict(self._result.best_design)))
-            same_design = current == candidate
-        except (ValueError, TypeError, KeyError, AttributeError):
-            same_design = False
-        if same_design:
-            self._candidate_applied = True
-            self._load_source(preserve_variables=True)
-        else:
-            self._operation_edit_epoch = self._attempt_edit_epoch
-            if not self._apply_candidate():
-                self._source_stale = True
-                self._error = self._error or "候选未通过源版本校验；原设计保持不变。"
-                self.changed.emit()
-                return False
+        self._operation_edit_epoch = self._attempt_edit_epoch
+        outcome: list[bool] = []
+        if not self._apply_candidate(cancel_changed=outcome):
+            self._source_stale = True
+            self._error = self._error or "候选未通过源版本校验；原设计保持不变。"
+            self.changed.emit()
+            return False
         self._capture_continuation_postapply()
+        if not outcome[0]:
+            self._progress_text = "取消后的最佳候选与原设计相同；原设计保持不变。"
+            self.changed.emit()
+            self.plotDataChanged.emit()
+            return True
         self._progress_text = "取消后已将当前最佳候选应用到原设计并请求刷新光谱；未保存文件。"
         opener = getattr(self._source_controller, "openSimulationAndCalculate", None)
         try:
@@ -6609,7 +6612,8 @@ class FilmOptimizationQuickController(QObject):
         fallback = search.get("numeric_zero_fallback")
         if not isinstance(fallback, Mapping) or not fallback.get("unpublished_better_trials"):
             return ""
-        disposition = ("已应用此前完整候选。" if self._candidate_applied else
+        disposition = ("此前完整候选与原设计相同。" if self._candidate_applied and self._cancel_candidate_noop else
+                       "已应用此前完整候选。" if self._candidate_applied else
                        "已保留此前完整候选；原设计保持不变。" if fallback.get("returned_training_complete") else
                        "没有完整候选；原设计保持不变。")
         reason = ("未通过光谱等价检查" if fallback.get("spectral_equivalence_rejections") else "未完成清理复算")
@@ -6732,6 +6736,7 @@ class FilmOptimizationQuickController(QObject):
         self._operation_edit_epoch = None
         self._baseline = {}
         self._candidate_saved = self._candidate_applied = False
+        self._cancel_candidate_noop = False
         self._source_stale = True
         self._plot_objective = 0
         self._plot_angle = float(request.objectives[0].angles_deg[0])
@@ -6802,6 +6807,7 @@ class FilmOptimizationQuickController(QObject):
         self._operation_edit_epoch = None
         self._baseline = {}
         self._candidate_saved = self._candidate_applied = False
+        self._cancel_candidate_noop = False
         self._source_stale = True
         self._plot_objective = 0
         self._plot_angle = float(request.objectives[0].angles_deg[0])
@@ -7303,7 +7309,7 @@ class FilmOptimizationQuickController(QObject):
             return False
         return self._apply_candidate()
 
-    def _apply_candidate(self) -> bool:
+    def _apply_candidate(self, *, cancel_changed: list[bool] | None = None) -> bool:
         if not self._project_current():
             self._error = "来源项目已关闭或重新打开；候选没有回写。"
             self.changed.emit()
@@ -7326,9 +7332,14 @@ class FilmOptimizationQuickController(QObject):
             self._error = "来源设计窗口已关闭；没有修改原设计。"
             self.changed.emit()
             return False
+        if cancel_changed is not None and self._reduction_result is not None:
+            self._error = "精简候选不支持取消后自动应用。"
+            self.changed.emit()
+            return False
         # The design controller checks both the committed revision and any
         # text still being edited before delegating the atomic session update.
         apply = getattr(self._source_controller,
+                        "applyCancelledOptimizedDesign" if cancel_changed is not None else
                         "applyReducedDesign" if self._reduction_result is not None else
                         "applySynthesizedDesign" if self._synthesis_payload is not None else "applyOptimizedDesign", None)
         if not callable(apply):
@@ -7342,7 +7353,20 @@ class FilmOptimizationQuickController(QObject):
             return False
         try:
             args = (deepcopy(dict(result.best_design)), int(result.design_revision), int(edit_epoch))
-            if self._reduction_result is not None:
+            if cancel_changed is not None:
+                closure = None
+                if self._synthesis_payload is not None:
+                    if self._frozen_request is None or self._frozen_request.frozen_material_snapshot is None:
+                        raise ValueError("Synthesis candidate has no frozen optical closure")
+                    closure = self._synthesis_editable_snapshot
+                    if closure is None:
+                        raise ValueError("Synthesis candidate has no submission-time editable material closure")
+                    closure = deepcopy(closure)
+                accepted, changed = apply(*args, closure)
+                if accepted:
+                    cancel_changed.append(bool(changed))
+                    self._cancel_candidate_noop = not changed
+            elif self._reduction_result is not None:
                 if not self._reduction_eligible():
                     raise ValueError("Reduction candidate has not passed complete independent audit")
                 if (self._attempt_full_request != self._reduction_result.frozen_request
@@ -7386,7 +7410,8 @@ class FilmOptimizationQuickController(QObject):
             self.changed.emit()
             return False
         self._candidate_applied = True
-        self._candidate_saved = True
+        if cancel_changed is None or cancel_changed[0]:
+            self._candidate_saved = True
         self._error = ""
         self._load_source(preserve_variables=True)
         self.changed.emit()
