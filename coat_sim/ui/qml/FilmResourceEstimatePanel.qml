@@ -17,6 +17,31 @@ ColumnLayout {
         wrapMode: Text.Wrap
         color: panel.themeTokens.colorTextMuted
     }
+    Label { text: "评估入口"; color: panel.themeTokens.colorText }
+    ThemeControls.ThemeComboBox {
+        objectName: "resourceAssessmentMode"
+        Accessible.name: "评估入口"
+        Layout.fillWidth: true
+        enabled: !panel.estimator.busy
+        model: [
+            { id: "quick_prediction", name: "快速预估" },
+            { id: "necessary_diagnostics", name: "必要条件诊断" },
+            { id: "synthesis_verification", name: "合成验证" }
+        ]
+        textRole: "name"
+        currentIndex: model.findIndex(item => item.id === panel.estimator.mode)
+        onActivated: { const item = model[currentIndex]; if (item) panel.estimator.setMode(item.id) }
+    }
+    Label {
+        Layout.fillWidth: true
+        text: panel.estimator.mode === "quick_prediction"
+              ? "快速预估使用校准模型预测联合层数与厚度；不等于合成验证。"
+              : panel.estimator.mode === "necessary_diagnostics"
+                ? "必要条件诊断仅计算适用的必要界，不进行合成探测或候选审计。"
+                : "合成验证进行有限预算探测及独立审计，计算量可能接近自动合成。"
+        wrapMode: Text.Wrap
+        color: panel.themeTokens.colorTextMuted
+    }
     Label {
         Layout.fillWidth: true
         text: "候选膜料与光学数据集（本页独立草稿；仅在当前设计会话保留）。基片选择也是本页独立草稿；目标、选面、未知 k 策略及工艺参数来自当前优化设置。"
@@ -106,11 +131,12 @@ ColumnLayout {
     }
     RowLayout {
         Layout.fillWidth: true
+        visible: panel.estimator.mode !== "quick_prediction"
         Label { text: "点频必要界枚举至层数"; color: panel.themeTokens.colorText }
         ThemeControls.ThemeField {
             objectName: "filmResourceEstimateLayerLimit"
             Layout.preferredWidth: 90
-            enabled: !panel.estimator.busy
+            enabled: !panel.estimator.busy && panel.estimator.mode !== "quick_prediction"
             text: String(panel.estimator.layerLimit)
             function commitDraft() { return panel.estimator.setLayerLimit(text) }
             onEditingFinished: commitDraft()
@@ -118,32 +144,20 @@ ColumnLayout {
     }
     Label {
         Layout.fillWidth: true
+        visible: panel.estimator.mode !== "quick_prediction"
         text: "仅控制评估枚举范围，不是设计或优化限制；超出范围为 unknown。"
-        wrapMode: Text.Wrap
-        color: panel.themeTokens.colorTextMuted
-    }
-    CheckBox {
-        objectName: "resourceVerificationEnabled"
-        text: "进一步验证（合成探测）"
-        checked: panel.estimator.verificationEnabled
-        enabled: !panel.estimator.busy
-        onToggled: panel.estimator.setVerificationEnabled(checked)
-    }
-    Label {
-        Layout.fillWidth: true
-        text: "默认快速评估不运行合成探测或独立候选审计；进一步验证可能接近自动合成的计算量。"
         wrapMode: Text.Wrap
         color: panel.themeTokens.colorTextMuted
     }
     RowLayout {
         Layout.fillWidth: true
-        visible: panel.estimator.verificationEnabled
+        visible: panel.estimator.mode === "synthesis_verification"
         Label { text: "每种子逻辑评价上限（含审计）"; color: panel.themeTokens.colorText }
         ThemeControls.ThemeField {
             objectName: "resourceProbeMaxEvaluations"
             Accessible.name: "每种子逻辑评价上限（含审计）"
             Layout.fillWidth: true
-            enabled: !panel.estimator.busy && panel.estimator.verificationEnabled
+            enabled: !panel.estimator.busy && panel.estimator.mode === "synthesis_verification"
             text: String(panel.estimator.probeMaxEvaluations)
             function commitDraft() { return panel.estimator.setProbeMaxEvaluations(text) }
             onEditingFinished: commitDraft()
@@ -151,13 +165,13 @@ ColumnLayout {
     }
     RowLayout {
         Layout.fillWidth: true
-        visible: panel.estimator.verificationEnabled
+        visible: panel.estimator.mode === "synthesis_verification"
         Label { text: "随机种子列表"; color: panel.themeTokens.colorText }
         ThemeControls.ThemeField {
             objectName: "resourceProbeSeeds"
             Accessible.name: "随机种子列表，逗号分隔"
             Layout.fillWidth: true
-            enabled: !panel.estimator.busy && panel.estimator.verificationEnabled
+            enabled: !panel.estimator.busy && panel.estimator.mode === "synthesis_verification"
             text: panel.estimator.probeSeeds
             function commitDraft() { return panel.estimator.setProbeSeeds(text) }
             onEditingFinished: commitDraft()
@@ -165,14 +179,14 @@ ColumnLayout {
     }
     Label {
         Layout.fillWidth: true
-        visible: panel.estimator.verificationEnabled
+        visible: panel.estimator.mode === "synthesis_verification"
         text: "每种子各自使用上述逻辑评价上限（含审计）；0 表示只做预检和当前结构审计，不进行搜索；开启搜索至少需 2 次。种子范围 0–4294967295，以逗号分隔；不限制层数或总厚度。"
         wrapMode: Text.Wrap
         color: panel.themeTokens.colorTextMuted
     }
     Label {
         Layout.fillWidth: true
-        visible: panel.estimator.verificationEnabled && !panel.estimator.probeSettingsValid
+        visible: panel.estimator.mode === "synthesis_verification" && !panel.estimator.probeSettingsValid
         text: panel.estimator.probeSettingsError
         wrapMode: Text.Wrap
         color: panel.themeTokens.colorWarning
@@ -191,7 +205,7 @@ ColumnLayout {
         color: panel.themeTokens.colorText
         wrapMode: Text.Wrap
     }
-    CheckBox { id: detailsToggle; text: "显示技术详情"; visible: panel.estimator.technicalDetails.length > 0 }
+    CheckBox { id: detailsToggle; objectName: "filmResourceEstimateDetailsToggle"; text: "显示技术详情"; visible: panel.estimator.technicalDetails.length > 0 }
     Label {
         objectName: "filmResourceEstimateTechnicalDetails"
         Layout.fillWidth: true

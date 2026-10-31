@@ -24,6 +24,9 @@ _DOCUMENTS = (
     "refractiveindex-browser-contract.md",
     "vendor-optical-catalog-contract.md",
     "reference-sources.md",
+    "film-resource-estimation-core-contract.md",
+    "film-resource-estimation-ui-contract.md",
+    "film-resource-prediction-core-contract.md",
 )
 
 
@@ -65,6 +68,10 @@ def test_application_resources_snapshot_and_data_mapping_include_license_and_doc
 ) -> None:
     source_root = tmp_path / "source"
     _make_minimal_source_tree(source_root)
+    # Exercise the actual small model resource, without copying the full tree.
+    model = "coat_sim/core/resources/film_resource_prediction_v1.json"
+    model_bytes = (Path(__file__).resolve().parents[1] / model).read_bytes()
+    (source_root / model).write_bytes(model_bytes)
     monkeypatch.setattr(builder, "ROOT", source_root)
 
     snapshot = tmp_path / "snapshot"
@@ -72,6 +79,10 @@ def test_application_resources_snapshot_and_data_mapping_include_license_and_doc
     staged_paths = {record["path"] for record in records}
     assert all(f"docs/{name}" in staged_paths for name in _DOCUMENTS)
     assert "LICENSE" in staged_paths
+    assert model in staged_paths
+    assert (snapshot / model).read_bytes() == model_bytes
+    model_record = next(row for row in records if row["path"] == model)
+    assert model_record["sha256"] == hashlib.sha256(model_bytes).hexdigest()
     # The existing agent/resources mapping must preserve nested public corpus
     # files and provenance, without a second mapping that could diverge.
     corpus_files = (

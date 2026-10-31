@@ -3266,7 +3266,7 @@ class FilmOptimizationQuickController(QObject):
                     if self._error:
                         return self._error
                     if self._cancel_candidate_noop:
-                        return "优化已取消；最佳候选与原设计相同，原设计保持不变。"
+                        return "优化已取消；最佳候选与原设计相同，原设计保持不变，已请求更新或复用光谱。"
                     return "优化已取消；最佳候选已应用到当前膜系，未保存，并已请求刷新光谱。"
                 status = (f"优化{self._result_terminal_state}；已保留队列验证的最佳候选，"
                           "可查看或另存，不能应用。")
@@ -3305,7 +3305,7 @@ class FilmOptimizationQuickController(QObject):
         if self._result.state == "cancelled":
             if self._candidate_applied:
                 if self._cancel_candidate_noop:
-                    return "优化已取消；最佳候选与原设计相同，原设计保持不变。"
+                    return "优化已取消；最佳候选与原设计相同，原设计保持不变，已请求更新或复用光谱。"
                 return "优化已取消；最佳候选已应用到当前膜系，未保存，并已请求刷新光谱。"
             return "优化已取消；最佳候选仍可预览或另存。"
         if self._result.targets_met:
@@ -3329,8 +3329,9 @@ class FilmOptimizationQuickController(QObject):
                         and not self._pending_edit_error)
         if self._search_mode == "resource_assessment":
             estimator = cast(Any, self.resourceEstimateController)
-            return bool(common_ready and estimator is not None and estimator.limitValid
-                        and (not estimator.verificationEnabled or estimator.probeSettingsValid))
+            return bool(common_ready and estimator is not None
+                        and (estimator.mode == "quick_prediction" or estimator.limitValid)
+                        and (estimator.mode != "synthesis_verification" or estimator.probeSettingsValid))
         if self._search_mode == "ideal_sensitivity":
             return bool(common_ready and self.session is not None)
         if self._search_mode == "automatic_repair":
@@ -6589,17 +6590,16 @@ class FilmOptimizationQuickController(QObject):
             return False
         self._capture_continuation_postapply()
         if not outcome[0]:
-            self._progress_text = "取消后的最佳候选与原设计相同；原设计保持不变。"
-            self.changed.emit()
-            self.plotDataChanged.emit()
-            return True
-        self._progress_text = "取消后已将当前最佳候选应用到原设计并请求刷新光谱；未保存文件。"
+            self._progress_text = "取消后的最佳候选与原设计相同；原设计保持不变，已请求更新或复用光谱。"
+        else:
+            self._progress_text = "取消后已将当前最佳候选应用到原设计并请求刷新光谱；未保存文件。"
         opener = getattr(self._source_controller, "openSimulationAndCalculate", None)
         try:
-            if callable(opener) and not opener():
+            if not callable(opener) or not opener():
                 raise ValueError("same-project spectrum route did not confirm refresh")
         except (ValueError, RuntimeError, TypeError) as exc:
-            self._error = f"候选已应用，但光谱刷新未完成：{exc}"
+            self._error = (f"原设计未变化，但光谱更新或复用未完成：{exc}" if not outcome[0]
+                           else f"候选已应用，但光谱刷新未完成：{exc}")
         self.changed.emit()
         self.plotDataChanged.emit()
         return True

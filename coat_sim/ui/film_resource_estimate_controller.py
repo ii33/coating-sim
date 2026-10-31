@@ -150,9 +150,15 @@ def _prepare_request(design: dict, revision: int, limit: int, cancel: threading.
     candidate["assume_lossless"] = synthesis["assume_unknown_k_zero"]
     from coat_sim.core.film_resource_estimation import FilmResourceEstimateRequest
 
-    budget = synthesis_options(
-        {key: saved_options.get(key) for key in ("max_layers", "max_total_thickness_nm")}
-    )
+    # Search caps are comparison-only, not inputs to the resource assessment.
+    # An unfinished or invalid unrelated optimization cap must not block a mode.
+    try:
+        budget = synthesis_options(
+            {key: saved_options.get(key) for key in ("max_layers", "max_total_thickness_nm")}
+        )
+        budget_reference = {key: budget[key] for key in ("max_layers", "max_total_thickness_nm")}
+    except (TypeError, ValueError):
+        budget_reference = {}
     return FilmResourceEstimateRequest(
         synthesis_request,
         candidate_designs=(candidate,),
@@ -160,9 +166,7 @@ def _prepare_request(design: dict, revision: int, limit: int, cancel: threading.
         audit_candidates=audit_candidates,
         probe_seeds=tuple(probe_seeds),
         layer_search_limit=limit,
-        search_budget_reference={
-            key: budget[key] for key in ("max_layers", "max_total_thickness_nm")
-        },
+        search_budget_reference=budget_reference,
     )
 
 
@@ -172,7 +176,7 @@ class _Signals(QObject):
 
 
 class _Task(QRunnable):
-    def __init__(self, service, design, revision, limit, cancel, token, signals, material_rows, substrate_reference, probe_max_evaluations=0, probe_seeds=(0, 1), audit_candidates=False):
+    def __init__(self, service, design, revision, limit, cancel, token, signals, material_rows, substrate_reference, probe_max_evaluations=0, probe_seeds=(0, 1), audit_candidates=False, mode="necessary_diagnostics"):
         super().__init__()
         self.service, self.design, self.revision, self.limit = service, design, revision, limit
         self.cancel, self.token, self.signals = cancel, token, signals
@@ -181,6 +185,7 @@ class _Task(QRunnable):
         self.probe_max_evaluations = probe_max_evaluations
         self.probe_seeds = tuple(probe_seeds)
         self.audit_candidates = audit_candidates
+        self.mode = mode
 
     def run(self):
         try:
@@ -198,11 +203,17 @@ class _Task(QRunnable):
                 last_progress[0] = event
                 self.signals.progress.emit(self.token, event)
 
-            result = estimate_film_resources(
+            if self.mode == "quick_prediction":
+                from coat_sim.core.film_resource_prediction import predict_film_resources
+                calculate = predict_film_resources
+            else:
+                calculate = estimate_film_resources
+            result = calculate(
                 self.service, request, cancel_event=self.cancel, progress_callback=progress
             )
             payload = asdict(result)
             payload["_audit_candidates"] = self.audit_candidates
+            payload["_requested_mode"] = self.mode
             payload["_source_check"] = "unavailable"
             payload["_source_check_extra_freeze_attempts"] = 0
             if result.source_digest:
@@ -222,9 +233,12 @@ class _Task(QRunnable):
                         ),
                     )
                     try:
-                        current = freeze_resource_estimate_request(
-                            self.service, request, cancel_event=self.cancel
-                        )
+                        if self.mode == "quick_prediction":
+                            from coat_sim.core.film_resource_prediction import freeze_film_prediction_request
+                            freeze_source = freeze_film_prediction_request
+                        else:
+                            freeze_source = freeze_resource_estimate_request
+                        current = freeze_source(self.service, request, cancel_event=self.cancel)
                         digest = resource_estimate_source_digest(current)
                         payload["_source_check"] = (
                             "current" if digest == result.source_digest else "changed"
@@ -254,7 +268,7 @@ class FilmResourceEstimateController(QObject):
         self._stale = False
         self._limit = 128
         self._limit_valid = True
-        self._verification_enabled = False
+        self._mode = "quick_prediction"
         self._probe_max_evaluations = 256
         self._probe_seeds: tuple[int, ...] = (0, 1)
         self._probe_budget_error = ""
@@ -296,8 +310,16 @@ class FilmResourceEstimateController(QObject):
     def refreshMaterials(self):
         self._check_session()
         try:
-            records = self._source.service.material_options("film")
-            substrate_records = self._source.service.material_options("substrate")
+            options_many = getattr(self._source.service, "material_picker_options_many", None)
+            if not callable(options_many):
+                options_many = getattr(self._source.service, "material_options_many", None)
+            if callable(options_many):
+                catalogs = options_many(("film", "substrate"))
+                records, substrate_records = catalogs["film"], catalogs["substrate"]
+            else:
+                # Older injected service adapters expose only the single-role API.
+                records = self._source.service.material_options("film")
+                substrate_records = self._source.service.material_options("substrate")
             def catalog_for(records):
                 catalog = []
                 for material in records:
@@ -470,16 +492,16 @@ class FilmResourceEstimateController(QObject):
     def limitValid(self):
         return self._limit_valid
 
-    @Property(bool, notify=changed)
-    def verificationEnabled(self):
-        return self._verification_enabled
+    @Property(str, notify=changed)
+    def mode(self):
+        return self._mode
 
-    @Slot(bool, result=bool)
-    def setVerificationEnabled(self, enabled):
-        if self._busy:
+    @Slot(str, result=bool)
+    def setMode(self, mode):
+        if self._busy or mode not in ("quick_prediction", "necessary_diagnostics", "synthesis_verification"):
             return False
-        if bool(enabled) != self._verification_enabled:
-            self._verification_enabled = bool(enabled)
+        if mode != self._mode:
+            self._mode = mode
             if self._digest:
                 self._stale = True
                 self._status = "评估模式已变化；原结果已过期，请重新评估。"
@@ -600,8 +622,8 @@ class FilmResourceEstimateController(QObject):
     def startWithConfiguration(self, configuration):
         if (
             self._busy
-            or not self._limit_valid
-            or (self._verification_enabled and not self.probeSettingsValid)
+            or (self._mode != "quick_prediction" and not self._limit_valid)
+            or (self._mode == "synthesis_verification" and not self.probeSettingsValid)
             or self._source.session is None
             or self._source._source_closed
         ):
@@ -684,7 +706,7 @@ class FilmResourceEstimateController(QObject):
             + "\n目标：" + target_text
             + "\n未知 k：" + ("按零假设" if synthesis.get("assume_unknown_k_zero") is True else "不按零" if synthesis.get("assume_unknown_k_zero") is False else "未确认")
             + f"；单层最小非零厚度 {setting('minimum_nonzero_thickness_nm', ' nm')}；单层最大厚度 {setting('max_layer_thickness_nm', ' nm')}。"
-            + (f"\n进一步验证（合成探测）：每种子逻辑评价上限 {self._probe_max_evaluations} 次（含审计）；种子 {self.probeSeeds}。" if self._verification_enabled else "\n快速评估：不运行合成探测或独立候选审计。")
+            + (f"\n合成验证：每种子逻辑评价上限 {self._probe_max_evaluations} 次（含审计）；种子 {self.probeSeeds}。" if self._mode == "synthesis_verification" else "\n必要条件诊断：不运行合成探测或独立候选审计。" if self._mode == "necessary_diagnostics" else "\n快速预估：使用预测模型（仅在适用条件下），不运行合成验证。")
             + "\n评估不受原优化的层数与总厚度预算限制；制造良率未评估。"
         )
         self.changed.emit()
@@ -699,9 +721,10 @@ class FilmResourceEstimateController(QObject):
                 self._signals,
                 deepcopy(self._material_rows),
                 deepcopy(self._substrate),
-                self._probe_max_evaluations if self._verification_enabled else 0,
+                self._probe_max_evaluations if self._mode == "synthesis_verification" else 0,
                 tuple(self._probe_seeds),
-                self._verification_enabled,
+                self._mode == "synthesis_verification",
+                self._mode,
             )
         )
         return True
@@ -791,7 +814,7 @@ class FilmResourceEstimateController(QObject):
                                + "\n材料与物理源摘要：" + str(result.get("source_digest") or "未知")
                                + "\n原始状态信息：" + str(result.get("message") or "无")
                                + "\n来源复核详情：" + str(result.get("_source_check_message") or "无")
-                               + "\n\n" + _format_result(result))
+                               + "\n\n" + (_format_prediction_technical(result) if result.get("_requested_mode") == "quick_prediction" else _format_result(result)))
         if self._stale:
             self._status = "来源已变化，本次结果已过期；请重新评估。" + self._status
         self.changed.emit()
@@ -812,7 +835,62 @@ def _fixed_surface_note(item: dict[str, Any], selected: Any) -> str:
     return "；未选固定面：" + "、".join(fixed) if fixed else ""
 
 
+def _format_prediction_technical(result: dict[str, Any]) -> str:
+    """Keep complete model identifiers and round-trip numeric values out of the summary."""
+    return ("快速预估原始数据（未按显示精度舍入）：\n"
+            + json.dumps({"estimate_state": result.get("estimate_state"),
+                          "prediction": result.get("prediction"),
+                          "work": result.get("work")}, ensure_ascii=False, indent=2, default=str))
+
+
 def _format_summary(result: dict[str, Any]) -> str:
+    if (result.get("work") or {}).get("assessment_mode") == "quick_prediction" or result.get("_requested_mode") == "quick_prediction":
+        if result.get("state") not in (None, "completed"):
+            return "快速预估未完成，未取得预测结果。"
+        prediction = result.get("prediction")
+        if result.get("estimate_state") != "estimated" or not isinstance(prediction, dict):
+            reason = {"out_of_domain": "当前条件不在模型支持范围内",
+                      "not_calibrated": "当前条件尚无已校准模型"}.get(
+                          cast(str, result.get("estimate_state")), "当前条件没有可用的受支持预测")
+            message = result.get("message")
+            detail = "\n具体原因：" + message.strip() if isinstance(message, str) and message.strip() else ""
+            return reason + "；未取得资源预估，不能据此判断不可行。" + detail
+        interval = prediction.get("joint_interval")
+        if not isinstance(interval, dict):
+            return "预测结果缺少联合区间，不能显示为有效资源预估。"
+        keys = ("layer_count", "total_thickness_nm", "model_id", "reference_profile")
+        interval_keys = ("layer_min", "layer_max", "thickness_min_nm", "thickness_max_nm")
+        if any(prediction.get(key) is None for key in keys) or any(interval.get(key) is None for key in interval_keys):
+            return "预测结果不完整，不能显示为有效资源预估。"
+        def amount(value):
+            return f"{value:.4g}" if isinstance(value, (int, float)) and not isinstance(value, bool) else str(value)
+
+        conditional = prediction.get("conditional_on_assumption")
+        assumption = ("注意：此预测依赖未知 k 按零假设。" if conditional is True else
+                      "未依赖未知 k 按零假设。" if conditional is False else
+                      "未知 k 假设状态未提供。")
+        known = prediction.get("known_k_preserved")
+        known_text = ("已知 k 保留，未被改写。" if known is True else
+                      "注意：已知 k 未被保留。" if known is False else
+                      "已知 k 的保留状态未确认。")
+        domain = {"constant_index": "恒定折射率域", "registered_real_nk": "已注册真实 n/k 材料域"}.get(
+            cast(str, prediction.get("feature_domain")), "未提供")
+        region_note = prediction.get('joint_region_note') or '同一模型的联合误差区域外接区间'
+        if not isinstance(region_note, str):
+            region_note = str(region_note)
+        if '角点' not in region_note or '膜系' not in region_note:
+            region_note += '；外接角点不一定对应实际膜系。'
+        return (f"快速预估（同一模型的联合预测，非可行性证明）：\n"
+                f"• 中心：{prediction['layer_count']} 层 / 约 {amount(prediction['total_thickness_nm'])} nm\n"
+                f"• 联合区间（约）：{interval['layer_min']}–{interval['layer_max']} 层 / "
+                f"{amount(interval['thickness_min_nm'])}–{amount(interval['thickness_max_nm'])} nm\n"
+                f"• 联合区间说明：{region_note}\n"
+                f"• {assumption} {known_text}\n"
+                f"• 适用域：{domain}\n"
+                f"• 模型：{prediction.get('model_label') or '经验预测模型'}；"
+                f"参考配置：{prediction.get('reference_profile_label') or '参考工艺配置'}（完整标识见技术详情）\n"
+                f"• 覆盖说明：{prediction.get('coverage_note') or '未提供'}\n"
+                f"• 适用性：{prediction.get('applicability_note') or '未提供'}")
     state = result.get("state")
     if state not in (None, "completed"):
         work = result.get("work") or {}
@@ -915,7 +993,7 @@ def _format_summary(result: dict[str, Any]) -> str:
             origin = (f"探测种子 {item.get('probe_seed')}" if item.get("source") == "probe" else "当前结构")
             lines.append(f"  {item.get('layer_count', '?')} 层 / {item.get('total_thickness_nm', '?')} nm（{origin}）{assumption_note}{_fixed_surface_note(item, result.get("selected_surfaces"))}")
     else:
-        lines.append("• 快速评估未搜索或审计可行见证；是否存在可行方案未知。" if fast else "• 尚未取得通过审计的可行见证；这不代表不存在可行方案。")
+        lines.append("• 必要条件诊断未搜索或审计可行见证；是否存在可行方案未知。" if fast else "• 尚未取得通过审计的可行见证；这不代表不存在可行方案。")
     near = [row for row in reports if row.get("source") == "probe" and row.get("state") == "audited"
             and row.get("targets_met") is False and row.get("within_constraints") is True
             and row.get("within_material_pool") is True
@@ -972,7 +1050,7 @@ def _format_summary(result: dict[str, Any]) -> str:
         lines.append("• 未运行合成探测；未进行独立候选审计。" if fast else "• 未运行探测；当前结构审计状态见上。")
     if "physical_evaluations" in work:
         lines.append(f"• 全部物理光谱计算 {work.get('physical_evaluations', '未知')} 次，波长点 {work.get('wavelength_points', '未知')} 个（含探测）。")
-    lines.append("• 通用层数与厚度预测：未知；目前没有经过校准的预测模型。不能将必要界或审计实例当作最小值，审计实例也不是预测。")
+    lines.append("• 本次未进行快速预估；不能将必要界或审计实例当作最小值，审计实例也不是预测。")
     return "\n".join(lines)
 
 
@@ -1067,7 +1145,7 @@ def _format_result(result: dict[str, Any]) -> str:
             f"各面 {face_summary(item.get('surfaces', {}))}；指标通过 {item.get('targets_met')}；"
             f"求解器可接受 {item.get('solver_acceptable')}；材料池内 {item.get('within_material_pool', 'unknown')}；"
             f"工艺/材料约束内 {item.get('within_constraints')}；"
-            f"原搜索预算内 {item.get('within_search_budgets', 'unknown')}；{tr(item.get('message', ''))}；{report_condition}"
+            f"原搜索预算内 {item.get('within_search_budgets', 'unknown') if result.get('search_budget_reference') else 'unknown'}；{tr(item.get('message', ''))}；{report_condition}"
         )
     if not result.get("candidate_reports"):
         lines.append("• unknown（无完整审计）")

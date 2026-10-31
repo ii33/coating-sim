@@ -72,6 +72,7 @@ class FilmResourceEstimateResult:
     estimate_state: str = 'not_calibrated'
     feasibility_state: str = 'unknown'
     continuous_certificate: bool = False
+    prediction: dict[str, Any] | None = None
 
 
 class _Control:

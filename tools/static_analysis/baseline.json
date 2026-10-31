@@ -3530,16 +3530,6 @@
     },
     {
       "tool": "mypy",
-      "path": "coat_sim/core/film_materials.py",
-      "code": "var-annotated",
-      "message": "Need type annotation for \"result\"",
-      "scope": "FilmMaterialLibrary.options_many",
-      "anchor": "result={purpose:[] for purpose in purposes}",
-      "fingerprint": "102ac80455cfce7855d74ec51f61fb3a84d1a2754c3600217cef2238f34bd8dd",
-      "count": 1
-    },
-    {
-      "tool": "mypy",
       "path": "coat_sim/core/film_optimization.py",
       "code": "arg-type",
       "message": "Argument 3 to \"run_batch_de\" has incompatible type \"ndarray[tuple[int], dtype[Any]]\"; expected \"Sequence[float]\"",
@@ -61119,6 +61109,6 @@
       "count": 1
     }
   ],
-  "last_prune_reason": "Reviewed PDF font regression now uses unittest.mock.patch; prune exactly its resolved F401 imported-but-unused record, preserve every unrelated baseline entry, and add no exemptions",
+  "last_prune_reason": "Remove only the resolved FilmMaterialLibrary.options_many result var-annotated debt (102ac80455cfce7855d74ec51f61fb3a84d1a2754c3600217cef2238f34bd8dd): shared helper now explicitly types the result; no new diagnostics are exempted.",
   "configuration_review_reason": "2026-10-17: add only BSD-3-Clause pypdf 6.21.0 for isolated research PDF extraction; all previous dependency/tool versions, analyzer rules and diagnostic entries remain unchanged. The lock-file digest changes only for this reviewed runtime dependency."
 }

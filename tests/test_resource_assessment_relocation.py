@@ -59,7 +59,7 @@ def test_audited_actual_percent_and_unknown_witness_are_not_conflated():
     assert '4%' in summary and '0.1%' in summary and '未达标' in summary
     assert '不等同全谱极值' in summary and '可能只是代表点' in summary
     assert '这不代表不存在可行方案' in summary
-    assert '没有经过校准' in summary
+    assert '本次未进行快速预估' in summary
 
 
 def test_probe_budget_and_seeds_are_frozen_in_request(tmp_path):

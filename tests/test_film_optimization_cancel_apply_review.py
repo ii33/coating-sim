@@ -294,7 +294,7 @@ def test_old_operation_cannot_apply_or_consume_new_attempt_cancel(review):
     assert review.source.session.snapshot().design_revision == review.base.design_revision + 1
 
 
-def test_same_design_cancel_preserves_dirty_revision_undo_without_refresh(review):
+def test_same_design_cancel_preserves_dirty_revision_undo_and_requests_spectrum_once(review):
     arm(review)
     review.controller.cancelOptimization()
     result = cancelled_result(review, same=True)
@@ -305,14 +305,14 @@ def test_same_design_cancel_preserves_dirty_revision_undo_without_refresh(review
     assert after.dirty == review.base.dirty
     assert not review.saves
     assert sha256(review.path.read_bytes()).hexdigest() == review.disk_sha256
-    assert not review.refreshes
+    assert review.refreshes == [{'design': dict(after.design), 'revision': after.design_revision}]
     deliver(review, result)
-    assert not review.refreshes
+    assert len(review.refreshes) == 1
     assert not review.source.canUndoOptimizedDesign
     assert review.controller._candidate_applied and not review.controller._candidate_saved
     assert review.controller.canSave and not review.controller.canApply
     assert '原设计相同' in review.controller.statusText
-    assert '未保存' not in review.controller.statusText and '刷新' not in review.controller.statusText
+    assert '未保存' not in review.controller.statusText and '更新或复用光谱' in review.controller.statusText
     confirmation = QSignalSpy(review.controller.closeConfirmationRequested)
     closed = QSignalSpy(review.controller.closeConfirmed)
     review.controller.requestClose()
@@ -335,11 +335,25 @@ def test_same_design_cancel_preserves_an_existing_single_undo(review):
     after = review.source.session.snapshot()
     assert after.design_revision == review.base.design_revision
     assert after.design == review.base.design and after.dirty == review.base.dirty
-    assert not review.refreshes
+    assert len(review.refreshes) == 1
     assert review.source.canUndoOptimizedDesign
     assert review.source.undoOptimizedDesign()
     assert review.source.session.snapshot().design == original.design
     assert not review.source.undoOptimizedDesign()
+
+
+def test_same_design_cancel_reports_spectrum_route_failure_without_edit(review, monkeypatch):
+    def fail_refresh():
+        raise ValueError('controlled spectrum route failure')
+
+    monkeypatch.setattr(review.source, 'openSimulationAndCalculate', fail_refresh)
+    arm(review)
+    review.controller.cancelOptimization()
+    deliver(review, cancelled_result(review, same=True))
+    assert_no_write(review, review.base)
+    assert not review.source.canUndoOptimizedDesign
+    assert '原设计未变化' in review.controller.statusText
+    assert 'controlled spectrum route failure' in review.controller.statusText
 
 
 @pytest.mark.parametrize('changed', [False, True])
@@ -388,7 +402,7 @@ def test_cancelled_synthesis_compares_restored_source_metadata(review, monkeypat
     assert after.design_revision == review.base.design_revision + int(changed)
     assert after.dirty is changed
     assert review.source.canUndoOptimizedDesign is changed
-    assert len(review.refreshes) == int(changed)
+    assert len(review.refreshes) == 1
     if changed:
         assert after.design['front_layers'][0]['thickness']['value'] == candidate['front_layers'][0]['thickness']['value']
         assert review.refreshes[0]['design'] == after.design
@@ -396,7 +410,7 @@ def test_cancelled_synthesis_compares_restored_source_metadata(review, monkeypat
         assert after.design == review.base.design
     assert not controller._apply_cancel_candidate_once()
     assert review.source.session.snapshot().design_revision == after.design_revision
-    assert len(review.refreshes) == int(changed)
+    assert len(review.refreshes) == 1
 
 
 def test_cancel_noop_still_rejects_invalid_material_closure(review):

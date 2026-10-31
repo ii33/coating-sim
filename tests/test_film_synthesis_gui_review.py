@@ -846,6 +846,9 @@ def test_qml_real_queue_heartbeat_then_cancel_retains_audited_candidate_facts(gu
     assert len(controller.synthesisLayers) == len(payload["result"]["candidate_design"]["front_layers"])
     assert str(scene.item("filmSynthesisAuditSummary").property("text")) == controller.synthesisAuditSummary
     assert not controller.canApply
+    # Worker completion can precede the independent cancellation ack. Wait for
+    # the one-shot application decision before observing the source or request.
+    _wait(lambda: bool(refreshes) or controller._cancel_intent_consumed, seconds=20.)
     candidate_design = payload["result"]["candidate_design"]
     normalized_original = service.validate(deepcopy(dict(original.design)))
     normalized_candidate = service.validate(deepcopy(dict(candidate_design)))
@@ -860,7 +863,15 @@ def test_qml_real_queue_heartbeat_then_cancel_retains_audited_candidate_facts(gu
     # The numerical candidate blanks expression state before synthesis. When
     # source-owned expression semantics are restored, identical physical
     # designs must not create a fake optimization edit or undo entry.
-    if expected_candidate == normalized_original:
+    if not controller._candidate_applied:
+        # An audited checkpoint is not automatically an eligible frozen
+        # training candidate; retain it read-only if provenance is missing.
+        assert not controller._cancel_candidate_verified()
+        assert after.design == _expected_with_synthesis_search_progress(original.design, controller)
+        assert after.design_revision == original.design_revision
+        assert after.dirty == original.dirty
+        assert not source.canUndoOptimizedDesign
+    elif expected_candidate == normalized_original:
         assert after.design == _expected_with_synthesis_search_progress(original.design, controller)
         assert after.design_revision == original.design_revision
         assert after.dirty == original.dirty
@@ -877,13 +888,16 @@ def test_qml_real_queue_heartbeat_then_cancel_retains_audited_candidate_facts(gu
         restored = source.session.snapshot()
         assert restored.design_revision == after.design_revision + 1
         assert not source.canUndoOptimizedDesign
-    assert len(refreshes) == (1 if candidate_changed else 0)
-    if candidate_changed:
+    # This spy counts coalesced requests, not actual TMM calculations. Only an
+    # accepted eligible candidate triggers a request; read-only ones do not.
+    expected_requests = int(controller._candidate_applied)
+    assert len(refreshes) == expected_requests
+    if candidate_changed and controller._candidate_applied:
         assert refreshes[0].design == after.design
     final_revision = source.session.snapshot().design_revision
     controller.cancelOptimization()
     assert source.session.snapshot().design_revision == final_revision
-    assert len(refreshes) == (1 if candidate_changed else 0)
+    assert len(refreshes) == expected_requests
 
 
 @pytest.mark.parametrize("change", ["revision", "edit_epoch", "source_closed"])

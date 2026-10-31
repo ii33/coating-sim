@@ -421,6 +421,13 @@ class FilmDesignService:
     def material_options_many(self,purposes):
         return self.materials.options_many(purposes)
 
+    def material_picker_options_many(self, purposes):
+        picker = getattr(self.materials, 'picker_options_many', None)
+        if callable(picker):
+            return picker(purposes)
+        # Injected providers retain their existing full-options protocol.
+        return self.material_options_many(purposes)
+
     def new_design(self):
         return new_design()
 
@@ -453,7 +460,12 @@ class FilmDesignService:
         settings.setdefault('first_surface',design.get('first_surface','front'))
         settings=simulation_settings(settings)
         references = active_material_references(design)
-        catalog={row['id']:row for row in self.materials._records()}
+        if isinstance(self.materials, FilmMaterialLibrary):
+            identifiers = {row['material_id'] for row in references}
+            catalog = {row['id']: row for row in self.materials._records(material_ids=identifiers)}
+        else:
+            # Injected providers retain their existing no-argument protocol.
+            catalog = {row['id']: row for row in self.materials._records()}
         selected={}
         for ref in references:
             selected.setdefault(ref['material_id'],set()).add(ref['optical_set_id'])

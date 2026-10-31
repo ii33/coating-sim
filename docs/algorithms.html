@@ -12,7 +12,7 @@
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px solid #c8e0db;border-radius:8px;padding:16px;font-size:.88rem;line-height:1.5}</style>
 </head>
 <body>
-<p class="source">算法更新：2026-10-31；<a href="#film-resource-estimation-20261030">14be 通用目标资源探测与条件必要界</a>：原生构造/局部优化、冻结全指标复算与实际联合资源见证；有限探索失败不表示无解。</p>
+<p class="source">算法更新：2026-10-31；<a href="#film-resource-prediction-20261031">14bf 快速资源经验预估</a>：离线校准、在线固定公式；与14be必要条件诊断及显式合成验证分离，受限域不冒充通用能力。</p>
 <p class="source">算法更新：2026-10-30；新增<a href="#film-synthesis-selected-surfaces-20261030">14bd 选面联合合成与全几何导数</a>。</p>
 <p class="source">算法更新：2026-10-28；<a href="#film-sensitivity-missing-k-20261028">敏感度缺失 k 规则</a>与普通光谱一致：无来源 k 仅计算时取 0，已有 k 保留真实值并严格检查完整原波段。</p>
 <p class="source">算法更新：2026-10-27；新增<a href="#film-automatic-repair-20261027">14bc 三参数自动薄层修复</a>：单层厚度下限、允许增删合并，以及相对固定原曲线的逐点最大变化；原光学目标独立核验。</p>
@@ -267,7 +267,8 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#film-ideal-scalar-probes-20261023">14aq-1 理想敏感度标量探针</a>
 <a href="#candidate-display-score">14ar 可开关实时光谱与独立候选展示评分</a>
 <a href="#film-synthesis-selected-surfaces-20261030">14bd 选面联合合成与全几何解析导数（2026-10-30）</a>
-<a href="#film-resource-estimation-20261030">14be 通用目标资源探测与条件必要界</a>
+<a href="#film-resource-estimation-20261030">14be 必要条件诊断与显式合成验证</a>
+<a href="#film-resource-prediction-20261031">14bf 快速层数／厚度经验预估（受限域）</a>
 </nav>
 <main>
 
@@ -4079,7 +4080,7 @@ R = R前 + T前 T反 R背 S² / D，T = T前 T背 S / D。
 <p class="source"><strong>实现：</strong>film_synthesis_surfaces.py、film_synthesis_physics.py、film_auto_synthesis.py、film_synthesis_batch_needle.py、film_synthesis_audit.py、film_synthesis_continuation.py 及核心 IO/jobs/数值算子。物理来源：<a href="https://arxiv.org/abs/1603.02720">Byrnes, Multilayer optical calculations</a>；既有相干/非相干膜块组合见 film_optics.py。选择归一、模板共享上限、调度与身份是本项目约定，未找到外部依据，仅为本项目实现。有限差分回归不构成实验或连续域证明。</p>
 </section>
 <section id="film-resource-estimation-20261030">
-<h2>14be 快速资源筛查与可选通用目标验证</h2>
+<h2>14be 必要条件诊断与显式合成验证</h2>
 <p>更新：2026-10-31。用途：默认读取冻结原指标、候选材料 n/k、完整正背面环境与当前膜系，仅执行适用条件必要界和固定面筛查。显式开启进一步验证后，才使用真实构造搜索和局部厚度优化寻找资源见证，并显示独立审计的层数—物理厚度联合节点。AR、HR、带通、分束、多光谱等目标均保留原始逐点/均值约束交给同一原生评分与审计；目标类别不构成可达承诺。评估不提交主优化、不改用户处方，也不是已标定预算预测器。输入/状态/取消见<a href="film-resource-estimation-core-contract.md">核心契约</a>。所有厚度与波长为 nm、角为度、R/T为0..1；选面是物理 front/back，不随入射面改名。只统计所选镀膜，基片和固定层另列。</p>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 190" role="img" aria-label="资源评估的数据流，数值必要界与完整候选审计汇入证据结果，不写回设计">
 <rect x="10" y="45" width="190" height="95" fill="#e9f4f1" stroke="#087f78"/><text x="105" y="80" text-anchor="middle" font-size="18">冻结指标 材料 正背面</text><text x="105" y="111" text-anchor="middle" font-size="16">严格 n/k 与原工艺</text>
@@ -4117,5 +4118,41 @@ return feasible observed Pareto, failed/near-best diagnostics, necessary screens
 <p class="source">实现：coat_sim/core/film_resource_estimation.py、film_resource_estimation_bounds.py；构造搜索及局部优化复用 film_auto_synthesis.py、film_synthesis_refinement.py，独立审计复用 film_synthesis_audit.py。方法背景：<a href="https://doi.org/10.1364/AO.46.000704">Optical coating design approaches based on the needle optimization technique, Applied Optics 46 (2007)</a>、<a href="https://optilayer.com/automatic-design-options/gradual-evolution/">OptiLayer 官方 gradual evolution 说明</a>；它们不构成本项目预算默认、物理厚度 Pareto、覆盖率或精度标定的证明。物理依据：<a href="https://arxiv.org/pdf/2608.26633">Kats 2026 Eq1/Eq10</a>、<a href="https://arxiv.org/abs/1603.02720">Byrnes</a>。多背景LP组织、导纳图放松、窗口/浮点门、源身份、调度与档案是本项目约定，未找到外部依据，仅为本项目实现。本次有限探测与审计仍没有已训练预算模型、真实材料标定或连续域认证。</p>
 <p class="source">证据绑定：本轮独立审计记录物理处方哈希和冻结原始环境、目标、选面、材料、工艺与审计网格的来源摘要；数值预算和种子不属于该物理问题身份。完整原目标训练分数、完整独立审计及来源/处方身份须同时匹配，否则只保留未审计诊断。正逻辑评价窗口至少为 2（基线与独立审计）；0 明确关闭探测，不表示无限。</p>
 </section>
+<section id="film-resource-prediction-20261031">
+<h2>14bf 快速层数／厚度经验预估（受限域 v1）</h2>
+<p>更新：2026-10-31。用途：在尚未生成膜系前，用固定参数经验公式预测参考设计流程的层数 N 和物理总厚度 D（nm）规模。<strong>不是全局最少资源或可达证明，也不是在线模糊搜索。</strong>输入为目标、候选材料 n/k、基片、角度偏振和工艺；当前仅实现明确校准域，不将“能输入”视为“已支持”。模型、诊断与合成验证各有独立入口，预测失败不偷偷调用优化。接口见<a href="film-resource-prediction-core-contract.md">预测契约</a>；理论与研究状态见<a href="https://github.com/ii33/coating-research-library/blob/main/08_stack_optimization_algorithms/predictive_design_theory_20261031/README.md">研究库</a>。</p>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 230" role="img" aria-label="离线计算产生冻结经验公式，在线只读取源和代入公式；诊断和合成验证是另外入口">
+<rect x="12" y="12" width="916" height="85" fill="#fff2dd" stroke="#b56527"/><text x="30" y="39" font-size="18">离线：明确参考流程 → 固定任务组求解 → 独立审计 → 成对 N,D 标签</text><text x="30" y="71" font-size="17">材料分组训练 / 校准 / 盲测 → 冻结公式、误差参数与适用域</text>
+<path d="M470 97V128" fill="none" stroke="#50616a" stroke-width="2"/><text x="488" y="118" font-size="14">发布参数，不在查询中重新训练</text>
+<rect x="12" y="133" width="260" height="75" fill="#e9f4f1" stroke="#087f78"/><text x="30" y="162" font-size="17">在线：冻源 + 固定位置特征</text><text x="30" y="190" font-size="15">无针插、随机重启或密网格审计</text>
+<path d="M272 170H315" fill="none" stroke="#50616a" stroke-width="2"/><rect x="315" y="133" width="280" height="75" fill="#e9f4f1" stroke="#087f78"/><text x="333" y="162" font-size="17">固定二阶岭回归 + 误差查表</text><text x="333" y="190" font-size="15">同一联合模型产生两项资源估计</text>
+<path d="M595 170H635" fill="none" stroke="#50616a" stroke-width="2"/><rect x="635" y="133" width="293" height="75" fill="#e9f4f1" stroke="#087f78"/><text x="652" y="162" font-size="17">预计 N,D + 联合误差范围</text><text x="652" y="190" font-size="15">域外明确拒绝，不自动回退搜索</text></svg>
+<p class="caption">图14bf-1：求解与审计成本属于离线建库或用户显式选择的合成验证；在线不先求出一个达标膜系。误差查表只读取校准残差，不搜索膜系结构。</p>
+<h3>固定公式与联合输出</h3>
+<p><span class="tag local">本项目约定</span>参考波长取 <code>λref=√(λmin·λmax)</code>。五个基础变量为 <code>q=(ln nL, ln(nH/nL), ln ns, ln(λmax/λmin), h)</code>，AR 时 <code>h=−ln Rmax</code>，HR 时 <code>h=−ln(1−Rmin)</code>。展开5个一次项、15个上三角二次乘积，再加 <code>ln(λmax/λmin)/ln(nH/nL)</code>，共21项。用训练组的均值与尺度标准化成 z。输出向量 <code>y=z·B+b</code>；<code>Nhat=max(1,round(exp(y0)−1))</code>，<code>Dhat=λref·exp(y1)</code>。B、b 和尺度均为离线固定数据，查询中不拟合、不改层、不做随机搜索。</p>
+<p>训练标签是同一个已审计方案的 <code>(ln(1+N),ln(D/λref))</code>，不是两个方案分别最小的 N、D。参考过程使用有限的交替结构数扫描、解析厚度导数局部优化及独立审计；AR 参考过程在首个通过层数内比较4个起点并减薄，HR 使用其独立冻结流程。计算未找到或输入失效保留记录，不能当作物理不可行标签。训练 N/D 是该流程的资源规模，不是全局最小值。</p>
+<p>当前两族均采用二阶岭回归；按材料组交叉验证选择正则项，AR为1，HR为10。在线只允许该已验证回归类型，其他候选模型留在研究实验中。N/D联合误差在对数空间计算；AR按归一化输入中最近8条训练组外残差的逐轴80%分位数取得局部尺度，下限0.05；校准组内先取任务与坐标最大标准化残差，再取有限样本分位数；HR采用其冻结的全局误差尺度。源代码记录完整模型SHA-256和协议输入摘要。显示的两轴范围是联合区域外接框，<strong>不能把任意角点当作已找到的膜系，也不保证连续域或制造良率。</strong></p>
+<h3>实际适用域与材料语义</h3>
+<ul>
+<li>共同条件：正入射、两个候选膜料、单前面半无限基片、单窗口非严格逐点R要求；平均目标、多窗口、角度范围、双面整片、额外单层制造限制目前不在快速预测域。非严格 <code>R≥0</code> 或 <code>R≤1</code> 只是被动模型的冗余边界，不误判为分光目标；严格不等式仍不暗中改写。</li>
+<li>常数无损域：n0=1，nL∈[1.35,1.5]、nH∈[1.9,2.5]、ns∈[1.45,1.8]；AR带宽比1.1–1.9、R上限0.001–0.005；HR带宽比1.1–1.6、R下限0.95–0.99。仍受附近校准证据门控，不能外推为任意材料。</li>
+<li>真实n/k的局部扩展只支持400–700nm内的AR：SiO2 / MgF2 的 Rodríguez-de-Marcos 薄膜数据，与 TiO2 Jolivet amorphous 或 Franta 数据，配 N-BK7 或 Malitson熔石英基片。以完整数值源指纹注册，别名可不同；改动任何n/k数值后不继续冒用已核验曲线。Malitson的nm/um公式经系数单位核对及1001点比较，最大n差2.22×10<sup>−16</sup>，作为同一基片数值模型的明确等价表达登记；不把K9/H-K9L混作N-BK7。</li>
+<li>在线读取真实曲线的固定位置特征与n/k范围，完整源身份和窗口共同定义扩展域。该域目前使用经独立真实源验证的中心折射率经验近似，没有声称任意色散／吸收修正公式已建立。离线真实参照计算始终保留已知薄膜k；基片k未知仅在用户显式允许时按零假设，并在结果中标条件。</li>
+<li>Ta2O5已知吸收高于本轮预先声明的低吸收扩展域，未计支持。熔石英块材公式用作膜料的额外研究因区间宽度未达门限也未准入；它作为基片的支持不等于作为膜料已支持。</li>
+</ul>
+<h3>输入冻结、成本与状态</h3>
+<p>快速路径先验证原始目标与参数，再以固定9点源检查冻结完整材料记录，恢复完整原始objectives用于来源身份；不会随着优化网格从301点增至10001点而展开密网格光谱或材料求解。当前候选／seed堆栈不是从空白结构进行经验资源预测的输入，不审计它们；真实目标、候选材料、基片和工艺不被简化。完成后以同一规则独立复核材料源。源变化、取消、域外或缺失模型分别保留明确状态，预测数值不能自动应用成处方。</p>
+<p>材料库仍在锁内核验JSON字节指纹；getter及冻源只深拷贝所需材料。选择器另取用途、ID、名称和数据集ID/名称摘要，不复制光学数组；完整光学数据只在物理源冻结中使用。没有以mtime或共享可变引用换取速度，源字节相同长度与mtime但内容改变仍能被发现。</p>
+<h3>验证证据（不是通用能力声明）</h3>
+<table><tr><th>验证集</th><th>有参考标签 / 任务数</th><th>N平均绝对误差</th><th>D平均相对误差</th><th>联合区域经验覆盖</th></tr>
+<tr><td>常数AR，独立16材料组盲测</td><td>85 / 96</td><td>0.99层</td><td>14.6%</td><td>98.8%</td></tr>
+<tr><td>常数HR，独立8材料组盲测</td><td>31 / 32</td><td>1.68层</td><td>8.9%</td><td>96.8%</td></tr>
+<tr><td>真实源，8组合外部核验（未用于重拟合）</td><td>372 / 384</td><td>0.79层</td><td>12.1%</td><td>99.2%</td></tr>
+<tr><td>真实源，未训练过的0.0035/0.004阈值</td><td>16 / 16</td><td>0.75层</td><td>9.1%</td><td>100%</td></tr></table>
+<p>无参考标签的任务未算作成功，未当作不可行。AR模型采用48个训练材料组、20个校准材料组；HR为16和10组，同组种子／派生任务不冒充独立材料。真实源组合由不同实验样品数据构成，不是已实测叠层；真实分布上的经验覆盖不能冒充合成分布统计保证。层数区间在部分任务上仍较保守，中心误差与区间宽度都应查看。早期未通过的模型、原生会话提前终止、无效准备和宽区间失败均保留研究记录。</p>
+<p>本机 Linux / AMD EPYC 9V74（9逻辑CPU可见）、Python3.12.14、Qt6.12.0 offscreen，真实源、算法页可见、完成信号驱动事件循环，预热5次后串行30次：完整按钮到结果及独立来源复核 P50=59.9ms，P95（最近秩）=76.2ms；该样本满足200ms工程目标，不是跨机器保证，未将时序硬断言加入CI。单独核心路径的301/10001点热P95约18.2/21.0ms不能替代完整UI耗时。此前1ms Python轮询放大了线程争用，旧1.3秒数据不是正常GUI基准；目录按需读取和摘要API亦独立验证。</p>
+<p><strong>实现与来源：</strong><code>film_resource_prediction.py</code>、<code>core/resources/film_resource_prediction_v1.json</code>；UI与来源契约见相关文档。统计模型、特征、参考流程和验收阈值为本项目约定，未找到外部依据证明其通用性能。研究背景包括<a href="https://doi.org/10.1364/AO.47.00C124">Tikhonravov等2008年的受限AR经验估计</a>；本实现没有直接移植其经验系数，也不将平均反射公式当作逐点要求。普通前向与导数沿用本项目既有TMM实现与严格源语义。完整理论及未完成范围在研究库持续记录。</p>
+</section>
+
 </body>
 </html>

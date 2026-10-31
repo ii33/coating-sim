@@ -30,7 +30,7 @@ class FilmMaterialLibrary:
         self._catalog_fingerprint = None
         self._catalog_records = None
 
-    def _records(self, material_ids=None):
+    def _records(self, material_ids=None, *, summary=False):
         """Reuse validated catalog contents only while every JSON byte is unchanged."""
         self.library._check_directory()
         with material_library_lock(self.library.directory):
@@ -53,6 +53,13 @@ class FilmMaterialLibrary:
             records = self._catalog_records
             if material_ids is not None:
                 records = [row for row in records if row['id'] in material_ids]
+            if summary:
+                # Copy only picker metadata, never mutable optical arrays or cache references.
+                fields = ('id', 'name', 'design_ready', 'roles', 'category')
+                return [{**{key: deepcopy(row[key]) for key in fields if key in row},
+                         'optical_sets': [{key: deepcopy(optical[key]) for key in ('id', 'name')
+                                           if key in optical} for optical in row.get('optical_sets', [])]}
+                        for row in records]
             return deepcopy(records)
 
     def _load_records(self):
@@ -115,15 +122,22 @@ class FilmMaterialLibrary:
         return result
 
     def options_many(self,purposes):
-        """Filter multiple picker roles from one validated catalog snapshot."""
+        """Filter multiple roles from one validated full catalog snapshot."""
+        return self._options_many(purposes, summary=False)
+
+    def picker_options_many(self, purposes):
+        """Return isolated picker metadata after the same full-byte catalog check."""
+        return self._options_many(purposes, summary=True)
+
+    def _options_many(self, purposes, *, summary):
         purposes=tuple(dict.fromkeys(purposes))
         if any(purpose not in ('film','substrate','medium') for purpose in purposes):
             raise ValueError('������;��Ϊ film/substrate/medium')
         if not purposes:
             return {}
         usage=self._usage()
-        records=self._records()
-        result={purpose:[] for purpose in purposes}
+        records=self._records(summary=True) if summary else self._records()
+        result: dict[str, list[dict]] = {purpose: [] for purpose in purposes}
         for row in records:
             roles=row.get('roles')
             material_usage=usage.get(row['id'],{})
@@ -140,7 +154,7 @@ class FilmMaterialLibrary:
         return result
 
     def get(self,material_id):
-        for row in self._records():
+        for row in self._records(material_ids=(material_id,)):
             if row['id']==material_id:
                 return row
         raise ValueError('找不到材料: '+str(material_id))

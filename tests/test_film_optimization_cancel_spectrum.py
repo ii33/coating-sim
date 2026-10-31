@@ -206,9 +206,57 @@ def test_same_design_cancel_computes_once_or_reuses_the_existing_fresh_spectrum(
         if already_fresh:
             case.simulation.requestCalculation()
             wait_done(case.simulation)
+        previous_result = case.simulation._result
+        before = case.source.session.snapshot()
+        arm(case)
+        case.controller.cancelOptimization()
+        result = cancelled_result(case, same=True)
+        deliver(case, result)
+        wait_done(case.simulation)
+        assert len(case.calls) == 1
+        after = case.source.session.snapshot()
+        assert after.design_revision == before.design_revision == case.base.design_revision
+        assert after.design == before.design and after.dirty == before.dirty
+        assert not case.source.canUndoOptimizedDesign
+        assert case.simulation._source_design_revision == after.design_revision
+        if already_fresh:
+            assert case.simulation._result is previous_result
+        deliver(case, result)
+        case.controller.cancelOptimization()
+        assert len(case.calls) == 1
+
+
+def test_same_design_cancel_refreshes_stale_spectrum_once(app, tmp_path, monkeypatch):
+    with spectrum_case(tmp_path, monkeypatch) as case:
+        case.simulation.requestSourceRefresh()
+        wait_done(case.simulation)
+        assert case.simulation.setSimulationSettings({'wavelength_min_nm': 551., 'wavelength_max_nm': 552.,
+            'samples': 2, 'angle_deg': 0., 'polarization': 'unpolarized'})
+        before = case.source.session.snapshot()
+        arm(case)
+        case.controller.cancelOptimization()
+        result = cancelled_result(case, same=True)
+        deliver(case, result)
+        wait_done(case.simulation)
+        assert len(case.calls) == 2
+        assert case.calls[-1]['settings']['wavelength_min_nm'] == 551.
+        after = case.source.session.snapshot()
+        assert after.design_revision == before.design_revision
+        assert after.design == before.design and after.dirty == before.dirty
+        assert not case.source.canUndoOptimizedDesign
+        deliver(case, result)
+        assert len(case.calls) == 2
+
+
+def test_same_design_cancel_joins_inflight_spectrum(app, tmp_path, monkeypatch):
+    with spectrum_case(tmp_path, monkeypatch, ready=False) as case:
+        case.simulation.requestSourceRefresh()
+        assert case.simulation._busy
         arm(case)
         case.controller.cancelOptimization()
         deliver(case, cancelled_result(case, same=True))
+        assert case.simulation._busy and not case.simulation._pending_recompute
+        case.gate.set()
         wait_done(case.simulation)
         assert len(case.calls) == 1
         assert case.source.session.snapshot().design_revision == case.base.design_revision

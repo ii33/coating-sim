@@ -5,6 +5,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from copy import deepcopy
 from pathlib import Path
+from typing import Any
 import threading
 import time
 
@@ -66,7 +67,7 @@ def runtime(tmp_path):
 
 def select_film(controller):
     estimator = controller.resourceEstimateController
-    assert estimator.setVerificationEnabled(True)
+    assert estimator.setMode("synthesis_verification")
     assert estimator.setProbeMaxEvaluations("0")  # isolate the pre-existing audit checks
     estimator.refreshMaterials()
     row = estimator.addMaterialRow()
@@ -109,7 +110,8 @@ def test_cancel_rerun_stale_and_no_writeback(runtime, monkeypatch):
 
     monkeypatch.setattr(module._Task, "run", controlled_run)
     estimator = controller.resourceEstimateController
-    monkeypatch.setattr(controller.service, "material_options", lambda kind: [{"id": "m", "name": "M", "optical_sets": [{"id": "s", "name": "S"}]}])
+    monkeypatch.setattr(controller.service, "material_picker_options_many", lambda kinds: {
+        kind: [{"id": "m", "name": "M", "optical_sets": [{"id": "s", "name": "S"}]}] for kind in kinds})
     estimator.refreshMaterials()
     assert estimator.setSubstrateMaterial("m")
     row = estimator.addMaterialRow()
@@ -421,7 +423,7 @@ def test_independent_material_draft_reaches_task_and_rejects_empty_missing(runti
     app, controller, window, warnings = runtime
     records = [{"id": "one", "name": "One", "optical_sets": [{"id": "a", "name": "A"}]},
                {"id": "two", "name": "Two", "optical_sets": [{"id": "b", "name": "B"}]}]
-    monkeypatch.setattr(controller.service, "material_options", lambda kind: deepcopy(records))
+    monkeypatch.setattr(controller.service, "material_picker_options_many", lambda kinds: {kind: deepcopy(records) for kind in kinds})
     estimator = controller.resourceEstimateController
     estimator.refreshMaterials()
     assert estimator.setSubstrateMaterial("one")
@@ -516,6 +518,7 @@ def test_optimizer_assessment_render_shared_lifecycle_and_draft(runtime, tmp_pat
     try:
         assert owner.setSearchMode('resource_assessment')
         estimator = source.resourceEstimateController
+        assert estimator.setMode('necessary_diagnostics')
         estimator.refreshMaterials()
         assert estimator.substrateSelection['material_id'] == 'acceptance-glass'
         row = estimator.addMaterialRow()
@@ -649,7 +652,6 @@ def test_closing_optimizer_cancels_active_resource_assessment(runtime, tmp_path,
 
 
 def test_active_objective_editor_flushes_before_assessment_start(runtime, tmp_path, monkeypatch):
-    from PySide6.QtCore import Qt
     from PySide6.QtQuick import QQuickItem
     from coat_sim.ui.film_optimization_quick_controller import FilmOptimizationQuickController
     from tests.film_structure_fixtures import fixture
@@ -701,8 +703,8 @@ def test_probe_settings_validation_and_frozen_worker_inputs(runtime, tmp_path, m
     estimator.refreshMaterials()
     row = estimator.addMaterialRow()
     assert estimator.setRowMaterial(row, 'acceptance-film')
-    assert not estimator.verificationEnabled
-    assert estimator.setVerificationEnabled(True)
+    assert estimator.mode == "quick_prediction"
+    assert estimator.setMode("synthesis_verification")
     assert estimator.probeMaxEvaluations == '256'
     assert estimator.probeSeeds == '0,1'
     assert not estimator.setProbeMaxEvaluations('-1')
@@ -741,7 +743,7 @@ def test_probe_settings_validation_and_frozen_worker_inputs(runtime, tmp_path, m
         assert '物理光谱计算 5 次' in estimator.status and '波长点 60 个' in estimator.status
         estimator._on_progress(estimator._token, SimpleNamespace(message='准备中'))
         assert '物理光谱计算 0 次' not in estimator.status
-        assert not estimator.setVerificationEnabled(False)
+        assert not estimator.setMode("necessary_diagnostics")
         assert not estimator.setLayerLimit('10')
         assert not estimator.setProbeMaxEvaluations('8')
         assert not estimator.setProbeSeeds('4')
@@ -779,12 +781,21 @@ def test_real_qml_probe_drafts_flush_before_start(runtime, tmp_path, monkeypatch
         assert estimator.setRowMaterial(row, 'acceptance-film')
         with window_runtime(app, owner) as (window, warnings):
             click(app, window, window.findChild(QQuickItem, 'filmOptimizationAlgorithmTab'))
-            toggle = window.findChild(QQuickItem, 'resourceVerificationEnabled')
-            assert toggle is not None and not toggle.property('checked')
-            toggle.forceActiveFocus()
-            QTest.keyClick(window, Qt.Key.Key_Space)
+            mode = window.findChild(QQuickItem, 'resourceAssessmentMode')
+            assert mode is not None and estimator.mode == "quick_prediction"
+            mode.forceActiveFocus()
+            QTest.keyClick(window, Qt.Key.Key_Down)
+            QTest.keyClick(window, Qt.Key.Key_Enter)
             app.processEvents()
-            assert estimator.verificationEnabled
+            assert estimator.mode == "necessary_diagnostics"
+            QTest.keyClick(window, Qt.Key.Key_Home)
+            QTest.keyClick(window, Qt.Key.Key_Enter)
+            app.processEvents()
+            assert estimator.mode == "quick_prediction"
+            QTest.keyClick(window, Qt.Key.Key_End)
+            QTest.keyClick(window, Qt.Key.Key_Enter)
+            app.processEvents()
+            assert estimator.mode == "synthesis_verification"
             budget = window.findChild(QQuickItem, 'resourceProbeMaxEvaluations')
             seeds = window.findChild(QQuickItem, 'resourceProbeSeeds')
             assert budget is not None and seeds is not None
@@ -842,7 +853,7 @@ def test_real_bounded_probe_from_ui_reports_actual_effort(runtime, tmp_path, mon
     summary = estimator.resultSummary
     assert f"{outcome['evaluations']} / 4" in summary
     assert f"物理光谱计算 {outcome['physical_evaluations']} 次" in summary
-    assert '不代表搜索穷尽' in summary and '没有经过校准' in summary
+    assert '不代表搜索穷尽' in summary and '本次未进行快速预估' in summary
     assert source.session.snapshot().design == before
     # Display the genuine bounded run in the optimizer window at narrow width.
     from PySide6.QtQuick import QQuickItem
@@ -886,7 +897,8 @@ def test_fast_mode_ignores_invalid_probe_drafts_and_freezes_mode(runtime, tmp_pa
     estimator.refreshMaterials()
     row = estimator.addMaterialRow()
     assert estimator.setRowMaterial(row, 'acceptance-film')
-    assert not estimator.verificationEnabled
+    assert estimator.mode == "quick_prediction"
+    assert estimator.setMode('necessary_diagnostics')
     assert not estimator.setProbeMaxEvaluations('invalid')
     assert not estimator.setProbeSeeds('invalid')
     captured = []
@@ -905,14 +917,14 @@ def test_fast_mode_ignores_invalid_probe_drafts_and_freezes_mode(runtime, tmp_pa
         assert estimator.start()
         assert entered.wait(1)
         assert captured == [(0, False)]
-        assert not estimator.setVerificationEnabled(True)
+        assert not estimator.setMode("synthesis_verification")
         release.set()
         wait_until(app, lambda: not estimator.busy)
         assert '未进行独立审计' in estimator.resultSummary
-        assert '预测：未知' in estimator.resultSummary
-        assert estimator.setVerificationEnabled(True)
+        assert '本次未进行快速预估' in estimator.resultSummary
+        assert estimator.setMode("synthesis_verification")
         assert estimator.stale and not estimator.start()
-        assert estimator.setVerificationEnabled(False)
+        assert estimator.setMode("necessary_diagnostics")
         assert estimator.start()
         wait_until(app, lambda: not estimator.busy)
     finally:
@@ -955,9 +967,15 @@ def test_optimizer_start_gate_ignores_hidden_probe_errors(runtime):
         assert not estimator.setProbeMaxEvaluations('bad')
         assert not estimator.setProbeSeeds('bad')
         assert owner.canStart
-        assert estimator.setVerificationEnabled(True)
+        assert not estimator.setLayerLimit('bad')
+        assert owner.canStart  # hidden diagnostic window cannot block prediction
+        assert estimator.setMode('necessary_diagnostics')
         assert not owner.canStart
-        assert estimator.setVerificationEnabled(False)
+        assert estimator.setLayerLimit('8')
+        assert owner.canStart
+        assert estimator.setMode("synthesis_verification")
+        assert not owner.canStart
+        assert estimator.setMode("necessary_diagnostics")
         assert owner.canStart
     finally:
         owner.shutdown(1000)
@@ -966,8 +984,142 @@ def test_optimizer_start_gate_ignores_hidden_probe_errors(runtime):
 
 def test_summary_uses_native_assessment_mode_not_candidate_audit_flag():
     fast = module._format_summary({'state': 'completed', 'work': {'assessment_mode': 'fast_screen', 'probe_runs': 0}})
-    assert '快速评估未搜索或审计' in fast and '预测：未知' in fast
+    assert '必要条件诊断未搜索或审计' in fast and '本次未进行快速预估' in fast
     verification = module._format_summary({'state': 'completed', '_audit_candidates': False,
         'work': {'assessment_mode': 'verification', 'probe_runs': 1}})
-    assert '快速评估未搜索' not in verification
+    assert '必要条件诊断未搜索' not in verification
     assert '未运行合成探测' not in verification
+
+
+def test_three_mode_worker_dispatches_prediction_and_explicit_diagnostic_contract(monkeypatch):
+    """The UI routes modes, but never substitutes a prediction algorithm."""
+    import sys
+    from dataclasses import dataclass, field
+    from types import SimpleNamespace
+    from coat_sim.core import film_resource_estimation as core
+
+    @dataclass
+    class FakeResult:
+        state: str = 'completed'
+        source_digest: str = ''
+        estimate_state: str = 'not_calibrated'
+        work: dict = field(default_factory=dict)
+        prediction: dict | None = None
+
+    calls: list[tuple[str, Any]] = []
+    def prepare(*args):
+        calls.append(('request', args[6:]))
+        return object()
+    def predict(service, request, **kwargs):
+        calls.append(('predict', kwargs))
+        return FakeResult()
+    def estimate(service, request, **kwargs):
+        calls.append(('estimate', kwargs))
+        return FakeResult()
+    monkeypatch.setattr(module, '_prepare_request', prepare)
+    monkeypatch.setitem(sys.modules, 'coat_sim.core.film_resource_prediction', SimpleNamespace(
+        predict_film_resources=predict))
+    monkeypatch.setattr(core, 'estimate_film_resources', estimate)
+    finished = []
+    signals = SimpleNamespace(progress=SimpleNamespace(emit=lambda *args: None),
+                              finished=SimpleNamespace(emit=lambda *args: finished.append(args)))
+    for mode, budget, audit in [('quick_prediction', 0, False), ('necessary_diagnostics', 0, False),
+                                 ('synthesis_verification', 7, True)]:
+        task = module._Task(object(), {}, 1, 8, threading.Event(), 1, signals, [], None,
+                            budget, (2, 3), audit, mode)
+        task.run()
+    assert [call[0] for call in calls] == ['request', 'predict', 'request', 'estimate', 'request', 'estimate']
+    assert [call[1] for call in calls if call[0] == 'request'] == [(0, (2, 3), False), (0, (2, 3), False), (7, (2, 3), True)]
+    assert all(item[2] is None for item in finished)
+    assert [item[1]['_requested_mode'] for item in finished] == ['quick_prediction', 'necessary_diagnostics', 'synthesis_verification']
+
+
+def test_prediction_summary_requires_a_complete_single_model_and_never_claims_unknown():
+    prediction = {'model_id': 'model-a', 'reference_profile': 'profile-a', 'layer_count': 12,
+                  'total_thickness_nm': 450, 'joint_interval': {'layer_min': 10, 'layer_max': 15,
+                  'thickness_min_nm': 400, 'thickness_max_nm': 500},
+                  'coverage_note': '校准覆盖', 'applicability_note': '仅适用于此配置'}
+    result: dict[str, Any] = {'state': 'completed', 'estimate_state': 'estimated', 'prediction': prediction,
+                              'work': {'assessment_mode': 'quick_prediction'}}
+    summary = module._format_summary(result)
+    assert all(fragment in summary for fragment in ('12 层 / 约 450 nm', '10–15 层 / 400–500 nm', '校准覆盖', '仅适用于此配置'))
+    result['prediction'] = None
+    assert '未取得资源预估' in module._format_summary(result)
+    result['prediction'] = prediction
+    result['estimate_state'] = 'out_of_domain'
+    assert '未取得资源预估' in module._format_summary(result)
+    result['estimate_state'] = 'not_calibrated'
+    assert '未取得资源预估' in module._format_summary(result)
+    result['estimate_state'] = 'estimated'
+    result['prediction'] = {**prediction, 'joint_interval': None}
+    assert '不能显示为有效资源预估' in module._format_summary(result)
+
+
+def test_unrelated_invalid_optimization_search_caps_do_not_block_resource_request(tmp_path):
+    from tests.film_structure_fixtures import fixture
+    from tests.test_film_optimization_restore_layout import saved_configuration
+
+    service, _library, design = fixture(tmp_path / 'invalid-search-cap')
+    config = saved_configuration(service, design)
+    config['synthesis']['options']['max_layers'] = 'unfinished'
+    design['workflow_settings'] = {'optimization': config}
+    request = module._prepare_request(design, 1, 8, threading.Event(), config['synthesis']['material_rows'])
+    assert request.search_budget_reference == {}
+    assert request.probe_max_evaluations == 0 and request.audit_candidates is False
+
+
+def test_prediction_summary_precision_assumptions_and_technical_provenance():
+    prediction = {'model_id': 'technical-model-unique-123456', 'model_label': '联合经验模型',
+                  'reference_profile': 'technical-profile-unique-123456', 'reference_profile_label': '参考工艺',
+                  'layer_count': 12, 'total_thickness_nm': 412.34567890123,
+                  'joint_interval': {'layer_min': 10, 'layer_max': 15,
+                                     'thickness_min_nm': 399.12345678, 'thickness_max_nm': 510.98765432},
+                  'conditional_on_assumption': True, 'known_k_preserved': True,
+                  'feature_domain': 'registered_real_nk', 'joint_region_note': '校准联合误差区域',
+                  'coverage_note': '条件覆盖', 'applicability_note': '目标族限制'}
+    result = {'state': 'completed', 'estimate_state': 'estimated', 'prediction': prediction,
+              'work': {'assessment_mode': 'quick_prediction'}}
+    summary = module._format_summary(result)
+    assert '约 412.3 nm' in summary and '399.1–511 nm' in summary
+    assert '412.34567890123' not in summary
+    assert '联合经验模型' in summary and '参考工艺' in summary
+    assert 'technical-model-unique-123456' not in summary and 'technical-profile-unique-123456' not in summary
+    assert '注意：此预测依赖未知 k 按零假设' in summary and '已知 k 保留，未被改写' in summary
+    assert '已注册真实 n/k 材料域' in summary and '校准联合误差区域' in summary
+    assert '外接角点不一定对应实际膜系' in summary
+    technical = module._format_prediction_technical(result)
+    assert all(part in technical for part in ('412.34567890123', '399.12345678', '510.98765432',
+                                                'technical-model-unique-123456', 'technical-profile-unique-123456'))
+    prediction['conditional_on_assumption'] = False
+    prediction['known_k_preserved'] = False
+    summary = module._format_summary(result)
+    assert '未依赖未知 k 按零假设' in summary and '注意：已知 k 未被保留' in summary
+    prediction.pop('conditional_on_assumption')
+    prediction.pop('known_k_preserved')
+    summary = module._format_summary(result)
+    assert '未知 k 假设状态未提供' in summary and '已知 k 的保留状态未确认' in summary
+
+
+def test_prediction_rejection_explains_specific_reason():
+    result: dict[str, Any] = {'state': 'completed', 'estimate_state': 'out_of_domain', 'prediction': None,
+                              'message': '仅支持单前面、半无限基片；双面尚未校准。',
+              'work': {'assessment_mode': 'quick_prediction'}}
+    summary = module._format_summary(result)
+    assert '未取得资源预估' in summary and result['message'] in summary
+    assert '不能据此判断不可行' in summary
+
+
+def test_resource_catalog_refresh_requests_both_roles_once(runtime, monkeypatch):
+    _app, source, _window, _warnings = runtime
+    estimator = source.resourceEstimateController
+    original = source.service.material_picker_options_many
+    calls = []
+    def counted(purposes):
+        calls.append(tuple(purposes))
+        return original(purposes)
+    monkeypatch.setattr(source.service, 'material_picker_options_many', counted)
+    monkeypatch.setattr(source.service, 'material_options_many', lambda _roles: pytest.fail('full catalog copy'))
+    monkeypatch.setattr(source.service, 'material_options', lambda _role: pytest.fail('separate catalog scan'))
+    estimator.refreshMaterials()
+    assert calls == [('film', 'substrate')]
+    assert '材料目录读取失败' not in estimator.materialError

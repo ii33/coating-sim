@@ -134,6 +134,9 @@ def stage_source_snapshot(destination: Path) -> list[dict[str, object]]:
         Path("docs") / "refractiveindex-browser-contract.md",
         Path("docs") / "vendor-optical-catalog-contract.md",
         Path("docs") / "reference-sources.md",
+        Path("docs") / "film-resource-estimation-core-contract.md",
+        Path("docs") / "film-resource-estimation-ui-contract.md",
+        Path("docs") / "film-resource-prediction-core-contract.md",
     ):
         source = ROOT / relative
         _validate_path(source)
@@ -278,6 +281,9 @@ def add_qt_and_source_data_arguments(command: list[str], data_stage: Path, sourc
         (source_root / "docs" / "refractiveindex-browser-contract.md", "docs"),
         (source_root / "docs" / "vendor-optical-catalog-contract.md", "docs"),
         (source_root / "docs" / "reference-sources.md", "docs"),
+        (source_root / "docs" / "film-resource-estimation-core-contract.md", "docs"),
+        (source_root / "docs" / "film-resource-estimation-ui-contract.md", "docs"),
+        (source_root / "docs" / "film-resource-prediction-core-contract.md", "docs"),
         # launch_desktop.pyw is run through runpy in frozen_entry.pyw, so its
         # dynamic import of the top-level launcher is invisible to PyInstaller.
         # Ship the exact frozen launcher source at the app root for PathFinder.
