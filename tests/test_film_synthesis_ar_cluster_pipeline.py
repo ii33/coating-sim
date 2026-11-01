@@ -1,4 +1,5 @@
 """Default GUI/durable cluster integration, using real bounded core work."""
+from copy import deepcopy
 from dataclasses import replace
 from threading import Event
 
@@ -32,16 +33,24 @@ def test_mode_payload_roundtrip_rejects_missing_current_field():
         film_synthesis_request_from_payload(payload)
 
 
-def test_explicit_legacy_gui_cluster_route_runs_global_before_gradient_and_cancels_cleanly(tmp_path):
+def test_gui_rejects_legacy_while_typed_core_route_keeps_global_and_cancels_cleanly(tmp_path):
     service, fixture = setup_problem(upper=0., samples=3)
     base = FilmOptimizationRequest(fixture.environment, 82, (), fixture.objectives,
         acceptable_normalized_error=0., validation_samples_multiplier=4)
     options = {key: getattr(fixture, key) for key in SYNTHESIS_DEFAULT_OPTIONS}
-    # This ordering belongs to the retained legacy topology optimizer, not to
-    # the new staged hybrid default. Keep its durable route explicitly covered.
-    options.update(max_evaluations=1400, max_layers=12, search_strategy="legacy")
-    request = build_synthesis_request(base, fixture.candidate_materials, options,
+    # A new GUI request cannot select the retired route or mutate its draft.
+    # The legacy core/typed-job protocol is still independently regression-tested.
+    options.update(max_evaluations=1400, max_layers=12)
+    attempted = dict(options, search_strategy="legacy")
+    original_options, original_design = deepcopy(attempted), deepcopy(base.design_snapshot)
+    with pytest.raises(ValueError, match="search_strategy"):
+        build_synthesis_request(base, fixture.candidate_materials, attempted,
+            use_current_seed=False, cpu_workers=1)
+    assert attempted == original_options and base.design_snapshot == original_design
+    gui_request = build_synthesis_request(base, fixture.candidate_materials, options,
         use_current_seed=False, cpu_workers=1)
+    assert gui_request.search_strategy == "hybrid"
+    request = replace(gui_request, search_strategy="legacy")  # Explicit typed core request only.
     assert request.ar_structure_mode == 'clustered' and request.seed_designs == ()
     assert request.search_strategy == "legacy"
     frozen = synthesis.freeze_film_synthesis_request(service, request)
@@ -100,7 +109,7 @@ def test_default_gui_hybrid_typed_job_cancels_after_real_analytic_probe(tmp_path
         use_current_seed=False, cpu_workers=1)
     assert request.search_strategy == "hybrid" and request.ar_structure_mode == "clustered"
     assert not hasattr(request, "objective_weighting")
-    assert request.max_working_set_bytes == 0
+    assert request.max_working_set_bytes is None
     assert request.seed_designs == ()
     frozen = synthesis.freeze_film_synthesis_request(service, request)
     job = JobSpec.parse_frozen(synthesis_spec(service, frozen)).to_spec()

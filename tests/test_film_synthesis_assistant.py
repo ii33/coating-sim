@@ -95,9 +95,35 @@ def test_mcp_request_schema_requires_every_nonextension_decoder_field():
     from dataclasses import fields
     from coat_sim.core.mcp_contracts import FILM_SYNTHESIS_PLAN_INPUT_SCHEMA
     request_schema = FILM_SYNTHESIS_PLAN_INPUT_SCHEMA['properties']['payload']['properties']['request']
-    optional_extensions = {'search_checkpoint', 'enable_local_margin_refinement', 'selected_surfaces'}
+    from coat_sim.core.film_synthesis_io import OPTIONAL_REQUEST_EXTENSIONS
+    optional_extensions = OPTIONAL_REQUEST_EXTENSIONS
     decoder_fields = {item.name for item in fields(FilmSynthesisRequest)}
     assert set(request_schema['required']) == decoder_fields - optional_extensions
+
+
+
+def test_mcp_until_target_is_typed_optional_and_matches_decoder_defaults():
+    from coat_sim.core.capabilities import CapabilityError
+    from coat_sim.core.mcp_contracts import FILM_SYNTHESIS_PLAN_INPUT_SCHEMA, validate_mcp_arguments
+    service, request = unmet_problem()
+    payload = film_synthesis_request_to_payload('until-schema', freeze_film_synthesis_request(service, request))
+    schema = FILM_SYNTHESIS_PLAN_INPUT_SCHEMA['properties']['payload']['properties']['request']
+    assert schema['properties']['search_until_target']['type'] == 'boolean'
+    assert schema['properties']['search_until_target']['default'] is False
+    assert 'search_until_target' not in schema['required']
+    for enabled in (False, True):
+        payload['request']['search_until_target'] = enabled
+        validate_mcp_arguments(FILM_SYNTHESIS_PLAN_INPUT_SCHEMA, {'payload': payload})
+        _, parsed, _ = film_synthesis_request_from_payload(payload)
+        assert parsed.search_until_target is enabled
+        assert parsed.max_layers == request.max_layers
+    payload['request']['search_until_target'] = 'true'
+    with pytest.raises(CapabilityError):
+        validate_mcp_arguments(FILM_SYNTHESIS_PLAN_INPUT_SCHEMA, {'payload': payload})
+    del payload['request']['search_until_target']
+    validate_mcp_arguments(FILM_SYNTHESIS_PLAN_INPUT_SCHEMA, {'payload': payload})
+    _, parsed, _ = film_synthesis_request_from_payload(payload)
+    assert parsed.search_until_target is False
 
 
 def test_qml_and_docs_match_current_unknown_k_default_and_schema_version():

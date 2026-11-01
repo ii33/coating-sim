@@ -37,6 +37,10 @@ def _normalize_specs(structures):
         raise FilmSynthesisPayloadError(f"invalid physical structure spec: {exc}") from exc
 
 
+OPTIONAL_REQUEST_EXTENSIONS = frozenset({'search_checkpoint', 'enable_local_margin_refinement',
+    'selected_surfaces', 'search_until_target'})
+
+
 def film_synthesis_request_from_payload(payload: Mapping[str, Any], *, require_frozen: bool = True) -> tuple[str, FilmSynthesisRequest, tuple[Mapping[str, Any], ...]]:
     """Parse a frozen request envelope and canonicalize its structure specs."""
     if not isinstance(payload, Mapping) or set(payload) != {
@@ -55,9 +59,7 @@ def film_synthesis_request_from_payload(payload: Mapping[str, Any], *, require_f
     if not isinstance(raw, Mapping):
         raise FilmSynthesisPayloadError("request must be an object")
     allowed = {item.name for item in fields(FilmSynthesisRequest)}
-    optional_extensions = {'search_checkpoint', 'enable_local_margin_refinement', 'selected_surfaces',
-                           'search_until_target'}
-    if set(raw) - allowed or allowed - set(raw) - optional_extensions:
+    if set(raw) - allowed or allowed - set(raw) - OPTIONAL_REQUEST_EXTENSIONS:
         raise FilmSynthesisPayloadError("current synthesis request requires every field and no unknown fields")
     data = deepcopy(dict(raw))
     try:

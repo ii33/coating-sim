@@ -91,7 +91,7 @@ FILM_SYNTHESIS_PLAN_INPUT_SCHEMA: dict[str, Any] = {
             "request": {"type": "object", "additionalProperties": True,
                 # Keep MCP validation aligned with film_synthesis_request_from_payload:
                 # default annotations below are documentation only and do not
-                # fill omitted values. The two explicit extensions remain optional.
+                # fill omitted values. Explicit additive extensions remain optional.
                 "required": [
                     "environment", "objectives", "candidate_materials", "design_revision",
                     "minimum_nonzero_thickness_nm", "max_layer_thickness_nm", "max_total_thickness_nm",
@@ -116,6 +116,8 @@ FILM_SYNTHESIS_PLAN_INPUT_SCHEMA: dict[str, Any] = {
                     "selected_surfaces": {"type": "array", "minItems": 1, "uniqueItems": True,
                         "items": {"enum": ["front", "back"]}, "default": ["front"],
                         "description": "Physical faces synthesized jointly; back requires a double-sided substrate. Unselected stacks remain fixed. Layer and thickness limits apply to selected faces in aggregate."},
+                    "search_until_target": {"type": "boolean", "default": False,
+                        "description": "Ignore per-run cycle/evaluation/time budgets after validation; physical constraints and local convergence stay unchanged. A local session may pause unmet; continuing global/structure search requires an explicit user action. No global infeasibility claim."},
                     "needle_pre_local": {"type": "boolean", "default": NEEDLE_PRE_LOCAL},
                     "warm_start_seed_index": {
                         "type": ["integer", "null"], "minimum": 0, "default": None,

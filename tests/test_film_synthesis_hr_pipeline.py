@@ -154,18 +154,24 @@ def test_public_case_has_no_hidden_seed_and_uses_normal_typed_request_contract(m
         assume_unknown_k_zero=True, cpu_workers=1)
     rebuilt = freeze_film_synthesis_request(None, replace(rebuilt,
         frozen_material_snapshot=original.frozen_material_snapshot))
-    # Every original input remains binding. Only the two explicit AUTO
-    # execution controls resolve, never optics, seeds, grid or user budgets.
-    expected = replace(original, resource_guard_resolution=expected_resolution, parallel_batch_size=1)
+    # Direct typed API retains its explicit AUTO default; the GUI adapter now
+    # explicitly disables the resource guard. Neither route changes physical
+    # inputs, seeds, sampling or user budgets, and the job freezes the GUI one.
+    auto_expected = replace(original, resource_guard_resolution=expected_resolution, parallel_batch_size=1)
     assert original.parallel_batch_size is None
+    assert freeze_film_synthesis_request(None, original) == auto_expected
+    disabled_resolution = dict(version=1, mode="disabled", requested_bytes=None,
+        effective_bytes=None, available_bytes=None, basis="disabled")
+    expected = replace(original, max_working_set_bytes=None,
+        resource_guard_resolution=disabled_resolution, parallel_batch_size=1)
     assert rebuilt == expected
-    assert rebuilt.resource_guard_resolution == expected_resolution
+    assert rebuilt.resource_guard_resolution == disabled_resolution
     from coat_sim.core.film_synthesis_io import film_synthesis_request_to_payload
-    current_payload = film_synthesis_request_to_payload('current-public-hr-qualification', original)
+    current_payload = film_synthesis_request_to_payload('current-public-hr-qualification', rebuilt)
     job = build_job_payload(canonical_parameters(None, {'payload': current_payload}))
     _, queued, _ = deserialize_job_payload(job)
     assert queued == expected
-    assert queued.resource_guard_resolution == expected_resolution and not queued.seed_designs
+    assert queued.resource_guard_resolution == disabled_resolution and not queued.seed_designs
     assert all(o.wavelength_samples == 301 for o in queued.objectives)
     assert {(o.polarization, a) for o in queued.objectives for a in o.angles_deg} == {
         ('s', 0.), ('s', 30.), ('p', 0.), ('p', 30.)}
