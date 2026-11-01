@@ -237,7 +237,7 @@ def test_post_and_cancel_are_off_gui_and_cancel_waits_for_admission(harness, app
         _dispose(controller, app)
 
 
-def test_lost_ack_keeps_unknown_id_visible_and_never_reposts_or_cancels(
+def test_lost_ack_keeps_internal_id_without_display_and_never_reposts_or_cancels(
         harness, app, monkeypatch):
     create, _request = harness
     store = _RemoteStore(unknown=True)
@@ -256,8 +256,11 @@ def test_lost_ack_keeps_unknown_id_visible_and_never_reposts_or_cancels(
         assert store.submit_threads[0] != gui_thread
         assert controller.queueJobId == job_id
         assert controller.resultTerminalState == "提交状态未知"
-        assert job_id in controller.error
+        assert job_id not in controller.error
         assert "不会自动重复提交" in controller.error
+        assert not controller.startOptimization()
+        assert job_id not in controller.error
+        assert len(store.submit_records) == 1
         assert store.cancel_records == []
         assert store.result_calls == 0
     finally:

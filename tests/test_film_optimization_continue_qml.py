@@ -155,7 +155,7 @@ class _Runtime:
             self.click("filmOptimizationContinueButton")
         assert self.dialog.property("visible")
 
-    def synthesis_record(self):
+    def synthesis_record(self, *, until_target=False):
         record = self.controller._continuation_record
         assert record is not None
         fixed_request = record["request"]
@@ -165,9 +165,13 @@ class _Runtime:
             mode="synthesis",
             request=SimpleNamespace(
                 frozen_material_snapshot=fixed_request.frozen_material_snapshot,
-                max_cycles=5, max_evaluations=None, max_seconds=1.5,
+                search_strategy="hybrid", max_working_set_bytes=None, search_until_target=until_target,
+                forward_backend="cpu", forward_device=None,
+                max_cycles=None if until_target else 5, max_evaluations=None,
+                max_seconds=None if until_target else 1.5,
             ),
-            synthesis_payload={"result": {"cycles": 3, "evaluations": 23}},
+            synthesis_payload={"result": {"cycles": 3, "evaluations": 23,
+                "frozen_request": {"search_until_target": until_target}}},
             editable_snapshot=deepcopy(fixed_request.frozen_material_snapshot),
         )
         self.controller.changed.emit()
@@ -276,7 +280,10 @@ def test_fixed_dialog_uses_frozen_defaults_and_submits_only_new_budget(runtime):
     assert not state.item("filmOptimizationContinueMaxSecondsField").property("visible")
     spent = state.item("filmOptimizationContinuePreviousSpent").property("text")
     assert "迭代 7" in spent and "评价 23" in spent and "时长未记录" in spent
-    assert state.item("filmOptimizationContinueDialogFallback").property("visible")
+    assert "qml-retained-cancelled-job" not in spent
+    fallback = state.item("filmOptimizationContinueDialogFallback")
+    assert fallback.property("visible")
+    assert "qml-retained-cancelled-job" not in fallback.property("text")
     assert "不是精确续算" in state.item("filmOptimizationContinueExplanation").property("text")
     for invalid in ("", "0", "-1", "1.5", "9007199254740992"):
         state.set_text("MaxIterations", invalid)
@@ -314,6 +321,21 @@ def test_cancel_creates_no_attempt_and_reopening_refreshes_original_limits(runti
     state.click("filmOptimizationContinueBudgetCancelButton")
 
 
+def test_incomplete_synthesis_record_is_rejected_without_submission(runtime):
+    state = runtime
+    state.synthesis_record()
+    record = state.controller._continuation_record
+    assert record is not None
+    delattr(record["request"], "search_strategy")
+    state.controller.changed.emit()
+    state.settle()
+    assert not state.controller.canContinueOptimization
+    assert "旧独立路线不能继续" in state.controller.continueDisabledReason
+    assert not state.item("filmOptimizationContinueButton").property("enabled")
+    assert not state.dialog.property("visible")
+    assert state.controller.submitted_budgets == []
+
+
 def test_synthesis_dialog_submits_explicit_null_limits_and_independent_budget(runtime):
     state = runtime
     state.synthesis_record()
@@ -337,6 +359,38 @@ def test_synthesis_dialog_submits_explicit_null_limits_and_independent_budget(ru
         "max_cycles": None, "max_evaluations": None, "max_seconds": 1e-7,
     }]
     assert not state.dialog.property("visible")
+
+
+def test_synthesis_until_target_dialog_allows_all_empty_and_submits_nulls(runtime):
+    state = runtime
+    state.synthesis_record(until_target=True)
+    assert state.controller.continuationSearchUntilTarget is True
+    state.open_dialog()
+    assert state.dialog.property("searchUntilTarget") is True
+    for suffix in ("MaxCycles", "MaxEvaluations", "MaxSeconds"):
+        field = state.item("filmOptimizationContinue" + suffix + "Field")
+        assert field.property("text") == ""
+        assert not field.property("enabled")
+    assert state.submit.property("enabled")
+    spent = state.item("filmOptimizationContinuePreviousSpent").property("text")
+    assert "预算不生效" in spent and "qml-retained-cancelled-job" not in spent
+    state.click("filmOptimizationContinueBudgetSubmitButton")
+    assert state.controller.submitted_budgets == [{
+        "max_cycles": None, "max_evaluations": None, "max_seconds": None,
+    }]
+    assert not state.dialog.property("visible")
+
+
+def test_until_target_display_does_not_trust_mismatched_frozen_record(runtime):
+    state = runtime
+    state.synthesis_record(until_target=True)
+    record = state.controller._continuation_record
+    assert record is not None
+    record["synthesis_payload"]["result"]["frozen_request"]["search_until_target"] = False
+    state.controller.changed.emit()
+    state.settle()
+    assert state.controller.continuationSearchUntilTarget is False
+    assert state.controller.submitted_budgets == []
 
 
 @pytest.mark.parametrize("conflict", ["pending_edit", "revision"])

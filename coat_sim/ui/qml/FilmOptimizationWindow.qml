@@ -184,6 +184,7 @@ AppWindow {
         property string sourceMode: ""
         property string submissionError: ""
         readonly property bool synthesisMode: sourceMode === "synthesis"
+        readonly property bool searchUntilTarget: synthesisMode && window.controller.continuationSearchUntilTarget
         readonly property string budgetError: validateBudget()
         readonly property bool canSubmit: window.controller.canContinueOptimization
                                           && budgetError.length === 0
@@ -208,6 +209,8 @@ AppWindow {
                     return "新尝试的最大迭代数与最大评估数均须为正整数。"
                 return ""
             }
+            if (searchUntilTarget)
+                return ""
             if ((continuationCycles.text.length > 0
                     && !validPositiveInteger(continuationCycles.text))
                     || (continuationEvaluations.text.length > 0
@@ -226,6 +229,8 @@ AppWindow {
         }
         function newBudget() {
             if (synthesisMode) {
+                if (searchUntilTarget)
+                    return {max_cycles: null, max_evaluations: null, max_seconds: null}
                 return {
                     max_cycles: continuationCycles.text.length > 0
                                 ? Number(continuationCycles.text) : null,
@@ -261,7 +266,8 @@ AppWindow {
             submissionError = ""
         }
         onOpened: {
-            if (synthesisMode) continuationCycles.forceActiveFocus()
+            if (searchUntilTarget) continuationBudgetSubmitButton.forceActiveFocus()
+            else if (synthesisMode) continuationCycles.forceActiveFocus()
             else continuationIterations.forceActiveFocus()
         }
         onClosed: {
@@ -294,14 +300,18 @@ AppWindow {
                 }
                 Label {
                     Layout.fillWidth: true
-                    text: "以下限额仅用于这一次新尝试，独立计量，不是累计预算，也不扣除原尝试已耗额度。已预填原限制，请明确确认或修改。"
+                    text: continuationBudgetDialog.searchUntilTarget
+                          ? "本次继续启用了搜索直到达到目标，轮次、评价次数和时间预算不生效；制造约束仍有效。"
+                          : "以下限额仅用于这一次新尝试，独立计量，不是累计预算，也不扣除原尝试已耗额度。已预填原限制，请明确确认或修改。"
                     color: window.themeTokens.colorText
                     wrapMode: Text.WordWrap
                 }
                 Label {
                     Layout.fillWidth: true
                     visible: continuationBudgetDialog.synthesisMode
-                    text: "自动合成至少填写一项限制；留空表示新尝试不设该项限额。"
+                    text: continuationBudgetDialog.searchUntilTarget
+                          ? "此模式不使用以下总工作预算，继续时不受这些预算限制。"
+                          : "自动合成至少填写一项限制；留空表示新尝试不设该项限额。"
                     color: window.themeTokens.colorTextMuted
                     wrapMode: Text.WordWrap
                 }
@@ -333,6 +343,7 @@ AppWindow {
                         id: continuationCycles
                         objectName: "filmOptimizationContinueMaxCyclesField"
                         visible: continuationBudgetDialog.synthesisMode
+                        enabled: !continuationBudgetDialog.searchUntilTarget
                         Layout.fillWidth: true
                         accessibleLabel: "新尝试最大轮次，留空不设此限额"
                         placeholderText: "不设此限额"
@@ -343,6 +354,7 @@ AppWindow {
                     ThemeControls.ThemeField {
                         id: continuationEvaluations
                         objectName: "filmOptimizationContinueMaxEvaluationsField"
+                        enabled: !continuationBudgetDialog.searchUntilTarget
                         Layout.fillWidth: true
                         accessibleLabel: continuationBudgetDialog.synthesisMode
                                          ? "新尝试最大评估数，留空不设此限额" : "新尝试最大评估数"
@@ -359,6 +371,7 @@ AppWindow {
                         id: continuationSeconds
                         objectName: "filmOptimizationContinueMaxSecondsField"
                         visible: continuationBudgetDialog.synthesisMode
+                        enabled: !continuationBudgetDialog.searchUntilTarget
                         Layout.fillWidth: true
                         accessibleLabel: "新尝试最长计算时间，单位秒，留空不设此限额"
                         placeholderText: "不设此限额"
@@ -409,6 +422,7 @@ AppWindow {
                 DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
             }
             ThemeControls.ThemeButton {
+                id: continuationBudgetSubmitButton
                 objectName: "filmOptimizationContinueBudgetSubmitButton"
                 text: "开始新尝试"
                 primary: true
@@ -3024,6 +3038,7 @@ AppWindow {
                 visible: window.controller.synthesisAbsorptionSummary.length > 0
                 Layout.fillWidth: true
                 text: window.controller.synthesisAbsorptionSummary
+                textFormat: Text.PlainText
                 wrapMode: Text.WrapAnywhere
                 color: window.themeTokens.colorTextMuted
             }

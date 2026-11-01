@@ -81,7 +81,8 @@ def test_continue_uses_frozen_criteria_new_budget_ids_and_no_duplicate(review, m
     assert not controller.continueOptimization({'max_iterations': 4, 'max_evaluations': 17})
     assert len(jobs) == 1
     assert controller._result is None and not controller._result_application_eligible
-    assert '独立旧作业 review-job-1' in controller.priorRunFallbackText
+    assert '独立的旧计算' in controller.priorRunFallbackText
+    assert 'review-job-1' not in controller.priorRunFallbackText
     assert review.source._optimization_undo_revision == prior_undo
     assert len(review.refreshes) == 1
     controller._busy = False
@@ -277,7 +278,9 @@ def test_managed_source_identity_and_history_survive_reopen(review, tmp_path, ap
         source.deleteLater()
 
 
-def test_synthesis_cancel_continue_keeps_full_frozen_request_and_editable_closure(review, monkeypatch):
+@pytest.mark.parametrize("source_guard", [None, 0, 3 * 1024**3])
+@pytest.mark.parametrize("source_until", [False, True])
+def test_synthesis_cancel_continue_keeps_full_frozen_request_and_editable_closure(review, monkeypatch, source_guard, source_until):
     from coat_sim.core.film_auto_synthesis import FilmSynthesisResult, _proxy, freeze_film_synthesis_request
     from coat_sim.core.film_optimization_needle import FilmNeedleMaterialReference
     from coat_sim.core.film_physical_generator import freeze_synthesis_editable_snapshot
@@ -287,10 +290,16 @@ def test_synthesis_cancel_continue_keeps_full_frozen_request_and_editable_closur
     )
     from tests.test_film_optimization_continuation import _no_physics
 
-    request = freeze_film_synthesis_request(review.service, build_synthesis_request(
+    gui_request = build_synthesis_request(
         review.request, (FilmNeedleMaterialReference('acceptance-film', 'film-set'),),
         {'max_cycles': 2, 'max_evaluations': 20, 'max_seconds': 30.},
-        use_current_seed=True, cpu_workers=1))
+        use_current_seed=True, cpu_workers=1)
+    # Model a current, valid typed API result with AUTO or explicit limits;
+    # the GUI itself never offers those removed controls.
+    request = freeze_film_synthesis_request(review.service,
+        replace(gui_request, max_working_set_bytes=source_guard, search_until_target=source_until))
+    assert request.max_working_set_bytes == source_guard
+    source_request = deepcopy(request)
     closure = freeze_synthesis_editable_snapshot(review.service, request.environment,
         request.frozen_material_snapshot)
     candidate = deepcopy(request.seed_designs[0])
@@ -303,6 +312,10 @@ def test_synthesis_cancel_continue_keeps_full_frozen_request_and_editable_closur
     payload = json.loads(json.dumps(film_synthesis_result_to_payload('synthesis-old', result)))
     payload['review']['cancel_snapshot'] = {'source': 'worker_completed_reply',
         'replay_performed': False, 'candidate_available': True}
+    if source_guard == 0 and not source_until:
+        # Current schema permits this extension to be absent, meaning false.
+        del payload['result']['frozen_request']['search_until_target']
+    source_payload = deepcopy(payload)
     arm(review)
     controller = review.controller
     controller._search_mode = 'synthesis'
@@ -323,9 +336,50 @@ def test_synthesis_cancel_continue_keeps_full_frozen_request_and_editable_closur
     prior_revision = review.source.session.snapshot().design_revision
     _no_physics(monkeypatch)
     assert controller.canContinueOptimization
+    assert '不设应用级工作集护栏' in controller.previousSpentText
+    record = controller._continuation_record
+    assert record is not None
+    record_before = deepcopy(record['synthesis_payload'])
+    for incompatible, expected_reason in (
+            (replace(request, search_strategy='legacy'), '旧独立路线'),
+            (replace(request, forward_backend='gpu'), 'GPU')):
+        record['request'] = incompatible
+        assert not controller.canContinueOptimization
+        assert expected_reason in controller.continueDisabledReason
+    record['request'] = request
     jobs = intercept_start(review, monkeypatch)
-    assert controller.continueOptimization({'max_cycles': 3, 'max_evaluations': 16, 'max_seconds': 12.}), controller.error
+    if source_until:
+        # These values must be rejected before until-target discards budgets.
+        for key, invalid in (('max_cycles', 0), ('max_cycles', -1), ('max_cycles', True),
+                             ('max_evaluations', 1), ('max_evaluations', 0),
+                             ('max_evaluations', -1), ('max_evaluations', False),
+                             ('max_seconds', 0), ('max_seconds', -0.1), ('max_seconds', True)):
+            invalid_budget: dict[str, int | float | None] = {
+                'max_cycles': None, 'max_evaluations': None, 'max_seconds': None}
+            invalid_budget[key] = invalid
+            assert not controller.continueOptimization(invalid_budget), (key, invalid)
+            assert controller.error and not jobs
+        assert record['synthesis_payload'] == source_payload and request == source_request
+    # A mismatched policy between record identity and frozen payload is never
+    # silently converted into a new job.
+    record['request'] = replace(request, search_until_target=not source_until)
+    budgets = ({'max_cycles': None, 'max_evaluations': None, 'max_seconds': None}
+               if source_until and source_guard == 0 else
+               {'max_cycles': 3, 'max_evaluations': 16, 'max_seconds': 12.})
+    # Supply a finite budget in the mismatch check so the identity check is
+    # reached independently of the ordinary-mode all-null budget rule.
+    assert not controller.continueOptimization({'max_cycles': 3, 'max_evaluations': 16, 'max_seconds': 12.})
+    assert '搜索策略身份不一致' in controller.error and not jobs
+    record['request'] = request
+    assert controller.continueOptimization(budgets), controller.error
     full = controller._attempt_full_request
+    assert request == source_request and payload == source_payload
+    assert record_before == source_payload == record['synthesis_payload']
+    assert full.max_working_set_bytes is None
+    assert full.search_until_target is source_until
+    assert full.resource_guard_resolution['mode'] == 'disabled'
+    if source_until:
+        assert (full.max_cycles, full.max_evaluations, full.max_seconds) == (None, None, None)
     assert full.warm_start_seed_index == 0
     assert full.seed_designs[0] == candidate
     assert full.objectives == request.objectives

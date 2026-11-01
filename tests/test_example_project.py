@@ -138,7 +138,9 @@ def test_example_page_configurations_restore_without_guessing(example):
                 "minimum_nonzero_thickness_nm", "max_layer_thickness_nm",
                 "max_total_thickness_nm")},
                 "randomize_template_search": False, "structure_search_seed": None,
-                "enable_thickness_reduction": True, "needle_pre_local": True},
+                "enable_thickness_reduction": True, "needle_pre_local": True,
+                "search_strategy": "hybrid", "max_working_set_bytes": None,
+                "search_until_target": False},
             "cpu_workers": 0,
             "forward_backend": "cpu",
             "forward_device": None,
@@ -185,6 +187,10 @@ def test_example_builder_uses_current_optimization_configuration(tmp_path):
     assert film_snapshot is not None
     configuration = film_snapshot["design"]["workflow_settings"]["optimization"]
     assert configuration["version"] == 3
+    options = configuration["synthesis"]["options"]
+    assert options["search_strategy"] == "hybrid"
+    assert options["max_working_set_bytes"] is None
+    assert options["search_until_target"] is False
     objective = configuration["objectives"][0]
     assert objective["pointwise"]["enabled"] and not objective["mean"]["enabled"]
     assert objective["pointwise"]["lower_bound_percent"] == 0.

@@ -237,10 +237,15 @@ def test_retired_historical_synthesis_is_view_only_before_source_or_identity_che
     view = cast(FilmOptimizationQuickController, SimpleNamespace())
     for request, message in (
             (SimpleNamespace(search_strategy='legacy', max_working_set_bytes=None), '旧独立路线'),
-            (SimpleNamespace(search_strategy='hybrid', max_working_set_bytes=0), '数值护栏')):
+            (SimpleNamespace(search_strategy='hybrid'), '缺少冻结的工作集策略')):
         reason = FilmOptimizationQuickController._continuation_source_reason(
             view, {'mode': 'synthesis', 'request': request})
         assert message in reason and '原历史保留' in reason
+    gpu = SimpleNamespace(search_strategy='hybrid', max_working_set_bytes=0,
+                          forward_backend='gpu', forward_device=None)
+    reason = FilmOptimizationQuickController._continuation_source_reason(
+        view, {'mode': 'synthesis', 'request': gpu})
+    assert 'GPU' in reason
 
 
 def test_session_stop_only_promises_continue_when_guard_accepts_reference(monkeypatch):

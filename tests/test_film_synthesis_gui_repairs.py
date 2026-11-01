@@ -283,20 +283,49 @@ def test_unknown_k_assumption_configuration_roundtrip_copies_environment_and_see
         assert controller._build_synthesis_request().environment["assume_lossless"] is True
 
 
-def test_absorption_summary_distinguishes_pool_from_candidate_assumptions(app, tmp_path):
+def test_absorption_summary_uses_frozen_names_not_uuid_or_mutable_catalog(app, tmp_path):
     service, _library, design = fixture(tmp_path)
+    material_id = 'a12b34cd-0000-4000-8000-123456789abc'
+    optical_id = 'b12b34cd-0000-4000-8000-123456789abc'
+    unknown_material = 'c12b34cd-0000-4000-8000-123456789abc'
+    unknown_optical = 'd12b34cd-0000-4000-8000-123456789abc'
     with optimizer(service, design) as (controller, _source, _session):
-        controller._synthesis_payload = {"absorption_assumption": {
-            "assume_unknown_k_zero": True,
-            "affected_materials": [{"material_id": "pool-only", "optical_set_id": "n-only"}],
-            "used_affected_materials": [],
-        }}
-        summary = str(controller.property("synthesisAbsorptionSummary"))
-        assert "pool-only / n-only" in summary and "当前候选未使用" in summary
-        controller._synthesis_payload["absorption_assumption"]["used_affected_materials"] = [
-            {"material_id": "actual-substrate", "optical_set_id": "n-only"}]
-        assert "当前候选实际采用此假设的数据集：actual-substrate / n-only" in str(
-            controller.property("synthesisAbsorptionSummary"))
+        with window_runtime(app, controller) as (window, warnings):
+            label = window.findChild(QObject, 'filmSynthesisAbsorptionSummary')
+            assert label is not None
+            context = qmlContext(label)
+            assert context is not None
+            is_plain = QQmlExpression(context, label, 'textFormat === Text.PlainText')
+            assert is_plain.evaluate()[0] is True
+            payload: dict[str, Any] = {"result": {"frozen_request": {"frozen_material_snapshot": {"materials": [
+                {"id": material_id, "name": "<b>冻结材料</b>", "optical_sets": [
+                    {"id": optical_id, "name": "可见光数据"}]},
+                {"id": unknown_material, "name": unknown_material, "optical_sets": [
+                    {"id": unknown_optical, "name": ""}]},
+            ]}}}, "absorption_assumption": {
+                "assume_unknown_k_zero": True,
+                "affected_materials": [
+                    {"material_id": material_id, "optical_set_id": optical_id},
+                    {"material_id": unknown_material, "optical_set_id": unknown_optical}],
+                "used_affected_materials": [],
+            }}
+            before = deepcopy(payload)
+            controller._synthesis_payload = payload
+            summary = str(controller.property("synthesisAbsorptionSummary"))
+            assert "<b>冻结材料</b> / 可见光数据" in summary
+            assert "材料 2 / 光学数据组 2" in summary and "当前候选未使用" in summary
+            assert all(identifier not in summary for identifier in
+                       (material_id, optical_id, unknown_material, unknown_optical))
+            assert payload == before  # Identities remain available to the core unchanged.
+            payload["absorption_assumption"]["used_affected_materials"] = [
+                {"material_id": unknown_material, "optical_set_id": unknown_optical}]
+            summary = str(controller.property("synthesisAbsorptionSummary"))
+            assert "当前候选实际采用此假设的数据集：材料 2 / 光学数据组 2" in summary
+            # Names are presentation only and are rendered as literal text.
+            assert label.setProperty('text', summary)
+            assert label.property('text') == summary and is_plain.evaluate()[0] is True
+            controller._synthesis_payload = None
+            assert not any('ReferenceError' in w or 'TypeError' in w for w in warnings)
 
 
 @pytest.mark.parametrize("lock", ["busy", "pending_angle"])

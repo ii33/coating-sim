@@ -938,7 +938,7 @@ class _FilmOptimizationTask(QRunnable):
                         "job_id": self.job_id,
                         "message": (
                             "队列提交状态仍未知；不会自动重复提交。"
-                            f"请使用作业 ID {self.job_id} 核对状态。"
+                            "请核对当前任务状态。"
                         ),
                     },
                 )
@@ -5335,9 +5335,37 @@ class FilmOptimizationQuickController(QObject):
         if not assumption.get("assume_unknown_k_zero"):
             return "吸收策略：严格使用已知 k；未把未知吸收按 0 计算。"
         refs = assumption.get("affected_materials", [])
-        identities = "、".join(f"{row['material_id']} / {row['optical_set_id']}" for row in refs)
         used = assumption.get("used_affected_materials", [])
-        used_identities = "、".join(f"{row['material_id']} / {row['optical_set_id']}" for row in used)
+        result = self._synthesis_payload.get("result") or {}
+        frozen = result.get("frozen_request") or {} if isinstance(result, dict) else {}
+        snapshot = frozen.get("frozen_material_snapshot") or {} if isinstance(frozen, dict) else {}
+        materials = snapshot.get("materials", []) if isinstance(snapshot, dict) else []
+        materials_by_id = {row.get("id"): row for row in materials if isinstance(row, dict)}
+        # Indices come only from the immutable result, not mutable catalogs. A
+        # missing or opaque name is never replaced with its internal identity.
+        pair_indices: dict[tuple[str, str], int] = {}
+        for row in (*refs, *used):
+            pair = (row["material_id"], row["optical_set_id"])
+            pair_indices.setdefault(pair, len(pair_indices) + 1)
+
+        def display_name(value: Any, fallback: str) -> str:
+            name = value.strip() if isinstance(value, str) else ""
+            compact = name.replace("-", "")
+            if not name or (len(compact) >= 32 and re.fullmatch(r"[0-9a-fA-F]+", compact)):
+                return fallback
+            return name
+
+        def label(row: Mapping[str, Any]) -> str:
+            pair = (row["material_id"], row["optical_set_id"])
+            index = pair_indices[pair]
+            material = materials_by_id.get(pair[0], {})
+            optical = next((item for item in material.get("optical_sets", [])
+                            if isinstance(item, dict) and item.get("id") == pair[1]), {})
+            return (f"{display_name(material.get('name'), f'材料 {index}')} / "
+                    f"{display_name(optical.get('name'), f'光学数据组 {index}')}")
+
+        identities = "、".join(label(row) for row in refs)
+        used_identities = "、".join(label(row) for row in used)
         if not identities:
             return "已启用未知 k 按 0 假设；本任务未发现需要替代的未知 k 数据集。已知非零 k 保留。"
         candidate_scope = (f"当前候选实际采用此假设的数据集：{used_identities}。"
@@ -5475,7 +5503,8 @@ class FilmOptimizationQuickController(QObject):
         reason = self._synthesis_search_reason()
         if reason:
             return '继续优化暂不可用：' + reason
-        return '点击“继续优化”可继续搜索新结构；不会自动重启。'
+        return ('点击“继续优化”可继续搜索新结构；不会自动重启。'
+                '当前界面继续时不设应用级工作集护栏；系统资源不足仍可能失败。')
 
     @Property(str, notify=changed)
     def synthesisPreviewLabel(self):
@@ -5705,8 +5734,8 @@ class FilmOptimizationQuickController(QObject):
             request = record.get("request")
             if getattr(request, "search_strategy", None) != "hybrid":
                 return "旧独立路线不能继续；请重新开始统一搜索，原历史保留。"
-            if getattr(request, "max_working_set_bytes", None) is not None:
-                return "旧结果使用了已移除的数值护栏；请重新开始统一搜索，原历史保留。"
+            if not hasattr(request, "max_working_set_bytes"):
+                return "合成结果缺少冻结的工作集策略，不能继续；原历史保留。"
         reason = _cpu_only_request_reason(record.get("request"))
         if reason:
             return reason
@@ -5783,6 +5812,22 @@ class FilmOptimizationQuickController(QObject):
                 "max_evaluations": request.max_evaluations,
                 "max_seconds": getattr(request, "max_seconds", None)}
 
+    @Property(bool, notify=changed)
+    def continuationSearchUntilTarget(self) -> bool:
+        """Read only the captured request when it matches the frozen payload."""
+        record = self._continuation_record
+        if not isinstance(record, dict) or record.get("mode") != "synthesis":
+            return False
+        request = record.get("request")
+        source = getattr(request, "search_until_target", None)
+        payload = record.get("synthesis_payload")
+        if not isinstance(payload, dict):
+            return False
+        result = payload.get("result")
+        frozen = result.get("frozen_request") if isinstance(result, dict) else None
+        return (source is True and isinstance(frozen, dict)
+                and frozen.get("search_until_target", False) is True)
+
     @Property(str, notify=changed)
     def previousSpentText(self) -> str:
         record = self._continuation_record
@@ -5791,9 +5836,12 @@ class FilmOptimizationQuickController(QObject):
         result = record["result"]
         if record["mode"] == "synthesis":
             raw = record["synthesis_payload"]["result"]
-            return (f"上次作业 {record['job_id']} 已耗：周期 {raw.get('cycles', '未知')}，"
-                    f"评价 {raw.get('evaluations', '未知')}，时长 {raw.get('elapsed_seconds', '未知')} 秒。")
-        return (f"上次作业 {record['job_id']} 已耗：迭代 {result.iterations}，评价 {result.evaluations}；"
+            until = getattr(record["request"], "search_until_target", False)
+            return (f"上次计算已耗：周期 {raw.get('cycles', '未知')}，"
+                    f"评价 {raw.get('evaluations', '未知')}，时长 {raw.get('elapsed_seconds', '未知')} 秒。"
+                    "继续时按当前界面策略不设应用级工作集护栏；系统资源不足仍可能导致失败。"
+                    + ("本任务启用搜索直到达到目标，周期、评价和时长预算不生效。" if until is True else ""))
+        return (f"上次计算已耗：迭代 {result.iterations}，评价 {result.evaluations}；"
                 "时长未记录。")
 
     @Property(str, notify=changed)
@@ -5801,7 +5849,7 @@ class FilmOptimizationQuickController(QObject):
         record = self._prior_run_fallback
         if record is None:
             return ""
-        return (f"前次保留结果（独立旧作业 {record['job_id']}）："
+        return ("前次保留结果（独立的旧计算）："
                 f"最大归一化误差 {record['result'].max_normalized_error:.6g}。"
                 "这是前次候选，不是新作业评分；在新作业首次完整评分前单独保留，不会再次自动应用。")
 
@@ -5917,13 +5965,49 @@ class FilmOptimizationQuickController(QObject):
                     raise ValueError("请明确设置新尝试的周期、评价和时长预算（允许留空）。")
                 for key in ("max_cycles", "max_evaluations"):
                     if values[key] is not None:
-                        values[key] = _integer(values[key], key)
+                        values[key] = _integer(values[key], key, minimum=2 if key == "max_evaluations" else 1)
                 if values["max_seconds"] is not None:
                     values["max_seconds"] = _number(values["max_seconds"], "新时长预算")
-                if all(value is None for value in values.values()):
+                    if values["max_seconds"] <= 0:
+                        raise ValueError("新时长预算必须大于 0 秒")
+                source_until = getattr(record["request"], "search_until_target", None)
+                payload_until = record["synthesis_payload"]["result"]["frozen_request"].get("search_until_target", False)
+                if type(source_until) is not bool or payload_until is not source_until:
+                    raise ValueError("来源任务的搜索策略身份不一致，不能继续。")
+                if all(value is None for value in values.values()) and not source_until:
                     raise ValueError("新尝试至少需要一项预算限制。")
-                plan = build_synthesis_warm_restart(record["synthesis_payload"],
-                    design_revision=revision, **values)
+                # Validate all entered budgets above, then honor the frozen
+                # until-target policy: total-work caps do not bind this run.
+                effective_values = dict.fromkeys(values) if source_until else values
+                source_payload = record["synthesis_payload"]
+                frozen_input = source_payload["result"]["frozen_request"]
+                builder_payload = source_payload
+                if "search_until_target" not in frozen_input:
+                    # This current-schema extension is optional and defaults to
+                    # False. Verify the original evidence first; canonicalize a
+                    # private copy for the builder's exact-field comparison.
+                    from coat_sim.core.film_synthesis_jobs import is_synthesis_result
+                    if not is_synthesis_result(source_payload):
+                        raise ValueError("来源合成结果无效，不能继续。")
+                    builder_payload = deepcopy(source_payload)
+                    builder_payload["result"]["frozen_request"]["search_until_target"] = False
+                plan = build_synthesis_warm_restart(builder_payload,
+                    design_revision=revision, **effective_values)
+                # The source result remains immutable and is validated above by
+                # the core builder. Only the new GUI attempt gets today's
+                # explicit unlimited working-set policy, not a rewritten source.
+                from coat_sim.core.film_auto_synthesis import FilmSynthesisRequest, freeze_film_synthesis_request
+                candidate = plan.request
+                if not isinstance(candidate, FilmSynthesisRequest):
+                    raise ValueError("继续计划不是有效的合成请求。")
+                if candidate.search_strategy != "hybrid":
+                    raise ValueError("旧独立路线不能继续；原历史保留。")
+                cpu_reason = _cpu_only_request_reason(candidate)
+                if cpu_reason:
+                    raise ValueError(cpu_reason)
+                candidate = freeze_film_synthesis_request(None, replace(candidate,
+                    max_working_set_bytes=None, resource_guard_resolution=None))
+                plan = replace(plan, request=candidate)
             else:
                 if set(values) != {"max_iterations", "max_evaluations"}:
                     raise ValueError("请明确设置新尝试的迭代和评价预算。")
@@ -6026,7 +6110,7 @@ class FilmOptimizationQuickController(QObject):
         if self._initial_loading or self._initial_load_failed or self._structure_material_error:
             return False
         if self._result_terminal_state == "提交状态未知" and self._queue_job_id:
-            self._error = f"请先核对作业 {self._queue_job_id} 的提交状态；未重复提交。"
+            self._error = "请先核对当前任务的提交状态；未重复提交。"
             self.changed.emit()
             return False
         if self._pending_reuse_source is not None:
@@ -6536,7 +6620,7 @@ class FilmOptimizationQuickController(QObject):
             return
         if code:
             self._error = f"Unable to request queue cancellation: {code}"
-            self._progress_text = "取消请求尚未确认；可再次点击取消，继续按原作业 ID 重试。"
+            self._progress_text = "取消请求尚未确认；可再次点击取消，继续针对当前任务重试。"
         else:
             if (self._cancel_intent_requested
                     and bool(getattr(self._attempt_cancel_event, "cancel_acknowledged", False))):
@@ -7212,11 +7296,10 @@ class FilmOptimizationQuickController(QObject):
                 self._source_stale = True
                 self._error = "Materials referenced by the candidate changed during the run; the candidate is retained for review."
         if isinstance(error, dict) and error.get("state") == "submission_unknown":
-            job_id = str(error.get("job_id") or self._queue_job_id)
             self._result_terminal_state = "提交状态未知"
             self._error = (
                 "队列提交状态仍未知；不会自动重复提交。"
-                f"请使用作业 ID {job_id} 核对状态。"
+                "请核对当前任务状态。"
             )
             self._progress_text = self._error
         elif isinstance(error, dict) and error.get("state") == "submission_failed":
