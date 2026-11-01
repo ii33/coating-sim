@@ -592,7 +592,7 @@ def run(root, job_id, owner_pid, owner_instance):
         if spec.executor in FILM_DISPLAY_EXECUTORS:
             try:
                 display_session = WorkerDisplaySession(directory, job_id, frozen.fingerprint,
-                    display_configuration_for_job(queue_record))
+                    display_configuration_for_job(queue_record), cancel_marker=getattr(cancel, "marker", None))
                 display_options = {'candidate_observer_factory': display_session.observer_for_request}
             except Exception:
                 pass  # An invalid optional observation never rejects physics.

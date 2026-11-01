@@ -20,7 +20,8 @@ from coat_sim.project_session import OperationBinding
 from PySide6.QtCore import Property, QObject, QRunnable, QThreadPool, Qt, QTimer, QUrl, Signal, Slot
 
 from coat_sim.assistant_diagnostics import trace
-from coat_sim.ui.film_candidate_display_controller import FilmCandidateDisplayController
+from coat_sim.ui.film_candidate_display_controller import FilmCandidateDisplayController, target_segments
+from coat_sim.ui.film_full_domain_plot_controller import FilmFullDomainPlotController
 from coat_sim.ui.film_display_format import format_film_thickness
 
 from coat_sim.core.film_optimization import (
@@ -1191,6 +1192,7 @@ class FilmOptimizationQuickController(QObject):
         self._error = ""
         self._result: FilmOptimizationResult | None = None
         self._live_display = FilmCandidateDisplayController(self)
+        self._full_domain_plot = FilmFullDomainPlotController(self)
         from .theme_service import ThemeService
         ThemeService.instance().filmThicknessDecimalsChanged.connect(self._on_film_display_precision)
         self._sensitivity_controller: FilmSensitivityQuickController | None = None
@@ -1340,6 +1342,9 @@ class FilmOptimizationQuickController(QObject):
             self.requestSearchMode(self._requested_search_mode)
         self._compute_target.changed.connect(self.changed.emit)
         self._sync_film_execution_target()
+        self._live_display.changed.connect(self._refresh_full_domain_plot)
+        self.plotDataChanged.connect(self._refresh_full_domain_plot)
+        self._full_domain_plot.changed.connect(self.plotDataChanged.emit)
         if self._initial_loading:
             trace("film_optimization_controller_constructed",
                   elapsed_s=time.perf_counter() - self._open_started_at)
@@ -1548,6 +1553,7 @@ class FilmOptimizationQuickController(QObject):
                 self._sensitivity_controller = None
                 raise ValueError("敏感性参数表草稿未恢复；原配置保持不变。")
             self._sensitivity_controller.changed.connect(self.changed.emit)
+            self._sensitivity_controller.changed.connect(self.plotDataChanged.emit)
             table_changed = getattr(self._sensitivity_controller, "tableConfigurationEdited", None)
             if table_changed is not None and hasattr(table_changed, "connect"):
                 table_changed.connect(self._on_sensitivity_table_configuration_changed)
@@ -1606,6 +1612,7 @@ class FilmOptimizationQuickController(QObject):
             from coat_sim.ui.film_manufacturing_quick_controller import FilmManufacturingQuickController
             self._manufacturing_controller = FilmManufacturingQuickController(self)
             self._manufacturing_controller.changed.connect(self.changed.emit)
+            self._manufacturing_controller.changed.connect(self.plotDataChanged.emit)
         return self._manufacturing_controller
 
     def _repair_controller(self) -> FilmManufacturingQuickController:
@@ -2415,6 +2422,7 @@ class FilmOptimizationQuickController(QObject):
             return
         if dispose_display:
             self._live_display.shutdown()
+            self._full_domain_plot.shutdown()
         if self._sensitivity_controller is not None:
             if dispose_display:
                 self._sensitivity_controller.detach()
@@ -3113,8 +3121,51 @@ class FilmOptimizationQuickController(QObject):
         return next((index for index, row in enumerate(angles)
                      if math.isclose(float(row["value"]), self._plot_angle, abs_tol=1e-10)), 0)
 
+    @Property(str, notify=plotDataChanged)
+    def fullDomainStatus(self) -> str:
+        if self._full_domain_unsupported():
+            return "该敏感度或修复结果的正式全域对比暂不可用；不会使用其他任务的候选替代。"
+        if (self._result is not None and self._frozen_request is not None
+                and self._frozen_request.frozen_material_snapshot is None):
+            return "正式全域光谱不可用：该任务没有冻结材料快照。"
+        return self._full_domain_plot.status or "暂无正式候选全域光谱。"
+
+    def _full_domain_unsupported(self) -> bool:
+        manufacturing = self._manufacturing_controller
+        repair_applied = bool(manufacturing is not None and manufacturing._applied
+            and (self._result is None or self._candidate_applied or self._inspection_objectives is not None))
+        attempt = self._live_display._attempt
+        sensitivity_result = (isinstance(attempt, tuple) and len(attempt) == 2
+                              and attempt[0] == "sensitivity")
+        return repair_applied or sensitivity_result
+
+    @Slot()
+    def _refresh_full_domain_plot(self) -> None:
+        live, request, result = self._live_display, self._frozen_request, self._result
+        if (not live.fullDomain or live.running or self._full_domain_unsupported() or request is None or result is None
+                or request.frozen_material_snapshot is None
+                or not 0 <= self._plot_objective < len(request.objectives)):
+            self._full_domain_plot.clear()
+            return
+        selection = {"objective_index": self._plot_objective, "angle_deg": self._plot_angle,
+                     "metric": live.metric, "spectrum_scope": "full_domain"}
+        key = (id(request), id(result), self._plot_objective, self._plot_angle, live.metric)
+        self._full_domain_plot.request(key, request.frozen_material_snapshot, request.design_snapshot,
+            result.best_design, request.objectives, selection)
+
     @Property("QVariantMap", notify=plotDataChanged)
     def plotData(self) -> dict:
+        if self._live_display.fullDomain:
+            if self._full_domain_unsupported():
+                return {}
+            data = dict(self._full_domain_plot.data)
+            if data and self._frozen_request is not None:
+                selection = {"objective_index": self._plot_objective, "angle_deg": self._plot_angle,
+                             "metric": self._live_display.metric}
+                data["target_segments"] = target_segments(self._frozen_request.objectives, selection)
+                data["baseline_label"] = ("所选表面 N=0 基线" if self._synthesis_payload is not None
+                                          else "任务冻结原设计")
+            return data
         manufacturing = self._manufacturing_controller
         if (manufacturing is not None and manufacturing._applied
                 and (self._result is None or self._candidate_applied or self._inspection_objectives is not None)):
@@ -3189,9 +3240,20 @@ class FilmOptimizationQuickController(QObject):
     def conditionErrors(self) -> list[dict]:
         if self._result is None:
             return []
-        rows = sorted((self._result.validation_per_condition_errors if self._synthesis_payload is not None
-                       else self._result.per_condition_errors),
-                      key=lambda row: row.normalized_violation, reverse=True)[:24]
+        ordered = sorted((self._result.validation_per_condition_errors if self._synthesis_payload is not None
+                          else self._result.per_condition_errors),
+                         key=lambda row: row.normalized_violation, reverse=True)
+        rows: list[FilmConditionError] = []
+        seen: set[tuple] = set()
+        for row in ordered:
+            key = (row.objective_index, row.reduction, row.wavelength_nm, row.angle_deg,
+                   row.polarization, row.metric)
+            if key in seen:
+                continue
+            seen.add(key)
+            rows.append(row)
+            if len(rows) == 24:
+                break
         return [{
             "objective": row.objective_index + 1,
             "wavelength": (f"{row.wavelength_nm:.4g} nm" if row.wavelength_nm is not None
@@ -7784,6 +7846,7 @@ class FilmOptimizationQuickController(QObject):
             self._resource_estimator_seen.cancel()
         self.detach_observers()
         self._live_display.shutdown()
+        self._full_domain_plot.shutdown()
         sensitivity_done = (self._sensitivity_controller is None
             or self._sensitivity_controller.shutdown(timeout_ms))
         manufacturing_done = (self._manufacturing_controller is None

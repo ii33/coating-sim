@@ -330,6 +330,19 @@ def test_real_qml_formal_curves_survive_off_waiting_terminal_cancel_and_old_live
             live.setMetric("T")
             assert_formal(waiting=True)
             live.setMetric("R")
+            # A→B→A cannot revive the old R frame. Wait for the latest
+            # control acknowledgement and require a frame from that sequence.
+            assert_formal(waiting=True)
+            for _ in range(100):
+                drain(app)
+                if not live._control_inflight and not live._awaiting_control:
+                    break
+            assert not live._control_inflight and not live._awaiting_control
+            sequence = live._minimum_control_sequence
+            assert sequence > 0
+            live.offer("on-off-run", packet(config, sequence=3, control_sequence=sequence - 1))
+            assert_formal(waiting=True)
+            live.offer("on-off-run", packet(config, sequence=4, control_sequence=sequence))
             assert_live()
             click(app, window, toggle)
             assert_formal()

@@ -1,17 +1,19 @@
 """Run-local, bounded display observations; never optimizer acceptance state.
 
 The caller supplies complete original-grid scores and immutable condition rows.
-Only the latest current/incumbent row references are retained, not designs,
-Jacobians, audit grids or speculative work. Display failures cannot stop physics.
+Only latest current/incumbent row references and bounded physical snapshots
+are retained, not design history, Jacobians, audit grids or speculative work.
+Display failures cannot stop physics.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, fields
+from copy import deepcopy
 import hashlib
 import json
 import math
 from time import monotonic
-from typing import Mapping
+from typing import Any, Mapping
 from types import SimpleNamespace
 
 from .film_nominal_acceptance import nominal_condition_pass
@@ -171,13 +173,14 @@ class CandidateDisplayObserver:
     ``raw_coverage`` is the producer's complete immutable raw spectrum evidence;
     ``condition_rows`` contains its enabled reduced FilmConditionError records.
     References remain valid after a newer incumbent is found, allowing the next
-    due frame to show the true incumbent without copying full spectra. Only recorded objective metrics exist;
-    switching to an uncomputed condition reports waiting rather than recomputing.
+    due frame to show the true incumbent without copying full spectra. In
+    default objective mode an uncomputed condition reports waiting rather than
+    recomputing; opt-in full-domain preview has a separate bounded worker.
     """
 
     def __init__(self, *, context_id, objectives, control_provider,
                  publish_callback, score_config=None, clock=monotonic,
-                 scope="training"):
+                 scope="training", frozen_snapshot=None, preview_control_is_current=None):
         if not isinstance(context_id, str) or not context_id or not isinstance(scope, str) or not scope:
             raise ValueError("display context and scope must be explicit")
         self.context_id, self.scope = context_id, scope
@@ -193,6 +196,10 @@ class CandidateDisplayObserver:
                                                 acceptable_normalized_error=0.0)
         self._top = {}
         self._current = self._best = None
+        self._designs: dict[str, tuple[str, dict[str, Any]] | None] = {"current": None, "best": None}
+        self._frozen_snapshot = deepcopy(frozen_snapshot) if frozen_snapshot is not None else None
+        self._preview_control_is_current = preview_control_is_current
+        self._preview = None
         self._last_publish = -math.inf
         self._sequence = 0
         self._finished = False
@@ -299,6 +306,29 @@ class CandidateDisplayObserver:
                 self._current = retained
             if is_best:
                 self._best = retained
+            # Keep only an incumbent physical candidate plus a throttled current
+            # candidate while whole-domain display is requested. These detached snapshots
+            # are never transported to the GUI or retained in the top ten.
+            control = self.control_provider() or {}
+            full = control.get("enabled") is True and control.get("spectrum_scope") == "full_domain"
+            due = self.clock() - self._last_publish >= 1.0
+            if ((full and is_current and due) or
+                    (is_best and (self._designs["best"] is None
+                     or self._designs["best"][0] != summary["physical_hash"]))):
+                physical = deepcopy(design)
+                values = iter(thickness_values)
+                for side in ("front_layers", "back_layers"):
+                    for layer in physical.get(side, ()):
+                        layer["thickness"] = {"unit": "nm", "value": next(values)}
+                snapshot = (summary["physical_hash"], physical)
+                if full and is_current and due:
+                    self._designs["current"] = snapshot
+                if is_best:
+                    self._designs["best"] = snapshot
+            if is_current and self._designs["current"] is not None and self._designs["current"][0] != summary["physical_hash"]:
+                self._designs["current"] = None
+            if is_best and self._designs["best"] is not None and self._designs["best"][0] != summary["physical_hash"]:
+                self._designs["best"] = None
             self._top[summary["physical_hash"]] = summary
             ordered = sorted(self._top.values(), key=self._rank)[:10]
             self._top = {row["physical_hash"]: row for row in ordered}
@@ -364,6 +394,9 @@ class CandidateDisplayObserver:
     def _publish(self, *, terminal=False, state="running", spectrum_provider=None):
         control = self.control_provider() or {}
         enabled = control.get("enabled", False) is True
+        if (not enabled or control.get("spectrum_scope") != "full_domain") and self._preview is not None:
+            self._preview.invalidate()
+            self._designs["current"] = None
         now = self.clock()
         if not terminal and now - self._last_publish < 1.0:
             return
@@ -376,6 +409,30 @@ class CandidateDisplayObserver:
         selection = {"objective_index": index,
                      "angle_deg": float(control.get("angle_deg", objective.angles_deg[0])),
                      "metric": str(control.get("metric", objective.metric))}
+        full = control.get("spectrum_scope") == "full_domain"
+        if full:
+            selection["spectrum_scope"] = "full_domain"
+        preview_key = None
+        if full and enabled and not terminal:
+            designs = {item[0]: item[1] for role in ("best", "current") for item in (self._designs[role],)
+                       if item is not None and getattr(self, "_" + role) is not None
+                       and item[0] == getattr(self, "_" + role)[0]["physical_hash"]}
+            if self._preview is None and self._frozen_snapshot is not None:
+                from .film_full_domain_preview import LatestPreview
+                self._preview = LatestPreview(self._frozen_snapshot, self.objectives,
+                                              self._preview_control_is_current)
+            preview_key = (self.context_id, control.get("control_sequence", 0),
+                           index, selection["angle_deg"], selection["metric"], tuple(sorted(designs)))
+            if self._preview is not None and designs:
+                current = self._designs["current"]
+                metadata: dict[str, Any] = ({current[0]: self._metadata_slot(self._current, selection)}
+                            if current is not None and self._current is not None
+                            and current[0] == self._current[0]["physical_hash"] else {})
+                self._preview.request(preview_key, selection, designs, metadata)
+        else:
+            self._designs["current"] = None
+            if self._preview is not None:
+                self._preview.invalidate()
         self._sequence += 1
         packet = {"schema_version": 1, "kind": DISPLAY_KIND,
                   "context_id": self.context_id, "scope": self.scope,
@@ -386,16 +443,45 @@ class CandidateDisplayObserver:
         while True:
             # The one terminal bypass samples only the already retained real
             # incumbent. Last-trial metadata remains available without work.
-            if terminal or not enabled:
+            if full:
+                def full_slot(retained, *, allow_delayed=False, sample_limit=limit):
+                    result = self._metadata_slot(retained, selection)
+                    if result is None or terminal or not enabled:
+                        return result
+                    found = (self._preview.get(preview_key, result["physical_hash"])
+                             if self._preview is not None and preview_key is not None else None)
+                    if found is None and allow_delayed and self._preview is not None:
+                        previous = self._preview.previous_current(preview_key)
+                        if previous is not None and previous[0] != result["physical_hash"]:
+                            _, previous_metadata, found = previous
+                            result = dict(previous_metadata, preview_delayed=True)
+                    if found is None and self._frozen_snapshot is None:
+                        found = ("unavailable", None, "冻结材料快照不可用")
+                    if found is not None:
+                        result["availability"], result["spectrum"], reason = found
+                        if reason is not None:
+                            result["unavailable_reason"] = reason
+                        spectrum = result["spectrum"]
+                        if spectrum is not None and len(spectrum["wavelength_nm"]) > sample_limit:
+                            count = len(spectrum["wavelength_nm"])
+                            picks = [i * (count - 1) // (sample_limit - 1) for i in range(sample_limit)]
+                            result["spectrum"] = {**spectrum, **{
+                                key: [spectrum[key][i] for i in picks]
+                                for key in ("wavelength_nm", "actual", "indices")}}
+                    return result
+                packet["current"] = full_slot(self._current, allow_delayed=True)
+                packet["best"] = full_slot(self._best)
+            elif terminal or not enabled:
                 packet["current"] = self._metadata_slot(self._current, selection)
             else:
                 packet["current"] = self._slot(
                     self._current, selection, limit, spectrum_provider=spectrum_provider)
-            packet["best"] = self._slot(self._best, selection, limit) if enabled else self._metadata_slot(self._best, selection)
+            if not full:
+                packet["best"] = self._slot(self._best, selection, limit) if enabled else self._metadata_slot(self._best, selection)
             has_spectra = any(packet[role] is not None and packet[role]["spectrum"] is not None
                               for role in ("current", "best"))
             self.spectral_serializations += int(has_spectra)
-            if len(json.dumps(packet, allow_nan=False, separators=(",", ":")).encode("utf-8")) <= MAX_DISPLAY_BYTES:
+            if len(json.dumps(packet, allow_nan=False, separators=(",", ":")).encode("utf-8")) <= MAX_DISPLAY_BYTES - 1024:
                 break
             if limit <= 2:
                 return
@@ -430,6 +516,9 @@ class CandidateDisplayObserver:
             self.last_error = f"{type(exc).__name__}: {exc}"
         finally:
             self._finished = True
+            self._designs = {"current": None, "best": None}
+            if self._preview is not None:
+                self._preview.close()
 
 
 _SUMMARY_REQUIRED = frozenset({"physical_hash", "nominal_pass", "quality", "score",
@@ -456,14 +545,16 @@ def validate_candidate_display_packet(value):
             if not isinstance(value[key], str) or not 1 <= len(value[key]) <= limit:
                 return None
         chosen = value["selection"]
-        if (not isinstance(chosen, dict) or set(chosen) != {"objective_index", "angle_deg", "metric"}
+        if (not isinstance(chosen, dict) or set(chosen) not in ({"objective_index", "angle_deg", "metric"},
+                                    {"objective_index", "angle_deg", "metric", "spectrum_scope"})
                 or type(chosen["objective_index"]) is not int or chosen["objective_index"] < 0
-                or chosen["metric"] not in ("R", "T") or not _finite(chosen["angle_deg"])):
+                or chosen["metric"] not in ("R", "T") or not _finite(chosen["angle_deg"])
+                or ("spectrum_scope" in chosen and chosen["spectrum_scope"] != "full_domain")):
             return None
 
         def summary(row, *, slot=False):
             extra = {"availability", "spectrum"} if slot else set()
-            optional = {"statistics"} if slot else set()
+            optional = {"statistics", "unavailable_reason", "preview_delayed"} if slot else set()
             if (not isinstance(row, dict) or not _SUMMARY_REQUIRED <= set(row)
                     or set(row) - _SUMMARY_REQUIRED - _SUMMARY_OPTIONAL - extra - optional
                     or (slot and not extra <= set(row))):
@@ -512,8 +603,19 @@ def validate_candidate_display_packet(value):
                         or type(stats["original_point_count"]) is not int or stats["original_point_count"] < 1):
                     return False
             spectrum = row["spectrum"]
-            if row["availability"] == "waiting":
-                return spectrum is None
+            if "preview_delayed" in row and (row["preview_delayed"] is not True
+                    or row["availability"] != "available"
+                    or chosen.get("spectrum_scope") != "full_domain"):
+                return False
+            if row["availability"] in ("waiting", "unavailable"):
+                reason = row.get("unavailable_reason")
+                if row["availability"] == "waiting":
+                    return spectrum is None and "unavailable_reason" not in row
+                return (spectrum is None and chosen.get("spectrum_scope") == "full_domain"
+                        and isinstance(reason, str) and 1 <= len(reason) <= 256
+                        and not any(ord(c) < 32 for c in reason))
+            if "unavailable_reason" in row:
+                return False
             if row["availability"] != "available" or not isinstance(spectrum, dict) or set(spectrum) != {"wavelength_nm", "actual", "indices", "original_point_count"}:
                 return False
             count = spectrum["original_point_count"]
@@ -534,6 +636,8 @@ def validate_candidate_display_packet(value):
                 or top != sorted(top, key=CandidateDisplayObserver._rank)):
             return None
         if any(value[role] is not None and not summary(value[role], slot=True) for role in ("current", "best")):
+            return None
+        if value["best"] is not None and "preview_delayed" in value["best"]:
             return None
         encoded = json.dumps(value, allow_nan=False, separators=(",", ":"))
         if len(encoded.encode("utf-8")) > MAX_DISPLAY_BYTES:

@@ -37,14 +37,17 @@ def _selection(value):
                         and math.isfinite(value["angle_deg"]))
     except OverflowError:
         angle_finite = False
-    if (not isinstance(value, dict) or set(value) != {"objective_index", "angle_deg", "metric"}
+    if (not isinstance(value, dict) or set(value) not in ({"objective_index", "angle_deg", "metric"},
+                                  {"objective_index", "angle_deg", "metric", "spectrum_scope"})
             or type(value["objective_index"]) is not int or not 0 <= value["objective_index"] < 1_000_000
             or isinstance(value["angle_deg"], bool) or not isinstance(value["angle_deg"], (int, float))
             or not angle_finite or not 0 <= value["angle_deg"] < 90
-            or value["metric"] not in ("R", "T")):
+            or value["metric"] not in ("R", "T")
+            or ("spectrum_scope" in value and value["spectrum_scope"] != "full_domain")):
         raise ValueError("invalid_film_display_selection")
     return {"objective_index": value["objective_index"],
-            "angle_deg": float(value["angle_deg"]), "metric": value["metric"]}
+            "angle_deg": float(value["angle_deg"]), "metric": value["metric"],
+            **({"spectrum_scope": "full_domain"} if "spectrum_scope" in value else {})}
 
 
 def prepare_display_configuration(value=None):
@@ -138,12 +141,13 @@ def validate_live_display_packet(value, *, job_id=None, input_digest=None, gener
 class WorkerDisplaySession:
     """One worker's optional display observer; bad transport never stops optics."""
 
-    def __init__(self, directory, job_id, input_digest, configuration, *, clock=time.monotonic):
+    def __init__(self, directory, job_id, input_digest, configuration, *, clock=time.monotonic, cancel_marker=None):
         self.directory = Path(directory)
         self.job_id, self.input_digest = job_id, input_digest
         self.configuration = prepare_display_configuration(configuration)
         self.generation = self.configuration["generation"]
         self.clock = clock
+        self.cancel_marker = Path(cancel_marker) if cancel_marker is not None else None
         self._control = {"sequence": 0, "enabled": self.configuration["enabled"],
                          "selection": dict(self.configuration["selection"])}
         self._last_check = -math.inf
@@ -174,7 +178,22 @@ class WorkerDisplaySession:
                     self._control_valid = True
             except (OSError, ValueError, TypeError, KeyError, RecursionError):
                 self._control_valid = False
-        return {"enabled": self._control_valid and self._control["enabled"], **self._control["selection"]}
+        return {"enabled": (self._control_valid and self._control["enabled"]
+                            and (self.cancel_marker is None or not self.cancel_marker.exists())),
+                "control_sequence": self._control["sequence"], **self._control["selection"]}
+
+    def preview_control_is_current(self, sequence, selection):
+        # Read-only independent polling from the preview thread. Never mutate
+        # the observer/session control state across threads.
+        try:
+            if self.cancel_marker is not None and self.cancel_marker.exists():
+                return False
+            control = _validated_control(_read_bounded(self.directory / "film-display-control.json", MAX_CONTROL_BYTES),
+                job_id=self.job_id, input_digest=self.input_digest, generation=self.generation)
+            return (control["sequence"] == sequence and control["enabled"]
+                    and control["selection"] == selection)
+        except (OSError, ValueError, TypeError, KeyError, RecursionError):
+            return False
 
     def publish(self, packet):
         try:
@@ -209,7 +228,9 @@ class WorkerDisplaySession:
                                                    separators=(",", ":")).encode()).hexdigest()
             self.observer = CandidateDisplayObserver(context_id=context_id, objectives=request.objectives,
                 score_config=self.configuration["score_config"], control_provider=self.control,
-                publish_callback=self.publish, clock=self.clock)
+                publish_callback=self.publish, clock=self.clock,
+                frozen_snapshot=getattr(request, "frozen_material_snapshot", None),
+                preview_control_is_current=self.preview_control_is_current)
         return self.observer
 
     def finish(self, state):

@@ -2413,6 +2413,7 @@ AppWindow {
                 visible: window.controller.searchMode !== "resource_assessment"
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                Layout.minimumWidth: 0
                 spacing: window.themeTokens.spaceSm
 
                 Rectangle {
@@ -2424,12 +2425,17 @@ AppWindow {
                     readonly property bool waitingForLive: window.controller.liveDisplay.running
                                                           && window.controller.liveDisplay.enabled && !showingLiveData
                     readonly property string previewStatus: waitingForLive
-                                                            ? "等待完整预览；暂显示正式曲线。"
+                                                            ? (window.controller.liveDisplay.fullDomain
+                                                               ? window.controller.liveDisplay.status
+                                                               : "等待完整预览；暂显示正式曲线。")
+                                                            : (window.controller.liveDisplay.fullDomain && !window.controller.liveDisplay.running
+                                                               ? window.controller.fullDomainStatus
                                                             : (!window.controller.liveDisplay.running && window.controller.liveDisplay.hasAttempt
                                                                ? "实时预览已结束；显示正式曲线。"
-                                                               : window.controller.liveDisplay.status)
+                                                               : window.controller.liveDisplay.status))
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    Layout.minimumWidth: 0
                     Layout.minimumHeight: Math.max(140, Math.min(220, window.height * 0.25))
                     radius: window.themeTokens.radiusMd
                     color: window.themeTokens.colorSurface
@@ -2443,14 +2449,15 @@ AppWindow {
                             Label {
                                 objectName: "filmOptimizationPlotTitle"
                                 Layout.fillWidth: true
-                                text: "光谱对比"
+                                Layout.minimumWidth: 0
+                                text: plotPanel.width < 350 ? "光谱" : "光谱对比"
                                 color: window.themeTokens.colorText
                                 font.pointSize: window.themeTokens.fontSizeHeading
                                 font.weight: window.themeTokens.fontWeightEmphasis
                             }
                             ThemeControls.ThemeComboBox {
                                 objectName: "filmOptimizationPlotObjectiveBox"
-                                Layout.minimumWidth: Math.min(160, plotPanel.width * 0.4)
+                                Layout.minimumWidth: Math.min(160, plotPanel.width * 0.32)
                                 Layout.preferredWidth: Math.min(260, plotPanel.width * 0.5)
                                 model: window.controller.plotObjectives
                                 textRole: "label"
@@ -2460,7 +2467,7 @@ AppWindow {
                             }
                             ThemeControls.ThemeComboBox {
                                 objectName: "filmOptimizationPlotAngleBox"
-                                Layout.preferredWidth: 96
+                                Layout.preferredWidth: plotPanel.width < 400 ? 64 : 96
                                 model: window.controller.plotAngles
                                 textRole: "label"
                                 valueRole: "value"
@@ -2477,8 +2484,20 @@ AppWindow {
                                 checked: window.controller.liveDisplay.enabled
                                 onToggled: window.controller.liveDisplay.setEnabled(livePreviewToggle.checked)
                                 ToolTip.visible: livePreviewToggle.hovered
-                                ToolTip.text: window.controller.liveDisplay.status + "\n默认开启；只展示既有完整候选，不增加光学计算。"
+                                ToolTip.text: window.controller.liveDisplay.status + "\n全域模式会独立计算显示采样；单目标模式只使用既有结果。"
                             }
+                            CheckBox {
+                                objectName: "filmOptimizationFullDomainToggle"
+                                text: "整个定义域"
+                                checked: window.controller.liveDisplay.fullDomain
+                                onToggled: window.controller.liveDisplay.setFullDomain(checked)
+                                ToolTip.visible: hovered
+                                ToolTip.text: "显示所有目标波段端点之间的独立计算光谱（含空档）；角度和偏振使用所选目标。仅用于显示，不改变验收。"
+                            }
+                            Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
                             ThemeControls.ThemeComboBox {
                                 objectName: "filmCandidateLiveMetricBox"
                                 Layout.preferredWidth: plotPanel.width >= 500 ? 72 : 48
@@ -2501,9 +2520,13 @@ AppWindow {
                             Label {
                                 objectName: "filmCandidateLivePreviewStatus"
                                 Layout.fillWidth: true
+                                Layout.minimumWidth: 0
                                 text: plotPanel.width >= 500 ? plotPanel.previewStatus
-                                      : (plotPanel.waitingForLive ? "等待预览 · 正式曲线"
-                                         : (plotPanel.showingLiveData ? "实时当前 / 最佳" : "正式曲线"))
+                                      : (plotPanel.waitingForLive ? (window.controller.liveDisplay.fullDomain ? "等待全域预览" : "等待预览 · 正式曲线")
+                                         : (plotPanel.showingLiveData ? (plotPanel.activeLiveData.current && plotPanel.activeLiveData.current.preview_delayed
+                                                                          ? "延迟候选 / 最佳" : "实时当前 / 最佳")
+                                            : (window.controller.liveDisplay.fullDomain && window.controller.liveDisplay.running
+                                               ? "实时光谱已关闭" : "正式曲线")))
                                 color: window.themeTokens.colorTextMuted
                                 wrapMode: Text.NoWrap
                                 elide: Text.ElideRight
@@ -2513,9 +2536,12 @@ AppWindow {
                         Label {
                             objectName: "filmOptimizationPlotBaselineTitle"
                             Layout.fillWidth: true
-                            text: plotPanel.showingLiveData
-                                  ? "R/T (%) · 当前试探与优化器最佳；仅抽样原目标网格"
-                                  : "R/T (%) · " + (comparisonCanvas.dataSnapshot.baseline_label || "原设计") + "与候选；目标线按未加权界限显示"
+                            visible: plotPanel.width >= 350
+                            text: window.controller.liveDisplay.fullDomain
+                                  ? "R/T (%) · 整个定义域；角度和偏振沿用所选目标，显示采样不改变验收"
+                                  : (plotPanel.showingLiveData
+                                     ? "R/T (%) · 当前试探与优化器最佳；仅抽样原目标网格"
+                                     : "R/T (%) · " + (comparisonCanvas.dataSnapshot.baseline_label || "原设计") + "与候选；目标线按未加权界限显示")
                             color: window.themeTokens.colorTextMuted
                             font.pointSize: window.themeTokens.fontSizeSmall
                         }
@@ -2529,10 +2555,22 @@ AppWindow {
                             font.pointSize: window.themeTokens.fontSizeSmall
                         }
                         Label {
+                            objectName: "filmCandidateDelayedPreviewNotice"
+                            Layout.fillWidth: true
+                            visible: plotPanel.showingLiveData && plotPanel.activeLiveData.current
+                                     && plotPanel.activeLiveData.current.preview_delayed === true
+                            text: "上一帧候选预览（有延迟），不代表最新试探。"
+                            color: window.themeTokens.colorWarning
+                            wrapMode: Text.WordWrap
+                            font.pointSize: window.themeTokens.fontSizeSmall
+                        }
+                        Label {
                             objectName: "filmSynthesisPlotPreviewStatus"
                             Layout.fillWidth: true
                             visible: window.synthesisPreviewHighlighted && window.controller.hasCandidate
-                            text: "已显示任务冻结候选的目标采样点；仅针对所选目标与角度，不代表连续谱证明。"
+                            text: window.controller.liveDisplay.fullDomain
+                                  ? "全域为冻结候选的显示采样；角度和偏振沿用所选目标，不代表连续谱证明。"
+                                  : "已显示任务冻结候选的目标采样点；仅针对所选目标与角度，不代表连续谱证明。"
                             color: window.themeTokens.colorAccent
                             wrapMode: Text.WordWrap
                         }
@@ -2544,9 +2582,14 @@ AppWindow {
                             Layout.minimumHeight: 90
                             property var dataSnapshot: plotPanel.showingLiveData
                                                        ? plotPanel.activeLiveData
+                                                       : (window.controller.liveDisplay.fullDomain && window.controller.liveDisplay.running
+                                                          ? ({})
                                                        : window.controller.plotData
+                                                         )
                             property string seriesLegend: plotPanel.showingLiveData
-                                                          ? "当前试探 / 优化器最佳" : "原设计 / 候选"
+                                                          ? (dataSnapshot.current && dataSnapshot.current.preview_delayed
+                                                             ? "延迟候选 / 优化器最佳" : "当前试探 / 优化器最佳")
+                                                          : "原设计 / 候选"
                             onDataSnapshotChanged: {
                                 window.controller.liveDisplay.updatePlotYAxis(dataSnapshot)
                                 requestPaint()
@@ -2579,7 +2622,9 @@ AppWindow {
                                 const selectedWaves = live && primary ? primary.wavelength_nm : (rows ? rows.wavelength_nm : null)
                                 if (!selectedWaves || selectedWaves.length === 0) {
                                     ctx.fillStyle = window.themeTokens.colorTextMuted
-                                    ctx.fillText(plotPanel.waitingForLive ? "等待所选完整候选光谱" : "运行优化后显示采样光谱", left + 12, top + 24)
+                                    ctx.fillText(window.controller.liveDisplay.fullDomain
+                                                 ? (window.controller.liveDisplay.running ? "等待全域预览" : window.controller.fullDomainStatus)
+                                                 : (plotPanel.waitingForLive ? "等待所选完整候选光谱" : "运行优化后显示采样光谱"), left + 12, top + 24)
                                     return
                                 }
                                 const waves = selectedWaves
@@ -2588,18 +2633,32 @@ AppWindow {
                                 const maxWave = discreteLine ? waves[0] + 0.5 : waves[waves.length - 1]
                                 const xAt = value => left + (value - minWave) / Math.max(1e-12, maxWave - minWave) * plotWidth
                                 const yAt = value => top + plotHeight * (1 - (value - yMinimum) / (yMaximum - yMinimum))
-                                const drawTarget = value => {
+                                const drawTarget = (value, start, end) => {
                                     if (value === null || value === undefined) return
                                     if (value < yMinimum || value > yMaximum) return
                                     ctx.save(); ctx.setLineDash([5, 4]); ctx.lineWidth = 1.5
                                     ctx.strokeStyle = window.themeTokens.colorSuccess
-                                    ctx.beginPath(); ctx.moveTo(left, yAt(value)); ctx.lineTo(left + plotWidth, yAt(value)); ctx.stroke()
+                                    ctx.beginPath(); ctx.moveTo(xAt(start), yAt(value)); ctx.lineTo(xAt(end), yAt(value)); ctx.stroke()
+                                    if (start === end) {
+                                        ctx.fillStyle = window.themeTokens.colorSuccess
+                                        ctx.beginPath(); ctx.arc(xAt(start), yAt(value), 2.5, 0, 2 * Math.PI); ctx.fill()
+                                    }
                                     ctx.restore()
                                 }
                                 ctx.save(); ctx.beginPath(); ctx.rect(left, top, plotWidth, plotHeight); ctx.clip()
-                                drawTarget(rows.target_value)
-                                drawTarget(rows.lower_bound)
-                                drawTarget(rows.upper_bound)
+                                if (rows.full_domain) {
+                                    const segments = rows.target_segments || []
+                                    for (let i = 0; i < segments.length; ++i) {
+                                        const segment = segments[i]
+                                        drawTarget(segment.target_value, segment.wavelength_min_nm, segment.wavelength_max_nm)
+                                        drawTarget(segment.lower_bound, segment.wavelength_min_nm, segment.wavelength_max_nm)
+                                        drawTarget(segment.upper_bound, segment.wavelength_min_nm, segment.wavelength_max_nm)
+                                    }
+                                } else {
+                                    drawTarget(rows.target_value, minWave, maxWave)
+                                    drawTarget(rows.lower_bound, minWave, maxWave)
+                                    drawTarget(rows.upper_bound, minWave, maxWave)
+                                }
                                 const drawSeries = (values, color, lineWidth, seriesWaves) => {
                                     const xWaves = seriesWaves || waves
                                     if (!values || values.length !== xWaves.length) return
@@ -2627,10 +2686,13 @@ AppWindow {
                                 if (!discreteLine) ctx.fillText(maxWave.toFixed(0) + " nm", left + plotWidth - 52, height - 8)
                                 ctx.fillStyle = live ? window.themeTokens.colorWarning : window.themeTokens.colorTextMuted
                                 ctx.fillRect(left + 8, 4, 14, 3)
-                                ctx.fillText(live ? "当前试探" : (rows.baseline_label || "原设计"), left + 26, 10)
+                                const firstLegend = live ? (rows.current && rows.current.preview_delayed ? "延迟候选" : "当前试探")
+                                                    : (rows.baseline_label || "原设计")
+                                ctx.fillText(firstLegend, left + 26, 10)
+                                const secondLegendX = left + 32 + ctx.measureText(firstLegend).width
                                 ctx.fillStyle = window.themeTokens.colorAccent
-                                ctx.fillRect(left + 90, 4, 14, 3)
-                                ctx.fillText(live ? "优化器最佳" : "候选", left + 108, 10)
+                                ctx.fillRect(secondLegendX, 4, 14, 3)
+                                ctx.fillText(live ? "优化器最佳" : "候选", secondLegendX + 18, 10)
                             }
                         }
                         RowLayout {

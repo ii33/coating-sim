@@ -1,6 +1,6 @@
 # Live optimization display and candidate ranking
 
-Updated: 2026-10-23. This is optional observation, not a new optimizer,
+Updated: 2026-11-01. This is optional observation, not a new optimizer,
 acceptance rule, saved optical result, or application authority.
 
 ## Ownership and supported paths
@@ -15,7 +15,7 @@ speculative batch work are not candidates.
 
 The optimizer owns its actual incumbent. The display observer independently
 owns at most ten small candidate summaries and current/incumbent immutable
-condition-row references, not a design archive or Jacobian. The worker owns the
+condition-row references, plus the bounded geometric snapshots described below; no design archive or Jacobian. The worker owns the
 producer; the scheduler owns one latest in-memory packet per job; the GUI owns
 one bounded latest mailbox. None of these replaces the formal result or its
 request/replay/source/edit-epoch/confirmation checks.
@@ -131,7 +131,7 @@ search evaluations + 1 validation and 10 real simulate calls in both modes;
 TRF used 4 + 1 evaluations with the same paired-Jacobian calls. Batch DE used
 9 + 1 with the same condition forward count and incumbent. Sensitivity paths
 likewise retained identical forward/Jacobian counts and incumbent analyses.
-No display-only forward or Jacobian call is permitted.
+In default objective mode no display-only forward or Jacobian call is permitted; the explicitly selected full-domain mode below permits a separate display-only forward, never a Jacobian.
 
 An existing 4097-point response produced 1024 original-grid points per slot and
 a largest 48,436-byte packet; off copied zero points. An owned-file small case
@@ -148,3 +148,49 @@ Relevant tests: test_film_candidate_display.py,
 test_film_sensitivity_candidate_display.py, test_film_display_transport.py and
 test_film_candidate_display_gui.py. Run with the project's standard test runner
 and Qt lifecycle/network isolation; production hardware acceleration is unchanged.
+
+## 全定义域显示（2026-11-01）
+
+默认的目标模式沿用上述原网格和“零显示专用光学调用”规则。显式开启
+`selection.spectrum_scope="full_domain"` 时才采用另一个显示专用路径；严格
+selection 只允许原三字段或加此唯一字段和值。范围为全部目标下限的最小值至
+全部目标上限的最大值（nm），并用当前目标所选角度和偏振，以及所选 R/T。
+在整个包络上均匀取最多 1024 点，直接用冻结 n/k 与真实候选几何进行独立
+simulate，外推策略 `error`；未知 k 仅按冻结设计的显式假设处理。源域无效
+或缺失时 `availability=unavailable`，`unavailable_reason` 是最多 256 字符的
+单行原因；计算中或尚无完整候选为 `waiting`。这是有限采样预览，不是连续
+域证明、raw_coverage、目标阈值、评分或验收。原目标统计仍来自原网格，
+不得标为全域统计。helper `film_full_domain_preview.full_domain_spectrum`
+只返回有界显示谱，不读 live catalog，并可通过 cancel_event 协作取消。
+
+当前与 best 的图谱必须按各自 physical_hash 配对。观察者只保留一个独立
+best 几何快照和启用全域时一个节流 current 快照；前十不保存设计。后台是
+单一 daemon 线程，活动任务可能暂时持有被替换的旧设计，另有至多当前/最佳
+的最新待做引用和结果缓存；因此不是整个进程仅有两份几何的内存保证。
+同一控制上下文内不断变化的 current 不取消活动任务，best 优先；待做仅保留
+最新身份，完成结果只可用于匹配身份。切换控制序号/条件、关闭显示或
+scheduler 取消使活动任务协作失效；终态不等待物理计算，也不发布旧全域帧。
+后台只写缓存，既有 1 Hz 发布线程按 context、generation/control sequence、
+选择和 physical_hash 读取；任务、公式和评分不使用这些谱。终态正式结果图
+另用冻结材料与最终设计在 GUI 外独立计算，不复用过期实时帧。
+
+窗口以 `liveDisplay` 独占该选择；全域模式等待或失败时，不把原单目标图
+伪装为全域图。快速 A→B→A 切换在最新控制确认且匹配控制序号的新帧到达前
+保持等待，旧帧不会复活。目标界线只画与当前角度、偏振和 R/T 一致的各自
+波段，不跨空档，兼容目标界限同时纳入纵轴自动范围。如果后端为避免当前
+候选持续变化导致饥饿而提供带身份匹配的上一帧谱，窗口必须显式标注
+“上一帧候选预览（有延迟）”，不得称其为最新试探。终态正式图的原设计和候选来自同次冻结请求与完整结果（包括
+已取消但保留的完整候选）；从零合成基线是冻结的所选面 N=0 环境。修复应用态
+和理想敏感度终态如无同源正式对比，则明确提示暂不可用，不借用旧优化结果。
+正式预览线程最多一项活动计算及一项可替换待做，改变条件、结果或关闭时
+协作取消并以 generation 丢弃过期输出。入队时一次隔离可变冻结材料和设计，
+同一结果的角度、R/T 切换复用副本；这一步发生在 Qt 线程，超大材料表可能
+产生可感知复制延迟，不等同于无界面等待的性能保证。
+
+当每个 current 的模拟都慢于候选更新时，后台可保留**一帧**已完成的旧
+current 谱及该谱对应的独立摘要，不保留该帧设计。新 current 尚未完成时，
+可用此帧作为 current slot，并携带 `preview_delayed=true`，界面明确标示
+“上一帧候选预览（有延迟）”；该帧摘要、物理哈希和谱必须来自同一候选，
+不得把旧谱与新摘要拼接。控制上下文变化、关闭或取消会丢弃此帧。若序列化
+接近 128 KiB 上限，则按显示点索引实际递减抽取各谱（保留端点和原采样数），
+为外层 transport 预留 1024 字节；不会仅改变 limit 后重复序列化原大谱。

@@ -13,7 +13,7 @@ from .film_display_format import format_film_thickness
 import math
 import re
 from threading import Lock
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from PySide6.QtCore import QObject, Property, Qt, Signal, Slot
@@ -22,11 +22,31 @@ from coat_sim.core.film_candidate_display import score_config_to_payload
 from coat_sim.scheduler.film_display import prepare_display_configuration, validate_live_display_packet
 
 
+def target_segments(objectives, selection):
+    """Display-only target bounds, restricted to matching frozen conditions."""
+    index = selection.get("objective_index", -1)
+    if not 0 <= index < len(objectives):
+        return []
+    selected = objectives[index]
+    angle, metric = selection["angle_deg"], selection["metric"]
+    segments = []
+    for objective in objectives:
+        if (objective.metric != metric or objective.polarization != selected.polarization
+                or not any(math.isclose(angle, value, rel_tol=0., abs_tol=1e-10) for value in objective.angles_deg)
+                or not objective.pointwise.enabled):
+            continue
+        criterion = objective.pointwise
+        segments.append(dict(wavelength_min_nm=objective.wavelength_min_nm,
+            wavelength_max_nm=objective.wavelength_max_nm, target_value=criterion.target_value,
+            lower_bound=criterion.lower_bound, upper_bound=criterion.upper_bound))
+    return segments
+
+
 class FilmCandidateDisplayController(QObject):
     changed = Signal()
     axisChanged = Signal()
     _wake = Signal()
-    _controlStatus = Signal(str, str)
+    _controlStatus = Signal(str, str, int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -48,6 +68,9 @@ class FilmCandidateDisplayController(QObject):
         self._control_pending = None
         self._control_inflight = False
         self._minimum_control_sequence = 0
+        self._packet_control_sequence = 0
+        self._control_revision = 0
+        self._awaiting_control = False
         self._last_sequence = 0
         self._terminal_received = False
         self._running = False
@@ -136,6 +159,9 @@ class FilmCandidateDisplayController(QObject):
             return  # Preserve the preceding range while a new selection loads.
         values.extend(float(data[k]) for k in ('target_value', 'lower_bound', 'upper_bound')
                       if isinstance(data.get(k), (int, float)) and math.isfinite(data[k]))
+        for segment in data.get('target_segments', ()):
+            values.extend(float(segment[k]) for k in ('target_value', 'lower_bound', 'upper_bound')
+                          if isinstance(segment.get(k), (int, float)) and math.isfinite(segment[k]))
         peak = max(max(values), 1e-6)
         exponent = 10. ** math.floor(math.log10(peak))
         ceiling = next((step * exponent for step in (1., 2., 2.5, 5., 10.)
@@ -189,6 +215,25 @@ class FilmCandidateDisplayController(QObject):
     @Property(str, notify=changed)
     def metric(self):
         return str(self._selection["metric"])
+
+    @Property(bool, notify=changed)
+    def fullDomain(self):
+        return self._selection.get("spectrum_scope") == "full_domain"
+
+    @Slot(bool)
+    def setFullDomain(self, enabled):
+        selection = dict(self._selection)
+        if enabled:
+            selection["spectrum_scope"] = "full_domain"
+        else:
+            selection.pop("spectrum_scope", None)
+        if selection == self._selection:
+            return
+        self._selection = selection
+        if self._running:
+            self._awaiting_control = True
+        self._queue_control()
+        self.changed.emit()
 
     @Property("QVariantList", notify=changed)  # type: ignore[arg-type]
     def top10(self) -> list:
@@ -246,26 +291,44 @@ class FilmCandidateDisplayController(QObject):
         if not self._enabled:
             return "实时光谱已关闭；候选摘要仍记录。"
         if not self._configuration:
-            return "下一次优化将启用实时光谱；不额外计算光学响应。"
+            return ("全域预览将独立计算显示采样，不改变优化或验收。" if self.fullDomain else
+                    "下一次优化将启用实时光谱；不额外计算光学响应。")
         if not self.plotData:
-            return "等待所选目标 / 角度 / metric 的完整候选光谱；不补算缺失分量。"
-        return "当前试探与优化器最佳分开显示；仅为原网格抽样，不是达标或应用凭据。"
+            if self.fullDomain and any(isinstance(self._packet.get(role), dict)
+                    and self._packet[role].get("availability") == "unavailable"
+                    for role in ("current", "best")) and self._packet.get("selection") == self._selection:
+                reason = next((self._packet[role].get("unavailable_reason", "")
+                    for role in ("current", "best") if isinstance(self._packet.get(role), dict)
+                    and self._packet[role].get("availability") == "unavailable"), "")
+                return "全域预览不可用" + ("：" + reason if reason else "；请检查冻结材料的波长范围及消光系数。")
+            return ("等待冻结候选的全域显示采样；不改变目标验收。" if self.fullDomain else
+                    "等待所选目标 / 角度 / metric 的完整候选光谱；不补算缺失分量。")
+        if self.fullDomain and cast(dict, self.plotData).get("current", {}).get("preview_delayed"):
+            return "当前线为上一帧候选预览（有延迟）；全域采样不改变目标验收。"
+        return ("全域光谱为独立显示采样，不改变目标验收。" if self.fullDomain else
+                "当前试探与优化器最佳分开显示；仅为原网格抽样，不是达标或应用凭据。")
 
     @Property("QVariantMap", notify=changed)  # type: ignore[arg-type]
     def plotData(self) -> dict:
         if (not self._enabled or not self._packet.get("enabled")
-                or self._packet.get("selection") != self._selection):
+                or self._packet.get("selection") != self._selection or self._awaiting_control
+                or self._packet_control_sequence < self._minimum_control_sequence):
             return {}
         current, best = self._packet.get("current"), self._packet.get("best")
         series = {}
         for role, row in (("current", current), ("best", best)):
             if row and row.get("availability") == "available" and row.get("spectrum"):
                 series[role] = deepcopy(row["spectrum"])
+                if row.get("preview_delayed") is True:
+                    series[role]["preview_delayed"] = True
                 if row.get('statistics'):
                     series[role]['maximum'] = row['statistics']['maximum']
         if not series:
             return {}
         result = dict(series, live=True, metric=self.metric)
+        if self.fullDomain:
+            result.update(full_domain=True, target_segments=target_segments(self._objectives, self._selection))
+            return result
         index = self._selection["objective_index"]
         if 0 <= index < len(self._objectives):
             objective = self._objectives[index]
@@ -293,7 +356,10 @@ class FilmCandidateDisplayController(QObject):
     def setEnabled(self, enabled):
         if self._closed:
             return
-        self._enabled = bool(enabled)
+        enabled = bool(enabled)
+        if self._enabled != enabled and self._running:
+            self._awaiting_control = True
+        self._enabled = enabled
         self._queue_control()
         self.changed.emit()
 
@@ -303,15 +369,20 @@ class FilmCandidateDisplayController(QObject):
 
     def set_selection(self, objective_index, angle_deg, metric):
         try:
+            selection = {"objective_index": int(objective_index), "angle_deg": float(angle_deg),
+                         "metric": str(metric)}
+            if self.fullDomain:
+                selection["spectrum_scope"] = "full_domain"
             chosen = prepare_display_configuration({"schema_version": 1, "generation": uuid4().hex,
                 "score_config": self._score_draft, "enabled": self._enabled,
-                "selection": {"objective_index": int(objective_index), "angle_deg": float(angle_deg),
-                              "metric": str(metric)}})["selection"]
+                "selection": selection})["selection"]
         except (ValueError, TypeError, OverflowError):
             return
         if chosen == self._selection:
             return
         self._selection = chosen
+        if self._running:
+            self._awaiting_control = True
         self._queue_control()
         self.changed.emit()
 
@@ -339,6 +410,8 @@ class FilmCandidateDisplayController(QObject):
             self._running = False
             self._configuration = {}
             self._last_sequence = self._minimum_control_sequence = 0
+            self._packet_control_sequence = 0
+            self._awaiting_control = False
         self._packet, self._frozen_score = {}, {}
         self._objectives = ()
         self.changed.emit()
@@ -351,6 +424,8 @@ class FilmCandidateDisplayController(QObject):
             self._attempt, self._configuration = attempt, config
             self._binding = self._pending_packet = self._control_pending = None
             self._minimum_control_sequence = self._last_sequence = 0
+            self._packet_control_sequence = 0
+            self._awaiting_control = False
             self._terminal_received = False
             self._running = True
         self._objectives = tuple(objectives)
@@ -452,6 +527,7 @@ class FilmCandidateDisplayController(QObject):
         self._packet = packet["display"]
         with self._lock:
             self._last_sequence = self._packet["sequence"]
+            self._packet_control_sequence = packet["control_sequence"]
         if self._packet["terminal"]:
             with self._lock:
                 self._running = False
@@ -462,7 +538,9 @@ class FilmCandidateDisplayController(QObject):
         with self._lock:
             if self._closed or not self._running or self._binding is None:
                 return
-            self._control_pending = (self._binding, self._enabled, dict(self._selection))
+            self._control_revision += 1
+            self._awaiting_control = True
+            self._control_pending = (self._binding, self._enabled, dict(self._selection), self._control_revision)
             if self._control_inflight:
                 return
             self._control_inflight = True
@@ -479,7 +557,7 @@ class FilmCandidateDisplayController(QObject):
                 if self._closed or not self._running or pending is None:
                     self._control_inflight = False
                     return
-                binding, enabled, selection = pending
+                binding, enabled, selection, revision = pending
             error = ""
             for retry in range(2):
                 try:
@@ -493,7 +571,8 @@ class FilmCandidateDisplayController(QObject):
                 except Exception as exc:
                     with self._lock:
                         still_latest = (not self._closed and self._running and binding == self._binding
-                            and enabled == self._enabled and selection == self._selection)
+                            and enabled == self._enabled and selection == self._selection
+                            and revision == self._control_revision)
                         if (retry == 0 and str(exc) == "film_display_control_stale" and still_latest):
                             if self._control_pending == pending:
                                 self._control_pending = None
@@ -502,17 +581,19 @@ class FilmCandidateDisplayController(QObject):
                     break
             with self._lock:
                 report = (binding == self._binding and enabled == self._enabled
-                    and selection == self._selection)
+                    and selection == self._selection and revision == self._control_revision)
             try:
                 if report:
-                    self._controlStatus.emit(binding[3], error)
+                    self._controlStatus.emit(binding[3], error, revision)
             except RuntimeError:
                 return  # The owning Qt window was already destroyed.
 
-    @Slot(str, str)
-    def _on_control_status(self, generation, error):
-        if not self._closed and generation == self._configuration.get("generation"):
+    @Slot(str, str, int)
+    def _on_control_status(self, generation, error, revision):
+        if (not self._closed and generation == self._configuration.get("generation")
+                and revision == self._control_revision):
             self._error = error
+            self._awaiting_control = bool(error)
             self.changed.emit()
 
     def end(self, attempt):

@@ -37,7 +37,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
   <div class="eyebrow">Optical Coating / Algorithm Atlas</div>
   <h1>光学镀膜<br>算法图解与参考来源</h1>
   <p>从独立基片、蒸发源、修正板、机器与工艺文件，到行星运动、射线通量、膜厚归一化和预计用时。本文依据当前代码写成，可离线阅读；公式描述的是本项目的计算模型。</p>
-<div class="meta"><span class="pill">版本：机器 v5 · 工艺 v7 · 源 v2；材料交换包 v1、安全导入冲突预览与原子回滚)</span><span class="pill">更新：2026-10-31（通用目标资源探测与审计见证；选面联合合成与全几何解析导数；自动合成局部余量、原目标减薄和结构续接；固定初始光谱受控退化理想优化v2、旧strict版本兼容；真实混合多核、原门限与容差分离、冠军物理压缩与拒绝统计；周期0显式时间/评价/取消统一预算；高反自动结构/全局搜索、材料谱向量复用与同预算验收、显式严格下界与跨类别冻结基准；活动光路材料校验与从零合成审计；优化目标上下限统一与角度范围显式确认；厚度编辑精度、零厚层与优化边界；冻结服务边界与单点归一化；研究证据与单层光谱反演；修正板不设数量上限、完整依赖快照与逐板遮挡；工程文件格式契约说明；优化多角网格与计算量人工顶值移除；TFCalc明文层表导入；外观逐光线精确 TMM 与独立波长 CPU 进程并行；Qt Quick 显式峰谷统计波段、波长通带与场景图曲线预览；多孔厚盖、独立源采样、无固定最大网格与计算隔离；工艺环境、工作气体及零碰撞直达束；材料库、已设计源工艺选择、盖孔射线与快扫描空间分布；桌面仿真共享队列、逐批进度、无固定步数上限、100%快算默认与Å/s界面；五项上下文预算、硬限与安全压缩、后台流合并与固定设计绘图；平滑轮廓、全膜系目标选优与评分进度；凭据反馈与有界模型候选兼容探测；待决选项、模式放行、诊断未读摘要、结果队列身份修复、紧凑产物；计算量估算、后台串行队列、源板分组优化与跨段选区；完整设备回退、成功设备记忆、临时仿真资产包、可选 PDF、历史闭合与滚动高度缓存；批量膜系、物理层表导入、固定图表、工具原文归档与任务成本、视口文本增量渲染；批量工具契约、演示工作流、逐回合展示与复制、撤回确认、本地助手调试、实际生效参数快照、LPAC启动修复；容量自适应上下文、轮次关闭、插话与排队、剪贴板图片、系统语言与语气、开发访问；逐层修正板、轮廓优化、工艺快算、估时、上下文用量、请求续约、原生档位缓存、滚动跟随、二维 CAD 与加工图、模型 Token 上限、缓存命中统计、富文本与开发门禁；修正板视口设备路由、反向滚动与可选输入诊断）</span><span class="pill">单位：mm · s · rpm · nm · px；助手 Token / 字符 / 附件字节</span><span class="pill">离线单文件 HTML</span></div>
+<div class="meta"><span class="pill">版本：机器 v5 · 工艺 v7 · 源 v2；材料交换包 v1、安全导入冲突预览与原子回滚)</span><span class="pill">更新：2026-11-01（全定义域显示专用采样；通用目标资源探测与审计见证；选面联合合成与全几何解析导数；自动合成局部余量、原目标减薄和结构续接；固定初始光谱受控退化理想优化v2、旧strict版本兼容；真实混合多核、原门限与容差分离、冠军物理压缩与拒绝统计；周期0显式时间/评价/取消统一预算；高反自动结构/全局搜索、材料谱向量复用与同预算验收、显式严格下界与跨类别冻结基准；活动光路材料校验与从零合成审计；优化目标上下限统一与角度范围显式确认；厚度编辑精度、零厚层与优化边界；冻结服务边界与单点归一化；研究证据与单层光谱反演；修正板不设数量上限、完整依赖快照与逐板遮挡；工程文件格式契约说明；优化多角网格与计算量人工顶值移除；TFCalc明文层表导入；外观逐光线精确 TMM 与独立波长 CPU 进程并行；Qt Quick 显式峰谷统计波段、波长通带与场景图曲线预览；多孔厚盖、独立源采样、无固定最大网格与计算隔离；工艺环境、工作气体及零碰撞直达束；材料库、已设计源工艺选择、盖孔射线与快扫描空间分布；桌面仿真共享队列、逐批进度、无固定步数上限、100%快算默认与Å/s界面；五项上下文预算、硬限与安全压缩、后台流合并与固定设计绘图；平滑轮廓、全膜系目标选优与评分进度；凭据反馈与有界模型候选兼容探测；待决选项、模式放行、诊断未读摘要、结果队列身份修复、紧凑产物；计算量估算、后台串行队列、源板分组优化与跨段选区；完整设备回退、成功设备记忆、临时仿真资产包、可选 PDF、历史闭合与滚动高度缓存；批量膜系、物理层表导入、固定图表、工具原文归档与任务成本、视口文本增量渲染；批量工具契约、演示工作流、逐回合展示与复制、撤回确认、本地助手调试、实际生效参数快照、LPAC启动修复；容量自适应上下文、轮次关闭、插话与排队、剪贴板图片、系统语言与语气、开发访问；逐层修正板、轮廓优化、工艺快算、估时、上下文用量、请求续约、原生档位缓存、滚动跟随、二维 CAD 与加工图、模型 Token 上限、缓存命中统计、富文本与开发门禁；修正板视口设备路由、反向滚动与可选输入诊断）</span><span class="pill">单位：mm · s · rpm · nm · px；助手 Token / 字符 / 附件字节</span><span class="pill">离线单文件 HTML</span></div>
 <p class="source">补充更新：2026-10-05——通过服务接口执行的非 CPU 沉积仿真使用一次任务一个短生命周期计算进程；Windows 子进程关闭管道时把 WinError 109 视作 EOF，避免计算完成后误记失败。</p>
 <p class="source">cub 接口补齐更新：2026-10-05。三路径提交、材料业务工具、机器工程检查和 AI 资产导出契约；未覆盖在线模型及实机校准。</p>
 <p class="source">GUI接线更新：2026-10-20。14t从零合成与14u物理结构已进入现有优化页/参数侧栏；入口与状态边界见<a href="film-synthesis-gui-guide.md">使用指南</a>、<a href="film-synthesis-gui-stage-report-20261020.md">同源GUI验收</a>。原GUI接线无数值公式变更；14v显式未知k近似当前默认启用且可关闭，不会将已知吸收或非法数据静默回退；详见<a href="#film-synthesis-unknown-k-20261020">策略说明</a>。</p>
@@ -267,6 +267,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#film-ideal-controlled-degradation-20261023">14aq 固定初始光谱的受控退化理想优化</a>
 <a href="#film-ideal-scalar-probes-20261023">14aq-1 理想敏感度标量探针</a>
 <a href="#candidate-display-score">14ar 可开关实时光谱与独立候选展示评分</a>
+<a href="#full-domain-display-20261101">14ar-1 全定义域显示专用采样</a>
 <a href="#film-synthesis-selected-surfaces-20261030">14bd 选面联合合成与全几何解析导数（2026-10-30）</a>
 <a href="#film-resource-estimation-20261030">14be 必要条件诊断与显式合成验证</a>
 <a href="#film-resource-prediction-20261031">14bf 快速层数／厚度经验预估（受限域）</a>
@@ -3438,14 +3439,22 @@ close/shutdown/history/late old operation: do not trigger automatic apply</pre>
 <figure class="figure"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 195" role="img" aria-label="已有完整候选产生独立展示，不反馈改变优化">
 <rect x="16" y="38" width="215" height="104" rx="10" fill="#e9f4f1" stroke="#087f78"/><text x="35" y="70" class="svgtext">原优化器完整评价</text><text x="35" y="99" class="svgsmall">原 forward / J / 接受与预算</text><text x="35" y="123" class="svgsmall">FD、部分、取消丢批不展示</text>
 <path d="M232 90H280" stroke="#087f78" stroke-width="3"/><path d="M271 84l10 6-10 6" fill="none" stroke="#087f78" stroke-width="3"/>
-<rect x="283" y="24" width="292" height="132" rx="10" fill="#fff2dd" stroke="#b56527"/><text x="302" y="56" class="svgtext">独立 top10 + latest 双槽</text><text x="302" y="84" class="svgsmall">评分不改变搜索 / 真 best 不等于榜首</text><text x="302" y="109" class="svgsmall">谱开关先检查；1 Hz；每谱 ≤1024 原点</text><text x="302" y="134" class="svgsmall">off 仍小摘要；无新增物理求解</text>
+<rect x="283" y="24" width="292" height="132" rx="10" fill="#fff2dd" stroke="#b56527"/><text x="302" y="56" class="svgtext">独立 top10 + latest 双槽</text><text x="302" y="84" class="svgsmall">评分不改变搜索 / 真 best 不等于榜首</text><text x="302" y="109" class="svgsmall">谱开关先检查；1 Hz；每谱 ≤1024 原点</text><text x="302" y="134" class="svgsmall">目标模式：off 仍小摘要，无新增物理求解</text>
 <path d="M576 90H623" stroke="#087f78" stroke-width="3"/><path d="M614 84l10 6-10 6" fill="none" stroke="#087f78" stroke-width="3"/>
 <rect x="627" y="38" width="253" height="104" rx="10" fill="#e9f4f1" stroke="#087f78"/><text x="645" y="70" class="svgtext">有界 GUI 观察</text><text x="645" y="99" class="svgsmall">当前 / 真 best；缺条件则等待</text><text x="645" y="123" class="svgsmall">正式结果仍走原可靠通道</text>
 </svg><figcaption>图中箭头只有观察方向，不回写 fitness 或放宽验收；总包不超过128 KiB，慢界面只保留最新帧。</figcaption></figure>
-<p><strong>默认与边界：</strong>首次谱预览关闭，同窗保留用户选择；元数据榜照常。生产端最多1 Hz，终态仅对已有完整 incumbent 一次旁路；先 enabled/time 再抽样/copy/谱 JSON。每个 current/best 最多1024个原网格点，总包128 KiB；只显示当前目标/角度/R或T中已算条件，没有就等待，不补 TMM、不改1nm。关闭已在 worker 应用后，谱构建/复制/序列化为零，但仍允许小摘要 JSON。DE 仅原子接纳整批后发布，current 是输入序列最后正常候选；探针和未消费推测结果不入榜。</p>
+<p><strong>默认与边界：</strong>首次谱预览关闭，同窗保留用户选择；元数据榜照常。生产端最多1 Hz，终态仅对已有完整 incumbent 一次旁路；先 enabled/time 再抽样/copy/谱 JSON。每个 current/best 最多1024个原网格点，总包128 KiB；只显示当前目标/角度/R或T中已算条件，没有就等待，不补 TMM、不改1nm。此段和上图描述默认目标模式，全域模式另见14ar-1。关闭已在 worker 应用后，谱构建/复制/序列化为零，但仍允许小摘要 JSON。DE 仅原子接纳整批后发布，current 是输入序列最后正常候选；探针和未消费推测结果不入榜。</p>
 <p><strong>身份与传输：</strong>job/digest/generation/context/sequence 全绑定；远端正式接纳可能加入 device binding，GUI 以实际接纳摘要而非原 spec 猜测。控制用服务端 CAS，旧 on 不能覆盖新 off，取消/终态拒新控制；status/events 仅附 RAM 最新包，不进入 durable scheduler_events 或标量 progress。坏包只丢展示，不杀优化；正式结果、重放、设计 edit epoch 和应用确认保留。既有 immutable 条件行只保留有限引用，不保留 Jacobian；128 KiB 是包上限，不冒称整个优化进程内存上限。</p>
 <p><strong>实现与验证：</strong><code>film_candidate_display.py</code>、普通/合成/敏感度评价钩子、<code>scheduler/film_display.py</code>、<code>film_candidate_display_controller.py</code>、<code>FilmOptimizationWindow.qml</code>。固定 seed/评价预算开关对照验证原 forward/J/eval/incumbent 相同，4097原点例抽为1024显示点，慢UI51帧仅1排队唤醒。小例非最坏耗时证明，长大网格 RSS/慢盘/真实 IPC 和远程仍按平台独立验收。完整跨模块合同见<a href="film-live-display-contract.md">实时展示与评分合同</a>。</p>
 <p class="source"><strong>来源：</strong>此标量分式评分、90/5/5偏好、锚点、前十与限频均为本项目约定，未找到外部依据，不声称光学最优或工艺良率。线程边界参考<a href="https://doc.qt.io/qt-6/threads-qobject.html">Qt 官方 Threads and QObjects</a>；其线程规则不为本项目评分背书。</p>
+</section>
+<section id="full-domain-display-20261101">
+<h2>14ar-1 · 全定义域显示专用采样（2026-11-01）</h2>
+<p><strong>用途与输入输出：</strong>用户显式开启全域时，以冻结材料与当前或真实 best 候选的物理层厚为输入，补算目标之间的显示曲线；输出仅为离散显示采样，不进入原目标评分、覆盖证据、预算或验收。选择的目标提供角度和偏振，曲线选择 R 或 T。普通目标模式不新增求解。</p>
+<div class="formula">λ<sub>min</sub>=min<sub>i</sub>(目标 i 下限)，λ<sub>max</sub>=max<sub>i</sub>(目标 i 上限)；λ<sub>j</sub>=λ<sub>min</sub>+j(λ<sub>max</sub>−λ<sub>min</sub>)/(N−1)，N≤1024</div>
+<figure class="figure"><div class="flow" aria-label="目标包络内的真实采样"><span>目标 A</span><i>→</i><span>空档也直接模拟</span><i>→</i><span>目标 B</span><i>→</i><span>仅显示离散 R/T</span></div><figcaption>横坐标是真空波长 nm；空档不是连接两段目标谱或延伸目标阈值。</figcaption></figure>
+<p><strong>源域与限制：</strong>每点调用原 simulate 的 error 外推策略；n/k 只取冻结源，未知 k 按冻结设计的显式假设，任一活动源不能提供有效值则显示不可用原因，不回退端点或拼接。有限均匀点可能漏掉窄共振，不证明连续域性质；不计算全域达标。后台单线程按最新控制、候选哈希与上下文隔离，取消合作式；best 优先；慢 current 完成后允许保留一帧带对应摘要和物理哈希的旧预览，并明确标记延迟，避免持续变化时永远无曲线。包过大时按索引递减抽点并保留端点。当前与最佳各有界摘要，活动任务可暂留替换前候选，不能将两槽误称整个内存上限。</p>
+<p class="source"><strong>实现与依据：</strong><code>film_full_domain_preview.py</code>、<code>film_candidate_display.py</code>、<code>scheduler/film_display.py</code>。网格、1024 上限、调度与显示语义为本项目约定，未找到外部依据；物理模型仍使用既有 TMM。参见 <a href="film-live-display-contract.md">实时展示合同</a>。该有限采样不是连续谱、制造容差或材料测量的验证。</p>
 </section>
 <section id="film-template-randomization-20261024">
 <h2>14as · 可选模板随机厚度起点</h2>
