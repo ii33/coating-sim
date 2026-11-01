@@ -1438,6 +1438,7 @@ AppWindow {
                                     objectName: "filmResourceAssessmentAlgorithmOptions"
                                     Layout.fillWidth: true
                                     active: window.controller.searchMode === "resource_assessment" && window.controller.resourceEstimateController !== null
+                                    visible: active
                                     sourceComponent: FilmResourceEstimatePanel {
                                         estimator: window.controller.resourceEstimateController
                                         themeTokens: window.themeTokens
