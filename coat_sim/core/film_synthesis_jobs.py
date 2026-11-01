@@ -623,6 +623,23 @@ def is_synthesis_result(value: Any) -> bool:
             "schema_version": SCHEMA_VERSION, "kind": "coat_sim.film_synthesis_request",
             "request_id": value["request_id"], "request": result["frozen_request"], "physical_structures": []})
         _validate_result_physical_binding(acceptance_request, result)
+        performance = result.get('performance', {})
+        search = performance.get('search', {}) if isinstance(performance, Mapping) else {}
+        report = search.get('until_target') if isinstance(search, Mapping) else None
+        if report is not None:
+            from .film_synthesis_stop_policy import until_target_summary
+            if not acceptance_request.search_until_target or not isinstance(report, Mapping):
+                return False
+            hybrid = search.get('hybrid', {})
+            if not isinstance(hybrid, Mapping):
+                return False
+            expected = until_target_summary(state=result['state'], reason=result['termination_reason'],
+                goal_met=result['targets_met'], hybrid=hybrid,
+                has_local_optimum=result.get('local_optimum') is not None,
+                checkpoint_available=result.get('search_checkpoint') is not None)
+            if any(type(report.get(key)) is not type(item) or report.get(key) != item
+                   for key, item in expected.items()):
+                return False
         if result["candidate_design"] is not None:
             _validate_layer_review(acceptance_request, result["candidate_design"], review)
         audited = result["candidate_design"] is not None and result["validation_complete"]

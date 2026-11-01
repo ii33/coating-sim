@@ -34,7 +34,7 @@ class FilmCandidateDisplayController(QObject):
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="film-display-control")
         self._wake.connect(self._drain, Qt.ConnectionType.QueuedConnection)
         self._controlStatus.connect(self._on_control_status, Qt.ConnectionType.QueuedConnection)
-        self._enabled = False
+        self._enabled = True
         self._score_draft = score_config_to_payload()
         self._frozen_score: dict[str, float] = {}
         self._selection: dict[str, Any] = {"objective_index": 0, "angle_deg": 0.0, "metric": "R"}
@@ -216,6 +216,26 @@ class FilmCandidateDisplayController(QObject):
                 f"全目标最大归一违规 {row['max_normalized_error']:.5g} · 优化误差 RMS {row['weighted_rms_error']:.5g}\n"
                 '均值仅为统计；逐点是否达标取决于原逐点约束。')
 
+    @Property("QVariantMap", notify=changed)  # type: ignore[arg-type]
+    def bestDetailFields(self) -> dict:
+        """Stable display-only fields; identity stays in the internal packet."""
+        fields = dict.fromkeys(("layer_count", "total_thickness_nm", "mean_percent",
+            "maximum_percent", "maximum_wavelength_nm", "metric", "max_normalized_error",
+            "weighted_rms_error"), "")
+        row = self._packet.get("best")
+        if not row:
+            return fields
+        fields.update(layer_count=str(row["layer_count"]),
+            total_thickness_nm=format_film_thickness(row["total_thickness_nm"]),
+            max_normalized_error=f"{row['max_normalized_error']:.5g}",
+            weighted_rms_error=f"{row['weighted_rms_error']:.5g}")
+        stats = row.get("statistics")
+        if stats:
+            fields.update(mean_percent=f"{100 * stats['mean']:.5g}",
+                maximum_percent=f"{100 * stats['maximum']:.5g}",
+                maximum_wavelength_nm=f"{stats['maximum_wavelength_nm']:.6g}", metric=str(stats['metric']))
+        return fields
+
     @Property(bool, notify=changed)
     def rankingDiffers(self):
         rows, best = self._packet.get("top10", ()), self._packet.get("best")
@@ -224,7 +244,7 @@ class FilmCandidateDisplayController(QObject):
     @Property(str, notify=changed)
     def status(self):
         if not self._enabled:
-            return "实时光谱已关闭；候选评分与 Top 10 小摘要仍记录。"
+            return "实时光谱已关闭；候选摘要仍记录。"
         if not self._configuration:
             return "下一次优化将启用实时光谱；不额外计算光学响应。"
         if not self.plotData:
@@ -262,7 +282,7 @@ class FilmCandidateDisplayController(QObject):
         text = (f"S {row['score']:.5g} · E {row['weighted_rms_error']:.5g} · "
                 f"名义{'通过' if row['nominal_pass'] else '未通过'} · 最大违规 {row['max_normalized_error']:.4g} · "
                 f"N {row['layer_count']} · D {format_film_thickness(row['total_thickness_nm'])} nm\n"
-                f"ID {row['physical_hash'][:12]} · {row.get('source', 'optimization')} · {scope}")
+                f"{row.get('source', 'optimization')} · {scope}")
         if "guard_pass" in row:
             text += f" · guard {'通过' if row['guard_pass'] else '未通过'}"
         if "sensitivity_objective" in row:

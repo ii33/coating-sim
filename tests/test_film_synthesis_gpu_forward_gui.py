@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
 import json
 import os
 import sys
@@ -220,20 +221,20 @@ def test_ui_cpu_two_worker_setting_reaches_real_typed_job_and_history(app, tmp_p
         assert controller.setObjectiveField("pointwise.upper_bound_percent", 100)
         assert controller.setObjectiveField("pointwise.lower_bound_percent", 99.9999)
         assert controller.setSynthesisCpuWorkers(2)
-        # This original phase='structure'/four-candidate routing contract is
-        # legacy-specific. Default-hybrid real GUI workers have their own test.
-        assert controller.setSynthesisOption("search_strategy", "legacy")
+        # This historical phase='structure'/four-candidate routing contract is
+        # core legacy-specific. The UI no longer offers that route; construct it
+        # explicitly below solely to keep the historical worker regression.
         assert controller.setSynthesisOption("max_cycles", 1)
         assert controller._synthesis_forward_backend == "cpu"
         assert not controller._active_configuration_error()
 
-        unbounded_request = freeze_film_synthesis_request(service, controller._build_synthesis_request())
+        unbounded_request = freeze_film_synthesis_request(service, replace(controller._build_synthesis_request(), search_strategy="legacy"))
         assert unbounded_request.max_evaluations is None
         # This checks real worker routing, accounting and history, not optical
         # convergence. Keep its full physical request but explicitly fund one
         # complete four-candidate process batch, plus baseline and audit work.
         assert controller.setSynthesisOption("max_evaluations", 8)
-        request = freeze_film_synthesis_request(service, controller._build_synthesis_request())
+        request = freeze_film_synthesis_request(service, replace(controller._build_synthesis_request(), search_strategy="legacy"))
         assert request.cpu_workers == 2
         assert request.objectives[0].wavelength_samples == 4001
         assert len(request.objectives[0].angles_deg) == 3

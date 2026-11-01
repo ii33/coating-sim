@@ -25,7 +25,7 @@ def settings_bundle(configuration):
     synthesis = configuration['synthesis']
     options = deepcopy(synthesis['options'])
     for key in ('max_cycles', 'max_evaluations', 'max_seconds', 'max_working_set_bytes',
-                'parallel_batch_size', 'enable_thickness_reduction'):
+                'parallel_batch_size', 'enable_thickness_reduction', 'search_until_target'):
         options.pop(key, None)
     return dict(objectives=deepcopy(configuration['objectives']),
         materials=[{k:r[k] for k in ('material_id','optical_set_id')} for r in synthesis['material_rows']],
@@ -65,7 +65,17 @@ def settings_reason(reference, current):
         return '合成表面已改变，需重新开始搜索；原进度保留在任务历史。'
     if previous.get('constraints') != current['constraints']:
         return '层数或膜厚制造约束已改变，需重新开始搜索；原进度保留在任务历史。'
-    if previous.get('search') != current['search']:
+    # Strategy was absent in older default-hybrid drafts; normalize only that
+    # historical default. A legacy reference is still rejected, never resumed.
+    old_search = deepcopy(previous.get('search') or {})
+    new_search = deepcopy(current['search'])
+    old_search.pop('search_until_target', None)
+    new_search.pop('search_until_target', None)
+    if old_search.get('search_strategy', 'hybrid') == 'hybrid':
+        old_search.pop('search_strategy', None)
+    if new_search.get('search_strategy', 'hybrid') == 'hybrid':
+        new_search.pop('search_strategy', None)
+    if old_search != new_search:
         return '结构搜索参数已改变，需重新开始搜索；原进度保留在任务历史。'
     return ''
 
@@ -124,6 +134,8 @@ def build_request(controller, record):
     from coat_sim.core.film_auto_synthesis import freeze_film_synthesis_request
     current = controller.session.snapshot()
     old = record['request']
+    if old.search_strategy != 'hybrid':
+        raise ValueError('旧独立路线的搜索进度不能继续；请重新开始统一搜索，原任务历史保留。')
     environment = deepcopy(current.design)
     for side in controller._synthesis_selected_surfaces:
         environment[side + '_layers'] = []
@@ -138,7 +150,8 @@ def build_request(controller, record):
         max_cycles=options.get('max_cycles'), max_evaluations=options.get('max_evaluations'),
         max_seconds=options.get('max_seconds'), cpu_workers=controller._synthesis_cpu_workers,
         forward_backend=controller._synthesis_forward_backend, forward_device=deepcopy(controller._synthesis_forward_device),
-        max_working_set_bytes=options.get('max_working_set_bytes', 0), resource_guard_resolution=None,
+        max_working_set_bytes=None, resource_guard_resolution=None,
+        search_strategy='hybrid', search_until_target=options.get('search_until_target', False),
         enable_thickness_reduction=options.get('enable_thickness_reduction', True))
     candidate = freeze_film_synthesis_request(controller.service, candidate)
     assert candidate.frozen_material_snapshot is not None
@@ -151,10 +164,55 @@ def build_request(controller, record):
 
 def phase_label(message):
     stage = str(message).split('|',1)[0].strip()
-    if stage.startswith(('local_margin','canonical_margin','local_session','local_refinement','canonical_local')):
+    if stage.startswith(('local_margin','canonical_margin','local_session','local_refinement','canonical_local', '局部优化')):
         return '局部优化'
-    if stage.startswith(('thickness_reduction','nominal_thickness_reduction')):
+    if stage.startswith(('thickness_reduction','nominal_thickness_reduction', '减薄')):
         return '减薄'
-    if stage in {'completed','cancelled','failed','not_found'}:
+    if stage in {'completed','cancelled','failed','not_found', '本轮完成'}:
         return '本轮完成'
     return None
+
+
+def progress_presentation(value, audited_layer_count=None):
+    """Project scheduler progress onto an allowlisted, human-readable summary.
+
+    Worker messages may contain serialized internal diagnostics and identities;
+    they remain in the task record and are never interpolated into this view.
+    """
+    stage = value.get('stage') if isinstance(value, dict) else None
+    stage = stage if isinstance(stage, str) else ''
+    if stage.startswith(('local_margin', 'canonical_margin', 'local_session',
+                         'local_refinement', 'canonical_local', 'interior_local')):
+        label = '局部优化'
+    elif stage.startswith(('thickness_reduction', 'nominal_thickness_reduction')):
+        label = '减薄'
+    elif stage in {'completed', 'cancelled', 'failed', 'not_found'}:
+        label = '本轮完成'
+    elif stage.startswith(('validation', 'audit')):
+        label = '独立审计'
+    elif stage.startswith(('global', 'hybrid_global')):
+        label = '全局搜索'
+    elif stage.startswith(('needle', 'growth', 'structure', 'search', 'hybrid',
+                            'template', 'continuation', 'branch', 'ar_simple',
+                            'hr_minimax', 'multispectral', 'feasibility', 'material',
+                            'deletion', 'zero_layer', 'seed', 'warm_restart')):
+        label = '结构搜索'
+    elif stage == 'freezing':
+        label = '冻结计算输入'
+    else:
+        label = '正在合成'
+    def count(raw):
+        return str(raw) if type(raw) is int and 0 <= raw <= (1 << 53) - 1 else '未知'
+    layers = count(value.get('layer_count')) if isinstance(value, dict) else '未知'
+    audited = count(audited_layer_count) if audited_layer_count is not None else '尚无完整审计'
+    evaluations = count(value.get('evaluations')) if isinstance(value, dict) else '未知'
+    parts = [f'{label} | 当前报告层数 {layers}，已审计最佳层数 {audited} | 候选评价 {evaluations}']
+    if isinstance(value, dict):
+        if value.get('unresponsive') is True:
+            parts.append('工作进程无响应')
+        elif value.get('stalled') is True:
+            parts.append('计算进度暂未更新')
+        for key, label in (('physical_evaluations', '物理调用'), ('wavelength_points', '波长采样点')):
+            if type(value.get(key)) is int and 0 <= value[key] <= (1 << 53) - 1:
+                parts.append(f'{label} {value[key]}')
+    return ' | '.join(parts)

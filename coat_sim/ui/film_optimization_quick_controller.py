@@ -980,19 +980,51 @@ class _FilmSynthesisTask(_FilmOptimizationTask):
             value["iteration"] = value.get("cycle", value.get("iteration", 0))
             if value.get("stage") == "audit_incumbent":
                 self._audited_layer_count = value.get("layer_count")
-            parts = [str(value.get("stage", "synthesis")),
-                     str(value.get("message", value.get("status", ""))),
-                     f"当前报告层数 {value.get('layer_count', '?')}，已审计最好层数 {getattr(self, '_audited_layer_count', '尚无完整审计')}",
-                     f"候选评价 {value.get('evaluations', 0)}"]
-            if "heartbeat_sequence" in value:
-                parts.append(f"heartbeat {value['heartbeat_sequence']}")
-            for key in ("algorithm_progress_age_seconds", "worker_heartbeat_age_seconds",
-                        "stalled", "unresponsive", "physical_evaluations", "wavelength_points"):
-                if key in value:
-                    parts.append(f"{key}={value[key]}")
-            value["message"] = " | ".join(parts)
+            from coat_sim.ui.film_synthesis_search_state import progress_presentation
+            value["message"] = progress_presentation(value, getattr(self, '_audited_layer_count', None))
+        elif isinstance(value, FilmOptimizationProgress):
+            from coat_sim.ui.film_synthesis_search_state import progress_presentation
+            value = replace(value, message=progress_presentation({
+                'stage': value.state, 'evaluations': value.evaluations}))
         super()._publish_queue_progress(value)
 
+
+
+def _synthesis_targets_verified(raw: dict, facts: dict | None) -> bool:
+    return bool(raw.get('targets_met') is True and raw.get('validation_complete') is True
+                and isinstance(facts, dict) and facts.get('available') is True
+                and facts.get('targets_met') is True)
+
+
+def _synthesis_until_evidence(raw: dict, facts: dict | None = None) -> dict:
+    """Fail closed on optional presentation metadata; the frozen request is truth."""
+    request = raw.get('frozen_request') or {}
+    if not isinstance(request, dict) or request.get('search_until_target') is not True:
+        return {}
+    search = raw.get('performance', {}).get('search', {})
+    evidence = search.get('until_target', {}) if isinstance(search, dict) else {}
+    if not isinstance(evidence, dict) or evidence.get('enabled') is not True:
+        state = raw.get('state')
+        fallback_status = ({'cancelled': 'cancelled', 'failed': 'interrupted_error'}.get(
+            state, 'paused_unresolved') if isinstance(state, str) else 'paused_unresolved')
+        return {'enabled': True, 'status': fallback_status}
+    evidence = dict(evidence)
+    status = evidence.get('status')
+    if status == 'targets_met':
+        if not (_synthesis_targets_verified(raw, facts) and evidence.get('goal_met') is True
+                and evidence.get('search_complete') is True):
+            evidence['status'] = 'paused_unresolved'
+    elif status == 'declared_frontier_exhausted':
+        hybrid = search.get('hybrid', {})
+        session = hybrid.get('continuation_session', {}) if isinstance(hybrid, dict) else {}
+        if not (raw.get('targets_met') is False
+                and raw.get('termination_reason') == 'continuation_frontier_exhausted'
+                and isinstance(session, dict) and session.get('frontier_exhausted') is True
+                and hybrid.get('resource_limited') is False
+                and evidence.get('declared_frontier_exhausted') is True
+                and evidence.get('search_complete') is True):
+            evidence['status'] = 'paused_unresolved'
+    return evidence
 
 class FilmOptimizationQuickController(QObject):
     """Per-window optimization state; the edit session remains the design owner."""
@@ -2038,7 +2070,16 @@ class FilmOptimizationQuickController(QObject):
             incoming_search = deepcopy(synthesis_config.get('search_reference'))
             if incoming_search is not None and not isinstance(incoming_search, dict):
                 raise ValueError('结构搜索进度引用损坏；请从原任务历史恢复。')
-            synthesis_values = synthesis_options(synthesis_config.get("options", {}))
+            # Retired UI controls cannot silently revive an old route or memory cap.
+            # Preserve all other draft values, and make the migration visible.
+            saved_synthesis_options = deepcopy(synthesis_config.get("options", {}))
+            if not isinstance(saved_synthesis_options, dict):
+                raise ValueError("Invalid synthesis options")
+            old_route = saved_synthesis_options.pop("search_strategy", None)
+            old_guard = saved_synthesis_options.pop("max_working_set_bytes", None)
+            if old_route not in (None, "hybrid") or old_guard is not None:
+                restore_notice += "已移除旧合成路线和数值护栏；新任务使用统一搜索且不限制工作集。"
+            synthesis_values = synthesis_options(saved_synthesis_options)
             synthesis_values.setdefault("randomize_template_search", False)
             synthesis_values.setdefault("structure_search_seed", None)
             synthesis_workers = synthesis_cpu_workers(synthesis_config.get("cpu_workers", 0))
@@ -3229,6 +3270,28 @@ class FilmOptimizationQuickController(QObject):
             text += f" · 最大违约 {self._progress_best_error * 100:.4g}%"
         return text
 
+    @Property("QVariantMap", notify=changed)  # type: ignore[arg-type]
+    def progressFields(self) -> dict:
+        """Stable display fields; unknown historical counters remain unknown."""
+        payload = self._synthesis_payload
+        synthesis = payload is not None or self._search_mode == "synthesis"
+        if payload is not None:
+            raw = payload.get("result", {})
+            count, evaluations = raw.get("cycles"), raw.get("evaluations")
+            training = raw.get("training_score") or {}
+            best_error = training.get("max_error") if isinstance(training, dict) else None
+            note = self._synthesis_work_counters_note()
+        else:
+            count, evaluations = self._progress_iteration, self._progress_evaluations
+            best_error = self._progress_best_error
+            note = ""
+        return {"mode_name": "轮次" if synthesis else "迭代",
+                "count": "" if count is None else str(count),
+                "evaluations": "" if evaluations is None else str(evaluations),
+                "best_violation": ("" if best_error is None else
+                                   f"{best_error * 100:.4g}%"),
+                "note": note.strip()}
+
     @Property(str, notify=changed)
     def queueJobId(self) -> str:
         return self._queue_job_id
@@ -3269,6 +3332,12 @@ class FilmOptimizationQuickController(QObject):
                 and (self._result_terminal_state == "队列历史结果"
                      or self._result_terminal_state.startswith("历史合成结果 / "))):
             return "只读历史候选；不会应用到当前设计。"
+        raw = (self._synthesis_payload or {}).get('result', {})
+        until_status = _synthesis_until_evidence(raw, (self._synthesis_payload or {}).get('best_candidate_audit'))
+        if (isinstance(until_status, dict) and until_status.get('enabled') is True
+                and until_status.get('status') == 'blocked_resource'):
+            return ('搜索因资源不足中断；目标尚未确认达成。'
+                    + ('原因：' + self._error if self._error else '请检查系统可用资源。'))
         if self._result_terminal_state in {"已取消", "失败"}:
             if self._result is not None:
                 if self._result_terminal_state == "已取消" and self._candidate_applied:
@@ -3286,9 +3355,13 @@ class FilmOptimizationQuickController(QObject):
         if self._result is None and self._result_terminal_state == "cancelled":
             return "优化已取消；没有返回可用候选，原设计未改变。"
         if self._result is None and self._result_terminal_state == "not_found":
-            return "未找到可行候选；原设计未改变。"
+            return self._synthesis_session_stop_text() or "未找到可行候选；原设计未改变。"
         if self._result is None and self._result_terminal_state == "failed":
             return "优化失败；没有返回可用候选，原设计未改变。" + (" " + self._error if self._error else "")
+        if self._result is None and self._synthesis_payload is not None:
+            session_stop = self._synthesis_session_stop_text()
+            if session_stop:
+                return session_stop
         if self._error:
             return self._error
         if self._source_stale:
@@ -3318,6 +3391,10 @@ class FilmOptimizationQuickController(QObject):
                 return "优化已取消；最佳候选已应用到当前膜系，未保存，并已请求刷新光谱。"
             return "优化已取消；最佳候选仍可预览或另存。"
         if self._result.targets_met:
+            if self._synthesis_payload is not None and not _synthesis_targets_verified(
+                    self._synthesis_payload.get('result', {}),
+                    self._synthesis_payload.get('best_candidate_audit')):
+                return "候选验收信息不一致，不能确认目标达成；请检查原任务结果。"
             if self._candidate_applied:
                 return "已满足所有采样目标；候选已应用，未保存，并已请求刷新光谱。"
             return "已满足所有采样目标；可预览、另存或显式应用。"
@@ -4005,7 +4082,7 @@ class FilmOptimizationQuickController(QObject):
         if self._synthesis_payload is not None:
             raw = self._synthesis_payload["result"]
             facts = self._synthesis_payload["best_candidate_audit"]
-            return (f"任务 {raw['state']}；原门限名义验收：{self._synthesis_acceptance_text(facts.get('targets_met'))}；"
+            return (f"{self._synthesis_task_state_label(raw, facts)}；原门限名义验收：{self._synthesis_acceptance_text(facts.get('targets_met'))}；"
                     f"求解容差可接受：{self._synthesis_acceptance_text(facts.get('solver_acceptable'))}；"
                     f"轮次 {self._synthesis_work_count('cycles')}；评价 {self._synthesis_work_count('evaluations')}"
                     + self._synthesis_work_counters_note())
@@ -5093,6 +5170,11 @@ class FilmOptimizationQuickController(QObject):
     def setSynthesisOption(self, name, value):
         if self._busy or self._shutting_down or not self._pending_edit_allows("synthesis:" + name):
             return False
+        if name in {"search_strategy", "max_working_set_bytes"}:
+            # A retired control must not create an uncorrectable pending draft.
+            self._error = "此设置已移除"
+            self.changed.emit()
+            return False
         try:
             values = synthesis_options({**self._synthesis_options, name: value})
         except (ValueError, TypeError, OverflowError) as exc:
@@ -5319,7 +5401,7 @@ class FilmOptimizationQuickController(QObject):
         elif raw.get('performance', {}).get('search', {}).get('hybrid', {}).get('local_margin', {}).get('budget_limited'):
             stage_summary = f"\n局部阶段未完成（{raw['termination_reason']}）；已保留达标审计候选，本轮未减薄。"
         session_stop = self._synthesis_session_stop_text()
-        return ((session_stop + '\n') if session_stop else '') + (f"任务状态：{raw['state']} / {raw['termination_reason']}\n"
+        return ((session_stop + '\n') if session_stop else '') + (f"{self._synthesis_task_state_label(raw, facts)} / {raw['termination_reason']}\n"
                 + stage_summary + '\n'
                 f"候选独立审计：原门限名义验收{quality}，层数 {len(layers)}\n"
                 f"求解容差可接受：{acceptable}，最大归一化违规 {facts.get('audit_max_normalized_error')}，"
@@ -5331,8 +5413,47 @@ class FilmOptimizationQuickController(QObject):
                 + ("\n" + "\n".join(str(warning) for warning in payload.get("review", {}).get("warnings", []))
                    if payload.get("review", {}).get("warnings") else ""))
 
+    @staticmethod
+    def _synthesis_task_state_label(raw: dict, facts: dict | None = None) -> str:
+        evidence = _synthesis_until_evidence(raw, facts)
+        if not isinstance(evidence, dict) or evidence.get('enabled') is not True:
+            return f"任务状态：{raw.get('state', '未知')}"
+        status = evidence.get('status')
+        if status == 'targets_met' and evidence.get('goal_met') is True:
+            return '搜索目标已达成'
+        if (status == 'declared_frontier_exhausted'
+                and evidence.get('search_complete') is True
+                and evidence.get('declared_frontier_exhausted') is True):
+            return '已声明的有限搜索策略前沿耗尽'
+        if status in {'cancelled', 'blocked_resource', 'interrupted_error'}:
+            return {'cancelled': '搜索已取消', 'blocked_resource': '搜索因资源不足中断',
+                    'interrupted_error': '搜索因错误中断'}[status]
+        return '本轮暂停，搜索尚未完成'
+
     def _synthesis_session_stop_text(self) -> str:
         raw = (self._synthesis_payload or {}).get('result', {})
+        evidence = _synthesis_until_evidence(raw, (self._synthesis_payload or {}).get('best_candidate_audit'))
+        if isinstance(evidence, dict) and evidence.get('enabled') is True:
+            status = evidence.get('status')
+            if status == 'targets_met' and evidence.get('goal_met') is True:
+                return ''
+            if (status == 'declared_frontier_exhausted'
+                    and evidence.get('search_complete') is True
+                    and evidence.get('declared_frontier_exhausted') is True):
+                return '已声明的有限搜索策略前沿耗尽，目标未达成；这不证明物理上不存在可行方案。'
+            if status == 'blocked_resource':
+                return '搜索因资源不足中断；目标尚未确认达成，请检查系统可用资源。'
+            if status in {'cancelled', 'interrupted_error'}:
+                return ''  # Existing cancellation/error reporting remains authoritative.
+            reason = raw.get('termination_reason')
+            detail = ('局部收敛；' if status == 'paused_local' and
+                      reason == 'local_session_converged_targets_unmet' else
+                      '本轮局部优化暂停，未确认局部收敛；' if status == 'paused_local' else
+                      '本轮没有新候选；' if status == 'paused_no_new_candidate' else '')
+            label = detail + '本轮暂停，目标未达成；搜索尚未完成。'
+            if evidence.get('continuation_checkpoint_available') is not True:
+                return label + '本轮没有可续接的结构进度；不会自动开始新搜索。'
+            return label + self._synthesis_continue_hint()
         if raw.get('state') != 'completed' or raw.get('targets_met') is not False:
             return ''
         reason = raw.get('termination_reason')
@@ -5343,8 +5464,18 @@ class FilmOptimizationQuickController(QObject):
                 '本轮求解终态已收敛；返回更优的已审计候选，尚未确认该候选的局部驻点；目标仍未全部达到。',
             'local_session_audit_rejected_targets_unmet':
                 '本轮独立审计未通过原门限，保留完整最佳候选；未确认局部收敛，目标仍未全部达到。',
-        }.get(reason)
-        return (label + '结构搜索进度已保留，可选择“继续搜索新结构”。') if label else ''
+        }.get(reason, '')
+        return label + self._synthesis_continue_hint() if label else ''
+
+    def _synthesis_continue_hint(self) -> str:
+        reference = getattr(self, '_synthesis_search_reference', None)
+        job_id = getattr(self, '_queue_job_id', '')
+        if not reference or (job_id and reference.get('job_id') != job_id):
+            return '本轮没有可续接的结构进度；不会自动开始新搜索。'
+        reason = self._synthesis_search_reason()
+        if reason:
+            return '继续优化暂不可用：' + reason
+        return '点击“继续优化”可继续搜索新结构；不会自动重启。'
 
     @Property(str, notify=changed)
     def synthesisPreviewLabel(self):
@@ -5402,6 +5533,19 @@ class FilmOptimizationQuickController(QObject):
         session = self.session
         if reference is None:
             return '尚无结构搜索进度。'
+        raw = (self._synthesis_payload or {}).get('result', {})
+        evidence = _synthesis_until_evidence(raw, (self._synthesis_payload or {}).get('best_candidate_audit'))
+        if (isinstance(evidence, dict) and evidence.get('enabled') is True
+                and evidence.get('status') in {'paused_local', 'paused_no_new_candidate', 'paused_unresolved'}
+                and (evidence.get('continuation_checkpoint_available') is not True
+                     or reference.get('job_id') != self._queue_job_id)):
+            return '本轮未保留可续接的结构进度；历史进度保留，不能冒充本轮继续。'
+        if (isinstance(evidence, dict) and evidence.get('enabled') is True
+                and evidence.get('status') == 'declared_frontier_exhausted'
+                and evidence.get('search_complete') is True
+                and evidence.get('declared_frontier_exhausted') is True
+                and reference.get('job_id') == self._queue_job_id):
+            return '已声明的有限策略前沿耗尽；这不证明物理上不可行。'
         if (self.busy and not admission) or self._shutting_down:
             return '请先等待当前任务结束。'
         if self._result_terminal_state == '提交状态未知':
@@ -5557,6 +5701,12 @@ class FilmOptimizationQuickController(QObject):
             return self._synthesis_search_reason(admission=admission)
         if record is None:
             return self._continuation_unavailable_reason
+        if record.get("mode") == "synthesis":
+            request = record.get("request")
+            if getattr(request, "search_strategy", None) != "hybrid":
+                return "旧独立路线不能继续；请重新开始统一搜索，原历史保留。"
+            if getattr(request, "max_working_set_bytes", None) is not None:
+                return "旧结果使用了已移除的数值护栏；请重新开始统一搜索，原历史保留。"
         reason = _cpu_only_request_reason(record.get("request"))
         if reason:
             return reason

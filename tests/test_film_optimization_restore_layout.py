@@ -234,7 +234,7 @@ def test_sidebar_reuses_content_and_toolbar_omits_statistics_without_details_but
             assert window.findChild(QQuickItem, "filmOptimizationProgress") is None
             sidebar_progress = window.findChild(QQuickItem, "filmOptimizationSidebarProgress")
             assert sidebar_progress is not None
-            assert sidebar_progress.property("text").startswith(controller.progressStatistics)
+            assert "当前没有运行中的计算" in sidebar_progress.property("text")
             assert not sidebar.isVisible()
             click(app, window, toggle)
             assert sidebar.isVisible() and window.property("detailsDocked")

@@ -85,7 +85,7 @@ def test_n0_uses_explicit_project_purpose_projection_without_role_fields(app, tm
         assert request.candidate_materials[0].material_id == "acceptance-film"
 
 
-def test_synthesis_progress_reports_backend_layers_heartbeat_and_stall_flags(app):
+def test_synthesis_progress_presents_safe_layers_and_stall_without_internal_ids(app):
     from coat_sim.core.film_optimization import FilmOptimizationProgress, FilmOptimizationRequest
     from coat_sim.scheduler.desktop import RemoteCancelEvent
     from coat_sim.ui.film_optimization_quick_controller import _FilmSynthesisTask
@@ -96,16 +96,18 @@ def test_synthesis_progress_reports_backend_layers_heartbeat_and_stall_flags(app
     worker._publish_queue_progress({"stage": "audit_incumbent", "layer_count": 3,
         "evaluations": 12, "cycle": 1, "status": "audited best"})
     worker._publish_queue_progress({"stage": "audit_progress", "layer_count": 4,
-        "evaluations": 14, "cycle": 2, "status": "17 physical evaluations, 121 wavelength points",
+        "evaluations": 14, "cycle": 2, "status": '{"physical_hash": "' + 'a' * 64 + '", "candidate_rank": [1,2]}',
         "heartbeat_sequence": 8, "algorithm_progress_age_seconds": 31.2,
-        "worker_heartbeat_age_seconds": 0., "stalled": True, "unresponsive": False})
+        "worker_heartbeat_age_seconds": 0., "stalled": True, "unresponsive": False,
+        "physical_evaluations": 17, "wavelength_points": 121})
     assert len(messages) == 2
     last = messages[-1]
     assert last.iteration == 2 and last.evaluations == 14
-    assert "当前报告层数 4" in last.message and "已审计最好层数 3" in last.message
-    assert "heartbeat 8" in last.message and "algorithm_progress_age_seconds=31.2" in last.message
-    assert "stalled=True" in last.message and "unresponsive=False" in last.message
-    assert "17 physical evaluations, 121 wavelength points" in last.message
+    assert "当前报告层数 4" in last.message and "已审计最佳层数 3" in last.message
+    assert "计算进度暂未更新" in last.message
+    assert "物理调用 17" in last.message and "波长采样点 121" in last.message
+    assert "physical_hash" not in last.message and "candidate_rank" not in last.message
+    assert 'a' * 64 not in last.message and "{" not in last.message
 
 
 def test_angle_preparation_keeps_separate_inactive_editable_closure(app, tmp_path):

@@ -50,7 +50,7 @@ def search_fingerprint(request):
     data = asdict(request)
     data["selected_surfaces"] = selected_sides(request)
     for name in ('search_checkpoint', 'seed_designs', 'warm_start_seed_index', 'design_revision',
-                 'max_cycles', 'max_evaluations', 'max_seconds', 'cpu_workers',
+                 'max_cycles', 'max_evaluations', 'max_seconds', 'cpu_workers', 'search_until_target',
                  'forward_backend', 'forward_device', 'resource_guard_resolution',
                  'max_working_set_bytes', 'enable_thickness_reduction', 'enable_local_margin_refinement'):
         data.pop(name, None)

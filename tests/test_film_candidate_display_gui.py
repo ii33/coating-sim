@@ -8,7 +8,7 @@ from typing import Any, cast
 from threading import Event, get_ident
 
 import pytest
-from PySide6.QtCore import QObject, Qt
+from PySide6.QtCore import QObject, Qt, QMetaObject
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQuick import QQuickItem
 from PySide6.QtTest import QTest
@@ -19,7 +19,7 @@ from coat_sim.core.film_optimization import FilmConditionError, FilmOptimization
 from coat_sim.ui.film_candidate_display_controller import FilmCandidateDisplayController
 from tests.film_structure_fixtures import fixture
 from tests.qt_visual_lookup import find_visual_item
-from tests.test_film_optimization_restore_layout import click, optimizer, window_runtime
+from tests.test_film_optimization_restore_layout import click, click_operation_bar_action, optimizer, window_runtime
 
 pytestmark = pytest.mark.qt
 
@@ -175,7 +175,7 @@ def test_score_preferences_freeze_without_reordering_old_top10_and_source_fence(
 
 
 @pytest.mark.parametrize("size", [(1100, 760), (720, 500)])
-def test_real_qml_toggle_canvas_legend_top10_and_score_next_run_do_not_touch_result(app, tmp_path, size):
+def test_real_qml_live_details_fixed_and_no_ranking_or_hash(app, tmp_path, size):
     service, _library, design = fixture(tmp_path)
     with optimizer(service, design) as (controller, _source, session):
         live = cast(Any, controller._live_display)
@@ -184,67 +184,64 @@ def test_real_qml_toggle_canvas_legend_top10_and_score_next_run_do_not_touch_res
             window.resize(*size)
             drain(app)
             toggle = window.findChild(QQuickItem, "filmCandidateLivePreviewToggle")
-            assert toggle is not None and not toggle.property("checked")
-            click(app, window, toggle)
-            assert live.enabled
+            assert toggle is not None and toggle.property("checked")
+            assert window.findChild(QQuickItem, "filmOptimizationYAxisAuto").property("checked")
             config = live.begin(("optimization", 1))
-            client = Controls()
-            live.bind(("optimization", 1), client, "display-job", "a" * 64)
+            live.bind(("optimization", 1), Controls(), "display-job", "a" * 64)
             live.offer(("optimization", 1), packet(config))
             drain(app)
             canvas = window.findChild(QQuickItem, "filmOptimizationComparisonCanvas")
-            assert canvas is not None and canvas.property("seriesLegend") == "当前试探 / 优化器最佳"
-            assert canvas.height() >= 90
+            assert canvas.property("seriesLegend") == "当前试探 / 优化器最佳"
             assert canvas.property("dataSnapshot")["current"]["actual"] == [0.05] * 3
-            sidebar_toggle = window.findChild(QQuickItem, "filmOptimizationSidebarToggle")
-            click(app, window, sidebar_toggle)
-            assert not warnings, warnings
-            repeater = window.findChild(QObject, "filmCandidateDisplayTop10")
-            assert repeater is not None and repeater.property("count") == 2
-            rank = find_visual_item(window, "filmCandidateDisplayRank_0")
-            assert rank is not None and "S " in rank.property("text") and "ID " in rank.property("text")
-            notice = window.findChild(QQuickItem, "filmCandidateDisplayRankNotice")
-            assert "≠" in notice.property("text")
+            click(app, window, window.findChild(QQuickItem, "filmOptimizationSidebarToggle"))
+            assert window.findChild(QObject, "filmCandidateDisplayTop10") is None
+            assert window.findChild(QObject, "filmCandidateDisplayRankNotice") is None
+            assert window.findChild(QObject, "filmCandidateScorePreferencesToggle") is None
+            progress = window.findChild(QQuickItem, "filmOptimizationProgressRegion")
+            details = window.findChild(QQuickItem, "filmOptimizationBestDetailScroll")
+            assert progress and details
+            keys = ("layer_count", "total_thickness_nm", "mean_percent", "maximum_percent",
+                    "maximum_wavelength_nm", "max_normalized_error", "weighted_rms_error")
+            fields = [find_visual_item(window, "filmCandidateBestField_" + key) for key in keys]
+            assert all(fields)
+            texts = [str(field.property("text")) for field in fields]
+            assert all("ID " not in value and "a" * 12 not in value for value in texts)
+            assert texts[0] == "1" and texts[1].endswith(" nm")
+            positions = [(field.x(), field.y(), field.width()) for field in fields]
+            geometry = (progress.y(), progress.height(), details.y(), details.height())
+            # Repeated newer frames must not recreate or reposition the value columns.
+            for sequence in (3, 4):
+                live.offer(("optimization", 1), packet(config, sequence=sequence))
+                drain(app)
+            assert geometry == (progress.y(), progress.height(), details.y(), details.height())
+            assert positions == [(field.x(), field.y(), field.width()) for field in fields]
             assert controller._result is None and not controller.canApply
             assert session.snapshot().design == original
-            # Closing the detail rail makes the real preview toggle unobscured.
-            click(app, window, sidebar_toggle)
-            click(app, window, toggle)
-            assert not live.enabled
+            # Long, changing progress stays within its fixed scroll area; the
+            # best-value rows and later sections do not move as text wraps.
+            controller._busy = True
+            controller._progress_iteration = 9
+            controller._progress_evaluations = 99
+            controller._progress_text = "正在计算：" + ("结构探索与候选评价；" * 20)
+            controller.changed.emit()
             drain(app)
-            assert canvas.property("dataSnapshot") == {}
-            assert len(live.top10) == 2
-            assert controller._result is None
-            assert not window.grabWindow().isNull()
+            progress_fields = [window.findChild(QQuickItem, "filmOptimizationProgress" + name)
+                               for name in ("Count", "Evaluations", "BestViolation")]
+            assert all(progress_fields)
+            progress_positions = [(field.x(), field.y(), field.width()) for field in progress_fields]
+            controller._progress_iteration = 123456
+            controller._progress_evaluations = 987654
+            controller.changed.emit()
+            drain(app)
+            assert progress_positions == [(field.x(), field.y(), field.width()) for field in progress_fields]
+            assert geometry == (progress.y(), progress.height(), details.y(), details.height())
+            assert positions == [(field.x(), field.y(), field.width()) for field in fields]
+            screenshot = window.grabWindow()
+            assert not screenshot.isNull()
+            assert screenshot.save(str(tmp_path / ("fixed-details-%sx%s.png" % size)))
+            controller._busy = False
+            controller.changed.emit()
             assert not warnings, warnings
-
-
-def test_real_qml_preferences_editor_applies_only_to_next_attempt(app, tmp_path):
-    service, _library, design = fixture(tmp_path)
-    with optimizer(service, design) as (controller, _source, _session):
-        live = cast(Any, controller._live_display)
-        config = live.begin("run")
-        with window_runtime(app, controller) as (window, warnings):
-            window.resize(1200, 900)
-            drain(app)
-            click(app, window, window.findChild(QQuickItem, "filmOptimizationSidebarToggle"))
-            advanced = window.findChild(QQuickItem, "filmCandidateScorePreferencesToggle")
-            click(app, window, advanced)
-            field = find_visual_item(window, "filmCandidateScore_weight_error")
-            assert field is not None
-            field.forceActiveFocus()
-            QTest.keyClick(window, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
-            QTest.keyClick(window, Qt.Key.Key_2)
-            QTest.keyClick(window, Qt.Key.Key_5)
-            QTest.keyClick(window, Qt.Key.Key_Return)
-            drain(app)
-            assert live.scoreConfig["weight_error"] == 25
-            assert live.frozenScoreConfig["weight_error"] == config["score_config"]["weight_error"] == 90
-            assert live.scoreChangesPending
-            assert controller._result is None and not controller.canApply
-            assert not warnings, warnings
-        live.end("run")
-        assert live.begin("next")["score_config"]["weight_error"] == 25
 
 
 @pytest.mark.parametrize("size", [(1100, 760), (720, 500)])
@@ -304,7 +301,9 @@ def test_real_qml_formal_curves_survive_off_waiting_terminal_cancel_and_old_live
                 assert "当前试探与优化器最佳" in title.property("text")
                 assert controller._result is formal_result and controller.canApply == can_apply
 
-            # A default-off run must never cover already available official curves.
+            # A user-disabled run must never cover already available official curves.
+            assert live.enabled
+            click(app, window, toggle)
             assert not live.enabled
             config = begin("off-run")
             assert_formal()
@@ -814,3 +813,65 @@ def test_admitted_status_race_preserves_source_epoch_cancel_and_new_attempt_fenc
             assert live._binding is None
         task.finish(error={"state": "cancelled", "message": "test complete"})
         drain(app)
+
+
+def test_real_qml_synthesis_until_target_control_and_help(app, tmp_path):
+    service, _library, design = fixture(tmp_path)
+    with optimizer(service, design) as (controller, _source, session):
+        original = deepcopy(session.snapshot().design)
+        assert controller.setSearchMode("synthesis")
+        with window_runtime(app, controller) as (window, warnings):
+            assert window.findChild(QObject, "filmSynthesisStrategyBox") is None
+            assert window.findChild(QObject, "filmSynthesisResourceGuardModeBox") is None
+            assert window.findChild(QObject, "filmSynthesisResourceGuardBytesField") is None
+            assert window.findChild(QObject, "filmSynthesisStrategySummary") is not None
+            toggle = window.findChild(QObject, "filmSynthesisSearchUntilTargetField")
+            assert toggle is not None and not toggle.property("checked")
+            help_text = window.findChild(QObject, "filmSynthesisSearchUntilTargetHelp").property("text")
+            for phrase in ("达标或局部收敛可停止", "局部收敛判据不变", "继续优化", "手动取消", "资源不足", "错误", "忽略", "制造约束"):
+                assert phrase in help_text
+            assert not controller.setSynthesisOption("archive_capacity", "0")
+            toggle.setProperty("checked", True)
+            assert QMetaObject.invokeMethod(toggle, "toggled", Qt.ConnectionType.DirectConnection)
+            drain(app)
+            assert not toggle.property("checked")  # Refused edits restore authoritative binding.
+            assert controller.setSynthesisOption("archive_capacity", "32")
+            toggle.setProperty("checked", True)
+            assert QMetaObject.invokeMethod(toggle, "toggled", Qt.ConnectionType.DirectConnection)
+            drain(app)
+            assert toggle.property("checked") and controller.synthesisOptions["search_until_target"]
+            for key in ("max_cycles", "max_evaluations", "max_seconds"):
+                assert not find_visual_item(window, "filmSynthesis_" + key + "Field").isEnabled()
+            assert find_visual_item(window, "filmSynthesis_max_layersField").isEnabled()
+            toggle.setProperty("checked", False)
+            assert QMetaObject.invokeMethod(toggle, "toggled", Qt.ConnectionType.DirectConnection)
+            drain(app)
+            assert not toggle.property("checked") and not controller.synthesisOptions["search_until_target"]
+            assert not warnings, warnings
+        assert session.snapshot().design == original
+
+
+def test_real_qml_best_candidate_apply_remains_available_without_ranking(app, tmp_path):
+    service, _library, design = fixture(tmp_path)
+    with optimizer(service, design) as (controller, source, session):
+        live = cast(Any, controller._live_display)
+        config = live.begin("apply-best")
+        live.bind("apply-best", Controls(), "display-job", "a" * 64)
+        live.offer("apply-best", packet(config))
+        drain(app)
+        candidate = deepcopy(design)
+        candidate["front_layers"][0]["thickness"]["value"] = 80.0
+        revision = session.snapshot().design_revision
+        controller._result = FilmOptimizationResult("completed", revision, candidate,
+            {candidate["front_layers"][0]["id"]: 80.0}, 0.0, 0.0, 0.0, True, (), 1, 1)
+        controller._operation_edit_epoch = controller._source_edit_epoch()
+        controller._result_application_eligible = True
+        controller.changed.emit()
+        with window_runtime(app, controller) as (window, warnings):
+            assert window.findChild(QObject, "filmCandidateDisplayTop10") is None
+            apply_button = window.findChild(QQuickItem, "filmOptimizationApplyButton")
+            assert apply_button is not None and apply_button.isEnabled() and controller.canApply
+            click_operation_bar_action(app, window, "filmOptimizationApplyButton")
+            assert source.applied and source.applied[-1][0]["front_layers"][0]["thickness"]["value"] == 80.0
+            assert controller._candidate_applied and not controller.canApply
+            assert not warnings, warnings

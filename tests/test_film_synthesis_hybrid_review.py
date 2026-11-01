@@ -335,35 +335,3 @@ def test_auto_resource_measurement_control_stops_are_not_memory_fallback(monkeyp
     with pytest.raises(type(sentinel)) as captured:
         freeze_film_synthesis_request(service, replace(request, max_working_set_bytes=0))
     assert captured.value is sentinel
-
-
-@pytest.mark.qt
-def test_resource_mode_native_keyboard_refusal_restores_authoritative_policy(tmp_path):
-    from PySide6.QtCore import QObject, Qt
-    from PySide6.QtGui import QGuiApplication
-    from PySide6.QtTest import QTest
-    from tests.film_structure_fixtures import fixture
-    from tests.test_film_optimization_restore_layout import optimizer, window_runtime
-    app = QGuiApplication.instance() or QGuiApplication([])
-    service, _library, design = fixture(tmp_path)
-    original = deepcopy(design)
-    with optimizer(service, design) as (controller, _source, session):
-        assert controller.setSearchMode('synthesis')
-        with window_runtime(app, controller) as (window, warnings):
-            mode = window.findChild(QObject, 'filmSynthesisResourceGuardModeBox')
-            assert mode is not None and mode.property('currentIndex') == 0
-            assert not controller.setSynthesisOption('archive_capacity', 0)
-            mode.forceActiveFocus()
-            QTest.keyClick(window, Qt.Key.Key_Down)  # Native Qt selection and activated signal.
-            app.processEvents()
-            assert controller.synthesisOptions.get('max_working_set_bytes', 0) == 0
-            assert mode.property('currentIndex') == 0  # Refused manual selection cannot lie about policy.
-            assert controller.setSynthesisOption('archive_capacity', 2)
-            assert controller.setSynthesisOption('max_working_set_bytes', 3 * 1024**3)
-            app.processEvents()
-            assert mode.property('currentIndex') == 1  # Rollback must not break the live binding.
-            assert controller.setSynthesisOption('max_working_set_bytes', None)
-            app.processEvents()
-            assert mode.property('currentIndex') == 2
-            assert not any('ReferenceError' in message or 'TypeError' in message for message in warnings)
-        assert session.snapshot().design == original

@@ -39,7 +39,7 @@ def test_nullable_options_reject_ambiguous_limits(values):
 
 
 def test_blank_options_never_inherit_legacy_finite_budgets():
-    assert synthesis_options({key: "" for key in SYNTHESIS_DEFAULT_OPTIONS}) == dict(SYNTHESIS_DEFAULT_OPTIONS, enable_thickness_reduction=True, needle_pre_local=True)
+    assert synthesis_options({key: "" for key in SYNTHESIS_DEFAULT_OPTIONS}) == dict(SYNTHESIS_DEFAULT_OPTIONS, enable_thickness_reduction=True, needle_pre_local=True, search_strategy="hybrid", max_working_set_bytes=None, search_until_target=False)
     assert synthesis_options({"max_cycles": "12", "minimum_nonzero_thickness_nm": "0.5"})["max_cycles"] == 12
 
 
@@ -79,3 +79,37 @@ def test_real_audited_result_cancel_facts_and_frozen_preview(tmp_path):
 def test_typed_adapter_rejects_untyped_results():
     with pytest.raises(ValueError):
         synthesis_result_view({"state": "completed"})
+
+
+def test_until_target_build_freeze_and_queue_preserves_explicit_options():
+    from coat_sim.core.film_synthesis_io import film_synthesis_request_to_payload
+    from coat_sim.core.film_synthesis_jobs import canonical_parameters, build_job_payload, deserialize_job_payload
+    service, base_request = setup_problem(low=550, high=550, samples=1)
+    base = FilmOptimizationRequest(deepcopy(dict(base_request.environment)), 41, (), base_request.objectives)
+    request = build_synthesis_request(base, base_request.candidate_materials, {
+        'search_until_target': True, 'max_cycles': 2, 'max_evaluations': 10,
+        'max_seconds': 3, 'max_layers': 4, 'max_total_thickness_nm': 900})
+    assert request.search_until_target is True
+    assert (request.max_cycles, request.max_evaluations, request.max_seconds) == (None, None, None)
+    assert request.search_strategy == 'hybrid' and request.max_working_set_bytes is None
+    assert (request.max_layers, request.max_total_thickness_nm) == (4, 900)
+    frozen = freeze_film_synthesis_request(service, request)
+    envelope = film_synthesis_request_to_payload('until-target-test', frozen)
+    restored = deserialize_job_payload(build_job_payload(canonical_parameters(None, {'payload': envelope})))[1]
+    assert restored.search_until_target is True
+    assert restored.search_strategy == 'hybrid' and restored.max_working_set_bytes is None
+    assert (restored.max_layers, restored.max_total_thickness_nm) == (4, 900)
+
+
+def test_search_reference_normalizes_old_hybrid_and_budget_mode():
+    from coat_sim.ui.film_synthesis_search_state import settings_reason
+    current = {'objectives': [], 'acceptance': {}, 'materials': [],
+               'assume_unknown_k_zero': False, 'selected_surfaces': ['front'],
+               'constraints': {}, 'search': {'search_strategy': 'hybrid'}}
+    previous = deepcopy(current)
+    previous['search'] = {}  # Old default omitted hybrid and until-target.
+    assert settings_reason({'settings': previous}, current) == ''
+    previous['search']['search_until_target'] = True
+    assert settings_reason({'settings': previous}, current) == ''
+    previous['search']['search_strategy'] = 'legacy'
+    assert settings_reason({'settings': previous}, current)

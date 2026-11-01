@@ -54,6 +54,7 @@ _RESOURCE_FALLBACK_BASES = frozenset(("unknown_memory_fallback",
 
 
 class _SearchDiagnostics(TypedDict):
+    until_target: NotRequired[dict[str, Any]]
     legacy_local_session: NotRequired[dict[str, Any]]
     structural_proposals: list[dict[str, object]]
     global_search: list[dict[str, object]]
@@ -143,6 +144,8 @@ class FilmSynthesisRequest:
     search_checkpoint: Mapping[str, Any] | None = None
     enable_local_margin_refinement: bool = True
     selected_surfaces: tuple[str, ...] = ("front",)
+    # Outer scheduling only; local convergence and physical constraints are unchanged.
+    search_until_target: bool = False
 
 
 @dataclass(frozen=True)
@@ -312,6 +315,11 @@ def _validated(request):
         raise ValueError("request must be FilmSynthesisRequest")
     if type(request.search_strategy) is not str or request.search_strategy not in {"hybrid", "legacy"}:
         raise ValueError("search_strategy must be hybrid or legacy")
+    if type(request.search_until_target) is not bool:
+        raise ValueError("search_until_target must be boolean")
+    if request.search_until_target:
+        if request.search_strategy != "hybrid":
+            raise ValueError("search_until_target requires hybrid search")
     for field_name, minimum in (("archive_capacity", 2), ("needle_batch_size", 1),
                                 ("needle_position_refinement_rounds", 0)):
         if type(getattr(request, field_name)) is not int or getattr(request, field_name) < minimum:
@@ -416,6 +424,11 @@ def _validated(request):
         if len(selected_rows(request, seed)) > (request.max_layers or MAX_LAYERS):
             raise ValueError("seed layer count exceeds the explicit request constraint")
         seeds.append(seed)
+    if request.search_until_target:
+        # Validate the original fields first, then supersede only work budgets.
+        # Material, layer and thickness constraints remain authoritative.
+        request = replace(request, max_cycles=None, max_evaluations=None)
+        numeric['max_seconds'] = None
     return replace(request, environment=design, selected_surfaces=surfaces, objectives=objectives, seed_designs=tuple(seeds), forward_device=forward_device,
                    resource_guard_resolution=resource_guard_resolution,
                    candidate_materials=tuple(request.candidate_materials),
@@ -3154,6 +3167,14 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             if not streams and not selected_rows(request, explorer["design"]) and details["resource_skips"]:
                 raise _Stopped("resource_limit")
 
+        if request.search_until_target and targets_verified():
+            # Until-goal ends at the original full-condition independent audit,
+            # without optional post-goal margin or thickness work.
+            details['until_target_status'] = 'original_targets_independently_verified'
+            postprocess_complete = True
+            capture_search_checkpoint(publish=True)
+            return
+
         # All normal success exits, including the early engineering-prior
         # break, converge here. No optional optics after failure/deadline/cancel.
         if resumed and resume_branch_audited is not None:
@@ -4325,6 +4346,25 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         f" 含数值零层的试探{cleanup_reason}，没有可安全发布的完整候选；原设计未改变。")
         if reason == 'continuation_quantum_no_new_candidate':
             message = '本轮有限搜索片未纳入新候选；原结构搜索前沿已保留，可继续搜索。'
+        if request.search_until_target:
+            from .film_synthesis_stop_policy import until_target_summary
+            summary = until_target_summary(state=state, reason=reason, goal_met=met,
+                hybrid=search_diagnostics.get('hybrid', {}), has_local_optimum=local_optimum is not None,
+                checkpoint_available=search_state is not None)
+            if summary['status'] == 'declared_frontier_exhausted':
+                message = ('当前声明的结构前沿与可执行优化操作已耗尽，未找到达标方案；'
+                           '这不是所有膜系物理不可行的证明。')
+            elif summary['status'] == 'paused_local':
+                message = ('本轮局部优化按既有停止规则暂停，目标尚未全部达到；'
+                           '全部搜索尚未完成，点击“继续优化”可尝试其他结构与全局搜索。')
+            elif summary['status'] == 'paused_no_new_candidate':
+                message = ('本轮搜索片未找到新候选，搜索尚未完成；'
+                           '已保留前沿，点击“继续优化”继续尝试。')
+            summary['exploration_summary'] = dict(rotations=cycle, candidate_evaluations=evaluations,
+                source_candidates_consumed=sum((search_state or {}).get('cursors', {}).values()),
+                remaining_source_count=len((search_state or {}).get('active_sources', ())),
+                operator_families=['结构先验', '低维全局厚度搜索', '解析针插', '局部全约束优化', '减层与压缩'])
+            search_diagnostics['until_target'] = summary
         emit(state, message, None if best is None else best["design"], None if best is None else best["score"])
         final_search_checkpoint = capture_search_checkpoint()
         if final_search_checkpoint is not None and search_checkpoint_callback is not None:

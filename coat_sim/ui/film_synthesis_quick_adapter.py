@@ -27,7 +27,8 @@ SYNTHESIS_SEARCH_DEFAULTS = {
     "enable_thickness_reduction": True,
     "archive_capacity": 32, "needle_batch_size": 6,
     "needle_pre_local": NEEDLE_PRE_LOCAL, "needle_position_refinement_rounds": 1,
-    "max_working_set_bytes": 0,
+    "max_working_set_bytes": None,
+    "search_until_target": False,
     "parallel_batch_size": None,
     "randomize_template_search": False,
     "structure_search_seed": None,
@@ -58,12 +59,13 @@ def synthesis_options(values: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("Unknown synthesis constraint")
     result = dict(SYNTHESIS_DEFAULT_OPTIONS,
                   enable_thickness_reduction=SYNTHESIS_SEARCH_DEFAULTS["enable_thickness_reduction"],
-                  needle_pre_local=NEEDLE_PRE_LOCAL)
+                  needle_pre_local=NEEDLE_PRE_LOCAL, search_strategy="hybrid",
+                  max_working_set_bytes=None, search_until_target=False)
     for name, raw in values.items():
         if name == "structure_search_seed":
             result[name] = synthesis_structure_search_seed(raw)
             continue
-        if name in {"randomize_template_search", "enable_thickness_reduction"}:
+        if name in {"randomize_template_search", "enable_thickness_reduction", "search_until_target"}:
             if type(raw) is not bool:
                 raise ValueError(f"{name} must be an explicit boolean")
             result[name] = raw
@@ -72,11 +74,13 @@ def synthesis_options(values: Mapping[str, Any]) -> dict[str, Any]:
                 and (not raw.strip() or raw.strip().lower() == "auto"))):
             result[name] = None
             continue
-        if name == "max_working_set_bytes" and (raw is None or (isinstance(raw, str) and not raw.strip())):
-            result[name] = None  # Explicit off, distinct from 0=auto and an omitted default.
+        if name == "max_working_set_bytes":
+            if raw is not None:
+                raise ValueError("数值护栏设置已移除；新任务不限制工作集")
+            result[name] = None
             continue
         if name == "search_strategy":
-            choices = {"hybrid", "legacy"}
+            choices = {"hybrid"}
             if raw not in choices:
                 raise ValueError(f"{name} must be one of {', '.join(sorted(choices))}")
             result[name] = raw

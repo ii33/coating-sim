@@ -35,10 +35,11 @@ def test_audit_rejected_session_description_does_not_claim_convergence_or_stagna
     view = cast(FilmOptimizationQuickController, SimpleNamespace(_synthesis_payload={'result': {
         'state': 'completed', 'targets_met': False,
         'termination_reason': 'local_session_audit_rejected_targets_unmet'}}))
+    view._synthesis_continue_hint = lambda view=view: FilmOptimizationQuickController._synthesis_continue_hint(view)
     text = FilmOptimizationQuickController._synthesis_session_stop_text(view)
     assert '独立审计未通过原门限' in text
     assert '未确认局部收敛' in text and '目标仍未全部达到' in text
-    assert '保留完整最佳候选' in text and '继续搜索新结构' in text
+    assert '保留完整最佳候选' in text and '没有可续接的结构进度' in text
     assert '已收敛' not in text and '停滞' not in text and '无有效改进' not in text
 
 
@@ -96,9 +97,10 @@ def _finish_unmet(controller, scene, *, continuing=False):
         # its real refresh failure; the full desktop path is checked separately.
         assert controller.error == '优化厚度已应用，但光谱刷新未完成：光谱仿真窗口未确认打开'
     else:
-        assert '目标仍未全部达到' in controller.statusText
-        assert '继续搜索新结构' in controller.statusText
-    assert '目标仍未全部达到' in controller.synthesisAuditSummary
+        assert ('目标仍未全部达到' in controller.statusText or '目标未达成' in controller.statusText)
+        assert '点击“继续优化”可继续搜索新结构' in controller.statusText
+    assert ('目标仍未全部达到' in controller.synthesisAuditSummary
+            or '目标未达成' in controller.synthesisAuditSummary)
     assert controller.conditionErrors and any(not row['targets_met'] for row in controller.synthesisObjectiveAudit)
     assert controller._result is not None
     assert physical_design_hash(controller._result.best_design) == physical_design_hash(raw['candidate_design'])
@@ -228,3 +230,158 @@ def test_real_unmet_session_refreshes_existing_project_spectrum_and_same_best_de
 @pytest.mark.parametrize('stage', ['local_margin_start', 'local_session_start', 'local_refinement', 'canonical_local'])
 def test_new_local_stage_messages_use_existing_local_optimization_phase(stage):
     assert phase_label(stage + ' | current fixed topology') == '局部优化'
+
+
+def test_retired_historical_synthesis_is_view_only_before_source_or_identity_checks():
+    view = cast(FilmOptimizationQuickController, SimpleNamespace())
+    for request, message in (
+            (SimpleNamespace(search_strategy='legacy', max_working_set_bytes=None), '旧独立路线'),
+            (SimpleNamespace(search_strategy='hybrid', max_working_set_bytes=0), '数值护栏')):
+        reason = FilmOptimizationQuickController._continuation_source_reason(
+            view, {'mode': 'synthesis', 'request': request})
+        assert message in reason and '原历史保留' in reason
+
+
+def test_session_stop_only_promises_continue_when_guard_accepts_reference():
+    payload = {'result': {'state': 'completed', 'targets_met': False,
+               'termination_reason': 'local_session_converged_targets_unmet'}}
+    for reason, expected in (('', '点击“继续优化”可继续搜索新结构'),
+                             ('来源已修改', '继续优化暂不可用：来源已修改')):
+        view = cast(FilmOptimizationQuickController, SimpleNamespace(
+            _synthesis_payload=payload, _synthesis_search_reference={'job_id': 'j'},
+            _synthesis_search_reason=lambda reason=reason: reason))
+        view._synthesis_continue_hint = lambda view=view: FilmOptimizationQuickController._synthesis_continue_hint(view)
+        text = FilmOptimizationQuickController._synthesis_session_stop_text(view)
+        assert '局部优化已收敛' in text and '目标仍未全部达到' in text
+        assert expected in text
+
+
+@pytest.mark.parametrize('status,extra,expected', [
+    ('paused_local', {}, '局部收敛；本轮暂停'),
+    ('paused_no_new_candidate', {}, '本轮没有新候选；本轮暂停'),
+    ('paused_unresolved', {}, '本轮暂停，目标未达成'),
+    ('declared_frontier_exhausted', {'search_complete': True, 'declared_frontier_exhausted': True},
+     '有限搜索策略前沿耗尽'),
+])
+def test_until_target_status_never_equates_local_or_quantum_pause_with_success(status, extra, expected):
+    evidence = {'enabled': True, 'status': status, 'goal_met': False,
+                'search_complete': False, 'continuation_checkpoint_available': True, **extra}
+    raw = {'state': 'completed', 'targets_met': False, 'frozen_request': {'search_until_target': True},
+           'termination_reason': ('continuation_frontier_exhausted' if status == 'declared_frontier_exhausted' else 'local_session_converged_targets_unmet'),
+           'performance': {'search': {'until_target': evidence, 'hybrid': {'resource_limited': False,
+               'continuation_session': {'frontier_exhausted': status == 'declared_frontier_exhausted'}}}}}
+    view = cast(FilmOptimizationQuickController, SimpleNamespace(
+        _synthesis_payload={'result': raw}, _synthesis_search_reference={'job_id': 'this-job'},
+        _queue_job_id='this-job', _synthesis_search_reason=lambda: ''))
+    view._synthesis_continue_hint = lambda view=view: FilmOptimizationQuickController._synthesis_continue_hint(view)
+    text = FilmOptimizationQuickController._synthesis_session_stop_text(view)
+    assert expected in text
+    assert '已达标' not in text
+    if status.startswith('paused'):
+        assert '搜索尚未完成' in text and '点击“继续优化”' in text
+        assert FilmOptimizationQuickController._synthesis_task_state_label(raw) == '本轮暂停，搜索尚未完成'
+    else:
+        assert '不证明物理上不存在可行方案' in text
+
+
+def test_until_target_stale_checkpoint_is_not_offered_as_current():
+    raw = {'state': 'completed', 'targets_met': False, 'frozen_request': {'search_until_target': True}, 'performance': {'search': {
+        'until_target': {'enabled': True, 'status': 'paused_no_new_candidate',
+                         'continuation_checkpoint_available': True}}}}
+    view = cast(FilmOptimizationQuickController, SimpleNamespace(
+        _synthesis_payload={'result': raw}, _synthesis_search_reference={'job_id': 'old-job'},
+        _queue_job_id='current-job', _synthesis_search_reason=lambda: ''))
+    view._synthesis_continue_hint = lambda view=view: FilmOptimizationQuickController._synthesis_continue_hint(view)
+    text = FilmOptimizationQuickController._synthesis_session_stop_text(view)
+    assert '没有可续接的结构进度' in text and '点击“继续优化”' not in text
+
+
+def test_only_proven_declared_frontier_exhaustion_disables_continuation():
+    evidence = {'enabled': True, 'status': 'declared_frontier_exhausted',
+                'search_complete': True, 'declared_frontier_exhausted': True}
+    view = cast(FilmOptimizationQuickController, SimpleNamespace(
+        _synthesis_search_reference={'job_id': 'j'}, _queue_job_id='j',
+        _synthesis_payload={'result': {'targets_met': False, 'frozen_request': {'search_until_target': True},
+            'termination_reason': 'continuation_frontier_exhausted', 'performance': {'search': {
+                'until_target': evidence, 'hybrid': {'resource_limited': False,
+                    'continuation_session': {'frontier_exhausted': True}}}}}},
+        busy=True, _shutting_down=False, session=None))
+    reason = FilmOptimizationQuickController._synthesis_search_reason(view)
+    assert '有限策略前沿耗尽' in reason and '不证明' in reason
+    evidence.update(status='paused_no_new_candidate', search_complete=False,
+                    declared_frontier_exhausted=False, continuation_checkpoint_available=True)
+    reason = FilmOptimizationQuickController._synthesis_search_reason(view)
+    assert reason == '请先等待当前任务结束。'  # ordinary busy guard, not an exhaustion claim
+
+
+def test_until_target_stalled_or_unverified_terminal_does_not_claim_convergence():
+    for reason in ('local_session_stalled_targets_unmet',
+                   'local_session_terminal_converged_best_retained_targets_unmet',
+                   'local_session_audit_rejected_targets_unmet'):
+        raw = {'state': 'completed', 'targets_met': False, 'frozen_request': {'search_until_target': True}, 'termination_reason': reason,
+               'performance': {'search': {'until_target': {'enabled': True, 'status': 'paused_local',
+                   'continuation_checkpoint_available': True}}}}
+        view = cast(FilmOptimizationQuickController, SimpleNamespace(
+            _synthesis_payload={'result': raw}, _synthesis_search_reference={'job_id': 'j'},
+            _queue_job_id='j', _synthesis_search_reason=lambda: ''))
+        view._synthesis_continue_hint = lambda view=view: FilmOptimizationQuickController._synthesis_continue_hint(view)
+        text = FilmOptimizationQuickController._synthesis_session_stop_text(view)
+        assert '未确认局部收敛' in text and '搜索尚未完成' in text
+
+
+def test_until_target_real_local_pause_waits_for_user_to_continue(app, project_gui):
+    harness, _host, _workspace, _store, _library, _saved = project_gui
+    _service, _source, controller, scene = _optimizer(harness)
+    _unmet_settings(controller)
+    assert controller.setSynthesisOption('search_until_target', True)
+    reference, _record = _finish_unmet(controller, scene)
+    evidence = controller._synthesis_payload['result']['performance']['search']['until_target']
+    assert evidence['enabled'] and not evidence['goal_met'] and not evidence['search_complete']
+    assert evidence['status'] == 'paused_local'
+    old_job = controller.queueJobId
+    QTest.qWait(500)
+    assert not controller.busy and controller.queueJobId == old_job  # No automatic restart.
+    assert controller.canContinueSynthesisSearch, controller.synthesisSearchDisabledReason
+    scene.click(scene.item('filmSynthesisContinueSearchButton'))
+    _wait(lambda: controller.queueJobId != old_job, seconds=30.)
+    assert controller.queueJobId != old_job, (controller.error, controller.synthesisSearchDisabledReason)
+    _wait(lambda: not controller.busy, seconds=60.)
+    assert controller.queueJobId != reference['job_id']
+
+
+def test_until_target_resource_failure_is_explicit_and_not_success():
+    raw = {'state': 'failed', 'targets_met': False, 'frozen_request': {'search_until_target': True}, 'performance': {'search': {'until_target': {
+        'enabled': True, 'status': 'blocked_resource', 'goal_met': False}}}}
+    view = cast(FilmOptimizationQuickController, SimpleNamespace(_synthesis_payload={'result': raw}))
+    text = FilmOptimizationQuickController._synthesis_session_stop_text(view)
+    assert '资源不足' in text and '目标尚未确认达成' in text
+    assert FilmOptimizationQuickController._synthesis_task_state_label(raw) == '搜索因资源不足中断'
+
+
+def test_until_target_presentation_rejects_forged_success_or_exhaustion_metadata():
+    from copy import deepcopy
+    from coat_sim.ui.film_optimization_quick_controller import _synthesis_until_evidence
+    raw = {'state': 'completed', 'targets_met': False, 'validation_complete': True,
+           'frozen_request': {'search_until_target': True}, 'termination_reason': 'search_exhausted',
+           'performance': {'search': {'until_target': {'enabled': True, 'status': 'targets_met',
+               'goal_met': True, 'search_complete': True}}}}
+    facts = {'available': True, 'targets_met': True}
+    assert _synthesis_until_evidence(raw, facts)['status'] == 'paused_unresolved'
+    assert '已达成' not in FilmOptimizationQuickController._synthesis_task_state_label(raw, facts)
+    raw['targets_met'] = True
+    assert _synthesis_until_evidence(raw, {'available': True, 'targets_met': False})['status'] == 'paused_unresolved'
+    assert FilmOptimizationQuickController._synthesis_task_state_label(raw, facts) == '搜索目标已达成'
+    disabled = deepcopy(raw)
+    disabled['frozen_request']['search_until_target'] = False
+    assert _synthesis_until_evidence(disabled, facts) == {}
+    assert '已达成' not in FilmOptimizationQuickController._synthesis_task_state_label(disabled, facts)
+    raw['targets_met'] = False
+    evidence = raw['performance']['search']['until_target']
+    evidence.update(status='declared_frontier_exhausted', declared_frontier_exhausted=True)
+    assert _synthesis_until_evidence(raw, facts)['status'] == 'paused_unresolved'
+    raw['termination_reason'] = 'continuation_frontier_exhausted'
+    raw['performance']['search']['hybrid'] = {'resource_limited': True,
+                                               'continuation_session': {'frontier_exhausted': True}}
+    assert _synthesis_until_evidence(raw, facts)['status'] == 'paused_unresolved'
+    raw['performance']['search']['hybrid']['resource_limited'] = False
+    assert _synthesis_until_evidence(raw, facts)['status'] == 'declared_frontier_exhausted'

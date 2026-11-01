@@ -689,7 +689,7 @@ AppWindow {
                 }
                 ThemeControls.ThemeButton {
                     objectName: "filmSynthesisContinueSearchButton"
-                    text: "继续搜索"
+                    text: "继续优化"
                     visible: window.controller.searchMode !== "automatic_repair" && window.controller.searchMode !== "ideal_sensitivity" && window.controller.searchMode !== "resource_assessment" && window.controller.hasSynthesisSearchProgress
                     enabled: window.controller.canContinueSynthesisSearch
                     onClicked: {
@@ -1952,18 +1952,15 @@ AppWindow {
                                         color: window.themeTokens.colorTextMuted
                                         wrapMode: Text.WordWrap
                                     }
-                                    ThemeControls.ThemeComboBox {
-                                        objectName: "filmSynthesisStrategyBox"
+                                    Label {
+                                        objectName: "filmSynthesisStrategySummary"
                                         Layout.fillWidth: true
-                                        model: [{id: "hybrid", label: "统一混合：结构族广筛 / 多样档案 / 批量针 / 全约束精修"},
-                                                {id: "legacy", label: "历史独立路由（用于兼容重放）"}]
-                                        textRole: "label"
-                                        currentIndex: (window.controller.synthesisOptions.search_strategy ?? "hybrid") === "hybrid" ? 0 : 1
-                                        onActivated: window.controller.setSynthesisOption("search_strategy", model[currentIndex].id)
+                                        text: "统一混合搜索：结构族广筛、多样档案、批量针与全约束精修。"
+                                        color: window.themeTokens.colorTextMuted
+                                        wrapMode: Text.WordWrap
                                     }
                                     CheckBox {
                                         objectName: "filmSynthesisThicknessReductionField"
-                                        visible: (window.controller.synthesisOptions.search_strategy ?? "hybrid") === "hybrid"
                                         text: "达标后缩减总厚度"
                                         checked: window.controller.synthesisOptions.enable_thickness_reduction
                                         onToggled: {
@@ -2022,7 +2019,6 @@ AppWindow {
                                     }
                                     RowLayout {
                                         Layout.fillWidth: true
-                                        visible: (window.controller.synthesisOptions.search_strategy ?? "hybrid") === "hybrid"
                                         Label { text: "独立候选逻辑批次"; Layout.preferredWidth: 155 }
                                         ThemeControls.ThemeField {
                                             objectName: "filmSynthesisParallelBatchSizeField"
@@ -2043,7 +2039,6 @@ AppWindow {
                                     }
                                     Label {
                                         Layout.fillWidth: true
-                                        visible: (window.controller.synthesisOptions.search_strategy ?? "hybrid") === "hybrid"
                                         text: "逻辑批次不是并发保证。实际进程仍由请求、候选数、原预算与内存准入决定；独立候选和解析针扫可多核，联合厚度精修与采纳保持串行。"
                                         color: window.themeTokens.colorTextMuted
                                         wrapMode: Text.WordWrap
@@ -2070,55 +2065,22 @@ AppWindow {
                                             }
                                         }
                                     }
-                                    ThemeControls.ThemeComboBox {
-                                        id: synthesisResourceGuardMode
-                                        objectName: "filmSynthesisResourceGuardModeBox"
-                                        Layout.fillWidth: true
-                                        readonly property var requestedBytes: window.controller.synthesisOptions.max_working_set_bytes
-                                        // QVariantMap null is exposed as undefined; key presence
-                                        // distinguishes explicit off from an omitted auto default.
-                                        readonly property bool hasConfiguredBytes: Object.prototype.hasOwnProperty.call(
-                                            window.controller.synthesisOptions, "max_working_set_bytes")
-                                        readonly property var configuredBytes: hasConfiguredBytes ? requestedBytes : 0
-                                        property double lastManualBytes: 1610612736
-                                        model: [{id: "auto", label: "数值护栏：自动，冻结时可用内存的50%"},
-                                                {id: "manual", label: "数值护栏：显式字节限额"},
-                                                {id: "off", label: "数值护栏：关闭估计检查，仍受系统资源限制"}]
-                                        textRole: "label"
-                                        readonly property int configuredModeIndex: hasConfiguredBytes && requestedBytes == null ? 2 : configuredBytes === 0 ? 0 : 1
-                                        currentIndex: configuredModeIndex
-                                        onConfiguredBytesChanged: if (configuredBytes > 0) lastManualBytes = configuredBytes
-                                        onActivated: function(index) {
-                                            window.controller.setSynthesisOption("max_working_set_bytes",
-                                                index === 0 ? 0 : index === 2 ? null : lastManualBytes)
-                                            // A pending edit in another field can refuse this
-                                            // operation. Never display a policy not committed
-                                            // by the controller; restore its live binding.
-                                            currentIndex = Qt.binding(function() {
-                                                return synthesisResourceGuardMode.configuredModeIndex
-                                            })
+                                    CheckBox {
+                                        id: synthesisUntilTarget
+                                        objectName: "filmSynthesisSearchUntilTargetField"
+                                        text: "搜索直到达到目标"
+                                        checked: window.controller.synthesisOptions.search_until_target ?? false
+                                        onToggled: {
+                                            if (!window.controller.setSynthesisOption("search_until_target", checked))
+                                                checked = Qt.binding(() => window.controller.synthesisOptions.search_until_target ?? false)
                                         }
-                                    }
-                                    RowLayout {
-                                        visible: synthesisResourceGuardMode.currentIndex === 1
-                                        Layout.fillWidth: true
-                                        Label {
-                                            text: "显式工作集限额 bytes"
-                                            color: window.themeTokens.colorText
-                                            Layout.preferredWidth: 155
-                                        }
-                                        ThemeControls.ThemeField {
-                                            objectName: "filmSynthesisResourceGuardBytesField"
-                                            Layout.fillWidth: true
-                                            text: String(synthesisResourceGuardMode.configuredBytes ?? "")
-                                            accessibleLabel: "数值工作集显式限额（字节，0为自动，清空为关闭）"
-                                            inputMethodHints: Qt.ImhDigitsOnly
-                                            onEditingFinished: window.controller.setSynthesisOption("max_working_set_bytes", text)
-                                        }
+                                        Accessible.name: text
+                                        Accessible.description: "达标或局部收敛可停止；未达标可点击继续优化。也可手动取消，资源不足或错误也会结束。此模式忽略轮次、评价和时间预算，但仍遵守制造约束。"
                                     }
                                     Label {
+                                        objectName: "filmSynthesisSearchUntilTargetHelp"
                                         Layout.fillWidth: true
-                                        text: "严格验收始终使用原始全部约束。护栏默认自动，0=自动、正整数=显式字节限额、关闭保存为null；可用内存未知时透明回退1.5GiB。它是阶段数值估计，不是层数上限或进程硬内存保证；超限会记录未执行阶段，不冒充收敛。冻结请求保存实际限额，重放不重新测量。"
+                                        text: "启用后达标或局部收敛可停止；局部收敛判据不变，未达标时可点击继续优化，尝试新的结构或全局搜索。也可手动取消，资源不足或发生错误时会结束。此模式忽略最大轮次、候选评价次数和计算时间预算，仍遵守制造约束。"
                                         color: window.themeTokens.colorTextMuted
                                         wrapMode: Text.WordWrap
                                     }
@@ -2136,6 +2098,7 @@ AppWindow {
                                             id: synthesisOptionRow
                                             required property var modelData
                                             Layout.fillWidth: true
+                                            enabled: !synthesisUntilTarget.checked || !["max_cycles", "max_evaluations", "max_seconds"].includes(synthesisOptionRow.modelData.key)
                                             Label { text: synthesisOptionRow.modelData.label; color: window.themeTokens.colorText; Layout.preferredWidth: 130 }
                                             ThemeControls.ThemeField {
                                                 objectName: "filmSynthesis_" + synthesisOptionRow.modelData.key + "Field"
@@ -2448,7 +2411,7 @@ AppWindow {
                     readonly property string previewStatus: waitingForLive
                                                             ? "等待完整预览；暂显示正式曲线。"
                                                             : (!window.controller.liveDisplay.running && window.controller.liveDisplay.hasAttempt
-                                                               ? "实时预览已结束；显示正式曲线，Top 10 保留。"
+                                                               ? "实时预览已结束；显示正式曲线。"
                                                                : window.controller.liveDisplay.status)
                     Layout.fillWidth: true
                     Layout.fillHeight: true
@@ -2499,7 +2462,7 @@ AppWindow {
                                 checked: window.controller.liveDisplay.enabled
                                 onToggled: window.controller.liveDisplay.setEnabled(livePreviewToggle.checked)
                                 ToolTip.visible: livePreviewToggle.hovered
-                                ToolTip.text: window.controller.liveDisplay.status + "\n默认关闭；只展示既有完整候选，不增加光学计算。"
+                                ToolTip.text: window.controller.liveDisplay.status + "\n默认开启；只展示既有完整候选，不增加光学计算。"
                             }
                             ThemeControls.ThemeComboBox {
                                 objectName: "filmCandidateLiveMetricBox"
@@ -2525,7 +2488,7 @@ AppWindow {
                                 Layout.fillWidth: true
                                 text: plotPanel.width >= 500 ? plotPanel.previewStatus
                                       : (plotPanel.waitingForLive ? "等待预览 · 正式曲线"
-                                         : (plotPanel.showingLiveData ? "实时当前 / 最佳" : "正式曲线 · Top 10 保留"))
+                                         : (plotPanel.showingLiveData ? "实时当前 / 最佳" : "正式曲线"))
                                 color: window.themeTokens.colorTextMuted
                                 wrapMode: Text.NoWrap
                                 elide: Text.ElideRight
@@ -2814,6 +2777,167 @@ AppWindow {
             anchors.bottom: parent.bottom
 
             Label {
+                Layout.fillWidth: true
+                text: "当前计算进度"
+                color: window.themeTokens.colorText
+                font.weight: window.themeTokens.fontWeightEmphasis
+            }
+            ColumnLayout {
+                objectName: "filmOptimizationProgressRegion"
+                Layout.fillWidth: true
+                Layout.preferredHeight: 164
+                Layout.minimumHeight: 164
+                Layout.maximumHeight: 164
+                spacing: window.themeTokens.spaceXs
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label {
+                        Layout.preferredWidth: 48
+                        text: window.controller.progressFields.mode_name
+                        color: window.themeTokens.colorTextMuted
+                    }
+                    TextField {
+                        objectName: "filmOptimizationProgressCount"
+                        Layout.preferredWidth: 90
+                        Layout.minimumWidth: 90
+                        readOnly: true
+                        selectByMouse: true
+                        text: window.controller.busy ? (window.controller.progressFields.count || "—") : "—"
+                        color: window.themeTokens.colorText
+                        background: null
+                        leftPadding: 0
+                        rightPadding: 0
+                    }
+                    Label {
+                        Layout.preferredWidth: 48
+                        text: "评价"
+                        color: window.themeTokens.colorTextMuted
+                    }
+                    TextField {
+                        objectName: "filmOptimizationProgressEvaluations"
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        readOnly: true
+                        selectByMouse: true
+                        text: window.controller.busy ? (window.controller.progressFields.evaluations || "—") : "—"
+                        color: window.themeTokens.colorText
+                        background: null
+                        leftPadding: 0
+                        rightPadding: 0
+                    }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label {
+                        Layout.preferredWidth: 115
+                        text: "最大违约"
+                        color: window.themeTokens.colorTextMuted
+                    }
+                    TextField {
+                        objectName: "filmOptimizationProgressBestViolation"
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        readOnly: true
+                        selectByMouse: true
+                        text: window.controller.busy ? (window.controller.progressFields.best_violation || "—") : "—"
+                        color: window.themeTokens.colorText
+                        background: null
+                        leftPadding: 0
+                        rightPadding: 0
+                    }
+                }
+                ScrollView {
+                    objectName: "filmOptimizationProgressScroll"
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.minimumHeight: 0
+                    clip: true
+                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                    TextArea {
+                        objectName: "filmOptimizationSidebarProgress"
+                        readOnly: true
+                        selectByMouse: true
+                        text: window.controller.busy
+                              ? (window.controller.progressText || "正在计算。")
+                                + (window.controller.progressFields.note
+                                   ? "\n" + window.controller.progressFields.note : "")
+                              : "当前没有运行中的计算。"
+                        color: window.themeTokens.colorTextMuted
+                        wrapMode: TextArea.Wrap
+                        background: null
+                    }
+                }
+            }
+            Label {
+                Layout.fillWidth: true
+                text: "最佳详情"
+                color: window.themeTokens.colorText
+                font.weight: window.themeTokens.fontWeightEmphasis
+            }
+            ScrollView {
+                objectName: "filmOptimizationBestDetailScroll"
+                Layout.fillWidth: true
+                Layout.preferredHeight: 300
+                Layout.minimumHeight: 300
+                Layout.maximumHeight: 300
+                contentWidth: availableWidth
+                clip: true
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                ColumnLayout {
+                    width: parent.width
+                    spacing: window.themeTokens.spaceXs
+                    Repeater {
+                        model: [
+                            {key: "layer_count", label: "层数", suffix: ""},
+                            {key: "total_thickness_nm", label: "总厚", suffix: " nm"},
+                            {key: "mean_percent", label: "选中波段均值", suffix: "%"},
+                            {key: "maximum_percent", label: "选中波段峰值", suffix: "%"},
+                            {key: "maximum_wavelength_nm", label: "峰值波长", suffix: " nm"},
+                            {key: "max_normalized_error", label: "最大归一违规", suffix: ""},
+                            {key: "weighted_rms_error", label: "优化误差 RMS", suffix: ""}
+                        ]
+                        delegate: RowLayout {
+                            id: bestFieldRow
+                            required property var modelData
+                            Layout.fillWidth: true
+                            spacing: window.themeTokens.spaceSm
+                            Label {
+                                Layout.preferredWidth: 115
+                                Layout.minimumWidth: 115
+                                text: bestFieldRow.modelData.key === "maximum_percent"
+                                      ? ((window.controller.liveDisplay.bestDetailFields.metric || "") + " 峰值").trim()
+                                      : bestFieldRow.modelData.label
+                                color: window.themeTokens.colorTextMuted
+                                elide: Text.ElideRight
+                            }
+                            TextField {
+                                objectName: "filmCandidateBestField_" + bestFieldRow.modelData.key
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                readOnly: true
+                                selectByMouse: true
+                                text: {
+                                    const value = window.controller.liveDisplay.bestDetailFields[bestFieldRow.modelData.key]
+                                    return value === undefined || value === null || value === ""
+                                           ? "—" : String(value) + bestFieldRow.modelData.suffix
+                                }
+                                color: window.themeTokens.colorText
+                                background: null
+                                leftPadding: 0
+                                rightPadding: 0
+                                Accessible.name: bestFieldRow.modelData.label + " " + text
+                            }
+                        }
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        text: "均值仅为统计；逐点达标取决于原逐点约束。"
+                        color: window.themeTokens.colorTextMuted
+                        wrapMode: Text.WordWrap
+                    }
+                }
+            }
+            Label {
                 objectName: "filmOptimizationSidebarStatus"
                 Layout.fillWidth: true
                 text: window.controller.statusText
@@ -2843,16 +2967,6 @@ AppWindow {
                 Accessible.name: text
             }
             Label {
-                objectName: "filmOptimizationSidebarProgress"
-                visible: window.controller.busy
-                Layout.fillWidth: true
-                text: window.controller.progressStatistics
-                      + (window.controller.progressText !== window.controller.statusText
-                         ? "\n" + window.controller.progressText : "")
-                color: window.themeTokens.colorTextMuted
-                wrapMode: Text.WordWrap
-            }
-            Label {
                 objectName: "filmOptimizationSidebarCandidate"
                 visible: window.controller.hasCandidate
                 Layout.fillWidth: true
@@ -2868,96 +2982,6 @@ AppWindow {
                 text: window.controller.resultValidationSummary
                 color: window.themeTokens.colorWarning
                 wrapMode: Text.WordWrap
-            }
-            Label {
-                objectName: "filmCandidateLiveBestSummary"
-                Layout.fillWidth: true
-                text: "优化器最佳（原接受门）：\n" + window.controller.liveDisplay.bestSummary
-                color: window.themeTokens.colorAccent
-                wrapMode: Text.WrapAnywhere
-            }
-            Label {
-                objectName: "filmCandidateLiveCurrentSummary"
-                Layout.fillWidth: true
-                text: "当前完整试探：\n" + window.controller.liveDisplay.currentSummary
-                color: window.themeTokens.colorTextMuted
-                wrapMode: Text.WrapAnywhere
-            }
-            Label {
-                objectName: "filmCandidateDisplayRankNotice"
-                Layout.fillWidth: true
-                text: window.controller.liveDisplay.rankingDiffers
-                      ? "显示榜首 ≠ 优化器最佳。S 仅排序偏好，不改变 F、名义约束、guard 或应用条件。"
-                      : "Top 10 为独立显示榜，不是优化器接受门；榜单无应用入口。"
-                color: window.themeTokens.colorWarning
-                wrapMode: Text.WordWrap
-            }
-            Label {
-                Layout.fillWidth: true
-                text: "Top 10 完整候选 · S / E / 名义 / 归一化违规 / N / D / ID / 来源 / 范围"
-                color: window.themeTokens.colorText
-                wrapMode: Text.WordWrap
-                font.weight: window.themeTokens.fontWeightEmphasis
-            }
-            Repeater {
-                objectName: "filmCandidateDisplayTop10"
-                model: window.controller.liveDisplay.top10
-                delegate: Label {
-                    required property var modelData
-                    required property int index
-                    objectName: "filmCandidateDisplayRank_" + index
-                    Layout.fillWidth: true
-                    text: modelData.display
-                    color: modelData.candidate_eligible ? window.themeTokens.colorText : window.themeTokens.colorWarning
-                    wrapMode: Text.WrapAnywhere
-                    Accessible.name: text
-                }
-            }
-            CheckBox {
-                id: scorePreferencesToggle
-                objectName: "filmCandidateScorePreferencesToggle"
-                text: "高级：显示评分偏好"
-            }
-            ColumnLayout {
-                visible: scorePreferencesToggle.checked
-                Layout.fillWidth: true
-                Label {
-                    Layout.fillWidth: true
-                    text: "E 为完整原目标加权 RMS，N 含合法零厚膜层，D 为前/后全膜层物理总厚度。修改仅下一任务生效，当前榜单保留本任务冻结评分；Top 10 不是全部历史。权重和归一化锚点是显示偏好，不是工艺参数或上限。"
-                    color: window.themeTokens.colorTextMuted
-                    wrapMode: Text.WordWrap
-                }
-                Repeater {
-                    model: [{key: "weight_error", label: "E 权重"},
-                            {key: "weight_layers", label: "层数权重"},
-                            {key: "weight_thickness", label: "厚度权重"},
-                            {key: "layer_reference", label: "层数锚点（层）"},
-                            {key: "thickness_reference_nm", label: "厚度锚点（nm）"}]
-                    delegate: RowLayout {
-                        id: scorePreferenceRow
-                        required property var modelData
-                        Layout.fillWidth: true
-                        Label {
-                            Layout.fillWidth: true
-                            text: scorePreferenceRow.modelData.label
-                            color: window.themeTokens.colorText
-                        }
-                        ThemeControls.ThemeField {
-                            objectName: "filmCandidateScore_" + scorePreferenceRow.modelData.key
-                            Layout.preferredWidth: 96
-                            numericDisplayValue: window.controller.liveDisplay.scoreConfig[scorePreferenceRow.modelData.key]
-                            onEditingFinished: window.controller.liveDisplay.setScoreField(scorePreferenceRow.modelData.key, text)
-                        }
-                    }
-                }
-                Label {
-                    objectName: "filmCandidateScoreNextRunNotice"
-                    Layout.fillWidth: true
-                    visible: window.controller.liveDisplay.scoreChangesPending
-                    text: "评分偏好已改，仅下一任务生效；当前榜单沿用本任务冻结配置。"
-                    color: window.themeTokens.colorWarning
-                    wrapMode: Text.WordWrap
-                }
             }
             Label {
                 objectName: "filmCandidateDisplayError"

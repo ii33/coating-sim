@@ -55,7 +55,8 @@ def film_synthesis_request_from_payload(payload: Mapping[str, Any], *, require_f
     if not isinstance(raw, Mapping):
         raise FilmSynthesisPayloadError("request must be an object")
     allowed = {item.name for item in fields(FilmSynthesisRequest)}
-    optional_extensions = {'search_checkpoint', 'enable_local_margin_refinement', 'selected_surfaces'}
+    optional_extensions = {'search_checkpoint', 'enable_local_margin_refinement', 'selected_surfaces',
+                           'search_until_target'}
     if set(raw) - allowed or allowed - set(raw) - optional_extensions:
         raise FilmSynthesisPayloadError("current synthesis request requires every field and no unknown fields")
     data = deepcopy(dict(raw))

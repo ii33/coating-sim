@@ -50,9 +50,8 @@ def test_qml_toggle_config_reopen_and_queue_keep_explicit_false(app, tmp_path):
             scene.click(toggle)
             assert controller.synthesisOptions["enable_thickness_reduction"] is True
             assert frozen.enable_thickness_reduction is False
-            assert controller.setSynthesisOption("search_strategy", "legacy")
-            assert not toggle.isVisible()
-            assert controller.setSynthesisOption("search_strategy", "hybrid")
+            # No UI route switch can hide or alter the reduction setting.
+            assert controller.synthesisOptions["search_strategy"] == "hybrid"
             assert toggle.isVisible() and toggle.property("checked") is True
         finally:
             scene.close()
