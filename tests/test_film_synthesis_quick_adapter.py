@@ -1,6 +1,7 @@
 """Frozen synthesis UI adaptation without changing the numerical protocol."""
 from copy import deepcopy
 from dataclasses import replace
+from typing import Any
 
 import pytest
 
@@ -103,7 +104,7 @@ def test_until_target_build_freeze_and_queue_preserves_explicit_options():
 
 def test_search_reference_normalizes_old_hybrid_and_budget_mode():
     from coat_sim.ui.film_synthesis_search_state import settings_reason
-    current = {'objectives': [], 'acceptance': {}, 'materials': [],
+    current: dict[str, Any] = {'objectives': [], 'acceptance': {}, 'materials': [],
                'assume_unknown_k_zero': False, 'selected_surfaces': ['front'],
                'constraints': {}, 'search': {'search_strategy': 'hybrid'}}
     previous = deepcopy(current)

@@ -202,8 +202,11 @@ def test_real_qml_live_details_fixed_and_no_ranking_or_hash(app, tmp_path, size)
             assert progress and details
             keys = ("layer_count", "total_thickness_nm", "mean_percent", "maximum_percent",
                     "maximum_wavelength_nm", "max_normalized_error", "weighted_rms_error")
-            fields = [find_visual_item(window, "filmCandidateBestField_" + key) for key in keys]
-            assert all(fields)
+            fields: list[QQuickItem] = []
+            for key in keys:
+                field = find_visual_item(window, "filmCandidateBestField_" + key)
+                assert field is not None
+                fields.append(field)
             texts = [str(field.property("text")) for field in fields]
             assert all("ID " not in value and "a" * 12 not in value for value in texts)
             assert texts[0] == "1" and texts[1].endswith(" nm")
@@ -841,8 +844,10 @@ def test_real_qml_synthesis_until_target_control_and_help(app, tmp_path):
             drain(app)
             assert toggle.property("checked") and controller.synthesisOptions["search_until_target"]
             for key in ("max_cycles", "max_evaluations", "max_seconds"):
-                assert not find_visual_item(window, "filmSynthesis_" + key + "Field").isEnabled()
-            assert find_visual_item(window, "filmSynthesis_max_layersField").isEnabled()
+                budget_field = find_visual_item(window, "filmSynthesis_" + key + "Field")
+                assert budget_field is not None and not budget_field.isEnabled()
+            manufacturing_field = find_visual_item(window, "filmSynthesis_max_layersField")
+            assert manufacturing_field is not None and manufacturing_field.isEnabled()
             toggle.setProperty("checked", False)
             assert QMetaObject.invokeMethod(toggle, "toggled", Qt.ConnectionType.DirectConnection)
             drain(app)

@@ -1,6 +1,7 @@
 """Until-goal changes only outer scheduling; local convergence stays unchanged."""
 from dataclasses import asdict,replace
 from threading import Event
+from typing import Any, cast
 import pytest
 from coat_sim.core.film_auto_synthesis import _validated,synthesize_film_design,freeze_film_synthesis_request
 from coat_sim.core.film_synthesis_continuation import search_fingerprint,continue_synthesis_request
@@ -19,7 +20,7 @@ def test_until_target_only_discards_work_budgets_not_physical_constraints():
     assert checked.relative_improvement_tolerance==request.relative_improvement_tolerance
     assert _validated(replace(request,search_until_target=False)).max_evaluations==2
     with pytest.raises(ValueError,match='boolean'):
-        _validated(replace(request,search_until_target=1))
+        _validated(replace(request,search_until_target=cast(Any, 1)))
     with pytest.raises(ValueError,match='hybrid'):
         _validated(replace(request,search_strategy='legacy'))
     for fields in (dict(max_cycles=-1),dict(max_evaluations=1),dict(max_seconds=float('nan'))):
@@ -41,6 +42,7 @@ def test_until_mode_keeps_local_stop_and_reports_unmet_without_auto_restart():
     local=result.performance['search']['hybrid']['local_session']
     assert local['session_complete'] and local['status']=='converged' and local['local_converged']
     assert result.evaluations>2
+    assert result.candidate_design is not None and request.max_layers is not None
     assert len(result.candidate_design['front_layers'])<=request.max_layers
 
 
@@ -50,10 +52,12 @@ def test_explicit_continue_in_until_mode_advances_real_search_frontier():
     request=replace(request,search_until_target=True)
     first=synthesize_film_design(service,request)
     assert first.state=='completed' and not first.targets_met
+    assert first.search_checkpoint is not None and first.candidate_design is not None
     resumed=continue_synthesis_request(first.frozen_request,first.search_checkpoint,current_design=first.candidate_design)
     assert resumed.search_until_target
     following=synthesize_film_design(None,resumed)
     assert following.state=='completed' and not following.targets_met
+    assert following.search_checkpoint is not None
     assert sum(following.search_checkpoint['cursors'].values())>sum(first.search_checkpoint['cursors'].values())
     assert set(following.search_checkpoint['tried'])-set(first.search_checkpoint['tried'])
     assert any(p.stage=='structure_proposal' for p in following.trace)
@@ -117,7 +121,7 @@ def test_until_mode_can_be_cancelled_without_claiming_goal_or_exhaustion():
 
 def test_finite_exhaustion_requires_positive_frontier_evidence_and_is_not_infeasibility():
     from coat_sim.core.film_synthesis_stop_policy import until_target_summary
-    args=dict(state='not_found',reason='continuation_frontier_exhausted',goal_met=False,
+    args: dict[str, Any] = dict(state='not_found',reason='continuation_frontier_exhausted',goal_met=False,
         hybrid={},has_local_optimum=False,checkpoint_available=True)
     assert not until_target_summary(**args)['search_complete']
     args['hybrid']={'continuation_session':{'frontier_exhausted':True}}

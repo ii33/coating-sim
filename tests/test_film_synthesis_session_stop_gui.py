@@ -1,11 +1,12 @@
 """A complete audited local session may finish below the explicit targets."""
 from copy import deepcopy
+from functools import partial
 import json
 import subprocess
 import sys
 from threading import Event
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 
 import pytest
 from PySide6.QtTest import QTest
@@ -31,11 +32,11 @@ STOP_REASONS = {'local_session_converged_targets_unmet', 'local_session_stalled_
                 'local_session_audit_rejected_targets_unmet'}
 
 
-def test_audit_rejected_session_description_does_not_claim_convergence_or_stagnation():
+def test_audit_rejected_session_description_does_not_claim_convergence_or_stagnation(monkeypatch):
     view = cast(FilmOptimizationQuickController, SimpleNamespace(_synthesis_payload={'result': {
         'state': 'completed', 'targets_met': False,
         'termination_reason': 'local_session_audit_rejected_targets_unmet'}}))
-    view._synthesis_continue_hint = lambda view=view: FilmOptimizationQuickController._synthesis_continue_hint(view)
+    monkeypatch.setattr(view, '_synthesis_continue_hint', partial(FilmOptimizationQuickController._synthesis_continue_hint, view), raising=False)
     text = FilmOptimizationQuickController._synthesis_session_stop_text(view)
     assert '独立审计未通过原门限' in text
     assert '未确认局部收敛' in text and '目标仍未全部达到' in text
@@ -242,7 +243,7 @@ def test_retired_historical_synthesis_is_view_only_before_source_or_identity_che
         assert message in reason and '原历史保留' in reason
 
 
-def test_session_stop_only_promises_continue_when_guard_accepts_reference():
+def test_session_stop_only_promises_continue_when_guard_accepts_reference(monkeypatch):
     payload = {'result': {'state': 'completed', 'targets_met': False,
                'termination_reason': 'local_session_converged_targets_unmet'}}
     for reason, expected in (('', '点击“继续优化”可继续搜索新结构'),
@@ -250,7 +251,7 @@ def test_session_stop_only_promises_continue_when_guard_accepts_reference():
         view = cast(FilmOptimizationQuickController, SimpleNamespace(
             _synthesis_payload=payload, _synthesis_search_reference={'job_id': 'j'},
             _synthesis_search_reason=lambda reason=reason: reason))
-        view._synthesis_continue_hint = lambda view=view: FilmOptimizationQuickController._synthesis_continue_hint(view)
+        monkeypatch.setattr(view, '_synthesis_continue_hint', partial(FilmOptimizationQuickController._synthesis_continue_hint, view), raising=False)
         text = FilmOptimizationQuickController._synthesis_session_stop_text(view)
         assert '局部优化已收敛' in text and '目标仍未全部达到' in text
         assert expected in text
@@ -263,7 +264,7 @@ def test_session_stop_only_promises_continue_when_guard_accepts_reference():
     ('declared_frontier_exhausted', {'search_complete': True, 'declared_frontier_exhausted': True},
      '有限搜索策略前沿耗尽'),
 ])
-def test_until_target_status_never_equates_local_or_quantum_pause_with_success(status, extra, expected):
+def test_until_target_status_never_equates_local_or_quantum_pause_with_success(status, extra, expected, monkeypatch):
     evidence = {'enabled': True, 'status': status, 'goal_met': False,
                 'search_complete': False, 'continuation_checkpoint_available': True, **extra}
     raw = {'state': 'completed', 'targets_met': False, 'frozen_request': {'search_until_target': True},
@@ -273,7 +274,7 @@ def test_until_target_status_never_equates_local_or_quantum_pause_with_success(s
     view = cast(FilmOptimizationQuickController, SimpleNamespace(
         _synthesis_payload={'result': raw}, _synthesis_search_reference={'job_id': 'this-job'},
         _queue_job_id='this-job', _synthesis_search_reason=lambda: ''))
-    view._synthesis_continue_hint = lambda view=view: FilmOptimizationQuickController._synthesis_continue_hint(view)
+    monkeypatch.setattr(view, '_synthesis_continue_hint', partial(FilmOptimizationQuickController._synthesis_continue_hint, view), raising=False)
     text = FilmOptimizationQuickController._synthesis_session_stop_text(view)
     assert expected in text
     assert '已达标' not in text
@@ -284,14 +285,14 @@ def test_until_target_status_never_equates_local_or_quantum_pause_with_success(s
         assert '不证明物理上不存在可行方案' in text
 
 
-def test_until_target_stale_checkpoint_is_not_offered_as_current():
+def test_until_target_stale_checkpoint_is_not_offered_as_current(monkeypatch):
     raw = {'state': 'completed', 'targets_met': False, 'frozen_request': {'search_until_target': True}, 'performance': {'search': {
         'until_target': {'enabled': True, 'status': 'paused_no_new_candidate',
                          'continuation_checkpoint_available': True}}}}
     view = cast(FilmOptimizationQuickController, SimpleNamespace(
         _synthesis_payload={'result': raw}, _synthesis_search_reference={'job_id': 'old-job'},
         _queue_job_id='current-job', _synthesis_search_reason=lambda: ''))
-    view._synthesis_continue_hint = lambda view=view: FilmOptimizationQuickController._synthesis_continue_hint(view)
+    monkeypatch.setattr(view, '_synthesis_continue_hint', partial(FilmOptimizationQuickController._synthesis_continue_hint, view), raising=False)
     text = FilmOptimizationQuickController._synthesis_session_stop_text(view)
     assert '没有可续接的结构进度' in text and '点击“继续优化”' not in text
 
@@ -314,7 +315,7 @@ def test_only_proven_declared_frontier_exhaustion_disables_continuation():
     assert reason == '请先等待当前任务结束。'  # ordinary busy guard, not an exhaustion claim
 
 
-def test_until_target_stalled_or_unverified_terminal_does_not_claim_convergence():
+def test_until_target_stalled_or_unverified_terminal_does_not_claim_convergence(monkeypatch):
     for reason in ('local_session_stalled_targets_unmet',
                    'local_session_terminal_converged_best_retained_targets_unmet',
                    'local_session_audit_rejected_targets_unmet'):
@@ -324,7 +325,7 @@ def test_until_target_stalled_or_unverified_terminal_does_not_claim_convergence(
         view = cast(FilmOptimizationQuickController, SimpleNamespace(
             _synthesis_payload={'result': raw}, _synthesis_search_reference={'job_id': 'j'},
             _queue_job_id='j', _synthesis_search_reason=lambda: ''))
-        view._synthesis_continue_hint = lambda view=view: FilmOptimizationQuickController._synthesis_continue_hint(view)
+        monkeypatch.setattr(view, '_synthesis_continue_hint', partial(FilmOptimizationQuickController._synthesis_continue_hint, view), raising=False)
         text = FilmOptimizationQuickController._synthesis_session_stop_text(view)
         assert '未确认局部收敛' in text and '搜索尚未完成' in text
 
@@ -361,7 +362,7 @@ def test_until_target_resource_failure_is_explicit_and_not_success():
 def test_until_target_presentation_rejects_forged_success_or_exhaustion_metadata():
     from copy import deepcopy
     from coat_sim.ui.film_optimization_quick_controller import _synthesis_until_evidence
-    raw = {'state': 'completed', 'targets_met': False, 'validation_complete': True,
+    raw: dict[str, Any] = {'state': 'completed', 'targets_met': False, 'validation_complete': True,
            'frozen_request': {'search_until_target': True}, 'termination_reason': 'search_exhausted',
            'performance': {'search': {'until_target': {'enabled': True, 'status': 'targets_met',
                'goal_met': True, 'search_complete': True}}}}
