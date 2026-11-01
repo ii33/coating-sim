@@ -18,6 +18,16 @@ from .film_optics import (_beta,
     _longitudinal_many, _coherent_many, _polarizations)
 
 
+def _detached_material_catalog(prepared, design):
+    """One full detached material record per active ID, for this call only."""
+    catalog = {}
+    for row in active_material_references(design):
+        identifier = row['material_id']
+        if identifier not in catalog:
+            catalog[identifier] = prepared._material_record(identifier)
+    return catalog
+
+
 def simulate_synthesis_with_thickness_jacobian(design, materials, variables, settings, *,
         zero_thickness_layer_ids=(), wavelengths_nm=None):
     if design['substrate']['sides'] == 'single':
@@ -28,8 +38,7 @@ def simulate_synthesis_with_thickness_jacobian(design, materials, variables, set
         checked = validate_design(deepcopy(design))
         normalized = simulation_settings(dict(settings, first_surface=settings.get('first_surface', checked['first_surface'])))
         prepared = materials if type(materials) is _PreparedMaterialData else _PreparedMaterialData(materials, checked)
-        catalog = {row['material_id']: prepared._material_record(row['material_id'])
-                   for row in active_material_references(checked)}
+        catalog = _detached_material_catalog(prepared, checked)
         direct = FilmDesignService._simulate_chunk(object.__new__(FilmDesignService), checked,
             normalized, np.asarray(value['wavelength_nm']), include_reference_queries=False, catalog_snapshot=catalog)
         for metric in ('R', 'T'):
@@ -122,8 +131,7 @@ def simulate_synthesis_with_thickness_jacobian(design, materials, variables, set
         jt = np.mean([j[1] for j in derivatives], axis=0) if derivatives else np.zeros_like(jr)
     # Canonical production service is the sole forward truth; recurrence
     # blocks above exist only to differentiate the same model analytically.
-    catalog = {row['material_id']: prepared._material_record(row['material_id'])
-               for row in active_material_references(design)}
+    catalog = _detached_material_catalog(prepared, design)
     response = FilmDesignService._simulate_chunk(object.__new__(FilmDesignService),
         design, normalized, waves, include_reference_queries=False, catalog_snapshot=catalog)
     if not np.all(np.isfinite(jr)) or not np.all(np.isfinite(jt)):

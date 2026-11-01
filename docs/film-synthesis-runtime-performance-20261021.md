@@ -69,3 +69,8 @@ python -m coat_sim.film_synthesis_cli --request benchmarks/film_synthesis/202610
 另一个独立问题是 Linux contract 在 `test_manual_calculation_reads_latest_unsaved_same_owner_on_every_start` 已通过后，于 paired fixture 的全局 DeferredDelete 清理发生 SIGSEGV（退出 139）。本机尚未复现该崩溃，但确认前序 layer-dropdown 测试只排队删除，未完成其 QML window/component/engine 原生销毁。补丁在该测试自己的清理边界逐个完成接收者定向删除，并断言销毁顺序、原生对象失效及不消费无关待删除对象；未改生产 GUI 或删除原全局清理。Windows 相邻测试带 CI 诊断插件 **13 项通过**，包括原设计交互/颜色断言。该隔离缺口真实存在，**是否消除 Linux SIGSEGV 仍待新 CI，不能称已证实崩溃根因或全套通过**。
 
 限定公开证据和源码身份见 [ci-followup-20261022.json](../benchmarks/film_synthesis/20261021/hr-runtime-performance-v1/ci-followup-20261022.json)。旧性能数据、冻结目标及材料均未改写；本轮没有重跑整套光学研究，也不将有限审计当连续谱保证。
+
+
+## 2026-11-01 单条件材料目录去重
+
+规范前向仿真仍以已验真的准备态为来源，在每个条件调用内按活动引用的首次出现顺序，对每个不同 `material_id` 深复制一份完整材料记录，保留该材料全部光学常数组；重复层不再复制随后被同键覆盖的记录。目录不跨条件或请求共享，物理公式、目标网格、评分、取消、逐条件跟踪和来源错误不变。这只是一项实现优化，不是新的物理算法；不同结构和材料的性能收益未作保证。关联回归应对照原逐引用构造路径验证响应、Jacobian、来源错误和输入隔离。
