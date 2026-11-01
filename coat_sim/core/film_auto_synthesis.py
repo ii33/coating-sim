@@ -56,6 +56,7 @@ _RESOURCE_FALLBACK_BASES = frozenset(("unknown_memory_fallback",
 class _SearchDiagnostics(TypedDict):
     until_target: NotRequired[dict[str, Any]]
     legacy_local_session: NotRequired[dict[str, Any]]
+    restoration_audit_screen: NotRequired[list[dict[str, Any]]]
     structural_proposals: list[dict[str, object]]
     global_search: list[dict[str, object]]
     layer_distribution: dict[str, int]
@@ -1012,7 +1013,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
     prepared_training: list[_PreparedStructureEvaluator | None] = [None]
 
     def evaluate(design, *, jacobian=False, zero_ids=(), holdout=False, outcome=None, gpu_forward=False, _reserved=False,
-                 feasibility_evaluator=None, _commit=True):
+                 feasibility_evaluator=None, _commit=True, audit_max_error_limit=None):
         nonlocal evaluations, validation_evaluations, failures, reserved_training_slots
         nonlocal audit_physical_evaluations, audit_wavelength_points
         nonlocal completed_training_best, completed_training_validation, fully_scored_evaluations
@@ -1045,8 +1046,10 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     audit_wavelength_points += max(0, current[1] - last_work[1])
                     last_work[:] = current
                     emit("audit_progress", f"{work.get('stage', 'audit')}: {current[0]} physical evaluations, {current[1]} wavelength points", design)
+                audit_options = ({} if audit_max_error_limit is None else
+                    dict(dense_max_error_limit=audit_max_error_limit))
                 value = audit_frozen_synthesis_candidate(request, design, cancel_event=cancel_event,
-                                                        progress_callback=audit_progress)
+                                                        progress_callback=audit_progress, **audit_options)
                 work = value.get("audit", {})
                 audit_physical_evaluations += max(0, int(work.get("physical_evaluations", 0)) - last_work[0])
                 audit_wavelength_points += max(0, int(work.get("wavelength_points", 0)) - last_work[1])
@@ -1212,7 +1215,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         observe(snapshot_callback, annotate_synthesis_design(request, value['design']),
                 deepcopy(value['score']), deepcopy(audited['score']), checkpoint_audit)
 
-    def audit_archive(value, *, allow_feedback_repair=True, refresh=False, prefer_phase=False):
+    def audit_archive(value, *, allow_feedback_repair=True, refresh=False, prefer_phase=False,
+                      restoration_screen=False):
         nonlocal audited_best, completed_training_validation, new_audited_pass, resume_branch_audited, first_feasible_work
         if value.get("_numeric_zero_unpublished"):
             return None
@@ -1223,7 +1227,19 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             return (audited_best[1] if audited_best is not None
                     and audited_best[0]["design"] == value["design"] else None)
         emit("validation", "Audit dense, offset and local-extremum physical responses", value["design"], value["score"])
-        audited = evaluate(value["design"], holdout=True)
+        from .film_synthesis_audit import AuditCandidateDominated
+        cutoff = (float(audited_best[1]["score"]["max_error"])
+            if restoration_screen and audited_best is not None
+                and not any(o.mean.enabled for o in request.objectives) else None)
+        try:
+            audited = evaluate(value["design"], holdout=True, audit_max_error_limit=cutoff)
+        except AuditCandidateDominated as rejected:
+            search_diagnostics.setdefault('restoration_audit_screen', []).append(dict(
+                dense_max_error=rejected.dense_max_error, incumbent_max_error=rejected.limit,
+                validation_complete=False, status='rejected_by_fresh_dense_witness'))
+            emit('restoration_audit_screen', '恢复候选的独立密网格已劣于已审最佳；跳过极值搜索，不声明完整审计',
+                value['design'], value['score'])
+            return None
         audited_signatures.add(signature)
         design_archive.mark_audited(value, audited)
         if (completed_training_best is not None and
@@ -3293,7 +3309,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     restored = evaluate(saved_entry['design'], gpu_forward=forward is not None)
                     archive(restored, audit_eligible=False, provenance=saved_entry['provenance'],
                         parent_hash=saved_entry['parent_hash'], operator=saved_entry['operator'])
-                    audit_archive(restored, allow_feedback_repair=False)
+                    audit_archive(restored, allow_feedback_repair=False, restoration_screen=True)
                     # Intermediate checkpoint publications must retain this
                     # design even if training-only archive trimming rejected it
                     # before its independent audit completed.

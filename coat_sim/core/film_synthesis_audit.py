@@ -30,6 +30,15 @@ EXTREMUM_XATOL = 1e-10
 EXTREMUM_MAXITER = 500
 
 
+class AuditCandidateDominated(Exception):
+    """Fresh dense evidence rejected a candidate; no complete audit is claimed."""
+
+    def __init__(self, dense_max_error: float, limit: float):
+        self.dense_max_error = dense_max_error
+        self.limit = limit
+        super().__init__("fresh dense-grid violation exceeds the audited incumbent")
+
+
 def objective_constraint_status(objectives, errors, tolerance):
     """Per-band, per-enabled-reduction and per-angle facts from active rows."""
     errors = tuple(FilmConditionError(**row) if isinstance(row, Mapping) else row for row in errors)
@@ -114,6 +123,7 @@ def audit_frozen_synthesis_candidate(
     response_transform: Callable[[tuple[FilmOptimizationObjective, ...], Mapping[str, Any], int | None], dict[str, Any]] | None = None,
     optical_settings: Mapping[str, Any] | None = None,
     retained_callback: Callable[[Mapping[str, Any]], None] | None = None,
+    dense_max_error_limit: float | None = None,
 ) -> dict[str, Any]:
     """Audit dense endpoints, shifted midpoints and bracketed power extrema.
 
@@ -127,6 +137,10 @@ def audit_frozen_synthesis_candidate(
     # inputs. Strict samplers, lazy prepared optics and final audit metadata
     # must describe the same snapshot; cancellation remains a live event.
     request = deepcopy(request)
+    if dense_max_error_limit is not None:
+        if (not np.isfinite(dense_max_error_limit) or dense_max_error_limit < 0
+                or any(o.mean.enabled for o in request.objectives)):
+            raise ValueError("dense rejection requires a finite nonnegative limit and pointwise-only goals")
     if optical_settings is not None:
         from .film_design_service import simulation_settings
         optical_settings = simulation_settings(deepcopy(dict(optical_settings)))
@@ -253,6 +267,12 @@ def audit_frozen_synthesis_candidate(
         (o.wavelength_samples - 1) * request.validation_samples_multiplier + 1))
         for o in request.objectives)
     dense = evaluate(dense_objectives, stage="audit_dense")
+    if dense_max_error_limit is not None:
+        # This is rejection evidence only. Near ties and every potential winner
+        # retain the complete offset/extremum audit; no saved score is trusted.
+        guard = max(1e-8, abs(dense_max_error_limit) * 1e-6)
+        if dense["score"]["max_error"] > dense_max_error_limit + guard:
+            raise AuditCandidateDominated(float(dense["score"]["max_error"]), dense_max_error_limit)
     audit_owners["dense"] = dense
     dense_points = points
     series = {(int(row["objective_index"]), float(row["angle_deg"])):
@@ -274,7 +294,10 @@ def audit_frozen_synthesis_candidate(
                 continue
             error = replace(error, objective_index=index,
                 wavelength_min_nm=original.wavelength_min_nm, wavelength_max_nm=original.wavelength_max_nm)
-            extra_errors[(index, error.angle_deg, error.wavelength_nm, error.polarization)] = error
+            key = (index, error.angle_deg, error.wavelength_nm, error.polarization)
+            previous = extra_errors.get(key)
+            if previous is None or error.normalized_violation > previous.normalized_violation:
+                extra_errors[key] = error
 
     def auxiliary(objective, **changes):
         # Sampling an auxiliary subinterval must never redefine the band's mean.
@@ -357,8 +380,21 @@ def audit_frozen_synthesis_candidate(
 
     errors_by_point = {(e.objective_index, e.angle_deg, e.wavelength_nm, e.polarization): e
                        for e in dense["score"]["errors"]}
-    errors_by_point.update(extra_errors)
+    dense_keys = set(errors_by_point)
+    for condition_key, error in extra_errors.items():
+        if condition_key in dense_keys:
+            continue  # The canonical dense coverage owns this exact condition.
+        previous = errors_by_point.get(condition_key)
+        if previous is None or error.normalized_violation > previous.normalized_violation:
+            errors_by_point[condition_key] = error
     errors = tuple(errors_by_point.values())
+    # Canonical dense conditions retain exactly the values bound to score.coverage
+    # and fixed-grid RMS/mean. Repeated extra-only conditions keep their worst
+    # observed violation. Synchronize coverage with these selected witnesses;
+    # extra scalar reevaluations cannot erase or contradict dense-grid evidence.
+    for error in errors:
+        if error.reduction == "pointwise" and error.wavelength_nm is not None:
+            raw_points[error.objective_index, error.angle_deg][error.wavelength_nm] = error.actual
     maximum = max(e.normalized_violation for e in errors)
     weighted_maximum = max(e.weighted_normalized_violation for e in errors)
     score = deepcopy(dense["score"])
