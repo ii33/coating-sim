@@ -75,7 +75,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <p class="source">存储格式补充：2026-10-18。工程 BBS、助手精简记忆和可恢复文件清理均为非物理持久化契约，不改变仿真公式、坐标或数值精度。见<a href="#engineering-notes-storage-20261018">工程记录与助手工作区格式</a>。</p>
 <nav aria-label="章节目录">
 <a href="#film-automatic-repair-20261027">14bc 三参数薄层修复、实时改善与取消应用（2026-10-27）</a>
-<a href="#film-margin-continuation-20261026">14bb 自动合成本轮数值停止、指标保护减薄与结构续接（2026-10-28）</a>
+<a href="#film-margin-continuation-20261026">14bb 自动合成本轮数值停止、指标保护减薄与结构续接（2026-11-01）</a>
 <a href="#film-numeric-zero-20261026">14ba 数值零清理与实时详情（2026-10-26）</a>
 <a href="#film-reduction-20261025">14az 独立减层 / 减厚后优化（2026-10-25）</a>
 <a href="#film-cancel-warm-restart-20261025">14ay 取消后从保留候选重新启动求解器（2026-10-25）</a>
@@ -298,7 +298,7 @@ else:
 
 <section id="film-margin-continuation-20261026">
 <h2>14bb 自动合成本轮数值停止、指标保护减薄与结构续接</h2>
-<p class="source">更新：2026-10-28。实现：<code>film_auto_synthesis.py</code>、<code>film_synthesis_refinement.py</code>、<code>film_synthesis_margin.py</code>、<code>film_synthesis_thickness.py</code>及既有续接/作业模块。接口、持久化和异步边界见<a href="film-synthesis-continuation.md">阶段与续接核心契约</a>。本节为 hybrid 默认会话策略；不把实验 mean 引导或边界生长研究加入默认。</p>
+<p class="source">更新：2026-11-01。实现：<code>film_auto_synthesis.py</code>、<code>film_synthesis_refinement.py</code>、<code>film_synthesis_margin.py</code>、<code>film_synthesis_thickness.py</code>及既有续接/作业模块。接口、持久化和异步边界见<a href="film-synthesis-continuation.md">阶段与续接核心契约</a>。本节为 hybrid 默认会话策略；不把实验 mean 引导或边界生长研究加入默认。</p>
 <p><strong>用途、输入输出：</strong>输入为冻结的启用目标、真实 n/k、光学环境、制造约束和结构前沿。一次会话先完成结构筛选及实质局部优化，再在固定层序/材料/ID 上进行完整精修及同一终态的独立审计。数值局部停止与目标达标分离：即使当前结构未达到目标，也可正常结束本轮，保存最佳完整候选和剩余违规；用户点击继续才推进后续结构。显式 legacy 仅按既有充分轮计数检查训练及同候选独审误差停滞，不新增 legacy 求解器内部状态恢复。<code>local_optimum</code>保存减薄前候选及证据，<code>candidate_design</code>是最终返回/写回候选。两者和求解终态可能不同，不可互借标签。</p>
 <figure><svg viewBox="0 0 1060 285" role="img" aria-label="一次结构筛选和固定拓扑优化后结束，用户继续才推进保存的前沿" style="max-width:100%;height:auto">
 <defs><marker id="margin-arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#38bdf8"/></marker></defs>
@@ -317,6 +317,11 @@ else:
 <p><strong>非法终点和浮点边界：</strong>有限但违反制造边界的求解终点不能改名为上一合法点。solver_terminal 单列原始终点坐标、t、物理 hash 和 physical_valid=false；retained_terminal 及顶层 terminal 字段绑定上一已接受点及该点自己的 t，二者都不获得收敛标签。无预算 baseline 的自适应厚度步长翻倍若超出有限浮点范围，则保留原有限步长供后续正常收缩；循环及轴/方向边界直接检查取消，避免没有新评价时失去响应。这是算术保护，不增加物理厚度上限或搜索预算。</p>
 <p><strong>停止与默认参数：</strong>仅在完成本轮实质工作后的完整精修边界判断，不把一次工程先验或任意局部调用退出当作整轮完成。SLSQP 的数值成功、尺度化无有效改善、内部迭代保护、求解失败、资源保护、评价/周期/时间限制及取消分别报告；预算/取消不能改名为梯度收敛。保留每次 SLSQP 最多16次迭代的局部数值保护，减薄外层没有固定总评价数、时长或调用次数上限；内部迭代保护后仍有通过双质量审计的实质变薄便继续同拓扑。厚度尺度阈值沿用 relative_improvement_tolerance·max(initial_total_nm,1 nm)。取消、用户显式预算和资源停止优先；无有效改善便保留已审冠军结束，不以32次候选量子冒称收敛。受约束局部数值停止不保证每个光学梯度直接为零，不证明全局最优或目标不可行；独立有限网格审计不是连续证书。无可接受减薄候选即保留局部结果结束，不因未达标卡在减薄或自动增长循环。</p>
 <p><strong>结构续接与编辑：</strong>复用 search-state v1 的既有 8 族源游标、活动顺序、待评原/随机候选、实际候选池/父身份、已试物理 hash、根 seed/下一旋转、算法版本和审计反馈。仅恢复结构搜索进度，不恢复 SLSQP/L-BFGS/短生命周期 DE 内部迭代。旧评分和独审不冒充新结果；当前兼容编辑先作为 seed 重评。查看、保存、关闭重开不清空前沿；目标/材料/制造约束或搜索参数不兼容时精确说明需重建项并保留旧文件。继续必须推进新结构工作，不能因旧达标冠军立即返回。JSON 仍经版本/指纹/SHA256校验、有界64MiB读取和原子替换，不使用 pickle。来源修订、编辑代际和项目切换保护保留。</p>
+<h3>续接时恢复未达标的已审候选（2026-11-01）</h3>
+<p><strong>用途与输入输出：</strong>从已验证的冻结目标、材料和约束、当前设计 seed 及结构 checkpoint 的实际设计池开始；输出本轮重新训练并独立审计的候选及其匹配的物理身份、评分与证据。因池不保存可信的旧冠军身份，不能只按训练排序决定要重审哪个；旧评分与审计不是新作业证据。</p>
+<figure class="figure"><div class="flow" aria-label="续接新审计与独立比较"><span>当前 seed<br>真实训练 + 独审</span><i>→</i><span>池中除首 seed 外的设计<br>逐一真实训练 + 独审</span><i>→</i><span>保留同一规则下<br>已审冠军</span><i>→</i><span>新结构可较差<br>继续探索和独审比较</span><i>→</i><span>正常已审完成时<br>返回/显示/快照同身份</span></div><figcaption>图14bb-2：训练评分不能代替独立审计；允许较差新分支参与探索，不因其新颖而覆盖更优已审冠军。取消或预算限制可能在任一恢复步骤中断，不补做停止后的光学工作。</figcaption></figure>
+<p><strong>伪代码与成本：</strong><code>score_and_audit(seed); for d in pool not matching seed: score_and_audit(d); explore(); compare_audited(); return(selected)</code>，每一步受原作业评价、时长、资源与取消边界约束。默认 archive_capacity=32；状态验证接受池容量至 archive_capacity+1，当前 seed 可能不在池中，故容许输入的不同设计保守上界为 archive_capacity+2（默认 34），每个需训练及独审；首 seed 与池按物理 hash 去重，已审同一完整设计不重复独审。提前停止则只保留当时合法完成的证据，不声称整个池已重审。取消或时限中断可单独返回已完整训练评分但没有匹配独审的候选，明确 validation_complete=false；最后已审计检查点不能冒充该候选审计，取消候选应用遵循既有用户取消意图、完整训练证据与来源修订校验。search_until_target 仍遵循其原预算策略。层厚以 nm、波长以 nm、角度以度、R/T 以 0–1 fraction 表示；原训练采样及独审规则不变，未新增最小非零厚度或层数约束。</p>
+<p><strong>依据与适用条件：</strong>实现在 <code>film_auto_synthesis.py</code> 的续接恢复、独审比较与结果发布，结构状态在 <code>film_synthesis_continuation.py</code> 校验。恢复顺序、排名和预算计量为本项目约定；未找到外部依据，仅为本项目实现。新结构不一定更好；有限网格及极值复核不是连续谱证明，也不保证全局最优或任何具体设计达标。</p>
 <p><strong>参考与限制：</strong><a href="https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html">SciPy SLSQP 官方文档</a>为原数值求解器参考。一次会话边界、最佳候选选择、指标保护减薄和持久化结构均为本项目约定；未找到外部依据，仅为本项目实现，不声称新的全局收敛保证。未启用指标、材料插值/外推政策及用户正式目标不因本节改变。</p>
 </section>
 

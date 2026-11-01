@@ -2873,7 +2873,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     resume_session_complete = True
                     session['new_audited_pass'] = resume_branch_audited is not None
                     if resume_branch_audited is not None:
-                        audited_best = resume_branch_audited
+                        # audit_archive already compared the new branch with
+                        # the freshly audited historical candidates. Finding a
+                        # new passing branch must not overwrite a better one.
                         break
                     session['status'] = 'new_local_session_finished_historical_champion_retained'
                     postprocess_complete = True
@@ -3182,8 +3184,6 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
 
         # All normal success exits, including the early engineering-prior
         # break, converge here. No optional optics after failure/deadline/cancel.
-        if resumed and resume_branch_audited is not None:
-            audited_best = resume_branch_audited
         if not resumed:
             # Canonical champion compression is a topology boundary, before
             # local safety optimization, with its own original physical audit.
@@ -3195,6 +3195,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         if historical_audited is not None and rank(historical_audited[1]) < rank(audited_best[1]):
             audited_best = historical_audited
             details['continuation_session']['returned_selection'] = 'historical_champion'
+            display_value(audited_best[0], is_best=True, is_current=False)
+            publish_audited_checkpoint(*audited_best)
         elif resumed:
             details['continuation_session']['returned_selection'] = 'new_session_candidate'
         postprocess_complete = True
@@ -3274,6 +3276,13 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 restoring_pool.pop(physical_design_hash(initial_design), None)
             archive(working)
             if resumed:
+                # Checkpoints contain designs, not reusable audit evidence or
+                # a durable audited-champion identity. Re-audit the seed and
+                # every retained physical design before exploring new branches.
+                # Training rank alone cannot identify the previous audited
+                # winner; an edited current seed need not be that winner either.
+                # All work remains inside this invocation's budget/cancellation.
+                audit_archive(working, allow_feedback_repair=False)
                 # Restore actual archive designs through the same new budget;
                 # saved scores/audits cannot confer success in this invocation.
                 assert search_state is not None
@@ -3282,9 +3291,13 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     if physical_design_hash(saved_entry['design']) == physical_design_hash(initial_design):
                         continue
                     restored = evaluate(saved_entry['design'], gpu_forward=forward is not None)
-                    restoring_pool.pop(physical_design_hash(saved_entry['design']), None)
                     archive(restored, audit_eligible=False, provenance=saved_entry['provenance'],
                         parent_hash=saved_entry['parent_hash'], operator=saved_entry['operator'])
+                    audit_archive(restored, allow_feedback_repair=False)
+                    # Intermediate checkpoint publications must retain this
+                    # design even if training-only archive trimming rejected it
+                    # before its independent audit completed.
+                    restoring_pool.pop(physical_design_hash(saved_entry['design']), None)
                     retained = design_archive.entries.get(physical_design_hash(restored['design']))
                     if retained is not None:
                         retained.insertion_index = saved_entry['insertion_index']
