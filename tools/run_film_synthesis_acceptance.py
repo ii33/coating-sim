@@ -3,6 +3,12 @@
 Run with the project venv:
   .venv/Scripts/python.exe tools/run_film_synthesis_acceptance.py --repo-root .
 
+Public four-window, empty-stack research run (opt-in; may run indefinitely):
+  python tools/run_film_synthesis_acceptance.py --repo-root . --scenario public-four-window --out artifacts/public-four-window
+Create artifacts/public-four-window/CANCEL, or specify --cancel-file, for cooperative
+external cancellation. Outputs include the frozen request and source fingerprints.
+No seed or search checkpoint is supplied; finite-grid results are not manufacturing proof.
+
 Synthetic controls and source-backed n/k experiments are kept in separate report
 sections. A completed finite-grid audit is numerical evidence, not a continuous
 spectral certificate or a paper reproduction.
@@ -137,6 +143,72 @@ def real_material_rows():
     return rows, records
 
 
+def public_four_window_case():
+    """Construct the empty-stack research problem solely from packaged public data.
+
+    This is an independently reproducible problem definition, not the earlier
+    private export, a saved search, a seed, or a claim of successful synthesis.
+    """
+    from coat_sim.core.data_files import PROJECT_ROOT
+    from coat_sim.core.film_auto_synthesis import FilmSynthesisRequest
+    from coat_sim.core.film_design import new_design
+    from coat_sim.core.film_optimization import FilmObjectiveConstraint, FilmOptimizationObjective
+    from coat_sim.core.film_optimization_needle import FilmNeedleMaterialReference
+    from coat_sim.core.materials import builtin_material_profiles
+
+    # IDs select explicit, unchanged optical groups from repository-owned profiles.
+    selected = (
+        ("builtin_research_SiO2_film", "ri_sio2_rodriguez_de_marcos"),
+        ("builtin_research_TiO2_film", "rii_tio2_franta"),
+        ("film_substrate_cdgm_hk9l", "cdgm_hk9l_sellmeier_nm"),
+        ("builtin_ideal_air", "ideal_air_n1_k0"),
+    )
+    profiles = {row["id"]: row for row in builtin_material_profiles()}
+    rows = []
+    for material_id, set_id in selected:
+        profile = profiles[material_id]
+        groups = [deepcopy(group) for group in profile["optical_constants"] if group["id"] == set_id]
+        if len(groups) != 1:
+            raise ValueError(f"public catalog group missing or ambiguous: {material_id}/{set_id}")
+        rows.append(dict(id=material_id, name=profile["name"], design_ready=True, optical_sets=groups))
+
+    env = new_design(design_id="acceptance-public-four-window-from-zero")
+    env.update(name="Public four-window empty-stack acceptance", use_k=True,
+               assume_lossless=True, first_surface="front")
+    env["substrate"].update(material_id=selected[2][0], optical_set_id=selected[2][1],
+                            thickness={"value": 3.0, "unit": "mm"}, sides="double", mode="auto")
+    for side in ("incident_medium", "exit_medium"):
+        env[side] = {"kind": "material", "material_id": selected[3][0], "optical_set_id": selected[3][1]}
+    windows = ((400., 500., .8, None), (510., 550., None, .0065),
+               (560., 700., .8, None), (1040., 1080., None, .0065))
+    objectives = tuple(FilmOptimizationObjective(
+        lo, hi, int(hi - lo) + 1, angles_deg=(0.,), polarization="unpolarized", metric="T",
+        pointwise=FilmObjectiveConstraint(mode="range", target_value=None, lower_bound=lower, upper_bound=upper))
+        for lo, hi, lower, upper in windows)
+    request = FilmSynthesisRequest(
+        environment=env, objectives=objectives,
+        candidate_materials=tuple(FilmNeedleMaterialReference(*pair) for pair in selected[:2]),
+        selected_surfaces=("front",), search_until_target=True, seed_designs=(), search_checkpoint=None,
+        warm_start_seed_index=None, max_layers=None, minimum_nonzero_thickness_nm=None,
+        max_layer_thickness_nm=None, max_total_thickness_nm=None, max_cycles=None,
+        max_evaluations=None, max_seconds=None, max_working_set_bytes=None,
+        validation_samples_multiplier=2, cpu_workers=1, enable_thickness_reduction=False)
+    sources = ("data/optical_catalog.json", "coat_sim/core/resources/researched_materials.json",
+               "coat_sim/core/resources/optical_substrate_supplement.json",
+               "coat_sim/core/materials.py", "coat_sim/core/optical_substrate_presets.py")
+    provenance = {
+        "definition": "Repository public built-in catalog only; no private export, layer seed or checkpoint.",
+        "material_optical_set_ids": [dict(material_id=m, optical_set_id=o) for m, o in selected],
+        "repository_source_sha256": {path: hashlib.sha256((PROJECT_ROOT / path).read_bytes()).hexdigest()
+                                     for path in sources},
+        "optical_group_sha256": {m + "/" + o: sha256_json(row["optical_sets"][0])
+                                  for (m, o), row in zip(selected, rows, strict=True)},
+        "assumption": "Unknown substrate k is set to zero; original known film k is retained. "
+                      "Finite sampling is not a continuous certificate or manufacturing validation.",
+    }
+    return AcceptanceService(rows), request, provenance
+
+
 def make_request(environment, objectives, refs, *, cycles=None, evaluations=None,
                  max_layers=None, growth=(0.5, 1.0, 2.0), stagnation=5,
                  acceptable=1e-3, seed_designs=()):
@@ -263,7 +335,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", type=Path, default=Path.cwd(), help="project root containing coat_sim/")
     parser.add_argument("--out", type=Path, default=None, help="report directory (default: repo/artifacts/film_synthesis_acceptance_<UTC>)")
-    parser.add_argument("--scenario", choices=("all", "controls", "dual-ar", "dual-passband-control", "dual-passbands", "six-line", "real"), default="all")
+    parser.add_argument("--scenario", choices=("all", "controls", "dual-ar", "dual-passband-control", "dual-passbands", "six-line", "real", "public-four-window"), default="all")
     parser.add_argument("--dual-max-cycles", type=int, default=None, help="optional explicit caller stop; omitted means core stagnation stop")
     parser.add_argument("--dual-max-evaluations", type=int, default=None, help="optional explicit caller stop; omitted means unrestricted")
     parser.add_argument("--samples", type=int, default=61)
@@ -427,9 +499,18 @@ def main():
             "target_rule": "At each declared discrete wavelength require R <= bare-ZnS-substrate R - 0.005 absolute; project acceptance rule, not a paper threshold.",
             "caveat": "ZnS Querry is not CVD substrate/process-matched data; GST Frantz is not a matched phase/device stack. Real sourced n/k numerical model, not a paper reproduction."})
 
+    # Explicit opt-in: do not change the cases historically included in "all".
+    if args.scenario == "public-four-window":
+        public_service, public_request, public_provenance = public_four_window_case()
+        atomic_json(out / "public_four_window_provenance.json", public_provenance)
+        cases.append(("public_four_window_from_zero", "public_catalog_empty_stack_not_private_export",
+                      public_service, public_request))
+
     implementation_paths = ["coat_sim/core/film_auto_synthesis.py",
         "coat_sim/core/film_physical_structures.py", "coat_sim/core/film_synthesis_audit.py",
-        "tools/run_film_synthesis_acceptance.py"]
+        "coat_sim/core/film_synthesis_rejection_priors.py", "coat_sim/core/film_synthesis_local_restarts.py",
+        "coat_sim/core/film_synthesis_refinement.py", "coat_sim/core/film_synthesis_continuation.py",
+        "coat_sim/core/film_synthesis_physics.py", "tools/run_film_synthesis_acceptance.py"]
     implementation_hashes = {}
     for relative in implementation_paths:
         file_path = repo_root / relative

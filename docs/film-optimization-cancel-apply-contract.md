@@ -6,9 +6,9 @@
 
 用户显式取消动作产生绑定当前operation ID及queue job ID的单次应用意图。当前优化窗口取消按钮，以及同一工程队列已确认接受的匹配活动作业取消，均可产生该意图；队列传输失败、非匹配/历史作业、关闭窗口、销毁、detach和shutdown不产生意图。协调器继续唯一拥有运行/取消/完成身份，Controller唯一拥有应用意图和一次性应用状态；核心唯一拥有最好候选。
 
-“当前最好”是父进程在首次观察取消之前，按原顺序完整评分、完成已有物理/几何合法性检查并提交的最好可行候选。未消费的多进程结果、零厚针探针、半次评分及取消后到达值均不进入该档案。按现有同一评分排名选优，不因缺独立审计回退到较差旧候选。合法性不等同目标达标或连续光谱证书。
+“当前最好”是父进程在首次观察取消之前，按原顺序完整评分、完成已有物理/几何合法性检查并提交的最好可行候选。未消费的多进程结果、零厚针探针、半次评分及取消后到达值均不进入该档案。除下述开启“搜索直到达到目标”的合成例外外，按现有同一训练评分排名选优，不因缺独立审计回退到较差旧候选。合法性不等同目标达标或连续光谱证书。
 
-常规优化沿用已有完整训练best，取消跳过holdout；现有结构优化分支不得在返回本轮完整typed候选后又无取消信号重跑训练/holdout验证，取消采用便宜的结构/数据/输入绑定校验，正常完成仍保留原严格验证。合成单独维护完整训练候选档案；取消取其冻结快照，主candidate_design及training_score必须来自同一候选。只有该同一设计已有完整审计时才复用validation，否则validation_score=null、validation_complete=false，best_candidate_audit.available=false、targets_met=null。任务状态仍cancelled、任务targets_met=false。
+常规优化沿用已有完整训练best，取消跳过holdout；现有结构优化分支不得在返回本轮完整typed候选后又无取消信号重跑训练/holdout验证，取消采用便宜的结构/数据/输入绑定校验，正常完成仍保留原严格验证。合成单独维护完整训练候选档案和完整独审冠军；未开启“搜索直到达到目标”时取消取训练最好冻结快照。开启时，如果本轮已有已提交的完整独审冠军，取消优先返回它及与其匹配的训练／独审配对；若本轮没有已审冠军，仍回退完整训练最好候选。主candidate_design及training_score必须来自同一候选。只有该同一设计已有完整审计时才复用validation，否则validation_score=null、validation_complete=false，best_candidate_audit.available=false、targets_met=null。任务状态仍cancelled、任务targets_met=false。
 
 新增合成result.candidate_provenance为可选附加映射，旧wire缺省为空：取消完整候选须selection=completed_training_at_cancel、training_complete=true、frozen_at_cancel=true、fully_scored_evaluations为真实完整可行评分次数、validation_matches_candidate准确标记是否存在同一候选审计。不用该字段绕过设计、有限数值、冻结材料与约束校验。无合法完整候选返回None，保留原设计并明确“未有完整有效候选”。
 
@@ -29,7 +29,7 @@
 
 ## 验收与文件分工
 
-至少覆盖早取消无候选、已有合法最好后取消、未审计训练最好优于旧审计、真实多核在途/晚到结果、重复取消/完成、过期operation、源编辑/待提交字段/资源切换、无效候选、单次undo/无自动保存、设计与光谱同revision、相同候选no-op、匹配队列取消及关闭/shutdown不自动应用。
+至少覆盖早取消无候选、已有合法最好后取消、普通模式未审计训练最好优于旧审计、直到目标模式优先保留本轮已审冠军及无独审回退、实时 best/current 槽身份与原网格摘要、序列化重放及伪造审计拒绝、真实多核在途/晚到结果、重复取消/完成、过期operation、源编辑/待提交字段/资源切换、无效候选、单次undo/无自动保存、设计与光谱同revision、相同候选no-op、匹配队列取消及关闭/shutdown不自动应用。
 
 核心：film_auto_synthesis.py（与现有常规优化取消语义对齐），film_optimization_job.py仅取消返回后的重复验证边界；适配器/typed job：film_synthesis_quick_adapter.py、film_synthesis_jobs.py及必要IO校验，scheduler/worker.py、daemon.py、remote_server.py及result_capability.py只窄改上述typed取消回包保留、作业输入绑定/不重放边界，其他任务生命周期不变；GUI与队列接线：film_optimization_quick_controller.py、project_compute_views.py，必要时现有film_quick_controller.py定向合并谱刷新；独立测试另建文件。先协调文件所有者，保留当前其他改动。离线算法文档14x说明选择/计量规则。
 

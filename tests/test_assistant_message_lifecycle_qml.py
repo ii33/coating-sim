@@ -1,16 +1,18 @@
 """Persisted offline send/error/reopen sequences through the real chat bridge."""
 import hashlib
+import html
 import json
 import os
 import sys
 import time
 from pathlib import Path
+from typing import Protocol, cast
 
 import pytest
 import shiboken6
-from PySide6.QtCore import QCoreApplication, QEvent, QPointF, QUrl
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, QPointF, QUrl
 from PySide6.QtQml import QQmlComponent, QQmlEngine
-from PySide6.QtQuick import QQuickWindow
+from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtTest import QTest
 
 from coat_sim.ui.assistant import AssistantBridge
@@ -23,6 +25,81 @@ from tests.test_assistant_token_budget_contract import real_bridge as _real_brid
 real_bridge = _real_bridge_fixture
 pytestmark = [pytest.mark.qt, pytest.mark.contract]
 ERROR = "stale_project_binding: 工程已切换、关闭或者不可核验；请在当前窗口重新选择工程。"
+
+
+class _ProbeTestWindow(Protocol):
+    """Methods supplied dynamically by the QML Window in the probe self-test."""
+
+    def setActualText(self, value: str) -> None: ...
+    def setEditorVisible(self, value: bool) -> None: ...
+    def modelValue(self) -> str: ...
+    def removeEditor(self) -> None: ...
+
+
+_NATIVE_PROBE_QML = b'''import QtQuick
+QtObject {
+    property var selectedEditor: null
+    property real savedOpacity: 1
+
+    function inspect(root, expectedSource, expectedPlain) {
+        selectedEditor = null
+        let stack = [root]
+        let editors = []
+        while (stack.length) {
+            let item = stack.pop()
+            if (!item) continue
+            if (typeof item.renderedSource === "string"
+                    && typeof item.getText === "function"
+                    && typeof item.getFormattedText === "function") {
+                const source = String(item.renderedSource)
+                const plain = String(item.getText(0, item.length))
+                const normalizedPlain = plain.replace(/\\u2028|\\u2029|\\r\\n/g, "\\n")
+                const formatted = String(item.getFormattedText(0, item.length))
+                const position = item.mapToItem(root, 0, 0)
+                const eligible = item.visible && item.width > 0 && item.height > 0
+                    && source.indexOf(expectedSource) >= 0
+                    && normalizedPlain.indexOf(expectedPlain) >= 0
+                editors.push({source: source, plain: plain, formatted: formatted,
+                              visible: item.visible, width: item.width, height: item.height,
+                              x: position.x, y: position.y, eligible: eligible})
+                if (eligible && selectedEditor === null) selectedEditor = item
+            }
+            const children = item.children
+            if (children !== undefined) {
+                for (let i = children.length - 1; i >= 0; --i) stack.push(children[i])
+            }
+        }
+        return JSON.stringify({editors: editors, found: selectedEditor !== null})
+    }
+
+    function hideSelected() {
+        if (!selectedEditor) return false
+        savedOpacity = selectedEditor.opacity
+        selectedEditor.opacity = 0
+        return true
+    }
+    function restoreSelected() {
+        if (!selectedEditor) return false
+        selectedEditor.opacity = savedOpacity
+        return true
+    }
+}'''
+
+
+def _new_native_probe(engine):
+    component = QQmlComponent(engine)
+    component.setData(_NATIVE_PROBE_QML, QUrl())
+    probe = component.create()
+    assert probe is not None, component.errors()
+    # The component owns the dynamic QML type; keep it alive with the probe.
+    return component, probe
+
+
+def _inspect_native_probe(probe, window, expected):
+    # The source check remains exact, including HTML escaping and <br>.  The
+    # second check reads the TextEdit's document, not the model/source cache.
+    expected_plain = html.unescape(expected.replace("<br>", "\n"))
+    return json.loads(probe.inspect(window.contentItem(), expected, expected_plain))
 
 
 def settle_history(bridge):
@@ -56,6 +133,57 @@ def _safe_property(item, name, default=None):
         return default if value is None else value
     except RuntimeError:
         return default
+
+
+def _visual_tree_snapshot(window):
+    """Record traversal decisions independently of the normal visual_items walker.
+
+    This runs only for diagnostics: do not retain wrappers or alter the paint
+    assertion. Paths identify the index in each parent's childItems() list.
+    """
+    nodes: list[dict[str, object]] = []
+    result: dict[str, object] = {"nodes": nodes, "truncated": False}
+
+    def visit(item, path):
+        if len(nodes) >= 5000:
+            result["truncated"] = True
+            return
+        item_type = type(item)
+        row = {"path": path,
+               "python_type": f"{item_type.__module__}.{item_type.__qualname__}",
+               "valid": None, "qt_class": None, "object_name": None,
+               "skip_reason": None}
+        nodes.append(row)
+        if item is None:
+            row["valid"] = False
+            row["skip_reason"] = "none"
+            return
+        try:
+            row["valid"] = bool(shiboken6.isValid(item))
+            if not row["valid"]:
+                row["skip_reason"] = "invalid_wrapper"
+                return
+            if hasattr(item, "metaObject"):
+                row["qt_class"] = str(item.metaObject().className())
+                row["object_name"] = str(item.objectName())
+            if not isinstance(item, QQuickItem):
+                row["skip_reason"] = "not_qquickitem"
+                return
+            children = item.childItems()
+            row["child_count"] = len(children)
+            for index, child in enumerate(children):
+                visit(child, f"{path}/{index}")
+        except (RuntimeError, TypeError, AttributeError) as exc:
+            row["skip_reason"] = f"inspection_error:{type(exc).__name__}"
+
+    try:
+        if window is None or not shiboken6.isValid(window):
+            result["root_error"] = "invalid_window"
+        else:
+            visit(window.contentItem(), "contentItem")
+    except (RuntimeError, TypeError, AttributeError) as exc:
+        result["root_error"] = f"content_item_error:{type(exc).__name__}"
+    return result
 
 
 def _paint_failure_diagnostics(window, bridge, expected, phases=(), model_events=(), list_events=()):
@@ -97,7 +225,8 @@ def _paint_failure_diagnostics(window, bridge, expected, phases=(), model_events
             "has_steps": row.get("hasSteps") is True,
         }
 
-    result = {"tree_error": tree_error, "expected": expected,
+    result = {"tree_error": tree_error, "visual_tree_before_grab": _visual_tree_snapshot(window),
+              "expected": expected,
               "expected_source": expected.split("<br>", 1)[0],
               "phases": list(phases), "model_events": list(model_events),
               "list_events": list(list_events),
@@ -246,27 +375,14 @@ def _capture_history_phase(bridge, label, model_events, list_events):
     }
 
 
-def assert_painted(window, expected, bridge=None, phases=(), model_events=(), list_events=(),
+def assert_painted(window, expected, probe, bridge=None, phases=(), model_events=(), list_events=(),
                    qml_warnings=(), diagnostic_dir=None, diagnostic_label=""):
     for _ in range(100):
         QTest.qWait(20)
-        try:
-            items = list(visual_items(window.contentItem()))
-        except RuntimeError:
-            items = []
-        editors = []
-        for item in items:
-            try:
-                if (shiboken6.isValid(item)
-                        and 'QQuickTextEdit' in item.metaObject().className()
-                        and item.isVisible()
-                        and expected in str(item.property('renderedSource') or '')):
-                    editors.append(item)
-            except RuntimeError:
-                continue
-        if editors:
+        native_state = _inspect_native_probe(probe, window, expected)
+        if native_state["found"]:
             break
-    if not editors:
+    if not native_state["found"]:
         sources = []
         try:
             items = list(visual_items(window.contentItem()))
@@ -281,6 +397,7 @@ def assert_painted(window, expected, bridge=None, phases=(), model_events=(), li
                 continue
         diagnostics = _paint_failure_diagnostics(
             window, bridge, expected, phases, model_events, list_events)
+        diagnostics["native_probe"] = native_state
         diagnostics["legacy_sources"] = sources
         diagnostics["qml_warnings"] = list(qml_warnings)
         if diagnostic_dir is not None:
@@ -306,6 +423,8 @@ def assert_painted(window, expected, bridge=None, phases=(), model_events=(), li
                 except (RuntimeError, OSError) as exc:
                     diagnostics["screenshot"] = {
                         "path": str(screenshot_path), "error": type(exc).__name__}
+                finally:
+                    diagnostics["visual_tree_after_grab"] = _visual_tree_snapshot(window)
                 state_path.write_text(json.dumps(
                     diagnostics, ensure_ascii=False, indent=2, default=str) + "\n",
                     encoding="utf8")
@@ -314,22 +433,153 @@ def assert_painted(window, expected, bridge=None, phases=(), model_events=(), li
         raise AssertionError(
             f"Missing rendered body {expected!r}; diagnostics="
             f"{json.dumps(diagnostics, ensure_ascii=False, default=str, sort_keys=True)}")
-    editor = editors[0]
     QTest.qWait(60)
-    point = editor.mapToItem(window.contentItem(), QPointF(0, 0))
+    native_state = _inspect_native_probe(probe, window, expected)
+    assert native_state["found"], "Selected TextEdit disappeared before pixel check"
+    editor = next(row for row in native_state["editors"] if row["eligible"])
     dpr = window.devicePixelRatio()
-    rect = (round(point.x() * dpr), round(point.y() * dpr),
-            round(editor.width() * dpr), round(editor.height() * dpr))
+    rect = (round(editor["x"] * dpr), round(editor["y"] * dpr),
+            round(editor["width"] * dpr), round(editor["height"] * dpr))
     shown = window.grabWindow().copy(*rect)
-    editor.setOpacity(0)
-    QTest.qWait(30)
-    hidden = window.grabWindow().copy(*rect)
-    editor.setOpacity(1)
+    assert probe.hideSelected(), "Selected TextEdit disappeared before pixel check"
+    try:
+        QTest.qWait(30)
+        hidden = window.grabWindow().copy(*rect)
+    finally:
+        assert probe.restoreSelected(), "Selected TextEdit disappeared during pixel check"
     QTest.qWait(30)
     pixels = sum(shown.pixel(x, y) != hidden.pixel(x, y)
                  for y in range(shown.height()) for x in range(shown.width()))
     if pixels <= 20:
         raise AssertionError(f"Body {expected!r} painted only {pixels} pixels at {rect!r}")
+
+
+def test_visual_tree_snapshot_reports_types_and_skips():
+    class RootProvider:
+        def __init__(self, root):
+            self.root = root
+
+        def contentItem(self):
+            return self.root
+
+    root = QQuickItem()
+    root.setObjectName("diagnosticRoot")
+    child = QQuickItem(root)
+    child.setObjectName("diagnosticChild")
+    rows = _visual_tree_snapshot(RootProvider(root))["nodes"]
+    assert [row["object_name"] for row in rows] == ["diagnosticRoot", "diagnosticChild"]
+    assert all(row["valid"] and row["qt_class"] == "QQuickItem"
+               and row["python_type"].endswith(".QQuickItem")
+               and row["skip_reason"] is None for row in rows)
+    assert rows[0]["path"] == "contentItem" and rows[0]["child_count"] == 1
+    assert rows[1]["path"] == "contentItem/0"
+
+    non_item = QObject()
+    row = _visual_tree_snapshot(RootProvider(non_item))["nodes"][0]
+    assert row["valid"] and row["qt_class"] == "QObject"
+    assert row["skip_reason"] == "not_qquickitem"
+    invalid = QQuickItem()
+    shiboken6.delete(invalid)
+    row = _visual_tree_snapshot(RootProvider(invalid))["nodes"][0]
+    assert row["valid"] is False and row["skip_reason"] == "invalid_wrapper"
+    row = _visual_tree_snapshot(RootProvider(None))["nodes"][0]
+    assert row["valid"] is False and row["skip_reason"] == "none"
+
+
+def test_native_probe_requires_real_visible_editor_text_and_escaped_source(monkeypatch):
+    engine = QQmlEngine()
+    probe_component, probe = _new_native_probe(engine)
+    component = QQmlComponent(engine)
+    component.setData(b'''import QtQuick
+Window {
+    width: 300; height: 100
+    ListModel { id: sourceModel; ListElement { body: "<tag>" } }
+    function modelValue() { return sourceModel.get(0).body }
+    function setActualText(value) { editorLoader.item.text = value }
+    function setEditorVisible(value) { editorLoader.item.visible = value }
+    function removeEditor() { editorLoader.active = false }
+    Loader {
+        id: editorLoader
+        active: true
+        sourceComponent: TextEdit {
+            property string renderedSource: "&lt;tag&gt;<br>"
+            textFormat: TextEdit.RichText
+            text: renderedSource
+            width: 280; height: 60
+            font.pixelSize: 24
+        }
+    }
+}''', QUrl())
+    window = component.create()
+    assert isinstance(window, QQuickWindow), component.errors()
+    qml_window = cast(_ProbeTestWindow, window)
+    window.show()
+    QCoreApplication.processEvents()
+    try:
+        state = _inspect_native_probe(probe, window, "&lt;tag&gt;<br>")
+        assert state["found"]
+        editor = next(row for row in state["editors"] if row["eligible"])
+        assert "<tag>" in editor["plain"] and "&lt;tag&gt;" in editor["formatted"]
+        assert not _inspect_native_probe(probe, window, "<tag>")["found"]
+        # Simulate the Python walker dropping a branch while the actual QML
+        # tree remains intact. The same strict painted-pixel assertion works.
+        monkeypatch.setattr(sys.modules[__name__], "visual_items", lambda _item: iter(()))
+        assert_painted(window, "&lt;tag&gt;<br>", probe)
+
+        # The cached source and model remain populated, but an empty actual
+        # TextEdit document must never satisfy the body assertion.
+        qml_window.setActualText("&lt;tag&gt;")
+        assert not _inspect_native_probe(probe, window, "&lt;tag&gt;<br>")["found"]
+        qml_window.setActualText("")
+        assert qml_window.modelValue() == "<tag>"
+        assert not _inspect_native_probe(probe, window, "&lt;tag&gt;<br>")["found"]
+        monkeypatch.setattr(QTest, "qWait", lambda _ms: None)
+        with pytest.raises(AssertionError, match="Missing rendered body"):
+            assert_painted(window, "&lt;tag&gt;<br>", probe)
+        qml_window.setActualText("&lt;tag&gt;<br>")
+        qml_window.setEditorVisible(False)
+        assert not _inspect_native_probe(probe, window, "&lt;tag&gt;<br>")["found"]
+        qml_window.removeEditor()
+        assert qml_window.modelValue() == "<tag>"
+        assert not _inspect_native_probe(probe, window, "&lt;tag&gt;<br>")["found"]
+        with pytest.raises(AssertionError, match="Missing rendered body"):
+            assert_painted(window, "&lt;tag&gt;<br>", probe)
+    finally:
+        window.hide()
+        window.deleteLater()
+        probe.deleteLater()
+        engine.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def test_paint_failure_captures_tree_before_and_after_grab_without_passing(monkeypatch, tmp_path):
+    engine = QQmlEngine()
+    probe_component, probe = _new_native_probe(engine)
+    window = QQuickWindow()
+    child = QQuickItem(window.contentItem())
+    child.setObjectName("diagnosticChild")
+    window.resize(100, 100)
+    window.show()
+    QCoreApplication.processEvents()
+    # Exercise the failure path deterministically without delaying the test.
+    monkeypatch.setattr(QTest, "qWait", lambda _ms: None)
+    try:
+        with pytest.raises(AssertionError, match="Missing rendered body"):
+            assert_painted(window, "missing", probe, diagnostic_dir=tmp_path)
+        state_file = next(tmp_path.glob("assistant-message-*.json"))
+        diagnostics = json.loads(state_file.read_text(encoding="utf8"))
+        assert diagnostics["screenshot"]["written"]
+        for key in ("visual_tree_before_grab", "visual_tree_after_grab"):
+            assert not diagnostics[key]["truncated"]
+            assert any(row["object_name"] == "diagnosticChild"
+                       for row in diagnostics[key]["nodes"])
+    finally:
+        window.hide()
+        window.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        probe.deleteLater()
+        engine.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 @pytest.mark.parametrize('lifecycle', ['hidden_first_show', 'visible_error', 'hide_reopen', 'switch_session',
@@ -368,6 +618,7 @@ def test_persisted_error_round_body_survives_real_lifecycle(
     bundled_font_family()
     register_preview_cursor()
     engine = QQmlEngine()
+    probe_component, probe = _new_native_probe(engine)
     qml_warnings: list[str] = []
 
     def capture_qml_warnings(warnings):
@@ -455,20 +706,20 @@ def test_persisted_error_round_body_survives_real_lifecycle(
         diagnostic_option = request.config.getoption("qt_diagnostic_log", default=None)
         diagnostic_dir = (Path(diagnostic_option).parent / "assistant-message-lifecycle"
                           if diagnostic_option else tmp_path)
-        assert_painted(window, '你好<br>', bridge, phases, model_events, list_events,
+        assert_painted(window, '你好<br>', probe, bridge, phases, model_events, list_events,
                        qml_warnings, diagnostic_dir, lifecycle)
         if lifecycle == "switch_global" and os.environ.get("COAT_ASSISTANT_LIFECYCLE_TRACE") == "1":
             print("assistant_lifecycle_qml_state " + json.dumps(
                 _paint_failure_diagnostics(
                     window, bridge, '你好<br>', phases, model_events, list_events),
                 ensure_ascii=False, default=str), file=sys.stderr, flush=True)
-        assert_painted(window, 'stale_project_binding', bridge, phases, model_events, list_events,
+        assert_painted(window, 'stale_project_binding', probe, bridge, phases, model_events, list_events,
                        qml_warnings, diagnostic_dir, lifecycle)
         # Read the same SQLite rows back once more without manually replacing
         # message/model/cache state or resetting invalidation flags.
         bridge._reload_messages()
         settle_history(bridge)
-        assert_painted(window, 'stale_project_binding', bridge, phases, model_events, list_events,
+        assert_painted(window, 'stale_project_binding', probe, bridge, phases, model_events, list_events,
                        qml_warnings, diagnostic_dir, lifecycle)
         assert window.grabWindow().save(str(tmp_path / (lifecycle + '.png')))
         if lifecycle == "switch_global" and os.environ.get("COAT_ASSISTANT_LIFECYCLE_TRACE") == "1":
@@ -480,6 +731,7 @@ def test_persisted_error_round_body_survives_real_lifecycle(
         window.hide()
         window.deleteLater()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        probe.deleteLater()
         engine.deleteLater()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 

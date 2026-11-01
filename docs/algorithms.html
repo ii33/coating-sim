@@ -12,7 +12,7 @@
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px solid #c8e0db;border-radius:8px;padding:16px;font-size:.88rem;line-height:1.5}</style>
 </head>
 <body>
-<p class="source">算法更新：2026-11-01；<a href="#film-synthesis-until-target-20261101">14bg 搜索直到目标与自动外层轮转</a>：局部判据不变，未达标自动推进下一轮；有限搜索不证明物理不可行。</p>
+<p class="source">算法更新：2026-11-01；<a href="#film-phase-diverse-restarts-20261101">14bh 色散相位多样先验与逐层厚度重启</a>，及<a href="#film-synthesis-until-target-20261101">14bg 搜索直到目标与自动外层轮转</a>。新增候选不是达标或可行性证明。</p>
 <p class="source">算法更新：2026-10-31；<a href="#film-resource-prediction-20261031">14bf 快速资源经验预估</a>：离线校准、在线固定公式；与14be必要条件诊断及显式合成验证分离，受限域不冒充通用能力。</p>
 <p class="source">算法更新：2026-10-30；新增<a href="#film-synthesis-selected-surfaces-20261030">14bd 选面联合合成与全几何导数</a>。</p>
 <p class="source">算法更新：2026-10-28；<a href="#film-sensitivity-missing-k-20261028">敏感度缺失 k 规则</a>与普通光谱一致：无来源 k 仅计算时取 0，已有 k 保留真实值并严格检查完整原波段。</p>
@@ -271,9 +271,27 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#film-synthesis-selected-surfaces-20261030">14bd 选面联合合成与全几何解析导数（2026-10-30）</a>
 <a href="#film-resource-estimation-20261030">14be 必要条件诊断与显式合成验证</a>
 <a href="#film-resource-prediction-20261031">14bf 快速层数／厚度经验预估（受限域）</a>
+<a href="#film-phase-diverse-restarts-20261101">14bh 色散相位先验与逐层厚度重启</a>
 <a href="#film-synthesis-until-target-20261101">14bg 搜索直到目标与自动外层轮转</a>
 </nav>
 <main>
+<section id="film-phase-diverse-restarts-20261101">
+<h2>14bh 色散相位多样先验与逐层厚度重启</h2>
+<p class="source">更新：2026-11-01。输入、输出、阶段约束与停止边界见<a href="film-synthesis-continuation.md">续接契约</a>；本节所有结构枚举、排序和分片均为<strong>本项目启发式约定</strong>，不是已获外部验证的性能或可行性定理。</p>
+<p><strong>用途、输入与输出：</strong>在满足准入的多波段透射/反射任务中，从冻结目标、候选材料及真实 n/k 构造不同相位的周期起点；开启 <code>search_until_target</code> 时，再对已筛选族作一次有界局部精修，并从已有独审冠军逐层扰动产生新起点。输出为真实层表和来源/阶段诊断，可能被约束或预算拒绝；提案本身不是通过证据。真空波长 λ 和物理厚度 d 为 nm，n、k、R、T、相位分数及误差无量纲；角度为度。每面层表从基片向外，实际照明及选面适配沿用原契约。</p>
+<figure><svg viewBox="0 0 1000 190" role="img" aria-label="相位多样先验和逐层扰动都经原光学及独立审计"><g fill="#e9f4f1" stroke="#087f78" stroke-width="2"><rect x="10" y="28" width="200" height="75" rx="8"/><rect x="260" y="28" width="205" height="75" rx="8"/><rect x="515" y="28" width="210" height="75" rx="8"/><rect x="775" y="28" width="215" height="75" rx="8"/><path d="M210 65h50 M465 65h50 M725 65h50" fill="none"/></g><g fill="#18303a" font-size="16" text-anchor="middle"><text x="110" y="57">原窗口与真实材料</text><text x="110" y="82">半波 / 补相 / 谐波</text><text x="362" y="57">有限族筛选与局部片</text><text x="362" y="82">独审冠军逐层扰动</text><text x="620" y="57">原 n/k 与原目标</text><text x="620" y="82">完整训练 + 独立审计</text><text x="882" y="57">按既有规则比较</text><text x="882" y="82">保留匹配的冠军证据</text><text x="500" y="157">筛选代理与随机起点不能代替真实前向、制造约束和独审</text></g></svg><figcaption>图14bh-1：两种新起点只增加有限探索路径；预算、资源或取消可以在任一阶段阻止它们完成。</figcaption></figure>
+<h3>相位多样拒带先验</h3>
+<p>模板生成器在裸单面、无 seed、法向条件下构造二材料单元；调用方的既有选面适配可将其提升为真实背面/双面候选。至少一个合并反射窗两侧须各有正权重点态透射范围、下界大于 0.5 的通带。每个反射窗几何中心 λ₀=√(λmin λmax)，在该点按实 n 分高 H、低 L；n 必须有限、正且有对比。来源域、未知 k 的显式策略及全部原约束仍由既有采样和准入处理；不合条件不生成该先验。</p>
+<div class="formula">dH=λ₀ f/(2nH(λ₀)), dL=λ₀(1−f)/(2nL(λ₀)); η=(nH/nL+nL/nH)/2<br>γ(f)=acosh[1+(η−1)sin²(πf)]; N=ceil[c·atanh(√ρ)/γ]+epoch<br>ρ=min[1−(1−Rfloor)·s, nextafter(1,0)]; c∈{1,1.5}, s∈{1,0.1}</div>
+<p>原窄带占空比 f 沿用现有通带夹持推导，以 1、0.85、1.15 调整并限于 0.5；其互补相位 1−f 另成族。四分之一波 f=0.5 的情况在每个通带端点与中点用真实色散检查周期高阶相位；定义 αH,L=πλ₀ nH,L(λ)/(2λ nH,L(λ₀))、C=cos αH cos αL−[(nH/nL+nL/nH)/2]sin αH sin αL。仅 |C|&gt;1 且 q=round[(αH+αL)/π]≥2 时，对 m∈{1,q−1,⌊q/2⌋,⌈q/2⌉} 中 0&lt;m&lt;q 者，尝试 m/q、mλnH(λ₀)/(λ₀nH(λ))、1−mλnL(λ₀)/(λ₀nL(λ))。只保留有限的 0&lt;f&lt;1，按 12 位小数去重；这是起点构造，不是连续通带或谐波消除证明。</p>
+<p>为限制组合工作量，对每窗计算 <code>Kj=max_pass_samples[kj(λ)/λ]</code> 和无量纲排序代理 <code>P=N λ₀/2·[KH f/nH(λ₀)+KL(1−f)/nL(λ₀)]</code>，最多保留代理较小的 8 项，并保留原窄带或四分之一波选项。P 是体吸收启发式排序，<strong>不是场分布损耗上界、可行性筛选或验收指标</strong>。对每个固定材料对、占空比系数、层对数系数、窗口顺序与反射深度配置，先依次枚举所有相位组合的名义层对数 N，再枚举各组合单窗口 N−1 邻域，最后枚举单窗口 N+1 邻域；其他窗口不变，且每窗至少一对。候选及可选帽仍逐一接受原约束准入，名义候选非法而邻居合法时仍可尝试邻居。这一排序旨在避免相邻层对数过早挤占有限源抽取前缀（上限为 max(32, 4×批量量子)），让该配置下更多名义相位有机会被筛选；它是本项目的广度排序启发式，不保证覆盖所有组合或提升性能。单元衰减近似未完整描述有限栈边界导纳和各窗耦合，N 不是保证满足原目标的层对数，也不是层数下界。可选匹配帽使用全部通带范围两端的几何中心处较低 n 材料，厚度 λcap/(4ncap)；取样缺失时仅省略该可选帽，未加帽方案仍可尝试。窗口顺/逆、加/不加帽均枚举；显式层数、总厚、单层厚度与最小非零厚约束不放宽，且保留模式、层对邻域调整、光学源及构造参数的 provenance。</p>
+<h3>直到目标模式中的两个局部片</h3>
+<p>已实际评分的先验按本次运行中该族已精修次数从少到多、覆盖窗数从多到少、原训练 SSE 从小到大排序，每轮最多取一项，先作原目标全厚 minimax 局部精修、再按原规则尝试独审；不以原始最差误差直接淘汰可能有用的局部盆地。若已有当前已审冠军，另以该冠军为父设计对所有所选层独立扰动：</p>
+<div class="formula">δi ~ Normal(0,σ²), d′i=di exp(δi), σ∈{0.03,0.08,0.18} 按 (rotation−1) mod 3 轮转<br>seed = little_endian_uint64(SHA256(policy : structure_search_seed : rotation : parent_physical_hash)[0:8])</div>
+<p>选层视图以真实物理 nm 操作，未选面不变；显式单层上限/最小非零厚度先逐层裁剪，再由原可行性检查决定是否接纳，重复物理 hash 不重评。起点通过后再走真实训练和局部精修；冠军、原 n/k、原目标、材料域和独立审计均不被替换。随机流可由冻结 seed、全局 rotation、父物理 hash 与策略名重建，墙钟、并行前缀和恢复时机仍可能改变实际轨迹，不承诺任意中断处逐位等价。</p>
+<p><strong>工作量及终止：</strong>两片分别为 <code>diverse_prior_local_polish</code> 与 <code>independent_layer_basin_restart</code>，单片评价量子至多 300；有总评价限额时另取剩余训练额度相应 30%/25% 的整数分片（最少一个、且仍受总准入检查），有截止时取剩余墙钟的相应份额。每次局部求解最多 120 次迭代，若以 <code>iteration_limit</code> 结束且该次求解前后的最差归一化误差改善量 &gt; <code>relative_improvement_tolerance × max(|E_before|, 10⁻¹²)</code>，则在同一父片剩余额度内从该结果续做一段；120 次不是整个阶段的上限。实际收敛、其他终止、改善未超过阈值或父片预算/时间/资源/取消边界将结束或中断续做；耗尽分片不等于收敛或不可行。正常返回时各段信息记录在 <code>basin_attempts</code>；训练和审计按既有规则单独计数，取消后不补算。关闭自动直到目标模式时不新增这两个局部片，普通局部会话停止语义不变。可适用的拒带源在续接指纹记录 <code>normal_incidence_phase_diverse_rejection_v4</code>，不将旧源游标静默解释为新策略。</p>
+<p class="source"><strong>实现与参考：</strong><code>film_synthesis_rejection_priors.py</code>、<code>film_synthesis_local_restarts.py</code>、<code>film_auto_synthesis.py</code> 和 <code>film_synthesis_continuation.py</code>；基础多层相位/传输矩阵背景见 <a href="https://arxiv.org/abs/1603.02720">Byrnes, Multilayer optical calculations</a> 与 <a href="https://ocw.mit.edu/courses/6-974-fundamentals-of-photonics-quantum-electronics-spring-2006/98fcc94d2216c26db424e294c28d459a_mirror_inter_thn.pdf">MIT OCW 介质镜</a>。这些文献不验证本项目的分数菜单、代理、局部调度或重启表现；未找到这些项目约定的外部依据。有限候选、有限采样及同一前向内核的独审不能证明全局最优、连续谱合格或真实样品表现；不保证特定材料任务达标。</p>
+</section>
 
 <section id="film-synthesis-until-target-20261101">
 <h2>14bg 搜索直到目标：局部停止与外层轮转分离</h2>
@@ -290,9 +308,9 @@ while 未取消、未遇资源或数值错误:
 若配置下没有可执行新步骤则报告搜索受阻，不证明全部方法穷尽；
 明确报告取消、资源阻塞或数值错误；不可将单轮无新候选冒充全部方案耗尽</pre>
 <figure class="figure"><svg viewBox="0 0 920 190" role="img" aria-label="局部停止后自动进入下一轮搜索"><g fill="#e3f1ed" stroke="#087f78"><rect x="10" y="55" width="170" height="70" rx="8"/><rect x="230" y="55" width="200" height="70" rx="8"/><rect x="485" y="15" width="190" height="60" rx="8"/><rect x="485" y="110" width="190" height="60" rx="8"/><rect x="725" y="110" width="185" height="60" rx="8"/></g><g fill="#18303a" text-anchor="middle" font-size="16"><text x="95" y="84">结构／全局搜索</text><text x="95" y="108">保持原制造约束</text><text x="330" y="84">既有局部优化与审计</text><text x="330" y="108">停止判据不变</text><text x="580" y="40">原目标审计通过</text><text x="580" y="62">立即结束</text><text x="580" y="136">局部停止，仍未达标</text><text x="580" y="158">保留当前搜索状态</text><text x="818" y="136">自动推进下一轮</text><text x="818" y="158">结构／全局／针搜索</text></g><g stroke="#087f78" fill="none" stroke-width="2"><path d="M180 90H230M430 90L485 45M430 90L485 140M675 140H725M818 170V184H95V125"/></g></svg><figcaption>局部停止不等于总体搜索完成；同一作业内自动轮转，不重新恢复和重审整个档案。取消、资源、错误或无可执行新步骤可中断搜索；受阻不证明全局不可行。</figcaption></figure>
-<p>状态证据位于 <code>performance.search.until_target</code>。原目标经独立审计通过才是达标；<code>global_infeasibility_proven</code> 始终为 false。单个搜索量子没有新候选、局部停止、取消及资源／错误都不是总体不可行证明；没有足够证据时不得把有限前沿描述为所有已知结构和方法失败。连续厚度空间和随机搜索一般无法穷尽，故不保证计算必然自行结束。轮数、评价数、已消费来源及剩余来源只说明已做工作，不是总体覆盖率。</p>
-<p>“继续优化”复用当前协议的保存前沿及材料/目标来源校验；重新评分，不复用旧评分或优化器内部状态。开关属于本次调度策略，不加入物理与结构前沿身份哈希。普通关闭模式与已存在的显式继续行为保持不变。取消仍是协作式，只返回取消前完成的候选，不补算审计；错误、资源不足以及边界耗尽不能静默改成成功。</p>
-<p class="source">实现：<code>coat_sim/core/film_auto_synthesis.py</code>、<code>film_synthesis_continuation.py</code>、<code>film_synthesis_stop_policy.py</code> 及界面适配器；回归：<code>tests/test_film_synthesis_until_target.py</code> 和原局部会话停止测试。此外层自动轮转为本项目约定，未找到外部依据，仅为本项目实现；并未用文献证明有限搜索可判全局不可行。现有局部与全局算法依据见本页对应章节。</p>
+<p>状态证据位于 <code>performance.search.until_target</code>。取消选用本轮已审冠军时，<code>performance.search.cancel_selection</code> 记录该策略及未追加光学计算；既有 <code>candidate_provenance</code> 格式不变，匹配标志仅在分数属于同一返回处方时为真。实时 best 槽在已有本轮审计冠军后保持其几何，current 槽仍反映完整训练候选；预览摘要和采样光谱仍来自该设计的原训练网格，不冒充密网格独审分数。原目标经独立审计通过才是达标；<code>global_infeasibility_proven</code> 始终为 false。单个搜索量子没有新候选、局部停止、取消及资源／错误都不是总体不可行证明；没有足够证据时不得把有限前沿描述为所有已知结构和方法失败。连续厚度空间和随机搜索一般无法穷尽，故不保证计算必然自行结束。轮数、评价数、已消费来源及剩余来源只说明已做工作，不是总体覆盖率。</p>
+<p>“继续优化”复用当前协议的保存前沿及材料/目标来源校验；重新评分，不复用旧评分或优化器内部状态。开关属于本次调度策略，不加入物理与结构前沿身份哈希。普通关闭模式与已存在的显式继续行为保持不变。取消仍是协作式：若本轮已提交完整独立审计冠军，则优先冻结该设计及其匹配的训练／审计分数；否则回退到取消前已完整评分的训练最好候选。取消后不补算光学或审计。未开启该模式时沿用完整训练最好候选规则；错误、资源不足以及边界耗尽不能静默改成成功。</p>
+<p class="source">实现：<code>coat_sim/core/film_auto_synthesis.py</code>、<code>film_synthesis_continuation.py</code>、<code>film_synthesis_stop_policy.py</code> 及界面适配器；回归：<code>tests/test_film_synthesis_until_target.py</code>、<code>tests/test_film_synthesis_until_cancel_best.py</code> 和原局部会话停止测试。此外层自动轮转为本项目约定，未找到外部依据，仅为本项目实现；并未用文献证明有限搜索可判全局不可行。现有局部与全局算法依据见本页对应章节。</p>
 </section>
 
 
@@ -320,7 +338,7 @@ while 未取消、未遇资源或数值错误:
 <h3>续接时恢复未达标的已审候选（2026-11-01）</h3>
 <p><strong>用途与输入输出：</strong>从已验证的冻结目标、材料和约束、当前设计 seed 及结构 checkpoint 的实际设计池开始；输出本轮重新训练并独立审计的候选及其匹配的物理身份、评分与证据。因池不保存可信的旧冠军身份，不能只按训练排序决定要重审哪个；旧评分与审计不是新作业证据。</p>
 <figure class="figure"><div class="flow" aria-label="续接新审计与独立比较"><span>当前 seed<br>真实训练 + 独审</span><i>→</i><span>池设计新训练 + 密网格<br>潜在冠军完成独审</span><i>→</i><span>保留同一规则下<br>已审冠军</span><i>→</i><span>新结构可较差<br>继续探索和独审比较</span><i>→</i><span>正常已审完成时<br>返回/显示/快照同身份</span></div><figcaption>图14bb-2：训练评分不能代替独立审计；允许较差新分支参与探索，不因其新颖而覆盖更优已审冠军。取消或预算限制可能在任一恢复步骤中断，不补做停止后的光学工作。</figcaption></figure>
-<p><strong>伪代码与成本：</strong><code>score_and_audit(seed); for d in pool not matching seed: score(d); dense(d); if not strictly_dominated(d): finish_audit(d); explore(); compare_audited(); return(selected)</code>，每一步受原作业评价、时长、资源与取消边界约束。默认 archive_capacity=32；状态验证接受池容量至 archive_capacity+1，当前 seed 可能不在池中，故容许输入的不同设计保守上界为 archive_capacity+2（默认 34），每个需训练并至少进行新独审密网格；潜在优胜候选再完成错位/极值独审。首 seed 与池按物理 hash 去重，已审同一完整设计不重复独审。提前停止则只保留当时合法完成的证据，不声称整个池已重审。取消或时限中断可单独返回已完整训练评分但没有匹配独审的候选，明确 validation_complete=false；最后已审计检查点不能冒充该候选审计，取消候选应用遵循既有用户取消意图、完整训练证据与来源修订校验。search_until_target 仍遵循其原预算策略。层厚以 nm、波长以 nm、角度以度、R/T 以 0–1 fraction 表示；原训练采样及独审规则不变，未新增最小非零厚度或层数约束。</p>
+<p><strong>伪代码与成本：</strong><code>score_and_audit(seed); for d in pool not matching seed: score(d); dense(d); if not strictly_dominated(d): finish_audit(d); explore(); compare_audited(); return(selected)</code>，每一步受原作业评价、时长、资源与取消边界约束。默认 archive_capacity=32；状态验证接受池容量至 archive_capacity+1，当前 seed 可能不在池中，故容许输入的不同设计保守上界为 archive_capacity+2（默认 34），每个需训练并至少进行新独审密网格；潜在优胜候选再完成错位/极值独审。首 seed 与池按物理 hash 去重，已审同一完整设计不重复独审。提前停止则只保留当时合法完成的证据，不声称整个池已重审。时限中断、普通模式取消或直到目标模式取消时本轮尚无已审冠军，均可返回已完整训练评分但没有匹配独审的候选，明确 validation_complete=false；直到目标模式取消时若本轮已有完整独审冠军，优先保留该匹配配对；最后已审计检查点不能冒充该候选审计，取消候选应用遵循既有用户取消意图、完整训练证据与来源修订校验。search_until_target 仍遵循其原预算策略。层厚以 nm、波长以 nm、角度以度、R/T 以 0–1 fraction 表示；原训练采样及独审规则不变，未新增最小非零厚度或层数约束。</p>
 <p><strong>续接密网格支配筛除（2026-11-01，本项目约定）：</strong>仅候选池恢复、所有目标仅启用 pointwise 且本轮已有完整独审冠军时，设同一归一化条件下的密网格最大违规为 E<sub>dense</sub>、冠军完整独审最大违规为 E<sub>best</sub>；仅当 E<sub>dense</sub> &gt; E<sub>best</sub> + max(10<sup>−8</sup>, 10<sup>−6</sup>|E<sub>best</sub>|) 时筛除。相同目标、角度、波长与偏振的重复条件如属于密网格则保留密网格见证，其他额外点重复时保留较大归一化违规见证，并同步 raw coverage 对应实测值，故完整审计最差违规不小于密网格最差违规；旧评分不复用。近阈值、相等、潜在优胜、没有冠军或存在 mean 时完成独审。筛除仅为不完整密网格证据，不是独审通过或材料源全域检查；不能发布为已审计冠军。密网格实际物理/波长工作与逻辑预算照计，取消/时间/资源限制不变。跳过后减少的稀疏审计反馈会改变后续修复及搜索轨迹；不声称与逐项完整审计等价，也不保证更快或特定任务达标。见<a href="film-synthesis-audit-contract.md">独审契约</a>及<a href="film-synthesis-continuation.md">续接契约</a>。</p>
 <p><strong>依据与适用条件：</strong>实现在 <code>film_auto_synthesis.py</code> 的续接恢复、独审比较与结果发布，结构状态在 <code>film_synthesis_continuation.py</code> 校验。恢复顺序、排名和预算计量为本项目约定；未找到外部依据，仅为本项目实现。新结构不一定更好；有限网格及极值复核不是连续谱证明，也不保证全局最优或任何具体设计达标。</p>
 <p><strong>参考与限制：</strong><a href="https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html">SciPy SLSQP 官方文档</a>为原数值求解器参考。一次会话边界、最佳候选选择、指标保护减薄和持久化结构均为本项目约定；未找到外部依据，仅为本项目实现，不声称新的全局收敛保证。未启用指标、材料插值/外推政策及用户正式目标不因本节改变。</p>
@@ -3289,13 +3307,14 @@ finally: cancel/close/wait only owned workers; report fallback and unknown work<
 <section id="film-cancel-best-20261020">
 <h2>14x 取消时冻结完整最好候选并原子应用</h2>
 <p class="source">2026-10-20；常规膜系优化及从零合成的取消选择与结果语义扩展，见<a href="film-optimization-cancel-apply-contract.md">跨模块契约</a>。评分/TMM仍沿用既有章节，未审计不等于达标。</p>
-<p><strong>用途及输入输出：</strong>输入为当前任务冻结请求、用户主动取消意图、父进程原序提交的完整可行评分和来源版本；输出为同一评分排名下的最好完整候选或空，以及单次有撤销的当前膜系应用/冲突状态。波长/膜厚nm、角度°、n/k与R/T无量纲，不新增物理坐标。旧请求不增加预算；旧结果缺候选来源映射仍保留原解释。</p>
-<div class="formula">B←argmin<sub>x∈已完整评分且合法、父进程已提交的候选</sub> rank(x)<br>第一次观察取消：冻结B；不消费在途尾部、不补独立审计。匹配审计仅在audit.design=B.design时复用。</div>
+<p><strong>用途及输入输出：</strong>输入为当前任务冻结请求、用户主动取消意图、父进程原序提交的完整可行评分和来源版本；输出为按模式选择的已完整候选或空，以及单次有撤销的当前膜系应用/冲突状态。波长/膜厚nm、角度°、n/k与R/T无量纲，不新增物理坐标。旧请求不增加预算；旧结果缺候选来源映射仍保留原解释。</p>
+<div class="formula">B←argmin<sub>x∈已完整评分且合法、父进程已提交的候选</sub> rank(x)，A←本轮已提交完整独审冠军<br>第一次观察取消：直到目标模式且A存在则冻结A的训练／独审配对，否则冻结B；不消费在途尾部、不补光学或独立审计。审计仅在audit.design=返回设计时复用。</div>
 <pre>before committing a full feasible training evaluation:
     if cancellation already observed: freeze prior incumbent; stop
     update completed_best using the existing ordered rank
 on explicit user cancellation terminal:
-    retain frozen completed_best; mark training complete and audit status truthfully
+    retain the current-run audited pair if until-target and available, else completed_best
+    mark training complete and audit status truthfully
     if no valid candidate: keep current source; explain
     if operation/project/session/revision/edit epoch/material closure changed:
         retain candidate; explain conflict; keep new edits
@@ -4059,14 +4078,15 @@ minimize t, subject to q_guide(original + admitted audit conditions) &lt;= t, t 
 nominal_success = original_training_pass AND independent_original_audit_pass</pre>
 <p>私有数值引导采用启用约束共同物理可行区间宽度 W 的 2×10<sup>−4</sup> 作为向内余量；仅当位移可表示且不超过 W/4 时使用至少 8 ULP。值目标、零宽/过窄区间及包含等号的自然 0/1 边界不强加余量；严格 &gt;0、&lt;1 有非空内部时可向内引导，物理无解的 &lt;0、&gt;1 不冒充通过，严格标志保持不变。共同区间约束使同时启用的均值与逐点目标不会因引导而被挤成空集。该比例是<strong>本项目搜索约定，不是验收容差</strong>，没有把所有目标统一缩成固定绝对余量。</p>
 <div class="diagram"><pre>原冠军 + 完整审计失败
-          ↓ 原网格接近可行
+          ↓ 原网格接近可行，或直到目标模式的独审差距触发
 原网格 ∪ 已知漏峰 → 固定拓扑局部 epigraph → 原目标完整独立审计
           ↑ 新漏峰（最多3轮）                 ↓ 双重名义通过
-  有界预算/取消/停滞保留冠军             现有减量阶段
+  有界预算/取消/停滞保留冠军             按模式结束或进入减量
           ↓ 未通过
 记录局部失败；去重后返回原搜索</pre><p>图：附加波长仅形成约束；训练和审计的均值、RMS仍各自使用原固定积分网格。</p></div>
 <p>默认本阶段最多 64 次共享逻辑评价（包含阶段审计），最多 3 轮，每轮最多 40 次 SLSQP 迭代；变量按 100 nm 编码、ftol=10<sup>−11</sup>，厚度局部盒为初值 ±5 nm 与原生上下限的交集。局部盒不是新的制造上限，不加层、不换材料；不能据局部失败宣称全局无解。每轮点集冻结，峰移动时再完整审计并有限增补，已纳入的条件跨轮保留；补充均值证据必须是该审计原密网格的完整积分。均值关闭时没有均值目标或额外均值奖励。新增点的物理调用、波长点数和资源估计均计入父级账户。</p>
-<p>触发判定要求每条启用条件的原始归一化违规均不超过该条件的向内位移或 8 ULP 尺度；不使用可能很宽的用户求解器容差作为“接近边界”阈值，也不让宽波段掩盖窄目标组。该判定只负责路由，不把 solver_acceptable 冒充达标。严格等边界也可先审计，不受旧的 solver_acceptable 审计门阻挡。同一冻结输入、物理冠军与余量在昂贵审计前去重，完整 attempt_key 另绑定失败条件；不保存无限全光谱缓存。局部失败、局部预算或无可用梯度以明确诊断返回原搜索；共享全局预算与原停止条件仍生效，不因一次 ±5 nm 修复失败否定后续合法拓扑。原冠军及已完成审计保留；取消传播，禁止后续新评价。取消后若返回另一个未审计训练候选，validation_matches_candidate=false 且 validation_complete=false；最后完整审计设计和绑定哈希仍在有界档案内。仅双重原始名义通过后进入原减量流程；减量仍可能因预算或独立审计拒绝而无改善。</p>
+<p>普通触发判定要求每条启用条件的原始归一化违规均不超过该条件的向内位移或 8 ULP 尺度；不使用可能很宽的用户求解器容差作为“接近边界”阈值，也不让宽波段掩盖窄目标组。该判定只负责路由，不把 solver_acceptable 冒充达标。严格等边界也可先审计，不受旧的 solver_acceptable 审计门阻挡。同一冻结输入、物理冠军与余量在昂贵审计前去重，完整 attempt_key 另绑定失败条件；不保存无限全光谱缓存。局部失败、局部预算或无可用梯度以明确诊断返回原搜索；共享全局预算与原停止条件仍生效，不因一次 ±5 nm 修复失败否定后续合法拓扑。原冠军及已完成审计保留；取消传播，禁止后续新评价。取消后若返回另一个未审计训练候选，validation_matches_candidate=false 且 validation_complete=false；最后完整审计设计和绑定哈希仍在有界档案内。普通模式的双重原始名义通过后沿用既有减量流程；直到目标模式达标后按该模式结束，不追加可选减量。</p>
+<p><strong>直到目标模式的审计差距触发（2026-11-01）：</strong>一次未达标局部会话完成后，以<strong>当前</strong>已审计冠军及其匹配的训练/独审评分为输入；若其有可优化所选层且 E<sub>audit</sub> &gt; E<sub>training</sub> + max(10<sup>−8</sup>, 10<sup>−6</sup>|E<sub>training</sub>|)，则允许调用同一固定拓扑修复，不要求通过普通“接近边界”判定。已达标、无当前独审冠军或无所选变量时不触发，同一物理设计与余量仍受既有去重及共享预算保护。此处 E 为各自评分的最差归一化违规；差距是已观察到的训练与审计采样差异，不证明其来源、修复可行或全局可行。修复仍使用该冠军现有独审的失败条件与私有内点引导、上述最多 64 次共享评价和 3 轮、±5 nm 局部盒；原训练评分、均值积分网格和名义验收均不变。普通模式和拒带提案策略标签不因该路由改变。</p>
 <p>实现：<code>film_synthesis_feasibility.py</code> 的区间引导、精确联合波长评价与局部求解；<code>film_auto_synthesis.py</code> 的即时触发、共享预算、工作计数、审计、保存与减量交接。新增点不进入 canonical 原网格响应，评价器先按联合网格记账，再恢复原响应供排名与观察；私有引导数组不导出。保持原始名义判据、目标权重与原始光谱语义，不使用原始曲线标准差惩罚。</p>
 <p class="source">来源与限制：未找到外部依据，仅为本项目实现。epigraph、局部盒、余量比例、触发和预算均为工程约定；验证只支持有限采样/极值审计，不是连续全波长证书、全局最优或普遍收敛证明。公开回归使用合成材料及边界数据，不包含用户工程、路径或配方。</p>
 </section>

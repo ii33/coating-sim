@@ -163,6 +163,8 @@ simulate，外推策略 `error`；未知 k 仅按冻结设计的显式假设处�
 不得标为全域统计。helper `film_full_domain_preview.full_domain_spectrum`
 只返回有界显示谱，不读 live catalog，并可通过 cancel_event 协作取消。
 
+合成开启 `search_until_target` 时，本轮一旦有完整独审冠军，best 槽保留该冠军的几何，未经完整审计的训练最佳不再覆盖它；current 仍可显示最新完整训练候选。best 的实时数值摘要与目标采样图依旧基于该设计的原训练网格，选择依据包含独审并不使摘要变为独审评分；最终结果单独保留与设计匹配的真实验证评分。
+
 当前与 best 的图谱必须按各自 physical_hash 配对。观察者只保留一个独立
 best 几何快照和启用全域时一个节流 current 快照；前十不保存设计。后台是
 单一 daemon 线程，活动任务可能暂时持有被替换的旧设计，另有至多当前/最佳

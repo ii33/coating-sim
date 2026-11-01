@@ -55,6 +55,7 @@ _RESOURCE_FALLBACK_BASES = frozenset(("unknown_memory_fallback",
 
 class _SearchDiagnostics(TypedDict):
     until_target: NotRequired[dict[str, Any]]
+    cancel_selection: NotRequired[dict[str, Any]]
     legacy_local_session: NotRequired[dict[str, Any]]
     restoration_audit_screen: NotRequired[list[dict[str, Any]]]
     structural_proposals: list[dict[str, object]]
@@ -717,10 +718,10 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
     between physical helper calls.
     snapshot_callback receives copied (design, training, validation, audit)
     only when a new best independently audited candidate is retained.
-    Cancellation returns the best complete feasible training score committed
-    by the parent before it observes cancellation. An existing complete audit
-    is attached only when it belongs to that exact candidate; no audit starts
-    to make the cancellation candidate available.
+    Cancellation in until-goal mode prefers the already committed independently
+    audited incumbent. Without one, and in ordinary mode, it retains the best
+    complete training candidate. An audit is attached only to its exact design;
+    no optics start to make a cancellation candidate available.
     """
     started = monotonic()
     request = _validated(request)
@@ -1331,7 +1332,11 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 operator=operator or archive_context.get("operator", "evaluated"))
         if feasible(value["design"]) and (best is None or rank(value) < rank(best)):
             best = _copy_internal_candidate(value)
-            display_value(best, is_best=True, is_current=False)
+            # In until-goal mode the current slot may explore unverified trials,
+            # but an established audited incumbent owns the best geometry slot.
+            # Display summaries retain their original-training-grid contract.
+            if not request.search_until_target or audited_best is None:
+                display_value(best, is_best=True, is_current=False)
             emit("incumbent", "已保存独立评分的候选，等待最终密网格验证", value["design"], value["score"])
         # A training-feasible candidate may be better on audit even when it
         # loses the training cost tie-break. Audit it before discarding it.
@@ -1622,6 +1627,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         seen_priors = set()
         no_negative_rounds = 0
         total_real_growth = 0
+        polished_prior_families: dict[str, int] = {}
 
         def begin_slice(stage, fraction, quantum):
             nonlocal active_slice
@@ -2556,11 +2562,23 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         seen_priors.update(tried_search)
         repair_attempted = set()
 
-        def repair_near_feasible(trigger_boundary="initial_champion"):
+        def repair_near_feasible(trigger_boundary="initial_champion", *, audit_gap=False):
             """Resolve audited boundary failures before another topology rotation."""
             if targets_verified() or best is None:
                 return
             source = best
+            existing_audit = None
+            if audit_gap:
+                if not request.search_until_target or audited_best is None:
+                    return
+                source, existing_audit = audited_best
+                training_error = float(source['score']['max_error'])
+                audit_error = float(existing_audit['score']['max_error'])
+                # A witnessed sampling gap, not a relaxed feasibility gate or
+                # a claim this topology can meet the target. Only until mode
+                # spends one existing bounded repair quantum on this basin.
+                if audit_error <= training_error + max(1e-8, 1e-6 * abs(training_error)):
+                    return
             if not selected_rows(request, source["design"]):
                 return
             from .film_synthesis_feasibility import (
@@ -2571,7 +2589,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             # A loose user solver tolerance must not prematurely end ordinary
             # topology search. Every active condition must be near its own
             # interval/ULP scale; no wide band can hide a narrow group's miss.
-            if not near_feasible_conditions(request.objectives, source["score"].get("errors", ()), margins):
+            if not audit_gap and not near_feasible_conditions(request.objectives, source["score"].get("errors", ()), margins):
                 return
             input_key = hashlib.sha256(json.dumps(dict(
                 physical_hash=physical_design_hash(source["design"]), margins=margins),
@@ -2585,7 +2603,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 return
             # Strict equality may be solver-unacceptable despite zero residual;
             # audit the near-feasible champion without that legacy audit gate.
-            audited = audit_archive(source, allow_feedback_repair=False)
+            audited = existing_audit if existing_audit is not None else audit_archive(source, allow_feedback_repair=False)
             if audited is None:
                 audited = audit_archive(source, allow_feedback_repair=False, refresh=True)
             if targets_verified():
@@ -2596,7 +2614,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 initial_total_thickness_nm=sum(r["thickness"]["value"] for r in selected_rows(request, source["design"])),
                 margin_semantics="private 2e-4 of common feasible interval; inclusive 0/1/value/empty interiors unchanged",
                 margins=margins, maximum_rounds=MAX_REPAIR_ROUNDS,
-                trigger_scale="per enabled criterion interior displacement / ULP; not solver tolerance",
+                trigger_scale=("current independently audited incumbent has witnessed audit/training sampling gap; until mode only"
+                    if audit_gap else "per enabled criterion interior displacement / ULP; not solver tolerance"),
                 maximum_shared_evaluations=MAX_REPAIR_EVALUATIONS,
                 formal_target_changed=False, original_rms_measure_unchanged=True)
             attempt_key = hashlib.sha256(json.dumps(dict(
@@ -2731,6 +2750,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             emit("hybrid_rotation", "结构族广筛、共享多样档案、局部/全局、真实解析批针、压缩及原全约束复核", explorer["design"], explorer["score"])
             begin_slice("engineering_prior_screen", .25, 32)
             screen_draws = 0
+            prior_polish_candidates: list[tuple[dict[str, Any], dict[str, Any]]] = []
             try:
                 misses = 0
                 while (streams or resume_pending) and misses < max(1, len(streams)) and not targets_verified():
@@ -2809,6 +2829,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                             if (not selected_rows(request, explorer["design"]) or score_sse(raw) < score_sse(explorer)):
                                 explorer = raw
                             screened.append(raw)
+                            prior_polish_candidates.append((raw, prior.provenance))
                         # Pair slots cannot be consumed by a BASE audit. Once
                         # both starts are scored, use the unchanged audit rule.
                         for raw in screened:
@@ -2831,6 +2852,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                             seen_priors.discard(physical_design_hash(pending_proposal.design))
                         resume_pending[0:0] = prior_proposals[len(values):]
                     for adopted_index, (proposal, raw) in enumerate(zip(prior_proposals, values, strict=False)):
+                        prior_polish_candidates.append((raw, proposal.provenance))
                         archive(raw, audit_eligible=False, provenance=proposal.provenance, operator="engineering_prior")
                         if (raw["score"]["max_error"] <= request.acceptable_normalized_error
                                 and solver_acceptable(request, raw["score"])):
@@ -2901,6 +2923,81 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     return
             if targets_verified():
                 break
+
+            # Raw periodic spectra can be poor even for productive local basins.
+            # Give one newly screened family a full-original local work quantum
+            # before raw max-error ranking can erase it. Until mode alone adds
+            # this extra exploration; ordinary local-session stopping is intact.
+            from .film_synthesis_local_restarts import refine_basin_within_quantum
+            if request.search_until_target and prior_polish_candidates:
+                def prior_polish_key(item):
+                    value, provenance = item
+                    family = provenance.get('family', '')
+                    return (polished_prior_families.get(family, 0),
+                        -len(provenance.get('windows', ())), score_sse(value))
+                source, provenance = min(prior_polish_candidates, key=prior_polish_key)
+                family = provenance.get('family', '')
+                polished_prior_families[family] = polished_prior_families.get(family, 0) + 1
+                begin_slice('diverse_prior_local_polish', .30, 300)
+                try:
+                    resource_check(source['design'], jacobian=True, epigraph=True)
+                    archive_context.update(provenance=provenance,
+                        parent_hash=physical_design_hash(source['design']), operator='diverse_prior_local_polish')
+                    emit('prior_local_polish', '新结构先完成一轮局部优化，再与已有最佳方案比较',
+                        source['design'], source['score'])
+                    refined, local = refine_basin_within_quantum(request, source,
+                        cancel_check=stage_check, refine=lambda current: refine_synthesis_full_minimax(
+                            request, current, evaluate=hybrid_evaluate, archive=archive,
+                            cancel_check=stage_check, progress=local_progress, max_iterations=120))
+                    search_diagnostics['local_refinement'].append(local)
+                    archive(refined, audit_eligible=False)
+                    if score_sse(refined) < score_sse(explorer):
+                        explorer = refined
+                    end_slice(local['termination'])
+                    audit_archive(refined, allow_feedback_repair=False)
+                except (SynthesisStageBudget, SynthesisResourceGuard) as exc:
+                    end_slice('resource_guard' if isinstance(exc, SynthesisResourceGuard) else 'stage_budget')
+                finally:
+                    end_slice()
+                    archive_context.clear()
+                repair_near_feasible('diverse_prior_local_polish')
+                if targets_verified():
+                    break
+
+            # Restart a retained physical basin with independent per-layer
+            # perturbations, in addition to the existing smooth global modes.
+            # All intermediate work uses the same counters/cancel boundary.
+            if request.search_until_target and audited_best is not None:
+                from .film_synthesis_local_restarts import relative_basin_start
+                trial, restart_info = relative_basin_start(request, audited_best[0]['design'],
+                    rotation=rotation_base + cycle)
+                if feasible(trial) and physical_design_hash(trial) not in tried_search:
+                    begin_slice('independent_layer_basin_restart', .25, 300)
+                    try:
+                        resource_check(trial, jacobian=True, epigraph=True)
+                        archive_context.update(provenance=dict(family='relative_basin_restart', **restart_info),
+                            parent_hash=restart_info['parent_physical_hash'], operator='relative_basin_restart')
+                        source = hybrid_evaluate(trial)
+                        archive(source, audit_eligible=False)
+                        emit('basin_restart', '保留已复核最佳方案，扰动各层厚度后搜索另一个局部解', trial, source['score'])
+                        refined, local = refine_basin_within_quantum(request, source,
+                            cancel_check=stage_check, refine=lambda current: refine_synthesis_full_minimax(
+                                request, current, evaluate=hybrid_evaluate, archive=archive,
+                                cancel_check=stage_check, progress=local_progress, max_iterations=120))
+                        search_diagnostics['local_refinement'].append(dict(local, restart=restart_info))
+                        archive(refined, audit_eligible=False)
+                        if score_sse(refined) < score_sse(explorer):
+                            explorer = refined
+                        end_slice(local['termination'])
+                        audit_archive(refined, allow_feedback_repair=False)
+                    except (SynthesisStageBudget, SynthesisResourceGuard) as exc:
+                        end_slice('resource_guard' if isinstance(exc, SynthesisResourceGuard) else 'stage_budget')
+                    finally:
+                        end_slice()
+                        archive_context.clear()
+                    repair_near_feasible('independent_layer_basin_restart')
+                    if targets_verified():
+                        break
 
             # Low-dimensional global modes preserve real topologies and explore
             # broad physical thickness basins; specialists get rotating turns.
@@ -3187,6 +3284,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 if finish_unmet_local_session(local_source):
                     if not request.search_until_target:
                         return
+                    repair_near_feasible('until_local_audit_gap', audit_gap=True)
                     if targets_verified():
                         break
                     assert audited_best is not None  # Completed inner session published its audit.
@@ -4361,7 +4459,13 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         if state == "cancelled" or reason == "time_limit":
             # Freeze only values already committed above. Pool shutdown may
             # collect work counters, but cannot promote any late candidate.
-            best, validation = completed_training_best, completed_training_validation
+            if state == 'cancelled' and request.search_until_target and audited_best is not None:
+                best, validation = audited_best
+                search_diagnostics['cancel_selection'] = dict(
+                    policy='prefer_current_run_audited_incumbent',
+                    selected_audit_complete=True, post_cancel_optics=False)
+            else:
+                best, validation = completed_training_best, completed_training_validation
             candidate_provenance = {
                 "selection": ("completed_training_at_cancel" if state == "cancelled"
                               else "completed_training_at_time_limit") if best is not None else "none",
