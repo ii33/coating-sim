@@ -12,7 +12,7 @@
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px solid #c8e0db;border-radius:8px;padding:16px;font-size:.88rem;line-height:1.5}</style>
 </head>
 <body>
-<p class="source">算法更新：2026-11-01；<a href="#film-synthesis-until-target-20261101">14bg 搜索直到目标与局部暂停</a>：局部判据不变，未达标可手动继续；有限策略耗尽不证明物理不可行。</p>
+<p class="source">算法更新：2026-11-01；<a href="#film-synthesis-until-target-20261101">14bg 搜索直到目标与自动外层轮转</a>：局部判据不变，未达标自动推进下一轮；有限搜索不证明物理不可行。</p>
 <p class="source">算法更新：2026-10-31；<a href="#film-resource-prediction-20261031">14bf 快速资源经验预估</a>：离线校准、在线固定公式；与14be必要条件诊断及显式合成验证分离，受限域不冒充通用能力。</p>
 <p class="source">算法更新：2026-10-30；新增<a href="#film-synthesis-selected-surfaces-20261030">14bd 选面联合合成与全几何导数</a>。</p>
 <p class="source">算法更新：2026-10-28；<a href="#film-sensitivity-missing-k-20261028">敏感度缺失 k 规则</a>与普通光谱一致：无来源 k 仅计算时取 0，已有 k 保留真实值并严格检查完整原波段。</p>
@@ -271,28 +271,28 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#film-synthesis-selected-surfaces-20261030">14bd 选面联合合成与全几何解析导数（2026-10-30）</a>
 <a href="#film-resource-estimation-20261030">14be 必要条件诊断与显式合成验证</a>
 <a href="#film-resource-prediction-20261031">14bf 快速层数／厚度经验预估（受限域）</a>
-<a href="#film-synthesis-until-target-20261101">14bg 搜索直到目标与局部暂停</a>
+<a href="#film-synthesis-until-target-20261101">14bg 搜索直到目标与自动外层轮转</a>
 </nav>
 <main>
 
 <section id="film-synthesis-until-target-20261101">
-<h2>14bg 搜索直到目标：局部暂停与外层完成分离</h2>
+<h2>14bg 搜索直到目标：局部停止与外层轮转分离</h2>
 <p>更新：2026-11-01。用途：从零合成开启 <code>search_until_target</code> 后，解除本次迭代、评价与墙钟预算造成的提前终止，同时保留现有局部停止规则。默认关闭；关闭时原局部收敛、停滞与会话结束行为不变。没有修改梯度阈值、局部求解器或收敛判据，也没有新增自动“隧穿”求解器。</p>
 <p>输入为完整材料、基片、原光谱目标、制造约束和显式布尔选项。厚度单位 nm、波长 nm、角度度；层序仍为基片向外，物理计算不变。先验证所有原始输入，再仅将 <code>max_cycles/max_evaluations/max_seconds</code> 归一为无上限；层数、单层/总厚度及最小非零层厚等制造约束仍生效。界面移除数值工作集护栏，新的界面任务显式 <code>max_working_set_bytes=None</code>，不意味系统内存或物理资源无限，真实资源/数值错误仍明确中断。</p>
-<pre>运行既有混合搜索及局部会话
-if 原目标训练网格与独立审计均达标:
-    报告达标；结束，不追加可选的达标后增裕量/减厚
-elif 局部会话按原规则收敛/停滞:
-    保留候选与真实结构前沿；报告“本轮暂停、搜索未完成”
-    等待用户点击“继续优化”，才推进既有结构/全局/针插操作
-elif 声明范围内的结构前沿及剩余可执行操作确已耗尽:
-    报告有限策略范围耗尽；不宣称所有膜系物理不可行
-else:
-    明确取消、资源阻塞或数值错误；不伪装达标或穷尽</pre>
-<figure class="figure"><svg viewBox="0 0 920 190" role="img" aria-label="局部暂停不等于全部搜索完成"><g fill="#e3f1ed" stroke="#087f78"><rect x="10" y="55" width="170" height="70" rx="8"/><rect x="230" y="55" width="200" height="70" rx="8"/><rect x="485" y="15" width="190" height="60" rx="8"/><rect x="485" y="110" width="190" height="60" rx="8"/><rect x="725" y="110" width="185" height="60" rx="8"/></g><g fill="#18303a" text-anchor="middle" font-size="16"><text x="95" y="84">结构／全局搜索</text><text x="95" y="108">保持原制造约束</text><text x="330" y="84">既有局部优化与审计</text><text x="330" y="108">停止判据不变</text><text x="580" y="40">原目标审计通过</text><text x="580" y="62">搜索完成</text><text x="580" y="136">局部暂停，未达标</text><text x="580" y="158">搜索未完成</text><text x="818" y="136">点击“继续优化”</text><text x="818" y="158">尝试其他结构／盆地</text></g><g stroke="#087f78" fill="none" stroke-width="2"><path d="M180 90H230M430 90L485 45M430 90L485 140M675 140H725M818 170V184H95V125"/></g></svg><figcaption>局部自动停止后由用户决定继续，不能把一次局部驻点当成全部已知方法失败；只有明确的有限前沿耗尽证据才显示相应范围结束。</figcaption></figure>
-<p>状态证据位于 <code>performance.search.until_target</code>：<code>search_complete</code> 仅表示原目标已审计通过或已声明的有限策略前沿耗尽；<code>global_infeasibility_proven</code> 始终为 false。局部暂停、单个搜索量子没有新候选、取消及资源/错误都不是总体不可行证明。连续厚度空间和随机搜索一般无法穷尽，因此不承诺一定自动得出“所有方案达不到”。记录本次轮数、评价数、已消费结构来源候选数及剩余来源数量，供说明实际尝试范围；这些不是总体覆盖率。</p>
+<pre>初始化或一次性恢复前沿和审计档案
+while 未取消、未遇资源或数值错误:
+    执行一轮既有结构来源、全局厚度和解析针等搜索
+    局部优化按原停止判据结束并独立审计候选
+    if 原目标训练网格与独立审计均达标:
+        报告达标；立即结束，不追加可选的增裕量／减厚
+    else:
+        保留本作业结构游标、档案及累计工作量；自动进入下一轮
+若配置下没有可执行新步骤则报告搜索受阻，不证明全部方法穷尽；
+明确报告取消、资源阻塞或数值错误；不可将单轮无新候选冒充全部方案耗尽</pre>
+<figure class="figure"><svg viewBox="0 0 920 190" role="img" aria-label="局部停止后自动进入下一轮搜索"><g fill="#e3f1ed" stroke="#087f78"><rect x="10" y="55" width="170" height="70" rx="8"/><rect x="230" y="55" width="200" height="70" rx="8"/><rect x="485" y="15" width="190" height="60" rx="8"/><rect x="485" y="110" width="190" height="60" rx="8"/><rect x="725" y="110" width="185" height="60" rx="8"/></g><g fill="#18303a" text-anchor="middle" font-size="16"><text x="95" y="84">结构／全局搜索</text><text x="95" y="108">保持原制造约束</text><text x="330" y="84">既有局部优化与审计</text><text x="330" y="108">停止判据不变</text><text x="580" y="40">原目标审计通过</text><text x="580" y="62">立即结束</text><text x="580" y="136">局部停止，仍未达标</text><text x="580" y="158">保留当前搜索状态</text><text x="818" y="136">自动推进下一轮</text><text x="818" y="158">结构／全局／针搜索</text></g><g stroke="#087f78" fill="none" stroke-width="2"><path d="M180 90H230M430 90L485 45M430 90L485 140M675 140H725M818 170V184H95V125"/></g></svg><figcaption>局部停止不等于总体搜索完成；同一作业内自动轮转，不重新恢复和重审整个档案。取消、资源、错误或无可执行新步骤可中断搜索；受阻不证明全局不可行。</figcaption></figure>
+<p>状态证据位于 <code>performance.search.until_target</code>。原目标经独立审计通过才是达标；<code>global_infeasibility_proven</code> 始终为 false。单个搜索量子没有新候选、局部停止、取消及资源／错误都不是总体不可行证明；没有足够证据时不得把有限前沿描述为所有已知结构和方法失败。连续厚度空间和随机搜索一般无法穷尽，故不保证计算必然自行结束。轮数、评价数、已消费来源及剩余来源只说明已做工作，不是总体覆盖率。</p>
 <p>“继续优化”复用当前协议的保存前沿及材料/目标来源校验；重新评分，不复用旧评分或优化器内部状态。开关属于本次调度策略，不加入物理与结构前沿身份哈希。普通关闭模式与已存在的显式继续行为保持不变。取消仍是协作式，只返回取消前完成的候选，不补算审计；错误、资源不足以及边界耗尽不能静默改成成功。</p>
-<p class="source">实现：<code>coat_sim/core/film_auto_synthesis.py</code>、<code>film_synthesis_continuation.py</code>、<code>film_synthesis_stop_policy.py</code> 及界面适配器；回归：<code>tests/test_film_synthesis_until_target.py</code> 和原局部会话停止测试。此停止/暂停交互为本项目约定，未找到外部依据，仅为本项目实现；并未用文献证明有限搜索可判全局不可行。现有局部与全局算法依据见本页对应章节。</p>
+<p class="source">实现：<code>coat_sim/core/film_auto_synthesis.py</code>、<code>film_synthesis_continuation.py</code>、<code>film_synthesis_stop_policy.py</code> 及界面适配器；回归：<code>tests/test_film_synthesis_until_target.py</code> 和原局部会话停止测试。此外层自动轮转为本项目约定，未找到外部依据，仅为本项目实现；并未用文献证明有限搜索可判全局不可行。现有局部与全局算法依据见本页对应章节。</p>
 </section>
 
 

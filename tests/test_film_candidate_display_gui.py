@@ -844,7 +844,7 @@ def test_real_qml_synthesis_until_target_control_and_help(app, tmp_path):
             toggle = window.findChild(QObject, "filmSynthesisSearchUntilTargetField")
             assert toggle is not None and not toggle.property("checked")
             help_text = window.findChild(QObject, "filmSynthesisSearchUntilTargetHelp").property("text")
-            for phrase in ("达标或局部收敛可停止", "局部收敛判据不变", "继续优化", "手动取消", "资源不足", "错误", "忽略", "制造约束"):
+            for phrase in ("局部收敛判据不变", "自动继续", "独立验证达标", "手动取消", "资源不足", "错误", "忽略", "制造约束"):
                 assert phrase in help_text
             assert not controller.setSynthesisOption("archive_capacity", "0")
             toggle.setProperty("checked", True)

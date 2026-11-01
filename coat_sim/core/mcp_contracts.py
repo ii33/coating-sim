@@ -117,7 +117,7 @@ FILM_SYNTHESIS_PLAN_INPUT_SCHEMA: dict[str, Any] = {
                         "items": {"enum": ["front", "back"]}, "default": ["front"],
                         "description": "Physical faces synthesized jointly; back requires a double-sided substrate. Unselected stacks remain fixed. Layer and thickness limits apply to selected faces in aggregate."},
                     "search_until_target": {"type": "boolean", "default": False,
-                        "description": "Ignore per-run cycle/evaluation/time budgets after validation; physical constraints and local convergence stay unchanged. A local session may pause unmet; continuing global/structure search requires an explicit user action. No global infeasibility claim."},
+                        "description": "Ignore per-run cycle/evaluation/time budgets after validation; physical constraints and local convergence stay unchanged. If a local session ends unmet, the same job continues outer structure, global, and needle search. Cancellation, resources, or errors can stop it; no global infeasibility claim."},
                     "needle_pre_local": {"type": "boolean", "default": NEEDLE_PRE_LOCAL},
                     "warm_start_seed_index": {
                         "type": ["integer", "null"], "minimum": 0, "default": None,

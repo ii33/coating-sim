@@ -5515,9 +5515,9 @@ class FilmOptimizationQuickController(QObject):
                 and evidence.get('search_complete') is True
                 and evidence.get('declared_frontier_exhausted') is True):
             return '已声明的有限搜索策略前沿耗尽'
-        if status in {'cancelled', 'blocked_resource', 'interrupted_error'}:
+        if status in {'cancelled', 'blocked_resource', 'blocked_search', 'interrupted_error'}:
             return {'cancelled': '搜索已取消', 'blocked_resource': '搜索因资源不足中断',
-                    'interrupted_error': '搜索因错误中断'}[status]
+                    'blocked_search': '搜索受阻', 'interrupted_error': '搜索因错误中断'}[status]
         return '本轮暂停，搜索尚未完成'
 
     def _synthesis_session_stop_text(self) -> str:
@@ -5533,6 +5533,8 @@ class FilmOptimizationQuickController(QObject):
                 return '已声明的有限搜索策略前沿耗尽，目标未达成；这不证明物理上不存在可行方案。'
             if status == 'blocked_resource':
                 return '搜索因资源不足中断；目标尚未确认达成，请检查系统可用资源。'
+            if status == 'blocked_search':
+                return '当前配置下没有可执行的新搜索步骤，搜索受阻；不证明所有方法已穷尽或目标物理不可实现。'
             if status in {'cancelled', 'interrupted_error'}:
                 return ''  # Existing cancellation/error reporting remains authoritative.
             reason = raw.get('termination_reason')

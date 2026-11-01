@@ -2090,12 +2090,12 @@ AppWindow {
                                                 checked = Qt.binding(() => window.controller.synthesisOptions.search_until_target ?? false)
                                         }
                                         Accessible.name: text
-                                        Accessible.description: "达标或局部收敛可停止；未达标可点击继续优化。也可手动取消，资源不足或错误也会结束。此模式忽略轮次、评价和时间预算，但仍遵守制造约束。"
+                                        Accessible.description: "原目标达标后停止；局部优化按原判据停止，未达标时自动继续结构及全局搜索。也可手动取消，资源不足或错误也会结束。此模式忽略轮次、评价和时间预算，但仍遵守制造约束。"
                                     }
                                     Label {
                                         objectName: "filmSynthesisSearchUntilTargetHelp"
                                         Layout.fillWidth: true
-                                        text: "启用后达标或局部收敛可停止；局部收敛判据不变，未达标时可点击继续优化，尝试新的结构或全局搜索。也可手动取消，资源不足或发生错误时会结束。此模式忽略最大轮次、候选评价次数和计算时间预算，仍遵守制造约束。"
+                                        text: "启用后局部收敛判据不变；未达标时自动继续尝试新的结构、全局及针搜索，原目标独立验证达标后停止。也可手动取消，资源不足或发生错误时会结束。此模式忽略最大轮次、候选评价次数和计算时间预算，仍遵守制造约束；不保证必然达标或自行结束。"
                                         color: window.themeTokens.colorTextMuted
                                         wrapMode: Text.WordWrap
                                     }

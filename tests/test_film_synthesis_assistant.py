@@ -110,6 +110,8 @@ def test_mcp_until_target_is_typed_optional_and_matches_decoder_defaults():
     schema = FILM_SYNTHESIS_PLAN_INPUT_SCHEMA['properties']['payload']['properties']['request']
     assert schema['properties']['search_until_target']['type'] == 'boolean'
     assert schema['properties']['search_until_target']['default'] is False
+    description = schema['properties']['search_until_target']['description']
+    assert 'same job continues' in description and 'requires an explicit user action' not in description
     assert 'search_until_target' not in schema['required']
     for enabled in (False, True):
         payload['request']['search_until_target'] = enabled

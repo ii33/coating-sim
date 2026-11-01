@@ -4,6 +4,7 @@ The pending proposal and local solver termination are deliberately controlled;
 these orchestration cases do not claim to reproduce a user's physical design.
 """
 from copy import deepcopy
+from threading import Event, Timer
 
 import pytest
 
@@ -43,8 +44,30 @@ def _stop_local_at_real_source(monkeypatch):
 @pytest.mark.parametrize('until_target', [False, True])
 def test_unmet_audited_incumbent_survives_repeated_worse_continues(monkeypatch, edit_current_seed, until_target):
     service, request = unmet_problem(acceptable_normalized_error=1e-8, search_until_target=until_target)
-    first = synthesize_film_design(service, request)
-    assert first.state == 'completed' and not first.targets_met
+    def bounded(service, request, **kwargs):
+        if not until_target:
+            return synthesize_film_design(service, request, **kwargs)
+        cancel = Event()
+        def progress(row):
+            if row.stage == 'until_target_continue':
+                cancel.set()
+        expired = Event()
+        def expire():
+            expired.set()
+            cancel.set()
+        watchdog = Timer(60., expire)
+        watchdog.start()
+        try:
+            result = synthesize_film_design(service, request, cancel_event=cancel,
+                progress_callback=progress, **kwargs)
+        finally:
+            watchdog.cancel()
+        assert not expired.is_set(), 'continuation boundary not reached before safety watchdog'
+        assert cancel.is_set()
+        return result
+
+    first = bounded(service, request)
+    assert first.state == ('cancelled' if until_target else 'completed') and not first.targets_met
     assert first.validation_complete and first.search_checkpoint is not None
     assert first.validation_score is not None and first.candidate_design is not None
     incumbent = deepcopy(first.candidate_design)
@@ -61,11 +84,11 @@ def test_unmet_audited_incumbent_survives_repeated_worse_continues(monkeypatch, 
             seed['front_layers'][0]['thickness']['value'] = 30.
         checkpoint = _new_pending(current.search_checkpoint, proposal)
         snapshots: list[dict] = []
-        result = synthesize_film_design(None, continue_synthesis_request(current.frozen_request,
+        result = bounded(None, continue_synthesis_request(current.frozen_request,
             checkpoint, current_design=seed), snapshot_callback=lambda design, *_, rows=snapshots: rows.append(deepcopy(design)))
         assert any(row.stage == 'structure_proposal' and row.physical_hash == physical_design_hash(proposal)
                    for row in result.trace), result.termination_reason
-        assert result.state == 'completed', result.termination_reason
+        assert result.state == ('cancelled' if until_target else 'completed'), result.termination_reason
         assert not result.targets_met and result.validation_complete
         assert result.validation_score is not None and result.candidate_design is not None
         assert result.validation_score['max_error'] <= prior_error + 1e-12

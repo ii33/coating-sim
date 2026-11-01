@@ -335,24 +335,45 @@ def test_until_target_stalled_or_unverified_terminal_does_not_claim_convergence(
         assert '未确认局部收敛' in text and '搜索尚未完成' in text
 
 
-def test_until_target_real_local_pause_waits_for_user_to_continue(app, project_gui):
+def test_until_target_real_search_stays_active_until_cancelled(app, project_gui):
     harness, _host, _workspace, _store, _library, _saved = project_gui
-    _service, _source, controller, scene = _optimizer(harness)
+    service, _source, controller, scene = _optimizer(harness)
     _unmet_settings(controller)
     assert controller.setSynthesisOption('search_until_target', True)
-    reference, _record = _finish_unmet(controller, scene)
-    evidence = controller._synthesis_payload['result']['performance']['search']['until_target']
-    assert evidence['enabled'] and not evidence['goal_met'] and not evidence['search_complete']
-    assert evidence['status'] == 'paused_local'
-    old_job = controller.queueJobId
+    scene.click(scene.item('filmOptimizationStartButton'))
+    _wait(lambda: controller.busy and bool(controller.queueJobId), seconds=30.)
+    job = controller.queueJobId
+    checkpoint = service.root / 'artifacts/runtime/scheduler/jobs' / job / 'best-candidate.search-state.json'
+    _wait(checkpoint.is_file, seconds=60.)  # Wait for actual admission/work, not a provisional ID.
     QTest.qWait(500)
-    assert not controller.busy and controller.queueJobId == old_job  # No automatic restart.
-    assert controller.canContinueSynthesisSearch, controller.synthesisSearchDisabledReason
-    scene.click(scene.item('filmSynthesisContinueSearchButton'))
-    _wait(lambda: controller.queueJobId != old_job, seconds=30.)
-    assert controller.queueJobId != old_job, (controller.error, controller.synthesisSearchDisabledReason)
+    assert controller.busy and controller.queueJobId == job
+    assert controller.synthesisPhase != '本轮完成'
+    scene.click(scene.item('filmOptimizationCancelButton'))
     _wait(lambda: not controller.busy, seconds=60.)
-    assert controller.queueJobId != reference['job_id']
+    assert controller._synthesis_payload['result']['state'] == 'cancelled', controller.error
+    assert not controller._synthesis_payload['result']['targets_met']
+
+
+def test_until_target_continuation_progress_is_ongoing_and_allowlisted():
+    from coat_sim.ui.film_synthesis_search_state import progress_presentation
+    stage = 'until_target_continue'
+    assert phase_label(stage + ' | ignored diagnostic') == '结构搜索'
+    assert phase_label('结构搜索 | 当前报告层数 2') == '结构搜索'
+    text = progress_presentation({'stage': stage, 'layer_count': 2, 'evaluations': 10,
+        'message': 'secret-hash-1234567890'})
+    assert '结构搜索' in text and '本轮完成' not in text
+    assert 'secret-hash' not in text and '未达成' not in text
+
+
+def test_until_target_operational_block_is_not_pause_or_exhaustion():
+    raw = {'state': 'not_found', 'targets_met': False, 'frozen_request': {'search_until_target': True},
+           'termination_reason': 'no_admissible_search_step', 'performance': {'search': {
+               'until_target': {'enabled': True, 'status': 'blocked_search', 'search_complete': False}}}}
+    label = FilmOptimizationQuickController._synthesis_task_state_label(raw)
+    view = cast(FilmOptimizationQuickController, SimpleNamespace(_synthesis_payload={'result': raw}))
+    detail = FilmOptimizationQuickController._synthesis_session_stop_text(view)
+    assert '受阻' in label and '受阻' in detail
+    assert '不证明' in detail and '本轮暂停' not in detail and '搜索完成' not in detail
 
 
 def test_until_target_resource_failure_is_explicit_and_not_success():

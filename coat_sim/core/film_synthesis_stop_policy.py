@@ -21,6 +21,11 @@ def until_target_summary(*, state: str, reason: str, goal_met: bool,
         status = 'cancelled'
     elif reason in {'resource_limit', 'continuation_resource_limit', 'local_session_resource_guard'}:
         status = 'blocked_resource'
+    elif reason == 'no_admissible_search_step':
+        status = 'blocked_search'
+    elif reason in {'local_session_solver_failure', 'local_session_terminal_evidence_unavailable',
+                    'local_session_iteration_limit', 'local_session_stage_budget'}:
+        status = 'interrupted_error'
     elif state == 'failed':
         status = 'interrupted_error'
     elif goal_met:

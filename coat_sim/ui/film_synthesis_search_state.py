@@ -164,6 +164,8 @@ def build_request(controller, record):
 
 def phase_label(message):
     stage = str(message).split('|',1)[0].strip()
+    if stage in {'until_target_continue', '结构搜索'}:
+        return '结构搜索'
     if stage.startswith(('local_margin','canonical_margin','local_session','local_refinement','canonical_local', '局部优化')):
         return '局部优化'
     if stage.startswith(('thickness_reduction','nominal_thickness_reduction', '减薄')):
@@ -181,7 +183,9 @@ def progress_presentation(value, audited_layer_count=None):
     """
     stage = value.get('stage') if isinstance(value, dict) else None
     stage = stage if isinstance(stage, str) else ''
-    if stage.startswith(('local_margin', 'canonical_margin', 'local_session',
+    if stage == 'until_target_continue':
+        label = '结构搜索'
+    elif stage.startswith(('local_margin', 'canonical_margin', 'local_session',
                          'local_refinement', 'canonical_local', 'interior_local')):
         label = '局部优化'
     elif stage.startswith(('thickness_reduction', 'nominal_thickness_reduction')):

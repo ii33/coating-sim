@@ -1306,7 +1306,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         return audited
 
     def targets_verified():
-        return ((not resumed or resume_session_complete or new_audited_pass) and audited_best is not None
+        return ((not resumed or request.search_until_target or resume_session_complete or new_audited_pass) and audited_best is not None
                 and nominal_targets_pass(request, audited_best[0]["score"])
                 and nominal_targets_pass(request, audited_best[1]["score"], independent_audit=True))
 
@@ -2212,7 +2212,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 fixed_layer_ids=[r['id'] for r in selected_rows(request, source['design'])],
                 fixed_materials=[[r['material_id'], r['optical_set_id']] for r in selected_rows(request, source['design'])],
                 scope='full original training-grid epigraph numerical local session; target attainment and independent audit reported separately',
-                policy='complete search turn before local session; no automatic new topology after local convergence or scaled stagnation')
+                policy=('complete search turn before local session; until-goal resumes the outer search after local convergence or scaled stagnation'
+                    if request.search_until_target else
+                    'complete search turn before local session; no automatic new topology after local convergence or scaled stagnation'))
             details['local_session'] = record
             emit('local_session', '固定本轮合理结构完成局部优化；数值收敛与指标达标分别判断', source['design'], source['score'])
             from .film_synthesis_thickness import optical_quality_by_group
@@ -2856,7 +2858,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             finally:
                 end_slice()
             repair_near_feasible("engineering_prior_screen")
-            if resumed:
+            if resumed and not request.search_until_target:
                 session = dict(policy='one existing source-screen quantum plus one bounded fixed-topology feasibility solve; historical champion independent',
                     new_structure_selected=resume_branch is not None,
                     historical_hash=None if historical_audited is None else physical_design_hash(historical_audited[0]['design']))
@@ -3172,7 +3174,7 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             details["completed_rotations"] = cycle
             details["real_growth_rounds"] = total_real_growth
             if not targets_verified():
-                if resumed and resume_branch is None:
+                if resumed and not request.search_until_target and resume_branch is None:
                     session = details['continuation_session']
                     session.update(status='remaining_operator_quantum_no_new_candidate',
                         frontier_exhausted=not streams and not resume_pending and not pending_search
@@ -3180,10 +3182,37 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     postprocess_complete = True
                     raise _Stopped('continuation_frontier_exhausted' if session['frontier_exhausted']
                         else 'continuation_quantum_no_new_candidate')
-                local_source = resume_branch if resumed else best
+                local_source = resume_branch if resumed and not request.search_until_target else best
                 assert local_source is not None
                 if finish_unmet_local_session(local_source):
-                    return
+                    if not request.search_until_target:
+                        return
+                    if targets_verified():
+                        break
+                    assert audited_best is not None  # Completed inner session published its audit.
+                    # Inner stationarity ends this topology's local solve, not
+                    # the user's until-goal search. Keep the same live archive,
+                    # audited incumbent, source iterators and work counters.
+                    # No new job, replay, or archive restoration is involved.
+                    local = details['local_session']
+                    details['automatic_local_sessions_completed'] = (
+                        details.get('automatic_local_sessions_completed', 0) + 1)
+                    details['last_automatic_local_session'] = dict(
+                        cycle=cycle, status=local['status'],
+                        local_converged=local['local_converged'],
+                        returned_physical_hash=local['returned_physical_hash'])
+                    postprocess_complete = False
+                    if (not streams and not resume_pending and not pending_search
+                            and not remaining_rotation_work()):
+                        # This is an operational block, not an infeasibility
+                        # certificate for every continuous design/method.
+                        details['until_target_status'] = 'no_admissible_search_step'
+                        raise _Stopped('no_admissible_search_step')
+                    emit('until_target_continue',
+                        '本轮局部优化已结束、目标尚未达到；继续轮转结构、全局搜索、针插与生长',
+                        audited_best[0]['design'], audited_best[0]['score'])
+                    capture_search_checkpoint(publish=True)
+                    continue
                 break
             if evaluations == rotation_start_evaluations:
                 raise _Stopped('no_effective_search_work_resource_or_frontier_limit')
@@ -3304,6 +3333,8 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                 assert search_state is not None
                 saved_pool = deepcopy(search_state['pool'])
                 for saved_entry in saved_pool:
+                    if request.search_until_target and targets_verified():
+                        break
                     if physical_design_hash(saved_entry['design']) == physical_design_hash(initial_design):
                         continue
                     restored = evaluate(saved_entry['design'], gpu_forward=forward is not None)
@@ -4388,6 +4419,12 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
             if summary['status'] == 'declared_frontier_exhausted':
                 message = ('当前声明的结构前沿与可执行优化操作已耗尽，未找到达标方案；'
                            '这不是所有膜系物理不可行的证明。')
+            elif summary['status'] == 'blocked_search':
+                message = ('当前配置下没有可执行的新搜索步骤，搜索受阻；已保留候选与进度，'
+                           '未证明所有设计方法已穷尽或目标物理不可实现。')
+            elif summary['status'] == 'interrupted_error':
+                message = ('求解异常中断了继续搜索；已保留完整候选和搜索进度，'
+                           '不能把本次中断当作局部收敛、全部搜索结束或目标不可实现。')
             elif summary['status'] == 'paused_local':
                 message = ('本轮局部优化按既有停止规则暂停，目标尚未全部达到；'
                            '全部搜索尚未完成，点击“继续优化”可尝试其他结构与全局搜索。')
