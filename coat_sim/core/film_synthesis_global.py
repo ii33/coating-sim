@@ -33,6 +33,9 @@ def iter_reflector_proposals(request, *, epoch=0, cancel_check=lambda: None, rep
     objectives = reflector_objectives(request)
     if not objectives or request.seed_designs:
         return
+    from .film_synthesis_rejection_priors import iter_rejection_proposals
+    yield from iter_rejection_proposals(request, epoch=epoch,
+        cancel_check=cancel_check, report=report)
     materials = {m['id']: m for m in request.frozen_material_snapshot['materials']}
     samples = {}
     for ref in request.candidate_materials:

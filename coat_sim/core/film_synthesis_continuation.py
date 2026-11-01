@@ -63,6 +63,20 @@ def search_fingerprint(request):
             for side in ('front', 'back') if side not in selected_sides(request)}
     snapshot = request.frozen_material_snapshot or {}
     data['frozen_material_snapshot'] = snapshot.get('materials')
+    # Cursors index deterministic structural streams, so old T-ceiling source
+    # cursors cannot silently resume against the newly enabled proposal families.
+    from .film_synthesis_proposal_objectives import (
+        PROPOSAL_OBJECTIVE_POLICY, reflective_proposal_request,
+    )
+    if request.search_strategy == 'hybrid':
+        proposal_request, hints = reflective_proposal_request(replace(request, seed_designs=()))
+        if hints:
+            data['proposal_objective_policy'] = PROPOSAL_OBJECTIVE_POLICY
+        from .film_synthesis_rejection_priors import (
+            REJECTION_PROPOSAL_POLICY, rejection_prior_applicable,
+        )
+        if rejection_prior_applicable(proposal_request):
+            data['rejection_proposal_policy'] = REJECTION_PROPOSAL_POLICY
     return _digest(data)
 
 

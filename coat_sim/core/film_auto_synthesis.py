@@ -1596,7 +1596,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
         search_diagnostics["hybrid"] = details
         active_slice = None
         explorer = initial
-        source_request = replace(request, seed_designs=())
+        from .film_synthesis_proposal_objectives import reflective_proposal_request
+        source_request, proposal_hints = reflective_proposal_request(replace(request, seed_designs=()))
+        details["proposal_objective_hints"] = list(proposal_hints)
         historical_audited = audited_best if resumed else None
         stable_cluster_prior_route = (len(request.candidate_materials) >= 2
             and (request.max_layers is None or request.max_layers >= 3) and request.ar_structure_mode == 'clustered'
@@ -2509,6 +2511,9 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                     check_training_admission()
                     next(source)
                 for proposal in source:
+                    if proposal_hints and name not in ('user_seed', 'homogeneous'):
+                        proposal = replace(proposal, provenance=dict(proposal.provenance,
+                            proposal_objective_hints=list(proposal_hints)))
                     hybrid_state['cursors'][name] += 1
                     identity = physical_design_hash(proposal.design)
                     if identity not in tried_search:
