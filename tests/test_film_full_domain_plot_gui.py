@@ -10,7 +10,7 @@ from typing import Any, cast
 
 import pytest
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtCore import QPoint
+from PySide6.QtCore import QPoint, QPointF, Qt
 from PySide6.QtQuick import QQuickItem
 from PySide6.QtTest import QTest
 
@@ -484,16 +484,62 @@ def test_real_full_domain_qml_visual_at_normal_and_narrow_width(app, tmp_path):
                 assert panel is not None
                 panel_origin = panel.mapToScene(panel.boundingRect().topLeft())
                 assert panel_origin.x() >= 0 and panel_origin.x() + panel.width() <= window.width() + 1
-                for object_name in ('filmOptimizationPlotObjectiveBox', 'filmOptimizationPlotAngleBox',
-                                    'filmCandidateLivePreviewToggle', 'filmOptimizationFullDomainToggle',
-                                    'filmCandidateLiveMetricBox', 'filmOptimizationYAxisAuto',
-                                    'filmOptimizationComparisonCanvas'):
-                    item = window.findChild(QQuickItem, object_name)
-                    assert item is not None and item.isVisible(), object_name
-                    origin = item.mapToItem(panel, 0., 0.)
-                    assert origin.x() >= -1, object_name
-                    assert origin.x() + item.width() <= panel.width() + 1, object_name
-                    assert origin.y() >= -1 and origin.y() + item.height() <= panel.height() + 1, object_name
+                viewport = window.findChild(QQuickItem, 'filmOptimizationPlotControlsViewport')
+                row = window.findChild(QQuickItem, 'filmOptimizationPlotControlsRow')
+                bar = window.findChild(QQuickItem, 'filmOptimizationPlotControlsScrollBar')
+                canvas = window.findChild(QQuickItem, 'filmOptimizationComparisonCanvas')
+                assert viewport is not None and row is not None and bar is not None and canvas is not None
+                for bounded in (viewport, canvas):
+                    assert bounded.isVisible()
+                    origin = bounded.mapToItem(panel, 0., 0.)
+                    assert origin.x() >= -1 and origin.x() + bounded.width() <= panel.width() + 1
+                    assert origin.y() >= -1 and origin.y() + bounded.height() <= panel.height() + 1
+                assert canvas.property('dataSnapshot')['wavelength_nm'][0] == 400.
+                assert canvas.property('dataSnapshot')['wavelength_nm'][-1] == 1080.
+                content_width = float(viewport.property('contentWidth'))
+                assert content_width >= viewport.width() and abs(row.width() - content_width) <= 1
+                overflow = content_width > viewport.width() + 1
+                assert bar.isVisible() == overflow
+                if name == 'narrow':
+                    assert overflow  # The real narrow viewport requires horizontal navigation.
+                control_names = ('filmOptimizationPlotTitle', 'filmCandidateLivePreviewToggle',
+                                 'filmOptimizationFullDomainToggle', 'filmCandidateLiveMetricBox',
+                                 'filmOptimizationYAxisAuto', 'filmOptimizationPlotObjectiveBox',
+                                 'filmOptimizationPlotAngleBox')
+                controls = [window.findChild(QQuickItem, object_name) for object_name in control_names]
+                assert all(control is not None and control.isVisible() for control in controls)
+                controls = cast(list[QQuickItem], controls)
+                centers = [control.mapToItem(row, 0., 0.).y() + control.height() / 2 for control in controls]
+                assert max(centers) - min(centers) <= 1  # All controls occupy one tool row.
+                scrollbar_drags = 0
+                for object_name, control in zip(control_names, controls, strict=True):
+                    # Content coordinates remain stable while the viewport is scrolled.
+                    content_x = float(viewport.property('contentX'))
+                    item_x = control.mapToItem(viewport, 0., 0.).x() + content_x
+                    assert item_x >= -1 and item_x + control.width() <= content_width + 1, object_name
+                    assert control.width() <= viewport.width(), object_name
+                    viewport_x = control.mapToItem(viewport, 0., 0.).x()
+                    if viewport_x < 0 or viewport_x + control.width() > viewport.width():
+                        assert overflow and bar.isEnabled(), object_name
+                        # Drag the actual scrollbar thumb to center this control in the viewport.
+                        max_x = content_width - viewport.width()
+                        target_x = max(0., min(max_x, item_x - (viewport.width() - control.width()) / 2))
+                        thumb_size = float(bar.property('size'))
+                        start_fraction = float(bar.property('position')) + thumb_size / 2
+                        end_fraction = target_x / content_width + thumb_size / 2
+                        start = bar.mapToScene(QPointF(bar.width() * start_fraction, bar.height() / 2)).toPoint()
+                        end = bar.mapToScene(QPointF(bar.width() * end_fraction, bar.height() / 2)).toPoint()
+                        QTest.mousePress(window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+                        QTest.mouseMove(window, end, 100)
+                        QTest.mouseRelease(window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, end)
+                        QTest.qWait(50)
+                        assert abs(float(viewport.property('contentX')) - content_x) > 1, object_name
+                        scrollbar_drags += 1
+                    origin = control.mapToItem(viewport, 0., 0.)
+                    assert origin.x() >= -1 and origin.x() + control.width() <= viewport.width() + 1, object_name
+                    assert origin.y() >= -1 and origin.y() + control.height() <= viewport.height() + 1, object_name
+                if name == 'narrow':
+                    assert scrollbar_drags > 0
                 image = window.grabWindow()
                 assert not image.isNull() and image.save(str(qa_dir / f'full-domain-{name}.png'))
             assert not any('ReferenceError' in warning or 'TypeError' in warning for warning in warnings)
