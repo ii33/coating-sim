@@ -418,7 +418,7 @@ def test_objective_records_update_band_angles_targets_atomically_and_manage_ids(
 @pytest.mark.parametrize("record", [
     {"wavelength_min_nm": 950, "wavelength_max_nm": 900},
     {"angle_min_deg": 60, "angle_max_deg": 10},
-    {"metric": "A"}, {"pointwise": {"lower_bound_percent": 90, "upper_bound_percent": 10}},
+    {"metric": "unknown"}, {"pointwise": {"lower_bound_percent": 90, "upper_bound_percent": 10}},
     {"pointwise": {"mode": "value", "target_value_percent": 101}}, {"weight": 0}, {"id": "other"},
     {"actual_angle_step_deg": 12}, {"wavelength_samples": True}, {"name": []},
 ])
@@ -626,3 +626,17 @@ def test_invalid_simulation_input_is_atomic_and_still_readable(live, monkeypatch
     assert current.exportSimulationConfiguration() == before
     assert live.editor.snapshot().revision == editor_before.revision
     assert snapshot(live, "film_simulation")["available"]
+
+
+def test_absorption_objective_project_editor_roundtrip(live):
+    value = optimizer(live)
+    identity = value.exportOptimizationConfiguration()["objectives"][0]["id"]
+    assert run(live, module="film_optimization", action="set_objective",
+        arguments={"objective_id": identity, "record": {"metric": "A"}})["accepted"]
+    saved = value.exportOptimizationConfiguration()
+    assert saved["objectives"][0]["metric"] == "A"
+    assert live.editor.workflow_configuration("optimization") == saved
+    run(live, module="film_optimization", action="duplicate_objective", arguments={"objective_id": identity})
+    assert value.exportOptimizationConfiguration()["objectives"][1]["metric"] == "A"
+    assert value.loadOptimizationConfiguration(saved)
+    assert value._build_request(require_variables=False).objectives[0].metric == "A"

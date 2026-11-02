@@ -922,7 +922,7 @@ AppWindow {
                                     Label {
                                         visible: window.controller.objectives.length === 0
                                         Layout.fillWidth: true
-                                        text: "还没有目标。添加目标后设置波长范围、角度、偏振和 R/T 条件。"
+                                        text: "还没有目标。添加目标后设置波长范围、角度、偏振和 R/T/A 条件。"
                                         color: window.themeTokens.colorInfo
                                         wrapMode: Text.WordWrap
                                     }
@@ -1047,8 +1047,10 @@ AppWindow {
                                         ThemeControls.ThemeComboBox {
                                             objectName: "filmOptimizationMetricBox"
                                             Layout.fillWidth: true
-                                            model: ["R", "T"]
-                                            currentIndex: Math.max(0, model.indexOf(window.controller.selectedObjective.metric))
+                                            ToolTip.visible: hovered
+                                            ToolTip.text: "A 是当前建模边界内的总吸收：半无限基片只包含有限膜层；有限平板包含基片吸收。"
+                                            model: ["R", "T", "A"]
+                                            currentIndex: model.indexOf(window.controller.selectedObjective.metric)
                                             onActivated: window.controller.setObjectiveField("metric", currentText)
                                         }
                                         CheckBox {
@@ -2499,8 +2501,8 @@ AppWindow {
                                 ThemeControls.ThemeComboBox {
                                     objectName: "filmCandidateLiveMetricBox"
                                     Layout.preferredWidth: Math.max(48, implicitWidth)
-                                    model: ["R", "T"]
-                                    currentIndex: window.controller.liveDisplay.metric === "T" ? 1 : 0
+                                    model: ["R", "T", "A"]
+                                    currentIndex: model.indexOf(window.controller.liveDisplay.metric)
                                     onActivated: window.controller.liveDisplay.setMetric(model[currentIndex])
                                 }
                                 CheckBox {

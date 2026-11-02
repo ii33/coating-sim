@@ -13,7 +13,8 @@ from .film_design import validate_design, physical_thickness_nm
 from .film_design_service import (simulation_settings, automatic_substrate_handling,
     validate_external_ports, FilmDesignService, active_material_references)
 from .film_optimization_derivatives import (_PreparedMaterialData, _variable_fields,
-    _analytic_one_polarization, _prepare_thickness_jacobian_inputs, _thickness_jacobian_arrays)
+    _analytic_one_polarization, _prepare_thickness_jacobian_inputs, _thickness_jacobian_arrays,
+    _absorption_jacobian)
 from .film_optics import (_beta,
     _longitudinal_many, _coherent_many, _polarizations)
 
@@ -34,14 +35,15 @@ def simulate_synthesis_with_thickness_jacobian(design, materials, variables, set
         inputs = _prepare_thickness_jacobian_inputs(design, materials, variables, settings,
             zero_thickness_layer_ids=zero_thickness_layer_ids, wavelengths_nm=wavelengths_nm)
         jr, jt = _thickness_jacobian_arrays(*inputs)
-        value = dict(wavelength_nm=inputs[0].tolist(), jacobian_R=jr.tolist(), jacobian_T=jt.tolist())
+        value = dict(wavelength_nm=inputs[0].tolist(), jacobian_R=jr.tolist(), jacobian_T=jt.tolist(),
+                     jacobian_A=_absorption_jacobian(jr, jt).tolist())
         checked = validate_design(deepcopy(design))
         normalized = simulation_settings(dict(settings, first_surface=settings.get('first_surface', checked['first_surface'])))
         prepared = materials if type(materials) is _PreparedMaterialData else _PreparedMaterialData(materials, checked)
         catalog = _detached_material_catalog(prepared, checked)
         direct = FilmDesignService._simulate_chunk(object.__new__(FilmDesignService), checked,
             normalized, np.asarray(value['wavelength_nm']), include_reference_queries=False, catalog_snapshot=catalog)
-        for metric in ('R', 'T'):
+        for metric in ('R', 'T', 'A'):
             value[metric] = direct[metric]
         return value
     design = validate_design(deepcopy(design))
@@ -137,4 +139,6 @@ def simulate_synthesis_with_thickness_jacobian(design, materials, variables, set
     if not np.all(np.isfinite(jr)) or not np.all(np.isfinite(jt)):
         raise ValueError('nonfinite two-face synthesis thickness Jacobian')
     return dict(wavelength_nm=waves.tolist(), R=np.asarray(response['R']).reshape(-1).tolist(),
-        T=np.asarray(response['T']).reshape(-1).tolist(), jacobian_R=jr.tolist(), jacobian_T=jt.tolist())
+        T=np.asarray(response['T']).reshape(-1).tolist(),
+        A=np.asarray(response['A']).reshape(-1).tolist(), jacobian_R=jr.tolist(), jacobian_T=jt.tolist(),
+        jacobian_A=_absorption_jacobian(jr, jt).tolist())

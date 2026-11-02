@@ -12,6 +12,7 @@
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px solid #c8e0db;border-radius:8px;padding:16px;font-size:.88rem;line-height:1.5}</style>
 </head>
 <body>
+<p class="source">算法更新：2026-11-02；新增<a href="#film-absorption-optimization-20261102">14bk 吸收目标与厚度导数</a>及<a href="#film-failure-evidence-20261102">14bl 基准失败证据分析</a>。目标支持不等于任意实际任务已达标。</p>
 <p class="source">评分完整性更新：2026-11-02；<a href="#film-score-validation-20261102">14bj 原条件快速拒绝与完整证据核验</a>，不改变验收语义。</p>
 <p class="source">减量算法更新：2026-11-02；<a href="#film-reduction-20261025">14az 正最薄厚度下的选层删层与内部消零过渡</a>；正下限约束最终保留层，不锁住所选层。</p>
 <p class="source">算法更新：2026-11-02；新增<a href="#film-automatic-repair-double-20261102">14bi 双面整片自动薄层修复</a>与减量源边界诊断，有限搜索不构成达标或可行性证明。</p>
@@ -77,6 +78,8 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <p class="source" style="grid-column:1/-1">结构合成更新：2026-10-12。新增14o至14o-2：实验性经典零厚敏感度针插、有界已有层增长与分组局部精修；独立结构请求与固定层序/有限试插分开，Dmax是硬约束。补充验证切片、真实求值计数与增长前局部边界检查。接口见 <a href="film-structure-optimization-contract.md">结构合成契约</a>，操作见 <a href="film-structure-optimization-guide.md">使用指南</a>，实际验收见 本轮状态 <span class="historical-reference">（历史验证记录，未随公开源码发布）</span>。</p>
 <p class="source">存储格式补充：2026-10-18。工程 BBS、助手精简记忆和可恢复文件清理均为非物理持久化契约，不改变仿真公式、坐标或数值精度。见<a href="#engineering-notes-storage-20261018">工程记录与助手工作区格式</a>。</p>
 <nav aria-label="章节目录">
+<a href="#film-absorption-optimization-20261102">14bk 吸收目标与厚度导数（2026-11-02）</a>
+<a href="#film-failure-evidence-20261102">14bl 基准失败证据分析（2026-11-02）</a>
 <a href="#film-score-validation-20261102">14bj 评分完整性与快速拒绝（2026-11-02）</a>
 <a href="#film-automatic-repair-double-20261102">14bi 双面整片自动薄层修复（2026-11-02）</a>
 <a href="#film-automatic-repair-20261027">14bc 薄层修复、实时改善与取消应用（2026-10-27，后续更新）</a>
@@ -349,9 +352,29 @@ while 未取消、未遇资源或数值错误:
 <p><strong>参考与限制：</strong><a href="https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html">SciPy SLSQP 官方文档</a>为原数值求解器参考。一次会话边界、最佳候选选择、指标保护减薄和持久化结构均为本项目约定；未找到外部依据，仅为本项目实现，不声称新的全局收敛保证。未启用指标、材料插值/外推政策及用户正式目标不因本节改变。</p>
 </section>
 
+<section id="film-absorption-optimization-20261102">
+<h2>14bk 吸收 A 的完整优化链路（2026-11-02）</h2>
+<p><strong>用途与输入输出：</strong>在冻结设计、材料 n/k、目标、波长、入射角和偏振条件下，将 A 与 R、T 同等保留在目标、评分、梯度、候选与独立审计链路；可混合 R/T/A 指标。波长 λ 和物理厚度 d 为 nm，入射角为度，R、T、A 及目标使用 0–1 无量纲功率比例，Jacobian 每列单位为 fraction/nm。沿用原请求波长/角度网格、偏振和审计采样，不因 A 新增采样默认值或更改目标阈值。</p>
+<figure class="figure"><svg viewBox="0 0 960 155" role="img" aria-label="原始R T A目标经过正向功率和厚度雅可比进入完整目标与独立审计"><g fill="#e3f1ed" stroke="#237a72" stroke-width="2"><rect x="10" y="30" width="210" height="70" rx="8"/><rect x="260" y="30" width="210" height="70" rx="8"/><rect x="510" y="30" width="210" height="70" rx="8"/><rect x="760" y="30" width="190" height="70" rx="8"/></g><g class="svgtext" text-anchor="middle"><text x="115" y="57">冻结原 R / T / A 目标</text><text x="115" y="82">真实材料与完整环境</text><text x="365" y="57">canonical 正向</text><text x="365" y="82">R、T、A</text><text x="615" y="57">选对应值与 Jac 列</text><text x="615" y="82">完整原目标评分</text><text x="855" y="57">候选独立审计</text><text x="855" y="82">有限证据，不是证书</text></g><g fill="none" stroke="#237a72" stroke-width="2"><path d="M220 65h40m210 0h40m210 0h40"/></g></svg><figcaption>图14bk-1：A 不是只供显示的派生列；优化、灵敏度和审计须按实际目标选择 A。通用 minimax 保留 A；R/T 物理先验至多提议种子，不得把 A 从完整目标中删除。</figcaption></figure>
+<div class="formula">A = 1 − R − T；Jac<sub>A</sub> = −Jac<sub>R</sub> − Jac<sub>T</sub>，Jac<sub>Y,ij</sub> = ∂Y(λᵢ, θᵢ, pᵢ)/∂dⱼ [fraction/nm]</div>
+<p><strong>物理含义：</strong>单面是外部入射介质 → 有限薄膜 → 半无限基片；A 只代表有限膜层吸收，T 是进入基片的功率，不能再把半无限基片后续耗散计入 A。双面有限基片的相干或非相干整片模型中，A 表示全部薄膜和基片的总吸收；没有新增逐层吸收分解。外部吸收入射介质仍被拒绝，不把此定义外推至该情形。canonical 前向保留 <code>1-R-T</code> 与 <code>|A|&lt;5e-13</code> 清零规则；导数公式是未清零功率平衡的解析导数，清零阈值处的分段行为不能当作光滑导数。</p>
+<p><strong>优化与限制：</strong>敏感度明确按目标类型选择对应的 A 值及 JacA，而不是将非 R 一律当 T。通用 multispectral minimax 使用通用响应和 Jacobian，支持 R/T/A，也被减厚及制造修复复用；HR 等 R/T 物理先验仅提议种子，后续仍以含 A 的完整原目标评分和独立审计，不能把 A 丢掉。数值清零为本项目舍入约定，不是吸收的物理阈值。该公式本身使 R+T+A 恒等，单独检查恒等式不能证明计算正确；须另查 R、T、A 的独立物理参考、厚度中心差分与完整条件审计。有限采样和局部导数不证明连续谱、全局最优或具体案例达标；新四项 A 案例尚未运行，不能称通过。</p>
+<p class="source"><strong>实现与来源：</strong><code>coat_sim/core/film_optics.py</code>、<code>film_optimization_derivatives.py</code>、<code>film_synthesis_physics.py</code>、<code>_film_ideal_sensitivity_core.py</code>及优化评分/合成审计。光学物理背景：<a href="https://arxiv.org/abs/1603.02720">Byrnes, Multilayer optical calculations</a>；现有回归入口包括 <a href="../tests/test_film_optics.py">film_optics</a>、<a href="../tests/test_film_derivative_linear_chain.py">厚度导数</a>、<a href="../tests/test_film_automatic_substrate.py">有限基片</a>。来源提供物理计算背景，不证明本次代码或新案例通过；组合策略与舍入规则为本项目约定。</p>
+</section>
+
+<section id="film-failure-evidence-20261102">
+<h2>14bl 基准失败证据分析（2026-11-02）</h2>
+<p><strong>用途、输入输出：</strong>离线读取已产生的逐案例配对报告 CSV 及可选 summary/result JSON，输出各案例的证据标签和按版本 × split × 目标类型 category 分组的汇总；不运行优化器、不重新判定物理可达性。案例数、标签数为计数，比例无量纲；原始超限保持对应响应原单位（R/T/A 为 0–1 fraction），采样位置保留来源的波长 nm、角度度等条件。沿用输入报告的采样与预算，不新增优化默认参数。</p>
+<figure class="figure"><svg viewBox="0 0 930 160" role="img" aria-label="已有报告证据逐例分类并按版本数据划分目标类型分组，未知单列"><g fill="#e3f1ed" stroke="#237a72" stroke-width="2"><rect x="10" y="30" width="215" height="70" rx="8"/><rect x="265" y="30" width="220" height="70" rx="8"/><rect x="525" y="30" width="180" height="70" rx="8"/><rect x="745" y="30" width="175" height="70" rx="8"/></g><g class="svgtext" text-anchor="middle"><text x="117" y="57">配对 CSV 与可选 JSON</text><text x="117" y="82">不重跑优化</text><text x="375" y="57">逐例独立证据标签</text><text x="375" y="82">缺失保留 unknown</text><text x="615" y="57">超限值与来源位置</text><text x="615" y="82">不推测无解</text><text x="832" y="57">分组计数与分母</text><text x="832" y="82">标签允许重叠</text></g><g fill="none" stroke="#237a72" stroke-width="2"><path d="M225 65h40m220 0h40m180 0h40"/></g></svg><figcaption>图14bl-1：证据缺失与明确失败分开；标签是可重叠的描述，不是互斥故障根因或成功率。</figcaption></figure>
+<div class="formula">范围原单位超限 = max(lower − actual, actual − upper, 0)；等值目标超限 = |actual − target|<br>标签比例 = 该组该标签案例数 / 该组全部案例数；max_normalized_error 只保留来源值</div>
+<p><strong>分类与统计（本项目约定）：</strong>预算停止仅识别显式 <code>wall_budget</code>/<code>evaluation_budget</code>，运行异常仅识别状态 <code>error</code>/<code>failed</code>/<code>exception</code> 或显式 error 字段，约束违规仅依据至少一条目标条件的 <code>targets_met=false</code>，材料/不支持指标仅依据 blocked reason 明确种类，独审未完成仅依据 <code>audit_complete=false</code>。缺值为 unknown，不当 false。梯度或结构停滞当前统一 unknown，不由预算、单张快照或未定义 trace 推断。标签可重叠；每组记录全部案例数、具有验证目标数及每标签计数，若计算标签比例则分母为该组全部案例，当前输出计数而非成功率。</p>
+<p>区间仅有一侧界时只计算该侧；两侧均缺失或实测值缺失时超限为 null；等值目标缺目标值或实测值也为 null。严格不等式在边界处数值偏差可为零但仍可能不达标，须保留来源判定。最坏采样位置和 <code>max_normalized_error</code> 保留来源，不能伪造位置或跨单位相加。该分析只描述已有报告，不证明根因、连续光谱通过、全局不可行或任一未运行案例达标。</p>
+<p class="source"><strong>实现与依据：</strong><code>tools/film_benchmark_diagnostics.py</code> 的 <code>analyze</code>、<code>analyze_row</code>、<code>enrich_result</code>；CLI 需指定 <code>--cases</code> 与 <code>--output-dir</code>，可选 <code>--summary</code> 和可重复的 <code>--result baseline=PATH</code>/<code>candidate=PATH</code>，结果按版本、样本及 split 匹配，仅附 seed 和前后层；输出 <code>case_details.json</code> 与 <code>summary.json</code>，当前建议实验列表为空。接口详见 <a href="film-benchmark-diagnostics.md">基准诊断说明</a>。标签、分母与超限统计为本项目约定；未找到外部依据，仅为本项目实现，不将其当作经外部验证的因果分类。</p>
+</section>
+
 <section id="film-score-validation-20261102">
 <h2>14bj 评分完整性与快速拒绝（2026-11-02）</h2>
-<p><strong>用途、输入与输出：</strong>对原目标请求和候选的评分记录分别判断严格名义达标与求解容差可接受，输出布尔判定；可选择独立审计模式。输入含目标、启用的 mean/pointwise 条件、原始光谱覆盖和条件记录。波长以 nm、角度以度、R/T 响应及其边界以 0–1 fraction 表示，归一化违规和求解容差为无量纲；不引入新的坐标系、采样或参数，沿用请求及<a href="#film-band-criteria-20261024">14at 原目标公式</a>。该检查验证证据结构及算术，不是重新进行物理光谱计算，也不是连续波段证书。</p>
+<p><strong>用途、输入与输出：</strong>对原目标请求和候选的评分记录分别判断严格名义达标与求解容差可接受，输出布尔判定；可选择独立审计模式。输入含目标、启用的 mean/pointwise 条件、原始光谱覆盖和条件记录。波长以 nm、角度以度、R/T/A 响应及其边界以 0–1 fraction 表示，归一化违规和求解容差为无量纲；不引入新的坐标系、采样或参数，沿用请求及<a href="#film-band-criteria-20261024">14at 原目标公式</a>。该检查验证证据结构及算术，不是重新进行物理光谱计算，也不是连续波段证书。</p>
 <figure class="figure"><svg viewBox="0 0 960 190" role="img" aria-label="原条件快速检查可拒绝，未发现违约则必须完整验证后才能接受或拒绝">
 <g fill="#e3f1ed" stroke="#237a72" stroke-width="2"><rect x="15" y="60" width="185" height="55" rx="8"/><rect x="265" y="60" width="195" height="55" rx="8"/><rect x="550" y="60" width="190" height="55" rx="8"/><rect x="805" y="15" width="135" height="55" rx="8"/><rect x="805" y="120" width="135" height="55" rx="8"/></g>
 <g class="svgtext" text-anchor="middle"><text x="107" y="94">评分与原目标</text><text x="362" y="94">原条件快速检查</text><text x="645" y="94">完整证据核验</text><text x="872" y="49">可接受</text><text x="872" y="154">拒绝</text></g>
@@ -3445,9 +3468,9 @@ close/shutdown/history/late old operation: do not trigger automatic apply</pre>
 <h2>14ao 理想局部厚度导数敏感度与原名义硬约束</h2>
 <p class="note">当前格式：理想敏感度仅接受schema 2；本节说明显式strict_nominal政策，默认固定初始光谱受控退化见<a href="#film-ideal-controlled-degradation-20261023">14aq</a>；旧理想schema 1明确不支持，不转换或通用回退。</p>
 <p class="source">更新：2026-10-23。实现：<code>film_ideal_sensitivity.py</code>；正式入口、唯一状态、取消与回放边界见<a href="film-sensitivity-workflows-contract.md">两入口合同</a>。公开API统一在此模块，物理/分析/标量FD共享私有<code>_film_ideal_sensitivity_core.py</code>；只有同一当前执行器，不读取误差表自动配权。</p>
-<p>固定完整拓扑、真实冻结材料 n/k/use_k、原波长网格/角度/偏振/目标与稳定层ID。仅支持单前表面相干/auto半无限基底的R/T。厚度转换到物理nm，QW参考n取自冻结源。默认采样仍沿原1nm规则，用户显式原网格不变。敏感列S默认全front层，可显式选择，与优化自由度V及厚度界独立；空列拒绝。用户必须选择绝对或相对，不能默认真实工艺精度，更不能将所有材料自动k=0。</p>
+<p>固定完整拓扑、真实冻结材料 n/k/use_k、原波长网格/角度/偏振/目标与稳定层ID。仅支持单前表面相干/auto半无限基底；当前目标可为 R/T/A，A 的物理域及导数见<a href="#film-absorption-optimization-20261102">14bk</a>。厚度转换到物理nm，QW参考n取自冻结源。默认采样仍沿原1nm规则，用户显式原网格不变。敏感列S默认全front层，可显式选择，与优化自由度V及厚度界独立；空列拒绝。用户必须选择绝对或相对，不能默认真实工艺精度，更不能将所有材料自动k=0。</p>
 <div class="formula">J<sub>ij</sub>=∂y<sub>i</sub>/∂d<sub>j</sub>；绝对 A<sub>ij</sub>=J<sub>ij</sub>·1nm；相对 A<sub>ij</sub>=J<sub>ij</sub>·d<sub>j</sub><br>F=Σ<sub>i</sub>w<sub>i</sub> Σ<sub>j∈S</sub>(A<sub>ij</sub>/b<sub>i</sub>)² / Σ<sub>i</sub>w<sub>i</sub></div>
-<p>F不取平方根，是按原condition权重w与normalization_scale b定义的局部确定性平方范数，不是概率、良率或有限误差保证。绝对的1nm是单位尺度而非工艺假设；相对为单位fraction的导数，展示1%仅将A乘0.01、F乘0.0001。相对d在每个FD探点重新计算。非零平方目标不可因double下溢假报零。</p>
+<p>此处 Aᵢⱼ 是缩放敏感矩阵的局部记号，不是吸收功率 A。F不取平方根，是按原condition权重w与normalization_scale b定义的局部确定性平方范数，不是概率、良率或有限误差保证。绝对的1nm是单位尺度而非工艺假设；相对为单位fraction的导数，展示1%仅将A乘0.01、F乘0.0001。相对d在每个FD探点重新计算。非零平方目标不可因double下溢假报零。</p>
 <figure><svg viewBox="0 0 960 200" role="img" aria-labelledby="ideal-jac-flow-title"><title id="ideal-jac-flow-title">理想目标探点与严格可行档案分离</title><g fill="#e9f4f1" stroke="#087f78"><rect x="8" y="24" width="185" height="74" rx="8"/><rect x="235" y="24" width="225" height="74" rx="8"/><rect x="505" y="24" width="220" height="74" rx="8"/><rect x="765" y="24" width="185" height="74" rx="8"/><path d="M193 61H235 M460 61H505 M725 61H765 M600 99V159H345V99" fill="none"/></g><g font-size="15" fill="#18303a" text-anchor="middle"><text x="100" y="53">冻结原网格与材料</text><text x="100" y="78">选择J或J·d列尺度</text><text x="348" y="53">解析J → F</text><text x="348" y="78">有界三点FD求∇F</text><text x="615" y="53">SLSQP完整名义约束</text><text x="615" y="78">约束Jac保持原J</text><text x="858" y="53">原strict全点门</text><text x="858" y="78">仅保存完整可行冠军</text><text x="485" y="188">临时名义不可行点可求导；不得覆盖可用候选</text></g></svg><figcaption>图14ao-1：目标依赖J，不能把现有一阶J伪称为目标梯度。完整结果与中间试探严格分离。</figcaption></figure>
 <p>SLSQP约束保持所有原nominal条件，无额外margin；HR≥99%不改成严格&gt;，IR原&lt;3%仍严格。内部strict slack仅一次nextafter朝可行侧，外部checker仍原物理阈值及运算。初态不可行明确失败，不暗中恢复。中间探点合法是指物理非负及显式bounds，不要求名义可行；最终/档案必须原全点严格通过。等值bounds层留在design/敏感列，但从自由度剔除；全部固定时optimize失败，独立analyze仍可完成。</p>
 <p>目标梯度采用有界三点标量差分：h_base=ε^(1/3)max(1nm,|d|)，两种当前政策均采用14aq的最大合法central/forward/backward模板；实际float不等距时用真实坐标Lagrange权重，不能假定h。点重复/越界或无可表示域明确fd_domain_insufficient，不伪造零梯度。归一化z的目标梯度与约束J各乘物理span；约束不乘敏感列尺度。h/2仅小例稳定性诊断，不根据holdout选参数。</p>
@@ -4074,7 +4097,7 @@ on verified checkpoint recovery:
 
 <section id="film-band-criteria-20261024">
 <h2>14at 波段平均值与绝对值（逐点）双约束（2026-10-24）</h2>
-<p><strong>用途与接口。</strong>每条 <code>FilmOptimizationObjective</code> 保持一个波段身份，共享真空波长（nm）、入射角（deg）、s/p/非偏振、R 或 T、权重及归一尺度；内部 <code>mean</code> 与 <code>pointwise</code> 各有启用开关、value/range 及独立阈值。光学响应和阈值为 0–1 fraction，GUI 以百分比显示。默认只启用逐点；两者都关闭报错。本功能不改变坐标系、复数 n/k、TMM 或显式未知 k 假设，也不扩大到 R/T 以外指标。</p>
+<p><strong>用途与接口。</strong>每条 <code>FilmOptimizationObjective</code> 保持一个波段身份，共享真空波长（nm）、入射角（deg）、s/p/非偏振、R/T/A、权重及归一尺度；内部 <code>mean</code> 与 <code>pointwise</code> 各有启用开关、value/range 及独立阈值。光学响应和阈值为 0–1 fraction，GUI 以百分比显示。默认只启用逐点；两者都关闭报错。本功能不改变坐标系、复数 n/k、TMM 或显式未知 k 假设，R/T/A 的当前接入及适用限制见<a href="#film-absorption-optimization-20261102">14bk</a>。</p>
 <h3>完整光谱先归约，再计算约束与解析梯度</h3>
 <p>每个波段、每个角度分别收齐完整的 λ、y、J 后归约，不跨角度平均，不平均 chunk 均值、hinge 或残差。正宽波段须有至少两点、有限严格递增波长、精确请求端点；缺点、重复、非有限或缺端点拒绝。不得通过未知材料源域插值或外推补端点。零宽谱线规范为单点、q=1。</p>
 <pre>Δ=b−a

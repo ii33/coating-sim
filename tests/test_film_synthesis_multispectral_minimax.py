@@ -373,7 +373,7 @@ def test_cache_retains_only_the_latest_physical_point(monkeypatch):
 
 
 @pytest.mark.parametrize("common_change, pointwise_change, message", [
-    (dict(metric="A"), {}, "multispectral minimax original objective is invalid"),
+    (dict(metric="X"), {}, "multispectral minimax original objective is invalid"),
     ({}, dict(mode="unknown"), "pointwise.mode must be value or range"),
     (dict(weight=0.), {}, "weight must be positive"),
     (dict(normalization_scale=0.), {}, "normalization_scale must be positive"),

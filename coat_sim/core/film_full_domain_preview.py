@@ -50,7 +50,7 @@ def full_domain_spectrum(frozen_snapshot, design, objectives, selection, *, canc
     angle, metric = selection['angle_deg'], selection['metric']
     if (isinstance(angle, bool) or not isinstance(angle, (int, float))
             or not math.isfinite(angle) or not 0 <= angle < 90
-            or angle not in objective.angles_deg or metric not in ('R', 'T')):
+            or angle not in objective.angles_deg or metric not in ('R', 'T', 'A')):
         raise ValueError('selection does not match objective context')
     low = min(o.wavelength_min_nm for o in objectives)
     high = max(o.wavelength_max_nm for o in objectives)

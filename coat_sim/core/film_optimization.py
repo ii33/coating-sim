@@ -23,7 +23,7 @@ from .film_objective_payload import coverage_to_payload
 
 
 Polarization = Literal["s", "p", "unpolarized"]
-OpticalMetric = Literal["R", "T"]
+OpticalMetric = Literal["R", "T", "A"]
 ObjectiveMode = Literal["value", "range"]
 OptimizationState = Literal["completed", "cancelled", "failed"]
 
@@ -428,8 +428,8 @@ def optimize_film_design(
             raise ValueError("angles_deg must not contain duplicate samples")
         if objective.polarization not in ("s", "p", "unpolarized"):
             raise ValueError("polarization must be s, p or unpolarized")
-        if objective.metric not in ("R", "T"):
-            raise ValueError("metric must be R or T")
+        if objective.metric not in ("R", "T", "A"):
+            raise ValueError("metric must be R, T or A")
         validate_objective_criteria(objective)
         normalized = replace(
             objective, wavelength_min_nm=low, wavelength_max_nm=high,
@@ -835,7 +835,7 @@ def optimize_film_design(
             raw, index = pending
             objective_index = selection["objective_index"]
             objective = objectives[objective_index]
-            if selection["angle_deg"] not in objective.angles_deg or selection["metric"] not in ("R", "T"):
+            if selection["angle_deg"] not in objective.angles_deg or selection["metric"] not in ("R", "T", "A"):
                 return None
             condition_index = sum(len(o.angles_deg) for o in objectives[:objective_index])
             condition_index += objective.angles_deg.index(selection["angle_deg"])

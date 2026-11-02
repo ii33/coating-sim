@@ -147,7 +147,7 @@ def validate_structure_request_payload_schema(payload: Mapping[str, Any]) -> Non
             _number(value, "angle_deg")
         for name in ("wavelength_min_nm", "wavelength_max_nm", "weight", "normalization_scale"):
             _number(row[name], name)
-        if row["metric"] not in ("R", "T") or row["polarization"] not in ("s", "p", "unpolarized"):
+        if row["metric"] not in ("R", "T", "A") or row["polarization"] not in ("s", "p", "unpolarized"):
             raise ValueError("objective metric/polarization is unsupported")
         low, high = row["wavelength_min_nm"], row["wavelength_max_nm"]
         if low <= 0 or high < low or (high == low and row["wavelength_samples"] != 1) or (high > low and row["wavelength_samples"] < 2):
@@ -191,7 +191,7 @@ def _errors(value: Any, label: str, objective_count: int) -> None:
             _number(row[name], name, nonnegative=True)
         for name in ("strict_lower", "strict_upper"):
             _boolean(row[name], name)
-        if row["metric"] not in ("R", "T") or row["polarization"] not in ("s", "p", "unpolarized"):
+        if row["metric"] not in ("R", "T", "A") or row["polarization"] not in ("s", "p", "unpolarized"):
             raise ValueError(f"{label} metric/polarization is invalid")
 
 

@@ -548,7 +548,7 @@ def validate_candidate_display_packet(value):
         if (not isinstance(chosen, dict) or set(chosen) not in ({"objective_index", "angle_deg", "metric"},
                                     {"objective_index", "angle_deg", "metric", "spectrum_scope"})
                 or type(chosen["objective_index"]) is not int or chosen["objective_index"] < 0
-                or chosen["metric"] not in ("R", "T") or not _finite(chosen["angle_deg"])
+                or chosen["metric"] not in ("R", "T", "A") or not _finite(chosen["angle_deg"])
                 or ("spectrum_scope" in chosen and chosen["spectrum_scope"] != "full_domain")):
             return None
 

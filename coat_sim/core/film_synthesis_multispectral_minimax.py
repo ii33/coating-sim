@@ -1,4 +1,4 @@
-"""Original-condition R/T minimax continuation using parent optical evaluation.
+"""Original-condition R/T/A minimax continuation using parent optical evaluation.
 
 Signed bounds and normalized window masses guide the smooth search only. Candidate
 selection and the epigraph use the parent's original unweighted maximum violation;
@@ -27,7 +27,7 @@ def _validate_objectives(request: FilmSynthesisRequest) -> None:
         raise ValueError("multispectral minimax requires original objectives")
     for objective in request.objectives:
         validate_objective_criteria(objective)
-        if (objective.metric not in ("R", "T")
+        if (objective.metric not in ("R", "T", "A")
                 or type(objective.wavelength_samples) is not int or objective.wavelength_samples < 1
                 or not math.isfinite(objective.wavelength_min_nm) or objective.wavelength_min_nm <= 0
                 or not math.isfinite(objective.wavelength_max_nm)
@@ -124,7 +124,7 @@ def refine_multispectral_minimax(request: FilmSynthesisRequest, initial: Value, 
                                  max_iterations: int = 180,
                                  soft_method: Literal["SLSQP", "L-BFGS-B"] = "L-BFGS-B",
                                  coordinate_scale_nm: float | None = 100.) -> tuple[Value, dict[str, Any]]:
-    """Refine full original R/T conditions without modifying original scores.
+    """Refine full original R/T/A conditions without modifying original scores.
 
     Three smooth continuation stages precede exact sampled min(t), t>=0 and
     t-q>=0. This is local nonlinear optimization, not a global guarantee. Bounds

@@ -534,8 +534,8 @@ def _validate_replay_request(request: FilmOptimizationRequest) -> None:
             raise ValueError("angles_deg must not contain duplicate samples")
         if objective.polarization not in ("s", "p", "unpolarized"):
             raise ValueError("polarization must be s, p or unpolarized")
-        if objective.metric not in ("R", "T"):
-            raise ValueError("metric must be R or T")
+        if objective.metric not in ("R", "T", "A"):
+            raise ValueError("metric must be R, T or A")
         validate_objective_criteria(objective)
     _validation_objectives(request)
 

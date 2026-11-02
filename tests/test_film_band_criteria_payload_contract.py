@@ -164,3 +164,28 @@ def test_structural_material_and_budget_checks_remain_authoritative(band_payload
     payload["structure"]["counters"]["objective_evaluations"] = 100
     with pytest.raises(ValueError, match="budget"):
         film_structure_result_from_payload(payload)
+
+
+def test_absorption_structure_request_and_result_schema_transport(band_payload):
+    # This checks only wire-schema propagation, not physical replay: the source
+    # payload's already-produced R numbers are deliberately left unchanged.
+    _, _, original = band_payload
+    payload = deepcopy(original)
+
+    def retag(value):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if key == "metric" and item == "R":
+                    value[key] = "A"
+                else:
+                    retag(item)
+        elif isinstance(value, list):
+            for item in value:
+                retag(item)
+    retag(payload)
+    payload = json.loads(json.dumps(payload))
+    validate_structure_request_payload_schema(payload["request"])
+    validate_structure_result_payload_schema(payload)
+    restored = film_structure_request_from_payload(payload["request"])
+    assert restored.base_request.objectives[0].metric == "A"
+    assert film_structure_result_from_payload(payload).base_result.per_condition_errors[0].metric == "A"

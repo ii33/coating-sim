@@ -130,7 +130,7 @@ def physical_structure_catalog() -> list[dict[str, Any]]:
              'section_parameters': deepcopy(parameters),
              'layer_order': 'substrate_outward', 'references': list(_REFERENCES.get(key, ())),
              'research_url': RESEARCH_URL, 'status': 'mechanism_seed_not_paper_reproduction',
-             'supported_acceptance_metrics': ['R', 'T'],
+             'supported_acceptance_metrics': ['R', 'T', 'A'],
              'unsupported_acceptance_metrics': ['phase', 'GD', 'GDD']}
             for key in sorted(_MECHANISMS)]
 
@@ -489,10 +489,10 @@ def generate_physical_structure(environment: Mapping[str, Any], spec: FilmStruct
         'references': sorted({url for urls in _REFERENCES.values() for url in urls}),
         'research_url': RESEARCH_URL, 'research_ref': RESEARCH_REF,
         'status': 'mechanism_seed_not_paper_reproduction',
-        'supported_acceptance_metrics': ['R', 'T'],
+        'supported_acceptance_metrics': ['R', 'T', 'A'],
         'unsupported_acceptance_metrics': ['phase', 'GD', 'GDD'],
         'approximations': [
-            'Normal-incidence optical thickness construction; evaluate full angular R/T separately.',
+            'Normal-incidence optical thickness construction; evaluate full angular R/T/A separately.',
             'Rugate fill uses real epsilon interpolation at the reference wavelength only; all exported films retain real source n/k.',
             'Digital cells approximate a scalar profile only in the deeply subwavelength, normal-incidence, weak-loss limit; no mixed n/k is invented.',
             'Default counts, chirp interpolation, Hann envelope and 0.45 index contrast are project conventions, not validated fabrication rules.',

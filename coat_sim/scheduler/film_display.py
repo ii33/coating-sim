@@ -42,7 +42,7 @@ def _selection(value):
             or type(value["objective_index"]) is not int or not 0 <= value["objective_index"] < 1_000_000
             or isinstance(value["angle_deg"], bool) or not isinstance(value["angle_deg"], (int, float))
             or not angle_finite or not 0 <= value["angle_deg"] < 90
-            or value["metric"] not in ("R", "T")
+            or value["metric"] not in ("R", "T", "A")
             or ("spectrum_scope" in value and value["spectrum_scope"] != "full_domain")):
         raise ValueError("invalid_film_display_selection")
     return {"objective_index": value["objective_index"],

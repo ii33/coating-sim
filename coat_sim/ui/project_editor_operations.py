@@ -381,7 +381,7 @@ def _validate_objective_constraint_records(candidate: dict) -> None:
             if field == "target_value_percent" and value is None:
                 continue
             if not 0 <= _finite(value) <= 100:
-                _invalid("目标R/T百分比须为0到100。")
+                _invalid("目标R/T/A百分比须为0到100。")
         if constraint["mode"] == "value":
             if constraint["target_value_percent"] is None:
                 _invalid("精确值模式需要目标值。")
@@ -449,7 +449,7 @@ def _optimization_record_action(controller: Any, editor: Any, name: str, args: d
                 if len(candidate["name"]) > 20000 or len(candidate["angles_text"]) > 20000:
                     _invalid("目标文本超出当前输入保护范围。")
                 for field, allowed in (("polarization", {"s", "p", "unpolarized"}),
-                                       ("metric", {"R", "T"})):
+                                       ("metric", {"R", "T", "A"})):
                     if candidate[field] not in allowed:
                         _invalid("未知目标偏振、指标或目标类型。")
                 _finite(candidate["weight"], positive=True)

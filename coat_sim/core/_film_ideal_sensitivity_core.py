@@ -26,6 +26,7 @@ from .film_optimization import (
 )
 from .film_optimization_derivatives import (
     _PreparedMaterialData,
+    _absorption_jacobian,
     _simulate_thickness_jacobian_arrays,
     simulate_with_thickness_jacobian,
 )
@@ -603,7 +604,14 @@ class _Evaluator:
                         if any(jac.shape != (len(chunk), len(self.columns))
                                or not np.all(np.isfinite(jac)) for jac in (jac_r, jac_t)):
                             raise ValueError("physical forward returned invalid response/Jacobian")
-                        jac = jac_r if objective.metric == "R" else jac_t
+                        if objective.metric == "R":
+                            jac = jac_r
+                        elif objective.metric == "T":
+                            jac = jac_t
+                        elif objective.metric == "A":
+                            jac = _absorption_jacobian(jac_r, jac_t)
+                        else:
+                            raise ValueError("unsupported optical metric")
                         end = start + len(chunk)
                         with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
                             normalized = (

@@ -400,8 +400,8 @@ def _normalize_objectives(
             raise ValueError("angles_deg must not contain duplicate samples")
         if objective.polarization not in ("s", "p", "unpolarized"):
             raise ValueError("polarization must be s, p or unpolarized")
-        if objective.metric not in ("R", "T"):
-            raise ValueError("metric must be R or T")
+        if objective.metric not in ("R", "T", "A"):
+            raise ValueError("metric must be R, T or A")
         validate_objective_criteria(objective)
         normalized.append(replace(
             objective, wavelength_min_nm=low, wavelength_max_nm=high,

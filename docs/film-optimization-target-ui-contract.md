@@ -14,7 +14,9 @@
 
 `FilmOptimizationQuickController` 拥有本窗口的可编辑目标、稳定层 ID 对应的变量选择/边界、算法和结构搜索参数。`FilmDesignEditSession` 是 `.cfilm` 文档和 `workflow_settings.optimization` 的唯一持久化所有者。控制器通过 `exportOptimizationConfiguration() -> QVariantMap` / `loadOptimizationConfiguration(QVariantMap) -> bool` 转移完整配置；用户成功编辑后写入 session，加载期间禁止回写。新建/打开文档恢复新配置，旧文档缺失配置时恢复默认；普通物理设计刷新保留用户手选变量。无效配置整体拒绝并显示原因，不静默修改层 ID 或厚度边界。
 
-每个目标有独立 `id`。复制目标深复制角度、偏振、R/T、权重、范围和值以及采样设置，仅生成新 ID 和副本名称。编辑副本不影响原目标。目标 ID 属于配置身份，不改变冻结优化数值请求的旧 schema。
+每个目标有独立 `id`。复制目标深复制角度、偏振、R/T/A、权重、范围和值以及采样设置，仅生成新 ID 和副本名称。编辑副本不影响原目标。目标 ID 属于配置身份，不改变冻结优化数值请求的旧 schema。
+
+目标指标 R/T/A 在编辑配置、冻结请求及队列结果中原样传递，不转换或默认回 R/T。A 为所建模边界内的总吸收：半无限基片只计有限膜层，有限平板包含基片吸收；不提供逐层或基片分解。计算、有效性和异常由现有求解器与材料边界处理，异步取消和结果权属不变。
 
 ## 波长采样
 

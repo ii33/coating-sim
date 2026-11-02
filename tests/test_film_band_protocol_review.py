@@ -101,7 +101,7 @@ def test_cancelled_training_counters_obey_the_same_frozen_budgets(completed_canc
     ("wavelength_samples", True), ("wavelength_samples", 3.0),
     ("wavelength_samples", 1), ("wavelength_min_nm", "500"),
     ("angles_deg", [True]), ("angles_deg", [0., 0.]),
-    ("metric", "A"), ("wavelength_max_nm", float("nan")),
+    ("metric", "unknown"), ("wavelength_max_nm", float("nan")),
 ])
 def test_current_wire_rejects_ambiguous_or_incomplete_physical_band(field, value):
     payload = asdict(FilmOptimizationObjective(500., 600., 3))

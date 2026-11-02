@@ -70,12 +70,12 @@ FILM_BAND_OBJECTIVE_SCHEMA: dict[str, Any] = {
         "wavelength_samples": {"type": "integer", "minimum": 1},
         "angles_deg": {"type": "array", "minItems": 1, "uniqueItems": True,
             "items": {"type": "number", "minimum": 0, "exclusiveMaximum": 90}},
-        "polarization": {"enum": ["s", "p", "unpolarized"]}, "metric": {"enum": ["R", "T"]},
+        "polarization": {"enum": ["s", "p", "unpolarized"]}, "metric": {"enum": ["R", "T", "A"]},
         "mean": FILM_OBJECTIVE_CONSTRAINT_SCHEMA, "pointwise": FILM_OBJECTIVE_CONSTRAINT_SCHEMA,
         "weight": {"type": "number", "exclusiveMinimum": 0},
         "normalization_scale": {"type": "number", "exclusiveMinimum": 0},
     },
-    "description": "One physical band, independent enabled mean and pointwise constraints. Each angle is reduced separately; R/T and bounds are fractions. Both disabled is invalid. Mean uses the complete requested grid and normalized trapezoid masses, not point counts.",
+    "description": "One physical band, independent enabled mean and pointwise constraints. Each angle is reduced separately; R/T/A and bounds are fractions. A is total absorption within the modeled boundary: finite films only for a semi-infinite substrate, and including the substrate for a finite plate. Both disabled is invalid. Mean uses the complete requested grid and normalized trapezoid masses, not point counts.",
 }
 
 

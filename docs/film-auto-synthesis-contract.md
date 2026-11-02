@@ -1,16 +1,18 @@
 # 自动膜系合成核心契约
 
-日期：2026-10-30。当前真值为 `coat_sim/core/film_auto_synthesis.py` 类型与签名。图解、公式、默认与来源见 [14t](algorithms.html#film-synthesis-audit-20261020)；独审见[审计契约](film-synthesis-audit-contract.md)；可组合起点见[物理结构契约](film-physical-structures-contract.md)；统一JSON、CLI与助手准备边界见[执行契约](film-synthesis-execution-contract.md)。2026-10-19报告仅作此前阶段记录，不代替当前文件和测试。
+日期：2026-11-02。当前真值为 `coat_sim/core/film_auto_synthesis.py` 类型与签名。图解、公式、默认与来源见 [14t](algorithms.html#film-synthesis-audit-20261020)；独审见[审计契约](film-synthesis-audit-contract.md)；可组合起点见[物理结构契约](film-physical-structures-contract.md)；统一JSON、CLI与助手准备边界见[执行契约](film-synthesis-execution-contract.md)。2026-10-19报告仅作此前阶段记录，不代替当前文件和测试。
 
 ## 输入、物理边界与唯一状态所有者
 
-`FilmSynthesisRequest.selected_surfaces` 为非空、无重复的 front/back 序列，默认 `("front",)`；输入顺序归一为物理 front、back 顺序，反序不改变缓存或续算身份。back 仅允许双面基片。`environment` 的所选面层表必须为空，未选面完整层表是固定物理环境，逐行（含 ID、note）保持不变；`objectives`为既有R/T值/上下限目标，候选材料显式给出。`seed_designs=()`可选，允许任意真实合法层序而不限五经典模板；起点不称从零发现，裸片工作分支始终保留。起点与环境光学边界、参考及吸收设置一致，nm/µm/QW冻结后转物理nm，材料可独立于允许插入/替换的候选池。来源revision只做回溯，不读写用户session。运行级ID保留集合包含全部起点与已分配提案，删层/丢候选不释放；新层冲突时稳定加后缀，旧层绝不重编号。审计checkpoint中的design可显式加入seed_designs恢复，仍重新冻结和审计；恢复不等于读取旧计算分数直接判合格。
+`FilmSynthesisRequest.selected_surfaces` 为非空、无重复的 front/back 序列，默认 `("front",)`；输入顺序归一为物理 front、back 顺序，反序不改变缓存或续算身份。back 仅允许双面基片。`environment` 的所选面层表必须为空，未选面完整层表是固定物理环境，逐行（含 ID、note）保持不变；`objectives`为R/T/A值/上下限目标，候选材料显式给出。`seed_designs=()`可选，允许任意真实合法层序而不限五经典模板；起点不称从零发现，裸片工作分支始终保留。起点与环境光学边界、参考及吸收设置一致，nm/µm/QW冻结后转物理nm，材料可独立于允许插入/替换的候选池。来源revision只做回溯，不读写用户session。运行级ID保留集合包含全部起点与已分配提案，删层/丢候选不释放；新层冲突时稳定加后缀，旧层绝不重编号。审计checkpoint中的design可显式加入seed_designs恢复，仍重新冻结和审计；恢复不等于读取旧计算分数直接判合格。
 
-坐标z=0在基片侧，层表按基片向入射排列；真空波长与物理厚度nm、角度°、R/T为0–1。使用既有整片 R/T 前向：单面半无限基片、双面相干有限基片或按既有自动厚度规则的非相干基片；`first_surface` 始终只控制真实照明方向，不因选择背面而翻转为虚拟前面。非一般各向异性/散射模型，不支持phase/GD/GDD目标。双面同时选择是一个联合候选和整片目标，不是两次独立单面评分。
+坐标z=0在基片侧，层表按基片向入射排列；真空波长与物理厚度nm、角度°、R/T/A为0–1。使用既有整片 R/T/A 前向：单面半无限基片、双面相干有限基片或按既有自动厚度规则的非相干基片；`first_surface` 始终只控制真实照明方向，不因选择背面而翻转为虚拟前面。非一般各向异性/散射模型，不支持phase/GD/GDD目标。双面同时选择是一个联合候选和整片目标，不是两次独立单面评分。
 
 `freeze_film_synthesis_request(service,request,*,cancel_event=None)`深拷贝、冻结基片/介质/候选与起点材料，重放已有快照时不读live目录。显式采用source k策略，要求每个实际目标、验证波段、尺度与QW参考点有已知k；不把未知或域外k补0，不外推n/k。失败点名material/optical_set、首次缺失波长和目标区间。已知教学k=0与真实来源k保持不同身份；真实工艺适用性不能由公式名称推断。所有结构变更后完整重算。
 
 `synthesize_film_design(service,request,*,cancel_event=None,progress_callback=None,snapshot_callback=None)`为同步纯核心。本次调用独占请求副本、各工作分支、训练best与audited_best，材料库、文件与编辑会话不变。回调在调用线程执行，不获得写回用户设计权限；异步外壳负责自己唯一取消事件、代际与请求身份。
+
+A 遵循实际系统边界：单面半无限基片时只计有限膜层吸收，T 是进入基片的功率；有限基片相干或非相干模型中 A 包含有限基片及两面膜层的总吸收。当前不提供逐层吸收分解。吸收入射外端口仍拒绝。厚度导数使用 dA/dd = −dR/dd − dT/dd；原始约束、均值/逐点归约、独立审计均保留 A，不用 R/T 近似替代。详见[吸收目标与导数](algorithms.html#film-absorption-optimization-20261102)。
 
 ## 搜索和排序
 

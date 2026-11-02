@@ -1917,7 +1917,7 @@ class FilmOptimizationQuickController(QObject):
                 row = _resolve_objective_sampling(row)
                 row = _resolve_angle_sampling(row)
                 if (row["polarization"] not in {"s", "p", "unpolarized"}
-                        or row["metric"] not in {"R", "T"}):
+                        or row["metric"] not in {"R", "T", "A"}):
                     raise ValueError(f"目标 {index + 1} 偏振或指标无效")
                 for group in ("mean", "pointwise"):
                     constraint = row[group]
@@ -1932,7 +1932,7 @@ class FilmOptimizationQuickController(QObject):
                     for bound_field in ("lower_bound_percent", "upper_bound_percent"):
                         constraint[bound_field] = _number(constraint[bound_field], bound_field)
                         if not 0 <= constraint[bound_field] <= 100:
-                            raise ValueError("R/T 百分数必须在 0 到 100 之间")
+                            raise ValueError("R/T/A 百分数必须在 0 到 100 之间")
                     if constraint["target_value_percent"] is not None:
                         constraint["target_value_percent"] = _number(constraint["target_value_percent"], "目标值%")
                         if not 0 <= constraint["target_value_percent"] <= 100:
@@ -4416,7 +4416,7 @@ class FilmOptimizationQuickController(QObject):
                 return False
         if field in ("polarization",) and value not in ("s", "p", "unpolarized"):
             return False
-        if field == "metric" and value not in ("R", "T"):
+        if field == "metric" and value not in ("R", "T", "A"):
             return False
         updated = deepcopy(row)
         try:

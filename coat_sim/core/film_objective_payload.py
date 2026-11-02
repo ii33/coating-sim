@@ -51,8 +51,8 @@ def objective_from_payload(value: Any):
             raise ValueError("band angles must be in [0, 90) degrees")
     if len(set(data["angles_deg"])) != len(data["angles_deg"]):
         raise ValueError("band angles cannot repeat")
-    if data["metric"] not in ("R", "T") or data["polarization"] not in ("s", "p", "unpolarized"):
-        raise ValueError("band supports R/T and s/p/unpolarized only")
+    if data["metric"] not in ("R", "T", "A") or data["polarization"] not in ("s", "p", "unpolarized"):
+        raise ValueError("band supports R/T/A and s/p/unpolarized only")
     objective = FilmOptimizationObjective(**data)
     validate_objective_criteria(objective)
     return objective
@@ -78,7 +78,7 @@ def condition_from_payload(value: Any) -> FilmConditionError:
         raise ValueError("condition objective_index must be a nonnegative integer")
     if any(type(getattr(condition, name)) is not bool for name in ("strict_lower", "strict_upper")):
         raise ValueError("condition strict flags must be boolean")
-    if condition.metric not in ("R", "T") or condition.polarization not in ("s", "p", "unpolarized"):
+    if condition.metric not in ("R", "T", "A") or condition.polarization not in ("s", "p", "unpolarized"):
         raise ValueError("condition metric or polarization is unsupported")
     for name in ("angle_deg", "actual", "normalized_violation", "weighted_normalized_violation",
                  "wavelength_min_nm", "wavelength_max_nm"):

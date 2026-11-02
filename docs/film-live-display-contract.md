@@ -67,8 +67,8 @@ First opening defaults to preview off; the same window remembers an explicit
 choice. Top-ten metadata remains active when curves are off. Producer rate is
 at most 1 Hz, with one terminal bypass using only an existing complete incumbent.
 Each current/best curve has at most 1024 original-grid samples. The selected
-objective, R/T metric and angle must already exist in that complete evaluation;
-otherwise show waiting. No interpolation, extra wavelength, forward simulation,
+objective, R/T/A metric and angle must already exist in that complete evaluation;
+otherwise show waiting. A is the total absorption inside the current modeled boundary (finite films for a semi-infinite substrate; includes the substrate for a finite plate), not a layer-resolved quantity. No interpolation, extra wavelength, forward simulation,
 Jacobian, or changed optimization grid is introduced for display.
 
 Check enabled/rate before curve selection, copying or spectral serialization.
@@ -154,7 +154,7 @@ and Qt lifecycle/network isolation; production hardware acceleration is unchange
 默认的目标模式沿用上述原网格和“零显示专用光学调用”规则。显式开启
 `selection.spectrum_scope="full_domain"` 时才采用另一个显示专用路径；严格
 selection 只允许原三字段或加此唯一字段和值。范围为全部目标下限的最小值至
-全部目标上限的最大值（nm），并用当前目标所选角度和偏振，以及所选 R/T。
+全部目标上限的最大值（nm），并用当前目标所选角度和偏振，以及所选 R/T/A。
 在整个包络上均匀取最多 1024 点，直接用冻结 n/k 与真实候选几何进行独立
 simulate，外推策略 `error`；未知 k 仅按冻结设计的显式假设处理。源域无效
 或缺失时 `availability=unavailable`，`unavailable_reason` 是最多 256 字符的
@@ -178,7 +178,7 @@ scheduler 取消使活动任务协作失效；终态不等待物理计算，也�
 
 窗口以 `liveDisplay` 独占该选择；全域模式等待或失败时，不把原单目标图
 伪装为全域图。快速 A→B→A 切换在最新控制确认且匹配控制序号的新帧到达前
-保持等待，旧帧不会复活。目标界线只画与当前角度、偏振和 R/T 一致的各自
+保持等待，旧帧不会复活。目标界线只画与当前角度、偏振和 R/T/A 一致的各自
 波段，不跨空档，兼容目标界限同时纳入纵轴自动范围。如果后端为避免当前
 候选持续变化导致饥饿而提供带身份匹配的上一帧谱，窗口必须显式标注
 “上一帧候选预览（有延迟）”，不得称其为最新试探。终态正式图的原设计和候选来自同次冻结请求与完整结果（包括
@@ -186,7 +186,7 @@ scheduler 取消使活动任务协作失效；终态不等待物理计算，也�
 和理想敏感度终态如无同源正式对比，则明确提示暂不可用，不借用旧优化结果。
 正式预览线程最多一项活动计算及一项可替换待做，改变条件、结果或关闭时
 协作取消并以 generation 丢弃过期输出。入队时一次隔离可变冻结材料和设计，
-同一结果的角度、R/T 切换复用副本；这一步发生在 Qt 线程，超大材料表可能
+同一结果的角度、R/T/A 切换复用副本；这一步发生在 Qt 线程，超大材料表可能
 产生可感知复制延迟，不等同于无界面等待的性能保证。
 
 当每个 current 的模拟都慢于候选更新时，后台可保留**一帧**已完成的旧

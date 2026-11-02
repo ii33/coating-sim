@@ -534,11 +534,25 @@ def _simulate_thickness_jacobian_arrays(
     return prepared[0], jacobian_r, jacobian_t
 
 
+def _absorption_jacobian(jacobian_r, jacobian_t):
+    """Derivative of finite-system absorption in normalized power per nm.
+
+    Exterior incident ports are nonabsorbing. The derivative is of the smooth
+    physical remainder, not the forward solver's tiny roundoff-to-zero display
+    threshold. A near-zero finite difference must allow that roundoff tolerance.
+    """
+    with np.errstate(over="ignore", invalid="ignore"):
+        result = -jacobian_r - jacobian_t
+    if not np.all(np.isfinite(result)):
+        raise ValueError("nonfinite absorption thickness Jacobian")
+    return result
+
+
 def simulate_with_thickness_jacobian(
     design, materials, variables, settings, *, zero_thickness_layer_ids=(),
     wavelengths_nm=None,
 ):
-    """Return canonical coherent R/T and analytic thickness Jacobians as lists.
+    """Return canonical coherent R/T/A and analytic thickness Jacobians as lists.
 
     Columns differentiate physical nm in the supplied variable order. The exact
     optional grid and all domain checks are shared with the private ndarray-only
@@ -561,6 +575,8 @@ def simulate_with_thickness_jacobian(
         "wavelength_nm": waves.tolist(),
         "R": np.asarray(response["R"], dtype=float).reshape(-1).tolist(),
         "T": np.asarray(response["T"], dtype=float).reshape(-1).tolist(),
+        "A": np.asarray(response["A"], dtype=float).reshape(-1).tolist(),
+        "jacobian_A": _absorption_jacobian(jacobian_r, jacobian_t).tolist(),
         "jacobian_R": jacobian_r.tolist(),
         "jacobian_T": jacobian_t.tolist(),
     }

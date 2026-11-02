@@ -2,7 +2,7 @@
 
 更新：2026-10-24。数学、单位、非均匀梯形 q、解析梯度和图解见 [算法 14at](algorithms.html#film-band-criteria-20261024)。本页为当前接口边界，不提供旧格式兼容。
 
-每个 `FilmOptimizationObjective` 只有一个波段身份，共享 wavelength_min_nm / wavelength_max_nm / wavelength_samples / angles_deg / polarization / metric / weight / normalization_scale。`metric` 只支持 R/T。`mean` 与 `pointwise` 都为 `FilmObjectiveConstraint(enabled, mode, target_value, lower_bound, upper_bound, strict_lower, strict_upper)`。默认逐点开、均值关；两组都关拒绝。value 必须清除 range 两界；range 必须清除 target。各组阈值独立，禁用组不进 loss/J/nominal/候选拒收。GUI 的“绝对值”意为逐点约束，与敏感性 absolute 尺度无关。
+每个 `FilmOptimizationObjective` 只有一个波段身份，共享 wavelength_min_nm / wavelength_max_nm / wavelength_samples / angles_deg / polarization / metric / weight / normalization_scale。`metric` 支持 R/T/A，均为 0–1 比例。A 是当前建模边界内总吸收：半无限基片边界只计有限膜层，透入基片的通量是 T；有限平板边界包含基片吸收。不是逐层或基片分解，也不涵盖模型未计入的散射。`mean` 与 `pointwise` 都为 `FilmObjectiveConstraint(enabled, mode, target_value, lower_bound, upper_bound, strict_lower, strict_upper)`。默认逐点开、均值关；两组都关拒绝。value 必须清除 range 两界；range 必须清除 target。各组阈值独立，禁用组不进 loss/J/nominal/候选拒收。GUI 的“绝对值”意为逐点约束，与敏感性 absolute 尺度无关。
 
 ## 输入、状态与错误
 
