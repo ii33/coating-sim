@@ -49,7 +49,7 @@ def _layer_map(snapshot: Mapping[str, Any] | None) -> dict[str, dict[str, Any]]:
     for row in layers:
         side = row.get("side", "front")
         counts[side] = counts.get(side, 0) + 1
-        result[str(row["id"])] = dict(row, order=counts[side])
+        result[str(row["id"])] = dict(row, side=side, order=counts[side])
     return result
 
 
@@ -88,12 +88,12 @@ def layer_change_rows(source: Mapping[str, Any] | None, current: Mapping[str, An
                 return "厚度归零，待核验消层"
             ancestry = origins(row)
             if len(ancestry) > 1:
-                names = [f"原第{original[key]['order']}层" if key in original else str(key)
+                names = [f"原第{original[key]['order']}层" if key in original else "来源未记录"
                          for key in ancestry]
                 return "合并自" + "、".join(names)
             if identifier not in original:
                 return "新增" if not ancestry else "拆分/衍生自" + "、".join(
-                    f"原第{original[key]['order']}层" if key in original else str(key) for key in ancestry)
+                    f"原第{original[key]['order']}层" if key in original else "来源未记录" for key in ancestry)
             return "保留"
         descendants = [str(item["order"]) for item in rows.values() if identifier in origins(item)]
         return "合并/拆分至第" + "、".join(descendants) + "层" if descendants else "已删除"
@@ -119,7 +119,8 @@ def layer_change_rows(source: Mapping[str, Any] | None, current: Mapping[str, An
             difference = value - source_nm
             return ("+" if difference > 0 else "") + format_film_thickness(difference) + " nm"
 
-        rows.append(dict(row_id=identifier, id=identifier, label=label, original_nm=original_nm,
+        rows.append(dict(row_id=identifier, id=identifier, label=label, side=side,
+            index=(base or metadata).get("order"), is_new=base is None, original_nm=original_nm,
             current_nm=current_nm, best_nm=best_nm, original=show(original_nm), current=show(current_nm),
             best=show(best_nm), current_delta=delta(now, current_nm), best_delta=delta(optimum, best_nm),
             current_deleted=current_deleted, best_deleted=best_deleted,

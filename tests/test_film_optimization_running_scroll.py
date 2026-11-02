@@ -133,6 +133,7 @@ def test_running_scroll_and_locked_editors(app, tmp_path):
 
 def test_plot_toolbar_single_row_and_narrow_access(app, tmp_path):
     from coat_sim.ui.theme_service import ThemeService
+    from PySide6.QtQml import QQmlEngine, QQmlExpression
 
     service, _library, design = fixture(tmp_path)
     with optimizer(service, design) as (controller, _source, _session):
@@ -140,10 +141,12 @@ def test_plot_toolbar_single_row_and_narrow_access(app, tmp_path):
             window.setHeight(680)
             names = ["filmOptimizationPlotTitle", "filmCandidateLivePreviewToggle",
                      "filmOptimizationFullDomainToggle", "filmCandidateLiveMetricBox",
-                     "filmOptimizationYAxisAuto"]
+                     "filmOptimizationYAxisAuto", "filmOptimizationPlotObjectiveBox",
+                     "filmOptimizationPlotAngleBox", "filmCandidateLivePreviewStatus",
+                     "filmOptimizationPlotBaselineTitle"]
             for scale in (1.0, 1.4):
                 ThemeService.instance().configure(mode="light", font_scale=scale, density_scale=1.0)
-                window.setWidth(900)
+                window.setWidth(1340)
                 QTest.qWait(100)
                 viewport = item(window, "filmOptimizationPlotControlsViewport")
                 controls = [item(window, name) for name in names]
@@ -153,8 +156,37 @@ def test_plot_toolbar_single_row_and_narrow_access(app, tmp_path):
                 for (left, width, height), (right, _next_width, next_height) in zip(rects, rects[1:], strict=False):
                     assert left.x() + width <= right.x() + 1
                     assert abs((left.y() + height / 2) - (right.y() + next_height / 2)) <= 1
-                assert item(window, "filmCandidateLivePreviewStatus").isVisible()
-                assert item(window, "filmOptimizationPlotBaselineTitle").isVisible()
+                for control in controls:
+                    left = control.mapToItem(viewport, QPointF()).x()
+                    assert control.isVisible() and left >= -1
+                    assert left + control.width() <= viewport.width() + 1
+                # The compact objective selector opens a fully readable, on-screen popup.
+                objective = item(window, "filmOptimizationPlotObjectiveBox")
+                point = objective.mapToScene(QPointF(objective.width() / 2, objective.height() / 2)).toPoint()
+                QTest.mouseClick(window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point)
+                QTest.qWait(100)
+                popup_check = QQmlExpression(
+                    QQmlEngine.contextForObject(objective), objective,
+                    "popup.visible && popup.contentItem.itemAtIndex(0).text === currentText "
+                    "&& popup.contentItem.itemAtIndex(0).contentItem.contentWidth "
+                    "<= popup.contentItem.itemAtIndex(0).contentItem.width "
+                    "&& popup.contentItem.mapToItem(null, 0, 0).x >= 0 "
+                    "&& popup.contentItem.mapToItem(null, 0, 0).x + popup.contentItem.width <= window.width")
+                assert popup_check.evaluate()[0] and not popup_check.hasError()
+                QTest.keyClick(window, Qt.Key.Key_Escape)
+                QTest.qWait(50)
+                # The two potentially elided labels retain their complete text in tooltips.
+                for status in controls[-2:]:
+                    expression = QQmlExpression(QQmlEngine.contextForObject(status), status,
+                                                "ToolTip.text === text && text.length > 0")
+                    assert expression.evaluate()[0] and not expression.hasError()
+                    point = status.mapToScene(QPointF(status.width() / 2, status.height() / 2)).toPoint()
+                    QTest.mouseMove(window, point, 10)
+                    QTest.qWait(1000)
+                    shown = QQmlExpression(QQmlEngine.contextForObject(status), status, "ToolTip.visible")
+                    assert shown.evaluate()[0] and not shown.hasError()
+                canvas = item(window, "filmOptimizationComparisonCanvas")
+                assert canvas.mapToScene(QPointF()).y() <= viewport.mapToScene(QPointF()).y() + viewport.height() + 8
                 window.setWidth(720)
                 QTest.qWait(100)
                 assert viewport.property("contentWidth") > viewport.width()
@@ -167,8 +199,8 @@ def test_plot_toolbar_single_row_and_narrow_access(app, tmp_path):
                 QTest.mouseRelease(window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, last)
                 QTest.qWait(50)
                 assert viewport.property("contentX") > 0
-                auto = controls[-1]
-                right_edge = auto.mapToItem(viewport, QPointF(auto.width(), 0)).x()
+                last_label = controls[-1]
+                right_edge = last_label.mapToItem(viewport, QPointF(last_label.width(), 0)).x()
                 assert right_edge <= viewport.width() + 1
                 assert item(window, "filmCandidateLivePreviewStatus").isVisible()
                 assert item(window, "filmOptimizationPlotBaselineTitle").isVisible()

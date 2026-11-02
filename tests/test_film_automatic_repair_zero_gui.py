@@ -1,13 +1,11 @@
 """Zero-layer repair projections and real QML over production optical evidence."""
 from copy import deepcopy
-import json
 from math import fsum
 from types import SimpleNamespace
 from typing import cast
 
 import pytest
 from PySide6.QtCore import QCoreApplication
-from PySide6.QtGui import QColor
 from PySide6.QtTest import QSignalSpy
 import shiboken6
 
@@ -153,26 +151,19 @@ def test_real_qml_zero_trial_cancel_shows_applied_champion_totals_bars_and_undo(
                 assert rows["thin"]["current_ratio"] == 0.
                 assert "待核验" in rows["thin"]["status"]
                 assert scene is not None
-                bar = scene.item("filmRepairLiveBar_thin")
-                assert bar.width() == 0.
+                bar = scene.item("filmLayerThicknessBar_1_thin")
+                assert bar.height() == pytest.approx(0.)  # known zero, not a positive bar
                 for key, row in rows.items():
-                    background = scene.item("filmRepairLiveBar_" + key)
-                    row_item = scene.item("filmRepairLiveLayer_" + key)
-                    assert background.width() == pytest.approx(row_item.width() * row["current_ratio"], abs=.5)
+                    current_bar = scene.item("filmLayerThicknessBar_1_" + key)
+                    row_item = scene.item("filmLayerThicknessLayer_" + key)
+                    assert current_bar.height() == pytest.approx(max(2., row_item.property("plotHeight") * row["current_ratio"]) if row["current_nm"] else 0., abs=.5)
                     assert row["current_ratio"] == pytest.approx((row["current_nm"] or 0.) / h.panel.liveBarScaleNm)
-                    assert float(scene.evaluate(row_item, "mapToItem(null,width,0).x")) <= scene.window.width() - 16
-                values = scene.item("filmRepairLiveValues_left")
-                geometry = json.loads(scene.evaluate(values,
-                    "JSON.stringify({width:width,paintedWidth:paintedWidth,height:height,paintedHeight:paintedHeight})"))
-                assert geometry["width"] + .5 >= geometry["paintedWidth"]
-                assert geometry["height"] + .5 >= geometry["paintedHeight"]
-                foreground = cast(QColor, values.property("color"))
-                surface = QColor(str(theme.current_snapshot["colorSurface"]))
-                accent = QColor(str(theme.current_snapshot["colorAccent"]))
-                mixed = [a * .12 + b * .88 for a, b in zip(
-                    (accent.redF(), accent.greenF(), accent.blueF()),
-                    (surface.redF(), surface.greenF(), surface.blueF()), strict=True)]
-                assert contrast((foreground.redF(), foreground.greenF(), foreground.blueF()), mixed) >= 4.5
+                for name in ("filmLayerThicknessLegend", "filmLayerThicknessSummary", "filmLayerThicknessOpticalSummary"):
+                    label = scene.item(name)
+                    assert float(scene.evaluate(label, "mapToItem(null,width,0).x")) <= scene.window.width() - 16
+                    assert label.property("paintedWidth") <= label.width() + .5
+                assert "当前试探不代表最佳" in scene.item("filmLayerThicknessSummary").property("text")
+                assert "光学保护" in scene.item("filmLayerThicknessOpticalSummary").property("text")
                 QCoreApplication.processEvents()
                 assert scene.window.grabWindow().save(str(tmp_path / f"zero-live-{mode}-{scale}-{width}.png"))
                 captured.append(current["physical_hash"])
@@ -192,8 +183,12 @@ def test_real_qml_zero_trial_cancel_shows_applied_champion_totals_bars_and_undo(
             assert rows["thin"]["current_nm"] == rows["thin"]["best_nm"] == 7.5
             assert rows["thin"]["current_ratio"] == rows["thin"]["best_ratio"]
             assert captured[0] != best["physical_hash"]  # Unreviewed zero never becomes the applied display.
-            assert "167.5 nm" in scene.item("filmRepairLiveTotal").property("text")
+            chart = scene.item("filmOptimizationLayerThicknessChart")
+            assert chart.property("currentLegend") == "已应用回看"
+            assert "当前试探不代表最佳" not in scene.item("filmLayerThicknessSummary").property("text")
+            assert "167.5 nm" in scene.item("filmLayerThicknessSummary").property("text")
             assert h.source.undoOptimizedDesign() and h.session.snapshot().design == before
+            assert not h.panel.hasLiveChartFrame  # A changed source cannot reuse this graph.
     finally:
         if scene is not None:
             scene.close()

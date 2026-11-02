@@ -1469,11 +1469,6 @@ AppWindow {
                                     wrapMode: Text.WordWrap
                                     font.pointSize: window.themeTokens.fontSizeSmall
                                 }
-                                FilmReductionLiveFeedback {
-                                    Layout.fillWidth: true
-                                    controller: window.controller
-                                    themeTokens: window.themeTokens
-                                }
                                 Label {
                                     visible: window.controller.searchMode === "automatic_repair"
                                     Layout.fillWidth: true
@@ -2433,6 +2428,7 @@ AppWindow {
                 Rectangle {
                     id: plotPanel
                     objectName: "filmOptimizationPlotPanel"
+                    readonly property bool showingThickness: window.controller.searchMode === "automatic_repair" || window.controller.searchMode === "reduction"
                     readonly property var activeLiveData: window.controller.liveDisplay.running && window.controller.liveDisplay.enabled
                                                           ? window.controller.liveDisplay.plotData : ({})
                     readonly property bool showingLiveData: activeLiveData && activeLiveData.live === true
@@ -2455,6 +2451,7 @@ AppWindow {
                     color: window.themeTokens.colorSurface
                     border.color: window.synthesisPreviewHighlighted ? window.themeTokens.colorAccent : window.themeTokens.colorBorder
                     ColumnLayout {
+                        visible: !plotPanel.showingThickness
                         anchors.fill: parent
                         anchors.margins: window.themeTokens.spaceSm
                         spacing: window.themeTokens.spaceXs
@@ -2463,7 +2460,7 @@ AppWindow {
                             objectName: "filmOptimizationPlotControlsViewport"
                             Layout.fillWidth: true
                             Layout.preferredHeight: plotControlsRow.implicitHeight + (contentWidth > width ? 8 : 0)
-                            contentWidth: Math.max(width, plotControlsRow.implicitWidth)
+                            contentWidth: Math.max(width, plotControlsRow.Layout.minimumWidth)
                             contentHeight: height
                             flickableDirection: Flickable.HorizontalFlick
                             clip: true
@@ -2477,7 +2474,7 @@ AppWindow {
                                 objectName: "filmOptimizationPlotControlsRow"
                                 width: plotControlsViewport.contentWidth
                                 height: implicitHeight
-                                spacing: Math.max(1, window.themeTokens.spaceXs / 2)
+                                spacing: Math.max(4, window.themeTokens.spaceXs)
                                 Label {
                                     objectName: "filmOptimizationPlotTitle"
                                     text: "光谱对比"
@@ -2529,51 +2526,77 @@ AppWindow {
                                     ToolTip.visible: hovered
                                     ToolTip.text: "随当前光谱调整纵轴上限；关闭后输入百分比范围。"
                                 }
-                                Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
+                                ThemeControls.ThemeComboBox {
+                                    objectName: "filmOptimizationPlotObjectiveBox"
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 120
+                                    Layout.preferredWidth: 180
+                                    Layout.maximumWidth: 180
+                                    model: window.controller.plotObjectives
+                                    textRole: "label"
+                                    valueRole: "index"
+                                    currentIndex: model.length > 0 ? window.controller.selectedPlotObjectiveIndex : -1
+                                    // Size the popup for the longest label rather than the compact toolbar field.
+                                    popup.width: {
+                                        let longest = 0
+                                        for (let i = 0; i < model.length; ++i)
+                                            longest = Math.max(longest, String(model[i].label || "").length)
+                                        return Math.min(window.width - window.themeTokens.spaceMd * 2,
+                                                        Math.max(width, longest * font.pointSize * 2 + window.themeTokens.spaceMd * 2))
+                                    }
+                                    popup.x: Math.min(0, window.width - window.themeTokens.spaceMd
+                                                         - mapToItem(null, 0, 0).x - popup.width)
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: currentText
+                                    onActivated: window.controller.selectPlotObjective(currentIndex)
+                                }
+                                ThemeControls.ThemeComboBox {
+                                    objectName: "filmOptimizationPlotAngleBox"
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 55
+                                    Layout.preferredWidth: 72
+                                    Layout.maximumWidth: 72
+                                    model: window.controller.plotAngles
+                                    textRole: "label"
+                                    valueRole: "value"
+                                    currentIndex: model.length > 0 ? window.controller.selectedPlotAngleIndex : -1
+                                    onActivated: window.controller.selectPlotAngle(currentIndex)
+                                }
+                                Label {
+                                    objectName: "filmCandidateLivePreviewStatus"
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 55
+                                    Layout.preferredWidth: 180
+                                    text: plotPanel.previewStatus
+                                    color: window.themeTokens.colorTextMuted
+                                    wrapMode: Text.NoWrap
+                                    elide: Text.ElideRight
+                                    font.pointSize: window.themeTokens.fontSizeSmall
+                                    Accessible.name: text
+                                    HoverHandler { id: previewStatusHover }
+                                    ToolTip.visible: previewStatusHover.hovered
+                                    ToolTip.text: text
+                                }
+                                Label {
+                                    objectName: "filmOptimizationPlotBaselineTitle"
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 55
+                                    Layout.preferredWidth: 200
+                                    text: window.controller.liveDisplay.fullDomain
+                                          ? "R/T (%) · 整个定义域；角度和偏振沿用所选目标，显示采样不改变验收"
+                                          : (plotPanel.showingLiveData
+                                             ? "R/T (%) · 当前试探与优化器最佳；仅抽样原目标网格"
+                                             : "R/T (%) · " + (comparisonCanvas.dataSnapshot.baseline_label || "原设计") + "与候选；目标线按未加权界限显示")
+                                    color: window.themeTokens.colorTextMuted
+                                    wrapMode: Text.NoWrap
+                                    elide: Text.ElideRight
+                                    font.pointSize: window.themeTokens.fontSizeSmall
+                                    Accessible.name: text
+                                    HoverHandler { id: baselineStatusHover }
+                                    ToolTip.visible: baselineStatusHover.hovered
+                                    ToolTip.text: text
+                                }
                             }
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            ThemeControls.ThemeComboBox {
-                                objectName: "filmOptimizationPlotObjectiveBox"
-                                Layout.minimumWidth: Math.min(160, plotPanel.width * 0.32)
-                                Layout.preferredWidth: Math.min(260, plotPanel.width * 0.5)
-                                model: window.controller.plotObjectives
-                                textRole: "label"
-                                valueRole: "index"
-                                currentIndex: model.length > 0 ? window.controller.selectedPlotObjectiveIndex : -1
-                                onActivated: window.controller.selectPlotObjective(currentIndex)
-                            }
-                            ThemeControls.ThemeComboBox {
-                                objectName: "filmOptimizationPlotAngleBox"
-                                Layout.preferredWidth: plotPanel.width < 400 ? 64 : 96
-                                model: window.controller.plotAngles
-                                textRole: "label"
-                                valueRole: "value"
-                                currentIndex: model.length > 0 ? window.controller.selectedPlotAngleIndex : -1
-                                onActivated: window.controller.selectPlotAngle(currentIndex)
-                            }
-                            Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
-                        }
-                        Label {
-                            objectName: "filmCandidateLivePreviewStatus"
-                            Layout.fillWidth: true
-                            text: plotPanel.previewStatus
-                            color: window.themeTokens.colorTextMuted
-                            wrapMode: Text.WordWrap
-                            font.pointSize: window.themeTokens.fontSizeSmall
-                        }
-                        Label {
-                            objectName: "filmOptimizationPlotBaselineTitle"
-                            Layout.fillWidth: true
-                            text: window.controller.liveDisplay.fullDomain
-                                  ? "R/T (%) · 整个定义域；角度和偏振沿用所选目标，显示采样不改变验收"
-                                  : (plotPanel.showingLiveData
-                                     ? "R/T (%) · 当前试探与优化器最佳；仅抽样原目标网格"
-                                     : "R/T (%) · " + (comparisonCanvas.dataSnapshot.baseline_label || "原设计") + "与候选；目标线按未加权界限显示")
-                            color: window.themeTokens.colorTextMuted
-                            wrapMode: Text.WordWrap
-                            font.pointSize: window.themeTokens.fontSizeSmall
                         }
                         Label {
                             objectName: "filmOptimizationPlotAnglesSummary"
@@ -2756,6 +2779,15 @@ AppWindow {
                             color: window.themeTokens.colorWarning
                             wrapMode: Text.WordWrap
                         }
+                    }
+                    FilmLayerThicknessChart {
+                        objectName: "filmOptimizationLayerThicknessChart"
+                        anchors.fill: parent
+                        anchors.margins: window.themeTokens.spaceSm
+                        visible: plotPanel.showingThickness
+                        controller: window.controller
+                        manufacturingController: window.controller.manufacturingController
+                        themeTokens: window.themeTokens
                     }
                 }
 

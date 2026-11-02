@@ -187,6 +187,7 @@ class FilmManufacturingQuickController(QObject):
         self._live_frame: dict | None = None
         self._live_seq = -1
         self._live_bar_scale_nm = 0.0
+        self._chart_invalidated = False
         self._stop_reason = ""
         self._auto_apply_attempted = False
         self._apply_in_progress = False
@@ -297,6 +298,12 @@ class FilmManufacturingQuickController(QObject):
     @Property(bool, notify=changed)
     def hasLivePreview(self):
         return self._live_frame is not None or (self._payload or {}).get("schema_version") == 3
+
+    @Property(bool, notify=changed)
+    def hasLiveChartFrame(self):
+        # Old reports remain available for explicit review, but must not be
+        # presented as a new task/source's live graph.
+        return self.hasLivePreview and not self._chart_invalidated
 
     def _application_payload(self):
         if self._applied_payload is not None:
@@ -946,6 +953,7 @@ class FilmManufacturingQuickController(QObject):
             self._cancel_intent = self._applied = False
             self._live_frame, self._live_seq = None, -1
             self._live_bar_scale_nm = 0.0
+            self._chart_invalidated = False
             self._stop_reason = ""
             self._auto_apply_attempted = self._apply_in_progress = False
             self._pending_application = self._applied_snapshot = self._applied_payload = None
@@ -1103,6 +1111,8 @@ class FilmManufacturingQuickController(QObject):
 
     @Slot()
     def sourceChanged(self):
+        if not self._apply_in_progress:
+            self._chart_invalidated = True
         self._stale = True
         self._source_invalidated.set()
         self._eligibility_cache = None

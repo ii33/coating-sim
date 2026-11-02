@@ -1243,6 +1243,7 @@ class FilmOptimizationQuickController(QObject):
         self._reduction_result: FilmReductionResult | None = None
         self._reduction_feedback_snapshot: dict[str, Any] | None = None
         self._reduction_feedback_layers_cache: list[dict[str, Any]] = []
+        self._reduction_feedback_bar_scale_nm = 0.0
         self._reduction_feedback_digest = ""
         self._reduction_feedback_sequence = -1
         self._reduction_feedback_error = ""
@@ -2692,7 +2693,18 @@ class FilmOptimizationQuickController(QObject):
                 self._source_stale = True
                 self.changed.emit()
 
+    def _clear_reduction_feedback(self) -> None:
+        self._reduction_feedback_snapshot = None
+        self._reduction_feedback_layers_cache = []
+        self._reduction_feedback_bar_scale_nm = 0.0
+        self._reduction_feedback_digest = ""
+        self._reduction_feedback_sequence = -1
+        self._reduction_feedback_error = ""
+        self.reductionFeedbackChanged.emit()
+
     def _invalidate_result(self) -> None:
+        # A changed task/source cannot display or combine an earlier job frame.
+        self._clear_reduction_feedback()
         if self._resource_estimator_seen is not None:
             self._resource_estimator_seen.invalidateDraft()
         if self._manufacturing_controller is not None:
@@ -2985,6 +2997,11 @@ class FilmOptimizationQuickController(QObject):
                 + (f" 终止原因：{frame['termination_reason']}。" if frame["termination_reason"] else "")
                 + ("\n" + self._reduction_feedback_error if self._reduction_feedback_error else ""))
 
+    @Property(float, notify=reductionFeedbackChanged)
+    def reductionFeedbackBarScaleNm(self) -> float:
+        """Largest audited physical thickness seen in the current task."""
+        return self._reduction_feedback_bar_scale_nm
+
     @Property(list, notify=reductionFeedbackChanged)
     def reductionFeedbackLayers(self) -> list[dict[str, Any]]:
         # Scalar progress ticks must not recreate every row delegate. The cache
@@ -2992,11 +3009,13 @@ class FilmOptimizationQuickController(QObject):
         return [dict(row) for row in self._reduction_feedback_layers_cache]
 
     @staticmethod
-    def _make_reduction_feedback_layers(frame: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+    def _make_reduction_feedback_layers(frame: Mapping[str, Any] | None,
+                                        bar_scale_nm: float = 0.0) -> list[dict[str, Any]]:
         if frame is None:
             return []
         rows = frame["layers"]
-        scale = max((max(float(row["original_nm"]), float(row["best_nm"])) for row in rows), default=0.0)
+        scale = max(bar_scale_nm, max((max(float(row["original_nm"]), float(row["best_nm"]))
+                                      for row in rows), default=0.0))
         result = []
         for row in rows:
             original, best, delta = float(row["original_nm"]), float(row["best_nm"]), row["delta_nm"]
@@ -3004,6 +3023,7 @@ class FilmOptimizationQuickController(QObject):
                           ("+" if delta > 0 else "") + format_film_thickness(delta) + " nm")
             result.append({
                 "row_id": row["id"], "side": row["side"], "index": row["index"],
+                "original_nm": original, "best_nm": best,
                 "label": ("正面" if row["side"] == "front" else "背面")
                          + f"原第 {row['index'] + 1} 层 · {row['material_id']}",
                 "original": format_film_thickness(original) + " nm",
@@ -6560,12 +6580,7 @@ class FilmOptimizationQuickController(QObject):
         self._synthesis_payload = None
         self._structure_result = None
         self._reduction_result = None
-        self._reduction_feedback_snapshot = None
-        self._reduction_feedback_layers_cache = []
-        self._reduction_feedback_digest = ""
-        self._reduction_feedback_sequence = -1
-        self._reduction_feedback_error = ""
-        self.reductionFeedbackChanged.emit()
+        self._clear_reduction_feedback()
         self._inspection_objectives = None
         self._result_terminal_state = ""
         self._result_application_eligible = False
@@ -7146,7 +7161,12 @@ class FilmOptimizationQuickController(QObject):
                     self._reduction_feedback_error = "实时反馈输入摘要变化；拒绝显示旧任务快照。"
                 else:
                     self._reduction_feedback_snapshot = frame
-                    self._reduction_feedback_layers_cache = self._make_reduction_feedback_layers(frame)
+                    self._reduction_feedback_bar_scale_nm = max(
+                        self._reduction_feedback_bar_scale_nm,
+                        *(max(float(row["original_nm"]), float(row["best_nm"]))
+                          for row in frame["layers"]), 0.0)
+                    self._reduction_feedback_layers_cache = self._make_reduction_feedback_layers(
+                        frame, self._reduction_feedback_bar_scale_nm)
                     self._reduction_feedback_digest = frame["input_digest"]
                     self._reduction_feedback_sequence = frame["sequence"]
                     self.reductionFeedbackChanged.emit()

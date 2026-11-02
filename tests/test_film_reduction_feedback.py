@@ -190,8 +190,8 @@ def test_live_feedback_panel_shows_only_new_audited_frame_and_does_not_rebuild_o
     with window_runtime(app, controller) as (window, warnings):
         tabs = window.findChild(QObject, 'filmOptimizationSetupTabs')
         assert tabs is not None and tabs.setProperty('currentIndex', 2)
-        panel = window.findChild(QObject, 'filmReductionLiveFeedback')
-        summary = window.findChild(QObject, 'filmReductionLiveSummary')
+        panel = window.findChild(QObject, 'filmOptimizationLayerThicknessChart')
+        summary = window.findChild(QObject, 'filmLayerThicknessSummary')
         assert panel is not None and panel.property('visible')
         assert summary is not None
         text = summary.property('text')
