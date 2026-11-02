@@ -217,15 +217,14 @@ def test_strict_request_result_binding_and_tamper_rejection():
             film_reduction_result_from_payload(tampered)
 
 
-def test_zero_thickness_selected_deletes_and_positive_lower_cannot_delete():
+def test_zero_thickness_and_positive_lower_selected_layers_can_be_deleted():
     source = request([layer("zero", 0), layer("thin", 0.01)], max_iterations=2)
     result = reduce_film_design(Service(lambda *_: 0.1), source)
     assert result.metrics["candidate"]["layer_count"] == 0
     frozen = freeze_film_reduction_request(Service(), request(lower=1))
     empty = deepcopy(dict(frozen.base_request.design_snapshot))
     empty["front_layers"] = []
-    with pytest.raises(ValueError, match="lower_nm"):
-        validate_film_reduction_candidate_topology(frozen, empty)
+    validate_film_reduction_candidate_topology(frozen, empty)
 
 
 def test_real_ar_film_thickness_reduction_meets_nontrivial_band_goal():
@@ -328,13 +327,31 @@ def test_independent_grid_cannot_use_multiplier_one():
 
 
 def test_layer_count_mode_does_not_claim_thickness_only_reduction():
-    source = request(lower=7, mode="layer_count")
-    result = reduce_film_design(Service(lambda *_: 0.1), source)
+    goal = FilmOptimizationObjective(550, 550, 1,
+        pointwise=FilmObjectiveConstraint(mode="range", lower_bound=0, upper_bound=0.2))
+    source = request(lower=7, mode="layer_count", objective=goal)
+    # Thinning alone is not a layer-count improvement; actual deletion fails optics.
+    result = reduce_film_design(Service(lambda design, *_: 0.1 if design["front_layers"] else 0.9), source)
     assert result.best_thickness_nm == {"a": 20.0}
     assert not result.summary["reduction_achieved"]
 
 
-def test_real_relevant_layer_deletion_requires_bounded_repair_and_layer_mode_allows_growth():
+def _isolate_relevant_high_removal(monkeypatch):
+    # These protocol tests target repair of this specific deletion. Positive
+    # lower bounds no longer prevent the survivor from being deleted, so
+    # isolate the proposal without changing the real optimizer/audit path.
+    import coat_sim.core.film_reduction as reduction
+    proposals = reduction._proposals
+    def only_relevant(request, design, step):
+        for candidate in proposals(request, design, step):
+            ids = {row["id"] for row in candidate["front_layers"]}
+            if "survivor" in ids and "relevant-high" not in ids:
+                yield candidate
+    monkeypatch.setattr(reduction, "_proposals", only_relevant)
+
+
+def test_real_relevant_layer_deletion_requires_bounded_repair_and_layer_mode_allows_growth(monkeypatch):
+    _isolate_relevant_high_removal(monkeypatch)
     goal = FilmOptimizationObjective(540, 560, 3, polarization="s",
         pointwise=FilmObjectiveConstraint(mode="range", lower_bound=0.015, upper_bound=0.022))
     source = request([layer("survivor", 40), layer("relevant-high", 5, "high")],
@@ -482,7 +499,8 @@ def _chunked_fake_response(design, _waves, _calls):
     return 0.018 if len(rows) == 2 else (0.019 if rows[0]["thickness"]["value"] >= 60 else 0.03)
 
 
-def test_real_optimizer_protocol_counts_multiobjective_multiangle_chunked_repair():
+def test_real_optimizer_protocol_counts_multiobjective_multiangle_chunked_repair(monkeypatch):
+    _isolate_relevant_high_removal(monkeypatch)
     service = Service(_chunked_fake_response)
     result = reduce_film_design(service, _chunked_repair_source())
     training_frame_samples = [10001, 1, 10001, 1, 3, 3]
@@ -498,7 +516,8 @@ def test_real_optimizer_protocol_counts_multiobjective_multiangle_chunked_repair
 
 
 @pytest.mark.parametrize(("stop_at", "expected_grids", "expected_validation"), [(16, 3, 1), (22, 4, 1), (34, 6, 2)])
-def test_chunked_inner_repair_cancel_midgrid_never_starts_extra_optics(stop_at, expected_grids, expected_validation):
+def test_chunked_inner_repair_cancel_midgrid_never_starts_extra_optics(stop_at, expected_grids, expected_validation, monkeypatch):
+    _isolate_relevant_high_removal(monkeypatch)
     event = Event()
     def response(design, waves, calls):
         if len(calls) == stop_at:
@@ -515,7 +534,8 @@ def test_chunked_inner_repair_cancel_midgrid_never_starts_extra_optics(stop_at, 
 
 
 @pytest.mark.parametrize(("stop_at", "expected_grids", "expected_validation"), [(16, 3, 1), (34, 6, 2)])
-def test_chunked_inner_repair_first_score_or_holdout_failure_keeps_previous_complete_audit(stop_at, expected_grids, expected_validation):
+def test_chunked_inner_repair_first_score_or_holdout_failure_keeps_previous_complete_audit(stop_at, expected_grids, expected_validation, monkeypatch):
+    _isolate_relevant_high_removal(monkeypatch)
     def response(design, waves, calls):
         if len(calls) == stop_at:
             raise ValueError("injected chunk failure")

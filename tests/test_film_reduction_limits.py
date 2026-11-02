@@ -12,7 +12,8 @@ from coat_sim.core.film_reduction import (
     film_reduction_result_from_payload, film_reduction_result_to_payload,
     freeze_film_reduction_request, reduce_film_design,
 )
-from tests.test_film_reduction import Service, layer, request, _meaningful_repair_source
+from tests.test_film_reduction import (Service, layer, request, _meaningful_repair_source,
+    _isolate_relevant_high_removal)
 
 
 def _long_thickness_source():
@@ -58,7 +59,8 @@ def _slow_repair_response(design, *_):
     return 0.01 + abs(design["front_layers"][0]["thickness"]["value"] - 93.14159) / 200
 
 
-def test_survivor_repair_is_not_truncated_at_hidden_8_iterations_or_35_evaluations():
+def test_survivor_repair_is_not_truncated_at_hidden_8_iterations_or_35_evaluations(monkeypatch):
+    _isolate_relevant_high_removal(monkeypatch)
     service = Service(_slow_repair_response)
     result = reduce_film_design(service, _slow_repair_source())
     assert result.summary["source_feasible"] and result.summary["reduction_achieved"]

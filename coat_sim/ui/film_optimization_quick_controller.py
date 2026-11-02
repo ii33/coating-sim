@@ -2915,19 +2915,17 @@ class FilmOptimizationQuickController(QObject):
     @Property(str, notify=changed)
     def reductionPolicySummary(self) -> str:
         selected = [row for row in self._variables if row["enabled"] and row["available"]]
-        deletable = sum(row["lower_nm"] == 0 for row in selected)
-        protected = sum(row["lower_nm"] > 0 for row in selected)
         modes = {
             "layer_count": "仅减层：删除 / 合并后在原边界内调整已选保留层厚度以恢复全部光学目标；以层数减少为准，总厚度可以增加。",
-            "thickness": "仅减厚：保持层序，以总厚度减少为准。",
+            "thickness": "仅减厚：保持层序，不删除膜层；已选层始终受各自原厚度边界约束，以总厚度减少为准。",
             "combined": "联合减量：层数和总厚度均不得高于原设计，至少一项严格减少。",
         }
-        rule = ("沿用全部原始光学约束与已选厚度变量。仅下界明确为 0 nm 的已选层可删除 / 合并；"
-                "下界大于 0 nm 的层不可删除。参与合并的每层都须允许删除，且材料和光学数据集完全相同；"
-                "保留层仍受原边界约束，不新增材料。正常完成且有完整审计通过的改善才自动应用（不保存，可撤销）；取消、失败或无改善均保留原设计。")
-        note = f"已选允许删除 {deletable} 层；下界大于 0 的已选保留层 {protected} 层。"
-        if self._reduction_mode == "combined" and not deletable:
-            note += "当前没有可删除层，联合模式仍可尝试减厚。"
+        topology_rule = ("已选层即使设置正下限也可删除 / 合并；待删层在搜索过程中可低于自身下限并趋于零，"
+                         "最终保留层仍须满足各自原边界。参与合并的每层都须已选，且材料和光学数据集完全相同。"
+                         if self._reduction_mode != "thickness" else "")
+        rule = ("沿用全部原始光学约束与已选厚度变量。" + topology_rule +
+                "未选层保持固定，不新增材料。正常完成且有完整审计通过的改善才自动应用（不保存，可撤销）；取消、失败或无改善均保留原设计。")
+        note = f"已选可用厚度变量 {len(selected)} 层。"
         return (modes[self._reduction_mode] + rule + note +
                 "减量默认不设全局次数或时长限制，直至提案穷尽、数值收敛或用户取消；可在算法页选填减量上限，留空即不限。")
 
@@ -3632,9 +3630,9 @@ class FilmOptimizationQuickController(QObject):
     def solverAvailabilityMessage(self) -> str:
         if self._search_mode == "reduction":
             if (self._reduction_mode == "layer_count" and not any(
-                    row["enabled"] and row["available"] and row["lower_nm"] == 0
+                    row["enabled"] and row["available"]
                     for row in self._variables)):
-                return "仅减层需要至少一个已选且下界明确为 0 nm 的可删除层；下界大于 0 的层不可删除。"
+                return "仅减层需要至少一个已选且可用的厚度变量。"
             if self._validation_samples_multiplier < 2:
                 return "减量优化要求独立加密验证倍率至少为 2；请在算法页调整。"
             return self._error if self._pending_edit_error else ""
@@ -3838,9 +3836,9 @@ class FilmOptimizationQuickController(QObject):
             return self._synthesis_configuration_error()
         if self._search_mode == "reduction":
             if (self._reduction_mode == "layer_count" and not any(
-                    row["enabled"] and row["available"] and row["lower_nm"] == 0
+                    row["enabled"] and row["available"]
                     for row in self._variables)):
-                return "仅减层需要至少一个已选且下界明确为 0 nm 的可删除层；下界大于 0 的层不可删除。"
+                return "仅减层需要至少一个已选且可用的厚度变量。"
             if self._validation_samples_multiplier < 2:
                 return "减量优化要求独立加密验证倍率至少为 2；请在算法页调整。"
             return self._error if self._pending_edit_error else ""

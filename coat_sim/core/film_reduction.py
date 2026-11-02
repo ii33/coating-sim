@@ -161,8 +161,8 @@ def validate_film_reduction_candidate_topology(request: FilmReductionRequest,
                                               design: Mapping[str, Any]) -> dict[str, Any]:
     """Check exact source projection, metadata, fixed rows and retained bounds.
 
-    A deletion is legal only for a selected zero-lower-bound row. A surviving
-    selected row may be repaired anywhere inside its own original bounds.
+    A selected layer may be deleted regardless of its positive thickness floor.
+    Every surviving selected row must satisfy its original thickness bounds.
     Merge proposals require exact material and optical-set identity; fixed
     rows and interfaces are never merged or adjusted.
     """
@@ -194,8 +194,8 @@ def validate_film_reduction_candidate_topology(request: FilmReductionRequest,
         if request.mode == "thickness" and missing:
             raise ValueError("thickness reduction must preserve topology")
         for identifier in missing:
-            if identifier not in variables or variables[identifier].lower_nm != 0:
-                raise ValueError("only selected layers with lower_nm==0 may be deleted")
+            if identifier not in variables:
+                raise ValueError("only selected layers may be deleted")
         removed.extend(missing)
         for row in rows:
             identifier = row["id"]
@@ -448,7 +448,7 @@ def _proposals(request, design, step_fraction):
             rows = design[side + "_layers"]
             for index, row in enumerate(rows):
                 variable = variables.get(row["id"])
-                if variable is None or variable.lower_nm != 0:
+                if variable is None:
                     continue
                 candidate = deepcopy(design)
                 del candidate[side + "_layers"][index]
@@ -458,7 +458,7 @@ def _proposals(request, design, step_fraction):
                         continue
                     other = rows[other_index]
                     survivor = variables.get(other["id"])
-                    if survivor is None or survivor.lower_nm != 0 or (row["material_id"], row["optical_set_id"]) != (
+                    if survivor is None or (row["material_id"], row["optical_set_id"]) != (
                             other["material_id"], other["optical_set_id"]):
                         continue
                     total = physical[row["id"]] + physical[other["id"]]
@@ -592,6 +592,54 @@ def reduce_film_design(service, request: FilmReductionRequest, *, cancel_event=N
             raise _BudgetReached("iteration_limit")
         if request.max_evaluations is not None and evaluations + 2 > request.max_evaluations:
             raise _BudgetReached("evaluation_budget")
+    def collapse_to_deleted_endpoint(identifier):
+        """Private continuation: sub-floor positive rows never become an incumbent.
+
+        The selected disappearing layer is fixed at two decreasing positive
+        thicknesses; other selected layers compensate within their own bounds.
+        Zero is represented by deleting the row, then refitting and auditing.
+        These finite stages are a search heuristic, not a feasibility proof.
+        """
+        variable = next(v for v in base.variables if v.layer_id == identifier)
+        physical = _physical(request, best)[identifier]
+        stages = (physical * 0.5, min(physical * 0.25, variable.lower_nm * 0.5), 0.0)
+        working = deepcopy(best)
+        for target in stages:
+            check_limits()
+            working = deepcopy(working)
+            side_rows = working[variable.side + "_layers"]
+            if target == 0.0:
+                working[variable.side + "_layers"] = [row for row in side_rows if row["id"] != identifier]
+            else:
+                row = next(row for row in side_rows if row["id"] == identifier)
+                row["thickness"] = {"value": target, "unit": "nm"}
+            working = _changed(working)
+            # Exclusion fixes the disappearing row at this trial thickness.
+            # It does not relax any other row or mutate the frozen request.
+            stage_request = replace(request, base_request=replace(base,
+                variables=tuple(v for v in base.variables if v.layer_id != identifier)))
+            report_candidate_stage("正在归零删层试探：中间厚度不作为可应用结果")
+            working, stage_metric, limited = _repair_candidate(service, stage_request, working, cancel_event,
+                evaluation_started, iteration_advanced,
+                None if request.max_evaluations is None else request.max_evaluations - evaluations,
+                None if request.max_iterations is None else request.max_iterations - iterations,
+                report_candidate_stage if progress_callback is not None else None)
+            if target == 0.0:
+                return working, stage_metric, limited
+            if limited:
+                raise _BudgetReached(limited)
+        raise AssertionError("collapse continuation requires a deleted endpoint")
+
+    def collapse_target(proposal):
+        """Only plain one-layer deletion proposals have this continuation path."""
+        source_rows = {row["id"]: row for side in ("front", "back") for row in best[side + "_layers"]}
+        remaining = [row for side in ("front", "back") for row in proposal[side + "_layers"]]
+        missing = set(source_rows) - {row["id"] for row in remaining}
+        if len(missing) != 1 or any(row != source_rows.get(row["id"]) for row in remaining):
+            return None
+        identifier = next(iter(missing))
+        return identifier if any(v.layer_id == identifier and v.lower_nm > 0 for v in base.variables) else None
+
     try:
         while True:
             check_limits()
@@ -623,12 +671,15 @@ def reduce_film_design(service, request: FilmReductionRequest, *, cancel_event=N
                     if fingerprint in tested_topologies:
                         continue
                     tested_topologies.add(fingerprint)
+                    collapse_id = collapse_target(candidate)
                     phase = "正在联动修复删层候选：调整保留层厚度"
                     candidate, candidate_metric, repair_stop = _repair_candidate(service, request, candidate, cancel_event,
                         evaluation_started, iteration_advanced,
                         None if request.max_evaluations is None else request.max_evaluations - evaluations,
                         None if request.max_iterations is None else request.max_iterations - iterations,
                         report_candidate_stage if progress_callback is not None else None)
+                    if collapse_id is not None and repair_stop is None and not _qualifies(request, baseline, candidate_metric):
+                        candidate, candidate_metric, repair_stop = collapse_to_deleted_endpoint(collapse_id)
                 else:
                     phase = "正在核验减厚候选：原始目标网格与独立加密网格"
                     candidate_metric = _evaluate(service, request, candidate, cancel_event,

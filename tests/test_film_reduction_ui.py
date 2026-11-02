@@ -99,6 +99,38 @@ def test_reduction_unverified_or_unimproved_is_read_only(review):
     assert not c.confirmApplyCandidate()
 
 
+def test_reduction_cancelled_candidate_cannot_apply_retained_layer_below_minimum(review):
+    request, result = audited(review)
+    request = replace(request, base_request=replace(request.base_request,
+        variables=tuple(replace(v, lower_nm=40.) for v in request.base_request.variables)))
+    candidate = deepcopy(dict(request.base_request.design_snapshot))
+    candidate['front_layers'][0]['thickness']['value'] = 20.
+    # Simulate a bad or stale claimed audit. The application boundary must
+    # independently reject the retained layer even after cancellation.
+    result = replace(result, frozen_request=request, is_final=False,
+        base_result=replace(result.base_result, state='cancelled', best_design=candidate))
+    c = finish(review, request, result)
+    before = deepcopy(review.source.session.snapshot().design)
+    assert c.canApply
+    assert not c.applyCandidate()
+    assert 'violates its own bounds' in c.error
+    assert review.source.session.snapshot().design == before
+    assert not review.refreshes
+
+
+def test_reduction_audited_positive_minimum_deletion_autoapplies_and_undoes(review):
+    request, _ = audited(review)
+    request = replace(request, base_request=replace(request.base_request,
+        variables=tuple(replace(v, lower_nm=1.) for v in request.base_request.variables)))
+    result = reduce_film_design(review.service, request)
+    assert result.candidate_verified and result.summary['candidate_feasible']
+    assert result.summary['reduction_achieved'] and result.best_design['front_layers'] == []
+    c = finish(review, request, result)
+    assert c._candidate_applied and review.source.session.snapshot().design['front_layers'] == []
+    assert review.source.undoOptimizedDesign()
+    assert review.source.session.snapshot().design['front_layers'] == review.base.design['front_layers']
+
+
 def test_reduction_modes_config_qml_and_frozen_request(app, tmp_path):
     service, _, design = fixture(tmp_path)
     with optimizer(service, design) as (c, source, session):
@@ -259,9 +291,11 @@ def test_reduction_apply_uses_audited_result_without_new_optical_evaluations(rev
 
 def test_reduction_no_improvement_kept_for_save_but_never_apply(review):
     request, result = audited(review)
+    thickness = review.base.design['front_layers'][0]['thickness']['value']
     baseline_request = replace(request, base_request=replace(request.base_request,
-        variables=tuple(replace(v, lower_nm=100.) for v in request.base_request.variables)),
-        mode='layer_count')
+        variables=tuple(replace(v, lower_nm=thickness, upper_nm=thickness + 1.)
+                        for v in request.base_request.variables)),
+        mode='thickness')
     retained = reduce_film_design(review.service, baseline_request)
     assert not retained.summary['reduction_achieved']
     c = finish(review, baseline_request, retained)
@@ -269,22 +303,41 @@ def test_reduction_no_improvement_kept_for_save_but_never_apply(review):
     assert not c.applyCandidate()
 
 
-def test_reduction_layer_mode_requires_explicit_deletable_selection(app, tmp_path):
+def test_reduction_selected_positive_minimum_preserved_across_modes_and_qml(app, tmp_path):
     service, _, design = fixture(tmp_path)
     with optimizer(service, design) as (c, _, __):
         assert c.setSearchMode('reduction') and c.setReductionMode('layer_count')
         layer_id = design['front_layers'][0]['id']
         assert c.setVariableBound('front', layer_id, 'lower_nm', 1.)
-        assert not c.canStart
-        assert '0 nm' in c._active_configuration_error()
-        assert '不可删除' in c.reductionPolicySummary
-        assert c.setReductionMode('combined')
         assert c.canStart, c._active_configuration_error()
-        assert '仍可尝试减厚' in c.reductionPolicySummary
-        assert c.setVariableBound('front', layer_id, 'lower_nm', 0.)
-        assert c.setReductionMode('layer_count')
-        assert c.canStart, c._active_configuration_error()
+        assert not c.solverAvailabilityMessage
+        assert '设置正下限也可删除' in c.reductionPolicySummary
+        assert '最终保留层仍须满足各自原边界' in c.reductionPolicySummary
         assert '总厚度可以增加' in c.reductionPolicySummary
+        original_objectives = deepcopy(c.exportOptimizationConfiguration()['objectives'])
+        for mode in ('layer_count', 'combined', 'thickness'):
+            assert c.setReductionMode(mode)
+            assert c.canStart, c._active_configuration_error()
+            assert c._build_reduction_request().base_request.variables[0].lower_nm == 1.
+            saved = c.exportOptimizationConfiguration()
+            assert saved['variables'][0]['lower_nm'] == 1.
+            assert saved['objectives'] == original_objectives
+            if mode == 'thickness':
+                assert '不删除膜层' in c.reductionPolicySummary
+                assert '始终受各自原厚度边界约束' in c.reductionPolicySummary
+            else:
+                assert '设置正下限也可删除' in c.reductionPolicySummary
+        assert c.setReductionMode('layer_count')
+        with window_runtime(app, c) as (window, warnings):
+            from PySide6.QtCore import QObject
+            label = window.findChild(QObject, 'filmReductionPolicyLabel')
+            assert label is not None and label.property('text') == c.reductionPolicySummary
+            assert not [w for w in warnings if 'Error' in w]
+        c.setVariableEnabled('front', layer_id, False)
+        assert not c.canStart
+        assert '至少一个已选且可用' in c._active_configuration_error()
+        assert '至少一个已选且可用' in c.solverAvailabilityMessage
+        assert '未选层保持固定' in c.reductionPolicySummary
 
 
 def test_reduction_entry_mode_consumed_before_next_normal_and_f6_constructor(review, monkeypatch):

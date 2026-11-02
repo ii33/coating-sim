@@ -12,6 +12,7 @@
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px solid #c8e0db;border-radius:8px;padding:16px;font-size:.88rem;line-height:1.5}</style>
 </head>
 <body>
+<p class="source">减量算法更新：2026-11-02；<a href="#film-reduction-20261025">14az 正最薄厚度下的选层删层与内部消零过渡</a>；正下限约束最终保留层，不锁住所选层。</p>
 <p class="source">算法更新：2026-11-02；新增<a href="#film-automatic-repair-double-20261102">14bi 双面整片自动薄层修复</a>与减量源边界诊断，有限搜索不构成达标或可行性证明。</p>
 <p class="source">算法更新：2026-11-01；<a href="#film-phase-diverse-restarts-20261101">14bh 色散相位多样先验与逐层厚度重启</a>，及<a href="#film-synthesis-until-target-20261101">14bg 搜索直到目标与自动外层轮转</a>。新增候选不是达标或可行性证明。</p>
 <p class="source">算法更新：2026-10-31；<a href="#film-resource-prediction-20261031">14bf 快速资源经验预估</a>：离线校准、在线固定公式；与14be必要条件诊断及显式合成验证分离，受限域不冒充通用能力。</p>
@@ -38,7 +39,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
   <div class="eyebrow">Optical Coating / Algorithm Atlas</div>
   <h1>光学镀膜<br>算法图解与参考来源</h1>
   <p>从独立基片、蒸发源、修正板、机器与工艺文件，到行星运动、射线通量、膜厚归一化和预计用时。本文依据当前代码写成，可离线阅读；公式描述的是本项目的计算模型。</p>
-<div class="meta"><span class="pill">版本：机器 v5 · 工艺 v7 · 源 v2；材料交换包 v1、安全导入冲突预览与原子回滚)</span><span class="pill">更新：2026-11-02（双面整片自动薄层修复与减量边界诊断；全定义域显示专用采样；通用目标资源探测与审计见证；选面联合合成与全几何解析导数；自动合成局部余量、原目标减薄和结构续接；固定初始光谱受控退化理想优化v2、旧strict版本兼容；真实混合多核、原门限与容差分离、冠军物理压缩与拒绝统计；周期0显式时间/评价/取消统一预算；高反自动结构/全局搜索、材料谱向量复用与同预算验收、显式严格下界与跨类别冻结基准；活动光路材料校验与从零合成审计；优化目标上下限统一与角度范围显式确认；厚度编辑精度、零厚层与优化边界；冻结服务边界与单点归一化；研究证据与单层光谱反演；修正板不设数量上限、完整依赖快照与逐板遮挡；工程文件格式契约说明；优化多角网格与计算量人工顶值移除；TFCalc明文层表导入；外观逐光线精确 TMM 与独立波长 CPU 进程并行；Qt Quick 显式峰谷统计波段、波长通带与场景图曲线预览；多孔厚盖、独立源采样、无固定最大网格与计算隔离；工艺环境、工作气体及零碰撞直达束；材料库、已设计源工艺选择、盖孔射线与快扫描空间分布；桌面仿真共享队列、逐批进度、无固定步数上限、100%快算默认与Å/s界面；五项上下文预算、硬限与安全压缩、后台流合并与固定设计绘图；平滑轮廓、全膜系目标选优与评分进度；凭据反馈与有界模型候选兼容探测；待决选项、模式放行、诊断未读摘要、结果队列身份修复、紧凑产物；计算量估算、后台串行队列、源板分组优化与跨段选区；完整设备回退、成功设备记忆、临时仿真资产包、可选 PDF、历史闭合与滚动高度缓存；批量膜系、物理层表导入、固定图表、工具原文归档与任务成本、视口文本增量渲染；批量工具契约、演示工作流、逐回合展示与复制、撤回确认、本地助手调试、实际生效参数快照、LPAC启动修复；容量自适应上下文、轮次关闭、插话与排队、剪贴板图片、系统语言与语气、开发访问；逐层修正板、轮廓优化、工艺快算、估时、上下文用量、请求续约、原生档位缓存、滚动跟随、二维 CAD 与加工图、模型 Token 上限、缓存命中统计、富文本与开发门禁；修正板视口设备路由、反向滚动与可选输入诊断）</span><span class="pill">单位：mm · s · rpm · nm · px；助手 Token / 字符 / 附件字节</span><span class="pill">离线单文件 HTML</span></div>
+<div class="meta"><span class="pill">版本：机器 v5 · 工艺 v7 · 源 v2；材料交换包 v1、安全导入冲突预览与原子回滚)</span><span class="pill">更新：2026-11-02（减量正最薄厚度与删层消零；双面整片自动薄层修复与减量边界诊断；全定义域显示专用采样；通用目标资源探测与审计见证；选面联合合成与全几何解析导数；自动合成局部余量、原目标减薄和结构续接；固定初始光谱受控退化理想优化v2、旧strict版本兼容；真实混合多核、原门限与容差分离、冠军物理压缩与拒绝统计；周期0显式时间/评价/取消统一预算；高反自动结构/全局搜索、材料谱向量复用与同预算验收、显式严格下界与跨类别冻结基准；活动光路材料校验与从零合成审计；优化目标上下限统一与角度范围显式确认；厚度编辑精度、零厚层与优化边界；冻结服务边界与单点归一化；研究证据与单层光谱反演；修正板不设数量上限、完整依赖快照与逐板遮挡；工程文件格式契约说明；优化多角网格与计算量人工顶值移除；TFCalc明文层表导入；外观逐光线精确 TMM 与独立波长 CPU 进程并行；Qt Quick 显式峰谷统计波段、波长通带与场景图曲线预览；多孔厚盖、独立源采样、无固定最大网格与计算隔离；工艺环境、工作气体及零碰撞直达束；材料库、已设计源工艺选择、盖孔射线与快扫描空间分布；桌面仿真共享队列、逐批进度、无固定步数上限、100%快算默认与Å/s界面；五项上下文预算、硬限与安全压缩、后台流合并与固定设计绘图；平滑轮廓、全膜系目标选优与评分进度；凭据反馈与有界模型候选兼容探测；待决选项、模式放行、诊断未读摘要、结果队列身份修复、紧凑产物；计算量估算、后台串行队列、源板分组优化与跨段选区；完整设备回退、成功设备记忆、临时仿真资产包、可选 PDF、历史闭合与滚动高度缓存；批量膜系、物理层表导入、固定图表、工具原文归档与任务成本、视口文本增量渲染；批量工具契约、演示工作流、逐回合展示与复制、撤回确认、本地助手调试、实际生效参数快照、LPAC启动修复；容量自适应上下文、轮次关闭、插话与排队、剪贴板图片、系统语言与语气、开发访问；逐层修正板、轮廓优化、工艺快算、估时、上下文用量、请求续约、原生档位缓存、滚动跟随、二维 CAD 与加工图、模型 Token 上限、缓存命中统计、富文本与开发门禁；修正板视口设备路由、反向滚动与可选输入诊断）</span><span class="pill">单位：mm · s · rpm · nm · px；助手 Token / 字符 / 附件字节</span><span class="pill">离线单文件 HTML</span></div>
 <p class="source">补充更新：2026-10-05——通过服务接口执行的非 CPU 沉积仿真使用一次任务一个短生命周期计算进程；Windows 子进程关闭管道时把 WinError 109 视作 EOF，避免计算完成后误记失败。</p>
 <p class="source">cub 接口补齐更新：2026-10-05。三路径提交、材料业务工具、机器工程检查和 AI 资产导出契约；未覆盖在线模型及实机校准。</p>
 <p class="source">GUI接线更新：2026-10-20。14t从零合成与14u物理结构已进入现有优化页/参数侧栏；入口与状态边界见<a href="film-synthesis-gui-guide.md">使用指南</a>、<a href="film-synthesis-gui-stage-report-20261020.md">同源GUI验收</a>。原GUI接线无数值公式变更；14v显式未知k近似当前默认启用且可关闭，不会将已知吸收或非法数据静默回退；详见<a href="#film-synthesis-unknown-k-20261020">策略说明</a>。</p>
@@ -79,7 +80,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#film-automatic-repair-20261027">14bc 薄层修复、实时改善与取消应用（2026-10-27，后续更新）</a>
 <a href="#film-margin-continuation-20261026">14bb 自动合成本轮数值停止、指标保护减薄与结构续接（2026-11-01）</a>
 <a href="#film-numeric-zero-20261026">14ba 数值零清理与实时详情（2026-10-26）</a>
-<a href="#film-reduction-20261025">14az 独立减层 / 减厚后优化（2026-10-25）</a>
+<a href="#film-reduction-20261025">14az 独立减层 / 减厚后优化（更新 2026-11-02）</a>
 <a href="#film-cancel-warm-restart-20261025">14ay 取消后从保留候选重新启动求解器（2026-10-25）</a>
 <a href="#film-objective-progress-handoff-20261025">14aw 目标进展交接已移除（2026-10-25）</a>
 <a href="#film-manufacturing-pair-20261025">14ax 显式缺陷选层的成对制造修复（2026-10-25）</a>
@@ -406,13 +407,14 @@ while 未取消、未遇资源或数值错误:
 </section>
 
 <section id="film-reduction-20261025">
-<h2>14az 独立减层 / 减厚后优化（2026-10-25）</h2>
-<p class="source">本节更新日期：2026-10-25。优先级、保守可删除规则与有限搜索策略均为本项目约定；未找到外部依据，仅为本项目实现，不构成最小层数、最小厚度或连续谱的证明。</p>
+<h2>14az 独立减层 / 减厚后优化（更新 2026-11-02）</h2>
+<p class="source">本节更新日期：2026-11-02。优先级、可删除规则与有限搜索策略均为本项目约定；未找到外部依据，仅为本项目实现，不构成最小层数、最小厚度或连续谱的证明。</p>
 <p><strong>用途及输入输出：</strong>以当前完整膜系为起点，冻结目标、正反面层序、基片/介质、材料光学闭包、角度/偏振、厚度变量边界、版本和预算。输出原设计与候选的层数、总物理厚度、最薄层、最差归一化光学误差、原网格及独立验证状态，以及真实终态和来源绑定。与普通光谱优化、从零合成和针插增长分别调度。</p>
-<figure class="figure"><div class="flow" aria-label="独立减量可行性门禁"><span>冻结当前膜系<br>完整目标 + 约束</span><i>→</i><span>源设计原网格<br>及独立加密网格</span><i>→</i><span>选中层删层 / 邻层合并<br>原边界内存活层光谱修复</span><i>→</i><span>全部原始目标通过<br>且独立网格通过</span><i>→</i><span>满足所选模式减量资格<br>比较后显式应用</span></div><figcaption>图14az-1：光学可行性是门禁，层数或厚度是通过门禁后的排名；不能用减量奖励抵消未达标光谱。半次计算、未独立复核和没有严格改善的候选不能升级为有效减量结果。纯减厚模式沿固定拓扑做有限厚度试探。</figcaption></figure>
+<figure class="figure"><div class="flow" aria-label="独立减量可行性门禁与正下限消零过渡"><span>冻结合法源膜系<br>原目标 + 原边界</span><i>→</i><span>直接删所选层 / 同面合并<br>原边界内补偿存活层</span><i>→</i><span>未合格时可对正下限选层<br>内部缩厚至精确删除</span><i>→</i><span>全部原目标与独立网格<br>及存活层原边界通过</span><i>→</i><span>模式减量资格<br>完整候选交付</span></div><figcaption>图14az-1：正下限约束最终存活层，不锁住所选层；低于下限的正厚过渡只用于内部搜索，不作为候选。光学可行性是门禁，未独立复核及未严格改善者不能成为有效减量结果。纯减厚模式保持固定拓扑。</figcaption></figure>
 <h3>单位、可行域和排名</h3>
 <p><strong>源边界诊断（2026-11-02）：</strong>所选保留层的源物理厚度违反自身下限或有限上限时，冻结校验在光学模拟前报出正/背面源层号、当前物理 nm、上下限（无上界时明确标注）及修复/检查提示。原有英文错误子串和数值比较容差保留；不会静默夹紧厚度、降低下限或放宽边界。用户应先修复厚度或检查其边界，再重新提交。</p>
-<p>坐标沿现有 front_layers / back_layers 存储顺序，不交换界面；厚度统一为物理 nm。层数 N 和总厚度 D = Σ dᵢ 统计两面薄膜，不计块体基片及介质；最薄层为实际保留薄膜的最小厚度，空膜系显示无膜层。只改所选变量；未选层保持固定。厚度模式保持原拓扑，层数模式可删层，联合模式先删层再减厚。只有所选变量下界为 0 的层允许删除；正下界层保持存在。所有保留层仍满足自身区间 [lᵢ,uᵢ]。每个删除/合并拓扑候选都复用已有有界光谱优化修复选中存活层，允许在原边界内增厚；修复不增加材料或改变目标。</p>
+<p>坐标沿现有 front_layers / back_layers 存储顺序，不交换界面；厚度统一为物理 nm。层数 N 和总厚度 D = Σ dᵢ 统计两面薄膜，不计块体基片及介质；最薄层为实际保留薄膜的最小厚度，空膜系显示无膜层。只改所选变量；未选层保持固定。厚度模式保持原拓扑，层数模式可删层，联合模式先删层再减厚。所选变量即使具有正下界也允许删除；下界约束最终保留层，并不锁住该层。要固定一层须将其排除在变量外。源设计开始时仍须满足其原边界；所有最终保留的选中层须满足自身区间 [lᵢ,uᵢ]。每个删除/合并拓扑候选都复用已有有界光谱优化修复选中存活层，允许在原边界内增厚；修复不增加材料或改变目标。</p>
+<p><strong>正下限的消零过渡（2026-11-02，本项目约定）：</strong>先直接删层并在存活选中层原边界内做光学修复；若该删除未合格且没有预算终止，则对单个正下限删除目标，从当前 incumbent 的物理厚度 d 依次固定试探 d/2、min(d/4,l/2) 与精确 0。最后的 0 以删行表示；不会用 epsilon 或显示舍入将小正厚当成零。每阶段用同一预算和取消检查、由其他选中层在自身原边界内光学补偿。目标层正厚低于 l 的过渡只能在内部存在，不能作为 best、反馈候选、检查点或应用；最终删行后须重新完成原目标训练、独立加密网格与拓扑准入。未完成时仅保留此前完整核验的合法最佳候选。两段正厚加精确删除是有限经验搜索，不证明可行、不可行或全局最优。</p>
 <p>删层后相邻且 material_id / optical_set_id 相同的可删除层可提出合并；保留层的厚度必须仍满足其原边界。不能跨固定层合并、跨正反面合并或把块体基片并入薄膜。材料、入出射介质、基片、正反面、角度/偏振和所有其他设计字段均保持冻结。内部物理 nm 规范化不授予改变光学模型或目标的权限。</p>
 <pre>full_pass(x) = nominal_pass(original_grid, frozen_goals, x)
                AND nominal_pass(independent_grid, frozen_goals, x)
@@ -430,6 +432,10 @@ for bounded_proposal in selected_layer_deletions_merges_or_thickness_trials:
     evaluate_all_original_conditions()
     verify_same_independent_grid_before_acceptance()
     retain_only_complete_best_candidate()
+    if direct_delete_not_qualified and budget_remains and deleted_layer_lower &gt; 0:
+        internally_try_fixed(d/2, min(d/4, lower/2), exact_deletion)
+        # 中间正厚低于 lower 不得发布；最终删行须重做训练/独审/拓扑准入
+        retain_only_complete_best_candidate()
 </pre>
 <h3>完整验证、停止与限制</h3>
 <p>复用当前目标归约器的全部启用 mean / pointwise 条件及 R / T、角度、偏振。均值按原积分定义计算，逐点条件检查完整网格，权重与数值求解容差均不放宽名义目标。源设计和每个被接纳的减量候选使用同一原网格和独立加密网格。默认验证倍率沿用普通请求的 2；波长端点及角度保持原请求。仅完成离散网格验证，不能推断网格之间或制造扰动下的性能。</p>
@@ -438,6 +444,7 @@ for bounded_proposal in selected_layer_deletions_merges_or_thickness_trials:
 audit source on original + independent grid                         # 2 grid evaluations
 repeat until cancelled/error or an explicitly configured limit:
     try legal delete/merge proposals; repair survivors to numerical stopping
+    if direct deletion not qualified and budget remains: try bounded internal collapse
     accept only full_pass(candidate) and the selected physical reduction rule
     try bounded thickness-coordinate proposals
     if incumbent changed: clear topology cache and continue
@@ -445,7 +452,7 @@ repeat until cancelled/error or an explicitly configured limit:
     halve thickness step; if below numerical tolerance: stop(step_tolerance)
 return last complete audited incumbent, actual termination reason and counters</pre>
 <p>同一最佳设计下已检查的删层/合并提案不随减厚步长反复修复；最佳设计变化后缓存失效。结果明确区分 proposal_exhausted、step_tolerance、evaluation_budget、iteration_limit、cancelled 与 failed，不把局部收敛记成预算耗尽。新请求/结果为严格 v3，独立 limits 的两个键可为 null；历史严格 v2 保持原字段与原冻结有限预算，不静默重解释为新默认。页面配置 reduction_limits 与普通 solver 配置分别保存，旧编辑配置缺新键时恢复为不限。</p>
-<p>确定性删层、同引用合并、既有边界内光谱修复及坐标减厚仍属于局部搜索；没有硬次数限制也不证明找到全局最优。纯减层允许以更厚的存活层换取层数下降；联合模式同时限制两项均不增加，不把总厚增加标成联合减量。没有可删层时纯减层提前说明原因，联合模式可继续尝试减厚。原设计未达标必须显式报告；未找到达标候选不得悄悄放宽目标。无改善、用户限额停止或不可行目标不证明全局不可减。</p>
+<p>确定性删层、同引用合并、既有边界内光谱修复及坐标减厚仍属于局部搜索；没有硬次数限制也不证明找到全局最优。纯减层允许以更厚的存活层换取层数下降；联合模式同时限制两项均不增加，不把总厚增加标成联合减量。没有选中变量时应说明没有可变层；正下限本身不使所选层不可删除。原设计未达标必须显式报告；未找到达标候选不得悄悄放宽目标。无改善、用户限额停止或不可行目标不证明全局不可减。</p>
 <p>冻结请求通过现有后台队列执行，结果绑定真实请求和实际候选。取消在候选/光谱分块边界检查，已完整评估且复核的候选可以保留；取消/失败后不额外启动终态光学工作。完成、取消、失败均不自动应用。显式应用检查来源项目/session、revision、未提交编辑 epoch、材料闭包及减量拓扑，经一次原子事务写入且支持一次撤销。来源不匹配保留用户设计和候选。</p>
 <p>资源计量包含内层修复的训练和独立验证。一个完整网格可包含多个目标、角度及 10,001 点波长分块；因此网格次数不等同单次正向调用数。两目标、两角度、含 10,002 点分块的协议回归实际执行 40 次正向，计为 6 次完整网格（其中 2 次独立验证），取消/失败分块不补做后续光学工作。此边界复用现有优化器的分块顺序和 holdout 前进度通知，是本项目接口约定。</p>
 <p><strong>实现位置：</strong><code>coat_sim/core/film_reduction.py</code>，复用 <code>film_optimization.py</code>、<code>film_optimization_job.py</code> 与 <code>film_objective_criteria.py</code>；界面复用 <code>film_optimization_quick_controller.py</code> 和 <code>FilmOptimizationWindow.qml</code>。完整交互与异步所有权见 <a href="film-reduction-contract.md">独立减量契约</a>。新增回归涵盖多类小膜系及失败、取消、来源漂移；实际执行范围见实施报告，不据有限样例声称通用优化性能。</p>
