@@ -66,9 +66,10 @@ def test_cancelled_training_candidate_without_audit_is_not_shown_as_passed(app, 
             footer = window.findChild(QObject, "filmOptimizationConditionFooterEmptySummary")
             assert footer is not None
             assert str(footer.property("text")) == text
-            plot_title = window.findChild(QObject, "filmOptimizationPlotBaselineTitle")
-            assert plot_title is not None
-            assert "所选表面 N=0 基线" in str(plot_title.property("text"))
+            assert window.findChild(QObject, "filmOptimizationPlotBaselineTitle") is None
+            canvas = window.findChild(QObject, "filmOptimizationComparisonCanvas")
+            assert canvas is not None
+            assert canvas.property("dataSnapshot")["baseline_label"] == "所选表面 N=0 基线"
             assert not any("ReferenceError" in row or "TypeError" in row for row in warnings), warnings
             assert controller.targetsMet is False
             plot = controller.plotData

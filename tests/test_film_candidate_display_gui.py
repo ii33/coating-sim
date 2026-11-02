@@ -275,19 +275,18 @@ def test_real_qml_formal_curves_survive_off_waiting_terminal_cancel_and_old_live
             window.resize(*size)
             drain(app)
             canvas = window.findChild(QQuickItem, "filmOptimizationComparisonCanvas")
-            title = window.findChild(QQuickItem, "filmOptimizationPlotBaselineTitle")
-            status = window.findChild(QQuickItem, "filmCandidateLivePreviewStatus")
             toggle = window.findChild(QQuickItem, "filmCandidateLivePreviewToggle")
-            assert canvas is not None and title is not None and status is not None and toggle is not None
+            assert canvas is not None and toggle is not None
+            assert window.findChild(QQuickItem, "filmOptimizationPlotBaselineTitle") is None
+            assert window.findChild(QQuickItem, "filmCandidateLivePreviewStatus") is None
 
             def assert_formal(*, waiting=False):
                 drain(app)
                 assert canvas.property("dataSnapshot") == formal_plot
                 assert canvas.property("dataSnapshot")["baseline"] == [0.7, 0.6, 0.5]
                 assert canvas.property("seriesLegend") == "原设计 / 候选"
-                assert "原设计" in title.property("text") and "当前试探" not in title.property("text")
                 if waiting:
-                    assert "等待" in status.property("text") and "正式" in status.property("text")
+                    assert "等待" in live.status
                 assert controller._result is formal_result and controller.canApply == can_apply
                 assert formal_result.evaluations == 7 and session.snapshot().design == original_design
 
@@ -301,7 +300,6 @@ def test_real_qml_formal_curves_survive_off_waiting_terminal_cancel_and_old_live
                 assert canvas.property("dataSnapshot")["current"]["actual"] == [0.05] * 3
                 assert canvas.property("dataSnapshot")["best"]["actual"] == [0.2] * 3
                 assert canvas.property("seriesLegend") == "当前试探 / 优化器最佳"
-                assert "当前试探与优化器最佳" in title.property("text")
                 assert controller._result is formal_result and controller.canApply == can_apply
 
             # A user-disabled run must never cover already available official curves.

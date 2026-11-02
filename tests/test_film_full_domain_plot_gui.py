@@ -195,11 +195,20 @@ def test_delayed_live_candidate_is_labeled_as_previous_not_latest(app, tmp_path)
         with window_runtime(app, controller) as (window, warnings):
             live.changed.emit()
             app.processEvents()
-            notice = window.findChild(QObject, 'filmCandidateDelayedPreviewNotice')
-            assert notice is not None and notice.property('visible')
-            assert '上一帧候选预览（有延迟）' in notice.property('text')
+            from PySide6.QtQml import QQmlEngine, QQmlExpression
+            assert window.findChild(QObject, 'filmCandidateDelayedPreviewNotice') is None
+            assert window.findChild(QObject, 'filmCandidateLivePreviewStatus') is None
+            assert window.findChild(QObject, 'filmOptimizationPlotBaselineTitle') is None
+            toggle = window.findChild(QObject, 'filmCandidateLivePreviewToggle')
+            assert toggle is not None
+            tooltip = QQmlExpression(QQmlEngine.contextForObject(toggle), toggle, 'ToolTip.text')
+            assert '有延迟' in tooltip.evaluate()[0] and not tooltip.hasError()
             assert '有延迟' in live.status
             assert live.plotData['current']['preview_delayed'] is True
+            canvas = window.findChild(QObject, 'filmOptimizationComparisonCanvas')
+            assert canvas is not None and canvas.property('dataSnapshot') == live.plotData
+            assert canvas.property('seriesLegend') == '延迟候选 / 优化器最佳'
+            assert canvas.property('dataSnapshot')['current']['actual'] == [.1, .2]
             assert not any('ReferenceError' in warning or 'TypeError' in warning for warning in warnings)
 
 

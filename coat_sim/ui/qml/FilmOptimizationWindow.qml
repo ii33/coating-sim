@@ -2434,15 +2434,6 @@ AppWindow {
                     readonly property bool showingLiveData: activeLiveData && activeLiveData.live === true
                     readonly property bool waitingForLive: window.controller.liveDisplay.running
                                                           && window.controller.liveDisplay.enabled && !showingLiveData
-                    readonly property string previewStatus: waitingForLive
-                                                            ? (window.controller.liveDisplay.fullDomain
-                                                               ? window.controller.liveDisplay.status
-                                                               : "等待完整预览；暂显示正式曲线。")
-                                                            : (window.controller.liveDisplay.fullDomain && !window.controller.liveDisplay.running
-                                                               ? window.controller.fullDomainStatus
-                                                            : (!window.controller.liveDisplay.running && window.controller.liveDisplay.hasAttempt
-                                                               ? "实时预览已结束；显示正式曲线。"
-                                                               : window.controller.liveDisplay.status))
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.minimumWidth: 0
@@ -2562,40 +2553,7 @@ AppWindow {
                                     currentIndex: model.length > 0 ? window.controller.selectedPlotAngleIndex : -1
                                     onActivated: window.controller.selectPlotAngle(currentIndex)
                                 }
-                                Label {
-                                    objectName: "filmCandidateLivePreviewStatus"
-                                    Layout.fillWidth: true
-                                    Layout.minimumWidth: 55
-                                    Layout.preferredWidth: 180
-                                    text: plotPanel.previewStatus
-                                    color: window.themeTokens.colorTextMuted
-                                    wrapMode: Text.NoWrap
-                                    elide: Text.ElideRight
-                                    font.pointSize: window.themeTokens.fontSizeSmall
-                                    Accessible.name: text
-                                    HoverHandler { id: previewStatusHover }
-                                    ToolTip.visible: previewStatusHover.hovered
-                                    ToolTip.text: text
-                                }
-                                Label {
-                                    objectName: "filmOptimizationPlotBaselineTitle"
-                                    Layout.fillWidth: true
-                                    Layout.minimumWidth: 55
-                                    Layout.preferredWidth: 200
-                                    text: window.controller.liveDisplay.fullDomain
-                                          ? "R/T (%) · 整个定义域；角度和偏振沿用所选目标，显示采样不改变验收"
-                                          : (plotPanel.showingLiveData
-                                             ? "R/T (%) · 当前试探与优化器最佳；仅抽样原目标网格"
-                                             : "R/T (%) · " + (comparisonCanvas.dataSnapshot.baseline_label || "原设计") + "与候选；目标线按未加权界限显示")
-                                    color: window.themeTokens.colorTextMuted
-                                    wrapMode: Text.NoWrap
-                                    elide: Text.ElideRight
-                                    font.pointSize: window.themeTokens.fontSizeSmall
-                                    Accessible.name: text
-                                    HoverHandler { id: baselineStatusHover }
-                                    ToolTip.visible: baselineStatusHover.hovered
-                                    ToolTip.text: text
-                                }
+                                Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
                             }
                         }
                         Label {
@@ -2604,16 +2562,6 @@ AppWindow {
                             visible: window.controller.plotAnglesSummary.length > 0
                             text: window.controller.plotAnglesSummary
                             color: window.themeTokens.colorTextMuted
-                            wrapMode: Text.WordWrap
-                            font.pointSize: window.themeTokens.fontSizeSmall
-                        }
-                        Label {
-                            objectName: "filmCandidateDelayedPreviewNotice"
-                            Layout.fillWidth: true
-                            visible: plotPanel.showingLiveData && plotPanel.activeLiveData.current
-                                     && plotPanel.activeLiveData.current.preview_delayed === true
-                            text: "上一帧候选预览（有延迟），不代表最新试探。"
-                            color: window.themeTokens.colorWarning
                             wrapMode: Text.WordWrap
                             font.pointSize: window.themeTokens.fontSizeSmall
                         }

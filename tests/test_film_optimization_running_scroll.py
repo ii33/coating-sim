@@ -142,8 +142,7 @@ def test_plot_toolbar_single_row_and_narrow_access(app, tmp_path):
             names = ["filmOptimizationPlotTitle", "filmCandidateLivePreviewToggle",
                      "filmOptimizationFullDomainToggle", "filmCandidateLiveMetricBox",
                      "filmOptimizationYAxisAuto", "filmOptimizationPlotObjectiveBox",
-                     "filmOptimizationPlotAngleBox", "filmCandidateLivePreviewStatus",
-                     "filmOptimizationPlotBaselineTitle"]
+                     "filmOptimizationPlotAngleBox"]
             for scale in (1.0, 1.4):
                 ThemeService.instance().configure(mode="light", font_scale=scale, density_scale=1.0)
                 window.setWidth(1340)
@@ -154,7 +153,7 @@ def test_plot_toolbar_single_row_and_narrow_access(app, tmp_path):
                 assert not item(window, "filmOptimizationPlotControlsScrollBar").isVisible()
                 rects = [(control.mapToScene(QPointF()), control.width(), control.height()) for control in controls]
                 for (left, width, height), (right, _next_width, next_height) in zip(rects, rects[1:], strict=False):
-                    assert left.x() + width <= right.x() + 1
+                    assert -1 <= right.x() - (left.x() + width) <= 5
                     assert abs((left.y() + height / 2) - (right.y() + next_height / 2)) <= 1
                 for control in controls:
                     left = control.mapToItem(viewport, QPointF()).x()
@@ -175,16 +174,9 @@ def test_plot_toolbar_single_row_and_narrow_access(app, tmp_path):
                 assert popup_check.evaluate()[0] and not popup_check.hasError()
                 QTest.keyClick(window, Qt.Key.Key_Escape)
                 QTest.qWait(50)
-                # The two potentially elided labels retain their complete text in tooltips.
-                for status in controls[-2:]:
-                    expression = QQmlExpression(QQmlEngine.contextForObject(status), status,
-                                                "ToolTip.text === text && text.length > 0")
-                    assert expression.evaluate()[0] and not expression.hasError()
-                    point = status.mapToScene(QPointF(status.width() / 2, status.height() / 2)).toPoint()
-                    QTest.mouseMove(window, point, 10)
-                    QTest.qWait(1000)
-                    shown = QQmlExpression(QQmlEngine.contextForObject(status), status, "ToolTip.visible")
-                    assert shown.evaluate()[0] and not shown.hasError()
+                for removed in ("filmCandidateLivePreviewStatus", "filmOptimizationPlotBaselineTitle",
+                                "filmCandidateDelayedPreviewNotice"):
+                    assert window.findChild(QQuickItem, removed) is None
                 canvas = item(window, "filmOptimizationComparisonCanvas")
                 assert canvas.mapToScene(QPointF()).y() <= viewport.mapToScene(QPointF()).y() + viewport.height() + 8
                 window.setWidth(720)
@@ -202,8 +194,6 @@ def test_plot_toolbar_single_row_and_narrow_access(app, tmp_path):
                 last_label = controls[-1]
                 right_edge = last_label.mapToItem(viewport, QPointF(last_label.width(), 0)).x()
                 assert right_edge <= viewport.width() + 1
-                assert item(window, "filmCandidateLivePreviewStatus").isVisible()
-                assert item(window, "filmOptimizationPlotBaselineTitle").isVisible()
             assert warnings == []
 
 
