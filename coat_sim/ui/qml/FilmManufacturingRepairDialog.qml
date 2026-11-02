@@ -29,7 +29,7 @@ ThemeControls.ThemeDialogBase {
             spacing: dialog.themeTokens.spaceMd
             ThemeControls.ThemeLabel {
                 Layout.fillWidth: true
-                text: "自动识别低于明确厚度下限的前层，无需勾选。允许厚度降到 0 并消层，也可联动调整和增删合并；非零保留层继续核验厚度下限。完整核验的阶段改进即可应用，不必等全部厚度修好或求解收敛；用户取消时沿用原契约应用当前最佳改进，无改进则保持原设计。"
+                text: "自动识别低于明确厚度下限的活动面膜层（双面基片含正、背面），无需勾选。允许厚度降到 0 并消层，也可联动调整和增删合并；非零保留层继续核验厚度下限。完整核验的阶段改进即可应用，不必等全部厚度修好或求解收敛；用户取消时沿用原契约应用当前最佳改进，无改进则保持原设计。"
                 wrapMode: Text.Wrap
             }
             ThemeControls.ThemeLabel {
@@ -71,7 +71,7 @@ ThemeControls.ThemeDialogBase {
                 rowSpacing: dialog.themeTokens.spaceSm
                 Repeater {
                     model: [
-                        {key: "lower_limit_nm", label: "单层厚度下限（nm）", help: "低于此物理厚度的前层会自动识别；可填正数。"},
+                        {key: "lower_limit_nm", label: "单层厚度下限（nm）", help: "低于此物理厚度的活动面膜层会自动识别；可填正数。"},
                         {key: "optical_tolerance_percentage_points", label: "相对原曲线最大变化（百分点）", help: "训练与独立审计逐点核验；1 表示 R/T 的最大绝对差不超过 1 个百分点，不是相对百分比。可填 0。"}
                     ]
                     delegate: ColumnLayout {

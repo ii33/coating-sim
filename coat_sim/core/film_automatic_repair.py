@@ -12,7 +12,7 @@ from copy import deepcopy
 from dataclasses import replace
 import math
 from time import monotonic
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Literal, Mapping
 from numbers import Real
 
 import numpy as np
@@ -223,8 +223,18 @@ def lower_limit(target_nm: float, thickness_tolerance_nm: float) -> float:
     return max(0.0, target_nm - thickness_tolerance_nm)
 
 
+def repair_sides(design: Mapping[str, Any]) -> tuple[Literal["front", "back"], ...]:
+    """Active physical surfaces in stable parameter order, independent of incidence."""
+    return ("front", "back") if design["substrate"]["sides"] == "double" else ("front",)
+
+
+def repair_rows(design: Mapping[str, Any]) -> list[Any]:
+    """Return references to active rows so thickness writes preserve surface ownership."""
+    return [row for side in repair_sides(design) for row in design[side + "_layers"]]
+
+
 def deficient_ids(design: Mapping[str, Any], floor: float, *, include_zero=True) -> list[str]:
-    return [r["id"] for r in design["front_layers"] if r["thickness"]["value"] < floor
+    return [r["id"] for r in repair_rows(design) if r["thickness"]["value"] < floor
             and (include_zero or r["thickness"]["value"] != 0.0)]
 
 
@@ -232,7 +242,7 @@ def legal_thicknesses(
     request: FilmSynthesisRequest, design: Mapping[str, Any], floor: float, *,
     allow_zero=False, minimum_probe_id=None,
 ) -> bool:
-    rows = design["front_layers"]
+    rows = repair_rows(design)
     lower = max(floor, request.minimum_nonzero_thickness_nm or 0.0)
     return bool(
         len(rows) <= min(MAX_LAYERS, request.max_layers or MAX_LAYERS)
@@ -264,11 +274,11 @@ def structural_candidates(
     raised = deepcopy(dict(source))
     if raised.get("expression", {}).get("text"):
         raised["expression"]["in_sync"] = False
-    for row in raised["front_layers"]:
+    for row in repair_rows(raised):
         if row["id"] in bad:
             row["thickness"] = dict(value=target, unit="nm")
     minimum = deepcopy(raised)
-    for row in minimum["front_layers"]:
+    for row in repair_rows(minimum):
         if row["id"] in bad:
             row["thickness"] = dict(value=floor, unit="nm")
     yield "raise_to_lower_limit", minimum
@@ -276,14 +286,15 @@ def structural_candidates(
     removed = deepcopy(dict(source))
     if removed.get("expression", {}).get("text"):
         removed["expression"]["in_sync"] = False
-    removed["front_layers"] = [r for r in removed["front_layers"] if r["id"] not in bad]
+    for side in repair_sides(removed):
+        removed[side + "_layers"] = [r for r in removed[side + "_layers"] if r["id"] not in bad]
     yield (
         "delete_thin_layers_merge",
-        cleanup_batch_needle_design(removed, request.frozen_material_snapshot).design,
+        cleanup_batch_needle_design(removed, request.frozen_material_snapshot, selected_surfaces=repair_sides(removed)).design,
     )
     variables = tuple(
-        FilmThicknessVariable("front", r["id"], 0.0, request.max_layer_thickness_nm)
-        for r in raised["front_layers"]
+        FilmThicknessVariable(side, r["id"], 0.0, request.max_layer_thickness_nm)
+        for side in repair_sides(raised) for r in raised[side + "_layers"]
     )
     reduction = FilmReductionRequest(
         FilmOptimizationRequest(
@@ -298,32 +309,26 @@ def structural_candidates(
     for candidate in _proposals(reduction, raised, 0.1):
         yield (
             "delete_or_merge",
-            cleanup_batch_needle_design(candidate, request.frozen_material_snapshot).design,
+            cleanup_batch_needle_design(candidate, request.frozen_material_snapshot, selected_surfaces=repair_sides(candidate)).design,
         )
     # Original material pairs only. The user has not authorized a different nk
     # source or an arbitrary new material pool.
     pairs = list(
-        dict.fromkeys((r["material_id"], r["optical_set_id"]) for r in source["front_layers"])
+        dict.fromkeys((r["material_id"], r["optical_set_id"]) for r in repair_rows(source))
     )
     for base in (removed, raised):
-        rows = base["front_layers"]
-        for index in range(len(rows) + 1):
-            for material, optical in pairs:
-                candidate = deepcopy(dict(base))
-                identifier = f"repair-{physical_design_hash(base)[:16]}-{index}-{pairs.index((material, optical))}"
-                existing_ids = {row["id"] for row in rows}
-                while identifier in existing_ids:
-                    identifier += "-new"
-                candidate["front_layers"].insert(
-                    index,
-                    dict(
-                        id=identifier,
-                        material_id=material,
-                        optical_set_id=optical,
-                        thickness=dict(value=target, unit="nm"),
-                    ),
-                )
-                yield "insert_material_layer", candidate
+        for side in repair_sides(base):
+            for index in range(len(base[side + "_layers"]) + 1):
+                for material, optical in pairs:
+                    candidate = deepcopy(dict(base))
+                    identifier = f"repair-{physical_design_hash(base)[:16]}-{side}-{index}-{pairs.index((material, optical))}"
+                    existing_ids = {row["id"] for row in repair_rows(base)}
+                    while identifier in existing_ids:
+                        identifier += "-new"
+                    candidate[side + "_layers"].insert(index, dict(
+                        id=identifier, material_id=material, optical_set_id=optical,
+                        thickness=dict(value=target, unit="nm")))
+                    yield "insert_material_layer", candidate
 
 
 def _guard_request(request: FilmSynthesisRequest, tolerance: float) -> FilmSynthesisRequest:
@@ -573,13 +578,11 @@ def automatic_repair(
     local_tolerance = optical_tolerance - min(optical_tolerance * 0.01, 1e-5)
     local_delta = _guard_request(request, local_tolerance)
     source = validate_design(deepcopy(dict(source)))
-    if (
-        source["back_layers"]
-        or source["first_surface"] != "front"
-        or optical_settings["first_surface"] != source["first_surface"]
-        or source["substrate"]["sides"] != "single"
-    ):
-        raise ValueError("automatic repair requires single front incidence")
+    if optical_settings["first_surface"] != source["first_surface"]:
+        raise ValueError("automatic repair incidence must match its source")
+    request = replace(request, selected_surfaces=repair_sides(source))
+    guide = replace(guide, selected_surfaces=request.selected_surfaces)
+    local_delta = replace(local_delta, selected_surfaces=request.selected_surfaces)
     if not legal_thicknesses(request, source, 0.0):
         raise ValueError(
             "automatic repair source violates native physical limits or is not physical nm"
@@ -634,7 +637,7 @@ def automatic_repair(
     def physical(design, *, objectives=None, jacobian=False):
         check()
         active = request if objectives is None else replace(request, objectives=tuple(objectives))
-        estimate = manufacturing_refinement_working_set_bytes(active, len(design["front_layers"]))
+        estimate = manufacturing_refinement_working_set_bytes(active, len(repair_rows(design)))
         admit_memory(estimate + audit_reservation)
         work["physical_calls"] += 1
         if objectives is not None:
@@ -654,7 +657,7 @@ def automatic_repair(
         value = evaluate_frozen_structure_candidate(
             _proxy(active),
             design,
-            variable_ids=tuple(r["id"] for r in design["front_layers"]) if jacobian else (),
+            variable_ids=tuple(r["id"] for r in repair_rows(design)) if jacobian else (),
             with_jacobian=jacobian,
             cancel_event=Cancel(),
             **evaluation_options,
@@ -797,7 +800,7 @@ def automatic_repair(
                     minimum_nonzero_thickness_nm=max(
                         floor, request.minimum_nonzero_thickness_nm or 0.0, np.finfo(float).tiny))
                 owners["local_guide"] = local_guide
-                admit_memory(manufacturing_refinement_working_set_bytes(local_guide, len(design["front_layers"])))
+                admit_memory(manufacturing_refinement_working_set_bytes(local_guide, len(repair_rows(design))))
 
                 def evaluate(candidate, *, jacobian=True, curve_pair=pair, operation=operator,
                              specifications=tuple(feedback), auxiliary_objectives=extra_objectives,
@@ -820,7 +823,7 @@ def automatic_repair(
                         rows.extend(dict(row, objective_index=len(local_delta.objectives) + len(protected_objectives) + position)
                                     for row in extra["responses"])
                     transformed["responses"] = rows
-                    transformed["variable_ids"] = tuple(r["id"] for r in candidate["front_layers"])
+                    transformed["variable_ids"] = tuple(r["id"] for r in repair_rows(candidate))
                     transformed["score"] = reduction_score(reduce_objective_responses(
                         guide_request.objectives, rows, layer_ids=transformed["variable_ids"]), 0.0)
                     if local_best is None or transformed["score"]["key"] < local_best["score"]["key"]:
@@ -866,7 +869,7 @@ def automatic_repair(
                 reviewed = snapshot
                 accepted = candidate_accepted(snapshot, original_targets_present) and training_guard["passed"]
                 trials.append(dict(operator=operator, physical_hash=physical_design_hash(design),
-                    layers=len(design["front_layers"]), maximum_absolute_change=guard["maximum_absolute_change"],
+                    layers=len(repair_rows(design)), maximum_absolute_change=guard["maximum_absolute_change"],
                     accepted=bool(accepted), feedback_rounds=feedback_round,
                     feedback_points=len(feedback), local_termination=diagnostics.get("termination", "unknown"),
                     audit_feedback_limit=AUDIT_FEEDBACK_LIMIT, feedback_point_limit=AUDIT_FEEDBACK_POINTS,
@@ -925,7 +928,7 @@ def thickness_defects(design: Mapping[str, Any], floor: float) -> Value:
     if not math.isfinite(floor) or floor < 0:
         raise ValueError("repair floor must be finite and nonnegative")
     deficits = [max(0.0, floor - float(row["thickness"]["value"])) / floor
-                for row in design["front_layers"] if row["thickness"]["value"] != 0.0] if floor else []
+                for row in repair_rows(design) if row["thickness"]["value"] != 0.0] if floor else []
     return dict(sum=math.fsum(deficits), max=max(deficits, default=0.0),
                 count=sum(value > 0.0 for value in deficits))
 
@@ -1074,7 +1077,7 @@ def assess_live_candidate(snapshot, source_snapshot, request, floor, *, original
     nominal = _live_nominal(snapshot) if original_targets_present else None
     applicable = bool(complete and optical_pass and protection and improved
                       and legal_thicknesses(request, snapshot["design"], 0.0)
-                      and all(r["thickness"]["value"] > 0.0 for r in snapshot["design"]["front_layers"]))
+                      and all(r["thickness"]["value"] > 0.0 for r in repair_rows(snapshot["design"])))
     all_met = bool(complete and thickness_complete and optical_pass and (nominal is not False))
     return dict(rank=rank, source_rank=source_rank, optical_pass=bool(optical_pass),
         original_protection_pass=bool(protection), complete_evidence=bool(complete),
@@ -1086,50 +1089,53 @@ def assess_live_candidate(snapshot, source_snapshot, request, floor, *, original
 
 def live_layers(design, origins):
     return [dict(id=r["id"], material_id=r["material_id"], optical_set_id=r["optical_set_id"],
-                 thickness_nm=float(r["thickness"]["value"]), origins=sorted(origins.get(r["id"], ())))
-            for r in design["front_layers"]]
+                 thickness_nm=float(r["thickness"]["value"]), origins=sorted(origins.get(r["id"], ())),
+                 **({"side": side} if design["substrate"]["sides"] == "double" else {}))
+            for side in repair_sides(design) for r in design[side + "_layers"]]
 
 
 def _live_cleanup(request, raw, mapping):
     """Exact zero is absence; merge only identical material/data references."""
-    result = cleanup_batch_needle_design(raw, request.frozen_material_snapshot)
+    result = cleanup_batch_needle_design(raw, request.frozen_material_snapshot, selected_surfaces=repair_sides(raw))
     lineage = {k: list(v) for k, v in mapping.items()}
     for removed, retained in result.merged_ids.items():
         lineage[retained] = sorted(set(lineage.get(retained, ())) | set(lineage.get(removed, ())))
-    return result, {r["id"]: lineage.get(r["id"], []) for r in result.design["front_layers"]}
+    return result, {r["id"]: lineage.get(r["id"], []) for r in repair_rows(result.design)}
 
 
 def _live_structures(request, base, origins, source, target, floor):
     """Finite deterministic neighborhood; successful progress can start a new one."""
     yield "compensate_thin_layers", deepcopy(base), deepcopy(origins)
-    for row in sorted(base["front_layers"], key=lambda r: r["thickness"]["value"]):
+    for row in sorted(repair_rows(base), key=lambda r: r["thickness"]["value"]):
         if 0.0 < row["thickness"]["value"] < floor:
             # The grow-to-floor quadratic has no descent direction toward
             # removal. Give each deficient layer a separate zero-directed
             # local solve while all other layers can compensate optically.
             yield ZERO_COLLAPSE_OPERATOR + row["id"], deepcopy(base), deepcopy(origins)
 
-    for row in sorted(base["front_layers"], key=lambda r: r["thickness"]["value"]):
+    for row in sorted(repair_rows(base), key=lambda r: r["thickness"]["value"]):
         raw = deepcopy(base)
-        raw["front_layers"] = [r for r in raw["front_layers"] if r["id"] != row["id"]]
+        for side in repair_sides(raw):
+            raw[side + "_layers"] = [r for r in raw[side + "_layers"] if r["id"] != row["id"]]
         if raw.get("expression", {}).get("text"):
             raw["expression"]["in_sync"] = False
         result, lineage = _live_cleanup(request, raw, origins)
         yield "delete_layer_merge", result.design, lineage
-    pairs = list(dict.fromkeys((r["material_id"], r["optical_set_id"]) for r in source["front_layers"]))
-    for index in range(len(base["front_layers"]) + 1):
-        for material, optical in pairs:
-            raw = deepcopy(base)
-            identifier = f"live-repair-{physical_design_hash(base)[:12]}-{index}-{pairs.index((material, optical))}"
-            while any(r["id"] == identifier for r in raw["front_layers"]):
-                identifier += "-new"
-            raw["front_layers"].insert(index, dict(id=identifier, material_id=material,
-                optical_set_id=optical, thickness=dict(value=max(target, floor, np.finfo(float).tiny), unit="nm"), note=""))
-            if raw.get("expression", {}).get("text"):
-                raw["expression"]["in_sync"] = False
-            lineage = deepcopy(origins)
-            lineage[identifier] = []
-            yield "insert_material_layer", raw, lineage
+    pairs = list(dict.fromkeys((r["material_id"], r["optical_set_id"]) for r in repair_rows(source)))
+    for side in repair_sides(base):
+        for index in range(len(base[side + "_layers"]) + 1):
+            for material, optical in pairs:
+                raw = deepcopy(base)
+                identifier = f"live-repair-{physical_design_hash(base)[:12]}-{side}-{index}-{pairs.index((material, optical))}"
+                while any(r["id"] == identifier for r in repair_rows(raw)):
+                    identifier += "-new"
+                raw[side + "_layers"].insert(index, dict(id=identifier, material_id=material,
+                    optical_set_id=optical, thickness=dict(value=max(target, floor, np.finfo(float).tiny), unit="nm"), note=""))
+                if raw.get("expression", {}).get("text"):
+                    raw["expression"]["in_sync"] = False
+                lineage = deepcopy(origins)
+                lineage[identifier] = []
+                yield "insert_material_layer", raw, lineage
 
 
 def automatic_repair_live(request, source, *, target_nm, thickness_tolerance_nm,
@@ -1155,8 +1161,10 @@ def automatic_repair_live(request, source, *, target_nm, thickness_tolerance_nm,
     guide = _guard_request(request, optical_tolerance)
     settings = simulation_settings(deepcopy(dict(optical_settings or
         (request.frozen_material_snapshot or {}).get("settings") or {})))
-    if not legal_thicknesses(request, source, 0.0, allow_zero=True) or settings["first_surface"] != "front":
+    if not legal_thicknesses(request, source, 0.0, allow_zero=True) or settings["first_surface"] != source["first_surface"]:
         raise ValueError("live repair source violates native limits or supported incidence")
+    request = replace(request, selected_surfaces=repair_sides(source))
+    guide = replace(guide, selected_surfaces=request.selected_surfaces)
     source_hash = physical_design_hash(source)
     identity = dict(request_identity or dict(request_id="live-repair", request_hash=source_hash,
         source_fingerprint=manufacturing_source_fingerprint(request, source)))
@@ -1177,7 +1185,7 @@ def automatic_repair_live(request, source, *, target_nm, thickness_tolerance_nm,
     owners["zero_directed_work"] = zero_directed_work
     pairs: list[CurvePair] = []
     audit_memory: Value | None = None
-    origins = {r["id"]: [r["id"]] for r in source["front_layers"]}
+    origins = {r["id"]: [r["id"]] for r in repair_rows(source)}
     reason = "running"
 
     def check():
@@ -1236,16 +1244,16 @@ def automatic_repair_live(request, source, *, target_nm, thickness_tolerance_nm,
     def physical(design, *, objectives=None, jacobian=False, _reference=False):
         check()
         active = request if objectives is None else replace(request, objectives=tuple(objectives))
-        memory(manufacturing_refinement_working_set_bytes(active, len(design["front_layers"])))
+        memory(manufacturing_refinement_working_set_bytes(active, len(repair_rows(design))))
         work["physical_calls"] += 1
         work["reference_calls"] += int(_reference)
         work["wavelength_points"] += sum(o.wavelength_samples * len(o.angles_deg) for o in active.objectives)
         previous = work["partial_physical_work_possible"]
         work["partial_physical_work_possible"] = True
         value = evaluate_frozen_structure_candidate(_proxy(active), design,
-            variable_ids=tuple(r["id"] for r in design["front_layers"]) if jacobian else (),
+            variable_ids=tuple(r["id"] for r in repair_rows(design)) if jacobian else (),
             with_jacobian=jacobian, zero_thickness_layer_ids=tuple(
-                r["id"] for r in design["front_layers"] if r["thickness"]["value"] == 0.0),
+                r["id"] for r in repair_rows(design) if r["thickness"]["value"] == 0.0),
             cancel_event=cancel_event, optical_settings=settings)
         work["partial_physical_work_possible"] = previous
         return value
@@ -1354,7 +1362,7 @@ def automatic_repair_live(request, source, *, target_nm, thickness_tolerance_nm,
         nonlocal champion, reviewed, current, trace_total
         check()
         assert source_snapshot is not None
-        if any(r["thickness"]["value"] == 0.0 for r in raw["design"]["front_layers"]):
+        if any(r["thickness"]["value"] == 0.0 for r in repair_rows(raw["design"])):
             cleanup, lineage = _live_cleanup(request, raw["design"], lineage)
             if not legal_thicknesses(request, cleanup.design, 0.0):
                 return False
@@ -1438,7 +1446,7 @@ def automatic_repair_live(request, source, *, target_nm, thickness_tolerance_nm,
 
     def local(base, lineage, operator, parent):
         nonlocal current
-        rows = base["front_layers"]
+        rows = repair_rows(base)
         if not rows:
             raw = physical(base)
             consider(raw, lineage, operator, parent)
@@ -1482,7 +1490,7 @@ def automatic_repair_live(request, source, *, target_nm, thickness_tolerance_nm,
                     or (request.max_total_thickness_nm is not None and math.fsum(thickness) > request.max_total_thickness_nm)):
                 return dict(value=None, q=np.full(count, 1e6), j=np.zeros((count, len(ids))))
             design = deepcopy(base)
-            for row, d in zip(design["front_layers"], thickness, strict=True):
+            for row, d in zip(repair_rows(design), thickness, strict=True):
                 row["thickness"] = dict(value=float(d), unit="nm")
             if design.get("expression", {}).get("text"):
                 design["expression"]["in_sync"] = False

@@ -39,10 +39,18 @@ def _layer_map(snapshot: Mapping[str, Any] | None) -> dict[str, dict[str, Any]]:
         return {}
     layers = snapshot.get("layers")
     if not isinstance(layers, list):
-        layers = [dict(row, thickness_nm=(row.get("thickness", {}).get("value")
+        design = snapshot.get("design", {})
+        sides = ("front", "back") if design.get("substrate", {}).get("sides") == "double" else ("front",)
+        layers = [dict(row, side=side, thickness_nm=(row.get("thickness", {}).get("value")
                   if row.get("thickness", {}).get("unit") == "nm" else None))
-                  for row in snapshot.get("design", {}).get("front_layers", ())]
-    return {str(row["id"]): dict(row, order=index + 1) for index, row in enumerate(layers)}
+                  for side in sides for row in design.get(side + "_layers", ())]
+    counts = {"front": 0, "back": 0}
+    result = {}
+    for row in layers:
+        side = row.get("side", "front")
+        counts[side] = counts.get(side, 0) + 1
+        result[str(row["id"])] = dict(row, order=counts[side])
+    return result
 
 
 def layer_total_nm(snapshot: Mapping[str, Any] | None) -> float | None:
@@ -98,6 +106,9 @@ def layer_change_rows(source: Mapping[str, Any] | None, current: Mapping[str, An
         current_deleted = current is not None and now is None
         best_deleted = champion is not None and optimum is None
         label = (f"原第{base['order']}层" if base is not None else "新增层")
+        side = metadata.get("side")
+        if side in ("front", "back"):
+            label = ("正面 · " if side == "front" else "背面 · ") + label
         label += " · " + str(metadata.get("material_id", "材料未知"))
 
         def delta(candidate, value, source_nm=original_nm, layer_id=identifier):
@@ -186,11 +197,14 @@ def score_text(score: Mapping[str, Any] | None, objectives: list[dict]) -> str:
 def snapshot_text(snapshot: Mapping[str, Any] | None, objectives: list[dict]) -> str:
     if not isinstance(snapshot, Mapping):
         return "没有完整候选；训练及独立审计均为未知/未通过。"
-    rows = snapshot.get("design", {}).get("front_layers", ())
-    thickness = [row["thickness"]["value"] for row in rows
-                 if row.get("thickness", {}).get("unit") == "nm"]
-    geometry = (f"层数 {len(rows)}；最薄 {format_film_thickness(min(thickness)) if thickness else '无膜层'} nm；"
-                f"D 总厚度 {format_film_thickness(math.fsum(thickness))} nm")
+    rows = list(_layer_map(snapshot).values())
+    thickness = [row.get("thickness_nm") for row in rows]
+    known = all(isinstance(value, (int, float)) and not isinstance(value, bool)
+                and math.isfinite(value) and value >= 0 for value in thickness)
+    physical = [float(value) for value in thickness if isinstance(value, (int, float))]
+    minimum = ("无膜层" if not rows else format_film_thickness(min(physical)) if known else "未知")
+    total = format_film_thickness(math.fsum(physical)) if known else "未知"
+    geometry = f"层数 {len(rows)}；最薄 {minimum} nm；D 总厚度 {total} nm"
     training, audit = snapshot.get("training_score"), snapshot.get("audit_score")
     accepted = (isinstance(training, Mapping) and isinstance(audit, Mapping)
                 and training.get("nominal_pass") is True and audit.get("nominal_pass") is True)
@@ -225,8 +239,10 @@ def comparison_rows(payload: Mapping[str, Any] | None) -> list[dict[str, Any]]:
             if present:
                 details = snapshot_text(snapshot, objectives)
             else:
-                layers = snapshot['design']['front_layers']
-                details = (f"层数 {len(layers)}；总厚 {format_film_thickness(sum(r['thickness']['value'] for r in layers))} nm。\n"
+                layers = _layer_map(snapshot)
+                total = layer_total_nm(snapshot)
+                total_text = format_film_thickness(total) if total is not None else "未知"
+                details = (f"层数 {len(layers)}；总厚 {total_text} nm。\n"
                     '没有启用的原光学目标，原目标验收不适用；本轮冻结比较范围为 '
                     + comparison_scope_text(request.get('comparison_settings')) + '。')
             if isinstance(guard, Mapping):

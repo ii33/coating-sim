@@ -27,6 +27,8 @@ from .film_automatic_repair import (
     _guard_request,
     curve_audit_metadata,
     candidate_accepted,
+    repair_sides,
+    repair_rows,
     AUDIT_FEEDBACK_POINTS,
 )
 from .film_design import validate_design
@@ -72,7 +74,7 @@ def _freeze_repair(service, synthesis, settings):
     references = list(synthesis.candidate_materials)
     pairs = {(r.material_id, r.optical_set_id) for r in references}
     for seed in synthesis.seed_designs:
-        for row in seed["front_layers"]:
+        for row in repair_rows(seed):
             pair = (row["material_id"], row["optical_set_id"])
             if pair not in pairs:
                 references.append(FilmNeedleMaterialReference(*pair))
@@ -82,7 +84,7 @@ def _freeze_repair(service, synthesis, settings):
     seeds = []
     for original in synthesis.seed_designs:
         seed = deepcopy(original)
-        for row in seed["front_layers"]:
+        for row in repair_rows(seed):
             index = 1.0
             if row["thickness"]["unit"] == "qw":
                 optical = next(o for o in materials[row["material_id"]]["optical_sets"]
@@ -184,16 +186,16 @@ def request_from_payload(value):
 
     environment = deepcopy(source)
     environment["front_layers"] = environment["back_layers"] = []
-    if physical_design_hash(environment) != physical_design_hash(checked.environment):
+    frozen_environment = deepcopy(checked.environment)
+    frozen_environment["front_layers"] = frozen_environment["back_layers"] = []
+    if physical_design_hash(environment) != physical_design_hash(frozen_environment):
         raise ValueError("automatic repair source differs from frozen physical ports")
     if (
-        source["back_layers"]
-        or source["first_surface"] != "front"
+        tuple(checked.selected_surfaces) != repair_sides(source)
         or settings["first_surface"] != source["first_surface"]
-        or source["substrate"]["sides"] != "single"
         or not source["use_k"]
     ):
-        raise ValueError("automatic repair requires single front incidence with source k")
+        raise ValueError("automatic repair requires all active surfaces and the source incidence with source k")
     if not value["original_targets_present"]:
         if (
             len(checked.objectives) != 2
@@ -251,9 +253,10 @@ def estimate_resources(request_payload, frozen=None, source=None):
 
     if frozen is None or source is None:
         frozen, source = request_from_payload(request_payload)
+
     if request_payload["schema_version"] == 3:
         guide = _guard_request(frozen, request_payload["optical_tolerance_percentage_points"] / 100.0)
-        numerical = manufacturing_refinement_working_set_bytes(guide, len(source["front_layers"]))
+        numerical = manufacturing_refinement_working_set_bytes(guide, len(repair_rows(source)))
         audit = estimate_audit_resources(guide, source, physical_call_limit=1 + len(guide.objectives))
         return dict(working_set_bytes=max(numerical, audit["working_set_bytes"]) + _owned_bytes(frozen, source),
                     ownership_model="dense upfront; actual scalar/live/checkpoint ownership checked incrementally")
@@ -261,8 +264,10 @@ def estimate_resources(request_payload, frozen=None, source=None):
     guide = _guard_request(frozen, request_payload["optical_tolerance_percentage_points"] / 100.0)
     largest = dict(source)
     largest["front_layers"] = list(source["front_layers"])
-    if largest["front_layers"]:
-        largest["front_layers"] = [*largest["front_layers"], largest["front_layers"][0]]
+    extra_side = next((side for side in repair_sides(source) if source[side + "_layers"]), None)
+    if extra_side is not None:
+        key = extra_side + "_layers"
+        largest[key] = [*largest[key], largest[key][0]]
     resources = estimate_result_resources(
         request_payload, guide, largest, audit_physical_call_limit=controls["physical_calls"]
     )
@@ -270,11 +275,11 @@ def estimate_resources(request_payload, frozen=None, source=None):
     dense_feedback = max((replace(o, wavelength_samples=(1 if o.wavelength_samples == 1 else
         (o.wavelength_samples - 1) * frozen.validation_samples_multiplier + 1)) for o in frozen.objectives),
         key=lambda o: manufacturing_refinement_working_set_bytes(replace(guide, objectives=(o,)),
-                                                                len(largest["front_layers"])))
+                                                                len(repair_rows(largest))))
     joint = replace(guide, objectives=guide.objectives + (
         frozen.objectives if request_payload["original_targets_present"] else ())
         + (dense_feedback,) * AUDIT_FEEDBACK_POINTS)
-    numerical = 2 * manufacturing_refinement_working_set_bytes(joint, len(largest["front_layers"]))
+    numerical = 2 * manufacturing_refinement_working_set_bytes(joint, len(repair_rows(largest)))
     resources["working_set_bytes"] = max(
         resources["phase_working_set_bytes"], 2 * audit["working_set_bytes"], numerical
     ) + _owned_bytes(frozen, source)
@@ -624,35 +629,49 @@ def validate_result_payload(value, *, expected_job=None, replay=True):
             if (
                 deficient_ids(candidate, max(floor, request.minimum_nonzero_thickness_nm or 0.0))
                 or raw.get("thickness_pass") is not True
-                or len(candidate["front_layers"])
+                or len(repair_rows(candidate))
                 > min(MAX_LAYERS, request.max_layers or MAX_LAYERS)
-                or any(row["thickness"]["unit"] != "nm" for row in candidate["front_layers"])
+                or any(row["thickness"]["unit"] != "nm" for row in repair_rows(candidate))
                 or (
                     request.max_layer_thickness_nm is not None
                     and any(
                         r["thickness"]["value"] > request.max_layer_thickness_nm
-                        for r in candidate["front_layers"]
+                        for r in repair_rows(candidate)
                     )
                 )
                 or (
                     request.max_total_thickness_nm is not None
-                    and math.fsum(r["thickness"]["value"] for r in candidate["front_layers"])
+                    and math.fsum(r["thickness"]["value"] for r in repair_rows(candidate))
                     > request.max_total_thickness_nm
                 )
             ):
                 raise ValueError("repair candidate retains a deficient layer")
+            if any(candidate[side + "_layers"] != source[side + "_layers"]
+                   for side in ("front", "back") if side not in repair_sides(source)):
+                raise ValueError("repair candidate changed an inactive surface")
+            originals = {r["id"]: (side, r) for side in repair_sides(source)
+                         for r in source[side + "_layers"]}
+            for side in repair_sides(candidate):
+                for row in candidate[side + "_layers"]:
+                    if row["id"] not in originals:
+                        continue
+                    original_side, original = originals[row["id"]]
+                    if original_side != side:
+                        raise ValueError("repair candidate moved an original layer across the substrate")
+                    if any(row[key] != original[key] for key in ("material_id", "optical_set_id")):
+                        raise ValueError("repair candidate changed an original layer material")
             environment = deepcopy(candidate)
-            environment["front_layers"] = []
+            environment["front_layers"] = environment["back_layers"] = []
             original_environment = deepcopy(source)
-            original_environment["front_layers"] = []
+            original_environment["front_layers"] = original_environment["back_layers"] = []
             from .film_synthesis_archive import physical_design_hash
 
             if physical_design_hash(environment) != physical_design_hash(original_environment):
                 raise ValueError("repair candidate changed physical ports")
-            pairs = {(r["material_id"], r["optical_set_id"]) for r in source["front_layers"]}
+            pairs = {(r["material_id"], r["optical_set_id"]) for r in repair_rows(source)}
             if any(
                 (r["material_id"], r["optical_set_id"]) not in pairs
-                for r in candidate["front_layers"]
+                for r in repair_rows(candidate)
             ):
                 raise ValueError("repair candidate introduced unauthorized material")
             _validate_guard(
@@ -791,17 +810,31 @@ def _live_identity(request_payload):
 
 
 def _validate_live_layers(layers, design, source):
-    if not isinstance(layers, list) or len(layers) != len(design["front_layers"]):
+    physical = [(side, row) for side in repair_sides(design) for row in design[side + "_layers"]]
+    if not isinstance(layers, list) or len(layers) != len(physical):
         raise ValueError("live layer lineage does not cover the current design")
-    originals = {r["id"]: r for r in source["front_layers"]}
-    for row, physical in zip(layers, design["front_layers"], strict=True):
-        if (not isinstance(row, Mapping) or set(row) != {"id", "material_id", "optical_set_id", "thickness_nm", "origins"}
-                or any(row[k] != physical[k] for k in ("id", "material_id", "optical_set_id"))
-                or row["thickness_nm"] != physical["thickness"]["value"]
+    originals = {r["id"]: (side, r) for side in repair_sides(source)
+                 for r in source[side + "_layers"]}
+    double = len(repair_sides(design)) == 2
+    seen_origins: set[str] = set()
+    for row, (side, actual) in zip(layers, physical, strict=True):
+        fields = {"id", "material_id", "optical_set_id", "thickness_nm", "origins"}
+        if double:
+            fields.add("side")
+        if (not isinstance(row, Mapping) or set(row) != fields
+                or (double and row["side"] != side)
+                or any(row[k] != actual[k] for k in ("id", "material_id", "optical_set_id"))
+                or row["thickness_nm"] != actual["thickness"]["value"]
                 or not isinstance(row["origins"], list) or len(set(row["origins"])) != len(row["origins"])
-                or any(k not in originals or any(originals[k][name] != row[name] for name in ("material_id", "optical_set_id"))
+                or (row["id"] in originals and
+                    (originals[row["id"]][0] != side or row["id"] not in row["origins"]))
+                or any(k not in originals or originals[k][0] != side
+                       or any(originals[k][1][name] != row[name] for name in ("material_id", "optical_set_id"))
                        for k in row["origins"])):
             raise ValueError("live layer identity or original-layer provenance differs")
+        if seen_origins.intersection(row["origins"]):
+            raise ValueError("live layer provenance is duplicated across rows")
+        seen_origins.update(row["origins"])
 
 
 def _validate_live_design(design, request, source, *, allow_zero=False, minimum_probe_id=None):
@@ -813,12 +846,16 @@ def _validate_live_design(design, request, source, *, allow_zero=False, minimum_
         raise ValueError("live design violates native physical boundaries")
     if checked.get("workflow_settings") != source.get("workflow_settings"):
         raise ValueError("live repair metadata differs from the frozen source workflow")
+    if any(checked[side + "_layers"] != source[side + "_layers"]
+           for side in ("front", "back") if side not in repair_sides(source)):
+        raise ValueError("live repair changed an inactive surface")
     ports, original = deepcopy(checked), deepcopy(source)
-    ports["front_layers"], original["front_layers"] = [], []
+    ports["front_layers"] = ports["back_layers"] = []
+    original["front_layers"] = original["back_layers"] = []
     if physical_design_hash(ports) != physical_design_hash(original):
         raise ValueError("live repair changed frozen physical ports")
-    allowed = {(r["material_id"], r["optical_set_id"]) for r in source["front_layers"]}
-    if any((r["material_id"], r["optical_set_id"]) not in allowed for r in checked["front_layers"]):
+    allowed = {(r["material_id"], r["optical_set_id"]) for r in repair_rows(source)}
+    if any((r["material_id"], r["optical_set_id"]) not in allowed for r in repair_rows(checked)):
         raise ValueError("live repair introduced an unfrozen material pair")
     return checked
 
@@ -874,7 +911,7 @@ def _validate_live_snapshot(raw, source_snapshot, payload, request, source, *, i
     if not isinstance(raw, Mapping):
         raise ValueError("live candidate must be a complete snapshot")
     checked = _validate_live_design(raw["design"], request, source, allow_zero=is_source)
-    if not is_source and any(r["thickness"]["value"] == 0.0 for r in checked["front_layers"]):
+    if not is_source and any(r["thickness"]["value"] == 0.0 for r in repair_rows(checked)):
         raise ValueError("live audited candidate must delete exact zero layers before scoring")
     identity = _live_identity(payload)
     if (raw.get("physical_hash") != physical_design_hash(checked)
@@ -950,7 +987,7 @@ def _validate_live_current(current, payload, request, source):
         if current["evidence_scope"] == "training" and current["operator"].startswith(ZERO_COLLAPSE_OPERATOR) else None)
     checked = _validate_live_design(current["design"], request, source,
         allow_zero=True, minimum_probe_id=probe_id)
-    if probe_id is not None and probe_id not in {r["id"] for r in checked["front_layers"]}:
+    if probe_id is not None and probe_id not in {r["id"] for r in repair_rows(checked)}:
         raise ValueError("live zero-directed preview does not identify its current mathematical probe")
     if current["physical_hash"] != physical_design_hash(checked):
         raise ValueError("live preview hash differs from its design")

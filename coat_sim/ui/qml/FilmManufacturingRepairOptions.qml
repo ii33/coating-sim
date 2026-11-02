@@ -17,7 +17,7 @@ ColumnLayout {
     ThemeControls.ThemeLabel {
         objectName: "filmManufacturingScopeHelp"
         Layout.fillWidth: true
-        text: "自动识别低于厚度下限的正面层；候选须通过相对原曲线的最大变化保护和独立光学核验。只显示完整核验改进，不改变原设计，取消时沿用既有契约尝试应用当前最佳改进。"
+        text: "自动识别低于厚度下限的活动面膜层（双面基片含正、背面）；候选须通过相对原曲线的最大变化保护和独立光学核验。只显示完整核验改进，不改变原设计，取消时沿用既有契约尝试应用当前最佳改进。"
         wrapMode: Text.WordWrap
     }
     ThemeControls.ThemeLabel {
@@ -36,7 +36,7 @@ ColumnLayout {
         }
         ThemeControls.ThemeLabel {
             Layout.fillWidth: true
-            text: "仅检测并修复当前前层；不使用手动层选择。"
+            text: "检测并修复当前活动面的膜层（双面基片含正、背面）；不使用手动层选择。"
             wrapMode: Text.WordWrap
             muted: true
         }
@@ -64,7 +64,7 @@ ColumnLayout {
             objectName: "filmManufacturingParameterRepeater"
             model: [
                 {key: "lower_limit_nm", label: "单层厚度下限（nm）",
-                 help: "低于此物理厚度的前层会自动识别；0 不是目标总厚度。"},
+                 help: "低于此物理厚度的活动面膜层会自动识别；0 不是目标总厚度。"},
                 {key: "optical_tolerance_percentage_points", label: "相对原曲线最大变化（百分点）",
                  help: "训练与独立审计逐点核验；1 表示 R/T 的最大绝对差不超过 1 个百分点，不是相对百分比。"}
             ]

@@ -364,7 +364,9 @@ class FilmManufacturingQuickController(QObject):
                 return len(layers)
             design = snapshot.get("design")
             if isinstance(design, Mapping):
-                return sum(len(design.get(side + "_layers", ())) for side in ("front", "back"))
+                sides = (("front", "back") if design.get("substrate", {}).get("sides") == "double"
+                         else ("front",))
+                return sum(len(design.get(side + "_layers", ())) for side in sides)
             return None
         def show(value):
             return "未知" if value is None else format_film_thickness(value) + " nm"
@@ -719,16 +721,19 @@ class FilmManufacturingQuickController(QObject):
                 self.owner.refreshDesign()
             base = self._build_base_request()
             old = {row["layer_id"]: row["selected"] for row in self._rows}
-            self._rows = [{"layer_id": row["id"], "label": f"{index + 1}. {row['material_id']} / {row['optical_set_id']}",
+            from coat_sim.core.film_automatic_repair import repair_sides
+            sides = (("front",) if self._legacy_mode else repair_sides(base.design_snapshot))
+            self._rows = [{"layer_id": row["id"], "label": f"{'正面' if side == 'front' else '背面'} {index + 1}. {row['material_id']} / {row['optical_set_id']}",
                            "thickness_value": row['thickness']['value'],
                            "thickness_unit": row['thickness']['unit'],
                            "selected": old.get(row["id"], False)}
-                          for index, row in enumerate(base.design_snapshot["front_layers"])]
+                          for side in sides
+                          for index, row in enumerate(base.design_snapshot[side + "_layers"])]
             self._prepared_signature = self._signature(base)
             self._stale = False
             self._error = ""
             if not self._rows:
-                raise ValueError("没有当前前层；请先添加实际膜系。")
+                raise ValueError("没有当前活动面膜层；请先添加实际膜系。")
             self._status = ("已刷新当前来源；自动识别低于“单层目标厚度−厚度容差”的层，无需勾选。"
                             if self._payload is None else "来源已刷新；下方仍为上次冻结报告，不代表当前草稿。")
             self.layerRowsChanged.emit()
@@ -898,12 +903,15 @@ class FilmManufacturingQuickController(QObject):
             source = deepcopy(dict(base.design_snapshot))
             if self._legacy_mode and any(row["thickness"]["value"] >= options["reference_nm"] for row in source["front_layers"] if row["id"] in selected and row["thickness"]["unit"] == "nm"):
                 raise ValueError("勾选层必须小于明确填写的参考厚度；不会自动删除选择或提高参考值。")
+            from coat_sim.core.film_automatic_repair import repair_sides
+            sides = ("front",) if self._legacy_mode else repair_sides(source)
             environment = deepcopy(source)
-            environment["front_layers"], environment["back_layers"] = [], []
+            for side in sides:
+                environment[side + "_layers"] = []
             refs = tuple(dict.fromkeys(FilmNeedleMaterialReference(row["material_id"], row["optical_set_id"])
-                                       for row in source["front_layers"]))
+                                       for side in sides for row in source[side + "_layers"]))
             synthesis = FilmSynthesisRequest(
-                environment=environment, objectives=base.objectives, candidate_materials=refs,
+                environment=environment, objectives=base.objectives, candidate_materials=refs, selected_surfaces=sides,
                 design_revision=base.design_revision, seed_designs=(deepcopy(source),),
                 acceptable_normalized_error=base.acceptable_normalized_error,
                 validation_samples_multiplier=base.validation_samples_multiplier,

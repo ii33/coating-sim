@@ -242,7 +242,8 @@ def estimate_audit_resources(synthesis: FilmSynthesisRequest, design: Mapping[st
         # exceed the remaining whole physical-call allowance.
         scalar = min(scalar, max(0, physical_call_limit - 1 - calls))
     points = dense + offset + scalar
-    layers = len(design["front_layers"])
+    layers = len(design["front_layers"]) + (
+        len(design["back_layers"]) if design["substrate"]["sides"] == "double" else 0)
     # At most one pointwise condition record per objective/angle/wavelength;
     # signed bounds produce residuals, not duplicate FilmConditionError rows.
     # Nine record owners cover auditor maps/cache, returned copies, canonical

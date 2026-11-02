@@ -211,7 +211,16 @@ def validate_film_reduction_candidate_topology(request: FilmReductionRequest,
             value = after_nm[identifier]
             if value < variable.lower_nm - 1e-10 or (variable.upper_nm is not None and
                     value > variable.upper_nm + 1e-10):
-                raise ValueError("retained selected layer violates its own bounds")
+                source_number = next(i for i, source_row in enumerate(source, 1)
+                                     if source_row["id"] == identifier)
+                side_name = "正面" if side == "front" else "背面"
+                upper = "无上界" if variable.upper_nm is None else f"{variable.upper_nm} nm"
+                raise ValueError(
+                    "retained selected layer violates its own bounds："
+                    f"{side_name}源第 {source_number} 层的当前物理厚度为 {value} nm，"
+                    f"下限为 {variable.lower_nm} nm，上限为 {upper}。"
+                    "请先修复该层厚度或检查其厚度上下限后重试。"
+                )
     if request.mode != "layer_count" and sum(after_nm.values()) > sum(before_nm.values()) + 1e-8:
         raise ValueError("thickness/combined reduction cannot increase source total physical thickness")
     return {"source_layer_ids": list(before_nm), "candidate_layer_ids": list(after_nm),
