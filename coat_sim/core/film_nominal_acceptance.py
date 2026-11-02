@@ -6,8 +6,9 @@ roundoff is allowed only when identifying a required sampled wavelength.
 from __future__ import annotations
 
 from bisect import bisect_left
+from collections.abc import Mapping, Sequence
 import math
-from typing import Any, Mapping
+from typing import Any
 
 ACCEPTANCE_SEMANTICS = "band_criteria_v2"
 
@@ -58,7 +59,7 @@ def solver_condition_acceptable(objective: Any, actual: float, tolerance: float,
     return bool(violation / normalization_scale <= tolerance)
 
 
-def _has_wave(waves: list[float], expected: float) -> bool:
+def _has_wave(waves: Sequence[float], expected: float) -> bool:
     cursor = bisect_left(waves, expected)
     return any(abs(wave - expected) <= 4 * max(math.ulp(wave), math.ulp(expected))
                for wave in waves[max(0, cursor - 1):cursor + 1])
@@ -123,7 +124,7 @@ def complete_original_score(request: Any, score: Any, *, independent_audit: bool
             expected = [low] if count == 1 else [low + (high - low) * i / (count - 1) for i in range(count)]
             for angle in objective.angles_deg:
                 waves, _actual = groups[index, angle]
-                if len(waves) != count or not all(_has_wave(list(waves), wave) for wave in expected):
+                if len(waves) != count or not all(_has_wave(waves, wave) for wave in expected):
                     return False
                 dense_points += count
         reduction = reduce_objective_responses(request.objectives, _coverage_responses(score["coverage"]),
@@ -147,7 +148,7 @@ def complete_original_score(request: Any, score: Any, *, independent_audit: bool
                     step = (high - low) / (count - 1)
                     offsets = [low + .5 * step] if count == 2 else [
                         low + .5 * step + (high - low - step) * i / (count - 2) for i in range(count - 1)]
-                    if not all(_has_wave(list(waves), wave) for wave in offsets):
+                    if not all(_has_wave(waves, wave) for wave in offsets):
                         return False
                     offset_points += count - 1
                 if objective.pointwise.enabled:
@@ -170,7 +171,7 @@ def complete_original_score(request: Any, score: Any, *, independent_audit: bool
                 return False
             canonical = expected_rows[identity]
             actual = (_field(canonical, "actual") if canonical is not None else
-                      raw_groups[index, angle][1][raw_groups[index, angle][0].index(wave)])
+                      raw_groups[index, angle][1][bisect_left(raw_groups[index, angle][0], wave)])
             if not _number(_field(row, "actual")) or _field(row, "actual") != actual:
                 return False
             for name in ("polarization", "metric", "wavelength_min_nm", "wavelength_max_nm"):
@@ -226,17 +227,39 @@ def complete_original_score(request: Any, score: Any, *, independent_audit: bool
         return False
 
 
+def _condition_records_allow(request: Any, score: Any, *, solver: bool) -> bool:
+    """Cheap rejection only: a positive result still needs full evidence validation.
+
+    One violated original condition is sufficient to reject a candidate. Do
+    not reconstruct every raw-grid residual just to reach that same rejection.
+    No cached flag, scalar maximum or mutable-object identity grants acceptance.
+    """
+    if not isinstance(score, Mapping) or not isinstance(score.get("errors"), (tuple, list)):
+        return False
+    try:
+        for row in score["errors"]:
+            index, kind = _field(row, "objective_index"), _field(row, "reduction")
+            if type(index) is not int or not 0 <= index < len(request.objectives) or kind not in ("mean", "pointwise"):
+                return False
+            objective = request.objectives[index]
+            constraint, actual = getattr(objective, kind), _field(row, "actual")
+            passed = (solver_condition_acceptable(constraint, actual, request.acceptable_normalized_error,
+                       normalization_scale=objective.normalization_scale) if solver else
+                      nominal_condition_pass(constraint, actual))
+            if not passed:
+                return False
+        return True
+    except (TypeError, ValueError, KeyError, AttributeError, ArithmeticError, IndexError):
+        return False
+
+
 def nominal_targets_pass(request: Any, score: Any, *, independent_audit: bool = False) -> bool:
-    """AND of enabled exact criteria, after validating full physical coverage."""
-    return (complete_original_score(request, score, independent_audit=independent_audit)
-            and all(nominal_condition_pass(getattr(request.objectives[_field(row, "objective_index")],
-                _field(row, "reduction")), _field(row, "actual")) for row in score["errors"]))
+    """Reject witnessed violations early; accepting still validates all evidence."""
+    return (_condition_records_allow(request, score, solver=False)
+            and complete_original_score(request, score, independent_audit=independent_audit))
 
 
 def solver_acceptable(request: Any, score: Any, *, independent_audit: bool = False) -> bool:
-    """AND of enabled solver tolerances, separately from exact nominal pass."""
-    return (complete_original_score(request, score, independent_audit=independent_audit)
-            and all(solver_condition_acceptable(getattr(request.objectives[_field(row, "objective_index")],
-                _field(row, "reduction")), _field(row, "actual"), request.acceptable_normalized_error,
-                normalization_scale=request.objectives[_field(row, "objective_index")].normalization_scale)
-                for row in score["errors"]))
+    """Keep solver tolerance separate, with full evidence required for acceptance."""
+    return (_condition_records_allow(request, score, solver=True)
+            and complete_original_score(request, score, independent_audit=independent_audit))

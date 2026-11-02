@@ -5,10 +5,11 @@ angle spectra, so wavelength averaging always precedes the constraint hinge.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 import math
 from numbers import Real
-from typing import Any, Iterable, Literal, Mapping, Sequence
+from typing import Any, Iterable, Literal, Sequence
 
 import numpy as np
 

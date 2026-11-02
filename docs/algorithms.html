@@ -12,6 +12,7 @@
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px solid #c8e0db;border-radius:8px;padding:16px;font-size:.88rem;line-height:1.5}</style>
 </head>
 <body>
+<p class="source">评分完整性更新：2026-11-02；<a href="#film-score-validation-20261102">14bj 原条件快速拒绝与完整证据核验</a>，不改变验收语义。</p>
 <p class="source">减量算法更新：2026-11-02；<a href="#film-reduction-20261025">14az 正最薄厚度下的选层删层与内部消零过渡</a>；正下限约束最终保留层，不锁住所选层。</p>
 <p class="source">算法更新：2026-11-02；新增<a href="#film-automatic-repair-double-20261102">14bi 双面整片自动薄层修复</a>与减量源边界诊断，有限搜索不构成达标或可行性证明。</p>
 <p class="source">算法更新：2026-11-01；<a href="#film-phase-diverse-restarts-20261101">14bh 色散相位多样先验与逐层厚度重启</a>，及<a href="#film-synthesis-until-target-20261101">14bg 搜索直到目标与自动外层轮转</a>。新增候选不是达标或可行性证明。</p>
@@ -76,6 +77,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <p class="source" style="grid-column:1/-1">结构合成更新：2026-10-12。新增14o至14o-2：实验性经典零厚敏感度针插、有界已有层增长与分组局部精修；独立结构请求与固定层序/有限试插分开，Dmax是硬约束。补充验证切片、真实求值计数与增长前局部边界检查。接口见 <a href="film-structure-optimization-contract.md">结构合成契约</a>，操作见 <a href="film-structure-optimization-guide.md">使用指南</a>，实际验收见 本轮状态 <span class="historical-reference">（历史验证记录，未随公开源码发布）</span>。</p>
 <p class="source">存储格式补充：2026-10-18。工程 BBS、助手精简记忆和可恢复文件清理均为非物理持久化契约，不改变仿真公式、坐标或数值精度。见<a href="#engineering-notes-storage-20261018">工程记录与助手工作区格式</a>。</p>
 <nav aria-label="章节目录">
+<a href="#film-score-validation-20261102">14bj 评分完整性与快速拒绝（2026-11-02）</a>
 <a href="#film-automatic-repair-double-20261102">14bi 双面整片自动薄层修复（2026-11-02）</a>
 <a href="#film-automatic-repair-20261027">14bc 薄层修复、实时改善与取消应用（2026-10-27，后续更新）</a>
 <a href="#film-margin-continuation-20261026">14bb 自动合成本轮数值停止、指标保护减薄与结构续接（2026-11-01）</a>
@@ -345,6 +347,18 @@ while 未取消、未遇资源或数值错误:
 <p><strong>续接密网格支配筛除（2026-11-01，本项目约定）：</strong>仅候选池恢复、所有目标仅启用 pointwise 且本轮已有完整独审冠军时，设同一归一化条件下的密网格最大违规为 E<sub>dense</sub>、冠军完整独审最大违规为 E<sub>best</sub>；仅当 E<sub>dense</sub> &gt; E<sub>best</sub> + max(10<sup>−8</sup>, 10<sup>−6</sup>|E<sub>best</sub>|) 时筛除。相同目标、角度、波长与偏振的重复条件如属于密网格则保留密网格见证，其他额外点重复时保留较大归一化违规见证，并同步 raw coverage 对应实测值，故完整审计最差违规不小于密网格最差违规；旧评分不复用。近阈值、相等、潜在优胜、没有冠军或存在 mean 时完成独审。筛除仅为不完整密网格证据，不是独审通过或材料源全域检查；不能发布为已审计冠军。密网格实际物理/波长工作与逻辑预算照计，取消/时间/资源限制不变。跳过后减少的稀疏审计反馈会改变后续修复及搜索轨迹；不声称与逐项完整审计等价，也不保证更快或特定任务达标。见<a href="film-synthesis-audit-contract.md">独审契约</a>及<a href="film-synthesis-continuation.md">续接契约</a>。</p>
 <p><strong>依据与适用条件：</strong>实现在 <code>film_auto_synthesis.py</code> 的续接恢复、独审比较与结果发布，结构状态在 <code>film_synthesis_continuation.py</code> 校验。恢复顺序、排名和预算计量为本项目约定；未找到外部依据，仅为本项目实现。新结构不一定更好；有限网格及极值复核不是连续谱证明，也不保证全局最优或任何具体设计达标。</p>
 <p><strong>参考与限制：</strong><a href="https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html">SciPy SLSQP 官方文档</a>为原数值求解器参考。一次会话边界、最佳候选选择、指标保护减薄和持久化结构均为本项目约定；未找到外部依据，仅为本项目实现，不声称新的全局收敛保证。未启用指标、材料插值/外推政策及用户正式目标不因本节改变。</p>
+</section>
+
+<section id="film-score-validation-20261102">
+<h2>14bj 评分完整性与快速拒绝（2026-11-02）</h2>
+<p><strong>用途、输入与输出：</strong>对原目标请求和候选的评分记录分别判断严格名义达标与求解容差可接受，输出布尔判定；可选择独立审计模式。输入含目标、启用的 mean/pointwise 条件、原始光谱覆盖和条件记录。波长以 nm、角度以度、R/T 响应及其边界以 0–1 fraction 表示，归一化违规和求解容差为无量纲；不引入新的坐标系、采样或参数，沿用请求及<a href="#film-band-criteria-20261024">14at 原目标公式</a>。该检查验证证据结构及算术，不是重新进行物理光谱计算，也不是连续波段证书。</p>
+<figure class="figure"><svg viewBox="0 0 960 190" role="img" aria-label="原条件快速检查可拒绝，未发现违约则必须完整验证后才能接受或拒绝">
+<g fill="#e3f1ed" stroke="#237a72" stroke-width="2"><rect x="15" y="60" width="185" height="55" rx="8"/><rect x="265" y="60" width="195" height="55" rx="8"/><rect x="550" y="60" width="190" height="55" rx="8"/><rect x="805" y="15" width="135" height="55" rx="8"/><rect x="805" y="120" width="135" height="55" rx="8"/></g>
+<g class="svgtext" text-anchor="middle"><text x="107" y="94">评分与原目标</text><text x="362" y="94">原条件快速检查</text><text x="645" y="94">完整证据核验</text><text x="872" y="49">可接受</text><text x="872" y="154">拒绝</text></g>
+<g fill="none" stroke="#237a72" stroke-width="2"><path d="M200 87H265M460 87H550M740 87L805 43M740 87L805 148M362 115V148H805"/></g><text x="505" y="70" class="svgsmall" text-anchor="middle">未发现违约</text><text x="490" y="140" class="svgsmall" text-anchor="middle">明确违约或记录无效</text></svg><figcaption>图14bj-1：快速检查只可拒绝；没有发现违约不是通过证明，仍须完整核验。名义和求解容差使用各自条件，互不代替。</figcaption></figure>
+<p><strong>过程（本项目约定）：</strong><code>if not condition_records_allow(request, score, mode): return False; return complete_original_score(request, score, independent_audit)</code>。快速检查逐条使用原条件及对应名义或求解容差公式；明确违约或必要记录无效即拒绝。未发现违约时，完整检查原始 coverage、各目标及角度、固定密网格和独审 offset、条件身份及唯一性、实测值、元数据、标志和汇总算术。mean 仍只由固定密网格归约，offset／额外极值点不获得积分权重。接受不能依赖 <code>max_error</code>、名义标志或对象身份；同一可变 score 每次重新判断，无跨任务缓存。名义严格边界与求解容差各自独立，阈值、权重、平均口径不变。</p>
+<p><strong>查找与适用范围：</strong>coverage 波长先验证有限、严格升序且无重复；密网格和 offset 的坐标匹配在有序序列上使用二分，并保留原有坐标舍入容许，避免每个网格点复制整段序列。独审额外点也在已验证有序、唯一的原始坐标中二分定位。对长度 N 的序列，每次定位由线性扫描降为 O(log N)，避免逐点 O(N) 复制；这不是整体验证的 O(log N) 声明，完整验证仍须遍历全部必要证据。仅早拒绝路径可省去后续完整核验；潜在通过的记录不会跳过它。该变更为本项目现有验收流程的实现优化，不改变既有有限网格适用范围，不保证任何任务的速度倍数或结果达标。</p>
+<p class="source">实现：<a href="../coat_sim/core/film_nominal_acceptance.py">film_nominal_acceptance.py</a>、<a href="../coat_sim/core/film_objective_criteria.py">film_objective_criteria.py</a>；条件归约与公式见<a href="#film-band-criteria-20261024">14at</a>。未找到外部依据，仅为本项目实现；不是新的外部物理模型。</p>
 </section>
 
 <section id="film-automatic-repair-double-20261102">
