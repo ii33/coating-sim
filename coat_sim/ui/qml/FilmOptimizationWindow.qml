@@ -848,7 +848,6 @@ AppWindow {
 
                     StackLayout {
                         objectName: "filmOptimizationSetupContent"
-                        enabled: !window.controller.busy
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         currentIndex: setupTabs.currentIndex
@@ -857,6 +856,7 @@ AppWindow {
                             spacing: window.themeTokens.spaceXs
                             RowLayout {
                                 Layout.fillWidth: true
+                                enabled: !window.controller.busy
                                 ThemeControls.ThemeButton {
                                     objectName: "filmOptimizationAddObjectiveButton"
                                     text: "添加目标"
@@ -893,6 +893,7 @@ AppWindow {
                                 model: window.controller.objectives
                                 delegate: ThemeControls.ThemeButton {
                                     required property var modelData
+                                    enabled: !window.controller.busy
                                     width: objectiveList.width
                                     text: modelData.display
                                     checkable: true
@@ -926,6 +927,7 @@ AppWindow {
                                         wrapMode: Text.WordWrap
                                     }
                                     GridLayout {
+                                        enabled: !window.controller.busy
                                         visible: window.controller.objectives.length > 0
                                         Layout.fillWidth: true
                                         columns: 2
@@ -1266,6 +1268,7 @@ AppWindow {
                                         delegate: Rectangle {
                                             id: variableDelegate
                                             required property var modelData
+                                            enabled: !window.controller.busy
                                             Layout.fillWidth: true
                                             Layout.preferredHeight: 84
                                             radius: window.themeTokens.radiusSm
@@ -1392,6 +1395,7 @@ AppWindow {
                                 }
                                 ThemeControls.ThemeComboBox {
                                     objectName: "filmOptimizationSearchModeBox"
+                                    enabled: !window.controller.busy
                                     Layout.fillWidth: true
                                     model: window.controller.searchModeOptions
                                     textRole: "label"
@@ -1407,6 +1411,7 @@ AppWindow {
                                     Label { text: "减量目标"; color: window.themeTokens.colorText }
                                     ThemeControls.ThemeComboBox {
                                         objectName: "filmReductionModeBox"
+                                        enabled: !window.controller.busy
                                         Layout.fillWidth: true
                                         model: window.controller.reductionModeOptions
                                         textRole: "label"
@@ -1441,6 +1446,7 @@ AppWindow {
                                     visible: active
                                     sourceComponent: FilmResourceEstimatePanel {
                                         estimator: window.controller.resourceEstimateController
+                                        editLocked: window.controller.busy
                                         themeTokens: window.themeTokens
                                     }
                                 }
@@ -1450,6 +1456,7 @@ AppWindow {
                                     Layout.fillWidth: true
                                     embedded: true
                                     controller: window.controller.sensitivityController
+                                    editLocked: window.controller.busy
                                     themeTokens: window.themeTokens
                                     onSaveRequested: sensitivityReportDialog.open()
                                 }
@@ -1484,6 +1491,7 @@ AppWindow {
                                 ThemeControls.ThemeComboBox {
                                     id: solverMethodBox
                                     objectName: "filmOptimizationSolverBox"
+                                    enabled: !window.controller.busy
                                     visible: window.controller.searchMode === "fixed_topology"
                                     Layout.fillWidth: true
                                     model: window.controller.solverOptions
@@ -1579,6 +1587,7 @@ AppWindow {
                                     color: window.themeTokens.colorTextMuted
                                 }
                                 GridLayout {
+                                    enabled: !window.controller.busy
                                     visible: window.controller.searchMode === "fixed_topology" || window.controller.searchMode === "reduction"
                                     Layout.fillWidth: true
                                     columns: 2
@@ -2170,6 +2179,7 @@ AppWindow {
                                     Label { text: "结构搜索方式"; color: window.themeTokens.colorText }
                                     ThemeControls.ThemeComboBox {
                                         objectName: "filmOptimizationStructureModeBox"
+                                        enabled: !window.controller.busy
                                         Layout.fillWidth: true
                                         model: window.controller.structureModeOptions
                                         textRole: "label"
@@ -2204,6 +2214,7 @@ AppWindow {
                                         model: window.controller.structureMaterialOptions
                                         delegate: ThemeControls.ThemeButton {
                                             id: materialButton
+                                            enabled: !window.controller.busy
                                             required property var modelData
                                             width: ListView.view.width
                                             text: modelData.display
@@ -2237,6 +2248,7 @@ AppWindow {
                                         wrapMode: Text.WordWrap
                                     }
                                     GridLayout {
+                                        enabled: !window.controller.busy
                                         Layout.fillWidth: true
                                         columns: 2
                                         columnSpacing: window.themeTokens.spaceSm
@@ -2391,6 +2403,7 @@ AppWindow {
                                     Label { text: "层增长厚度步幅 (nm，逗号分隔)"; color: window.themeTokens.colorText }
                                     ThemeControls.ThemeField {
                                         objectName: "filmStructureGrowthStepsField"
+                                        enabled: !window.controller.busy
                                         Layout.fillWidth: true
                                         text: window.controller.structureOptions.growth_steps_text
                                         onEditingFinished: window.controller.setStructureOption("growth_steps_nm", text)
@@ -2398,6 +2411,7 @@ AppWindow {
                                     Label { text: "光学相位增长比例 (0, 2]，逗号分隔"; color: window.themeTokens.colorText }
                                     ThemeControls.ThemeField {
                                         objectName: "filmStructureGrowthPhaseFractionsField"
+                                        enabled: !window.controller.busy
                                         Layout.fillWidth: true
                                         text: window.controller.structureOptions.growth_phase_fractions_text
                                         onEditingFinished: window.controller.setStructureOption("growth_phase_fractions", text)
@@ -2444,17 +2458,82 @@ AppWindow {
                         anchors.fill: parent
                         anchors.margins: window.themeTokens.spaceSm
                         spacing: window.themeTokens.spaceXs
+                        Flickable {
+                            id: plotControlsViewport
+                            objectName: "filmOptimizationPlotControlsViewport"
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: plotControlsRow.implicitHeight + (contentWidth > width ? 8 : 0)
+                            contentWidth: Math.max(width, plotControlsRow.implicitWidth)
+                            contentHeight: height
+                            flickableDirection: Flickable.HorizontalFlick
+                            clip: true
+                            ScrollBar.horizontal: ScrollBar {
+                                objectName: "filmOptimizationPlotControlsScrollBar"
+                                policy: plotControlsViewport.contentWidth > plotControlsViewport.width
+                                        ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                            }
+                            RowLayout {
+                                id: plotControlsRow
+                                objectName: "filmOptimizationPlotControlsRow"
+                                width: plotControlsViewport.contentWidth
+                                height: implicitHeight
+                                spacing: Math.max(1, window.themeTokens.spaceXs / 2)
+                                Label {
+                                    objectName: "filmOptimizationPlotTitle"
+                                    text: "光谱对比"
+                                    color: window.themeTokens.colorText
+                                    font.pointSize: window.themeTokens.fontSizeHeading
+                                    font.weight: window.themeTokens.fontWeightEmphasis
+                                }
+                                CheckBox {
+                                    id: livePreviewToggle
+                                    objectName: "filmCandidateLivePreviewToggle"
+                                    text: "实时光谱"
+                                    leftPadding: 0
+                                    rightPadding: 0
+                                    spacing: 2
+                                    checked: window.controller.liveDisplay.enabled
+                                    onToggled: window.controller.liveDisplay.setEnabled(livePreviewToggle.checked)
+                                    ToolTip.visible: livePreviewToggle.hovered
+                                    ToolTip.text: window.controller.liveDisplay.status + "\n全域模式会独立计算显示采样；单目标模式只使用既有结果。"
+                                }
+                                CheckBox {
+                                    objectName: "filmOptimizationFullDomainToggle"
+                                    text: "整个定义域"
+                                    leftPadding: 0
+                                    rightPadding: 0
+                                    spacing: 2
+                                    checked: window.controller.liveDisplay.fullDomain
+                                    onToggled: window.controller.liveDisplay.setFullDomain(checked)
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "显示所有目标波段端点之间的独立计算光谱（含空档）；角度和偏振使用所选目标。仅用于显示，不改变验收。"
+                                }
+                                ThemeControls.ThemeComboBox {
+                                    objectName: "filmCandidateLiveMetricBox"
+                                    Layout.preferredWidth: Math.max(48, implicitWidth)
+                                    model: ["R", "T"]
+                                    currentIndex: window.controller.liveDisplay.metric === "T" ? 1 : 0
+                                    onActivated: window.controller.liveDisplay.setMetric(model[currentIndex])
+                                }
+                                CheckBox {
+                                    objectName: "filmOptimizationYAxisAuto"
+                                    text: "自动轴"
+                                    leftPadding: 0
+                                    rightPadding: 0
+                                    spacing: 2
+                                    checked: window.controller.liveDisplay.yAxisAuto
+                                    onToggled: {
+                                        window.controller.liveDisplay.setYAxisAuto(checked)
+                                        window.controller.liveDisplay.updatePlotYAxis(comparisonCanvas.dataSnapshot)
+                                    }
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "随当前光谱调整纵轴上限；关闭后输入百分比范围。"
+                                }
+                                Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
+                            }
+                        }
                         RowLayout {
                             Layout.fillWidth: true
-                            Label {
-                                objectName: "filmOptimizationPlotTitle"
-                                Layout.fillWidth: true
-                                Layout.minimumWidth: 0
-                                text: plotPanel.width < 350 ? "光谱" : "光谱对比"
-                                color: window.themeTokens.colorText
-                                font.pointSize: window.themeTokens.fontSizeHeading
-                                font.weight: window.themeTokens.fontWeightEmphasis
-                            }
                             ThemeControls.ThemeComboBox {
                                 objectName: "filmOptimizationPlotObjectiveBox"
                                 Layout.minimumWidth: Math.min(160, plotPanel.width * 0.32)
@@ -2474,75 +2553,26 @@ AppWindow {
                                 currentIndex: model.length > 0 ? window.controller.selectedPlotAngleIndex : -1
                                 onActivated: window.controller.selectPlotAngle(currentIndex)
                             }
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            CheckBox {
-                                id: livePreviewToggle
-                                objectName: "filmCandidateLivePreviewToggle"
-                                text: "实时光谱"
-                                checked: window.controller.liveDisplay.enabled
-                                onToggled: window.controller.liveDisplay.setEnabled(livePreviewToggle.checked)
-                                ToolTip.visible: livePreviewToggle.hovered
-                                ToolTip.text: window.controller.liveDisplay.status + "\n全域模式会独立计算显示采样；单目标模式只使用既有结果。"
-                            }
-                            CheckBox {
-                                objectName: "filmOptimizationFullDomainToggle"
-                                text: "整个定义域"
-                                checked: window.controller.liveDisplay.fullDomain
-                                onToggled: window.controller.liveDisplay.setFullDomain(checked)
-                                ToolTip.visible: hovered
-                                ToolTip.text: "显示所有目标波段端点之间的独立计算光谱（含空档）；角度和偏振使用所选目标。仅用于显示，不改变验收。"
-                            }
                             Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
                         }
-                        RowLayout {
+                        Label {
+                            objectName: "filmCandidateLivePreviewStatus"
                             Layout.fillWidth: true
-                            ThemeControls.ThemeComboBox {
-                                objectName: "filmCandidateLiveMetricBox"
-                                Layout.preferredWidth: plotPanel.width >= 500 ? 72 : 48
-                                model: ["R", "T"]
-                                currentIndex: window.controller.liveDisplay.metric === "T" ? 1 : 0
-                                onActivated: window.controller.liveDisplay.setMetric(model[currentIndex])
-                            }
-                            CheckBox {
-                                objectName: "filmOptimizationYAxisAuto"
-                                Layout.preferredWidth: 84
-                                text: "自动轴"
-                                checked: window.controller.liveDisplay.yAxisAuto
-                                onToggled: {
-                                    window.controller.liveDisplay.setYAxisAuto(checked)
-                                    window.controller.liveDisplay.updatePlotYAxis(comparisonCanvas.dataSnapshot)
-                                }
-                                ToolTip.visible: hovered
-                                ToolTip.text: "随当前光谱调整纵轴上限；关闭后输入百分比范围。"
-                            }
-                            Label {
-                                objectName: "filmCandidateLivePreviewStatus"
-                                Layout.fillWidth: true
-                                Layout.minimumWidth: 0
-                                text: plotPanel.width >= 500 ? plotPanel.previewStatus
-                                      : (plotPanel.waitingForLive ? (window.controller.liveDisplay.fullDomain ? "等待全域预览" : "等待预览 · 正式曲线")
-                                         : (plotPanel.showingLiveData ? (plotPanel.activeLiveData.current && plotPanel.activeLiveData.current.preview_delayed
-                                                                          ? "延迟候选 / 最佳" : "实时当前 / 最佳")
-                                            : (window.controller.liveDisplay.fullDomain && window.controller.liveDisplay.running
-                                               ? "实时光谱已关闭" : "正式曲线")))
-                                color: window.themeTokens.colorTextMuted
-                                wrapMode: Text.NoWrap
-                                elide: Text.ElideRight
-                                font.pointSize: window.themeTokens.fontSizeSmall
-                            }
+                            text: plotPanel.previewStatus
+                            color: window.themeTokens.colorTextMuted
+                            wrapMode: Text.WordWrap
+                            font.pointSize: window.themeTokens.fontSizeSmall
                         }
                         Label {
                             objectName: "filmOptimizationPlotBaselineTitle"
                             Layout.fillWidth: true
-                            visible: plotPanel.width >= 350
                             text: window.controller.liveDisplay.fullDomain
                                   ? "R/T (%) · 整个定义域；角度和偏振沿用所选目标，显示采样不改变验收"
                                   : (plotPanel.showingLiveData
                                      ? "R/T (%) · 当前试探与优化器最佳；仅抽样原目标网格"
                                      : "R/T (%) · " + (comparisonCanvas.dataSnapshot.baseline_label || "原设计") + "与候选；目标线按未加权界限显示")
                             color: window.themeTokens.colorTextMuted
+                            wrapMode: Text.WordWrap
                             font.pointSize: window.themeTokens.fontSizeSmall
                         }
                         Label {

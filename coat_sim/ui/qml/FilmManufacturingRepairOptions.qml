@@ -31,7 +31,7 @@ ColumnLayout {
         ThemeControls.ThemeButton {
             objectName: "filmManufacturingRefresh"
             text: "刷新当前来源"
-            enabled: !panel.controller.busy
+            enabled: !panel.controller.busy && !panel.optimizationController.busy
             onClicked: panel.controller.prepare()
         }
         ThemeControls.ThemeLabel {
@@ -85,7 +85,7 @@ ColumnLayout {
                     Layout.minimumWidth: 0
                     accessibleLabel: optionCell.modelData.label
                     accessibleDescription: optionCell.modelData.help
-                    enabled: !panel.controller.busy
+                    enabled: !panel.controller.busy && !panel.optimizationController.busy
                     text: panel.controller.automaticOptions[optionCell.modelData.key]
                     placeholderText: "填写非负有限值"
                     onTextEdited: panel.controller.setAutomaticOption(optionCell.modelData.key, text)
@@ -222,7 +222,7 @@ ColumnLayout {
         ThemeControls.ThemeButton {
             objectName: "filmManufacturingSave"
             text: "保存报告…"
-            enabled: panel.controller.hasResult && !panel.controller.busy
+            enabled: panel.controller.hasResult && !panel.controller.busy && !panel.optimizationController.busy
             onClicked: reportDialog.open()
         }
     }

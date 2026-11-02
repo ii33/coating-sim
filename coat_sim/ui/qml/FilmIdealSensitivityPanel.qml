@@ -10,6 +10,7 @@ ColumnLayout {
     required property var controller
     required property var themeTokens
     property bool embedded: false
+    property bool editLocked: false
     signal applyRequested()
     signal saveRequested()
     spacing: themeTokens.spaceSm
@@ -35,7 +36,7 @@ ColumnLayout {
             ThemeControls.ThemeComboBox {
                 objectName: "filmIdealSensitivityModeBox"
                 Layout.fillWidth: true
-                enabled: !panel.controller.busy
+                enabled: !panel.controller.busy && !panel.editLocked
                 model: [{id: "", label: "请选择敏感度尺度"},
                         {id: "absolute", label: "绝对：J × 1 nm（单位尺度，不是工艺误差）"},
                         {id: "relative", label: "相对：J × 当前厚度 d（1% 仅展示换算）"}]
@@ -46,7 +47,7 @@ ColumnLayout {
             ThemeControls.ThemeComboBox {
                 objectName: "filmIdealSensitivityPolicyBox"
                 Layout.fillWidth: true
-                enabled: !panel.controller.busy
+                enabled: !panel.controller.busy && !panel.editLocked
                 model: [{id: "strict_nominal", label: "严格名义约束：沿用旧硬门"},
                         {id: "bounded_baseline_degradation", label: "受控基准退化：新 v2 默认"}]
                 textRole: "label"
@@ -86,7 +87,7 @@ ColumnLayout {
                         id: degradationRow
                         required property var modelData
                         Layout.fillWidth: true
-                        enabled: !panel.controller.busy
+                        enabled: !panel.controller.busy && !panel.editLocked
                         Label {
                             Layout.fillWidth: true
                             text: degradationRow.modelData.display
@@ -128,7 +129,7 @@ ColumnLayout {
                     id: sensitivityRow
                     required property var modelData
                     Layout.fillWidth: true
-                    enabled: !panel.controller.busy
+                    enabled: !panel.controller.busy && !panel.editLocked
                     CheckBox {
                         objectName: "filmIdealSensitiveLayer_" + sensitivityRow.modelData.layer_id
                         checked: sensitivityRow.modelData.selected
@@ -145,7 +146,7 @@ ColumnLayout {
             }
             RowLayout {
                 Layout.fillWidth: true
-                enabled: !panel.controller.busy
+                enabled: !panel.controller.busy && !panel.editLocked
                 Label { text: "最大迭代（空白不额外指定）"; color: panel.themeTokens.colorText }
                 ThemeControls.ThemeField {
                     objectName: "filmIdealSensitivityMaxIterationsField"
@@ -180,7 +181,7 @@ ColumnLayout {
             objectName: "filmIdealSensitivityOptimizeButton"
             text: "优化理想敏感度"
             primary: true
-            enabled: !panel.controller.busy && panel.controller.idealSensitivityLayers.length > 0
+            enabled: !panel.controller.busy && !panel.editLocked && panel.controller.idealSensitivityLayers.length > 0
             onClicked: panel.controller.startIdealSensitivityOptimization()
         }
         ThemeControls.ThemeButton {
@@ -193,7 +194,7 @@ ColumnLayout {
         ThemeControls.ThemeButton {
             objectName: "filmIdealSensitivitySaveReportButton"
             text: "保存报告…"
-            enabled: panel.controller.idealHasResult && !panel.controller.busy
+            enabled: panel.controller.idealHasResult && !panel.controller.busy && !panel.editLocked
             onClicked: panel.saveRequested()
         }
         ThemeControls.ThemeButton {

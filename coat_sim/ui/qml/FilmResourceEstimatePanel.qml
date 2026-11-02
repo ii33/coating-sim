@@ -8,6 +8,7 @@ ColumnLayout {
     id: panel
     objectName: "filmResourceEstimatePanel"
     required property var estimator
+    property bool editLocked: false
     required property var themeTokens
     spacing: themeTokens.spaceSm
 
@@ -22,7 +23,7 @@ ColumnLayout {
         objectName: "resourceAssessmentMode"
         Accessible.name: "评估入口"
         Layout.fillWidth: true
-        enabled: !panel.estimator.busy
+        enabled: !panel.estimator.busy && !panel.editLocked
         model: [
             { id: "quick_prediction", name: "快速预估" },
             { id: "necessary_diagnostics", name: "必要条件诊断" },
@@ -53,7 +54,7 @@ ColumnLayout {
         objectName: "resourceSubstrateMaterial"
         Accessible.name: "基片材料"
         Layout.fillWidth: true
-        enabled: !panel.estimator.busy
+        enabled: !panel.estimator.busy && !panel.editLocked
         model: panel.estimator.substrateSelection.material_options
         textRole: "name"
         currentIndex: model.findIndex(item => item.id === panel.estimator.substrateSelection.material_id)
@@ -64,7 +65,7 @@ ColumnLayout {
         objectName: "resourceSubstrateOpticalSet"
         Accessible.name: "基片光学数据集"
         Layout.fillWidth: true
-        enabled: !panel.estimator.busy
+        enabled: !panel.estimator.busy && !panel.editLocked
         model: panel.estimator.substrateSelection.optical_set_options
         textRole: "name"
         currentIndex: model.findIndex(item => item.id === panel.estimator.substrateSelection.optical_set_id)
@@ -85,7 +86,7 @@ ColumnLayout {
                     objectName: "resourceMaterial_" + materialRow.modelData.id
                     Accessible.name: "候选膜料"
                     Layout.fillWidth: true
-                    enabled: !panel.estimator.busy
+                    enabled: !panel.estimator.busy && !panel.editLocked
                     model: materialRow.modelData.material_options
                     textRole: "name"
                     currentIndex: model.findIndex(item => item.id === materialRow.modelData.material_id)
@@ -94,7 +95,7 @@ ColumnLayout {
                 }
                 ThemeControls.ThemeButton {
                     text: "×"; Accessible.name: "删除此候选材料行"
-                    enabled: !panel.estimator.busy
+                    enabled: !panel.estimator.busy && !panel.editLocked
                     onClicked: panel.estimator.removeMaterialRow(materialRow.modelData.id)
                 }
             }
@@ -104,22 +105,22 @@ ColumnLayout {
                     objectName: "resourceOpticalSet_" + materialRow.modelData.id
                     Accessible.name: "光学数据集"
                     Layout.fillWidth: true
-                    enabled: !panel.estimator.busy
+                    enabled: !panel.estimator.busy && !panel.editLocked
                     model: materialRow.modelData.optical_set_options
                     textRole: "name"
                     currentIndex: model.findIndex(item => item.id === materialRow.modelData.optical_set_id)
                     displayText: currentIndex < 0 ? "选择数据集" : currentText
                     onActivated: { const item = model[currentIndex]; if (item) panel.estimator.setRowOpticalSet(materialRow.modelData.id, item.id) }
                 }
-                ThemeControls.ThemeButton { text: "↑"; Accessible.name: "上移此候选材料行"; enabled: !panel.estimator.busy; onClicked: panel.estimator.moveMaterialRow(materialRow.modelData.id, -1) }
-                ThemeControls.ThemeButton { text: "↓"; Accessible.name: "下移此候选材料行"; enabled: !panel.estimator.busy; onClicked: panel.estimator.moveMaterialRow(materialRow.modelData.id, 1) }
+                ThemeControls.ThemeButton { text: "↑"; Accessible.name: "上移此候选材料行"; enabled: !panel.estimator.busy && !panel.editLocked; onClicked: panel.estimator.moveMaterialRow(materialRow.modelData.id, -1) }
+                ThemeControls.ThemeButton { text: "↓"; Accessible.name: "下移此候选材料行"; enabled: !panel.estimator.busy && !panel.editLocked; onClicked: panel.estimator.moveMaterialRow(materialRow.modelData.id, 1) }
             }
             Label { Layout.fillWidth: true; text: materialRow.modelData.error; visible: text.length > 0; color: panel.themeTokens.colorWarning; wrapMode: Text.Wrap }
         }
     }
     RowLayout {
-        ThemeControls.ThemeButton { objectName: "resourceAddMaterial"; text: "添加候选材料"; enabled: !panel.estimator.busy; onClicked: { panel.estimator.refreshMaterials(); panel.estimator.addMaterialRow() } }
-        ThemeControls.ThemeButton { text: "刷新材料目录"; enabled: !panel.estimator.busy; onClicked: panel.estimator.refreshMaterials() }
+        ThemeControls.ThemeButton { objectName: "resourceAddMaterial"; text: "添加候选材料"; enabled: !panel.estimator.busy && !panel.editLocked; onClicked: { panel.estimator.refreshMaterials(); panel.estimator.addMaterialRow() } }
+        ThemeControls.ThemeButton { text: "刷新材料目录"; enabled: !panel.estimator.busy && !panel.editLocked; onClicked: panel.estimator.refreshMaterials() }
     }
     Label { Layout.fillWidth: true; text: panel.estimator.materialError; visible: text.length > 0; color: panel.themeTokens.colorWarning; wrapMode: Text.Wrap }
     Label {
@@ -136,7 +137,7 @@ ColumnLayout {
         ThemeControls.ThemeField {
             objectName: "filmResourceEstimateLayerLimit"
             Layout.preferredWidth: 90
-            enabled: !panel.estimator.busy && panel.estimator.mode !== "quick_prediction"
+            enabled: !panel.estimator.busy && !panel.editLocked && panel.estimator.mode !== "quick_prediction"
             text: String(panel.estimator.layerLimit)
             function commitDraft() { return panel.estimator.setLayerLimit(text) }
             onEditingFinished: commitDraft()
@@ -157,7 +158,7 @@ ColumnLayout {
             objectName: "resourceProbeMaxEvaluations"
             Accessible.name: "每种子逻辑评价上限（含审计）"
             Layout.fillWidth: true
-            enabled: !panel.estimator.busy && panel.estimator.mode === "synthesis_verification"
+            enabled: !panel.estimator.busy && !panel.editLocked && panel.estimator.mode === "synthesis_verification"
             text: String(panel.estimator.probeMaxEvaluations)
             function commitDraft() { return panel.estimator.setProbeMaxEvaluations(text) }
             onEditingFinished: commitDraft()
@@ -171,7 +172,7 @@ ColumnLayout {
             objectName: "resourceProbeSeeds"
             Accessible.name: "随机种子列表，逗号分隔"
             Layout.fillWidth: true
-            enabled: !panel.estimator.busy && panel.estimator.mode === "synthesis_verification"
+            enabled: !panel.estimator.busy && !panel.editLocked && panel.estimator.mode === "synthesis_verification"
             text: panel.estimator.probeSeeds
             function commitDraft() { return panel.estimator.setProbeSeeds(text) }
             onEditingFinished: commitDraft()
