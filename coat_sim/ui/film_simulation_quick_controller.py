@@ -32,6 +32,7 @@ from coat_sim.core.film_spectrum_analysis import (
     calculate_spectrum_analysis, calculate_spectrum_extrema,
 )
 from coat_sim.ui.local_files import local_file_path
+from .film_k_disclosure import k_default_disclosure
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -398,8 +399,7 @@ def _load_cie_light_sources(root: Path) -> list[dict[str, Any]]:
 def _channel_report(channel: str, data: dict[str, Any]) -> str:
     source = data.get("source_range_nm")
     if channel == "k" and (not data.get("enabled", True) or source is None):
-        # Missing/disabled k remains a calculation policy, but is not a UI warning.
-        return ""
+        return k_default_disclosure(data)
     if source is None:
         return f"{channel}：来源范围未知"
     text = f"{channel}：来源范围 {source[0]:g}–{source[1]:g} nm"
@@ -416,14 +416,13 @@ def _channel_report(channel: str, data: dict[str, Any]) -> str:
     segment = data.get("interpolated_segments_nm")
     if segment:
         text += f"；实际插值区间 {segment[0]:g}–{segment[1]:g} nm"
-    # Do not expose k's zero-default intervals as warnings; the core result and
-    # CSV provenance still retain them for auditing.
     outside = data.get("extrapolated_ranges_nm") or [] if channel != "k" else []
     if outside:
         text += "；外推范围 " + "、".join(f"{lo:g}–{hi:g} nm" for lo, hi in outside)
     elif channel == "k":
         text += "；不对 k 外推"
-    return text
+    disclosure = k_default_disclosure(data) if channel == "k" else ""
+    return text + ("；" + disclosure if disclosure else "")
 
 
 def _result_summary(result: dict[str, Any]) -> str:
@@ -438,6 +437,10 @@ def _result_summary(result: dict[str, Any]) -> str:
             data = evaluation.get(channel, {})
             if data:
                 report = _channel_report(channel, data)
+                if report and channel == "k" and data.get("default_zero_intervals"):
+                    label = str(item.get("material_name") or item.get("material_id") or "")
+                    if label:
+                        report = label + "：" + report
                 if report and report not in seen:
                     seen.add(report)
                     lines.append(report)

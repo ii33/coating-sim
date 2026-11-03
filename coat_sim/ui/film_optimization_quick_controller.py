@@ -2594,6 +2594,17 @@ class FilmOptimizationQuickController(QObject):
                 # service's explicit film-purpose projection grants eligibility.
                 records = [{**material, "roles": ["film"]}
                            for material in cast(_SynthesisMaterialService, self.service).material_options("film")]
+            elif any(isinstance(material, dict) and "roles" not in material and "category" not in material
+                     for material in records):
+                # Project optical snapshots omit profile roles. Consult the
+                # service's explicit usage projection, without changing current
+                # design references or granting roles to the underlying data.
+                film_ids = {material["id"] for material in
+                            cast(_SynthesisMaterialService, self.service).material_options("film")}
+                records = [{**material, "roles": ["film"]}
+                           if isinstance(material, dict) and "roles" not in material
+                           and "category" not in material and material.get("id") in film_ids
+                           else material for material in records]
             for material in records:
                 if not isinstance(material, dict) or material.get("design_ready") is False:
                     continue

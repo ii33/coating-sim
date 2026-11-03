@@ -1,14 +1,12 @@
 # Local refractive-index browser
 
-Date: 2026-10-19. Historical controller contract; browser page removed.
+Updated: 2026-11-03. The historical controller contract below is followed by the current asset-library entry and source-switching changes.
 
 ## Current entry
 
-The global/project asset library no longer loads or opens the refractive-index
-browser page and has no database toolbar button. Offline references are reached
-through the assistant's [unified library](unified-offline-library-contract.md).
-The previous controller and import tests remain as compatibility implementation;
-they do not expose an independent UI page. Existing user research is retained.
+The global/project asset library exposes the refractive-index browser through an
+explicit database toolbar button. Offline references also remain available through
+the assistant's [unified library](unified-offline-library-contract.md). Existing user research is retained.
 The already-local CC0 RII snapshot is now a fixed package resource; the historical
 statement below about distribution no longer describes current behavior.
 
@@ -146,3 +144,34 @@ acknowledgment of using the source numbers as an uncorrected reference-air
 approximation. This consent is reset for every source selection, invalidates the
 plan when changed, and is frozen into preview/apply and permanent provenance.
 Without that acknowledgment no AGF import candidate can be prepared.
+
+## Asset library entry (2026-11-03)
+
+The global and project asset libraries expose the existing offline browser through
+an explicit operation-bar button. The resource bridge remains the sole owner of
+the source session and fixes the destination scope. The dialog is created lazily,
+retains its query while open, and is disposed with its owning window. Opening and
+searching are read-only; a confirmed, conflict-checked single-entry import uses
+the existing material library transaction and does not mutate designs or drafts.
+Results include unsupported and nonlinear records as reference-only. Source data
+without k must be identified as unknown, not measured lossless; computation may
+still use existing application defaults. Imported identities bind the snapshot
+and source hash as well as the source entry and selected blocks. Previously saved
+materials keep their IDs and are not migrated or overwritten.
+
+The browser states that importing retains unknown k and that film simulation's
+existing zero default is an assumption, including outside k's source range. Film
+simulation result summaries expose the exact default intervals and reasons; this
+changes disclosure only and does not modify numerical behavior.
+
+Project optical snapshots do not retain profile role fields. The structure
+optimizer consults the project's existing film-purpose projection for those
+role-less snapshots, as synthesis already does, so explicitly available film
+materials are selectable without modifying source data or the current design.
+Existing current-design references remain eligible.
+
+The browser offers both the packaged snapshot and the configured user snapshot,
+including when an existing user installation has priority at startup. Switching
+source cancels pending reads and invalidates the import preview. Installing while
+viewing the package writes to the configured writable user store, never the
+packaged store; an override inside the packaged store is rejected.

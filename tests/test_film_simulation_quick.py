@@ -208,7 +208,7 @@ class FilmSimulationQuickControllerTests(unittest.TestCase):
         self.assertIn(431, indices)
         self.assertIn(8432, indices)
 
-    def test_result_summary_hides_k_zero_warning_and_keeps_n_domain_details(self):
+    def test_result_summary_discloses_k_zero_assumption_and_keeps_n_domain_details(self):
         result = {
             "definition": "half-infinite substrate",
             "provenance": [{"evaluation": {
@@ -233,10 +233,24 @@ class FilmSimulationQuickControllerTests(unittest.TestCase):
             }}],
         }
         summary = _result_summary(result)
-        self.assertNotIn("\u6309 0 \u5904\u7406", summary)
-        self.assertNotIn("\u8d85\u51fa k \u6765\u6e90\u8303\u56f4", summary)
+        self.assertIn("k 按 0 计算", summary)
+        self.assertIn("超出 k 来源范围", summary)
+        self.assertIn("不代表实测无吸收", summary)
+        self.assertIn("[400, 450) nm", summary)
         self.assertIn("500\u2013650 nm", summary)
         self.assertIn("\u5916\u63a8\u8303\u56f4 400\u2013500 nm", summary)
+
+    def test_result_summary_discloses_missing_and_disabled_k(self):
+        for reason, label in (("missing", "来源未提供 k"), ("disabled", "本次计算关闭 k")):
+            result = {"provenance": [{"evaluation": {"k": {
+                "enabled": reason != "disabled", "source_range_nm": None,
+                "default_zero_intervals": [{"min_nm": 400., "max_nm": 700.,
+                    "min_inclusive": True, "max_inclusive": True, "reason": reason}],
+            }}}]}
+            summary = _result_summary(result)
+            self.assertIn(label, summary)
+            self.assertIn("[400, 700] nm", summary)
+            self.assertIn("不代表实测无吸收", summary)
 
     def test_plot_view_zoom_pan_and_reset_leave_simulation_input_unchanged(self):
         self.controller._result = {

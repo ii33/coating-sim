@@ -123,6 +123,18 @@ LocalComponents.ThemePageDialog {
                     onClicked: dialog.browser.showRiiSource()
                 }
                 ThemeControls.ThemeButton {
+                    objectName: "riiPackagedSourceButton"
+                    text: "内置完整快照"
+                    enabled: !dialog.browser.applying && !dialog.browser.installing
+                    onClicked: dialog.browser.selectPackagedSource(true)
+                }
+                ThemeControls.ThemeButton {
+                    objectName: "riiConfiguredSourceButton"
+                    text: "用户所选快照"
+                    enabled: !dialog.browser.applying && !dialog.browser.installing
+                    onClicked: dialog.browser.selectPackagedSource(false)
+                }
+                ThemeControls.ThemeButton {
                     objectName: "riiOpenVendorToggle"
                     text: dialog.showVendor ? "收起厂商导入" : "打开厂商目录…"
                     enabled: !dialog.browser.applying && !dialog.browser.installing
@@ -267,7 +279,7 @@ LocalComponents.ThemePageDialog {
                 ThemeControls.ThemeLabel {
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
-                    text: "选择已解压的官方数据库目录，填写对应的 40 位提交号。建立离线库会验证本地文件与结构；提交号属于来源声明，不代表已联网核验。"
+                    text: "选择已解压的官方数据库目录，填写对应的 40 位提交号。建立离线库会验证本地文件与结构；提交号属于来源声明，不代表已联网核验。\n写入并激活至：" + dialog.browser.installTarget
                 }
                 RowLayout {
                     Layout.fillWidth: true
@@ -586,7 +598,7 @@ LocalComponents.ThemePageDialog {
                         Layout.fillWidth: true
                         visible: !!dialog.source.entry_id
                         wrapMode: Text.Wrap
-                        text: "预览曲线不代表可用于当前计算；n2 仅供查阅，未知 k 不补零。导入创建独立光学资料，不推断膜料/基片用途。"
+                        text: "预览曲线不代表可用于当前计算；n2 仅供查阅，导入保留未知 k。膜系仿真在 k 缺失或超出其来源范围时按 0 计算，这是计算假设，并非实测无吸收。导入创建独立光学资料；出现在膜材列表不代表已验证膜材用途，使用前请核对并按需调整用途。"
                         muted: true
                     }
                     ThemeControls.ThemeComboBox {

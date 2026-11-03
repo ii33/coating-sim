@@ -7,9 +7,10 @@ Python signatures, MCP schemas and contract tests are the interface truth.
 The existing library has one assistant discovery surface: `library_status()`,
 `library_search(query, offset=0, limit=6, expected_version=None)` and
 `library_read(path, offset=0, max_chars=6000)`. The existing research-library
-tools use this same public surface on a fresh installation. There is no RII
-database page, toolbar entry, external-library page or research-root input in
-Settings. Existing material editing, import services and user research are
+tools use this same public surface on a fresh installation. The asset library
+also has an explicit offline RII browser and scoped material import entry; this
+does not grant the assistant write access or change the public reference API.
+There is no external-library page or research-root input in Settings. Existing material editing, import services and user research are
 retained. Legacy private-root/sidecar configuration is preserved for compatibility
 under its existing authorization and revocation boundary; no user files are moved,
 deleted, indexed automatically or sent through the public-reference provider.

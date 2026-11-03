@@ -14,8 +14,8 @@ XDG_DATA_HOME fallback remains the writable user-store location.
 `writable_store_root()` keeps explicit CLI build output in the user store;
 `store_root_for_snapshot(snapshot_id)` preserves exact packaged IDs after a later
 user installation. The model has no root argument. Physical snapshot storage is
-internal to the [unified assistant library](unified-offline-library-contract.md),
-with no independent database page or extra path setup. The existing CC0 snapshot
+shared by the [unified assistant library](unified-offline-library-contract.md) and
+the asset library's explicit offline browser, with no extra path setup. The existing CC0 snapshot
 was copied byte-for-byte, preserving hashes, rights and operator-declared
 upstream identity. Existing user installations and research are retained.
 

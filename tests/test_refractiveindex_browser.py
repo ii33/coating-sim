@@ -8,7 +8,7 @@ from threading import Event
 from typing import Any, cast
 
 import pytest
-from PySide6.QtCore import QObject, QUrl
+from PySide6.QtCore import QMetaObject, QObject, QUrl
 from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication, QRawFont
 from PySide6.QtQml import QQmlComponent, QQmlEngine
 from PySide6.QtQuick import QQuickItem
@@ -289,6 +289,7 @@ def test_project_import_uses_current_owner_and_preserves_designs(desktop, snapsh
     choose(browser)
     assert browser.previewImport(0, "Project only glass")
     idle(browser)
+    identity = browser.importSummary["rows"][0]["id"]
     assert browser.applyImport("import")
     idle(browser)
     settled(owner)
@@ -297,6 +298,19 @@ def test_project_import_uses_current_owner_and_preserves_designs(desktop, snapsh
     assert kinds.count("material_profile") == 1 and kinds.count("optical_material") == 1
     assert second.store.manifest == before_second
     after_film = first.workspace.editor.snapshot()
+    assert identity in {row["id"] for row in after_film.material_options["film"]}
+    from coat_sim.ui.film_optimization_quick_controller import FilmOptimizationQuickController
+    from tests.test_film_optimization_target_sampling import _snapshot
+    optimizer = FilmOptimizationQuickController(_snapshot(first.workspace.service, after_film.design))
+    try:
+        assert optimizer.setSearchMode("structure")
+        assert any(row["material_id"] == identity for row in optimizer._structure_material_options)
+        assert optimizer.setSearchMode("synthesis")
+        selected = next(row for row in optimizer._structure_material_options if row["material_id"] == identity)
+        assert optimizer.setStructureMaterialSelected(identity, selected["optical_set_id"], True)
+    finally:
+        optimizer.shutdown(1000)
+        optimizer.deleteLater()
     assert after_film.design == before_film.design
     assert after_film.design_revision == before_film.design_revision
     assert after_film.dirty == before_film.dirty
@@ -435,7 +449,7 @@ def test_pagination_and_filters_use_core_index(global_browser, snapshot):
 
 
 @pytest.mark.parametrize("theme_name,width,font_scale", [("light", 1100, 1.0), ("dark", 680, 1.0), ("light", 680, 1.6)])
-def test_actual_qml_library_has_no_database_page_or_entry(global_browser, theme_name, width, font_scale, tmp_path):
+def test_actual_qml_library_opens_database_page(global_browser, theme_name, width, font_scale, tmp_path):
     owner, browser, _root = global_browser
     engine = QQmlEngine()
     theme = ThemeEngineBridge(build_theme_snapshot(theme_name, font_scale=font_scale), 0, theme_name, theme_name,
@@ -450,13 +464,21 @@ def test_actual_qml_library_has_no_database_page_or_entry(global_browser, theme_
         window.resize(width, 820)
         window.show()
         QTest.qWait(100)
-        assert window.findChild(QQuickItem, "refractiveIndexDatabaseButton") is None
-        assert window.findChild(QObject, "refractiveIndexBrowserDialog") is None
-        # Even an explicitly exercised legacy controller cannot create a page.
+        button = cast(Any, window.findChild(QQuickItem, "refractiveIndexDatabaseButton"))
+        assert button is not None
+        button.clicked.emit()
+        QTest.qWait(100)
+        dialog = window.findChild(QObject, "refractiveIndexBrowserDialog")
+        assert dialog is not None and dialog.property("visible")
         choose(browser)
-        QTest.qWait(40)
-        assert window.findChild(QObject, "refractiveIndexBrowserDialog") is None
+        assert window.findChild(QObject, "riiPreviewImportButton") is not None
         assert window.findChild(QQuickItem, "globalResourcesRefreshButton") is not None
+        assert QMetaObject.invokeMethod(dialog, "close")
+        QTest.qWait(50)
+        assert not dialog.property("visible") and not browser.active
+        button.clicked.emit()
+        QTest.qWait(50)
+        assert dialog.property("visible") and browser.active
     finally:
         browser.close()
         window.deleteLater()
@@ -576,7 +598,7 @@ def test_merck_metadata_reference_is_separate_from_installed_sources(global_brow
 
 
 @pytest.mark.parametrize("mode,width,font_scale", [("vendor", 1100, 1.0), ("vendor", 680, 1.6), ("n2", 1100, 1.0)])
-def test_removed_browser_does_not_expose_vendor_or_n2_controls(global_browser, vendor_file, mode, width, font_scale, tmp_path):
+def test_browser_exposes_vendor_and_n2_controls(global_browser, vendor_file, mode, width, font_scale, tmp_path):
     owner, browser, _root = global_browser
     engine = QQmlEngine()
     diagnostics: list[str] = []
@@ -599,9 +621,13 @@ def test_removed_browser_does_not_expose_vendor_or_n2_controls(global_browser, v
             choose(browser, "/nonlinear.yml", "n2")
             assert browser.entry["catalog"] == "n2"
         QTest.qWait(50)
+        button = cast(Any, window.findChild(QQuickItem, "refractiveIndexDatabaseButton"))
+        assert button is not None
+        button.clicked.emit()
+        QTest.qWait(100)
         for name in ("refractiveIndexBrowserDialog", "vendorReferenceAirConsent", "riiCatalogFilter",
                      "riiPreviewImportButton", "riiConfirmImportButton", "opticalReferenceSourceChoice"):
-            assert window.findChild(QObject, name) is None
+            assert window.findChild(QObject, name) is not None, name
         assert not diagnostics, "\n".join(diagnostics)
     finally:
         browser.close()
@@ -623,3 +649,69 @@ def test_vendor_display_is_bounded_and_oversized_provenance_is_not_discarded(glo
     idle(browser)
     assert browser.errorText and not browser.importSummary
     assert not list((root / "data/materials").glob("*.json"))
+
+
+def test_imported_dataset_is_available_to_film_picker_and_keeps_unknown_k(global_browser):
+    from coat_sim.core.film_materials import FilmMaterialLibrary
+    from coat_sim.core.optical_constants import evaluate_optical_set_with_details, prepare_optical_set
+
+    owner, browser, root = global_browser
+    choose(browser, "/unknown.yml")
+    assert browser.previewImport(0, "Unknown absorption fixture")
+    idle(browser)
+    identity = browser.importSummary["rows"][0]["id"]
+    assert browser.applyImport("import")
+    idle(browser)
+    settled(owner)
+    material = next(row for row in FilmMaterialLibrary(root).options("film") if row["id"] == identity)
+    optical = material["optical_sets"][0]
+    n, k, _ = evaluate_optical_set_with_details(optical, 600, "nm")
+    assert n == pytest.approx(1.50) and k is None
+    n, k, details = prepare_optical_set(optical, k_sampling_policy="source_only_zero_defaults")(600, "nm")
+    assert n == pytest.approx(1.50) and k == 0 and details["k_default_reason"] == "missing"
+
+
+def test_import_identity_binds_source_snapshot_and_hash(global_browser):
+    from coat_sim.ui.refractiveindex_browser import _candidate
+
+    _owner, browser, _root = global_browser
+    choose(browser)
+    assert browser.previewImport(0, "fixture")
+    idle(browser)
+    converted = browser._source_loader()().convert_entry(
+        browser.selectedId, optical_set_id="fixture", block_selection=[0])
+    first = _candidate(converted, "fixture")["id"]
+    assert first == _candidate(deepcopy(converted), "fixture")["id"]
+    other = deepcopy(converted)
+    other["provenance"]["snapshot_id"] = "a" * 40 + "-" + "b" * 16 + "-v1"
+    assert _candidate(other, "fixture")["id"] != first
+    other = deepcopy(converted)
+    other["provenance"]["source_sha256"] = "b" * 64
+    assert _candidate(other, "fixture")["id"] != first
+
+
+def test_packaged_source_is_reachable_and_install_never_writes_it(global_browser, snapshot, monkeypatch, tmp_path):
+    _owner, browser, _root = global_browser
+    source, configured, _status = snapshot
+    packaged = tmp_path / "packaged"
+    user_store = tmp_path / "user-store"
+    build_from_directory(source, packaged, upstream_commit="c" * 40)
+    monkeypatch.setattr("coat_sim.core.refractiveindex_local.packaged_store_root", lambda: packaged)
+    monkeypatch.setattr("coat_sim.core.refractiveindex_local.writable_store_root", lambda: user_store)
+    assert browser.selectPackagedSource(True)
+    idle(browser)
+    assert browser.sourceStatus["upstream_commit"] == "c" * 40
+    assert browser.installTarget == str(user_store)
+    packaged_pointer = (packaged / "CURRENT.json").read_bytes()
+    assert browser.installSnapshot(str(source), "d" * 40)
+    idle(browser)
+    assert browser.sourceStatus["upstream_commit"] == "d" * 40
+    assert browser.storePath == str(user_store)
+    assert (packaged / "CURRENT.json").read_bytes() == packaged_pointer
+    assert (user_store / "CURRENT.json").exists()
+    assert browser.selectPackagedSource(True)
+    idle(browser)
+    assert browser.sourceStatus["upstream_commit"] == "c" * 40
+    assert browser.selectPackagedSource(False)
+    idle(browser)
+    assert browser.sourceStatus["upstream_commit"] == "d" * 40

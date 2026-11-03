@@ -111,7 +111,8 @@ def _candidate(converted, name):
     provenance = converted["provenance"]
     vendor = provenance.get("source_kind") == "vendor"
     identity = ("vendor_import_" if vendor else "rii_import_") + _digest(
-        [provenance["entry_id"], provenance["block_selection"]])[:32]
+        [provenance.get("snapshot_id"), provenance["source_sha256"],
+         provenance["entry_id"], provenance["block_selection"]])[:32]
     notes = json.dumps({("vendor_source" if vendor else "refractiveindex_source"): provenance,
                         "missing": converted.get("missing", []),
                         "assumptions": converted.get("assumptions", []),
@@ -143,6 +144,7 @@ class RefractiveIndexBrowserBridge(QObject):
             store_root = default_store_root()
         self.owner: Any = owner
         self._root = Path(store_root)
+        self._configured_root = self._root
         self._factory = store_factory or _store_factory
         self._source_kind = "rii"
         self._vendor_spec: dict = {}
@@ -209,9 +211,18 @@ class RefractiveIndexBrowserBridge(QObject):
     def referenceDetail(self):
         return deepcopy(self._reference_detail)
 
-    @Property(str, constant=True)
+    @Property(str, notify=changed)
     def storePath(self):
         return str(self._root)
+
+    def _install_root(self):
+        from coat_sim.core.refractiveindex_local import packaged_store_root, writable_store_root
+        return (writable_store_root() if self._root.resolve() == packaged_store_root().resolve()
+                else self._root)
+
+    @Property(str, notify=changed)
+    def installTarget(self):
+        return str(self._install_root())
 
     @Property(str, constant=True)
     def targetLabel(self):
@@ -332,6 +343,15 @@ class RefractiveIndexBrowserBridge(QObject):
         if not self._active or self._applying or self.installing:
             return False
         self._clear_source("rii")
+        return self.refresh()
+
+    @Slot(bool, result=bool)
+    def selectPackagedSource(self, packaged):
+        if not self._active or self._disposed or self._applying or self.installing:
+            return False
+        from coat_sim.core.refractiveindex_local import packaged_store_root
+        self._clear_source("rii")
+        self._root = packaged_store_root() if packaged else self._configured_root
         return self.refresh()
 
     @Slot(str, str, str, str, str, str, result=bool)
@@ -525,11 +545,15 @@ class RefractiveIndexBrowserBridge(QObject):
             return self._fail("请选择已下载的官方数据库目录。")
         self.cancelImportPreview()
         self._entry, self._preview, self._results, self._selected_id = {}, {}, {}, ""
-        root = self._root
+        from coat_sim.core.refractiveindex_local import packaged_store_root
+        root = self._install_root()
+        if root.resolve().is_relative_to(packaged_store_root().resolve()):
+            return self._fail("内置快照为只读资源；请将用户快照目录配置到其他位置。")
         def install(cancelled):
             from coat_sim.core.refractiveindex_local import build_from_directory
-            return build_from_directory(path, root, upstream_commit=commit.strip().lower(),
-                                        activate=True, cancel_check=cancelled.is_set)
+            result = build_from_directory(path, root, upstream_commit=commit.strip().lower(),
+                                          activate=True, cancel_check=cancelled.is_set)
+            return result, root
         self._status = "正在离线检查并建立索引；提交号是来源声明，不代表联网验证。"
         return self._start("install", install)
 
@@ -597,7 +621,8 @@ class RefractiveIndexBrowserBridge(QObject):
                 self._plan, self._import_summary = result, result["summary"]
                 self._status = "预览已准备好，请核对来源、目标与冲突处理后确认。"
             elif kind == "install":
-                self._source_status = result
+                self._source_status, self._root = result
+                self._configured_root = self._root
                 self.refresh()
             elif kind == "apply":
                 self._applying = False

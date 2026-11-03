@@ -23,6 +23,7 @@ from matplotlib import font_manager, rcParams
 from matplotlib.font_manager import FontProperties
 from coat_sim.core.design_files import design_extension
 from coat_sim.ui.fonts import FONT_ROOT
+from .film_k_disclosure import k_default_disclosure
 from .film_simulation_settings import _IntegerInput
 
 _film_cjk_font = FONT_ROOT / "NotoSansCJKsc-Regular.otf"
@@ -39,10 +40,10 @@ def _film_channel_report(channel, data):
     """The same channel coverage disclosure in the window and exported plot."""
     source = data.get("source_range_nm")
     if source is None:
-        return f"{channel}：未知"
+        return (k_default_disclosure(data) if channel == "k" else "") or f"{channel}：未知"
     text = f"{channel}：来源波段 {source[0]:g}–{source[1]:g} nm"
     if channel == "k" and not data.get("enabled", True):
-        return text + "；未评估"
+        return text + "；" + (k_default_disclosure(data) or "未评估")
     effective = data.get("effective_input_range_nm")
     if effective:
         text += f"；有效输入 {effective[0]:g}–{effective[1]:g} nm"
@@ -62,7 +63,8 @@ def _film_channel_report(channel, data):
         text += "；端点保持外推 " + "、".join(f"{lo:g}–{hi:g} nm" for lo, hi in external)
     else:
         text += "；无外推"
-    return text
+    disclosure = k_default_disclosure(data) if channel == "k" else ""
+    return text + ("；" + disclosure if disclosure else "")
 
 
 if _film_cjk_font.is_file():
@@ -1496,6 +1498,10 @@ class FilmSimulationWindow(_FilmWindow):
                 if not data:
                     continue
                 report = _film_channel_report(channel, data)
+                if report and channel == "k" and data.get("default_zero_intervals"):
+                    label = str(item.get("material_name") or item.get("material_id") or "")
+                    if label:
+                        report = label + "：" + report
                 if report not in seen_channels:
                     seen_channels.add(report)
                     report_lines.append(report)

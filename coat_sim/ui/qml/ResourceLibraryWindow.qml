@@ -80,6 +80,17 @@ LocalComponents.AppWindow {
         return row.conflict !== "different" || !!decisions[row.id]
     })
     property var focusReturnItem: null
+    property var refractiveIndexDialog: null
+    Component {
+        id: refractiveIndexDialogComponent
+        LocalComponents.RefractiveIndexBrowserDialog {
+            browser: window.resourceBridge.refractiveIndexBrowser
+            onClosed: {
+                browser.close()
+                window.restoreFocus()
+            }
+        }
+    }
     readonly property var categories: {
         const result = []
         const order = ["material_profile", "optical_material", "film", "process", "machine",
@@ -507,6 +518,16 @@ LocalComponents.AppWindow {
                             window.materialSectionRequested = true
                             window.selectCategory("material_profile")
                             window.resourceBridge.newMaterialAsset()
+                        }
+                    }
+                    ThemeControls.ThemeButton {
+                        objectName: "refractiveIndexDatabaseButton"
+                        text: "折射率数据库…"
+                        enabled: window.librarySource && !window.operationBusy
+                        onClicked: {
+                            window.focusReturnItem = this
+                            if (window.resourceBridge.openRefractiveIndexBrowser() && !window.refractiveIndexDialog)
+                                window.refractiveIndexDialog = refractiveIndexDialogComponent.createObject(window.contentItem)
                         }
                     }
                     ThemeControls.ThemeButton {
