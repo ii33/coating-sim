@@ -4,9 +4,11 @@ All heuristics here are project search conventions, not feasibility certificates
 or manufacturing limits. The caller owns physical scoring, budgets and audit.
 """
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from collections import deque
+from collections.abc import Generator
 import math
-from itertools import product
+from itertools import combinations, product
 import numpy as np
 from numpy.typing import NDArray
 from .film_design import MAX_LAYERS
@@ -28,14 +30,58 @@ def reflector_objectives(request):
                       or (o.pointwise.mode == 'value' and o.pointwise.target_value is not None and o.pointwise.target_value > 0)))
 
 
+REFLECTOR_SCHEDULING_POLICY = 'round_robin_pairs_periodic_count_prefix_v1'
+
+
 @surface_template_proposals
 def iter_reflector_proposals(request, *, epoch=0, cancel_check=lambda: None, report=lambda event: None):
-    objectives = reflector_objectives(request)
-    if not objectives or request.seed_designs:
+    """Visit each material pair before exhausting one pair's geometric variants.
+
+    This is a scheduling convention, not a preference inferred from n alone:
+    absorption and all original targets remain the caller's scoring task.
+    """
+    if not reflector_objectives(request) or request.seed_designs:
         return
     from .film_synthesis_rejection_priors import iter_rejection_proposals
     yield from iter_rejection_proposals(request, epoch=epoch,
         cancel_check=cancel_check, report=report)
+    sources: deque[Generator[StructuralProposal, None, None]] = deque()
+    try:
+        for pair in combinations(request.candidate_materials, 2):
+            cancel_check()
+            sources.append(_iter_reflector_pair_prefix(
+                replace(request, candidate_materials=pair), epoch=epoch,
+                cancel_check=cancel_check, report=report))
+        while sources:
+            cancel_check()
+            source = sources.popleft()
+            try:
+                proposal = next(source)
+            except StopIteration:
+                source.close()
+                continue
+            except BaseException:
+                source.close()
+                raise
+            sources.append(source)
+            yield proposal
+    finally:
+        for source in sources:
+            source.close()
+
+
+def _iter_reflector_pair_prefix(request, **kwargs):
+    # Expose both terminations at every estimated pair count before a large
+    # Cartesian set of chirp/padding variants consumes this material pair.
+    yield from _iter_reflector_pair_proposals(request, periodic_only=True, **kwargs)
+    yield from _iter_reflector_pair_proposals(request, periodic_only=False, **kwargs)
+
+
+def _iter_reflector_pair_proposals(request, *, periodic_only,
+        epoch=0, cancel_check=lambda: None, report=lambda event: None):
+    objectives = reflector_objectives(request)
+    if not objectives or request.seed_designs:
+        return
     materials = {m['id']: m for m in request.frozen_material_snapshot['materials']}
     samples = {}
     for ref in request.candidate_materials:
@@ -99,6 +145,8 @@ def iter_reflector_proposals(request, *, epoch=0, cancel_check=lambda: None, rep
                     variants.extend(('chirped', spacing, low_pad, high_pad) for spacing in ('linear', 'geometric')
                                     for low_pad, high_pad in product(pads, pads))
                     for family, spacing, low_pad, high_pad in variants:
+                        if periodic_only != (family == 'periodic'):
+                            continue
                         for reverse, direction in product((False, True), (1, -1) if family != "periodic" else (1,)):
                             cancel_check()
                             centers: list[float] | NDArray[np.float64]

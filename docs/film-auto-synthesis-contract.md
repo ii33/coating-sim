@@ -1,6 +1,6 @@
 # 自动膜系合成核心契约
 
-日期：2026-11-02。当前真值为 `coat_sim/core/film_auto_synthesis.py` 类型与签名。图解、公式、默认与来源见 [14t](algorithms.html#film-synthesis-audit-20261020)；独审见[审计契约](film-synthesis-audit-contract.md)；可组合起点见[物理结构契约](film-physical-structures-contract.md)；统一JSON、CLI与助手准备边界见[执行契约](film-synthesis-execution-contract.md)。2026-10-19报告仅作此前阶段记录，不代替当前文件和测试。
+日期：2026-11-03。当前真值为 `coat_sim/core/film_auto_synthesis.py` 类型与签名。图解、公式、默认与来源见 [14t](algorithms.html#film-synthesis-audit-20261020)；独审见[审计契约](film-synthesis-audit-contract.md)；可组合起点见[物理结构契约](film-physical-structures-contract.md)；统一JSON、CLI与助手准备边界见[执行契约](film-synthesis-execution-contract.md)。2026-10-19报告仅作此前阶段记录，不代替当前文件和测试。
 
 ## 输入、物理边界与唯一状态所有者
 
@@ -34,6 +34,10 @@ A 遵循实际系统边界：单面半无限基片时只计有限膜层吸收，
 
 结果含对应同一candidate_design的training_score/validation_score、逐条件误差、audit每目标最坏位置和域、计数、trace、来源revision与冻结请求。最终候选优先返回已审计最好档案；取消时开启 `search_until_target` 且本轮已有完整独审冠军则优先保留该匹配配对，未开启或没有本轮已审冠军时回退已提交的完整训练最好候选。取消不追加光学计算，审计只属于对应处方；validation_complete不等于targets_met。本轮正常数值结束与正式达标分开：completed不要求targets_met=True；targets_met仅在同一候选的原门限训练和独立审计均通过时为True。未达标局部收敛/无有效改善可正常结束本轮，保留实际误差和真实停止原因；acceptable_normalized_error仍只是求解可接受尺度，不放宽名义目标。权重小不放宽最大违规门。
 
+### 未达标局部会话的可恢复交接（2026-11-03）
+
+`search_until_target=True` 时，完整固定拓扑局部会话每次最多 120 次迭代；`relative_improvement_tolerance` 默认 `1e-9`。令 `E` 为各原目标/角度/归约组最差的有向归一化质量值（区间内部可为负，值目标保留非负违规），改善量为 `E_before - E_candidate`。`iteration_limit` 且改善量超过 `relative_improvement_tolerance * max(abs(E_before), 1e-12)` 时继续同一拓扑；改善量不超过阈值且至少两个物理候选、至少两次迭代、终点全网格 epigraph 可行时，才判 `stalled`。已有 terminal 回调证据但 `iteration_limit` 或 `solver_failure` 未进入上述同拓扑续做或停滞分支时，保留真实局部状态并设置 `outer_search_handoff='recoverable_local_solver_stop'`；沿原流程独审终点及不同的返回候选，未达标且审计完成后交回外层继续。后续正式达标或审计拒绝仍按原规则可更新状态。该标记不证明局部收敛、总体不可行或成功率提高。未启用直到目标时仍按原规则停止；没有 terminal 证据、取消、资源保护、外层预算及其他不可恢复停止不通过此路径续搜。交接是本项目调度约定，不改变物理、目标门限或审计标准；图解和边界见 [14bg](algorithms.html#film-synthesis-until-target-20261101)。
+
 进度给stage/cycle/evaluations/layers/best最大违规，snapshot_callback(candidate,training_score,validation_score,audit)仅在更优完整独审后调用。CLI外壳提供真实活动与独立墙钟心跳，不伪造无限预算百分比。文件输出由外壳负责排他/原子语义。
 
 取消在材料采样、物理调用前后、波长分块、局部步骤和回调后协作检查，已开始的helper返回后才响应；未完成评分不得归档。validation_complete通知后仍检查取消，再提交终态；终态通知后取消不回溯撤销。shape/control非法开始前ValueError；材料域、数值或审计失败为failed；显式限制耗尽而未达标为not_found，不是不可行。无完整评分时候选为空；候选不自动应用。
@@ -53,6 +57,10 @@ An expired time budget yields `not_found` / `time_limit`, not a user cancellatio
 ## 默认统一混合路线（2026-10-22）
 
 默认 search_strategy=hybrid，legacy 仅显式重放历史独立路由。结构族按需求层级广筛，完整实际设计进入共享多样性/Pareto档案，再轮转局部/低维DE、解析批针、全厚联合SSE、实际删层/同源合并与全原约束SLSQP。详见算法14ak；原网格、默认1nm、材料来源和独立验收不变。
+
+2026-11-03 调整反射先验生成顺序：保留原拒带先验前缀，其后将 QW reflector 的无序材料引用对轮转，每对先遍历原估计 `pair_counts` 和可选显式层数边界的周期双端序，再生成原 multistack/chirped 全部变体。各对独立推进，某对提前耗尽周期前缀即可先进入自身其他变体；不保证有限预算覆盖所有材料对。材料域、相位对比和制造约束仍逐项准入，候选仍需原目标完整评分和独审。公式、原目标、吸收数据和约束不变，不有意删候选；只改变生成顺序。hybrid 的续算 fingerprint 加入 `reflector_scheduling_policy='round_robin_pairs_periodic_count_prefix_v1'`，旧策略游标不静默复用。此为本项目调度约定，不证明性能或全量成功率提高；见 [14bn](algorithms.html#film-reflector-round-robin-20261103)。
+
+研究 API 保留两个未评分结构族：`apodized_reflector` 由符合条件的 QW 反射种子生成渐变及互补层对；`asymmetric_cavity` 对外镜至少两对的耦合腔种子分别在基片侧或入射侧减一对，并去除对称约束。生成器要求无显式 seed 的构造请求，保留原材料与 n/k，使用选面 wrapper 并复验显式层数和厚度约束。当前两个研究族均未注册到默认 hybrid 自动合成或续算流；hybrid 指纹也不包含 adaptive policy。研究调用者须对实际候选按完整原目标评分和独立审计。组合候选的 HR05 出现回退，已有全量对照与门禁证据尚不足以证明收益；去除默认注册后已完成有限定向对照，结果不足以证明跨任务收益，不据此声称成功率或性能提升。构造及局限见 [14bm](algorithms.html#film-adaptive-presets-20261102)。
 
 objective_weighting=equal_window 默认将每窗口条件归一并保留用户目标权重；point_count 必须显式选择。该选项只改变探索merit，严格max验收仍检查用户原全部约束。真实SSE终态续接下一轮，即使max暂时恶化；训练严格冠军和已审计冠军分开保存。档案默认32项保护二者，删层赢家含实际设计、父代和操作而不只存分数。全SLSQP不使用稀疏活动集，不信任epigraph t直接验收。
 

@@ -281,3 +281,213 @@ def test_result_validation_rejects_forged_goal_or_exhaustion_telemetry():
         malformed=deepcopy(payload)
         malformed['result']['termination_reason']=invalid_reason
         assert not is_synthesis_result(malformed)
+
+
+def _controlled_local_terminal(monkeypatch, *, solver_status):
+    """Only replace the fixed-topology terminal solve, not earlier searches."""
+    from types import SimpleNamespace
+    import numpy as np
+    from coat_sim.core import film_synthesis_refinement as refinement
+    original = refinement.refine_synthesis_full_minimax
+    calls = []
+
+    def controlled(request, initial, **kwargs):
+        if kwargs.get('terminal_callback') is None:
+            return original(request, initial, **kwargs)
+        calls.append(True)
+
+        def optimizer(_fun, start, **_options):
+            # One iteration and no distinct physical neighbours: insufficient
+            # evidence for the project's multi-candidate stalled criterion.
+            return SimpleNamespace(x=np.asarray(start).copy(), success=False,
+                status=solver_status, nit=1, message='controlled incomplete local solve')
+        with monkeypatch.context() as scoped:
+            scoped.setattr(refinement.import_module('scipy.optimize'), 'minimize', optimizer)
+            return original(request, initial, **kwargs)
+
+    monkeypatch.setattr(refinement, 'refine_synthesis_full_minimax', controlled)
+    return calls
+
+
+@pytest.mark.parametrize('solver_status, termination', [(9, 'iteration_limit'), (4, 'solver_failure')])
+def test_until_mode_audits_incomplete_local_terminal_then_rotates(monkeypatch, solver_status, termination):
+    calls = _controlled_local_terminal(monkeypatch, solver_status=solver_status)
+    service, request = unmet_problem(search_until_target=True)
+    cancel = Event()
+    stages = []
+
+    def progress(row):
+        stages.append(row.stage)
+        if row.stage == 'hybrid_rotation' and stages.count('hybrid_rotation') == 2:
+            cancel.set()
+
+    watchdog = Timer(30., cancel.set)
+    watchdog.start()
+    try:
+        result = synthesize_film_design(service, request, cancel_event=cancel, progress_callback=progress)
+    finally:
+        watchdog.cancel()
+    assert calls and stages.count('hybrid_rotation') == 2, result.termination_reason
+    assert result.state == 'cancelled' and not result.targets_met
+    assert stages.index('local_session') < stages.index('until_target_continue') < len(stages) - 1
+    local = result.performance['search']['hybrid']['local_session']
+    assert local['status'] == termination
+    assert local['outer_search_handoff'] == 'recoverable_local_solver_stop'
+    assert not local['local_converged']
+    assert local['attempts'][-1]['termination'] == termination
+    assert local['last_scaled_improvement'] <= local['scaled_stagnation_tolerance']
+    assert local['attempts'][-1]['iterations'] == 1
+    assert local['terminal_audit_complete'] and local['audited_selected']['validation_complete']
+    assert not local['audited_selected']['nominal_pass']
+    assert result.validation_complete and result.validation_score is not None
+    assert not result.validation_score['nominal_pass']
+
+
+@pytest.mark.parametrize('solver_status, termination', [(9, 'iteration_limit'), (4, 'solver_failure')])
+def test_incomplete_terminal_still_stops_ordinary_mode(monkeypatch, solver_status, termination):
+    calls = _controlled_local_terminal(monkeypatch, solver_status=solver_status)
+    service, request = unmet_problem()
+    result = synthesize_film_design(service, request)
+    assert calls and result.termination_reason == 'local_session_' + termination
+    local = result.performance['search']['hybrid']['local_session']
+    assert not local['local_converged'] and not local['session_complete']
+    assert not result.targets_met
+    assert not any(row.stage == 'until_target_continue' for row in result.trace)
+
+
+@pytest.mark.parametrize('boundary, expected', [
+    ('missing_terminal', 'local_session_terminal_evidence_unavailable'),
+    ('resource_guard', 'local_session_resource_guard'),
+    ('returned_resource_guard', 'local_session_resource_guard'),
+    ('returned_stage_budget', 'local_session_stage_budget'),
+])
+def test_until_mode_does_not_continue_without_terminal_or_past_resource_guard(monkeypatch, boundary, expected):
+    from coat_sim.core import film_synthesis_refinement as refinement
+    original = refinement.refine_synthesis_full_minimax
+    calls = []
+
+    def interrupted(request, initial, **kwargs):
+        if kwargs.get('terminal_callback') is None:
+            return original(request, initial, **kwargs)
+        calls.append(True)
+        if boundary == 'resource_guard':
+            raise refinement.SynthesisResourceGuard('controlled local resource boundary')
+        if boundary.startswith('returned_'):
+            # The minimizer may catch a stage/resource boundary and return an
+            # accepted terminal rather than raising; it still must not hand off.
+            kwargs['terminal_callback'](initial)
+            return initial, dict(termination=boundary.removeprefix('returned_'),
+                                 iterations=1, physical_candidates=1)
+        return initial, dict(termination='solver_failure', iterations=1, physical_candidates=1)
+
+    monkeypatch.setattr(refinement, 'refine_synthesis_full_minimax', interrupted)
+    service, request = unmet_problem(search_until_target=True)
+    result = synthesize_film_design(service, request)
+    assert calls and result.termination_reason == expected
+    assert not result.targets_met
+    assert not result.performance['search']['hybrid']['local_session']['local_converged']
+    assert not any(row.stage == 'until_target_continue' for row in result.trace)
+
+
+def test_until_mode_cancel_at_local_session_does_not_audit_or_rotate():
+    service, request = unmet_problem(search_until_target=True)
+    cancel = Event()
+    stages = []
+
+    def progress(row):
+        stages.append(row.stage)
+        if row.stage == 'local_session':
+            cancel.set()
+
+    result = synthesize_film_design(service, request, cancel_event=cancel, progress_callback=progress)
+    assert result.state == 'cancelled' and not result.targets_met
+    index = stages.index('local_session')
+    assert 'until_target_continue' not in stages[index + 1:]
+    assert 'validation' not in stages[index + 1:]
+    assert not result.performance['search']['hybrid']['local_session']['local_converged']
+
+
+def test_until_mode_does_not_treat_unexpected_local_exception_as_recoverable(monkeypatch):
+    from coat_sim.core import film_synthesis_refinement as refinement
+    original = refinement.refine_synthesis_full_minimax
+    calls = []
+
+    def failing(request, initial, **kwargs):
+        if kwargs.get('terminal_callback') is None:
+            return original(request, initial, **kwargs)
+        calls.append(True)
+        raise RuntimeError('controlled unexpected local failure')
+
+    monkeypatch.setattr(refinement, 'refine_synthesis_full_minimax', failing)
+    service, request = unmet_problem(search_until_target=True)
+    result = synthesize_film_design(service, request)
+    assert calls and result.state == 'failed'
+    assert result.termination_reason == 'numerical_failure: controlled unexpected local failure'
+    assert not result.targets_met
+    assert not any(row.stage == 'until_target_continue' for row in result.trace)
+
+
+def test_until_mode_audits_distinct_incomplete_terminal_and_best_before_rotation(monkeypatch):
+    from types import SimpleNamespace
+    import numpy as np
+    from coat_sim.core import film_synthesis_audit as audit
+    from coat_sim.core import film_synthesis_refinement as refinement
+    from coat_sim.core.film_synthesis_archive import physical_design_hash
+
+    original_refine = refinement.refine_synthesis_full_minimax
+    original_audit = audit.audit_frozen_synthesis_candidate
+    audited_after_local = []
+    in_local = False
+    cancel = Event()
+    stages = []
+
+    def observe_audit(frozen, design, **kwargs):
+        value = original_audit(frozen, design, **kwargs)
+        if in_local:
+            audited_after_local.append(physical_design_hash(design))
+        return value
+
+    def controlled(request, initial, **kwargs):
+        if kwargs.get('terminal_callback') is None:
+            return original_refine(request, initial, **kwargs)
+
+        def optimizer(_fun, start, **options):
+            # Evaluate real neighbors but report one iteration, preventing a
+            # stalled label. Return the worst of the neighbors as the endpoint.
+            outcomes = []
+            for delta in (-.01, .01):
+                trial = np.asarray(start).copy()
+                trial[0] += delta
+                residual = options['constraints'][0]['fun'](trial)
+                outcomes.append((float(np.min(residual)), trial))
+            terminal = min(outcomes, key=lambda item: item[0])[1]
+            return SimpleNamespace(x=terminal, success=False, status=9, nit=1,
+                                   message='controlled distinct terminal')
+        with monkeypatch.context() as scoped:
+            scoped.setattr(refinement.import_module('scipy.optimize'), 'minimize', optimizer)
+            return original_refine(request, initial, **kwargs)
+
+    def progress(row):
+        nonlocal in_local
+        stages.append(row.stage)
+        if row.stage == 'local_session':
+            in_local = True
+        elif row.stage == 'hybrid_rotation' and stages.count('hybrid_rotation') == 2:
+            cancel.set()
+
+    monkeypatch.setattr(audit, 'audit_frozen_synthesis_candidate', observe_audit)
+    monkeypatch.setattr(refinement, 'refine_synthesis_full_minimax', controlled)
+    service, request = unmet_problem(search_until_target=True)
+    watchdog = Timer(30., cancel.set)
+    watchdog.start()
+    try:
+        result = synthesize_film_design(service, request, cancel_event=cancel, progress_callback=progress)
+    finally:
+        watchdog.cancel()
+    assert stages.count('hybrid_rotation') == 2 and result.state == 'cancelled'
+    local = result.performance['search']['hybrid']['local_session']
+    terminal = local['solver_terminal']['physical_hash']
+    best = local['returned_best']['physical_hash']
+    assert terminal != best
+    assert terminal in audited_after_local and best in audited_after_local
+    assert not local['local_converged'] and not result.targets_met

@@ -69,6 +69,8 @@ def search_fingerprint(request):
         PROPOSAL_OBJECTIVE_POLICY, reflective_proposal_request,
     )
     if request.search_strategy == 'hybrid':
+        from .film_synthesis_global import REFLECTOR_SCHEDULING_POLICY
+        data['reflector_scheduling_policy'] = REFLECTOR_SCHEDULING_POLICY
         proposal_request, hints = reflective_proposal_request(replace(request, seed_designs=()))
         if hints:
             data['proposal_objective_policy'] = PROPOSAL_OBJECTIVE_POLICY

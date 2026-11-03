@@ -2277,6 +2277,13 @@ def synthesize_film_design(service: Any, request: FilmSynthesisRequest, *, cance
                         source = candidate
                         continue
                     record['status'] = status or 'solver_failure'
+                    if request.search_until_target and status in {'iteration_limit', 'solver_failure'}:
+                        # A numerical solver ending this local attempt is not
+                        # evidence that the remaining structural search failed.
+                        # Terminal evidence was required above; retain the true
+                        # status and audit it without asserting stationarity.
+                        record['outer_search_handoff'] = 'recoverable_local_solver_stop'
+                        break
                     raise _Stopped('local_session_' + record['status'])
                 else:
                     record['status'] = 'stalled'

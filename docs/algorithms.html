@@ -12,6 +12,9 @@
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px solid #c8e0db;border-radius:8px;padding:16px;font-size:.88rem;line-height:1.5}</style>
 </head>
 <body>
+<p class="source">算法更新：2026-11-03；新增<a href="#film-reflector-round-robin-20261103">14bn 反射先验材料对轮转</a>；仅改变候选调度，不代表性能提升。</p>
+<p class="source">算法更新：2026-11-03；<a href="#film-synthesis-until-target-20261101">14bg 局部求解器可恢复停止后的审计与外层交接</a>；不将停止视为收敛或不可行。</p>
+<p class="source">研究更新：2026-11-03；<a href="#film-adaptive-presets-20261102">14bm 渐变反射镜与非对称腔先验</a>保留直接研究 API，未接入默认自动合成，尚无收益证明。</p>
 <p class="source">算法更新：2026-11-02；新增<a href="#film-absorption-optimization-20261102">14bk 吸收目标与厚度导数</a>及<a href="#film-failure-evidence-20261102">14bl 基准失败证据分析</a>。目标支持不等于任意实际任务已达标。</p>
 <p class="source">评分完整性更新：2026-11-02；<a href="#film-score-validation-20261102">14bj 原条件快速拒绝与完整证据核验</a>，不改变验收语义。</p>
 <p class="source">减量算法更新：2026-11-02；<a href="#film-reduction-20261025">14az 正最薄厚度下的选层删层与内部消零过渡</a>；正下限约束最终保留层，不锁住所选层。</p>
@@ -41,7 +44,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
   <div class="eyebrow">Optical Coating / Algorithm Atlas</div>
   <h1>光学镀膜<br>算法图解与参考来源</h1>
   <p>从独立基片、蒸发源、修正板、机器与工艺文件，到行星运动、射线通量、膜厚归一化和预计用时。本文依据当前代码写成，可离线阅读；公式描述的是本项目的计算模型。</p>
-<div class="meta"><span class="pill">版本：机器 v5 · 工艺 v7 · 源 v2；材料交换包 v1、安全导入冲突预览与原子回滚)</span><span class="pill">更新：2026-11-02（减量正最薄厚度与删层消零；双面整片自动薄层修复与减量边界诊断；全定义域显示专用采样；通用目标资源探测与审计见证；选面联合合成与全几何解析导数；自动合成局部余量、原目标减薄和结构续接；固定初始光谱受控退化理想优化v2、旧strict版本兼容；真实混合多核、原门限与容差分离、冠军物理压缩与拒绝统计；周期0显式时间/评价/取消统一预算；高反自动结构/全局搜索、材料谱向量复用与同预算验收、显式严格下界与跨类别冻结基准；活动光路材料校验与从零合成审计；优化目标上下限统一与角度范围显式确认；厚度编辑精度、零厚层与优化边界；冻结服务边界与单点归一化；研究证据与单层光谱反演；修正板不设数量上限、完整依赖快照与逐板遮挡；工程文件格式契约说明；优化多角网格与计算量人工顶值移除；TFCalc明文层表导入；外观逐光线精确 TMM 与独立波长 CPU 进程并行；Qt Quick 显式峰谷统计波段、波长通带与场景图曲线预览；多孔厚盖、独立源采样、无固定最大网格与计算隔离；工艺环境、工作气体及零碰撞直达束；材料库、已设计源工艺选择、盖孔射线与快扫描空间分布；桌面仿真共享队列、逐批进度、无固定步数上限、100%快算默认与Å/s界面；五项上下文预算、硬限与安全压缩、后台流合并与固定设计绘图；平滑轮廓、全膜系目标选优与评分进度；凭据反馈与有界模型候选兼容探测；待决选项、模式放行、诊断未读摘要、结果队列身份修复、紧凑产物；计算量估算、后台串行队列、源板分组优化与跨段选区；完整设备回退、成功设备记忆、临时仿真资产包、可选 PDF、历史闭合与滚动高度缓存；批量膜系、物理层表导入、固定图表、工具原文归档与任务成本、视口文本增量渲染；批量工具契约、演示工作流、逐回合展示与复制、撤回确认、本地助手调试、实际生效参数快照、LPAC启动修复；容量自适应上下文、轮次关闭、插话与排队、剪贴板图片、系统语言与语气、开发访问；逐层修正板、轮廓优化、工艺快算、估时、上下文用量、请求续约、原生档位缓存、滚动跟随、二维 CAD 与加工图、模型 Token 上限、缓存命中统计、富文本与开发门禁；修正板视口设备路由、反向滚动与可选输入诊断）</span><span class="pill">单位：mm · s · rpm · nm · px；助手 Token / 字符 / 附件字节</span><span class="pill">离线单文件 HTML</span></div>
+<div class="meta"><span class="pill">版本：机器 v5 · 工艺 v7 · 源 v2；材料交换包 v1、安全导入冲突预览与原子回滚)</span><span class="pill">更新：2026-11-03（反射先验材料对轮转；局部求解器可恢复停止的外层交接；渐变反射镜与非对称腔研究先验；减量正最薄厚度与删层消零；双面整片自动薄层修复与减量边界诊断；全定义域显示专用采样；通用目标资源探测与审计见证；选面联合合成与全几何解析导数；自动合成局部余量、原目标减薄和结构续接；固定初始光谱受控退化理想优化v2、旧strict版本兼容；真实混合多核、原门限与容差分离、冠军物理压缩与拒绝统计；周期0显式时间/评价/取消统一预算；高反自动结构/全局搜索、材料谱向量复用与同预算验收、显式严格下界与跨类别冻结基准；活动光路材料校验与从零合成审计；优化目标上下限统一与角度范围显式确认；厚度编辑精度、零厚层与优化边界；冻结服务边界与单点归一化；研究证据与单层光谱反演；修正板不设数量上限、完整依赖快照与逐板遮挡；工程文件格式契约说明；优化多角网格与计算量人工顶值移除；TFCalc明文层表导入；外观逐光线精确 TMM 与独立波长 CPU 进程并行；Qt Quick 显式峰谷统计波段、波长通带与场景图曲线预览；多孔厚盖、独立源采样、无固定最大网格与计算隔离；工艺环境、工作气体及零碰撞直达束；材料库、已设计源工艺选择、盖孔射线与快扫描空间分布；桌面仿真共享队列、逐批进度、无固定步数上限、100%快算默认与Å/s界面；五项上下文预算、硬限与安全压缩、后台流合并与固定设计绘图；平滑轮廓、全膜系目标选优与评分进度；凭据反馈与有界模型候选兼容探测；待决选项、模式放行、诊断未读摘要、结果队列身份修复、紧凑产物；计算量估算、后台串行队列、源板分组优化与跨段选区；完整设备回退、成功设备记忆、临时仿真资产包、可选 PDF、历史闭合与滚动高度缓存；批量膜系、物理层表导入、固定图表、工具原文归档与任务成本、视口文本增量渲染；批量工具契约、演示工作流、逐回合展示与复制、撤回确认、本地助手调试、实际生效参数快照、LPAC启动修复；容量自适应上下文、轮次关闭、插话与排队、剪贴板图片、系统语言与语气、开发访问；逐层修正板、轮廓优化、工艺快算、估时、上下文用量、请求续约、原生档位缓存、滚动跟随、二维 CAD 与加工图、模型 Token 上限、缓存命中统计、富文本与开发门禁；修正板视口设备路由、反向滚动与可选输入诊断）</span><span class="pill">单位：mm · s · rpm · nm · px；助手 Token / 字符 / 附件字节</span><span class="pill">离线单文件 HTML</span></div>
 <p class="source">补充更新：2026-10-05——通过服务接口执行的非 CPU 沉积仿真使用一次任务一个短生命周期计算进程；Windows 子进程关闭管道时把 WinError 109 视作 EOF，避免计算完成后误记失败。</p>
 <p class="source">cub 接口补齐更新：2026-10-05。三路径提交、材料业务工具、机器工程检查和 AI 资产导出契约；未覆盖在线模型及实机校准。</p>
 <p class="source">GUI接线更新：2026-10-20。14t从零合成与14u物理结构已进入现有优化页/参数侧栏；入口与状态边界见<a href="film-synthesis-gui-guide.md">使用指南</a>、<a href="film-synthesis-gui-stage-report-20261020.md">同源GUI验收</a>。原GUI接线无数值公式变更；14v显式未知k近似当前默认启用且可关闭，不会将已知吸收或非法数据静默回退；详见<a href="#film-synthesis-unknown-k-20261020">策略说明</a>。</p>
@@ -78,6 +81,8 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <p class="source" style="grid-column:1/-1">结构合成更新：2026-10-12。新增14o至14o-2：实验性经典零厚敏感度针插、有界已有层增长与分组局部精修；独立结构请求与固定层序/有限试插分开，Dmax是硬约束。补充验证切片、真实求值计数与增长前局部边界检查。接口见 <a href="film-structure-optimization-contract.md">结构合成契约</a>，操作见 <a href="film-structure-optimization-guide.md">使用指南</a>，实际验收见 本轮状态 <span class="historical-reference">（历史验证记录，未随公开源码发布）</span>。</p>
 <p class="source">存储格式补充：2026-10-18。工程 BBS、助手精简记忆和可恢复文件清理均为非物理持久化契约，不改变仿真公式、坐标或数值精度。见<a href="#engineering-notes-storage-20261018">工程记录与助手工作区格式</a>。</p>
 <nav aria-label="章节目录">
+<a href="#film-reflector-round-robin-20261103">14bn 反射先验材料对轮转（2026-11-03）</a>
+<a href="#film-adaptive-presets-20261102">14bm 渐变反射镜与非对称腔研究先验（更新 2026-11-03）</a>
 <a href="#film-absorption-optimization-20261102">14bk 吸收目标与厚度导数（2026-11-02）</a>
 <a href="#film-failure-evidence-20261102">14bl 基准失败证据分析（2026-11-02）</a>
 <a href="#film-score-validation-20261102">14bj 评分完整性与快速拒绝（2026-11-02）</a>
@@ -280,7 +285,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 <a href="#film-resource-estimation-20261030">14be 必要条件诊断与显式合成验证</a>
 <a href="#film-resource-prediction-20261031">14bf 快速层数／厚度经验预估（受限域）</a>
 <a href="#film-phase-diverse-restarts-20261101">14bh 色散相位先验与逐层厚度重启</a>
-<a href="#film-synthesis-until-target-20261101">14bg 搜索直到目标与自动外层轮转</a>
+<a href="#film-synthesis-until-target-20261101">14bg 搜索直到目标与自动外层轮转（更新 2026-11-03）</a>
 </nav>
 <main>
 <section id="film-phase-diverse-restarts-20261101">
@@ -303,12 +308,13 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ecf5f3;border:1px so
 
 <section id="film-synthesis-until-target-20261101">
 <h2>14bg 搜索直到目标：局部停止与外层轮转分离</h2>
-<p>更新：2026-11-01。用途：从零合成开启 <code>search_until_target</code> 后，解除本次迭代、评价与墙钟预算造成的提前终止，同时保留现有局部停止规则。默认关闭；关闭时原局部收敛、停滞与会话结束行为不变。没有修改梯度阈值、局部求解器或收敛判据，也没有新增自动“隧穿”求解器。</p>
+<p>更新：2026-11-03。用途：从零合成开启 <code>search_until_target</code> 后，解除本次迭代、评价与墙钟预算造成的提前终止，同时保留局部收敛和停滞判据，并区分可交回外层的局部求解器停止。默认关闭；关闭时原局部收敛、停滞与会话结束行为不变。没有修改梯度阈值、局部求解器或收敛判据，也没有新增自动“隧穿”求解器。</p>
 <p>输入为完整材料、基片、原光谱目标、制造约束和显式布尔选项。厚度单位 nm、波长 nm、角度度；层序仍为基片向外，物理计算不变。先验证所有原始输入，再仅将 <code>max_cycles/max_evaluations/max_seconds</code> 归一为无上限；层数、单层/总厚度及最小非零层厚等制造约束仍生效。界面移除数值工作集护栏，新的界面任务显式 <code>max_working_set_bytes=None</code>，不意味系统内存或物理资源无限，真实资源/数值错误仍明确中断。</p>
 <pre>初始化或一次性恢复前沿和审计档案
 while 未取消、未遇资源或数值错误:
     执行一轮既有结构来源、全局厚度和解析针等搜索
-    局部优化按原停止判据结束并独立审计候选
+    局部优化按原停止判据结束，或在有终点证据的可恢复求解器停止后交接
+    独立审计终点和（若不同）返回候选
     if 原目标训练网格与独立审计均达标:
         报告达标；立即结束，不追加可选的增裕量／减厚
     else:
@@ -316,6 +322,7 @@ while 未取消、未遇资源或数值错误:
 若配置下没有可执行新步骤则报告搜索受阻，不证明全部方法穷尽；
 明确报告取消、资源阻塞或数值错误；不可将单轮无新候选冒充全部方案耗尽</pre>
 <figure class="figure"><svg viewBox="0 0 920 190" role="img" aria-label="局部停止后自动进入下一轮搜索"><g fill="#e3f1ed" stroke="#087f78"><rect x="10" y="55" width="170" height="70" rx="8"/><rect x="230" y="55" width="200" height="70" rx="8"/><rect x="485" y="15" width="190" height="60" rx="8"/><rect x="485" y="110" width="190" height="60" rx="8"/><rect x="725" y="110" width="185" height="60" rx="8"/></g><g fill="#18303a" text-anchor="middle" font-size="16"><text x="95" y="84">结构／全局搜索</text><text x="95" y="108">保持原制造约束</text><text x="330" y="84">既有局部优化与审计</text><text x="330" y="108">停止判据不变</text><text x="580" y="40">原目标审计通过</text><text x="580" y="62">立即结束</text><text x="580" y="136">局部停止，仍未达标</text><text x="580" y="158">保留当前搜索状态</text><text x="818" y="136">自动推进下一轮</text><text x="818" y="158">结构／全局／针搜索</text></g><g stroke="#087f78" fill="none" stroke-width="2"><path d="M180 90H230M430 90L485 45M430 90L485 140M675 140H725M818 170V184H95V125"/></g></svg><figcaption>局部停止不等于总体搜索完成；同一作业内自动轮转，不重新恢复和重审整个档案。取消、资源、错误或无可执行新步骤可中断搜索；受阻不证明全局不可行。</figcaption></figure>
+<p><strong>有终点证据的局部求解器交接（2026-11-03）：</strong>完整未达标局部会话每次调用最多 <code>120</code> 次迭代；默认 <code>relative_improvement_tolerance=10⁻⁹</code>。令 E 为各原目标／角度／归约组中最差的有向归一化质量值（区间内部可为负，值目标保留非负违规），以 ΔE=E<sub>before</sub>−E<sub>candidate</sub> 和阈值 ε·max(|E<sub>before</sub>|, 10⁻¹²) 判断：<code>iteration_limit</code> 且 ΔE 大于阈值时仍在同一拓扑续做；ΔE 不大于阈值且至少两个物理候选、至少两次迭代并有终点全网格 epigraph 可行证据时，才记 <code>stalled</code>。如果已有终点回调证据，但 <code>iteration_limit</code> 或 <code>solver_failure</code> 未进入上述同拓扑续做或停滞分支，直到目标模式保留该真实局部状态并记 <code>outer_search_handoff='recoverable_local_solver_stop'</code>，不把它改称收敛或停滞；随后沿既有流程独审终点，返回候选不同则也独审返回候选。达标和审计拒绝仍按原判定记录相应结果；未达标且审计完成后才可能继续外层。缺终点证据、取消、资源保护、外层预算或其他不可恢复停止仍按原边界中断；普通模式不新增此交接。输入为本次完整局部会话的求解器终止、终点和候选及冻结请求，输出为真实状态、可恢复交接标记和按原规则审计的结果；不会凭求解器停止宣称收敛、不可行或全量成功率提高。此流程仅为项目调度约定，未找到外部依据，仅为本项目实现。</p>
 <p>状态证据位于 <code>performance.search.until_target</code>。取消选用本轮已审冠军时，<code>performance.search.cancel_selection</code> 记录该策略及未追加光学计算；既有 <code>candidate_provenance</code> 格式不变，匹配标志仅在分数属于同一返回处方时为真。实时 best 槽在已有本轮审计冠军后保持其几何，current 槽仍反映完整训练候选；预览摘要和采样光谱仍来自该设计的原训练网格，不冒充密网格独审分数。原目标经独立审计通过才是达标；<code>global_infeasibility_proven</code> 始终为 false。单个搜索量子没有新候选、局部停止、取消及资源／错误都不是总体不可行证明；没有足够证据时不得把有限前沿描述为所有已知结构和方法失败。连续厚度空间和随机搜索一般无法穷尽，故不保证计算必然自行结束。轮数、评价数、已消费来源及剩余来源只说明已做工作，不是总体覆盖率。</p>
 <p>“继续优化”复用当前协议的保存前沿及材料/目标来源校验；重新评分，不复用旧评分或优化器内部状态。开关属于本次调度策略，不加入物理与结构前沿身份哈希。普通关闭模式与已存在的显式继续行为保持不变。取消仍是协作式：若本轮已提交完整独立审计冠军，则优先冻结该设计及其匹配的训练／审计分数；否则回退到取消前已完整评分的训练最好候选。取消后不补算光学或审计。未开启该模式时沿用完整训练最好候选规则；错误、资源不足以及边界耗尽不能静默改成成功。</p>
 <p class="source">实现：<code>coat_sim/core/film_auto_synthesis.py</code>、<code>film_synthesis_continuation.py</code>、<code>film_synthesis_stop_policy.py</code> 及界面适配器；回归：<code>tests/test_film_synthesis_until_target.py</code>、<code>tests/test_film_synthesis_until_cancel_best.py</code> 和原局部会话停止测试。此外层自动轮转为本项目约定，未找到外部依据，仅为本项目实现；并未用文献证明有限搜索可判全局不可行。现有局部与全局算法依据见本页对应章节。</p>
@@ -350,6 +357,41 @@ while 未取消、未遇资源或数值错误:
 <p><strong>续接密网格支配筛除（2026-11-01，本项目约定）：</strong>仅候选池恢复、所有目标仅启用 pointwise 且本轮已有完整独审冠军时，设同一归一化条件下的密网格最大违规为 E<sub>dense</sub>、冠军完整独审最大违规为 E<sub>best</sub>；仅当 E<sub>dense</sub> &gt; E<sub>best</sub> + max(10<sup>−8</sup>, 10<sup>−6</sup>|E<sub>best</sub>|) 时筛除。相同目标、角度、波长与偏振的重复条件如属于密网格则保留密网格见证，其他额外点重复时保留较大归一化违规见证，并同步 raw coverage 对应实测值，故完整审计最差违规不小于密网格最差违规；旧评分不复用。近阈值、相等、潜在优胜、没有冠军或存在 mean 时完成独审。筛除仅为不完整密网格证据，不是独审通过或材料源全域检查；不能发布为已审计冠军。密网格实际物理/波长工作与逻辑预算照计，取消/时间/资源限制不变。跳过后减少的稀疏审计反馈会改变后续修复及搜索轨迹；不声称与逐项完整审计等价，也不保证更快或特定任务达标。见<a href="film-synthesis-audit-contract.md">独审契约</a>及<a href="film-synthesis-continuation.md">续接契约</a>。</p>
 <p><strong>依据与适用条件：</strong>实现在 <code>film_auto_synthesis.py</code> 的续接恢复、独审比较与结果发布，结构状态在 <code>film_synthesis_continuation.py</code> 校验。恢复顺序、排名和预算计量为本项目约定；未找到外部依据，仅为本项目实现。新结构不一定更好；有限网格及极值复核不是连续谱证明，也不保证全局最优或任何具体设计达标。</p>
 <p><strong>参考与限制：</strong><a href="https://docs.scipy.org/doc/scipy/reference/optimize.minimize-slsqp.html">SciPy SLSQP 官方文档</a>为原数值求解器参考。一次会话边界、最佳候选选择、指标保护减薄和持久化结构均为本项目约定；未找到外部依据，仅为本项目实现，不声称新的全局收敛保证。未启用指标、材料插值/外推政策及用户正式目标不因本节改变。</p>
+</section>
+
+<section id="film-reflector-round-robin-20261103">
+<h2>14bn 反射先验材料对轮转（2026-11-03）</h2>
+<p><strong>用途、输入和输出：</strong>减少有限候选前缀被同一材料对的啁啾／填充组合长期占满的机会。输入为冻结请求的候选材料及其来源 n/k、目标、物理环境、制造限制、<code>epoch</code>（默认 0）和取消检查；输出顺序变化的、未经评分的真实结构提案及来源信息。仅改变生成顺序，不改变构造公式、原始目标、吸收数据或约束，也不有意删除原候选。原拒带先验仍先完整输出；其后 QW 反射候选在各无序材料引用对间轮转。有限预算、取消或拒带前缀过长仍可能使后续材料对未被评价。</p>
+<p><strong>坐标与参数：</strong>物理层表由基片向外，厚度与波长单位 nm，角度为度，n/k、反射率和相位对比无量纲。每对仍依原实相位对比判定高／低材料顺序、原层对数估计和上限；候选仍按 <a href="#film-synthesis-global-20261021">14z</a> 的 <code>d=λ/(4 Re q)</code> 构造，两种端序分别尝试。各对先按所有原估计 <code>pair_counts</code> 及可选显式层数边界产生周期双端序，再产生原多堆与全部线性／几何啁啾、填充和方向变体。每轮只从当前对取下一个<strong>合法产出</strong>，该对耗尽即移除；各对前缀长短可能不同，故并非所有对的周期候选都生成完毕后才允许任何对进入下一族。非法对或候选仍按原材料域、相位对比和显式层数／厚度约束跳过。</p>
+<pre>yield from existing rejection-prior stream
+for each unordered candidate-material pair: create pair stream
+  pair stream = periodic(counts, both terminations) then existing multistack/chirped variants
+while pair streams remain:
+  check cancellation; yield next available proposal from each stream in turn
+  remove exhausted stream
+score complete original objectives; audit independently under existing budgets</pre>
+<figure class="figure"><svg viewBox="0 0 900 180" role="img" aria-labelledby="reflectorRoundTitle reflectorRoundDesc"><title id="reflectorRoundTitle">反射先验的材料对轮转示意</title><desc id="reflectorRoundDesc">拒带先验之后，材料对 AB、AC、BC 交替贡献周期候选；每个材料对独立完成其周期层对数前缀后才进入自身其他变体。</desc><g fill="#e9f4f1" stroke="#087f78"><rect x="10" y="53" width="150" height="67" rx="8"/><rect x="205" y="12" width="245" height="40" rx="8"/><rect x="205" y="68" width="245" height="40" rx="8"/><rect x="205" y="124" width="245" height="40" rx="8"/><rect x="520" y="45" width="365" height="85" rx="8"/></g><g class="svgtext"><text x="32" y="93">原拒带前缀</text><text x="220" y="38">AB：周期前缀 → 变体</text><text x="220" y="94">AC：周期前缀 → 变体</text><text x="220" y="150">BC：周期前缀 → 变体</text><text x="536" y="78">轮转示例：AB → AC → BC → …</text><text x="536" y="105">各对按自身进度，耗尽则移除</text></g><g stroke="#087f78" fill="none" stroke-width="2"><path d="M160 86H185M185 32V144M185 32H205M185 88H205M185 144H205M450 32H485V87H520M450 88H520M450 144H485"/></g></svg><figcaption>图14bn：三个材料对仅为顺序示意，并非每对必有合法候选，也不保证有限前缀覆盖所有对。</figcaption></figure>
+<p><strong>续算、适用范围与依据：</strong>hybrid 续算指纹加入 <code>REFLECTOR_SCHEDULING_POLICY='round_robin_pairs_periodic_count_prefix_v1'</code>，旧策略的游标不静默复用；旧记录须按当前协议校验，不能把旧下标解释为新顺序。最终完整原目标评分、独立审计和既有预算、资源及取消边界不变。轮转、双端序前缀是<span class="tag local">本项目调度约定</span>，未找到外部依据，仅为本项目实现；它不证明性能、全量成功率、可行性或连续谱改善。实现：<code>coat_sim/core/film_synthesis_global.py::iter_reflector_proposals</code>、<code>film_synthesis_continuation.py::search_fingerprint</code>；基础光学构造背景见 <a href="#film-synthesis-global-20261021">14z</a>，不以光学背景文献证明此调度规则。</p>
+</section>
+
+<section id="film-adaptive-presets-20261102">
+<h2>14bm 渐变反射镜与非对称耦合腔研究先验（更新 2026-11-03）</h2>
+<p><strong>用途、输入和输出：</strong>两个直接研究 API 为符合既有反射／带通种子条件的冻结请求提供未评分真实层表。输入包括原 R/T/A 指标、冻结材料和原 n/k、选面与显式制造上限；输出候选设计及来源元数据，并非验收结果。生成器自身仅接受无显式 seed 的构造请求，其余条件沿用相应底层生成器的目标、材料与几何准入。当前这两个研究候选族未注册到默认 hybrid 自动合成或其续算流；如研究调用者使用，须自行对完整原目标评分并独立审计，不能把生成本身当作达标。</p>
+<p><strong>坐标与单位：</strong>各面层表由基片向外排列，j=0,…,N−1 为层对索引；物理厚度 d、真空波长为 nm，角度为度，n/k、相位占比 f 和 R/T/A 为无量纲。对于既有 QW 反射种子的每对 H/L，在原生成条件下，定义实相位系数 q<sub>m</sub> = Re√[(n<sub>m</sub>+ik<sub>m</sub>)² − n₀² sin²θ]，对该对 q<sub>H</sub>、q<sub>L</sub> 有：</p>
+<div class="formula">f<sub>j</sub> = e + (0.5 − e) sin²(πj/(N−1)),　e ∈ {0.1, 0.2}，另分别取 1 − f<sub>j</sub>；N ≥ 2<br>d′<sub>H,j</sub> = 2f<sub>j</sub>d<sub>H,j</sub>， d′<sub>L,j</sub> = 2(1 − f<sub>j</sub>)d<sub>L,j</sub><br>若原对为同相位 QW：q<sub>H</sub>d<sub>H</sub> = q<sub>L</sub>d<sub>L</sub>，则 q<sub>H</sub>d′<sub>H</sub> + q<sub>L</sub>d′<sub>L</sub> = q<sub>H</sub>d<sub>H</sub> + q<sub>L</sub>d<sub>L</sub>。</div>
+<p>该实相位和只指所用基准对及构造条件；吸收光学深度不保持不变，也不表示全部波长、角度或响应保持不变。渐变候选复用 periodic、chirped、multistack 反射种子；每个边缘占比及其互补均生成，候选不改变材料或光学数据。</p>
+<figure class="figure"><svg viewBox="0 0 930 220" role="img" aria-label="反射镜层对相位占比包络和耦合腔两种单侧减对候选"><g class="svgtext"><text x="20" y="28">渐变相位占比（示意，非厚度比例）</text><text x="510" y="28">耦合腔：仅一侧减一对</text><text x="20" y="190">j = 0</text><text x="375" y="190">j = N−1</text><text x="520" y="110">基片侧减一对</text><text x="520" y="174">入射侧减一对</text></g><path d="M35 150 Q120 150 165 90 T295 90 Q340 150 415 150" fill="none" stroke="#087f78" stroke-width="4"/><path d="M35 65 Q120 65 165 125 T295 125 Q340 65 415 65" fill="none" stroke="#b56527" stroke-width="4"/><g fill="#cbd9ed" stroke="#4c6899"><rect x="650" y="66" width="50" height="38"/><rect x="765" y="66" width="100" height="38"/><rect x="650" y="130" width="100" height="38"/><rect x="815" y="130" width="50" height="38"/></g><g fill="#fbe9d6" stroke="#b56527"><rect x="700" y="66" width="65" height="38"/><rect x="750" y="130" width="65" height="38"/></g><g class="svgtext" text-anchor="middle"><text x="732" y="91">腔</text><text x="782" y="155">腔</text></g></svg><figcaption>图14bm-1：左为两类互补 f 包络的示意；右为两种单侧缩短外镜的真实候选，图宽不按物理厚度绘制。</figcaption></figure>
+<p><strong>非对称腔：</strong>对既有 coupled_cavity 种子，若每侧外镜原有至少两对，则分别提出基片侧或入射侧减一对；缩短侧至少保留一对，腔相位及原材料不变，移除继承的对称分组约束。它改变耦合条件，但不假定改善。生成后显式复核正且有限厚度、单层最小／最大厚、总厚及层数上限；失败的提案跳过并报告，不能绕过限制。双面使用既有选面 wrapper：共享构造预算并映射到真实选面，未选面保持环境，研究调用者若继续使用候选，须对最终整片按原目标评分与审计；后续各面可独立优化。</p>
+<pre>source_request = frozen construction request without explicit seeds
+for QW reflector basis (N ≥ 2):
+  for e in {0.1, 0.2} and f in {envelope, 1 − envelope}:
+    scale each H/L pair; recheck explicit caps; yield unscored candidate
+for coupled-cavity basis (outer mirror pairs ≥ 2):
+  for side in {substrate, incident}:
+    remove one outer pair; drop symmetry groups; recheck caps; yield
+research caller: score complete original objectives and independently audit actual candidate</pre>
+<p><strong>续算与验证边界：</strong>默认自动合成没有这两个流，也未将 <code>apodized_phase_and_unequal_mirror_v1</code> 纳入 hybrid 续算指纹；该字符串只标识直接研究候选的构造策略。组合候选的 HR05 出现回退，已有全量对照与门禁证据尚不足以证明收益；去除默认注册后已完成有限定向对照，结果不足以证明跨任务收益。候选生成不改变原指标或冻结 n/k，不是逐谱等价、全局最优、制造良率或连续域保证，不能推断成功率或跨任务泛化。</p>
+<p class="source"><strong>实现与依据：</strong><code>film_synthesis_adaptive_presets.py</code> 的直接生成器和 <code>film_synthesis_surfaces.py</code> 的选面包装；接口见<a href="film-auto-synthesis-contract.md">自动合成契约</a>。一般薄膜设计背景与研究库沿用 <a href="https://doi.org/10.1364/AO.35.005493">Tikhonravov 等，1996，needle 优化</a>、<a href="https://doi.org/10.1364/AO.46.000704">Tikhonravov 等，2007，现代 needle 设计方法</a>和<a href="https://ocw.mit.edu/courses/6-974-fundamentals-of-photonics-quantum-electronics-spring-2006/98fcc94d2216c26db424e294c28d459a_mirror_inter_thn.pdf">MIT OCW 介质镜</a>。这些是背景，不是下述具体参数或性能的证据。sin² 包络、0.1/0.2 及互补、单侧减一对的构造均为<strong>本项目启发式约定</strong>，未找到外部依据，仅为本项目实现，不冒充论文公式。</p>
 </section>
 
 <section id="film-absorption-optimization-20261102">
