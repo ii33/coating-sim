@@ -752,7 +752,8 @@ def test_project_reference_picker_and_offline_reopen(desktop, snapshot, global_r
     optimizer = FilmOptimizationQuickController(_snapshot(project.workspace.service, controller.currentDesign()))
     try:
         assert optimizer.setSearchMode("synthesis")
-        assert any(x["material_id"] == candidate["id"] for x in optimizer.structureMaterialOptions)
+        options = cast(list[dict[str, Any]], optimizer.structureMaterialOptions)
+        assert any(x["material_id"] == candidate["id"] for x in options)
     finally:
         optimizer.shutdown(1000)
         optimizer.deleteLater()
@@ -855,12 +856,14 @@ def test_packaged_low_absorption_data_reaches_optical_calculation(desktop, snaps
     optimizer = FilmOptimizationQuickController(_snapshot(project.workspace.service, controller.currentDesign()))
     try:
         assert optimizer.setSearchMode("synthesis")
-        option = next(x for x in optimizer.structureMaterialOptions if x["material_id"] == candidate["id"])
+        options = cast(list[dict[str, Any]], optimizer.structureMaterialOptions)
+        option = next(x for x in options if x["material_id"] == candidate["id"])
         assert optimizer.setStructureMaterialSelected(option["material_id"], option["optical_set_id"], True)
         assert optimizer.setSynthesisUseCurrentSeed(True)
         request = freeze_film_synthesis_request(project.workspace.service, optimizer._build_synthesis_request())
         request = replace(request, max_evaluations=2, max_cycles=1, max_seconds=10., search_strategy="legacy")
         assert synthesize_film_design(project.workspace.service, request).evaluations >= 1
+        assert request.frozen_material_snapshot is not None
         captured = next(x for x in request.frozen_material_snapshot["materials"] if x["id"] == candidate["id"])
         assert evaluate_optical_set_with_details(captured["optical_sets"][0], 550., "nm")[:2] == expected
     finally:
