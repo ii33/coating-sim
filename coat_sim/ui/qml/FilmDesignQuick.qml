@@ -753,6 +753,13 @@ AppWindow {
                         return window.commitExpressionDraft(true)
                     }
                 }
+                ThemeControls.ThemeButton {
+                    objectName: "filmDesignReferenceMaterialsButton"
+                    visible: window.controller.projectMode
+                    text: "折射率数据库"
+                    Accessible.name: "在工程膜材选择器中使用折射率数据库"
+                    onClicked: window.controller.openReferenceMaterials()
+                }
                 ThemeControls.ThemeField {
                     id: nameField
                     visible: !window.projectResources

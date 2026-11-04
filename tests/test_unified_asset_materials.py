@@ -358,3 +358,78 @@ def test_optical_only_asset_browses_clean_and_first_edit_saves_existing_optics_w
     assert len([row for row in rows if row["kind"] == "material_profile"]) == 1
     assert [row["id"] for row in rows if row["kind"] == "optical_material"] == [identity]
     assert assets.service.load_document(identity).data["material"]["notes"] == "First real optical edit"
+
+
+def test_project_browses_global_materials_without_writing_or_deleting_them(desktop, global_root):
+    global_library = MaterialLibrary(directory=global_root / "data/materials")
+    material = profile("global_glass")
+    material["category"] = "film"
+    global_library.write(material)
+    first, second = desktop.open("Global view first"), desktop.open("Global view second")
+    local = seed_project_material(desktop, first, "local_glass", category="film")
+    _, _, (window, assets, engine, *_) = open_library(desktop, first)
+    assert assets.openMaterialAsset(local["id"])
+    wait_for_material_idle(assets.materialLibrary, "local_glass", "local material")
+    assets.materialLibrary.setField("notes", "unsaved draft remains")
+    original_manifest = assets.service.store.manifest
+    button = cast(Any, window.findChild(QQuickItem, "projectGlobalMaterialsButton"))
+    assert button is not None and button.isVisible()
+    button.clicked.emit()
+    settled(assets)
+    assert assets.transferCatalog["source_type"] == "global"
+    row = next(x for x in assets.transferCatalog["rows"] if x.get("material_id") == "global_glass" and x["kind"] == "material_profile")
+    assert not assets.openMaterialAsset(row["id"])
+    assert not assets.previewAssetDeletion([row["id"]])
+    assert global_library.read("global_glass")["record"]["name"] == material["name"]
+    assert assets.service.store.manifest == original_manifest
+    assert not any(x["kind"] == "material_profile" for x in second.store.manifest["documents"])
+    button.clicked.emit()
+    settled(assets)
+    assert assets.transferCatalog["source_type"] == "project"
+    assert assets.materialLibrary.draftData()["notes"] == "unsaved draft remains"
+    assert qml(engine, window, "allRows.some(row => row.material_id === 'local_glass')")
+
+
+def test_global_material_copy_requires_preview_and_keeps_other_project_untouched(desktop, global_root):
+    library = MaterialLibrary(directory=global_root / "data/materials")
+    material = profile("global_copy")
+    material["category"] = "film"
+    library.write(material)
+    first, second = desktop.open("Copy target"), desktop.open("Copy isolated")
+    _, _, (window, assets, engine, *_) = open_library(desktop, first)
+    cast(Any, window.findChild(QQuickItem, "projectGlobalMaterialsButton")).clicked.emit()
+    settled(assets)
+    row = next(x for x in assets.transferCatalog["rows"] if x.get("material_id") == "global_copy" and x["kind"] == "material_profile")
+    window.setProperty("categoryKey", "material_profile")
+    assert assets.previewLibraryTransfer([row["id"]], "project")
+    settled(assets)
+    assert not any(x["kind"] == "material_profile" for x in assets.service.store.manifest["documents"])
+    assert assets.applyTransfer({})
+    settled(assets)
+    spin_until(lambda: assets.service.store.manifest["documents"], lambda rows: any(x["kind"] == "material_profile" for x in rows), "global material copy")
+    assert not any(x["kind"] == "material_profile" for x in second.store.manifest["documents"])
+    assert library.read("global_copy")["record"] == material
+
+
+def test_global_same_id_conflict_never_overwrites_without_decision(desktop, global_root):
+    library = MaterialLibrary(directory=global_root / "data/materials")
+    global_record = profile("shared_glass")
+    global_record.update(category="film", name="Global shared")
+    library.write(global_record)
+    project = desktop.open("Conflicting sources")
+    local = seed_project_material(desktop, project, "shared_glass", category="film")
+    _, _, (window, assets, engine, *_) = open_library(desktop, project)
+    cast(Any, window.findChild(QQuickItem, "projectGlobalMaterialsButton")).clicked.emit()
+    settled(assets)
+    source = next(x for x in assets.transferCatalog["rows"] if x.get("material_id") == "shared_glass" and x["kind"] == "material_profile")
+    window.setProperty("categoryKey", "material_profile")
+    assert assets.previewLibraryTransfer([source["id"]], "project")
+    settled(assets)
+    assert any(row["conflict"] == "different" for row in assets.transferPlan["rows"])
+    before = assets.service.store.manifest
+    assert assets.applyTransfer({})
+    settled(assets)
+    assert assets.libraryFailed
+    assert assets.service.store.manifest == before
+    assert assets.service.load_document(local["id"]).data["material"]["name"] != global_record["name"]
+    assert library.read("shared_glass")["record"]["name"] == global_record["name"]

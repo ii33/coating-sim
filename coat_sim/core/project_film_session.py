@@ -335,6 +335,23 @@ class ProjectFilmEditSession(FilmDesignEditSession):
         self._reference_index_cache.clear()
         self._picker_catalog_source = self.service._project_materials
 
+    def register_reference_material(self, record: Mapping[str, Any]) -> bool:
+        """Register an ephemeral candidate without editing the current design."""
+        with self._lock, self.service._operation():
+            if self._pending_confirmation is not None or self._expression_busy:
+                raise ValueError("请先完成当前确认或表达式操作。")
+            old = (self.service._references, self.service._reference_size, self.service.materials,
+                   self._catalog_options, self._material_options, self._picker_catalog_source)
+            try:
+                created = self.service.register_reference_material(record)
+                self._refresh_project_materials()
+            except Exception:
+                (self.service._references, self.service._reference_size, self.service.materials,
+                 self._catalog_options, self._material_options, self._picker_catalog_source) = old
+                raise
+            self._notify("derived", "ui")
+            return created
+
     def refresh_project_materials(self) -> None:
         """Refresh one project's live editor while retaining captured draft numerics."""
         with self._lock:

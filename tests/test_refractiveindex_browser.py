@@ -715,3 +715,155 @@ def test_packaged_source_is_reachable_and_install_never_writes_it(global_browser
     assert browser.selectPackagedSource(False)
     idle(browser)
     assert browser.sourceStatus["upstream_commit"] == "d" * 40
+
+
+def test_project_reference_picker_and_offline_reopen(desktop, snapshot, global_root, monkeypatch):
+    from coat_sim.core.optical_constants import evaluate_optical_set_with_details
+    from coat_sim.core.project_film_service import ProjectFilmService
+    from coat_sim.core.project_store import ProjectStore
+    from coat_sim.ui.film_optimization_quick_controller import FilmOptimizationQuickController
+    from tests.test_film_optimization_target_sampling import _snapshot
+    from tests.test_project_global_resources import optical_material
+
+    project = desktop.open("On demand RII")
+    project.workspace.service.project_store.create_document("optical_material", optical_material("test_substrate"))
+    project.workspace.refresh_materials()
+    _, _, (window, owner, *_) = open_library(desktop, project)
+    cast(Any, window.findChild(QQuickItem, "refractiveIndexDatabaseButton")).clicked.emit()
+    browser = owner.refractiveIndexBrowser
+    idle(browser)
+    choose(browser, "/unknown.yml")
+    before = deepcopy(owner.service.store.manifest)
+    assert browser.offerFilmReference(0, "Unknown absorption")
+    idle(browser)
+    assert not browser.errorText, browser.errorText
+    assert owner.service.store.manifest == before
+    candidate = next(x for x in project.workspace.editor.snapshot().material_options["film"] if x["name"] == "Unknown absorption")
+    original = project.workspace.service.materials.get(candidate["id"])
+    optical = original["optical_sets"][0]
+    assert optical.get("k") is None
+    controller = desktop.adapter.desktop.controller_for(project.workspace, "film_design")
+    spin_until(lambda: controller.filmOptions, lambda rows: any(x["id"] == candidate["id"] for x in rows), "reference picker")
+    assert controller.addLayer("front")
+    layer = controller.currentDesign()["front_layers"][-1]["id"]
+    assert controller.setLayerValue("front", layer, "material_id", candidate["id"])
+    assert controller.setSubstrateValue("material_id", "test_substrate")
+    assert controller.setSubstrateValue("optical_set_id", "set")
+    optimizer = FilmOptimizationQuickController(_snapshot(project.workspace.service, controller.currentDesign()))
+    try:
+        assert optimizer.setSearchMode("synthesis")
+        assert any(x["material_id"] == candidate["id"] for x in optimizer.structureMaterialOptions)
+    finally:
+        optimizer.shutdown(1000)
+        optimizer.deleteLater()
+    assert controller.saveToLibrary(), controller.uiState
+    store = owner.service.store
+    film_id = next(x["id"] for x in store.manifest["documents"] if x["kind"] == "film")
+    monkeypatch.setattr(RefractiveIndexLocalStore, "convert_entry", lambda *a, **k: pytest.fail("offline reopen reread RII"))
+    class Empty:
+        def catalog_records(self):
+            return []
+    reopened = ProjectFilmService(ProjectStore.open(store.project_file), global_material_library=Empty())
+    saved = reopened.materials.get(candidate["id"])
+    assert saved["optical_sets"] == original["optical_sets"]
+    assert "unknown.yml" in saved["notes"]
+    assert reopened.load_document(film_id).design["front_layers"][-1]["material_id"] == candidate["id"]
+    assert evaluate_optical_set_with_details(saved["optical_sets"][0], 550, "nm")[1] is None
+    assert not list((global_root / "data/materials").glob("*.json"))
+    browser.close()
+
+
+def test_cancelled_project_reference_worker_cannot_publish(desktop, snapshot, global_root, monkeypatch):
+    project = desktop.open("Cancelled RII")
+    _, _, (window, owner, *_) = open_library(desktop, project)
+    cast(Any, window.findChild(QQuickItem, "refractiveIndexDatabaseButton")).clicked.emit()
+    browser = owner.refractiveIndexBrowser
+    idle(browser)
+    choose(browser)
+    before = project.workspace.editor.snapshot()
+    entered, release = Event(), Event()
+    original = RefractiveIndexLocalStore.convert_entry
+    def blocked(self, *args, **kwargs):
+        entered.set()
+        assert release.wait(5)
+        return original(self, *args, **kwargs)
+    monkeypatch.setattr(RefractiveIndexLocalStore, "convert_entry", blocked)
+    try:
+        assert browser.offerFilmReference(0, "Cancelled source")
+        assert entered.wait(2)
+        assert browser.search("no match", "nk", "", "", "", 0)
+        idle(browser)
+    finally:
+        release.set()
+    QTest.qWait(100)
+    assert project.workspace.editor.snapshot().material_options == before.material_options
+    browser.close()
+
+
+def test_film_toolbar_opens_reference_browser(desktop, snapshot, global_root):
+    project = desktop.open("Toolbar reference")
+    button = cast(Any, project.window.findChild(QQuickItem, "filmDesignReferenceMaterialsButton"))
+    assert button is not None and button.isVisible()
+    button.clicked.emit()
+    owner = spin_until(lambda: desktop.adapter.desktop.controller_for(project.workspace, "project_resources"),
+                       lambda value: value is not None, "asset window")
+    spin_until(lambda: owner.refractiveIndexBrowser is not None and owner.refractiveIndexBrowser.active, bool, "reference browser opens")
+    idle(owner.refractiveIndexBrowser)
+    assert owner.refractiveIndexBrowser.results["total"] == 3
+    owner.refractiveIndexBrowser.close()
+
+
+def test_packaged_low_absorption_data_reaches_optical_calculation(desktop, snapshot, global_root):
+    from coat_sim.core.optical_constants import evaluate_optical_set_with_details
+    from coat_sim.core.refractiveindex_local import packaged_store_root
+    from tests.test_project_global_resources import optical_material
+
+    project = desktop.open("Low absorption calculation")
+    project.workspace.service.project_store.create_document("optical_material", optical_material("test_substrate"))
+    project.workspace.refresh_materials()
+    _, _, (_, owner, *_) = open_library(desktop, project)
+    assert owner.openRefractiveIndexBrowser()
+    browser = owner.refractiveIndexBrowser
+    idle(browser)
+    assert browser.selectPackagedSource(True)
+    idle(browser)
+    assert browser.search("Ta2O5 Gao", "nk", "", "", "", 0)
+    idle(browser)
+    row = next(row for row in browser.results["entries"] if row["source_path"].endswith("Ta2O5/nk/Gao.yml"))
+    assert browser.selectEntry(row["entry_id"])
+    idle(browser)
+    assert browser.offerFilmReference(0, "Ta2O5 Gao")
+    idle(browser)
+    candidate = next(row for row in project.workspace.editor.snapshot().material_options["film"] if row["name"] == "Ta2O5 Gao")
+    source = RefractiveIndexLocalStore(packaged_store_root()).convert_entry(row["entry_id"], optical_set_id="compare", block_selection=browser.entry["conversion"]["choices"][0]["block_selection"])
+    expected = evaluate_optical_set_with_details(source["optical_set"], 550., "nm")[:2]
+    optical = project.workspace.service.materials.get(candidate["id"])["optical_sets"][0]
+    assert evaluate_optical_set_with_details(optical, 550., "nm")[:2] == expected
+    assert expected[1] == pytest.approx(2.1e-5)
+    controller = desktop.adapter.desktop.controller_for(project.workspace, "film_design")
+    assert controller.addLayer("front")
+    layer_id = controller.currentDesign()["front_layers"][-1]["id"]
+    assert controller.setLayerValue("front", layer_id, "material_id", candidate["id"])
+    assert controller.setSubstrateValue("material_id", "test_substrate")
+    assert controller.setSubstrateValue("optical_set_id", "set")
+    spectrum = project.workspace.service.simulate(controller.currentDesign(), {"wavelength_min_nm": 550., "wavelength_max_nm": 560., "samples": 3})
+    assert len(spectrum["R"]) == 3
+    from dataclasses import replace
+    from coat_sim.core.film_auto_synthesis import freeze_film_synthesis_request, synthesize_film_design
+    from coat_sim.ui.film_optimization_quick_controller import FilmOptimizationQuickController
+    from tests.test_film_optimization_target_sampling import _snapshot
+    optimizer = FilmOptimizationQuickController(_snapshot(project.workspace.service, controller.currentDesign()))
+    try:
+        assert optimizer.setSearchMode("synthesis")
+        option = next(x for x in optimizer.structureMaterialOptions if x["material_id"] == candidate["id"])
+        assert optimizer.setStructureMaterialSelected(option["material_id"], option["optical_set_id"], True)
+        assert optimizer.setSynthesisUseCurrentSeed(True)
+        request = freeze_film_synthesis_request(project.workspace.service, optimizer._build_synthesis_request())
+        request = replace(request, max_evaluations=2, max_cycles=1, max_seconds=10., search_strategy="legacy")
+        assert synthesize_film_design(project.workspace.service, request).evaluations >= 1
+        captured = next(x for x in request.frozen_material_snapshot["materials"] if x["id"] == candidate["id"])
+        assert evaluate_optical_set_with_details(captured["optical_sets"][0], 550., "nm")[:2] == expected
+    finally:
+        optimizer.shutdown(1000)
+        optimizer.deleteLater()
+    browser.close()

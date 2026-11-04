@@ -48,8 +48,9 @@ LocalComponents.AppWindow {
     readonly property bool operationBusy: !!resourceBridge && (resourceBridge.transferBusy || resourceBridge.deletionBusy || resourceBridge.assetApplying)
     readonly property bool operationFailed: !!resourceBridge && resourceBridge.libraryFailed
     readonly property bool cancellable: !resourceBridge || resourceBridge.assetCancellable
-    readonly property string operationStatus: resourceBridge && resourceBridge.catalogRefreshPending
-        ? "资产目录正在更新，请等待…" : resourceBridge ? resourceBridge.transferStatus : ""
+    property string referenceOpenError: ""
+    readonly property string operationStatus: referenceOpenError || (resourceBridge && resourceBridge.catalogRefreshPending
+        ? "资产目录正在更新，请等待…" : resourceBridge ? resourceBridge.transferStatus : "")
     readonly property string resultMessage: resourceBridge ? resourceBridge.libraryMessage : ""
     function browserKind(kind) { return kind === "optical_material" ? "material_profile" : kind }
     readonly property var allRows: {
@@ -70,7 +71,7 @@ LocalComponents.AppWindow {
     property string materialUse: ""
     property bool materialUseExplicitlySelected: false
     onMaterialUseChanged: {
-        if (materialUse !== "film" && materialUse !== "substrate")
+        if (materialUse !== "film" && materialUse !== "substrate" && materialUse !== "unclassified")
             materialUse = defaultBrowserMaterialCategory()
     }
     property string lastCatalogId: ""
@@ -81,6 +82,30 @@ LocalComponents.AppWindow {
     })
     property var focusReturnItem: null
     property var refractiveIndexDialog: null
+    function requestReferenceBrowser() { referenceOpenError = ""; referenceOpenTimer.restart() }
+    Timer {
+        id: referenceOpenTimer
+        interval: 50
+        repeat: true
+        property int attempts: 0
+        onRunningChanged: if (running) attempts = 0
+        onTriggered: {
+            if (++attempts > 100) {
+                stop()
+                window.referenceOpenError = "打开折射率数据库超时，请在工程资产库重试。"
+                return
+            }
+            if (window.resourceBridge && !window.operationBusy) {
+                stop()
+                if (!window.resourceBridge.openRefractiveIndexBrowser()) {
+                    window.referenceOpenError = "无法打开折射率数据库，请在工程资产库重试。"
+                } else if (!window.refractiveIndexDialog) {
+                    window.refractiveIndexDialog = refractiveIndexDialogComponent.createObject(window.contentItem)
+                    if (!window.refractiveIndexDialog) window.referenceOpenError = "无法创建折射率数据库窗口。"
+                }
+            }
+        }
+    }
     Component {
         id: refractiveIndexDialogComponent
         LocalComponents.RefractiveIndexBrowserDialog {
@@ -137,7 +162,8 @@ LocalComponents.AppWindow {
     }
     readonly property var materialUses: [
         {key: "film", label: "膜料"},
-        {key: "substrate", label: "基片材料"}
+        {key: "substrate", label: "基片材料"},
+        {key: "unclassified", label: "其他用途 / 未分类"}
     ]
     readonly property var unclassifiedMaterials: allRows.filter(function(row) {
         return browserKind(row.kind) === "material_profile" && browserMaterialCategories(row).length === 0
@@ -148,7 +174,7 @@ LocalComponents.AppWindow {
         return allRows.filter(function(row) {
             return browserKind(row.kind) === kind
                 && (row.unsupported || kind !== "material_profile"
-                    || browserMaterialCategories(row).indexOf(materialUse) >= 0)
+                    || (materialUse === "unclassified" ? browserMaterialCategories(row).length === 0 : browserMaterialCategories(row).indexOf(materialUse) >= 0))
                 && (!query || String(row.name || "").toLowerCase().indexOf(query) >= 0
                     || String(row.summary || "").toLowerCase().indexOf(query) >= 0)
         })
@@ -173,7 +199,7 @@ LocalComponents.AppWindow {
     }
     function selectMaterialUse(use) {
         if (!canLeaveMaterialEditor()) return
-        if (use !== "film" && use !== "substrate") return
+        if (use !== "film" && use !== "substrate" && use !== "unclassified") return
         materialUseExplicitlySelected = true
         if (materialUse === use)
             return
@@ -227,6 +253,7 @@ LocalComponents.AppWindow {
             materialCloseDialog.open()
             return
         }
+        referenceOpenTimer.stop()
         if (resourceBridge)
             resourceBridge.dispose()
     }
@@ -254,7 +281,7 @@ LocalComponents.AppWindow {
                     return window.allRows.some(function(row) {
                         return row.id === value && window.browserKind(row.kind) === window.categoryKey
                             && (row.unsupported || window.browserKind(row.kind) !== "material_profile"
-                                || window.browserMaterialCategories(row).indexOf(window.materialUse) >= 0)
+                                || (window.materialUse === "unclassified" ? window.browserMaterialCategories(row).length === 0 : window.browserMaterialCategories(row).indexOf(window.materialUse) >= 0))
                     })
                 })
             }
@@ -522,23 +549,40 @@ LocalComponents.AppWindow {
                     }
                     ThemeControls.ThemeButton {
                         objectName: "refractiveIndexDatabaseButton"
-                        text: "折射率数据库…"
+                        text: "折射率数据库"
                         enabled: window.librarySource && !window.operationBusy
                         onClicked: {
                             window.focusReturnItem = this
+                            window.referenceOpenError = ""
                             if (window.resourceBridge.openRefractiveIndexBrowser() && !window.refractiveIndexDialog)
                                 window.refractiveIndexDialog = refractiveIndexDialogComponent.createObject(window.contentItem)
                         }
                     }
                     ThemeControls.ThemeButton {
+                        objectName: "projectGlobalMaterialsButton"
+                        visible: window.projectScoped
+                        enabled: !window.operationBusy && window.canLeaveMaterialEditor()
+                        text: window.globalSource && !window.librarySource ? "返回工程资产库" : "查看全局材料"
+                        onClicked: {
+                            window.selectedIds = []
+                            window.informationId = ""
+                            searchField.text = ""
+                            if (window.globalSource && !window.librarySource) window.resourceBridge.browseLibrary()
+                            else window.resourceBridge.browseSource("global")
+                        }
+                    }
+                    ThemeControls.ThemeButton {
                         objectName: "globalResourcesRefreshButton"
-                        text: window.librarySource ? "刷新" : "返回" + window.libraryLabel
+                        text: window.projectScoped && window.globalSource && !window.librarySource ? "刷新全局材料" : window.librarySource ? "刷新" : "返回" + window.libraryLabel
                         enabled: !window.operationBusy
-                        onClicked: window.resourceBridge.browseLibrary()
+                        onClicked: {
+                            if (window.projectScoped && window.globalSource && !window.librarySource) window.resourceBridge.browseSource("global")
+                            else window.resourceBridge.browseLibrary()
+                        }
                     }
                     ThemeControls.ThemeButton {
                         objectName: "globalResourcesImportButton"
-                        text: "导入…"
+                        text: "导入"
                         enabled: !window.operationBusy
                         onClicked: {
                             window.focusReturnItem = this
@@ -550,7 +594,7 @@ LocalComponents.AppWindow {
                     }
                     ThemeControls.ThemeButton {
                         objectName: "globalResourcesExportButton"
-                        text: window.librarySource ? "导出所选…" : "预览导入" + window.libraryLabel
+                        text: window.librarySource ? "导出所选" : "预览导入" + window.libraryLabel
                         enabled: !window.operationBusy && window.selectedIds.length > 0 && window.selectionSupported
                         onClicked: {
                             window.focusReturnItem = this
@@ -562,7 +606,7 @@ LocalComponents.AppWindow {
                     }
                     ThemeControls.ThemeButton {
                         objectName: "assetLibraryDeleteButton"
-                        text: "删除所选…"
+                        text: "删除所选"
                         enabled: !window.operationBusy && !window.operationFailed && window.librarySource && window.selectedIds.length === 1
                         onClicked: {
                             window.focusReturnItem = this
@@ -571,7 +615,7 @@ LocalComponents.AppWindow {
                     }
                 }
                 ThemeControls.ThemeLabel {
-                    text: window.librarySource ? window.libraryLabel : "导入来源：" + String(window.catalog.source_path || "正在读取…")
+                    text: window.librarySource ? window.libraryLabel : window.globalSource ? "全局资产（只读）" : "导入来源：" + String(window.catalog.source_path || "正在读取…")
                     heading: true
                     wrapMode: Text.WrapAnywhere
                     Layout.fillWidth: true

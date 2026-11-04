@@ -257,8 +257,8 @@ def test_material_browser_uses_explicit_multi_membership_categories(global_root)
         settled(bridge)
         assert window.property("categoryKey") == "material_profile", (bridge.transferStatus, bridge.transferCatalog)
         assert window.property("materialUse") == "film"
-        assert qml(engine, window, "materialUses.map(row => row.label)") == ["膜料", "基片材料"]
-        assert qml(engine, window, "materialUses.map(row => row.key)") == ["film", "substrate"]
+        assert qml(engine, window, "materialUses.map(row => row.label)") == ["膜料", "基片材料", "其他用途 / 未分类"]
+        assert qml(engine, window, "materialUses.map(row => row.key)") == ["film", "substrate", "unclassified"]
         rows = {row.get("material_id", row["id"]): row for row in bridge.transferCatalog["rows"]
                 if row["kind"] == "material_profile"}
         assert rows["air_film"]["material_categories"] == ["film"]
@@ -281,6 +281,11 @@ def test_material_browser_uses_explicit_multi_membership_categories(global_root)
             selector.activated.emit(1)
             assert set(qml(engine, window, "visibleRows.map(row => row.material_id)")) == {
                 "bk7", "fused_silica", "air_substrate", "both"
+            }
+            selector.setProperty("currentIndex", 2)
+            selector.activated.emit(2)
+            assert set(qml(engine, window, "visibleRows.map(row => row.material_id)")) == {
+                "boat", "component", "medium_only", "no_purpose", "optical_only"
             }
             selector.setProperty("currentIndex", 0)
             selector.activated.emit(0)

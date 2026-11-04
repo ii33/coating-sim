@@ -615,6 +615,20 @@ LocalComponents.ThemePageDialog {
                         displayText: currentIndex < 0 ? "请选择要转换的数据块" : currentText
                         onActivated: dialog.browser.cancelImportPreview()
                     }
+                    ThemeControls.ThemeButton {
+                        objectName: "riiOfferFilmReferenceButton"
+                        text: "加入当前工程膜材选择器"
+                        visible: dialog.browser.projectReferenceEnabled && !dialog.vendorMode && dialog.choices.length > 0
+                        enabled: !dialog.browser.busy && blockChoice.currentIndex >= 0 && materialName.text.trim().length > 0
+                        onClicked: dialog.browser.offerFilmReference(blockChoice.currentIndex, materialName.text)
+                    }
+                    ThemeControls.ThemeLabel {
+                        Layout.fillWidth: true
+                        visible: dialog.browser.projectReferenceEnabled && !dialog.vendorMode && dialog.choices.length > 0
+                        text: "仅加入当前工程会话；保存引用它的膜系时固定数据。请核对来源和未知 k；资料未经工艺验证。"
+                        wrapMode: Text.Wrap
+                        muted: true
+                    }
                     CheckBox {
                         id: referenceAirConsent
                         objectName: "vendorReferenceAirConsent"

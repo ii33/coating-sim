@@ -348,3 +348,22 @@ def test_tfcalc_reader_uses_explicit_local_plugin_and_no_material_fallback(tmp_p
     document = service.read_tfcalc(source)
     assert len(document.layers) == 1
     assert [row["id"] for row in service.material_options("film")] == ["builtin_ideal_air"]
+
+
+def test_ephemeral_reference_rejects_conflicting_identity_and_preserves_project(tmp_path):
+    from coat_sim.core.project_film_session import ProjectFilmEditSession
+    service = service_at(tmp_path / "reference-conflict")
+    session = ProjectFilmEditSession(service)
+    entry = material("source_record")
+    manifest = deepcopy(service.project_store.manifest)
+    initial = session.snapshot()
+    assert session.register_reference_material(entry)
+    accepted = service.materials.get("source_record")
+    assert not session.register_reference_material(deepcopy(entry))
+    changed = material("source_record", 2.2)
+    assert_error("dependency_conflict", lambda: session.register_reference_material(changed))
+    assert service.materials.get("source_record") == accepted
+    assert service.project_store.manifest == manifest
+    assert session.snapshot().design == initial.design
+    assert session.snapshot().design_revision == initial.design_revision
+    assert all(row["id"] != "source_record" for row in service.material_options("substrate"))

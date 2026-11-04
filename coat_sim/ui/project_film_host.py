@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot
+from PySide6.QtCore import QMetaObject, QObject, Property, QUrl, Qt, Signal, Slot
 from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent, QQmlContext
 from shiboken6 import isValid
 
@@ -420,6 +420,24 @@ class ProjectFilmDesktop(QObject):
 
 class _ProjectFilmDesignController(FilmDesignQuickController):
     """Expose the in-project manager from the project-owned designer toolbar."""
+
+    @Slot(result=bool)
+    def openReferenceMaterials(self) -> bool:
+        desktop, workspace = self.parent(), self.project_context
+        if workspace is None or self._source_closed or not isinstance(desktop, ProjectFilmDesktop) or workspace.host is not desktop.host:
+            return False
+        try:
+            desktop.open_project_module(workspace, "project_resources")
+            owner = desktop.controller_for(workspace, "project_resources")
+            window = getattr(owner, "window", None)
+            if owner is None or getattr(owner, "project_context", None) is not workspace or not isinstance(window, QObject) or not isValid(window):
+                raise ValueError("工程资产库窗口不可用。")
+            if not QMetaObject.invokeMethod(window, "requestReferenceBrowser", Qt.ConnectionType.QueuedConnection):
+                raise ValueError("无法打开折射率数据库。")
+        except (ValueError, RuntimeError) as exc:
+            desktop.moduleError.emit(str(exc))
+            return False
+        return True
 
     @Slot()
     def openProjectManagement(self) -> None:

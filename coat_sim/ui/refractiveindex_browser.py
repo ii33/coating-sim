@@ -199,6 +199,10 @@ class RefractiveIndexBrowserBridge(QObject):
     def sourceKind(self):
         return self._source_kind
 
+    @Property(bool, notify=changed)
+    def projectReferenceEnabled(self):
+        return self.owner.libraryScope == "project" and getattr(self.owner, "project_context", None) is not None
+
     @Property(dict, notify=changed)
     def references(self):
         return deepcopy(self._references)
@@ -409,6 +413,7 @@ class RefractiveIndexBrowserBridge(QObject):
             return False
         self.cancelImportPreview()
         self._cancel("detail")
+        self._cancel("film_reference")
         self._entry, self._preview, self._selected_id, self._results = {}, {}, "", {}
         self._query = {"query": query, "catalog": catalog, "shelf": shelf or None,
                        "book": book or None, "capability": capability or None,
@@ -436,6 +441,7 @@ class RefractiveIndexBrowserBridge(QObject):
         if not any(row["entry_id"] == identity for row in self._results.get("entries", [])):
             return self._fail("请从当前搜索结果选择来源。")
         self.cancelImportPreview()
+        self._cancel("film_reference")
         self._selected_id, self._entry, self._preview = identity, {}, {}
         loader = self._source_loader()
         def read(_cancelled):
@@ -461,6 +467,34 @@ class RefractiveIndexBrowserBridge(QObject):
             from coat_sim.core.project_material_library import ProjectMaterialLibrary
             return ProjectMaterialLibrary(self.owner.service, global_library=_NoGlobalPicker())
         return MaterialLibrary(directory=self.owner.service.root / "materials")
+
+    @Slot(int, str, result=bool)
+    def offerFilmReference(self, choice_index, name):
+        if not self._active or self.busy or self._disposed or not self.projectReferenceEnabled or self._source_kind != "rii":
+            return False
+        choices = self._entry.get("conversion", {}).get("choices", [])
+        if not 0 <= choice_index < len(choices):
+            return self._fail("请选择可转换的数据块。")
+        name = name.strip()
+        if not name or len(name) > 120:
+            return self._fail("材料名称须为 1–120 字。")
+        workspace = self.owner.project_context
+        if getattr(workspace, "_editor", None) is None:
+            return self._fail("请先打开工程膜系设计。")
+        entry, identity = deepcopy(self._entry), self._selected_id
+        blocks = deepcopy(choices[choice_index]["block_selection"])
+        loader = self._source_loader(fresh=True)
+        def read(_cancelled):
+            optical_id = "rii_data_" + _digest([identity, blocks])[:32]
+            data = loader().convert_entry(identity, optical_set_id=optical_id, name=name, block_selection=blocks)
+            source = data["provenance"]
+            if source.get("snapshot_id") != entry.get("snapshot_id") or source["source_sha256"] != entry["source_sha256"]:
+                raise ValueError("来源快照已改变，请重新选择。")
+            profile = _candidate(data, name)
+            return {"id": profile["id"], "name": profile["name"], "notes": profile["notes"],
+                    "optical_sets": deepcopy(profile["optical_constants"])}
+        self._status = "正在读取参考光学数据…"
+        return self._start("film_reference", read)
 
     @Slot(int, str, result=bool)
     @Slot(int, str, bool, result=bool)
@@ -617,6 +651,16 @@ class RefractiveIndexBrowserBridge(QObject):
                 self._status = "来源仅供查阅；导入前请选择数据块并检查适用条件。"
                 self.changed.emit()
                 self.selectionReady.emit()
+            elif kind == "film_reference":
+                try:
+                    editor = getattr(self.owner.project_context, "_editor", None)
+                    if editor is None or self.owner._disposed:
+                        raise ValueError("工程膜系会话已关闭。")
+                    created = editor.register_reference_material(result)
+                    self._status = "已加入当前工程膜材选择器；保存引用的膜系时固定数据。" if created else "该材料已在当前工程会话中。"
+                except (OSError, ValueError, TypeError, KeyError) as exc:
+                    self._fail(exc)
+                    self._status = "未添加参考材料；工程和草稿保持不变。"
             elif kind == "plan":
                 self._plan, self._import_summary = result, result["summary"]
                 self._status = "预览已准备好，请核对来源、目标与冲突处理后确认。"

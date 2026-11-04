@@ -26,7 +26,7 @@ from .film_design_service import FilmDesignService
 from .film_expression_store import _normalize_template
 from .optical_constants import evaluate_optical_set
 from .plugins import PluginRegistry
-from .project_dependencies import ProjectError, normalize_optical_material, reject_links
+from .project_dependencies import ProjectError, json_bytes, normalize_optical_material, reject_links
 from .project_dependencies import document_material_references, external_document
 from .project_material_defaults import project_starter_materials, project_starter_usage
 from .project_paths import project_document_handle
@@ -194,6 +194,8 @@ class ProjectFilmService:
             starter_records, usage=project_starter_usage(starter_records))
         self._project_materials = ProjectOpticalSnapshot(())
         self._global_materials = ProjectOpticalSnapshot(())
+        self._references = ProjectOpticalSnapshot((), usage={})
+        self._reference_size = 0
         self.materials = ProjectOpticalSnapshot(())
         self.refresh_materials()
 
@@ -329,11 +331,35 @@ class ProjectFilmService:
             }
         return captured or None
 
+    def _reference_catalog(self) -> ProjectOpticalSnapshot:
+        return ProjectOpticalSnapshot._combine(self._project_materials, self._references)
+
     def _material_view(self, draft: ProjectOpticalSnapshot | None) -> ProjectOpticalSnapshot:
-        if draft is None:
-            return self._project_materials
-        return ProjectOpticalSnapshot._combine(draft, self._project_materials,
-                                              all_primary_roles=True)
+        catalog = self._reference_catalog()
+        return catalog if draft is None else ProjectOpticalSnapshot._combine(
+            draft, catalog, all_primary_roles=True)
+
+    def register_reference_material(self, record: Mapping[str, Any]) -> bool:
+        """Offer a bounded, detached optical value to this session only."""
+        value = ProjectOpticalSnapshot([record])._values[0]
+        with self._operation():
+            identity = value["id"].casefold()
+            for row in (*self._project_materials._values, *self._references._values):
+                if row["id"].casefold() == identity:
+                    if row == value and (row in self._references._values or
+                            "film" in self._project_materials._usage.get(row["id"], ())):
+                        return False
+                    raise ProjectError("dependency_conflict", "材料 ID 已存在且内容或用途不同；未覆盖。")
+            size = len(json_bytes(value))
+            if len(self._references._values) >= 128 or self._reference_size + size > 64 * 1024 * 1024:
+                raise ProjectError("capacity_exceeded", "当前工程会话参考材料已达上限。")
+            values = (*self._references._values, value)
+            snapshot = ProjectOpticalSnapshot.__new__(ProjectOpticalSnapshot)
+            snapshot._initialize(values, {row["id"]: {"film"} for row in values})
+            self._references = snapshot
+            self._reference_size += size
+            self.materials = self._material_view(self._draft_materials)
+            return True
 
     def activate_frozen_draft_materials(self, records: Iterable[Mapping[str, Any]]) -> None:
         """Expose one detached draft's optical closure to editing and numerics.
@@ -351,7 +377,7 @@ class ProjectFilmService:
     def clear_frozen_draft_materials(self) -> None:
         with self._operation():
             self._draft_materials = None
-            self.materials = self._project_materials
+            self.materials = self._material_view(None)
 
     def material_options(self, purpose: str = "film") -> list[dict[str, Any]]:
         with self._operation():
@@ -371,16 +397,16 @@ class ProjectFilmService:
         use ``self.materials`` and its immutable draft overlay.
         """
         with self._operation():
+            catalog = self._reference_catalog()
             if self._draft_materials is None:
-                return self._project_materials.options_many(purposes)
+                return catalog.options_many(purposes)
             # Latest project/global rows win; draft-only materials remain
             # available without normalizing a second copy of the full catalog.
-            picker = ProjectOpticalSnapshot._combine(self._project_materials,
-                                                    self._draft_materials)
+            picker = ProjectOpticalSnapshot._combine(catalog, self._draft_materials)
             # Frozen numerical closures intentionally own complete values, but
             # their existence alone grants no picker usage. Only catalog roles
             # and actual positions in this design establish picker membership.
-            usage = {identity: set(roles) for identity, roles in self._project_materials._usage.items()}
+            usage = {identity: set(roles) for identity, roles in catalog._usage.items()}
             if design is not None:
                 def bind(role, reference):
                     identity = reference.get("material_id") if isinstance(reference, Mapping) else None
@@ -402,7 +428,7 @@ class ProjectFilmService:
     def catalog_material(self, material_id: str) -> dict[str, Any]:
         """Read the latest project/global catalog snapshot, not draft overlay."""
         with self._operation():
-            return self._project_materials.get(material_id)
+            return self._reference_catalog().get(material_id)
 
     def new_design(self) -> dict[str, Any]:
         return new_design()
